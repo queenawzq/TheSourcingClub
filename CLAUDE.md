@@ -418,10 +418,13 @@ a company-level verdict and a file-level one cannot contradict each other.
   hand. The screens render conditionally around all three, so the prototype
   keeps showing its mock versions.
 - **The overview's fourth card is payments waiting on staff**, where the
-  design puts "low-confidence checks": bank-wire claims from the old site,
-  payouts Stripe did not make, and money held on a cancelled order. Platform
-  staff have no org and cannot be notified of anything, so that count is the
-  only prompt there is.
+  design puts "low-confidence checks": payouts Stripe did not make, and money
+  held on a cancelled order. Platform staff have no org and cannot be notified
+  of anything, so that count is the only prompt there is. The board has no
+  Bank-wire claims, Refunded after payout or Number views any more (John and
+  Queena, Nov 7); reveals of an account number are still recorded. A Wise or
+  PayPal payout underway sits under Processing, which names each row's
+  provider.
 - **Every function on this surface is `security definer` and has no policy
   behind it.** The `is_platform_admin()` test is the first statement in each,
   before any `select` — checking afterwards leaks existence through `P0002`

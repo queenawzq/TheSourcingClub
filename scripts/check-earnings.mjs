@@ -143,7 +143,8 @@ assert.equal(earningStatus(transferred[0]), "Paid", "the same word as the order 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
 for (const rule of [
-  'payout: rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
+  // Owed, whichever tab draws it: a Wise or PayPal payout underway is shown under Processing.
+  'const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
   'held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row))',
 ]) {
   assert.ok(board.includes(rule), `the board's rule changed; check payment-summary.mjs: ${rule}`);

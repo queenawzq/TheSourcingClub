@@ -399,9 +399,10 @@ export async function rfqDetail(rfqId) {
  * `paymentsAwaitingConfirmation` stands where the design puts "low-confidence
  * checks". It is a real figure and a more urgent one: platform staff have no
  * org and so cannot be notified of anything. It counts the payments only a
- * person can move: bank-wire claims from the old site, payouts Stripe did not
- * make (a factory it cannot pay, paid by bank), and money held on a cancelled
- * order. This count is the only prompt there is.
+ * person can move: payouts owed that Stripe did not make (a factory it cannot
+ * pay, paid by bank, Wise or PayPal) and money held on a cancelled order. It
+ * no longer counts bank-wire claims (20261108200000). This count is the only
+ * prompt there is.
  */
 export async function overviewMetrics() {
   const rows = await unwrap(
