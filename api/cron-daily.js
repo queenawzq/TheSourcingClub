@@ -8,8 +8,7 @@ import { sweepProviderPayouts } from "./payout-sync.js";
  * The daily job: capacity reminders and steps due soon
  * (run_daily_notifications), then every email still queued: notifications,
  * review decisions that failed or never went (at most five attempts each, the
- * company's current decision only), staff alerts for profiles sent back, and
- * the Wise and PayPal payout sweep (api/payout-sync.js).
+ * company's current decision only), and staff alerts for profiles sent back.
  *
  * Vercel's cron calls it once a day (vercel.json) with GET and
  * `Authorization: Bearer $CRON_SECRET`. Test sites have no crons, so platform
@@ -57,10 +56,6 @@ export default async function handler(request, response) {
     return;
   }
 
-  // First, so a factory paid since yesterday hears it in this run's emails.
-  // Never fails the job: each provider's trouble is in its own entry.
-  const payouts = await sweepProviderPayouts(service);
-
   // Reminders are written either way; without a provider they wait queued.
   const emails = { sent: 0, skipped: 0, failed: 0, more: false, configured: false };
   const mail = emailTransport();
@@ -76,7 +71,7 @@ export default async function handler(request, response) {
         emails.more = batch.more;
       } while (emails.more && Date.now() - started < DRAIN_BUDGET_MS);
     } catch (error) {
-      response.status(500).json({ reminders, emails, payouts, error: error.message });
+      response.status(500).json({ reminders, emails, error: error.message });
       return;
     }
   }
@@ -95,10 +90,17 @@ export default async function handler(request, response) {
       reviews.failed += alerts.failed;
       reviews.unconfirmed += alerts.unconfirmed;
     } catch (error) {
-      response.status(500).json({ reminders, emails, reviews, payouts, error: error.message });
+      response.status(500).json({ reminders, emails, reviews, error: error.message });
       return;
     }
   }
 
-  response.status(200).json({ reminders, emails, reviews, payouts, error: null });
+  // Wise and PayPal payouts nobody read back (api/payout-sync.js). Never fails the job.
+  try {
+    console.log("payout sweep:", JSON.stringify(await sweepProviderPayouts(service)));
+  } catch (error) {
+    console.error("payout sweep:", error.message);
+  }
+
+  response.status(200).json({ reminders, emails, reviews, error: null });
 }

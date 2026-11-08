@@ -27,6 +27,11 @@ export const FUND_IN_WISE = "Transfer created. Fund it in Wise.";
 export const CHECK_BANK = "Check your bank details";
 export const CHECK_PAYPAL = "Check your PayPal address";
 
+/** How long to give Wise's status to catch up with a payment it just took. */
+export let FUND_SETTLE_MS = 1500;
+export const setFundSettleMs = (ms) => { FUND_SETTLE_MS = ms; };
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Which details Wise refused, in our words: the factory reads these, and Wise's
  * own sentence stays on the board. From Wise's field keys when it named them,
@@ -189,6 +194,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     // Only a transfer still waiting is funded: a press after a timeout may find
     // the first press's funding already went.
     const before = await wise.status(transferId);
+    let funded = false;
     if (before.raw === "incoming_payment_waiting") {
       const funding = await wise.fund(transferId);
       if (!funding.funded) {
@@ -198,8 +204,18 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
         await record(db, payoutId, { new_stage: "awaiting_funding", new_status: before.raw, sentence });
         return { done: funding.why, sentence, transferUrl: wise.transferUrl(transferId) };
       }
+      funded = true;
     }
-    const after = await wise.status(transferId);
+    let after = await wise.status(transferId);
+    // Wise answers the payment before the transfer's status catches up (seen on the
+    // sandbox: the balance had dropped, the status still said waiting, and the board
+    // asked staff to fund it again). Read once more; if it still lags, Wise accepted
+    // the payment, so it is sent, and the next read-back settles the rest.
+    if (funded && after.raw === "incoming_payment_waiting") {
+      await pause(FUND_SETTLE_MS);
+      after = await wise.status(transferId);
+      if (after.raw === "incoming_payment_waiting") after = { ...after, state: "sent", waiting: null };
+    }
     const state = await applyStatus({ db, payoutId, status: after, tellOnFailure: after.raw === "bounced_back" ? CHECK_BANK : null });
     return { done: state, transferUrl: wise.transferUrl(transferId) };
   } catch (failure) {
