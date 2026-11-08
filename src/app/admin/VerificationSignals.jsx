@@ -15,7 +15,7 @@
  * `TradingSignals` sums up the four signals of a trader posing as a factory
  * in one block. Words for a person, never a score or a decision.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { recordSignal, requestRegistryAssist } from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { dateFrom } from "../../lib/dates.js";
@@ -77,6 +77,7 @@ export function TradingSignals({ detail, extra }) {
 function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, onChange }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
+  const tried = useRef(false);
   const read = async () => {
     setBusy(true);
     setProblem("");
@@ -85,6 +86,14 @@ function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId,
     if (!answer.available) setProblem(answer.reason);
     else onChange();
   };
+  // Staff need not remember to press it: the latest file is read on the
+  // current number once, when the panel opens without such a reading.
+  const current = reading && reading.subjectId === latestFileId && reading.details?.numberAtReading === currentNumber;
+  useEffect(() => {
+    if (tried.current || !hasFile || !latestFileId || current) return;
+    tried.current = true;
+    read();
+  }, [hasFile, latestFileId, current]); // eslint-disable-line react-hooks/exhaustive-deps
   const details = reading?.details;
   const extracted = details?.extracted ?? {};
   return (

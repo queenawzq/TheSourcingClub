@@ -258,3 +258,4 @@
 /* At 375 a long pill ("Shared with …") held the block at its own width. */
 .admin-registry > * { min-width: 0; max-width: 100%; }
 .admin-signals-summary .project-status, .admin-registry-flags .project-status, .admin-registry-note .project-status { white-space: normal !important; max-width: 100%; height: auto; overflow-wrap: anywhere; }
+.admin-registry .project-status { display: inline-block; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; }

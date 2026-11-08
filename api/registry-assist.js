@@ -66,18 +66,20 @@ export function aiReadsDocuments(env = process.env) {
 }
 
 const TRADING_WORDS = ["贸易", "进出口", "销售", "批发", "零售", "代理", "ticaret", "dış ticaret", "ihracat", "ithalat", "comércio", "comercio", "trading", "import", "export", "wholesale", "thương mại", "mua bán", "xuất nhập khẩu", "bán buôn", "bán lẻ"];
-const MAKING_WORDS = ["生产", "制造", "加工", "织造", "缝制", "imalat", "üretim", "uretim", "dikim", "fabrica", "fabricação", "fabricacao", "confeção", "confecao", "manufactur", "production", "processing", "sản xuất", "gia công", "dệt", "may mặc"];
+const MAKING_WORDS = ["生产", "制造", "加工", "织造", "缝制", "imalat", "üretim", "uretim", "dikim", "fabrica", "fabricação", "fabricacao", "confeção", "confecao", "manufactur", "production", "processing", "sản xuất", "gia công"];
 
 /**
  * Trading words in a business scope with no making word: `{ trading, quote }`.
  * The quote is the words found, as printed.
  */
 export function tradingScope(scope) {
-  const text = String(scope ?? "");
-  const lower = text.toLowerCase();
+  // Accents off on both sides, so "san xuat" and "sản xuất" are one word.
+  // "may mặc" (apparel) and "dệt" (textiles) name the goods, not making them.
+  const plain = (text) => String(text ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/ı/g, "i");
+  const lower = plain(scope);
   if (!lower.trim()) return { trading: false, read: false, quote: "" };
-  const trade = TRADING_WORDS.filter((word) => lower.includes(word.toLowerCase()));
-  const make = MAKING_WORDS.filter((word) => lower.includes(word.toLowerCase()));
+  const trade = TRADING_WORDS.filter((word) => lower.includes(plain(word)));
+  const make = MAKING_WORDS.filter((word) => lower.includes(plain(word)));
   // Neither kind of word: said as such, never as "includes making".
   if (!trade.length && !make.length) return { trading: false, read: true, recognised: false, quote: "" };
   return { trading: trade.length > 0 && make.length === 0, read: true, recognised: true, quote: (trade.length && !make.length ? trade : make).join(", ") };

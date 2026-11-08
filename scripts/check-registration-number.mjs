@@ -97,7 +97,9 @@ check("trading scope: trade words with no making word are flagged, quoting the w
   assert.equal(tradingScope("针织服装制造、加工；货物进出口").trading, false);
   assert.equal(tradingScope("").read, false);
   assert.deepEqual(tradingScope("Kinh doanh bất động sản"), { trading: false, read: true, recognised: false, quote: "" });
-  assert.equal(tradingScope("Mua bán hàng may mặc; xuất nhập khẩu").trading, false);
+  assert.equal(tradingScope("Bán buôn hàng may mặc; xuất nhập khẩu").trading, true);
+  assert.equal(tradingScope("Ban buon hang may mac; xuat nhap khau").trading, true);
+  assert.equal(tradingScope("Sản xuất hàng may mặc; xuất nhập khẩu").trading, false);
   assert.equal(tradingScope("Xuất nhập khẩu, bán buôn quần áo").trading, true);
 });
 check("document differences: number and name, quoting the document", () => {
