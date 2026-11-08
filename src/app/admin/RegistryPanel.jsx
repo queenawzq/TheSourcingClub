@@ -125,7 +125,13 @@ export default function RegistryPanel({ orgId, onChange }) {
   const autoNamed = (detail.checks ?? []).find((check) => check.automatic && check.details?.name && check.numberChecked === registration?.number);
   const autoDiffers = autoNamed && !/^-+$/.test(autoNamed.details.name) && !companyNamesMatch(autoNamed.details.name, title) ? autoNamed.details.name : null;
   const typedDiffers = seen.name?.trim() && !companyNamesMatch(seen.name, title) ? seen.name.trim() : null;
-  const differsNow = result === "found" && (typedDiffers || autoDiffers);
+  // The AI reading of the current file, on the current number, showing
+  // another number or name (registry_reading_differs).
+  const readingLines = detail.readingDiffers?.differences ?? [];
+  const readingDiffers = readingLines.length
+    ? readingLines.map((line) => `${line.field === "number" ? "number" : "name"} "${line.document || "none"}"`).join(", ")
+    : null;
+  const differsNow = result === "found" && (typedDiffers || autoDiffers || readingDiffers);
 
   const copy = (what, text) => {
     navigator.clipboard?.writeText(text).then(() => { setCopied(what); setTimeout(() => setCopied(null), 1500); }, () => {});
@@ -188,9 +194,11 @@ export default function RegistryPanel({ orgId, onChange }) {
         {country === "TR" && <ProfileDetailPair label="Letter number (Dilekçe No.)" value={registration?.registrationLetterNumber ?? "Not given"} />}
       </div>
 
-      {(detail.nameDiffers || flags.length > 0) && (
+      {(detail.nameDiffers || readingDiffers || detail.renamedSinceCheck || flags.length > 0) && (
         <div className="admin-registry-flags">
           {detail.nameDiffers && <Pill tone="danger">Name doesn't match: {detail.nameDiffers}</Pill>}
+          {readingDiffers && <Pill tone="danger">Document shows {readingDiffers}</Pill>}
+          {detail.renamedSinceCheck && <Pill tone="danger">Renamed since the check: {detail.current?.details?.nameAtCheck ?? detail.current?.details?.titleAtCheck} → {detail.displayName}</Pill>}
           {flags.map((flag) => <Pill tone="warning" key={flag}>{flag}</Pill>)}
         </div>
       )}
@@ -319,10 +327,10 @@ export default function RegistryPanel({ orgId, onChange }) {
         )}
         {differsNow && (
           <div className="admin-registry-note">
-            <Pill tone="danger">Name doesn't match: {typedDiffers ?? autoDiffers} · company title {title}</Pill>
+            <Pill tone="danger">{typedDiffers || autoDiffers ? `Name doesn't match: ${typedDiffers ?? autoDiffers}` : `Document shows ${readingDiffers}`} · company {title}{registration?.number ? ` · ${registration.number}` : ""}</Pill>
             <label className="directory-check">
               <input type="checkbox" checked={namesDiffer} onChange={(event) => setNamesDiffer(event.target.checked)} />
-              <span>The names differ and I checked why (say why above)</span>
+              <span>They differ and I checked why (say why above)</span>
             </label>
           </div>
         )}
@@ -330,7 +338,7 @@ export default function RegistryPanel({ orgId, onChange }) {
           className="primary-btn compact-btn"
           type="submit"
           disabled={busy || !source || !registration || !note.trim() || (viesDisagrees && !overrule) || (differsNow && !namesDiffer)}
-          title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : viesDisagrees && !overrule ? "Tick that you checked VIES yourself" : differsNow && !namesDiffer ? "Tick that the names differ and you checked why" : undefined}
+          title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : viesDisagrees && !overrule ? "Tick that you checked VIES yourself" : differsNow && !namesDiffer ? "Tick that they differ and you checked why" : undefined}
         >
           Record check
         </button>

@@ -160,7 +160,7 @@ export function withRegistry(profile, state) {
   const when = state.checked_at ? shortDate(state.checked_at) : "";
   const words = state.state === "found"
     ? (state.kind === "document" ? `Registration document checked ${when}.` : `Found on an official registry ${when}.`)
-    : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number changed."
+    : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number or name changed."
     : "No registry check recorded yet.";
   // "100% complete" read as checked when nothing had been: until a check is
   // recorded an uploaded registration is "Uploaded · not checked", with no figure.

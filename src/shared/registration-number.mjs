@@ -200,19 +200,19 @@ export function normaliseRegistrationLetter(value) {
 }
 
 // Legal forms and joining words dropped from a name (Portuguese, Turkish,
-// English, Chinese); the database's company_name_key() drops the same.
-const NAME_FORMS = new Set(["sa", "sl", "lda", "limitada", "unipessoal", "sociedade", "anonima", "ltd", "ltda", "limited", "co", "company", "corp", "corporation", "inc", "llc", "gmbh", "plc", "jsc", "srl", "spa", "sti", "sirketi", "ticaret", "sanayi", "san", "tic", "ve", "as", "ith", "ihr", "imalat", "pazarlama", "and", "e", "cia", "comercio", "industria"]);
-const ACCENTS_FROM = "áàâãäåçéèêëíìîïıñóòôõöøúùûüşğýÿœæ";
-const ACCENTS_TO = "aaaaaaceeeeiiiiinoooooouuuusgyyoa";
+// English, Vietnamese, Chinese); the database's company_name_key() drops the
+// same, and strips accents the same way (NFD).
+const NAME_FORMS = new Set(["sa", "sl", "lda", "limitada", "unipessoal", "sociedade", "anonima", "ltd", "ltda", "limited", "co", "company", "corp", "corporation", "inc", "llc", "gmbh", "plc", "jsc", "srl", "spa", "sti", "sirketi", "ticaret", "sanayi", "san", "tic", "ve", "as", "ith", "ihr", "imalat", "pazarlama", "and", "e", "cia", "comercio", "industria", "tnhh", "mtv"]);
+const NAME_PHRASES = / (cong ty|trach nhiem huu han|mot thanh vien|co phan|s a|a s)(?= )/g;
+const WHOLE_FROM = "đıøłßæœ";
+const WHOLE_TO = "diolsao";
 
-/** "EDP, S.A." → "edp"; "Fiação do Vale, Lda." → "fiacao do vale"; "宁波织造有限公司" → "宁波织造". */
+/** "EDP, S.A." → "edp"; "Fiação do Vale, Lda." → "fiacao do vale"; "Công ty TNHH Dệt May" → "det may"; "宁波织造有限公司" → "宁波织造". */
 export function companyNameKey(raw) {
-  let text = String(raw ?? "").replace(/İ/g, "i").toLowerCase().replace(/i\u0307/g, "i");
-  text = [...text].map((ch) => { const at = ACCENTS_FROM.indexOf(ch); return at >= 0 ? ACCENTS_TO[at] : ch; }).join("");
+  let text = String(raw ?? "").replace(/İ/g, "i").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  text = [...text].map((ch) => { const at = WHOLE_FROM.indexOf(ch); return at >= 0 ? WHOLE_TO[at] : ch; }).join("");
   text = text.replace(/(股份有限公司|有限责任公司|有限公司|分公司|公司|厂)$/u, "");
-  text = text.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  // "s a" and "a s" (S.A., A.Ş.) are two words once the dots go.
-  text = ` ${text} `.replace(/ s a(?= )| a s(?= )/g, " ");
+  text = ` ${text.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `.replace(NAME_PHRASES, " ");
   return text.split(" ").filter((word) => word && !NAME_FORMS.has(word)).join(" ");
 }
 
@@ -235,7 +235,7 @@ export function normaliseAccessCode(value) {
 // The uploaded registration document, compared with the typed number. For
 // China it is the check that works (GSXT is behind a captcha and a real-name
 // login, and refuses foreign connections); everywhere it is the fallback.
-const DOCUMENT_SOURCE = { key: "document", label: "Uploaded registration document", url: null };
+const DOCUMENT_SOURCE = { key: "document", label: "Uploaded registration document", url: null, seen: ["name"] };
 const enc = encodeURIComponent;
 
 /**

@@ -65,8 +65,8 @@ export function aiReadsDocuments(env = process.env) {
   return !["0", "off", "false", "no"].includes(set);
 }
 
-const TRADING_WORDS = ["贸易", "进出口", "销售", "批发", "零售", "代理", "ticaret", "dış ticaret", "ihracat", "ithalat", "comércio", "comercio", "trading", "import", "export", "wholesale"];
-const MAKING_WORDS = ["生产", "制造", "加工", "织造", "缝制", "imalat", "üretim", "uretim", "dikim", "fabrica", "fabricação", "fabricacao", "confeção", "confecao", "manufactur", "production", "processing"];
+const TRADING_WORDS = ["贸易", "进出口", "销售", "批发", "零售", "代理", "ticaret", "dış ticaret", "ihracat", "ithalat", "comércio", "comercio", "trading", "import", "export", "wholesale", "thương mại", "mua bán", "xuất nhập khẩu", "bán buôn", "bán lẻ"];
+const MAKING_WORDS = ["生产", "制造", "加工", "织造", "缝制", "imalat", "üretim", "uretim", "dikim", "fabrica", "fabricação", "fabricacao", "confeção", "confecao", "manufactur", "production", "processing", "sản xuất", "gia công", "dệt", "may mặc"];
 
 /**
  * Trading words in a business scope with no making word: `{ trading, quote }`.
@@ -78,7 +78,9 @@ export function tradingScope(scope) {
   if (!lower.trim()) return { trading: false, read: false, quote: "" };
   const trade = TRADING_WORDS.filter((word) => lower.includes(word.toLowerCase()));
   const make = MAKING_WORDS.filter((word) => lower.includes(word.toLowerCase()));
-  return { trading: trade.length > 0 && make.length === 0, read: true, quote: (trade.length && !make.length ? trade : make).join(", ") };
+  // Neither kind of word: said as such, never as "includes making".
+  if (!trade.length && !make.length) return { trading: false, read: true, recognised: false, quote: "" };
+  return { trading: trade.length > 0 && make.length === 0, read: true, recognised: true, quote: (trade.length && !make.length ? trade : make).join(", ") };
 }
 
 /**
@@ -258,9 +260,11 @@ async function fetchJson(url, init = {}) {
 /** The address to check: a registered address a source gave, else the typed location. */
 export function bestAddress(detail, signals) {
   const checks = detail?.checks ?? [];
-  const fromCheck = checks.find((check) => check.details?.address && check.numberChecked === detail?.registration?.number);
+  // Never the address of another company a registry named for this number.
+  const fromCheck = checks.find((check) => check.details?.address && check.numberChecked === detail?.registration?.number && check.nameMatches !== false);
   if (fromCheck) return { address: String(fromCheck.details.address).replace(/\s*\n\s*/g, ", "), from: fromCheck.automatic ? "VIES" : "the registry check" };
-  const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address);
+  const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address
+    && signal.details?.numberAtReading === (detail?.registration?.number ?? null) && !(signal.details?.differences ?? []).some((line) => line.field === "name"));
   if (reading) return { address: reading.details.extracted.address, from: "the registration document" };
   if (detail?.location) return { address: detail.location, from: "the factory's location" };
   return { address: "", from: "" };
@@ -318,7 +322,9 @@ export default async function handler(request, response) {
     const registration = detail?.registration ?? {};
     const differences = extracted.readable === false ? [] : documentDifferences(extracted, { country: registration.country, number: registration.number, title: detail?.title });
     const scope = tradingScope(extracted.businessScope);
-    const details = { extracted, differences, tradingScope: scope, model, fileId: file.id, fileName: file.name };
+    // A reading holds for the number and name it was compared with: the
+    // database ignores it once either changes (registry_reading_differs).
+    const details = { extracted, differences, tradingScope: scope, model, fileId: file.id, fileName: file.name, numberAtReading: registration.number ?? null, titleAtReading: detail?.title ?? null };
     const { error: saveError } = await asServer.rpc("record_verification_signal", {
       target_org: orgId, kind: "document_reading", subject: file.id,
       result: extracted.readable === false ? "unreadable" : differences.length ? "differs" : "agrees", details, requested_by: requestedBy,
@@ -345,13 +351,19 @@ export default async function handler(request, response) {
       const lat = Number(hit.lat);
       const lon = Number(hit.lon);
       // A street, a building or a site is precise; a town or region is not.
-      const precise = Number(hit.place_rank ?? 0) >= 26;
+      // A place OpenStreetMap files as land use or a building is a site too.
+      const hitClass = hit.category ?? hit.class ?? "";
+      const precise = Number(hit.place_rank ?? 0) >= 26 || ["landuse", "building", "man_made", "industrial", "office", "amenity", "shop"].includes(hitClass);
       const query = `[out:json][timeout:5];(way(around:300,${lat},${lon})[landuse];relation(around:300,${lat},${lon})[landuse];way(around:150,${lat},${lon})[building];node(around:150,${lat},${lon})[office];way(around:300,${lat},${lon})[man_made=works];);out tags center 60;`;
       // A town says nothing about the building: no tags are read for it.
       const around = precise
         ? await fetchJson(OVERPASS, { method: "POST", body: new URLSearchParams({ data: query }), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
         : { data: { elements: [] } };
       const tags = around.error ? [] : summariseTags(around.data?.elements, lat, lon);
+      // The place itself is a tag: "landuse=industrial" for an industrial
+      // estate. Kept even when Overpass didn't answer.
+      const ownTag = ["landuse", "building", "man_made", "industrial", "office"].includes(hitClass) && hit.type ? `${hitClass}=${hit.type}` : null;
+      if (ownTag && !tags.some((t) => t.tag === ownTag)) tags.unshift({ tag: ownTag, count: 1, nearest: 0 });
       let judged = judgeFromTags(tags, precise);
       let how = "rule";
       if (precise && tags.length) {

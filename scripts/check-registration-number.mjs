@@ -13,7 +13,7 @@ import {
 } from "../src/shared/registration-number.mjs";
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
-import { aiReadsDocuments, documentDifferences, groundedReasons, judgeFromTags, tradingScope } from "../api/registry-assist.js";
+import { aiReadsDocuments, bestAddress, documentDifferences, groundedReasons, judgeFromTags, tradingScope } from "../api/registry-assist.js";
 
 let failures = 0;
 function check(name, fn) {
@@ -77,6 +77,8 @@ check("company names: legal forms, accents and case dropped, as the database doe
   assert.ok(companyNamesMatch("FIACAO DO VALE LDA", "Fiação do Vale, Lda."));
   assert.ok(!companyNamesMatch("EDP, S.A.", "Fiação do Vale, Lda."));
   assert.ok(!companyNamesMatch("", ""));
+  assert.equal(companyNameKey("Công ty TNHH Dệt May Sài Gòn"), "det may sai gon");
+  assert.ok(companyNamesMatch("CÔNG TY TNHH DỆT MAY SÀI GÒN", "Dệt May Sài Gòn Co., Ltd"));
 });
 check("GİB's letter check opens prefilled with the VKN and the letter number", () => {
   const gib = registrySources("TR").find((item) => item.key === "gib");
@@ -91,9 +93,12 @@ check("official sources: the same list as registry_source_is_official()", () => 
   assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "gib", "gsxt", "national", "permit", "vies"]);
 });
 check("trading scope: trade words with no making word are flagged, quoting the words", () => {
-  assert.deepEqual(tradingScope("纺织品、服装的批发、零售；货物进出口"), { trading: true, read: true, quote: "进出口, 批发, 零售" });
+  assert.deepEqual(tradingScope("纺织品、服装的批发、零售；货物进出口"), { trading: true, read: true, recognised: true, quote: "进出口, 批发, 零售" });
   assert.equal(tradingScope("针织服装制造、加工；货物进出口").trading, false);
   assert.equal(tradingScope("").read, false);
+  assert.deepEqual(tradingScope("Kinh doanh bất động sản"), { trading: false, read: true, recognised: false, quote: "" });
+  assert.equal(tradingScope("Mua bán hàng may mặc; xuất nhập khẩu").trading, false);
+  assert.equal(tradingScope("Xuất nhập khẩu, bán buôn quần áo").trading, true);
 });
 check("document differences: number and name, quoting the document", () => {
   const lines = documentDifferences({ registrationNumber: "91330100MA2B7C4D3F", legalName: "宁波贸易有限公司" }, { country: "CN", number: "91330100MA2B7C4D3F", title: "Ningbo Loomworks" });
@@ -105,6 +110,12 @@ check("address: judged from the tags by rule, imprecise is unknown", () => {
   assert.equal(judgeFromTags([{ tag: "building=office", count: 1, nearest: 10 }]).judgement, "office");
   assert.equal(judgeFromTags([{ tag: "landuse=industrial", count: 1, nearest: 40 }], false).judgement, "unknown");
   assert.equal(judgeFromTags([]).judgement, "unknown");
+});
+check("address: a place filed as land use is judged on its own tag, and a registry naming another company gives no address", () => {
+  assert.equal(judgeFromTags([{ tag: "landuse=industrial", count: 1, nearest: 0 }]).judgement, "industrial");
+  const detail = { registration: { number: "500697256" }, location: "Porto, Portugal",
+    checks: [{ automatic: true, numberChecked: "500697256", nameMatches: false, details: { name: "EDP, S.A.", address: "LISBOA" } }] };
+  assert.deepEqual(bestAddress(detail, []), { address: "Porto, Portugal", from: "the factory's location" });
 });
 check("address: a model's reason that names no tag found is dropped", () => {
   assert.deepEqual(groundedReasons(["landuse=industrial at 40 m", "Looks like a big factory"], [{ tag: "landuse=industrial" }]), ["landuse=industrial at 40 m"]);

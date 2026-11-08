@@ -96,7 +96,9 @@ export function approvalBlockText(detail) {
       ? "The latest registry check did not find a match"
       : "Record a registry check that found the company first";
   }
+  if (problem === "renamed") return "The company was renamed after its registry check: check it again";
   if (problem === "name_differs") return `The registry names another company (${detail.nameDiffers}): record a check confirming why`;
+  if (problem === "document_differs") return "The AI reading of the document shows another number or name: record a check confirming why";
   if (problem === "duplicate") return "Another company uses this registration number: explain it first";
   return null;
 }

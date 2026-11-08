@@ -3,7 +3,7 @@
 -- Fixtures prefixed pgtap87-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(42);
+select plan(56);
 
 insert into auth.users (id, email) values
   ('c8700000-0000-0000-0000-000000000001', 'p87-admin@example.com'),
@@ -86,7 +86,7 @@ reset role;
 update public.factory_profiles set legal_name = 'Renamed Lda' where org_id = 'd8700000-0000-0000-0000-0000000000f1';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
-select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f1') ->> 'approvalProblem', 'name_differs', 'a rename afterwards opens the question again');
+select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f1') ->> 'approvalProblem', 'renamed', 'a rename afterwards opens the question again');
 select throws_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f1', 'approved')$$,
   '22023', null, 'and the database refuses approval');
 
@@ -100,6 +100,7 @@ select lives_ok($$select public.admin_record_registry_check('d8700000-0000-0000-
 select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f3') ->> 'approvalProblem', 'duplicate', 'the duplicate still stops approval');
 select throws_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f3', 'approved')$$, '22023', null, 'in the database too');
 select throws_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000-0000000000f3', '  ')$$, '22023', null, 'an explanation needs words');
+select throws_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000-0000000000f3', 'ok')$$, '22023', null, '"ok" explains nothing');
 select lives_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000-0000000000f3', 'Same owner, two sites')$$, 'staff explain it');
 select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f3') ->> 'approvalProblem', null, 'then approval is open');
 
@@ -133,6 +134,42 @@ set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000003","r
 set local role authenticated;
 select throws_ok($$insert into public.rfq_invitations (rfq_id, factory_org_id) values ('f8700000-0000-0000-0000-000000000001', 'd8700000-0000-0000-0000-0000000000f1')$$,
   '42501', 'this vendor is not verified yet', 'a brand cannot invite a factory that is not verified');
+
+-- Round 1: names in more scripts, the AI reading, renames, sole proprietors --
+select is(public.company_name_key('Công ty TNHH Dệt May Sài Gòn'), 'det may sai gon', 'Vietnamese legal form and accents');
+select ok(public.company_names_match('CÔNG TY TNHH DỆT MAY SÀI GÒN', 'Dệt May Sài Gòn Co., Ltd'), 'the same Vietnamese company, two ways');
+
+reset role;
+insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, mime_type) values
+  ('a8700000-0000-0000-0000-000000000002', 'd8700000-0000-0000-0000-0000000000f2', 'business_registration', 'org-private', 'd8700000-0000-0000-0000-0000000000f2/letter.png', 'letter.png', 'image/png');
+select lives_ok($$select public.record_verification_signal('d8700000-0000-0000-0000-0000000000f2', 'document_reading', 'a8700000-0000-0000-0000-000000000002', 'differs',
+  '{"numberAtReading":"4827361596","differences":[{"field":"number","document":"1111111111","typed":"4827361596"}]}'::jsonb, null)$$, 'the server records an AI reading that differs');
+set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select ok((public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f2') -> 'readingDiffers') is not null, 'staff see what the document shows');
+select throws_ok($$select public.admin_record_registry_check('d8700000-0000-0000-0000-0000000000f2', 'document', 'found', 'Letter shows the company')$$,
+  '22023', null, '"found" is refused while the AI reading shows another number');
+select lives_ok($$select public.admin_record_registry_check('d8700000-0000-0000-0000-0000000000f2', 'gib', 'found', 'GİB shows our VKN; the AI misread a smudged digit', false, '{}'::jsonb, true)$$,
+  'staff confirm the difference with a note');
+select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f2') ->> 'approvalProblem', 'duplicate', 'the reading no longer stops approval (the duplicate still does)');
+select lives_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000-0000000000f2', 'Same owner as Copy Knit, two sites')$$, 'explained');
+select lives_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f2', 'approved')$$, 'approved');
+reset role;
+update public.orgs set name = 'Bosphorus Premium Knit' where id = 'd8700000-0000-0000-0000-0000000000f2';
+set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select is(public.factory_registry_fact('d8700000-0000-0000-0000-0000000000f2'), null, 'a rename after approval takes the brand''s fact away');
+reset role;
+set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is((select state from public.admin_registry_states() where org_id = 'd8700000-0000-0000-0000-0000000000f2'), 'lost', 'and staff see the check lost');
+reset role;
+update public.company_registrations set number = null, no_company_number = true where org_id = 'd8700000-0000-0000-0000-0000000000f2';
+update public.orgs set name = 'Örme Tekstil' where id = 'd8700000-0000-0000-0000-0000000000f2';
+set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok($$select public.admin_record_registry_check('d8700000-0000-0000-0000-0000000000f2', 'gib', 'found', 'Sole proprietor, letter seen')$$, 'a sole proprietor checked');
+select is(public.factory_registry_fact('d8700000-0000-0000-0000-0000000000f2') ->> 'kind', 'document', 'a sole proprietor is never "Official registry"');
 
 select * from finish();
 rollback;

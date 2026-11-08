@@ -56,7 +56,9 @@ export function TradingSignals({ detail, extra }) {
   const rows = [
     ["Address", address ? ADDRESS_WORDS[address.result] ?? address.result : "Not checked", address ? ADDRESS_TONE[address.result] : "neutral"],
     ["Licence scope", !reading ? "Not read" : !scope?.read ? "No business scope on the document"
-      : scope.trading ? `Trading only: ${scope.quote}` : `Includes making: ${scope.quote}`, !scope?.read ? "neutral" : scope.trading ? "danger" : "success"],
+      : scope.recognised === false ? "No trading or making words recognised"
+      : scope.trading ? `Trading only: ${scope.quote}` : `Includes making: ${scope.quote}`,
+      !scope?.read || scope.recognised === false ? "neutral" : scope.trading ? "danger" : "success"],
     ["Photos", !photos.length ? "None uploaded" : `${photoChecks.length} of ${photos.length} searched${elsewhere ? `, ${elsewhere} found elsewhere` : ""}`, elsewhere ? "danger" : photoChecks.length === photos.length ? "success" : "neutral"],
     ["Duplicate number", detail?.duplicates?.length ? `Shared with ${detail.duplicates.map((other) => other.name).join(", ")}` : "None", detail?.duplicates?.length ? "danger" : "success"],
   ];
@@ -72,7 +74,7 @@ export function TradingSignals({ detail, extra }) {
   );
 }
 
-function DocumentReading({ orgId, reading, hasFile, onChange }) {
+function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, onChange }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const read = async () => {
@@ -94,6 +96,8 @@ function DocumentReading({ orgId, reading, hasFile, onChange }) {
       {problem && <p className="factory-onboarding-save-error" role="alert">{problem}</p>}
       {reading ? (
         <>
+          {(details.numberAtReading !== undefined && details.numberAtReading !== currentNumber) && <p className="admin-registry-differs">Read when the number was {details.numberAtReading ?? "not given"}; it has changed since. Read again.</p>}
+          {latestFileId && reading.subjectId !== latestFileId && <p className="admin-registry-differs">Read from an earlier upload. Read again.</p>}
           {extracted.readable === false && <p>The AI could not read this as a registration document.</p>}
           {(details.differences ?? []).map((line) => (
             <p className="admin-registry-differs" key={line.field}>
@@ -258,7 +262,7 @@ export default function VerificationSignals({ orgId, detail, extra, onChange }) 
   const signals = extra.signals ?? [];
   return (
     <div className="admin-signals">
-      <DocumentReading orgId={orgId} reading={latest(signals, "document_reading")} hasFile={(extra.registrationFiles ?? []).length > 0} onChange={onChange} />
+      <DocumentReading orgId={orgId} reading={latest(signals, "document_reading")} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} />
       <AddressCheck orgId={orgId} check={signals.find((signal) => signal.kind === "address" && signal.automatic)} onChange={onChange} />
       <section className="admin-signal-block">
         <h3>Factory photos</h3>
