@@ -865,7 +865,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
                  empty="Every approved payment has been paid out."
-                 caption="The brand approved these steps (including before an order was cancelled), or the step needs no approval. Retry the payout, or pay by bank and mark it paid out after sending the money." />
+                 caption="The brand approved these steps (including before an order was cancelled), or the step needs no approval. New earnings require a factory withdrawal request and admin approval above. Older payouts retain their retry and manual reconciliation actions." />
       ) : null}
       {active === "refunded" ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}

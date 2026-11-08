@@ -79,6 +79,6 @@ export default function WithdrawalApprovals({ onChanged }) {
       }).join(' · ')}</p>
       <div className="admin-scroll"><table><thead><tr><th>Factory</th><th>Destination</th><th>Requested</th><th>Funding and approval</th></tr></thead>
         <tbody>{requests.map(request=><ApprovalRow key={request.id} request={request} onChanged={reload}/>)}</tbody></table></div>
-    </> : <p className="admin-sub">{requests?'No withdrawal requests awaiting approval.':'Loading withdrawal requests…'}</p>}
+    </> : !error ? <p className="admin-sub">{requests?'No withdrawal requests awaiting approval.':'Loading withdrawal requests…'}</p> : null}
   </section>;
 }
