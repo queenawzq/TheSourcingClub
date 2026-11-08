@@ -1159,7 +1159,7 @@ const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic popl
 const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
-must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Demo data: paid out by bank by staff." }), "release the fit sample");
+must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await funded(await dueNow(poplin, poplinTitle), CARD);
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
@@ -1197,6 +1197,37 @@ const seersucker = await runningOrder({
 });
 await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
+// 7. Kowloon Sourcing Partners is in Hong Kong and paid through Payoneer, by
+//    hand from TSC's Payoneer account: one fit sample paid out with its
+//    payment ID, one approved and waiting on staff ("Payout owed"), and one
+//    funded and waiting for the brand, so its card shows balance and pending.
+must(await tradingCompany.client.from("factory_payout_accounts").insert({
+  org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
+}), "the trading company's Payoneer account");
+const hopsackTitle = "Linen hopsack blazer, AW27";
+const hopsack = await runningOrder({
+  title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+const hopsackFit = await dueNow(hopsack, hopsackTitle);
+await funded(hopsackFit, CARD);
+await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
+must(await adminUser.client.rpc("release_payment_by_payoneer", {
+  target_payment: hopsackFit.id, paid_to: "kowloon-payouts@example.com", payoneer_payment_id: "DEMO-PO-20260001",
+}), "pay the blazer's fit sample by Payoneer");
+const tencelTitle = "Tencel wrap dress, AW27";
+const tencel = await runningOrder({
+  title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+await funded(await dueNow(tencel, tencelTitle), CARD);
+await approveOpenStep(tencel, tencelTitle, tradingCompany);
+const cordTitle = "Cotton cord trousers, AW27";
+const cord = await runningOrder({
+  title: cordTitle, brief: "90 cotton cord trousers, garment-dyed.", quantity: 90, unitPrice: 2800,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+await funded(await dueNow(cord, cordTitle), CARD);
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's

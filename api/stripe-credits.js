@@ -1,4 +1,5 @@
 import { callerClient, failureReason, jsonBody, methodLabel, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
  * A factory buys a pack of credits by card (migration 20261023000100).
@@ -102,7 +103,8 @@ async function start({ stripe, db, caller, body, response }) {
       savedCards,
     });
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-credits", failure);
+    return reply(response, 502, { error: sentenceFor(failure, "The credit purchase could not be started, and nothing was charged. Try again in a few minutes.") });
   }
 }
 
@@ -126,7 +128,8 @@ async function sync({ stripe, db, caller, body, response }) {
       .single();
     return reply(response, 200, purchase);
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-credits", failure, { purchaseId });
+    return reply(response, 502, { error: sentenceFor(failure, "This purchase could not be checked with Stripe just now. Reload the page in a few minutes.") });
   }
 }
 

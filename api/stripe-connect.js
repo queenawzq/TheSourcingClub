@@ -1,4 +1,5 @@
 import { payoutBankOptions } from "./_payout-bank-options.js";
+import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js";
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
@@ -226,7 +227,7 @@ export default async function handler(request, response) {
         if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
         // Stripe's own words on a bad account number are written for the person.
         if (failure?.type === "StripeCardError" || failure?.type === "StripeInvalidRequestError") {
-          return reply(response, 422, { error: failure.message });
+          return reply(response, 422, { error: withoutKeys(failure.message) });
         }
         throw failure;
       }
@@ -249,6 +250,8 @@ export default async function handler(request, response) {
 
     return reply(response, 400, { error: `unknown action "${action}"` });
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
+    logStripeFailure("stripe-connect", failure, { action });
+    return reply(response, 502, { error: sentenceFor(failure, "Stripe could not do that just now, so nothing changed. Try again in a few minutes.") });
   }
 }
