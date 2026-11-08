@@ -270,6 +270,17 @@ async function clickButton(page, text) {
   throw new Error(`no visible button matching "${text}"`);
 }
 
+/**
+ * The review page's bottom bar, the button on top at that scroll: the side
+ * card's own "Send for" sits under the bar's "Save draft" until the page
+ * scrolls, and a click at its coordinates leaves the quote a draft.
+ */
+async function sendQuoteFromBar(page) {
+  const send = page.locator(".factory-submit-bottom-bar .primary-btn");
+  check(/Send for \d+ credits/i.test(await send.innerText()), "the bottom bar offers the send, at its price");
+  await send.click();
+}
+
 /** Pick the first n chips in a labelled group. */
 async function chooseChips(page, key, count = 2) {
   const chips = page.locator(`[data-field="${key}"] button.chip-toggle`);
@@ -688,7 +699,9 @@ async function main() {
 
     await waitForHeading(page, "all set", 30000);
     await record(page, "Factory complete", "the designed finish card, not a hand-built one");
-    await nextCard(page);
+    // Waiting on staff, there is nothing to press: the card has no button.
+    check((await page.locator(".factory-onboarding-actions .primary-btn").count()) === 0,
+      "a factory waiting for review is shown no button on the finish card");
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
@@ -1083,7 +1096,8 @@ async function main() {
       await page.goto(`${ADMIN}?screen=rfqs`);
       await page.waitForTimeout(3500);
       const openRow = await page.evaluate((title) => [...document.querySelectorAll("tr")]
-        .find((row) => row.innerText.includes(title))?.innerText ?? "", openRequest.title);
+        // Not its "(reorder)" from an earlier run on this database: same words, invite-only.
+        .find((row) => row.innerText.includes(title) && !row.innerText.includes(`${title} (reorder)`))?.innerText ?? "", openRequest.title);
       check(/open to all vendors/i.test(openRow), `an open request says it is open to all, not how many were invited (${openRow.replace(/\s+/g, " ").slice(0, 80)})`);
     }
 
@@ -1491,7 +1505,10 @@ async function main() {
     // read-back of a quote that did not exist.
     await waitForHeading(page, "rfq details", 25000);
     const detailText = await page.locator(".factory-detail-page").innerText();
-    check(/Request match/i.test(detailText), "the request match panel is on the designed detail screen");
+    // No fit label to a factory about itself (Nov 7, dfc37e9): the panel and
+    // any match figure stay off the live screen, and so does the design's copy.
+    check(!/Request match|\d+% match|match the brand request/i.test(detailText),
+      "no request match panel or figure is shown to the factory about itself");
     check(detailText.includes(brandName), "the brand behind the request is named from the database");
     check(!/Maison Rue/.test(detailText), "and the design's example brand is nowhere on it");
     check((await page.locator(".factory-side-actions .primary-btn").count()) === 1,
@@ -1617,7 +1634,7 @@ async function main() {
     await record(page, "Review quote", "totals and the credit price, before paying it");
 
     const { data: beforeCredits } = await db.rpc("credit_balance", { org: factoryOrg.id });
-    await clickButton(page, "send for");
+    await sendQuoteFromBar(page);
     await page.waitForTimeout(6000);
 
     const quoteError = await page.locator(".composer-error").innerText().catch(() => "");
@@ -1652,11 +1669,11 @@ async function main() {
     });
     check(Number(quoteSubtotal) === 26000, `the samples subtotal is computed from the rows (${quoteSubtotal})`);
 
-    // Revising a sent quote: the confirmation's "Back to edit quote" asks
+    // Revising a sent quote: the confirmation's "Revise quote" asks
     // first, because editing takes the quote out of the brand's comparison
     // until it is sent again — for a second charge. It used to open the form
     // on the sent row, which could not save.
-    await clickButton(page, "back to edit quote");
+    await clickButton(page, "revise quote");
     await waitFor(page, '[data-testid="revise-quote-dialog"]', 15000);
     const reviseText = await page.locator('[data-testid="revise-quote-dialog"]').innerText();
     check(/25 credits/.test(reviseText), "editing a sent quote says what sending it again costs first");
@@ -1667,7 +1684,7 @@ async function main() {
     await page.locator('[data-testid="submit-quote"]').click();
     await waitForHeading(page, "review quote", 25000);
     const { data: beforeResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
-    await clickButton(page, "send for");
+    await sendQuoteFromBar(page);
     await page.waitForTimeout(6000);
     const { data: afterResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
     check(Number(beforeResend) - Number(afterResend) === 25,
@@ -1923,7 +1940,9 @@ async function main() {
     // The brand's builder is the designed "Production steps" stage, and its
     // buttons are the design's own: Save changes, and Continue to funding,
     // which confirms the steps. Only the brand sets them (design review).
-    await waitFor(page, '[data-testid="schedule-hint"]', 25000);
+    // The hint speaks only once there are unsaved changes; none yet.
+    check((await page.locator('[data-testid="schedule-hint"]').innerText()).trim() === "",
+      "with no unsaved changes the builder's hint says nothing");
     check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
       "there is no \"Agree to this schedule\" any more");
     await clickButton(page, "continue to funding");
@@ -2061,16 +2080,34 @@ async function main() {
 
     // Where staff pay the factory by bank when Stripe cannot pay it out (this
     // factory has no Stripe account). The factory's Payments page: "Add
-    // payout method" on its Earnings tab opens the set-up dialog, which asks
-    // for bank details only where Stripe cannot pay out, so the company is
-    // said to be registered in Hong Kong there, and the country is saved.
+    // withdrawal method" on its Earnings tab opens the list for its country,
+    // and each method's Set up opens its own step. Stripe's countries get Stripe's
+    // form; elsewhere, a bank or PayPal, and in mainland China the bank form is
+    // Wise's. Payoneer is not offered anywhere any more.
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
     await waitFor(page, '[data-testid="add-payout-method"]', 25000);
     await page.locator('[data-testid="add-payout-method"]').click();
+    await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
+    check(await page.evaluate(() => document.querySelector('[data-field="payout_country"]')?.value) === "PT",
+      "the list opens on the factory's own country");
+    check((await page.locator('[data-testid="payout-set-up-paypal"]').count()) === 0,
+      "where Stripe can pay out, the only choice is a bank account");
+    await page.locator('[data-field="payout_country"]').selectOption("CN");
+    await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
+    check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()),
+      "where it cannot, a bank or PayPal, and Payoneer can no longer be chosen");
+    await page.locator('[data-testid="payout-set-up-bank"]').click();
+    // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
+    await waitFor(page, '[data-field="payout_bank_name"]', 25000);
+    check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in mainland China is set up on Wise's form");
+    await page.locator(".payout-modal-actions .secondary-btn").first().click();
     await waitFor(page, '[data-field="payout_country"]', 10000);
     await page.locator('[data-field="payout_country"]').selectOption("HK");
+    await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
+    await page.locator('[data-testid="payout-set-up-bank"]').click();
     await waitFor(page, '[data-field="payout_bank_name"]', 10000);
+    check((await page.locator('[data-field^="wise_"]').count()) === 0, "a bank elsewhere gets the form staff pay from by hand");
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
     await page.locator('[data-field="payout_account_number"]').fill("0000000000004417");
@@ -2079,7 +2116,7 @@ async function main() {
     await page.locator('[data-field="payout_branch"]').fill("001 002");
     await record(page, "Bank details for manual payouts", "the whole number, typed twice; only the last four come back");
 
-    await clickButton(page, "save payout method");
+    await page.locator('[data-testid="save-payout"]').click();
     await page.waitForTimeout(2500);
 
     const { data: payout } = await db.from("factory_payout_accounts")
@@ -2103,7 +2140,8 @@ async function main() {
     const unfundedText = await page.locator("body").innerText();
     check(/awaiting funding from the brand/i.test(unfundedText),
       "the factory is told plainly the brand has not funded the step yet");
-    check(!/held by TSC/i.test(unfundedText), "and nothing says the money is held");
+    const unfundedRow = await page.locator('[data-testid="milestone-row"]').first().innerText();
+    check(!/held by TSC/i.test(unfundedText) && !/\bfunded\b/i.test(unfundedRow), "and nothing says the money is held");
     await record(page, "The factory waits", "nothing is held yet, and the screen says so");
 
     await signOutFully(page);
@@ -2120,7 +2158,7 @@ async function main() {
     // the permission, pressable with it. No sentence says why, only the hover
     // text (Queena, Nov 5).
     const fundButtons = () => page.evaluate(() => [...document.querySelectorAll('[data-testid="milestone-action"]')]
-      .filter((button) => /^fund milestone$/i.test(button.innerText.trim()))
+      .filter((button) => /^fund step$/i.test(button.innerText.trim()))
       .map((button) => ({ disabled: button.disabled, title: button.title })));
     const fundOffered = async () => (await fundButtons()).some((button) => !button.disabled);
     const fundGreyed = async () => (await fundButtons()).some((button) => button.disabled && /Release funds/.test(button.title));
@@ -2136,7 +2174,7 @@ async function main() {
     const fundAfter = await within(page, fundOffered);
     check(!grantError && fundAfter !== null,
       `the owner gives Release funds and Fund appears on the open page, no reload (${fundAfter} ms${grantError ? `, ${grantError.message}` : ""})`);
-    await record(page, "Release funds given", "Fund milestone, live");
+    await record(page, "Release funds given", "Fund step, live");
 
     const { error: takeError } = await access(["approve"]);
     const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await fundGreyed()));
@@ -2165,8 +2203,8 @@ async function main() {
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
-    check(/^fund milestone$/i.test(rowAction.trim()),
-      `an unfunded paid step offers "Fund milestone", not "Approve" (${rowAction.trim()})`);
+    check(/^fund step$/i.test(rowAction.trim()),
+      `an unfunded paid step offers "Fund step", not "Approve" (${rowAction.trim()})`);
     await record(page, "Fund before approving", "approval needs the money held");
 
     // The brand can actually see the factory's update. If the counterparty
@@ -2194,6 +2232,24 @@ async function main() {
     check(Boolean(earlyApprove), `approving an unfunded paid step is refused (${earlyApprove?.message ?? "no error"})`);
 
     if (STRIPE.stripe) {
+      if (STRIPE.publishable) {
+        // Before paying, one box: what happens to the money. A deposit or
+        // balance goes to the factory once funded; a paid step on approval.
+        const { data: fundingStep } = await db.from("order_milestones").select("kind").eq("id", firstStep.id).single();
+        await page.goto(`${APP}/orders/${bornOrder.id}/payments/${dueNow.id}`);
+        await waitFor(page, ".before-funding", 25000);
+        const beforeFunding = await page.locator(".before-funding").innerText();
+        check((await page.locator('.before-funding input[type="checkbox"]').count()) === 1, "Fund asks for one tick, not two");
+        check(beforeFunding.includes(fundingStep.kind === "payment_only"
+          ? `I understand TSC pays this step to ${factoryName} once it is funded.`
+          : "I understand funds are released after I approve this step."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
+        check(await page.evaluate(() => document.querySelector('.before-funding input[type="checkbox"]')?.checked === false
+          && document.querySelector(".bottom-bar .primary-btn")?.disabled === true), "it starts unticked, with the pay button greyed");
+        await record(page, "Fund", "one required tick, then the card");
+      } else {
+        console.log("  (no pk_test_ key here: the Fund screen is not drawn)");
+      }
+
       // The Payment Element takes the card in Stripe's own frame, which a
       // test cannot type into; the same PaymentIntent is confirmed here with
       // Stripe's test card, and the page's own sync records it.
@@ -2238,10 +2294,18 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory, funded", "factory");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    const heldText = await page.locator("body").innerText();
-    check(/held by TSC/i.test(heldText),
-      "the same screen that said \"awaiting funding\" now says the money is held");
-    await record(page, "Funded: held by TSC", "the factory can rely on money TSC holds, not on the brand's word");
+    // The factory's word for this money is "Awaiting approval", as on its
+    // Payments page (fd9b1b7); that TSC holds it is on the strip and the activity.
+    const heldText = await page.locator('[data-testid="milestone-row"]').first().innerText();
+    check(/awaiting approval/i.test(heldText) && !/awaiting funding/i.test(heldText),
+      "the same step that said \"awaiting funding\" now awaits the brand's approval");
+    let heldPage = "";
+    for (let tries = 0; tries < 40 && !/funded for .*held by TSC/i.test(heldPage); tries += 1) {
+      await page.waitForTimeout(250);
+      heldPage = await page.locator("body").innerText();
+    }
+    check(/funded for .*held by TSC/i.test(heldPage), "and the order activity says the money is funded and held by TSC");
+    await record(page, "Funded", "the factory can rely on money TSC holds, not on the brand's word");
 
     // ================= THE BRAND APPROVES, AND TSC PAYS OUT =================
     console.log("\nTHE BRAND APPROVES, AND TSC PAYS OUT");
@@ -2250,15 +2314,17 @@ async function main() {
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     const approveAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
-    check(/^approve fund$/i.test(approveAction.trim()),
-      `once funded, the step offers "Approve fund" (${approveAction.trim()})`);
+    check(/^approve$/i.test(approveAction.trim()),
+      `once funded, the step offers "Approve" (${approveAction.trim()})`);
     // Approving opens the design's own dialog: an approval is never one
     // stray click. The note typed there reaches approve_milestone.
     await page.locator('[data-testid="milestone-action"]').first().click();
     await waitFor(page, ".approve-fund-modal textarea", 10000);
     const dialogText = await page.locator(".approve-fund-modal").innerText();
-    check(/releases .* held by TSC to /i.test(dialogText),
-      "the dialog says approving releases the money TSC holds to the factory");
+    // Its title is the release since the expert pass dropped the sentence: the
+    // step's amount, not the $99.75 the brand paid with the fee.
+    check(/Release \$95\.00 for fit sample/i.test(dialogText) && !dialogText.includes("$99.75"),
+      "the dialog says approving releases the step's amount, without the fee");
     await page.locator(".approve-fund-modal textarea").first().click();
     await page.type("Fit approved, go ahead with bulk.");
     await record(page, "Approve dialog", "the designed dialog: approving releases what TSC holds");
@@ -2295,7 +2361,10 @@ async function main() {
     const owedSection = await page.locator('[data-section="payout"]').innerText();
     check(owedSection.includes(bornOrder.order_number),
       "the approved payment is under \"Payout owed\", named by its order");
-    check(/pay by bank/i.test(owedSection), "with the factory's bank details to pay it by hand");
+    check(/bank transfer/i.test(owedSection) && /account holder/i.test(owedSection), "with the factory's bank details to pay it by hand");
+    check(await page.evaluate((orderNumber) => ![...document.querySelectorAll('[data-section="payout"] tr')]
+      .find((row) => row.innerText.includes(orderNumber))?.querySelector('[data-testid^="pay-with-"]'), bornOrder.order_number),
+      "and no Pay with Wise or PayPal: its method is neither");
     await record(page, "The payments board", "a required step: staff have no org to notify");
 
     // Marking it needs the bank's reference, typed into this order's row.
@@ -2338,27 +2407,86 @@ async function main() {
       .select("body").eq("subject_id", dueNow.id).eq("kind", "funds_released").single();
     check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`), "the factory reads the reference");
 
-    // ================= PAYONEER, BY HAND =================
-    // Needs the demo data (Kowloon, seed-demo.mjs). Nothing calls Payoneer.
-    console.log("\nPAYONEER, BY HAND");
-    const kowloonOwed = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
-      .some((row) => row.innerText.includes("kowloon-payouts@example.com")));
-    if (!kowloonOwed) {
-      console.log("  (no demo data on this database: skipped)");
+    // ================= WISE, PAYPAL, AND NOTHING SET UP =================
+    // Needs the demo data (seed-demo.mjs). Nothing here calls Wise or PayPal:
+    // each stops at the step before the money moves (npm run check:provider-payouts
+    // covers paying). A row is gone once paid, until the seed runs again.
+    console.log("\nWISE, PAYPAL, AND NOTHING SET UP");
+    const owedRow = (words) => page.evaluate((text) => {
+      const row = [...document.querySelectorAll('[data-section="payout"] tr')].find((candidate) => candidate.innerText.includes(text));
+      return row ? {
+        paymentId: row.dataset.payment,
+        text: row.innerText,
+        ticked: row.querySelector('[data-testid="cny-statement"]')?.checked ?? null,
+        buttons: Object.fromEntries([...row.querySelectorAll("button")]
+          .map((button) => [button.dataset.testid || button.innerText.trim(), button.disabled])),
+      } : null;
+    }, words);
+    const pressInOwedRow = (words, name) => page.evaluate(({ text, target }) => {
+      const row = [...document.querySelectorAll('[data-section="payout"] tr')].find((candidate) => candidate.innerText.includes(text));
+      const control = [...(row?.querySelectorAll("button, input[type=checkbox]") ?? [])]
+        .find((candidate) => candidate.dataset.testid === target || candidate.innerText?.trim() === target);
+      control?.click();
+      return Boolean(control);
+    }, { text: words, target: name });
+    const owedRowShows = (words, name) => within(page, async () => name in ((await owedRow(words))?.buttons ?? {}));
+
+    const wiseRow = await owedRow("Ningbo Loomworks");
+    if (!wiseRow) {
+      console.log("  (no Wise row on this board: skipped)");
     } else {
-      const markDisabled = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
-        .find((row) => row.innerText.includes("kowloon-payouts@example.com"))
-        ?.querySelector('[data-testid="release-payoneer"]')?.disabled);
-      check(markDisabled === true, "staff cannot mark a Payoneer payout without its payment ID");
-      const payoneerId = `E2E-PO-${stamp}`;
-      await page.locator('[data-testid="payoneer-payment-id"]').first().fill(payoneerId);
-      await page.locator('[data-testid="release-payoneer"]').first().click();
-      await page.locator('[data-testid="release-payment-confirm"]').first().click();
-      await page.waitForTimeout(3500);
-      const { data: recorded } = await db.from("payoneer_payouts")
-        .select("paid_to_email").eq("payoneer_payment_id", payoneerId).single();
-      check(recorded?.paid_to_email === "kowloon-payouts@example.com", "the payout is recorded with the email paid");
-      await record(page, "Paid out by Payoneer", "staff pay from TSC's Payoneer account, then record the ID");
+      check(/wise or bank transfer/i.test(wiseRow.text), "a factory on Wise's form is paid with Wise, or by bank");
+      check(wiseRow.buttons["pay-with-wise"] === false, "and Pay with Wise can be pressed, since its full number is on file");
+      await pressInOwedRow("Ningbo Loomworks", "pay-with-wise");
+      const statementAfter = await owedRowShows("Ningbo Loomworks", "provider-continue");
+      const statementRow = await owedRow("Ningbo Loomworks");
+      check(statementAfter !== null && statementRow?.ticked === false && statementRow.buttons["provider-continue"] === true,
+        "a payment in CNY stops at Wise's statement, and Continue waits for its tick");
+      await pressInOwedRow("Ningbo Loomworks", "cny-statement");
+      const tickedAfter = await within(page, async () => (await owedRow("Ningbo Loomworks"))?.buttons["provider-continue"] === false);
+      check(tickedAfter !== null, "ticking it frees Continue");
+      await record(page, "Pay with Wise", "the statement Wise needs for CNY, before any money moves");
+      await pressInOwedRow("Ningbo Loomworks", "Cancel");
+      check(await owedRowShows("Ningbo Loomworks", "pay-with-wise") !== null, "Cancel goes back to Pay with Wise");
+    }
+
+    const nothingSetUp = await owedRow("Hangzhou Test Knit");
+    if (!nothingSetUp) {
+      console.log("  (no row for a factory with nothing set up: skipped)");
+    } else {
+      check(/no withdrawal method on file/i.test(nothingSetUp.text), "a factory with nothing set up says so on its row");
+      check(!Object.keys(nothingSetUp.buttons).some((name) => name.startsWith("pay-with-")), "and there is no provider to pay it through");
+    }
+
+    const kowloonEmail = "kowloon-payouts@example.com";
+    const paypalRow = await owedRow(kowloonEmail);
+    if (!paypalRow) {
+      console.log("  (no PayPal row on this board: skipped)");
+    } else {
+      check(/paypal/i.test(paypalRow.text) && paypalRow.text.includes(kowloonEmail), "a PayPal factory's row says so, with its address");
+      check(paypalRow.buttons["pay-with-paypal"] === false, "and offers Pay with PayPal");
+      await pressInOwedRow(kowloonEmail, "pay-with-paypal");
+      const askedAfter = await owedRowShows(kowloonEmail, "provider-confirm");
+      const asked = await owedRow(kowloonEmail);
+      check(askedAfter !== null && new RegExp(`send \\$[\\d,.]+ to ${kowloonEmail} by paypal\\?`, "i").test(asked?.text ?? ""),
+        "it asks once first, naming the amount and the address");
+      await record(page, "Pay with PayPal", "asks once, naming the amount and the address");
+      await pressInOwedRow(kowloonEmail, "Cancel");
+      check(await owedRowShows(kowloonEmail, "pay-with-paypal") !== null, "Cancel goes back, and nothing moved");
+
+      // A PayPal factory has no bank details, so the board doesn't offer marking
+      // it paid by bank. The database still allows it: that's how the withdrawal
+      // row with its reference gets here for the factory's side below.
+      check((await owedRow(kowloonEmail)).buttons["release-payment"] === undefined, "a PayPal row doesn't offer Mark paid by bank: there are no bank details to send to");
+      const paidByHandReference = `E2E-PP-${stamp}`;
+      const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
+      await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
+      await staffClient.rpc("release_payment_to_factory", { target_payment: paypalRow.paymentId, note: paidByHandReference });
+      const { data: markedByHand } = await db.from("order_payments")
+        .select("state, released_note").eq("id", paypalRow.paymentId).single();
+      check(markedByHand?.state === "released" && markedByHand?.released_note === paidByHandReference,
+        "the payment is paid out, with the reference");
+      await record(page, "Marked paid out", "a PayPal factory paid another way: the reference is what it reads");
 
       await signOutFully(page);
       // A demo login, so the demo password rather than this run's.
@@ -2370,27 +2498,38 @@ async function main() {
       await page.waitForTimeout(4000);
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
-      check(/^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim())
-        && /payoneer/i.test(await page.locator('[data-testid="payout-how-paid"]').innerText()),
-        "the factory's card shows its balance and says it is paid by Payoneer");
-      await waitFor(page, ".payout-transaction-row", 25000);
-      const payoneerEarnings = await page.locator(".payout-transaction-table").innerText();
-      check(payoneerEarnings.includes(payoneerId) && /paid by payoneer/i.test(payoneerEarnings),
-        "its earnings say so, with the reference");
+      const balanceAfter = await within(page, async () => /^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim()));
+      const howPaid = await page.locator('[data-testid="payout-how-paid"]').innerText();
+      check(balanceAfter !== null && /paypal/i.test(howPaid) && howPaid.includes(kowloonEmail),
+        `the factory's card shows its balance and says it is paid by PayPal (${howPaid})`);
+      const transactionsAfter = await within(page, async () => (await page.locator(".payout-transaction-table").first().innerText().catch(() => "")).includes(paidByHandReference));
+      const paypalEarnings = await page.locator(".payout-transaction-table").first().innerText();
+      check(transactionsAfter !== null, "its withdrawals name the reference");
+      check(/\bcompleted\b/i.test(paypalEarnings) && /\bpaid\b/i.test(paypalEarnings) && /awaiting approval/i.test(paypalEarnings),
+        "and each earning says where it stands: Paid once sent, Awaiting approval while the brand has not approved");
+      await record(page, "A factory's earnings", "Paid, Awaiting approval, and the withdrawal with its reference");
 
+      // Another PayPal address; Payoneer is not among the choices.
       await page.locator('[data-testid="add-payout-method"]').click();
-      await clickButton(page, "add payout method");
-      await page.locator('[data-testid="payout-use-payoneer"]').click();
-      await page.locator('[data-field="payout_payoneer_email"]').fill("e2e-second@example.com");
-      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-typo@example.com");
-      check(await page.evaluate(() => document.querySelector('[data-testid="save-payout"]')?.disabled === true), "two different emails cannot be saved");
-      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-second@example.com");
+      await clickButton(page, "add withdrawal method");
+      await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
+      check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()), "adding a method offers a bank or PayPal, not Payoneer");
+      await page.locator('[data-testid="payout-set-up-paypal"]').click();
+      await waitFor(page, '[data-field="payout_paypal_email"]', 10000);
+      const secondPaypal = `e2e-second-${stamp}@example.com`;
+      await page.locator('[data-field="payout_paypal_email"]').fill(secondPaypal);
+      await page.locator('[data-field="payout_paypal_email_confirm"]').fill(`e2e-typo-${stamp}@example.com`);
+      await page.locator('[data-testid="save-payout"]').click();
+      const refusedAfter = await within(page, async () => /don't match/i.test(await page.locator(".payout-modal").innerText()));
+      const { data: notSaved } = await db.from("factory_payout_accounts").select("id").eq("paypal_email", secondPaypal);
+      check(refusedAfter !== null && (notSaved ?? []).length === 0, "two different emails cannot be saved, and Save says why");
+      await page.locator('[data-field="payout_paypal_email_confirm"]').fill(secondPaypal);
       await page.locator('[data-testid="save-payout"]').click();
       await page.waitForTimeout(2500);
       const { data: added } = await db.from("factory_payout_accounts")
-        .select("id, method").eq("payoneer_email", "e2e-second@example.com").single();
-      check(added?.method === "payoneer", "a second Payoneer account is saved");
-      await db.from("factory_payout_accounts").delete().eq("id", added.id);
+        .select("id, method, is_primary").eq("paypal_email", secondPaypal).single();
+      check(added?.method === "paypal" && added?.is_primary === false, "a second PayPal account is saved, beside the one TSC pays");
+      if (added?.id) await db.from("factory_payout_accounts").delete().eq("id", added.id);
 
       await signOutFully(page);
       await signIn(page, adminEmail, "Admin paying out");
@@ -2402,8 +2541,8 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory paid", "factory");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    check(/paid out/i.test(await page.locator("body").innerText()),
-      "the factory's order says the step was paid out");
+    check(/\bpaid\b/i.test(await page.locator('[data-testid="milestone-row"]').first().innerText()),
+      "the factory's order says the step was paid");
     await record(page, "Paid out", "the step done and the money with the factory");
 
     // ================= THEY TALK =================
@@ -3819,7 +3958,9 @@ async function main() {
     await waitFor(page, ".saved-factory-card", 20000);
     await record(page, "Saved vendors", "the vendors this brand saved, on the designed Saved page");
     const savedText = await page.locator(".saved-shell").innerText();
-    check(savedText.includes(factoryName) && savedText.includes(brandName), "Saved lists that vendor, under the brand's own name");
+    // The sentence naming the brand under the heading is off the live app (7f78be1).
+    check(savedText.includes(factoryName), "Saved lists that vendor");
+    check((await page.locator("body").innerText()).includes(brandName), "in the brand's own account");
     check(!/Maison Rue|Atelier Minho|96%|Club orders/.test(savedText), "none of the design's example brand, vendors or scores");
 
     await page.evaluate(() => document.querySelector(".saved-factory-card a.marketplace-factory-profile-link")?.click());
@@ -3838,7 +3979,7 @@ async function main() {
     check(!emptySaved.includes(factoryName) && /No saved vendors yet/.test(emptySaved), "Saved is empty again, and says how to save one");
 
     // ================= PAYMENTS =================
-    // The brand's own order payments, where each stands, and its discounts.
+    // The brand's own order payments, and where each stands.
     console.log("\nPAYMENTS");
     await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
     await waitFor(page, ".brand-payment-transactions .payout-transaction-row", 20000);
@@ -3851,21 +3992,29 @@ async function main() {
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
       `every payment on the brand's order that money has moved for is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
-    check(!brandPayments.some((payment) => payment.state === "due") || /Not paid/.test(paymentsText),
-      "a payment still due is in the list too, as Not paid");
-    // "total paid" is what the brand paid: held or paid out, fee included,
-    // like the rows (the order page's own strip counts step amounts).
-    const paidCents = brandPayments.filter((payment) => ["confirmed", "released"].includes(payment.state))
-      .reduce((total, payment) => total + chargedOf(payment), 0);
-    check(paymentsText.includes(`$${(paidCents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
-      `total paid is what the brand paid, fee included ($${(paidCents / 100).toFixed(2)})`);
+    // Money owed is listed too, first, at what it will charge.
+    const { data: duePayments } = await db.from("order_payments")
+      .select("id, amount_cents, fee_bps, charged_cents").eq("order_id", bornOrder.id).eq("state", "due");
+    const moneyWords = (cents) => `$${(cents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`;
+    const paymentRows = await page.evaluate(() => [...document.querySelectorAll(".brand-payment-transactions .payout-transaction-row")].map((row) => row.innerText));
+    check(duePayments.every((payment) => paymentRows.some((row) => /\bdue\b/i.test(row) && row.includes(moneyWords(chargedOf(payment)))))
+      && (!duePayments.length || /\bdue\b/i.test(paymentRows[0] ?? "")),
+      `a payment still due is in the list too, as Due, ahead of the rest (${duePayments.length})`);
+    // The figures are what the brand pays, fee included, like the rows, across
+    // all its orders: Paid has reached the factory, Held is with TSC.
+    const { data: everyBrandOrder } = await db.from("production_orders").select("id").eq("brand_org_id", brandOrg.id);
+    const { data: everyBrandPayment } = await db.from("order_payments")
+      .select("state, amount_cents, fee_bps, charged_cents").in("order_id", everyBrandOrder.map((order) => order.id));
+    const figure = (state) => moneyWords(everyBrandPayment.filter((payment) => payment.state === state).reduce((total, payment) => total + chargedOf(payment), 0));
+    const paymentFigures = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".billing-payment-strip .metric")]
+      .map((metric) => [metric.querySelector("span")?.innerText.trim().toLowerCase(), metric.querySelector("strong")?.innerText.trim()])));
+    check(paymentFigures.paid === figure("released"), `Paid is what has been paid out, fee included (${paymentFigures.paid}, expected ${figure("released")})`);
+    check(paymentFigures.held === figure("confirmed"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("confirmed")})`);
+    check("due now" in paymentFigures && "remaining" in paymentFigures, "with Due now and Remaining beside them");
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
-    await clickButton(page, "discounts");
-    await page.waitForTimeout(500);
-    const discountsText = await page.locator(".brand-discounts-tab").innerText();
-    check(!discountsText.includes("$50 discount") && /Discount codes/.test(discountsText), "Discounts shows the brand's own codes, not the design's $50 example");
-    await page.evaluate(() => [...document.querySelectorAll(".billing-tabs button")].find((button) => button.textContent === "Payments")?.click());
-    await page.waitForTimeout(400);
+    // Discount codes can't be applied to a payment yet, so the tab bar is hidden.
+    check(!(await page.locator(".billing-page-shell .billing-tabs").first().isVisible()) && !/\$50 discount/.test(paymentsText),
+      "no Discounts tab while a code cannot be used, and not the design's $50 example");
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
     // A transaction opens its own page; a due payment opens the Fund screen on its order.
@@ -3881,6 +4030,9 @@ async function main() {
 
     await page.goto(APP);
     await waitFor(page, ".home-stack", 25000);
+    // The frame draws first and "Loading your dashboard…" holds its place, so
+    // wait for the content; if it never comes, the checks below say so.
+    await waitFor(page, ".home-active-rfqs, .home-active-orders, .home-new-brand-card", 25000).catch(() => {});
     await record(page, "Brand home", "what needs you, before anything else");
 
     const homeText = await page.locator(".home-stack").innerText();
@@ -3997,8 +4149,12 @@ async function main() {
     await clickButton(page, "cancel order");
     await proposeIn("Season dropped");
     await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
-    check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
-      "proposed from the order page, the brand is shown it is waiting on the factory");
+    // The sentence about waiting is gone (29009ab): the banner says what was
+    // proposed, with the reason, and Withdraw is the only thing left to do.
+    const ownNotice = await page.locator('[data-testid="cancel-notice"]').innerText();
+    check(/you proposed cancelling/i.test(ownNotice) && /season dropped/i.test(ownNotice) && /withdraw/i.test(ownNotice),
+      "proposed from the order page, the brand is shown its proposal and its reason, with Withdraw");
+    check(!/\baccept\b|keep (the )?order/i.test(ownNotice), "and no answer of its own to give: that is the factory's");
     await record(page, "Waiting on the factory", "the banner the proposing side sees, with Withdraw");
 
     await signOutFully(page);
@@ -4030,82 +4186,37 @@ async function main() {
     await record(page, "Cancelled", "both sides agreed; the order says when and why");
 
     // ================= PUTTING IT AWAY =================
-    // "Archive order" sat in the card's menu and only closed it. Only a closed
-    // order can be archived, and the one above was just cancelled. The archive
-    // is the strip's last tab, always drawn, labelled "Cancelled" (main,
-    // 2026-10-25).
-    console.log("\nPUTTING IT AWAY");
+    // A cancelled order is under "Cancelled" by itself (Nov 7). Nobody files it,
+    // and it leaves Closed, the company's own tabs and the dashboard.
+    console.log("\nCANCELLED ORDERS");
     await signOutFully(page);
-    await signIn(page, brandEmail, "Brand tidying up");
+    await signIn(page, brandEmail, "Brand after the cancellation");
 
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
-    await clickButton(page, "closed");
-    await waitFor(page, ".brand-project-card", 15000);
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await waitFor(page, '[data-testid="orders-empty"]', 15000);
-    const archivedStrip = await stripOnce((text) => /cancelled \(1\)/i.test(text));
-    check(/cancelled \(1\)/i.test(archivedStrip) && /closed \(0\)/i.test(archivedStrip),
-      `archiving moves the order from Closed to the archive tab (${archivedStrip.replace(/\s+/g, " ")})`);
-
-    await page.reload();
-    await waitForHeading(page, "production orders", 25000);
+    const cancelledStrip = await stripOnce((text) => /cancelled \(1\)/i.test(text));
+    check(/cancelled \(1\)/i.test(cancelledStrip) && /closed \(0\)/i.test(cancelledStrip),
+      `a cancelled order is under Cancelled, not Closed (${cancelledStrip.replace(/\s+/g, " ")})`);
     await clickButton(page, "cancelled (");
     await waitFor(page, ".brand-project-card", 15000);
-    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
-      "after a reload the order is still archived");
-    await record(page, "Archived", "the brand put a cancelled order away");
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle), "and the tab lists it");
+    await record(page, "Cancelled tab", "the brand's cancelled order, with nothing to file");
     await clickButton(page, `${brandTab} capsule`.toLowerCase());
     await waitFor(page, '[data-testid="orders-empty"]', 15000);
-    check(true, "an archived order leaves the custom tab it was filed in");
+    check(true, "it leaves the custom tab it was filed in");
 
     await page.goto(APP);
     await waitFor(page, ".home-stack", 25000);
-    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle),
-      "and leaves the dashboard");
+    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle), "and the dashboard");
 
-    await page.goto(`${APP}/orders`);
-    await waitForHeading(page, "production orders", 25000);
-    await clickButton(page, "cancelled (");
-    await waitFor(page, ".brand-project-card", 15000);
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "unarchive order");
-    const unarchivedStrip = await stripOnce((text) => /cancelled \(0\)/i.test(text));
-    check(/cancelled \(0\)/i.test(unarchivedStrip) && /closed \(1\)/i.test(unarchivedStrip),
-      `Unarchive puts it back in Closed, and the archive tab is empty (${unarchivedStrip.replace(/\s+/g, " ")})`);
-    await clickButton(page, `${brandTab} capsule`.toLowerCase());
-    await waitFor(page, ".brand-project-card", 15000);
-    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
-      "and back in the custom tab it was filed in");
-
-    // Each company's archive is its own: the brand's says nothing to the factory.
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await page.waitForTimeout(1500);
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory tidying up", "factory");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory after the cancellation", "factory");
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
-    // Its own tab showing means its tabs, and its archive with them, have loaded.
-    check(/cancelled \(0\)/i.test(await stripOnce((text) => text.includes(factoryTab) && /cancelled \(/i.test(text))),
-      "the brand archiving the order archives nothing for the factory");
-    await clickButton(page, "closed");
-    await waitFor(page, ".factory-active-project-card", 15000);
-    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await waitFor(page, '[data-testid="orders-empty"]', 15000);
     check(/cancelled \(1\)/i.test(await stripOnce((text) => /cancelled \(1\)/i.test(text))),
-      "the factory archives it from its own card menu");
-    await record(page, "Factory's archive", "its own, separate from the brand's");
-    await clickButton(page, "cancelled (");
-    await waitFor(page, ".factory-active-project-card", 15000);
-    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "unarchive order");
-    check(/cancelled \(0\)/i.test(await stripOnce((text) => /cancelled \(0\)/i.test(text))),
-      "and unarchives it");
+      "the factory's Cancelled tab has it too");
     await signOutFully(page);
-    await signIn(page, brandEmail, "Brand after the archive");
+    await signIn(page, brandEmail, "Brand after the factory looked");
 
     // ================= ORDERING IT AGAIN =================
     // "Reorder style" sat in the card's menu and reloaded the list. It now
@@ -4525,9 +4636,9 @@ async function main() {
       "",
       "> the factory is told plainly the brand has not funded the step yet  ",
       "> *(the brand pays by card through Stripe; TSC holds it)*  ",
-      "> the same screen that said \"awaiting funding\" now says the money is held  ",
+      "> the same step that said \"awaiting funding\" now says it is funded  ",
       "> *(the brand approves; staff pay a factory Stripe cannot reach by bank)*  ",
-      "> the factory's order says the step was paid out",
+      "> the factory's order says the step was paid",
       "",
       "A factory in Ningbo extends credit to a brand in Brooklyn it has never met",
       "because it is not taking the brand's word: the money is held by TSC before",

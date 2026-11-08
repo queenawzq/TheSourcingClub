@@ -82,7 +82,7 @@ function toRecommendedCard(vendor, navigate, quoteLocked = "") {
  * then someone waiting on a reply. Nothing is invented — a count of zero
  * produces no card at all.
  */
-function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null) {
+function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, waiting = {}) {
   if (!snapshot) return null;
   const items = [];
   const n = (value) => Number(value) || 0;
@@ -97,39 +97,38 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null) {
       type: "Payment",
       tone: "danger",
       title: `${formatMoney(owed.reduce((total, payment) => total + chargedCents(payment), 0), owed[0].currency)} due`,
-      meta: one
-        ? failed
-          ? "This payment did not go through. Pay again so the production step can start."
-          : "A production step is waiting on this payment before it can start."
-        : `${owed.length} production steps are waiting on payment${failed ? `, and ${failed === 1 ? "one" : failed} did not go through` : ""}.`,
+      meta: !failed ? "" : one ? "Payment failed" : `${failed} of ${owed.length} failed`,
       facts: [],
       // One payment opens its Fund screen; several open Payments, which lists each.
-      action: one ? "Fund milestone" : "View payments",
+      action: one ? (failed ? "Pay again" : "Fund step") : "View payments",
       onClick: () => navigate(one ? `/orders/${one.order_id}/payments/${one.id}` : "/payments"),
     });
   }
 
-  if (n(snapshot.orders_awaiting_schedule) > 0) {
+  if (n(snapshot.orders_awaiting_schedule) > 0 && waiting.maySetSteps !== false) {
     items.push({
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "Confirm the production steps to start production.",
+      meta: "",
       facts: [],
       action: "Confirm steps",
-      onClick: () => goTo("projects"),
+      // One order opens its steps; several open the list narrowed to them.
+      onClick: () => navigate(waiting.schedules?.length === 1 ? `/orders/${waiting.schedules[0]}` : "/orders?needs=steps"),
     });
   }
 
-  if (n(snapshot.steps_awaiting_you) > 0) {
+  // Only what this person can act on: a paid step asks for Release funds too.
+  const stepsForYou = waiting.approvable ?? n(snapshot.steps_awaiting_you);
+  if (stepsForYou > 0) {
     items.push({
       type: "Step",
       tone: "warning",
-      title: n(snapshot.steps_awaiting_you) === 1 ? "1 step needs you" : `${n(snapshot.steps_awaiting_you)} steps need you`,
-      meta: "Approve or comment so the other side can carry on.",
+      title: stepsForYou === 1 ? "1 step needs you" : `${stepsForYou} steps need you`,
+      meta: "",
       facts: [],
       action: "Review steps",
-      onClick: () => goTo("projects"),
+      onClick: () => (waiting.approvals?.length === 1 ? navigate(`/orders/${waiting.approvals[0]}`) : goTo("projects")),
     });
   }
 
@@ -138,10 +137,10 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null) {
       type: "Quote",
       tone: "info",
       title: `${snapshot.quotes_to_compare} quote${snapshot.quotes_to_compare === 1 ? "" : "s"} to compare`,
-      meta: "Vendors have replied to your request.",
+      meta: "",
       facts: [],
       action: "Compare quotes",
-      onClick: () => goTo("rfqs"),
+      onClick: () => (waiting.quoted?.length === 1 ? navigate(`/rfqs/${waiting.quoted[0]}/quotes`) : goTo("rfqs")),
     });
   }
 
@@ -150,7 +149,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null) {
       type: "Message",
       tone: "info",
       title: `${snapshot.unread_messages} unread message${snapshot.unread_messages === 1 ? "" : "s"}`,
-      meta: "Someone is waiting on a reply.",
+      meta: "",
       facts: [],
       action: "Open conversations",
       onClick: () => goTo("messages"),
@@ -169,7 +168,7 @@ async function owedPayments(orgId, orders, isFactory, snapshot) {
 
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, hasHistory: false, loaded: false });
+  const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, waiting: {}, hasHistory: false, loaded: false });
   // The first read failed: nothing is known, so no layout can be drawn.
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -207,6 +206,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       withinCap(vendorsRead, null),
     ])
       .then(async ([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
+        const mayApproveStep = (step) => step.state === "submitted" && can(org, "approve")
+          && (!(Number(step.amount_cents) > 0) || can(org, "releaseFunds"));
         // The snapshot owes step amounts; the brand pays each with the
         // service fee on top, as its Payments page and the Fund screen say.
         // Same payments as payments_due_cents: due or failed.
@@ -230,9 +231,18 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
             .map((rfq) => toRfqCard(rfq, messagesByRfq.get(rfq.id) ?? 0)),
           // An order the company archived is out of its way here too.
           projects: (orders ?? [])
-            .filter((order) => !archivedIds.includes(order.id))
+            .filter((order) => !archivedIds.includes(order.id) && order.status !== "cancelled")
             .map((order) => toProjectCard(order, false)),
           savings,
+          // Where the attention cards' buttons go when one thing is waiting.
+          waiting: {
+            maySetSteps: can(org, "rfqFlow"),
+            schedules: (orders ?? []).filter((order) => order.status === "pending_schedule").map((order) => order.id),
+            approvals: (orders ?? []).filter((order) => order.status === "active" && order.order_milestones?.some((step) => mayApproveStep(step))).map((order) => order.id),
+            approvable: (orders ?? []).filter((order) => order.status === "active")
+              .flatMap((order) => order.order_milestones ?? []).filter((step) => mayApproveStep(step)).length,
+            quoted: (rfqs ?? []).filter((rfq) => rfq.status === "open" && (rfq.quotes?.[0]?.count ?? 0) > 0).map((rfq) => rfq.id),
+          },
           hasHistory: brandHasHistory(rfqs, orders),
           loaded: true,
         });
@@ -280,7 +290,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   // A call invite waiting on the brand comes first: it has a time on it.
   const attention = [
     ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
-    ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate) ?? []),
+    ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate, state.waiting) ?? []),
   ];
   const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const layout = homeLayout({
@@ -308,6 +318,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           ? <HomeHolding failed={layout === "failed"} onRetry={retry} />
           : null}
         factories={translatedRecommended}
+        newcomerVendorWords={{ title: "Recommended vendors", browse: "Browse vendors" }}
         vendorsPending={!vendors.answered}
         goTo={goTo}
         createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
@@ -331,7 +342,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         } : null}
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
-        showSavings={Boolean(savings)}
+        // Codes can't be applied to a payment yet, so nothing advertises them.
+        showSavings={false}
         // The designed "Scheduled calls" card, only when there is a call.
         showCalls={callCards.length > 0}
         calls={callCards}

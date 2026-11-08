@@ -28,6 +28,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { CreditPurchaseModal } from "../../factory-prototype/main.jsx";
 import { buyCredits, creditPacks, syncCreditPurchase } from "../../lib/domain/credits.js";
+import { cardReason, plainCardReason } from "../../shared/card-words.mjs";
 import { STRIPE_PUBLISHABLE_KEY, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import "./fund.css";
@@ -207,16 +208,13 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       // Recorded either way: a decline is a failed purchase with its reason.
       const synced = await syncCreditPurchase(checkout.purchaseId).catch(() => null);
       if (result.error) {
-        const reason = result.error.code === "payment_intent_authentication_failure"
-          ? "Your bank did not confirm this payment, so nothing was charged."
-          : result.error.message || "The payment did not go through.";
-        setProblem(withCardAdvice(reason));
+        setProblem(withCardAdvice(cardReason(result.error)));
         return;
       }
       // A failed 3-D Secure check comes back as an intent, not an error.
       const intent = result.paymentIntent;
       if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
-        setProblem(withCardAdvice(synced?.failure_reason || intent?.last_payment_error?.message));
+        setProblem(withCardAdvice(synced?.failure_reason ? plainCardReason(synced.failure_reason) : cardReason(intent?.last_payment_error)));
         return;
       }
       onDone({ credits: checkout.credits, state: synced?.state ?? "pending", purchase: synced });
@@ -257,7 +255,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
               <span>Card number</span>
               <div className="tsc-stripe-input">
                 <CardNumberElement
-                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true }}
+                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true, disableLink: true }}
                   onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
                 />
               </div>
@@ -325,7 +323,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       error={problem}
       description={checkout
         ? `${creditsLabel(checkout.credits)} for ${amount}, paid by card. The credits are added as soon as the payment goes through.`
-        : "Choose a pack or enter a custom amount. 10 credits = $1. Minimum 50 credits."}
+        : "10 credits = $1."}
       customMinimumCredits={50}
       customRateCents={10}
       continueLabel={checkout ? (busy ? "Paying…" : `Pay ${amount}`) : busy ? "Starting…" : undefined}

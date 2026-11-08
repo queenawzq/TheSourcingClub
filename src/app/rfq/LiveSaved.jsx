@@ -7,6 +7,7 @@
  * back. A brand card opens the brand's profile (/brands/:id).
  */
 import React, { useEffect, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { FactorySavedPage } from "../../factory-prototype/main.jsx";
 import { listSavedRequests } from "../../lib/domain/rfq.js";
 import { listThreads } from "../../lib/domain/message.js";
@@ -54,7 +55,7 @@ export default function LiveSaved({ org }) {
         id: rfq.id,
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
-        initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+        initials: initials(rfq.orgs?.name),
         location: "",
         budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents),
         quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",

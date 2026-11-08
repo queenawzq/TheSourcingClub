@@ -326,6 +326,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     const channel = supabase
       .channel(`messages:${org.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        // No socket: a timed run (src/lib/supabase.js) re-reads both.
+        if (payload.timed) {
+          reloadRef.current();
+          if (activeThreadRef.current) loadThreadRef.current(activeThreadRef.current, { read: readThreadRef.current === activeThreadRef.current });
+          return;
+        }
         const moved = payload.new?.thread_id ?? payload.old?.thread_id;
         if (moved && moved === activeThreadRef.current) loadThreadRef.current(moved, { read: readThreadRef.current === moved });
         else {
@@ -495,11 +501,6 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     return (
       <div className="messages-empty" data-testid="threads-empty">
         <h1>No conversations yet</h1>
-        <p>
-          {isFactory
-            ? "Press Message on a request you have quoted, or on an order, to write to the brand. When a brand writes to you, the conversation shows here."
-            : "Press Message on a quote or an order to write to the factory. When a factory writes to you, the conversation shows here."}
-        </p>
       </div>
     );
   }

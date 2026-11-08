@@ -22,6 +22,7 @@ import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { CAPACITY_LEVELS, availableRange, capacityWindow, minutesPerPieceFor, monthKey } from "../../lib/domain/capacity.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { supabase } from "../../lib/supabase.js";
+import { connectAccountFor } from "../../lib/domain/stripe.js";
 import { useRouter } from "../../lib/router.jsx";
 import { toProjectCard } from "../live-adapter.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
@@ -105,7 +106,7 @@ async function capacityCard(orgId) {
     set: Boolean(capacity && level),
     title: `${month} capacity`,
     level: level ? CAPACITY_LEVELS[level].labelEn : "Not set yet",
-    chip: level === "open" ? `Open ${month}` : level === "partial" ? `Partly booked ${month}` : level === "full" ? `Full ${month}` : `${month} not set`,
+    chip: level ? month : `${month} not set`,
     units: range ? `${range.min.toLocaleString()}-${range.max.toLocaleString()}` : "—",
   };
 }
@@ -127,7 +128,6 @@ export default function LiveFactoryHome({ org, profile }) {
   const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
   const { unreadCount: unreadNotifications, openActivity, activityDrawer } = useActivity(org.id, {
     isFactory: true,
-    description: "Passive updates from RFQs, files, brands, and production.",
     onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
 
@@ -182,6 +182,24 @@ export default function LiveFactoryHome({ org, profile }) {
   }
 
   const onUpdateCapacity = openCapacityDrawer;
+
+  // Money it can't receive: asked for only once all three reads say so, and only
+  // of an owner, who alone can add a method. It holds nothing else on the page up.
+  const [noWayToBePaid, setNoWayToBePaid] = useState(false);
+  useEffect(() => {
+    if (org.role !== "owner") return undefined;
+    let cancelled = false;
+    Promise.all([
+      supabase.from("factory_payout_accounts").select("id", { count: "exact", head: true }).eq("org_id", org.id),
+      connectAccountFor(org.id),
+      supabase.from("order_payments").select("id, production_orders!inner (factory_org_id, status)", { count: "exact", head: true })
+        .eq("state", "confirmed").eq("production_orders.factory_org_id", org.id).neq("production_orders.status", "cancelled"),
+    ]).then(([methods, stripeAccount, money]) => {
+      if (cancelled || methods.error || money.error) return;
+      setNoWayToBePaid(methods.count === 0 && !stripeAccount?.transfers_active && money.count > 0);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [org.id, org.role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,12 +284,22 @@ export default function LiveFactoryHome({ org, profile }) {
       onAction: () => navigate("/profile/completion"),
     });
   }
+  if (noWayToBePaid) {
+    attention.push({
+      type: "Payment",
+      tone: "danger",
+      title: "Add a withdrawal method",
+      meta: "",
+      action: "Add",
+      onAction: () => navigate("/payout"),
+    });
+  }
   if (!isTrading && !capacity.set) {
     attention.push({
       type: "Capacity",
       tone: "danger",
       title: `Confirm ${capacity.title.replace(" capacity", "")} capacity`,
-      meta: "Keep your available capacity current so RFQ matches stay accurate.",
+      meta: "",
       action: "Update",
       onAction: onUpdateCapacity,
     });
@@ -281,9 +309,12 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "The brand is confirming the production steps. You will be notified when production can start.",
+      meta: "",
       action: "Review",
-      onAction: () => navigate("/orders"),
+      onAction: () => {
+        const waiting = orders.filter((order) => order.status === "pending_schedule");
+        navigate(waiting.length === 1 ? `/orders/${waiting[0].id}` : "/orders");
+      },
     });
   }
   if (n(snapshot?.steps_awaiting_you) > 0) {
@@ -291,9 +322,12 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Sample",
       tone: "warning",
       title: n(snapshot.steps_awaiting_you) === 1 ? "1 production step needs an update" : `${n(snapshot.steps_awaiting_you)} production steps need an update`,
-      meta: "Post an update so the brand can review and approve.",
+      meta: "",
       action: "Update",
-      onAction: () => navigate("/orders"),
+      onAction: () => {
+        const waiting = activeOrders.filter((order) => order.order_milestones?.some((step) => step.state === "active"));
+        navigate(waiting.length === 1 ? `/orders/${waiting[0].id}` : "/orders");
+      },
     });
   }
   if (n(snapshot?.unread_messages) > 0) {
@@ -301,7 +335,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Question",
       tone: "info",
       title: `${snapshot.unread_messages} unread message${snapshot.unread_messages === 1 ? "" : "s"}`,
-      meta: "A brand is waiting on a reply.",
+      meta: "",
       action: "Reply",
       onAction: () => navigate("/messages"),
     });
@@ -341,6 +375,7 @@ export default function LiveFactoryHome({ org, profile }) {
         { label: "Active production orders", value: String(activeOrders.length), note: nextDue ?? `${n(snapshot?.steps_awaiting_you)} need updates`, tone: "amber" },
       ]}
       capacity={capacity}
+      rfqPanelTitle="Open RFQs"
       attention={attention}
       calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now })}
       onUpdateCapacity={onUpdateCapacity}

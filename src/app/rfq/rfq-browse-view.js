@@ -201,5 +201,5 @@ export function matchingLine(panel, filters, query, sort) {
       .map((option) => `${option.label}${group.suffix ?? ""}`));
   if (query.trim()) words.push(`"${query.trim()}"`);
   const order = `${(SORTS.find((option) => option.key === sort) ?? SORTS[0]).words} first`;
-  return words.length ? `matching ${words.join(", ")}, ${order}` : `every request open to quote, ${order}`;
+  return words.length ? `matching ${words.join(", ")}, ${order}` : "";
 }

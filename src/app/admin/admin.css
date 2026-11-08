@@ -8,8 +8,19 @@
   padding: 40px 24px 80px;
 }
 
+/* The payments board's rows carry bank details and buttons: give them the width. */
+.admin-payments-page { max-width: 1440px; }
+.admin-payments-page td:first-child, .admin-payments-page td:nth-child(5) { white-space: nowrap; }
+.admin-payments-page .admin-actions { min-width: 200px; max-width: 300px; white-space: normal; }
+.admin-payments-page td input { min-width: 120px; }
+.admin-payments-page .admin-payout-details { min-width: 180px; }
 .admin h1 { margin: 0 0 8px; font-size: 22px; line-height: 28px; font-weight: 700; }
 .admin h2 { margin: 32px 0 12px; font-size: 17px; font-weight: 700; }
+
+/* The payments board's record of who read account numbers: closed until asked for. */
+.admin-views-fold { margin-top: 40px; }
+.admin-views-fold > summary { cursor: pointer; font-size: 14px; color: var(--text-muted); }
+.admin-views-fold[open] > summary { margin-bottom: 12px; }
 
 .admin-intro { margin: 0 0 8px; color: var(--text-muted); max-width: 64ch; font-size: 14px; }
 .admin-sub   { display: block; color: var(--text-muted); font-size: 12px; }
@@ -39,6 +50,10 @@
 }
 .admin tbody tr:last-child td { border-bottom: 0; }
 
+.admin-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-muted); max-width: 420px; }
+.admin td .admin-check input { width: 16px; height: 16px; min-width: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--primary); flex: none; }
+.admin-payments-page .admin-actions .admin-row-message { white-space: normal; }
+.admin-payments-page .admin-actions .admin-check { display: flex; }
 .admin td input {
   height: 32px;
   width: 100%;
@@ -141,3 +156,93 @@
 
 .admin-bar .admin-payments-logo { display: flex; align-items: center; flex-shrink: 0; }
 .admin-payments-logo img { display: block; width: 116px; height: auto; }
+
+/* Payments uses the product's card, typography and order-tab patterns. */
+.admin-payments-page { max-width: 1440px; padding: 28px 32px 64px; }
+.admin-payments-page .admin-bar { margin-bottom: 36px; padding-bottom: 24px; gap: 20px; }
+.admin-payments-page .admin-bar .quiet-btn { font-weight: 500; }
+.admin-payments-page h2 { font-size: 20px; line-height: 28px; margin: 0 0 8px; }
+.admin-payments-page .admin-section-caption { font-size: 13px; line-height: 20px; max-width: 85ch; margin-bottom: 20px; }
+.admin-payments-page td { padding: 18px 16px; }
+.admin-payments-page tbody td { line-height: 21px; }
+.admin-payments-page .admin-sub { line-height: 19px; }
+.admin-payments-page .admin-actions { min-width: 180px; white-space: normal; }
+.admin-payments-page .admin-actions button { min-height: 34px; height: auto; margin: 0 0 8px; }
+.admin-payments-page td input { height: 38px; border-radius: 8px; background: var(--surface); }
+.admin-payments-page .admin-payout-details { gap: 6px; min-width: 210px; }
+.admin-payments-page .admin-payout-changed { padding: 8px 10px; }
+.admin-payments-page a:not(.admin-sub) { color: var(--primary); }
+.payments-empty { padding: 48px 24px; text-align: center; border: 1px solid var(--border); border-radius: var(--card-radius); background: var(--surface); }
+.payments-empty strong { font-size: 18px; }
+.payments-empty p { margin: 8px 0 0; }
+.admin-payments-page [hidden] { display: none; }
+@media (max-width: 700px) {
+  .admin-payments-page { padding: 20px 16px 40px; }
+  .admin-payments-page .admin-bar { flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+  .admin-payments-page .admin-bar .admin-sub { display: none; }
+}
+.admin-payments-page td:first-child { min-width: 110px; }
+.admin-payments-page td:first-child strong { white-space: nowrap; }
+.admin-payments-page .admin-payout-changed { color: var(--danger, #b33416); border: 1px solid var(--danger, #b33416); }
+.payments-workspace > .admin-payments-page { width: 100%; min-width: 0; margin: 0; max-width: none; padding: 40px 28px 64px; }
+@media (max-width: 700px) { .payments-workspace > .admin-payments-page { padding: 28px 16px 40px; } }
+.payments-workspace { padding-left: var(--nav-expanded-page-offset); }
+.payments-workspace.nav-collapsed { padding-left: var(--nav-collapsed-page-offset); }
+.payments-workspace .admin-payments-page { width: 100%; min-width: 0; margin: 0; max-width: none; padding: 40px 28px 64px; }
+@media (max-width: 700px) { .payments-workspace, .payments-workspace.nav-collapsed { padding-left: 78px; } .payments-workspace .admin-payments-page { padding: 28px 16px 40px; } }
+/* Keep actions in view while the payment details scroll horizontally. */
+.admin-payments-page td.admin-actions,
+.admin-payments-page th.payments-action-heading {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: -8px 0 12px -12px var(--text-muted);
+  border-left: 1px solid var(--border);
+  min-width: 184px;
+  width: 184px;
+}
+.admin-payments-page td.admin-actions button { width: 100%; }
+.payments-mobile-actions { position: sticky; left: 0; width: calc(100vw - var(--nav-expanded-page-offset) - 88px); max-width: 100%; }
+.nav-collapsed .payments-mobile-actions { width: calc(100vw - var(--nav-collapsed-page-offset) - 88px); }
+@media (max-width: 700px) { .payments-mobile-actions, .nav-collapsed .payments-mobile-actions { width: calc(100vw - 142px); } }
+.admin-payments-page .payments-note-cell { width: 144px; min-width: 144px; max-width: 144px; }
+.admin-payments-page .payments-note-cell input { min-width: 0; width: 100%; }
+.admin-payments-page .payments-note-cell label { max-width: 144px; white-space: normal; }
+
+.payments-queue-tabs { overflow-x: auto; flex-wrap: nowrap; }
+.payments-queue-tabs button { flex-shrink: 0; white-space: nowrap; }
+
+/* Public-profile label/value typography, applied to payout information. */
+.admin-payments-page .admin-payout-details { gap: 12px; margin-top: 14px; }
+.payout-detail-field { display: grid; gap: 3px; overflow-wrap: anywhere; }
+.payout-detail-label { color: var(--text-muted); font-size: 11px; line-height: 16px; font-weight: 500; }
+.payout-detail-value { color: var(--text); font-size: 13px; line-height: 19px; font-weight: 400; }
+.payout-method-heading { font-size: 14px; line-height: 20px; font-weight: 700; }
+.admin-payments-page .admin-payout-number { align-items: end; gap: 12px; }
+.admin-payments-page .payout-text-action { font-family: inherit; font-size: 12px; line-height: 19px; font-weight: 500; color: var(--text-muted); text-underline-offset: 3px; border: 0; background: none; padding: 0; cursor: pointer; }
+.admin-payments-page .payout-text-action:disabled { opacity: .5; cursor: wait; }
+.admin-payments-page .payout-detail-value a { font-size: inherit; font-weight: 500; text-underline-offset: 3px; }
+.payment-date { display: grid; gap: 3px; font-size: 13px; line-height: 19px; font-weight: 400; white-space: nowrap; }
+.payment-date .admin-sub { font-size: 12px; line-height: 18px; }
+.payout-bank-explanation { display: grid; gap: 6px; margin-bottom: 12px; white-space: normal; }
+.admin-payments-page .payout-bank-explanation input { min-width: 0; }
+
+.admin-payments-page .payments-queue-tabs { margin-top: 28px; }
+.admin-payments-page .admin-payout-details { gap: 7px; margin-top: 8px; }
+.admin-payments-page .payout-detail-field { gap: 1px; }
+
+.admin-payments-page .admin-list-header h1 { margin: 0; font-size: 38px; line-height: 1.1; font-weight: 950; }
+@media (max-width: 700px) { .admin-payments-page .admin-list-header h1 { font-size: 30px; } }
+/* Align the page origin with the admin RFQs queue. */
+.payments-workspace .admin-payments-page { padding: var(--page-top-standard) 48px 70px 40px; }
+@media (max-width: 760px) { .payments-workspace .admin-payments-page { padding: 72px 18px 48px; } }
+
+.payments-workspace .admin-payments-page { padding-left: var(--page-padding-inline); padding-right: var(--page-padding-inline); }
+
+.admin-payments-page .payout-change-status { display: inline-block; height: auto; min-height: 24px; padding: 5px 8px; border: 1px solid #f2b253; border-radius: 5px; white-space: normal; font-size: 12px; line-height: 18px; font-weight: 500; }
+.payout-number-actions { display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; }
+.admin-payments-page [data-testid="revealed-number"] { font-family: inherit; font-size: 13px; font-weight: 400; line-height: 19px; letter-spacing: normal; }
+.admin-payments-page .admin-payout-number { column-gap: 12px; row-gap: 3px; }
+
+.admin-payments-page table thead th.payments-action-heading { border-left: 0; }

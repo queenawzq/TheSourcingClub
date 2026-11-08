@@ -12,10 +12,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { listMilestones, saveSchedule, updateScheduleDetails } from "../../lib/domain/milestone.js";
-import { formatMoney, fromCents, toCents } from "../../lib/money.js";
+import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { MilestonesScreen } from "../../prototype/main.jsx";
-import { kindFor, moveScheduleRow, typeOf } from "./order-view.js";
+import { kindFor, moveScheduleRow, scheduleBar, scheduleProblem, stepAmount, typeOf } from "./order-view.js";
 import "./order.css";
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
@@ -37,7 +37,8 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       kind: m.kind,
       title: m.title,
       description: m.description ?? "",
-      amount: fromCents(m.amount_cents),
+      // As the builder writes money ("$1,920"); toCents reads it back.
+      amount: m.amount_cents ? stepAmount(m.amount_cents, loaded.currency ?? undefined) : "",
       due_on: m.due_on ?? "",
       state: m.state,
       paymentState: m.payment?.state ?? null,
@@ -61,8 +62,12 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
   const locked = isFactory || !["pending_schedule", "active"].includes(order.status);
   const total = rows.reduce((sum, row) => sum + (PAYS.has(row.kind) ? toCents(row.amount) ?? 0 : 0), 0);
   const balances = total === order.order_total_cents;
+  // What the database would refuse, said before Save, as on the builder.
+  const problem = scheduleProblem(rows);
 
   function update(index, patch) {
+    // Changing the steps answers the last refusal, so it goes.
+    setError(null);
     setRows((current) => current.map((row, i) => {
       if (i !== index) return row;
       const next = { ...row, ...patch };
@@ -125,13 +130,12 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       <header className="flow-header active-schedule-header">
         <p className="eyebrow">PRODUCTION ORDER</p>
         <h1>Manage production steps</h1>
-        <p>Update the milestones that guide this order from production through final payment.</p>
       </header>
 
       {locked ? (
         <div className="browse-gate">
           <strong>This schedule is settled.</strong>
-          <span>Only the brand can manage milestones on an active order.</span>
+          <span>Only the brand can manage steps on an active order.</span>
         </div>
       ) : activeEdit ? null : (
         <>
@@ -171,18 +175,19 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
           type: typeOf(row.kind),
           removeLocked: activeEdit && row.state !== "pending",
         })),
-        helper: activeEdit
-          ? "Add, remove, or update future production steps. Steps already underway keep their history."
-          : undefined,
         typeLocked: locked,
         amountLocked: locked,
         readOnly: locked,
         allowAdd: !locked,
         allowRemove: !locked,
         onChange: updateDesignedRow,
-        onMove: (index, offset) => setRows((current) => moveScheduleRow(current, index, offset)),
-        onRemove: (index) => setRows((current) => current.filter((_, i) => i !== index)),
-        onAdd: () => setRows((current) => [...current, {
+        formatAmount: (text) => {
+          const cents = toCents(text);
+          return cents === null ? text : stepAmount(cents, order.currency ?? undefined);
+        },
+        onMove: (index, offset) => { setError(null); setRows((current) => moveScheduleRow(current, index, offset)); },
+        onRemove: (index) => { setError(null); setRows((current) => current.filter((_, i) => i !== index)); },
+        onAdd: () => { setError(null); setRows((current) => [...current, {
           key: `new-${Date.now()}-${current.length}`,
           kind: "progress_only",
           title: "",
@@ -192,20 +197,16 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
           sort: (current.at(-1)?.sort ?? 0) + 10,
           state: "pending",
           paymentState: null,
-        }]),
+        }]); },
       }} />
 
-      {error ? <p className="ob-error">{error.message}</p> : null}
-
       <footer className="live-schedule-actions active-schedule-actions">
-        <span className="ob-hint" data-testid="schedule-total">
-          Steps total {formatMoney(total, order.currency)} of{" "}
-          {formatMoney(order.order_total_cents, order.currency)} agreed
-          {balances ? "" : " — these have to match before anyone can agree"}
+        <span className="ob-hint" data-testid="schedule-total" role={problem || error ? "alert" : undefined}>
+          {scheduleBar({ problem, error, total, orderTotal: order.order_total_cents, currency: order.currency, until: "save" })}
         </span>
         {locked ? null : (
           <button type="button" className="primary-btn" data-testid="save-schedule"
-                  disabled={busy || !balances} onClick={save}>
+                  disabled={busy || !balances || Boolean(problem)} onClick={save}>
             {busy ? "Saving…" : "Save changes"}
           </button>
         )}

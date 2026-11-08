@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { holdPayouts } from "./_stripe-payouts.js";
 import { logStripeFailure } from "./_stripe-errors.js";
+import { cardReason } from "./_card-words.js";
 
 /**
  * Payments held by TSC, through Stripe Connect: the parts every payment route
@@ -130,20 +131,9 @@ export function methodLabel(method) {
   return method.type;
 }
 
-// Stripe's message for these is written for developers ("You can provide
-// payment_method_data…"); a card's own decline message is written for the
-// cardholder and is kept as it is.
-const PLAIN_REASONS = {
-  payment_intent_authentication_failure: "Your bank did not confirm this payment, so nothing was charged.",
-  payment_method_unexpected_state: "This card could not be used, so nothing was charged.",
-};
-
 /** The reason a person can act on, from Stripe's error on the PaymentIntent. */
 export function failureReason(intent) {
-  const error = intent.last_payment_error;
-  if (error?.code && PLAIN_REASONS[error.code]) return PLAIN_REASONS[error.code];
-  if (error?.type === "card_error" && error.message) return error.message;
-  return "The payment did not go through, so nothing was charged.";
+  return cardReason(intent.last_payment_error);
 }
 
 async function rpc(db, name, args) {

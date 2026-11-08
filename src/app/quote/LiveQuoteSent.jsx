@@ -49,7 +49,9 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
     let cancelled = false;
     (async () => {
       const quote = await getMyQuote(rfqId, org.id).catch(() => null);
-      if (!quote || cancelled) return;
+      if (cancelled) return;
+      // No quote here: a link opened by hand. The design's figures must not stand in.
+      if (!quote) { navigate(requestPath); return; }
       const [lines, materialLines] = await Promise.all([
         getSampleLines(quote.id).catch(() => []),
         getMaterialLines(quote.id).catch(() => []),
@@ -81,6 +83,9 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
     else navigate(quote?.status === "draft" ? quotePath : requestPath);
   }
 
+  // Until its own quote has been read, or the page would draw the design's example.
+  if (!sent) return null;
+
   return (
     <>
       {asking && (
@@ -107,7 +112,10 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
         }}
         sent={sent && {
           ...sent,
-          quoteDue: rfq?.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "—",
+          quoteDue: rfq?.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
+          heading: `Sent to ${rfq?.orgs?.name ?? "the brand"}`,
+          // A sent quote is revised, not edited: a new send, a new charge.
+          backLabel: quote?.status === "draft" ? "‹ Back to edit quote" : "‹ Revise quote",
         }}
         onBack={backToEdit}
         onDashboard={() => navigate("/")}

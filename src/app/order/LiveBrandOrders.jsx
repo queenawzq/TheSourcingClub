@@ -10,7 +10,7 @@
  * design jumps to its contract screen instead, but a live order is always the
  * award of a quote, so a repeat starts from a request.
  */
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ProjectsScreen } from "../../prototype/main.jsx";
 import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { duplicateRfqFromOrder } from "../../lib/domain/rfq.js";
@@ -28,6 +28,13 @@ export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
   const { navigate } = useRouter();
   const [reordering, setReordering] = useState(false);
   const [reorderError, setReorderError] = useState(null);
+  // "Confirm steps" with several orders waiting opens the list narrowed to them.
+  const needsSteps = new URLSearchParams(window.location.search).get("needs") === "steps";
+  const adapter = useMemo(() => {
+    const live = createLiveAdapter({ org, isFactory: false, user });
+    if (!needsSteps) return live;
+    return { ...live, orders: async () => (await live.orders()).filter((card) => card.state === "pending_schedule") };
+  }, [org, user, needsSteps]);
 
   async function reorder(project) {
     if (reordering || !project?.id) return;
@@ -47,7 +54,13 @@ export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
       {(reorderError || cancelStore.error) && (
         <p className="projects-empty projects-error" role="alert">{(reorderError || cancelStore.error).message}</p>
       )}
-      <DataProvider adapter={createLiveAdapter({ org, isFactory: false, user })}>
+      {needsSteps && (
+        <p className="live-orders-narrowed">
+          <strong>Waiting for production steps</strong>
+          <button className="secondary-btn compact-btn" type="button" onClick={() => navigate("/orders")}>All orders</button>
+        </p>
+      )}
+      <DataProvider adapter={adapter}>
         <ProjectsScreen goTo={goTo} onViewOrder={onViewOrder} onReorder={reorder} reorderLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")} live tabStore={tabStore} cancelStore={cancelStore} />
       </DataProvider>
       {cancelStore.dialog}

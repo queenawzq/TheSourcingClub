@@ -128,6 +128,9 @@ export default async function handler(request, response) {
   }
 
   if (delivery.sent) {
+    // Vercel keeps only what a function prints: without this line a sent
+    // invite leaves no trace to match against Resend's log. Domain only.
+    console.log(`send-team-invite: emailed ${delivery.providerId ?? "(no id)"} to @${invite.email.split("@")[1]}`);
     await service.from("org_invitations").update({ emailed_at: new Date().toISOString() }).eq("id", invite.id);
   }
   response.status(200).json({ id: invite.id, emailed: delivery.sent, reason: delivery.sent ? null : delivery.reason, error: null });

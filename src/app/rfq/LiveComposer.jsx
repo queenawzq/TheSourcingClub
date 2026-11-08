@@ -1,3 +1,4 @@
+import { deliveryMonthFrom } from "./delivery-month.mjs";
 import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
 import FactoryMatch, { plainReason } from "../matching/FactoryMatch.jsx";
 import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
@@ -28,7 +29,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
+import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
@@ -70,28 +71,6 @@ const SOURCING_SLUG = {
   "brand-provided": "brand-supplies",
   unsure: "unsure",
 };
-
-/**
- * A month from "Sample in August, bulk by late September".
- *
- * The design asks for a timeline in prose; capacity matching needs the first
- * of a month. Read when a month name is in there, null when it is not —
- * matching without a delivery month is weaker, but a guessed month is wrong
- * in a way nobody sees.
- */
-const MONTHS = ["january","february","march","april","may","june","july","august","september","october","november","december"];
-function deliveryMonthFrom(text) {
-  const lower = String(text ?? "").toLowerCase();
-  let found = -1;
-  let at = Infinity;
-  MONTHS.forEach((name, index) => {
-    const position = lower.lastIndexOf(name);
-    if (position >= 0 && position <= at) { at = position; found = index; }
-  });
-  if (found < 0) return null;
-  const year = Number((lower.match(/\b(20\d{2})\b/) ?? [])[1]) || new Date().getFullYear();
-  return `${year}-${String(found + 1).padStart(2, "0")}-01`;
-}
 
 /** A stored end-of-day timestamp back into the calendar's local date. */
 function datePickerValue(value) {
@@ -232,9 +211,7 @@ export default function LiveComposer({ org, rfqId }) {
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
           timeline: monthLine(row.target_delivery_month),
-          price: row.target_unit_price_min_cents
-            ? `$${(row.target_unit_price_min_cents / 100).toFixed(0)}-$${((row.target_unit_price_max_cents ?? row.target_unit_price_min_cents) / 100).toFixed(0)}`
-            : "",
+          price: priceLine(row.target_unit_price_min_cents, row.target_unit_price_max_cents),
           category: linkedLabels(linked, byKind.product_category),
           certifications: linkedLabels(linked, byKind.certification),
           services: linkedLabels(linked, byKind.service),
@@ -637,7 +614,8 @@ export default function LiveComposer({ org, rfqId }) {
       <FlowShell
         screen="inviteSuccess"
         canBack={false}
-        onNext={() => navigate(`/rfqs/${draftId}/quotes`)}
+        // Nothing to review yet: the page's own button goes to the dashboard.
+        primaryLabel=""
         // The request as it was saved, not the design's example shirt.
         rail={{
           summary: [
@@ -651,6 +629,7 @@ export default function LiveComposer({ org, rfqId }) {
         <InviteSuccessScreen
           selectedFactories={invited}
           openToAll={openToAll}
+          liveLine={`Sent to ${invited.length} vendor${invited.length === 1 ? "" : "s"}${openToAll ? ", and open to all vendors" : ""}.`}
           goTo={(next) => navigate(next === "quotes" ? `/rfqs/${draftId}/quotes` : "/")}
         />
       </FlowShell>
@@ -691,7 +670,9 @@ export default function LiveComposer({ org, rfqId }) {
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
       matching: vendor.matching,
-      fit: vendor.matchPercent === null ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
+      // No figure for the factory a reorder repeats (it made this), or for a
+      // score of nothing, which says only that the facts didn't line up.
+      fit: !vendor.matchPercent || vendor.org_id === reorder?.factoryOrgId ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
       // Nothing records a rating or a vendor's order count a brand may read;
       // "" tells the card to leave both out rather than print an example.
       rating: "",
@@ -733,6 +714,9 @@ export default function LiveComposer({ org, rfqId }) {
         centerText={`${selectedVendors.length} selected · ${shaped.length} available`}
         onBack={() => setStep("review")}
         onNext={publish}
+        // Published with nobody invited, no vendor could ever see the request.
+        primaryDisabled={!openToAll && selectedVendors.length === 0}
+        primaryTitle={!openToAll && selectedVendors.length === 0 ? "Choose a vendor, or open it to all vendors" : ""}
       >
         {matchingV2 && (() => {
           // Each invite card carries its own match explanation; this panel holds
@@ -770,7 +754,6 @@ export default function LiveComposer({ org, rfqId }) {
         })()}
         <InviteScreen
           vendors={shaped}
-          filters={requestFilters(values)}
           selectedFactories={selectedVendors}
           setSelectedFactories={(next)=>{setMatchingAcknowledged(false);setSelectedVendors(next);}}
           openToAll={openToAll}
@@ -819,7 +802,7 @@ export default function LiveComposer({ org, rfqId }) {
     >
       {reorder && (
         <p className="composer-note" data-testid="reorder-note">
-          Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
+          Reordering {reorder.title} with {reorder.factoryName}.
         </p>
       )}
       <ReviewScreen

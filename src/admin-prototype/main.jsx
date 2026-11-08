@@ -7,14 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 
-const adminNav = [
-  { label: "Overview", icon: "home" },
-  { label: "RFQs", icon: "rfq" },
-  { label: "Quotes", icon: "projects" },
-  { label: "Users", icon: "connections" },
-  { label: "Verification", icon: "verification" },
-  { label: "Settings", icon: "settings" }
-];
+import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
 export const initialProfiles = [
   {
@@ -314,7 +307,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments awaiting confirmation" value={metrics.paymentsAwaitingConfirmation ?? 0} note="Nothing else will chase these" tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
+          <MetricCard label="Payments owed" value={metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
         </div>
 
         <section className="admin-overview-grid">
@@ -456,7 +449,7 @@ function ConfidenceCard({ score }) {
     <section className="factory-profile-card admin-confidence-card">
       <div><span>Evidence completeness</span><strong>{score}%</strong><StatusPill tone={tone}>{score >= 90 ? "Evidence complete" : score >= 80 ? "Minor gaps" : "Evidence missing"}</StatusPill></div>
       <div className="admin-confidence-scale"><span style={{ width: `${score}%` }} /></div>
-      <p>The share of the checks below that pass: what this company submitted, and whether it is internally consistent. Nothing is checked against a company registry, sanctions list or certification body, so this is not a verification and it cannot tell you a document is genuine. The decision is yours.</p>
+      <p>Share of the checks below that pass. Nothing is checked against a registry: the decision is yours.</p>
     </section>
   );
 }
@@ -885,7 +878,7 @@ function AiSuggestionsPanel({ orgId }) {
   return (
     <Panel
       title="AI suggestions"
-      subtitle="Suggestions from an AI model. It read the profile text, the certificate records and the list of files; it did not open the files or contact any registry. No score and no decision: the decision is yours."
+      subtitle="From an AI model that read the profile, not the files. The decision is yours."
       className="admin-assist-panel"
     >
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
@@ -1234,7 +1227,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
-            <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
+            <Panel title="Verification checks" subtitle="No check contacts an outside registry or certifier.">
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
                   const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
@@ -1276,7 +1269,6 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
-            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>Complete this review</h2>
@@ -1330,6 +1322,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
+            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>
@@ -1920,7 +1913,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, extraNav = [], onSignOut } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -2152,7 +2145,14 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     }
     window.setTimeout(() => setToast(""), 2400);
   };
-  const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const navigate = (label) => {
+    const elsewhere = extraNav.find((item) => item.label === label);
+    if (elsewhere) { window.location.href = elsewhere.href; return; }
+    // The prototype has no payments board of its own: Queena's preview stands in.
+    if (label === "Payments") { window.location.assign(window.location.pathname === "/admin-prototype.html" ? "/payments-design-preview.html" : "/app.html/admin/payments"); return; }
+    setScreen(label);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const active = screen === "Review" ? reviewBack
     : screen === "Quote detail" && quoteBack === "Quotes" ? "Quotes"
     : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs")
@@ -2165,7 +2165,8 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         active={active}
         ariaLabel="Admin workspace"
         collapsed={collapsed}
-        navItems={adminNav}
+        navItems={[...adminNav, ...extraNav.filter((item) => !adminNav.some((own) => own.label === item.label))]}
+        onSignOut={onSignOut}
         onNav={navigate}
         onProfile={() => navigate("Settings")}
         onToggle={() => setCollapsed((value) => !value)}

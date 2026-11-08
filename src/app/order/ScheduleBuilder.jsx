@@ -11,13 +11,14 @@
  */
 import React from "react";
 import { FlowShell, MilestonesScreen } from "../../prototype/main.jsx";
-import { formatMoney } from "../../lib/money.js";
+import { scheduleBar } from "./order-view.js";
 import { useScheduleDraft } from "./useScheduleDraft.js";
 
-function totalLine(draft, order) {
-  const text = `Steps total ${formatMoney(draft.total, order.currency)} of ${formatMoney(order.order_total_cents, order.currency)}`;
-  return draft.balances ? text : `${text}: these have to match before you can save or continue`;
-}
+// The bar is on screen wherever the page is scrolled, so what stops Continue
+// is said there.
+const totalLine = (draft, order) => scheduleBar({
+  ...draft, orderTotal: order.order_total_cents, currency: order.currency, until: "save or continue",
+});
 
 // `locked`: hover text when this person may read the steps but not save or
 // confirm them (Quote flow sets them); empty for someone who may.
@@ -39,8 +40,13 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFun
       {/* Live only: an open proposal to cancel sits above the steps. */}
       {banner}
       <MilestonesScreen live={draft} />
-      <p className="muted production-schedule-helper" data-testid="schedule-hint">{locked ? "" : draft.hint}</p>
-      {draft.error && <p className="composer-error" role="alert">{draft.error.message}</p>}
+      <p className="muted schedule-draft-hint" data-testid="schedule-hint">{locked ? "" : draft.hint}</p>
+      {draft.changedElsewhere && (
+        <p className="composer-note" role="status" data-testid="schedule-changed">
+          Someone else changed these steps. Saving replaces their changes.{" "}
+          <button className="text-link" type="button" onClick={draft.takeSaved}>Use their steps</button>
+        </p>
+      )}
       {dialog}
     </FlowShell>
   );

@@ -87,7 +87,7 @@ export default function LiveSavedVendors({ org }) {
           onBrowse: () => navigate("/browse"),
           empty: cards.length
             ? "No saved vendors match this search."
-            : "No saved vendors yet. Press Save on a vendor in Browse vendors, or Save factory on its profile, to keep it here.",
+            : "No saved vendors yet.",
           card: (vendor) => {
             if (vendor.unlisted) return { href: null, onOpen: null, onMessage: null, onQuote: null };
             // listThreads is newest first: the latest conversation with this vendor.

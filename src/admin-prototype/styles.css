@@ -320,7 +320,8 @@
   border-collapse: collapse;
 }
 
-.admin-table th {
+.admin-table th,
+.admin-payments-page table thead th {
   padding: 11px 14px;
   border-bottom: 1px solid #dfe6ef;
   background: #f7f9fc;

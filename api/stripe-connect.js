@@ -194,7 +194,7 @@ export default async function handler(request, response) {
     if (action === "add_method" || action === "default_method" || action === "remove_method") {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       if (!managedByTsc(account)) {
-        return reply(response, 409, { error: "Your payout methods are changed in Stripe's form on this page." });
+        return reply(response, 409, { error: "Your withdrawal methods are changed in the form on this page." });
       }
       const accountId = existing.stripe_account_id;
       let notice;
@@ -207,11 +207,11 @@ export default async function handler(request, response) {
             const target = await stripe.accounts.retrieveExternalAccount(accountId, replaceId);
             const details = await stripe.tokens.retrieve(token);
             if (!details.bank_account || details.bank_account.currency !== target.currency) {
-              throw new PayoutMethodRefusal(`A replacement must use ${target.currency.toUpperCase()}. Add a separate payout method to use another currency.`);
+              throw new PayoutMethodRefusal(`A replacement must use ${target.currency.toUpperCase()}. Add a separate withdrawal method to use another currency.`);
             }
           }
           const added = payoutMethodRow(await addPayoutMethod(stripe, accountId, { token, makeDefault: makeDefault || Boolean(replaceId) }), account.default_currency);
-          notice = `${describe(added)} was added as a payout method${added.default ? " and is now the default" : ""}.`;
+          notice = `${describe(added)} was added as a withdrawal method${added.default ? " and is now the default" : ""}.`;
           if (replaceId) {
             const removed = payoutMethodRow(await removePayoutMethod(stripe, accountId, { methodId: replaceId, promoteId: added.id }), account.default_currency);
             notice += ` ${describe(removed)} was removed.`;
@@ -221,7 +221,7 @@ export default async function handler(request, response) {
           notice = `Withdrawals now go to ${describe(chosen).toLowerCase()}.`;
         } else {
           const removed = payoutMethodRow(await removePayoutMethod(stripe, accountId, { methodId, promoteId }), account.default_currency);
-          notice = `${describe(removed)} was removed from your payout methods.`;
+          notice = `${describe(removed)} was removed from your withdrawal methods.`;
         }
       } catch (failure) {
         if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });

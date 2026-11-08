@@ -20,6 +20,7 @@
  * which is what makes verification the thing that unlocks earning.
  */
 import React, { useEffect, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { FactoryProjectDetail, FactoryReadOnlyRfqPage } from "../../factory-prototype/main.jsx";
 import {
   brandProfileForFactory,
@@ -28,7 +29,6 @@ import {
   getRfq,
   isRequestSaved,
   lastBrandView,
-  matchScoresForRfq,
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
@@ -165,7 +165,6 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     if (!rfq || !org?.id) return undefined;
     let cancelled = false;
     Promise.all([
-      matchScoresForRfq(rfq.id, [org.id]).catch(() => new Map()),
       rfq.brand_org_id ? brandSummary(rfq.brand_org_id).catch(() => null) : null,
       lastBrandView(rfq.id),
       getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
@@ -173,10 +172,13 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
     ])
-      .then(([scores, summary, viewed, documents, savedAlready, profile]) => {
+      .then(([summary, viewed, documents, savedAlready, profile]) => {
         if (cancelled) return;
         setExtras({
-          match: scores.get(org.id) ?? null,
+          // No fit label to a factory about itself (Nov 7): a brand that
+          // invited it has answered "is it a fit?", and below 60 the band
+          // says "Not a fit" to nearly every vendor on a plain request.
+          match: null,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: documents.files ?? [],
@@ -247,7 +249,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const project = {
     title: rfq.title || "Request",
     brand: rfq.orgs?.name ?? "",
-    initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+    initials: initials(rfq.orgs?.name),
     location: extras.brand?.hq_location ?? "",
     posted: rfq.published_at ? `Posted ${DAY.format(new Date(rfq.published_at))}` : "",
     quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
@@ -310,7 +312,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           brief={rfq.brief ?? ""}
           details={{
             colorSplit: "",
-            bulkTimeline: rfq.target_delivery_month ?? "",
+            bulkTimeline: rfq.target_delivery_month
+              ? dateFrom(rfq.target_delivery_month).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+              : "",
           }}
           materials={{
             mainMaterial: rfq.material_notes ?? "",
@@ -332,8 +336,10 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           }))}
           questions={project.questions}
           capabilities={[]}
-          match={extras.match === null ? null : {
-            summary: `Your profile scores ${extras.match}% against this request.`,
+          // Nothing to show still passes an object: with none the design draws
+          // its own "Strong fit".
+          match={extras.match === null ? { summary: "", label: "", tone: "" } : {
+            summary: `${extras.match}% match`,
             label: fit?.label ?? "",
             tone: fit?.tone ?? "",
           }}
@@ -341,7 +347,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           // to load) the design draws its own "Maison Rue" and its facts.
           // The name is the request's own; the facts wait for the summary.
           brand={{
-            initials: (extras.brand?.name ?? rfq.orgs?.name ?? "").slice(0, 2).toUpperCase(),
+            initials: initials(extras.brand?.name ?? rfq.orgs?.name),
             name: extras.brand?.name ?? rfq.orgs?.name ?? "",
             // The brand's name opens its profile.
             profileHref: `/app.html/brands/${rfq.brand_org_id}?from=request`,
@@ -367,8 +373,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           onToggleSave={toggleSave}
           backLabel={`‹ Back to ${backTarget.label}`}
           onBack={() => navigate(backTarget.path)}
-          onSendQuote={verified && mayQuote ? () => navigate(quotePath) : undefined}
-          sendQuoteBlocked={verified && !mayQuote ? permissionHint(org, "rfqFlow") : ""}
+          onSendQuote={rfq.status === "open" && verified && mayQuote ? () => navigate(quotePath) : undefined}
+          sendQuoteBlocked={rfq.status !== "open" ? "This request is closed" : verified && !mayQuote ? permissionHint(org, "rfqFlow") : ""}
         />
       </>
     );
