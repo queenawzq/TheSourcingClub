@@ -16,24 +16,22 @@ import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs"
 import { PayoutModal } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
+/** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
 const BANK_WORDS = {
-  titleNew: "Bank transfer 银行转账",
-  titleEdit: "Edit bank account 编辑银行账户",
-  titleFinish: "Add your full account number 补全账号",
-  bankName: "Bank name 开户银行",
-  again: "Re-enter account number 再次输入账号",
-  english: "In English 英文",
-  numberMismatch: "The two account numbers don't match 两次输入的账号不一致",
-  numberFormat: "Letters and digits only, 5 to 34 characters 只能包含字母和数字，5 到 34 个字符",
-  numberStored: (last4) => `Ending 尾号 ${last4}`,
-  back: "Back 返回",
-  save: "Save 保存",
-  saving: "Saving… 正在保存…",
-  loading: "Loading… 正在加载…",
+  titleNew: "Bank transfer",
+  titleEdit: "Edit bank account",
+  titleFinish: "Add your full account number",
+  bankName: "Bank name",
+  again: "Re-enter account number",
+  english: "In English",
+  numberMismatch: "The two account numbers don't match.",
+  numberFormat: "Letters and digits only, 5 to 34 characters.",
+  numberStored: (last4) => `Ending ${last4}`,
+  back: "Back",
+  save: "Save",
+  saving: "Saving…",
+  loading: "Loading…",
 };
-
-/** Both languages for a reader in China, Hong Kong or Taiwan; Wise's own words where they are Wise's. */
-export const readsChinese = (country) => ["CN", "HK", "TW"].includes(country);
 
 async function requirementsFrom(country, details) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -58,7 +56,7 @@ function startingValues(row) {
   };
 }
 
-const fieldLabel = (field) => [field.label, inEnglish(field) && field.kind !== "select" ? "(English)" : null, field.labelZh].filter(Boolean).join(" ");
+const fieldLabel = (field) => [field.label, inEnglish(field) && field.kind !== "select" ? "(English)" : null].filter(Boolean).join(" ");
 
 export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) {
   const words = BANK_WORDS;
@@ -171,18 +169,14 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) 
   );
 }
 
-const paypalWords = (both) => (both ? {
-  title: "PayPal", titleEdit: "Edit PayPal account 编辑 PayPal 账户", email: "PayPal email PayPal 邮箱", again: "Re-enter email 再次输入邮箱",
-  invalid: "Enter a valid email address 请输入有效的邮箱地址", mismatch: "The two email addresses don't match 两次输入的邮箱不一致",
-  back: BANK_WORDS.back, save: BANK_WORDS.save, saving: BANK_WORDS.saving,
-} : {
+const PAYPAL_WORDS = {
   title: "PayPal", titleEdit: "Edit PayPal account", email: "PayPal email", again: "Re-enter email",
   invalid: "Enter a valid email address.", mismatch: "The two email addresses don't match.",
   back: "Back", save: "Save", saving: "Saving…",
-});
+};
 
 export function PaypalStep({ row, country, form, busy, onField, savePaypal, onBack, onClose }) {
-  const words = paypalWords(readsChinese(country));
+  const words = PAYPAL_WORDS;
   const [left, setLeft] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [problem, setProblem] = useState(null);
