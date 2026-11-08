@@ -73,7 +73,7 @@ function matchingLine(panel, filters, query, sort) {
     query.trim() ? `"${query.trim()}"` : null,
   ].filter(Boolean);
   const order = `${(SORTS.find((option) => option.key === sort) ?? SORTS[0]).words} first`;
-  return words.length ? `matching ${words.join(", ")}, ${order}` : "";
+  return words.length ? `matching ${words.join(", ")}, ${order}` : `every vendor listed on TSC, ${order}`;
 }
 
 export default function LiveBrandBrowse({ org, user, view = "cards" }) {

@@ -5,11 +5,13 @@
 -- `supabase db reset` and when Supabase creates a preview branch for a PR. It
 -- never runs on production: `supabase db push` does not read it.
 --
--- Two demo logins, so a PR preview can be tried without signing up first:
+-- Three demo logins, so a PR preview can be tried without signing up first:
 --
 --   demo-brand@example.com    / demo password 8   (brand, onboarded, verified)
 --   demo-factory@example.com  / demo password 8   (factory, onboarded, verified,
 --                                                   published, 500 credits)
+--
+--   demo-brand-pending@example.com / demo password 8 (brand awaiting verification)
 --
 -- The password is the one scripts/seed-demo.mjs already uses. These accounts
 -- exist only on local stacks and preview branches.
@@ -17,6 +19,8 @@
 do $$
 declare
   brand_user constant uuid := '5eed0000-0000-4000-8000-00000000b001';
+  pending_brand_user constant uuid := '5eed0000-0000-4000-8000-00000000b002';
+  pending_brand_org uuid;
   factory_user constant uuid := '5eed0000-0000-4000-8000-00000000f001';
   brand_org uuid;
   factory_org uuid;
@@ -25,6 +29,7 @@ begin
   for login in
     select * from (values
       (brand_user, 'demo-brand@example.com', 'Demo Brand'),
+      (pending_brand_user, 'demo-brand-pending@example.com', 'Willow Lane Studio'),
       (factory_user, 'demo-factory@example.com', 'Demo Factory')
     ) as l(id, email, name)
   loop
@@ -58,6 +63,8 @@ begin
   select id into brand_org from public.create_org('Demo Brand', 'brand');
   perform set_config('request.jwt.claims', json_build_object('sub', factory_user, 'role', 'authenticated')::text, true);
   select id into factory_org from public.create_org('Demo Factory', 'factory');
+  perform set_config('request.jwt.claims', json_build_object('sub', pending_brand_user, 'role', 'authenticated')::text, true);
+  select id into pending_brand_org from public.create_org('Willow Lane Studio', 'brand');
   perform set_config('request.jwt.claims', '', true);
 
   -- Onboarded and verified, so both land on the dashboard rather than the
@@ -68,6 +75,11 @@ begin
     hq_location = excluded.hq_location,
     onboarding_completed_at = excluded.onboarding_completed_at,
     verification_status = excluded.verification_status;
+
+  -- A separate company keeps the exact live "You're all set" screen available
+  -- for review; the normal brand remains verified for testing its workspace.
+  insert into public.brand_profiles (org_id, hq_location, onboarding_completed_at, verification_status)
+  values (pending_brand_org, 'London, UK', now(), 'pending');
 
   insert into public.factory_profiles (
     org_id, country_code, location, moq, typical_lead_days, intro,

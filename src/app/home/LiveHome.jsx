@@ -346,8 +346,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         } : null}
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
-        // Codes can't be applied to a payment yet, so nothing advertises them.
-        showSavings={false}
+        // The real balance/codes carry a note that they cannot be redeemed yet.
+        showSavings={Boolean(savings)}
         // The designed "Scheduled calls" card, only when there is a call.
         showCalls={callCards.length > 0}
         calls={callCards}

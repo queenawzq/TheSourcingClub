@@ -77,7 +77,7 @@ export default function LiveQuotes({ rfqId }) {
       fit: "",
       response: "",
       fitType: fit?.label ?? "",
-      fitSummary: fit ? `${fit.score}% match` : "",
+      fitSummary: fit ? `${fit.score}% match to this request` : "This vendor has not been scored against this request.",
       factoryNote: view.notes,
       price: view.price || "—",
       quoteQuantity: view.quantity || "—",

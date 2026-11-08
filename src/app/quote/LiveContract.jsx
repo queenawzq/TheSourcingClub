@@ -53,10 +53,9 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       : found.raw.status !== "submitted"
         ? `This quote was ${found.raw.status}.`
         : !isOwner
-          ? "Needs the Quote flow permission"
+          ? "Only someone with Quote flow can choose a quote, because choosing creates the production order. Ask an owner for this permission."
           : null;
-  // Missing Quote flow greys the button out, with the permission on hover; the
-  // other reasons leave nothing to press and stay in the banner.
+  // Keep the permission explanation visible as well as on the disabled button.
   const permissionBlock = Boolean(blocked) && Boolean(found) && state.rfq.status === "open"
     && found.raw.status === "submitted" && !isOwner;
 
@@ -145,7 +144,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
         },
       } : null}
     >
-      {blocked && !permissionBlock && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
+      {blocked && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
       {found && (
         <ContractScreen
           terms={{ ...found.view, title: state.request.title, brief: state.request.brief }}

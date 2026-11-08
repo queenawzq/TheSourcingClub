@@ -94,7 +94,7 @@ export default function LiveBrandPayments({ org }) {
           empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
-          codesNote: "",
+          codesNote: "Codes can't be applied to a payment yet. Used codes stay here so finance can track order discounts.",
           onCopy: copy,
           copied,
         }}
