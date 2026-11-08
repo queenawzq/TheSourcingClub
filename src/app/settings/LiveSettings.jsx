@@ -52,9 +52,6 @@ import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
-// The email switches' labels say enough: the design's line under each is left out.
-const EMAIL_NOTES = { rfq: "", payments: "", messages: "" };
-
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
   id: card.id,
@@ -476,7 +473,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
-        notificationEmailNotes={EMAIL_NOTES}
         notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}

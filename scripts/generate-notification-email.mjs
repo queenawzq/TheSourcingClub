@@ -26,7 +26,7 @@ const escapeHtml = (value) => String(value ?? "")
 export function notificationPath(notification, { isFactory }) {
   const { subject_type: type, subject_id: id } = notification;
   // A payout change names no subject; the methods are on the factory's Payments page.
-  if (notification.kind === "payout_method_changed" && isFactory) return "/payout";
+  if (["payout_method_changed", "payout_failed", "payout_action_required"].includes(notification.kind) && isFactory) return "/payout";
   if (!id) return null;
   if (type === "rfq" && !isFactory && ["quote_received", "quote_withdrawn"].includes(notification.kind)) {
     return `/rfqs/${id}/quotes`;
@@ -114,26 +114,32 @@ function formatMoment(iso, timeZone, withZone) {
 const copy = {
   en: {
     eyebrow: {
-      rfq: (isFactory) => (isFactory ? "New RFQ matches" : "New quote activity"),
-      payments: () => "Payment and approval requests",
-      messages: () => "Messages and call invites",
-      account: () => "Account security",
+      rfq: (isFactory) => (isFactory ? "RFQs and quotes" : "Sourcing and quotes"),
+      payments: () => "Payments",
+      orders: () => "Orders and milestones",
+      calls: () => "Calls and reminders",
+      capacity: () => "Capacity reminders",
+      messages: () => "Messages",
+      account: () => "Account and payout alerts",
     },
     greeting: (name) => (name ? `Hi ${name},` : "Hi,"),
     lead: (company) => `There is an update for ${company} on The Sourcing Club.`,
     cta: "Open in The Sourcing Club",
     ctaFallback: "Open The Sourcing Club",
     why: (company, setting) =>
-      `You’re receiving this because ${company} has “${setting}” emails turned on. Any member can turn them off in Settings → Notifications.`,
+      `You’re receiving this because ${company} has “${setting}” emails turned on. Members with Settings access can turn them off in Settings → Notifications.`,
     whyAlways: (company) =>
-      `Sent to everyone at ${company}.`,
+      `This account or payout alert is always sent to members of ${company}, even when optional email is switched off.`,
     questions: "Questions? Reply to this email or contact",
   },
   zh: {
     eyebrow: {
       rfq: (isFactory) => (isFactory ? "新的匹配询价" : "新的报价动态"),
-      payments: () => "付款与审批请求",
-      messages: () => "消息与通话邀请",
+      payments: () => "付款",
+      orders: () => "订单与生产步骤",
+      calls: () => "通话与提醒",
+      capacity: () => "产能提醒",
+      messages: () => "消息",
       account: () => "账户安全",
     },
     greeting: (name) => (name ? `${name} 你好，` : "你好，"),
@@ -141,9 +147,9 @@ const copy = {
     cta: "在 The Sourcing Club 中查看",
     ctaFallback: "打开 The Sourcing Club",
     whyAlways: (company) =>
-      `已发送给 ${company} 的所有成员。`,
+      `此账户或收款提醒始终发送给 ${company} 的成员，即使已关闭可选邮件通知。`,
     why: (company, setting) =>
-      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。任何成员都可以在 设置 → 通知 中关闭。`,
+      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。拥有设置权限的成员可以在 设置 → 通知 中关闭。`,
     questions: "有问题？直接回复此邮件，或联系",
   },
 };

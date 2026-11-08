@@ -10,7 +10,7 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
  * Two endpoints point here in Stripe's dashboard, each with its own signing
  * secret: one for TSC's own account (payment_intent.processing / succeeded /
  * payment_failed, charge.refunded) and one for connected accounts
- * (account.updated). Locally,
+ * (account.updated, payout.failed). Locally,
  * `stripe listen` forwards both with one secret.
  *
  * A PaymentIntent is either an order payment (metadata payment_id) or a
@@ -107,6 +107,21 @@ export default async function handler(request, response) {
         // Not an order payment: a refunded credit pack takes its credits back.
         const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
         if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
+        break;
+      }
+      case "payout.failed": {
+        // Only a signed connected-account event can identify the factory.
+        const payout = event.data.object;
+        if (event.account) {
+          const { error } = await db.rpc("notify_stripe_payout_failed", {
+            account_id: event.account, payout_id: payout.id,
+            amount: payout.amount, currency_code: payout.currency.toUpperCase(),
+          });
+          if (error) throw new Error(error.message);
+          if (emailTransport()) {
+            await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+          }
+        }
         break;
       }
       case "account.updated": {

@@ -21,7 +21,7 @@ export function connectNeedsNotice(before, account) {
   // account): Finish setup would open a form with nothing to do in it.
   if (!due.length) {
     return {
-      kind: "payout_method_changed",
+      kind: "payout_action_required",
       title: transfers ? "Withdrawals are paused" : "Payments to you are paused",
       // True as written: a newly due item is emailed by this same function.
       body: "Your withdrawal account is being reviewed. Your earnings are safe. We will email you if we need anything.",
@@ -30,7 +30,7 @@ export function connectNeedsNotice(before, account) {
   // The same words as the card: while earnings still arrive, what is at
   // stake is withdrawing them.
   return {
-    kind: "payout_method_changed",
+    kind: "payout_action_required",
     title: transfers ? "Finish setup to withdraw" : "Finish setup to receive earnings",
     body: "We need a few more details for your withdrawal account. Open Payments and choose Finish setup.",
   };

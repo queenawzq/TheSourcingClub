@@ -6,7 +6,7 @@
 export function notificationLink(notification, { isFactory }) {
   const { subject_type: type, subject_id: id } = notification;
   // A payout change names no subject; the methods are on the factory's Payments page.
-  if (notification.kind === "payout_method_changed" && isFactory) return "/payout";
+  if (["payout_method_changed", "payout_failed", "payout_action_required"].includes(notification.kind) && isFactory) return "/payout";
   if (!id) return null;
 
   // A request lives at a different address for each side; an order does not —

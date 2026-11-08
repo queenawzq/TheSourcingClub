@@ -16,6 +16,9 @@ import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_not
  * _notification-sender.js, shared with the daily job (api/cron-daily).
  */
 
+// The scheduled drain leaves headroom under the function duration limit.
+export const config = { maxDuration: 60 };
+
 function tokenSubject(token) {
   try {
     const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
@@ -69,7 +72,19 @@ export default async function handler(request, response) {
 
   const service = serviceClient(supabaseUrl, serviceKey);
   try {
-    const result = await sendDueNotificationEmails(service, request, mail);
+    if (isCron) {
+      const { error } = await service.rpc("queue_upcoming_call_reminders");
+      if (error) throw new Error("upcoming call reminders could not be queued");
+    }
+    const result = { sent: 0, skipped: 0, failed: 0, more: false };
+    const started = Date.now();
+    do {
+      const batch = await sendDueNotificationEmails(service, request, mail);
+      result.sent += batch.sent;
+      result.skipped += batch.skipped;
+      result.failed += batch.failed;
+      result.more = batch.more;
+    } while (isCron && result.more && Date.now() - started < 40_000);
     response.status(200).json({ ...result, error: null });
   } catch (error) {
     response.status(500).json({ sent: 0, error: error.message });

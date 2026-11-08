@@ -38,7 +38,7 @@ insert into public.org_members (org_id, user_id, role, permissions) values
 
 select is(public.notification_email_category('quote_received'), 'rfq', 'a quote received is quote activity');
 select is(public.notification_email_category('payment_due'), 'payments', 'a payment due is a payment request');
-select is(public.notification_email_category('call_proposed'), 'messages', 'a call invite is with messages');
+select is(public.notification_email_category('call_proposed'), 'calls', 'a call invite uses its own switch');
 select is(public.notification_email_category('verification_approved'), null, 'verification has its own email, so none here');
 select is(public.notification_email_category('message_rejected'), null, 'a rejected message stays in the bell');
 

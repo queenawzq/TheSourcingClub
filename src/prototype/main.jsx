@@ -2501,10 +2501,10 @@ export function SettingsScreen({
   onAddBillingMethod,
   onEditPaymentMethod,
   onDeletePaymentMethod,
-  // The company's email switches: { rfq, payments, messages } and a setter.
+  // Company email preferences and their setter; account alerts are always sent.
   notificationEmails,
   onNotificationEmailChange,
-  // Live only: what each switch covers ({ rfq, payments, messages }), and why
+  // Live only: optional explanations of each switch, and why
   // the switches could not be read or saved.
   notificationEmailNotes,
   notificationEmailsError = null,
@@ -3160,18 +3160,23 @@ export function SettingsScreen({
         <section className="settings-section" id="settings-notifications">
             <div className="settings-section-header">
               <h3>Notifications</h3>
-              <p>Choose which updates should reach your team by email.</p>
+              <p>Choose which updates should reach your team by email. These settings apply to your whole company; in-app notifications stay on.</p>
             </div>
             {notificationEmailsError && (
               <p className="settings-invite-error" role="alert">{notificationEmailsError.message ?? String(notificationEmailsError)}</p>
             )}
-            {(notificationEmails || !notificationEmailsError) && [[isFactory ? "New RFQ matches" : "New quote activity", "rfq"], ["Payment and approval requests", "payments"], ["Messages and call invites", "messages"]].map(([label, key]) => (
+            {(notificationEmails || !notificationEmailsError) && [
+              [isFactory ? "RFQs and quotes" : "Sourcing and quotes", "rfq", "Request invitations, matches, cancellations and quote activity."],
+              ["Payments", "payments", "Payment requests, confirmations, refunds and funds released."],
+              ["Orders and milestones", "orders", "Order status, schedules, approvals, disputes and deadline reminders."],
+              ["Messages", "messages", "New conversation messages; at most one email per conversation every six hours."],
+              ["Calls and reminders", "calls", "Call invitations, responses, cancellations and a reminder within an hour of an accepted call."],
+              ...(isFactory ? [["Capacity reminders", "capacity", "Monthly reminders to refresh capacity that has not been updated."]] : []),
+            ].map(([label, key, description]) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
-                  {/* Live, every member with an email gets these: there are no
-                      per-member permissions yet to narrow it to. */}
-                  <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
+                  <span>{notificationEmailNotes?.[key] || description}</span>
                 </div>
                 <label className="settings-switch" title={notificationEmailsLocked || undefined}>
                   {notificationEmails ? (
@@ -3188,6 +3193,7 @@ export function SettingsScreen({
                 </label>
               </div>
             ))}
+            <p>Always sent: sign-in and password recovery codes, profile submission and review decisions, and invitations you request.{isFactory ? " Payout account security alerts, failed payouts and required payout actions also always send." : ""} These emails cannot be switched off here.</p>
           </section>
       </section>
     </div>
