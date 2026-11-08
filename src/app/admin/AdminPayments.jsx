@@ -15,8 +15,7 @@
  *                    the money came through Stripe. "Pay with Wise" or "Pay with
  *                    PayPal" when the factory's method is one of those: the
  *                    server pays and the board reads back where it is. Paying by
- *                    bank by hand and marking it stays as the fallback, and
- *                    Payoneer rows saved before keep their manual path.
+ *                    bank by hand and marking it stays as the fallback.
  *                    A payout underway with Wise or PayPal moves to Processing.
  *   Failed           a payment that did not go through: the brand pays again.
  *   Processing       money moving, each row naming its provider: a brand's
@@ -40,7 +39,7 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth.jsx";
 import {
-  factoryStripeSetup, paymentBoard, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
+  factoryStripeSetup, paymentBoard, releasePayment, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
 import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
@@ -69,9 +68,8 @@ const ROW_TIME = {
 
 /** Includes a payout Stripe was asked for and may have made: only Retry finds out, so no other rail is offered. */
 const paidByStripe = (row) => (row.factory_stripe_ready || row.stripe_release_started) && row.stripe_payment_intent_id;
-const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
 const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
-const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row) && !paidByPaypal(row);
+const paidByBank = (row) => !paidByStripe(row) && !paidByPaypal(row);
 const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
 /** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
 const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
@@ -421,7 +419,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   );
 }
 
-function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
+function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -457,48 +455,6 @@ function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy,
     return underway(row, attempt) ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
   }
   if (section === "payout") {
-    if (paidByPayoneer(row)) {
-      const id = payoneerId.trim();
-      if (confirming) {
-        return (
-          <>
-            <span className="admin-sub admin-row-message" role="alert">
-              {confirming === "payoneer"
-                ? `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by Payoneer (${row.payoneer_email}), payment ID ${id}?`
-                : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account?`}
-            </span>
-            {confirming === "bank" && <label className="admin-sub payout-bank-explanation">Reason for bank payment (required). The factory reads it
-              <input type="text" aria-label="Note" value={note} onChange={(event) => onNoteChange(event.target.value)} />
-            </label>}
-            <button type="button" className="admin-approve" disabled={busy || (confirming === "bank" && note.trim().length < REFERENCE_MIN)}
-                    data-testid="release-payment-confirm"
-                    onClick={() => { const how = confirming; setConfirming(null); onDecide(row, how === "payoneer" ? "payoneer" : "release", note, id); }}>
-              Yes, mark paid out
-            </button>
-            <button type="button" className="admin-reject" disabled={busy}
-                    onClick={() => setConfirming(null)}>
-              Cancel
-            </button>
-          </>
-        );
-      }
-      return (
-        <>
-          {said}
-          <button type="button" className="admin-approve" disabled={busy || !id}
-                  data-testid="release-payoneer"
-                  title={id ? "Pay from TSC's Payoneer business account first, then mark it here" : "Enter the payment ID from Payoneer"}
-                  onClick={() => setConfirming("payoneer")}>
-            Mark paid out by Payoneer
-          </button>
-          <button type="button" className="admin-link payout-text-action" disabled={busy}
-                  data-testid="release-bank-instead"
-                  onClick={() => setConfirming("bank")}>
-            Paid by bank instead
-          </button>
-        </>
-      );
-    }
     const provider = providerFor(row);
     if (provider && attempt?.status === "processing") {
       return <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
@@ -573,35 +529,28 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
   // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
   const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
-  const [payoneerId, setPayoneerId] = useState("");
   const acts = rowActs(section, row, attempt);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
   const noteInput = acts ? (
     <>
-      {section === "payout" && paidByPayoneer(row) ? (
-        <label className="admin-sub">
-          Payoneer payment ID (required)
-          <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
-        </label>
-      ) : null}
       {section === "failed" && row.refund_failed_at ? (
         <label className="admin-sub">
           Refund reference (required)
           <input type="text" data-testid="refund-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
-      ) : providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
+      ) : providerLive || (section === "payout" && !paidByStripe(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
           Bank reference (required)
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
-      ) : section === "payout" && paidByPayoneer(row) ? null : (
-        <input type="text" aria-label="Note" placeholder={section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : "Optional note"}
+      ) : (
+        <input type="text" aria-label="Note" placeholder="Optional note"
                value={note} onChange={(event) => setNote(event.target.value)} />
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} onNoteChange={setNote} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+  const buttons = <Actions row={row} section={section} note={note} onNoteChange={setNote} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
 
   return (
     <>
@@ -636,13 +585,12 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} stripeSetup={setups?.get(row.order_id)} /> : null}
           {section === "payout" && !paidByBank(row) ? (
             <span className="admin-payout-details">
-              <strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : paidByPaypal(row) ? "PayPal" : "Payoneer"}</strong>
+              <strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : "PayPal"}</strong>
               {paidByStripe(row) && !row.factory_stripe_ready ? <span className="admin-sub" data-testid="stripe-started">Stripe may have paid this already. Retry checks with Stripe first.</span> : null}
               {paidByPaypal(row) ? <PayoutField label="Payout email">{attempt?.status === "processing" ? attempt.paid_to : row.paypal_email}</PayoutField> : null}
-              {paidByPayoneer(row) ? <PayoutField label="Payout email">{row.payoneer_email}</PayoutField> : null}
             </span>
           ) : null}
-          {section === "payout" && (paidByPayoneer(row) || paidByPaypal(row)) ? <FactoryContact row={row} /> : null}
+          {section === "payout" && paidByPaypal(row) ? <FactoryContact row={row} /> : null}
         </td>
         <td>
           <PaymentDate value={ROW_TIME[listedIn](row, attempt)} />
@@ -708,7 +656,7 @@ function providerCounts(rows, attempts) {
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
   const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id)));
-  // Only a payout has a note: a bank reference, a Payoneer ID.
+  // Only a payout has a note: a bank reference.
   const notes = columns && (id === "payout" || id === "failed");
   return (
     <section className="payments-queue" data-section={id}>
@@ -835,7 +783,7 @@ export default function AdminPayments() {
     return () => clearInterval(timer);
   }, [anyLive, readBack]);
 
-  async function decide(row, decision, note, payoneerId) {
+  async function decide(row, decision, note) {
     setBusyId(row.payment_id);
     setRefusal(null);
     setNotice(null);
@@ -845,8 +793,6 @@ export default function AdminPayments() {
         setNotice(result.released
           ? `${row.order_number}: paid out to ${row.factory_name}.`
           : `${row.order_number}: not paid out. ${result.reason ?? ""}`);
-      } else if (decision === "payoneer") {
-        await releasePaymentByPayoneer(row.payment_id, { paidTo: row.payoneer_email, payoneerPaymentId: payoneerId, note });
       } else if (decision === "refund_outside") {
         const { error: refused } = await supabase.rpc("record_refund_outside_stripe", { target_payment: row.payment_id, reference: note });
         if (refused) throw refused;
