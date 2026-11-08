@@ -9,6 +9,7 @@ import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
+import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 const STRIPE_FORM_NOTE = "Stripe, TSC's payment partner, securely verifies your company and bank details in its form on this page, and may show TSC's registered company name. TSC never stores those details.";
 const EXPRESS_FORM_NOTE = "Stripe, TSC's payment partner, holds your company and bank details. It may ask you to confirm with a code in a small Stripe window, and may show TSC's registered company name.";
 
@@ -54,7 +55,7 @@ const listWords = (country) => (readsChinese(country) ? {
 
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
-  slow: "Still loading.",
+  slow: "Stripe is taking longer than usual. Your balance will show here as soon as it answers.",
   failed: "Couldn't load your balance. Try again shortly.",
 };
 
@@ -736,7 +737,9 @@ export default function StripePayoutCard({
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             <p data-testid="payout-how-paid">{payoutSetupLine}</p>
           </> : <>
-          <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"}</span>
+          <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"}
+            <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>
+          </span>
           <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(balance.available, balance.displayFx), "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the provider answers.
@@ -746,24 +749,26 @@ export default function StripePayoutCard({
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
-              // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
+              "Earnings stay in your balance until you withdraw them.",
+              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. Stripe is processing these earnings; you can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.` : null,
               // Orders are in USD; an account is credited in its own currency.
-              currency !== "USD" ? `Paid in ${currency}` : null,
+              currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).join(" · ")
             : payoutSetupLine}</p>}
+          {balance && pending > 0 ? <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp> : null}
           </>}
+          {!handPaid && currency === "USD" && (balance || balanceWaiting) ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
-            <p>Your previous payout account still has funds.</p>
+            <p>Your previous payout account has funds remaining or returned after the upgrade.</p>
             {recoveryAvailable > 0 && balance.recovery.payoutsEnabled ? <button className="secondary-btn compact-btn" disabled={busy} onClick={() => {
               setWithdrawal({ previous: true, amount: recoveryAvailable, currency: recoveryCurrency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
-            }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
+            }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a> to recover these funds.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}{failedLineZh ? ` ${failedLineZh}` : ""}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
-          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
+          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
