@@ -25,12 +25,46 @@ function activityDate(payment) {
     ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
 }
 
-/** Only a failure needs words: what went wrong. The status says the rest. */
-function failureLine(payment) {
-  if (payment.state !== "failed") return null;
-  return payment.failure_reason
-    ? `The payment was not completed: ${plainCardReason(payment.failure_reason)}`
-    : "The payment was not completed.";
+/**
+ * Where the money is, in words that match the step: a payment-only step (a
+ * deposit or balance) needs no approval and is paid out once funded; a paid
+ * step is held until the brand approves it, then paid out.
+ */
+function statusExplanation(payment, factory) {
+  const step = payment.order_milestones;
+  const paymentOnly = step?.kind === "payment_only";
+  const approved = Boolean(payment.release_requested_at) || step?.state === "complete";
+  switch (payment.state) {
+    case "processing":
+      return payment.payment_method_type === "us_bank_account"
+        ? `Stripe is confirming this bank payment. It can take several business days, and ${factory} has not been paid yet.`
+        : `Stripe is confirming this payment. ${factory} has not been paid yet.`;
+    case "confirmed":
+      if (payment.orderCancelled && !approved) return "The order was cancelled with this money held. TSC must refund it to the brand; the factory has not been paid.";
+      if (paymentOnly) return `The payment is complete. This step needs no approval, so TSC pays it out to ${factory}; the payout is on its way.`;
+      if (approved) return `The payment is complete and you approved this milestone. TSC is paying it out to ${factory}; the payout is on its way.`;
+      return `The payment is complete and TSC is holding the funds. They are released to ${factory} after you approve this milestone.`;
+    case "released":
+      return paymentOnly
+        ? `TSC paid the funds out to ${factory}. This step needed no approval.`
+        : `TSC released the funds to ${factory} after the milestone was approved.`;
+    case "failed":
+      return payment.failure_reason
+        ? `The payment was not completed: ${plainCardReason(payment.failure_reason)}`
+        : "The payment was not completed and no funds are being held.";
+    case "sent":
+      return "This legacy bank transfer was submitted and is waiting for confirmation.";
+    case "cancelled":
+      return "This payment was cancelled and no funds are due.";
+    case "due":
+      return paymentOnly
+        ? `This step is open and waiting for payment. It needs no approval: once it is paid, TSC pays it to ${factory}.`
+        : `This step is open and waiting for payment. TSC holds the payment until you approve the step, then pays ${factory}.`;
+    case "not_due":
+      return "Nothing to pay yet. This payment falls due when its step opens, and you fund it then.";
+    default:
+      return "This payment has not been completed.";
+  }
 }
 
 function methodLabel(payment) {
@@ -69,7 +103,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       factory: order.factory?.name ?? "Factory",
       status: statusWord(payment),
       statusKey: statusWord(payment).toLowerCase().replaceAll(" ", "-"),
-      failure: failureLine(payment),
+      explanation: statusExplanation({ ...payment, orderCancelled: order.status === "cancelled" }, order.factory?.name ?? "the factory"),
       // A due payment is dated when it falls due, as on the list; the rest when they moved.
       date: payment.state === "due" && payment.order_milestones?.due_on
         ? dateFrom(payment.order_milestones.due_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -119,7 +153,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       <section className="brand-payment-detail-card brand-payment-status-card">
         <div>
           <span className={`billing-status payout-status-${content.statusKey}`}>{content.status}</span>
-          {content.failure ? <p role="alert" className="brand-payment-failure">{content.failure}</p> : null}
+          <p role={payment.state === "failed" ? "alert" : undefined} className={payment.state === "failed" ? "brand-payment-failure" : undefined}>{content.explanation}</p>
           {payable ? (
             <button
               className="primary-btn compact-btn brand-payment-pay-again"
@@ -142,7 +176,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
 
       <section className="brand-payment-detail-card">
         <div className="brand-payment-card-heading">
-          <div><h2>Payment breakdown</h2></div>
+          <div><h2>Payment breakdown</h2><p>{content.title} for {content.orderTitle}</p></div>
           <button className="secondary-btn compact-btn" type="button" onClick={() => navigate(`/orders/${order.id}`)}>View order</button>
         </div>
         <dl className="brand-payment-breakdown">

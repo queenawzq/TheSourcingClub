@@ -449,6 +449,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onAddPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("manage") : undefined}
         onAddBillingMethod={canSettings ? addBillingMethod : undefined}
         onRemoveBillingMethod={canSettings ? removeCard : undefined}
+        billingMethodNote={isFactory ? "Save a card to use when you buy credits." : "Save a card to use when funding production steps. Cards are saved securely to your company for future payments."}
         billingLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
         paymentLocked={isFactory && !isOwner ? "Only an owner can set up or change payouts" : ""}
         inviteLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
@@ -517,7 +518,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       {billingSecret ? (
         <BillingMethodFlow
           clientSecret={billingSecret}
-          intro={undefined}
+          intro={isFactory ? undefined : "Save a card to use when funding production milestones."}
           onClose={() => setBillingSecret(null)}
           onSaved={() => { setBillingSecret(null); loadCards(); }}
         />

@@ -130,6 +130,7 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       <header className="flow-header active-schedule-header">
         <p className="eyebrow">PRODUCTION ORDER</p>
         <h1>Manage production steps</h1>
+        <p>Update the milestones that guide this order from production through final payment.</p>
       </header>
 
       {locked ? (
@@ -175,6 +176,9 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
           type: typeOf(row.kind),
           removeLocked: activeEdit && row.state !== "pending",
         })),
+        helper: activeEdit
+          ? "Add, remove, or update future production steps. Steps already underway keep their history."
+          : undefined,
         typeLocked: locked,
         amountLocked: locked,
         readOnly: locked,

@@ -703,9 +703,9 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   read-only form that looks editable keeps its sentence (Settings → Basic
   information).
 
-### Design copy the live app leaves out
+### Explanatory copy in the live app
 
-Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step has no description (`20261107400000`); a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet, so the dashboard's Savings card (and with it Invite brand) and the Payments tab are hidden; put them back when they can.
+Keep the designed introductions, field guidance, reminders, empty-state instructions and payment/cancellation explanations visible in the live app. The Nov 8 restoration supersedes the earlier Nov 6 copy-trimming rule. `src/app/live-quiet.css` now holds layout adjustments and empty-content rules, not selectors that suppress explanatory copy. Keep payment explanations accurate for the current provider, state and permissions. Generated step descriptions remain user-authored (`20261107400000`); don't fill them with boilerplate. Discount controls remain unavailable until codes can be applied.
 
 ### Mock data leaking into the live app
 
