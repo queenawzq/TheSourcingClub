@@ -364,9 +364,9 @@ export async function releasePayment({ stripe, db, paymentId }) {
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
 
-  const selectedStripe = await db.rpc("uses_stripe_payout", { target_org: payment.production_orders.factory_org_id });
+  const selectedStripe = await db.rpc("payment_uses_stripe_payout", { target_payment: payment.id });
   if (selectedStripe.error) throw new Error(selectedStripe.error.message);
-  if (!selectedStripe.data) return { released: false, reason: "the factory selected another payout method" };
+  if (!selectedStripe.data) return { released: false, reason: "waiting for the factory to request a Stripe withdrawal" };
 
   // A transfer credits earnings, never an automatic withdrawal to the bank.
   // Configure existing accounts before any money can reach them.
@@ -390,8 +390,10 @@ export async function releasePayment({ stripe, db, paymentId }) {
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
-    const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
-    const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+    let already;
+    for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+      if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
+    }
     if (already) {
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
       return { released: true, reason: already.id };

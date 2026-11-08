@@ -7,13 +7,24 @@ export async function holdPayouts(stripe, accountId) {
 }
 
 /** Stripe enforces the available balance; retries use the same request key. */
-export async function withdrawBalance(stripe, accountId, { amount, currency, requestId }) {
+export async function withdrawBalance(stripe, accountId, { amount, currency, requestId, methodId, withdrawalId }) {
   if (!Number.isSafeInteger(amount) || amount <= 0 || !/^[a-z]{3}$/.test(currency ?? "")
     || !/^[0-9a-f-]{36}$/i.test(requestId ?? "")) {
     throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
   }
+  if (!/^ba_[A-Za-z0-9]+$/.test(methodId ?? "")) {
+    throw new PayoutMethodRefusal("Choose a linked bank account for this withdrawal. PayPal and bank transfer cannot receive money already held in Stripe.");
+  }
+  // Read in this connected account's scope: never accept a destination owned
+  // by another factory, a deleted account, a card, or the wrong currency.
+  const method = await stripe.accounts.retrieveExternalAccount(accountId, methodId);
+  if (method.object !== "bank_account" || method.currency !== currency
+    || method.status === "errored" || method.status === "verification_failed"
+    || !(method.available_payout_methods ?? ["standard"]).includes("standard")) {
+    throw new PayoutMethodRefusal("Choose an available bank account in the withdrawal currency.");
+  }
   await holdPayouts(stripe, accountId);
-  return stripe.payouts.create({ amount, currency }, {
+  return stripe.payouts.create({ amount, currency, destination: methodId, ...(withdrawalId ? { metadata: { factory_withdrawal_id: withdrawalId } } : {}) }, {
     stripeAccount: accountId,
     idempotencyKey: `withdraw-${accountId}-${requestId}`,
   });

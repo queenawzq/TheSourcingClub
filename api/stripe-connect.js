@@ -128,13 +128,13 @@ export default async function handler(request, response) {
       if (!upgrade?.completed_at) return reply(response, 409, { error: "No previous payout account is available." });
       const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
       if (!previous.payouts_enabled) return reply(response, 422, { error: "Contact TSC operations to recover funds from your previous payout account." });
-      const payout = await withdrawBalance(stripe, upgrade.old_account_id, { amount, currency, requestId });
+      const payout = await withdrawBalance(stripe, upgrade.old_account_id, { amount, currency, requestId, methodId });
       return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
     }
 
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
-      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId });
+      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId, methodId });
       return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
     }
 
@@ -169,7 +169,7 @@ export default async function handler(request, response) {
       if (upgrade?.completed_at) {
         const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
         const funds = await stripe.balance.retrieve({}, { stripeAccount: upgrade.old_account_id });
-        recovery = { available: funds.available, pending: funds.pending, defaultCurrency: previous.default_currency, payoutsEnabled: previous.payouts_enabled };
+        recovery = { available: funds.available, pending: funds.pending, defaultCurrency: previous.default_currency, payoutsEnabled: previous.payouts_enabled, methods: await listPayoutMethods(stripe, upgrade.old_account_id, previous.default_currency) };
         const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
         allocation.payouts.push(...historical.payouts);
         allocation.pending.push(...historical.pending);

@@ -330,3 +330,14 @@
   .payout-options-modal .payout-method-option > button { grid-column: 2; }
 }
 .payout-options-modal .payout-option-provider { color: var(--text-muted); font-size: 12px; font-weight: 500; line-height: 18px; }
+
+.payout-destination-picker { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.payout-destination-picker legend { margin-bottom: 10px; color: var(--text); font-size: 14px; font-weight: 700; }
+.payout-destination-choice { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.payout-destination-choice:has(input:checked) { border-color: var(--blue); background: #eaf4ff; }
+.payout-destination-choice:has(input:disabled) { cursor: default; opacity: .65; }
+.payout-destination-choice input[type="radio"] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--blue); }
+.payout-destination-choice > span:first-of-type { display: grid; flex: 1; min-width: 0; gap: 4px; overflow-wrap: anywhere; }
+.payout-destination-choice strong { color: var(--text); font-size: 14px; }
+.payout-destination-choice small { color: var(--text-muted); font-size: 13px; line-height: 18px; }
+.payout-request-status { display: grid; gap: 8px; padding-top: 12px; }

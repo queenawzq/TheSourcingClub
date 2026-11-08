@@ -196,6 +196,7 @@ if (demoOrgIds.length) {
     const paths = files.filter((file) => file.bucket === bucket).map((file) => file.storage_path);
     if (paths.length) must(await admin.storage.from(bucket).remove(paths), `clear demo files in ${bucket}`);
   }
+  must(await admin.from("factory_withdrawals").delete().in("org_id", demoOrgIds), "clear demo withdrawal requests");
   const orders = must(await admin.from("production_orders").delete()
     .or(`brand_org_id.in.${list},factory_org_id.in.${list}`).select("id"), "clear demo orders");
   must(await admin.from("orgs").delete().in("id", demoOrgIds), "clear demo companies");
@@ -1237,8 +1238,20 @@ const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic popl
 const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
+// Historical completed payout: predates owner-requested withdrawals.
+must(await admin.from("order_payments").update({ withdrawal_required: false }).eq("id", poplinFit.id), "legacy paid fixture");
 must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
+// Demo Factory has two destinations for its approved deposit. These are
+// demo addresses/details only; a local test never calls live payout providers.
+must(await factory.client.from("factory_payout_accounts").insert({
+  org_id: factoryOrg.id, method: "paypal", paypal_email: "factory-withdrawal@example.com", is_primary: true,
+}), "factory withdrawal PayPal destination");
+must(await factory.client.rpc("save_wise_payout_account", {
+  target_org: factoryOrg.id, bank_name: "Demo USD Bank", recipient_type: "aba", currency: "USD",
+  details: { accountHolderName: LOGINS.factory.name, legalType: "BUSINESS", abartn: "021000021", accountType: "CHECKING" },
+  number_key: "accountNumber", account_number: "0000000000001234", account_number_again: "0000000000001234",
+}), "factory withdrawal Wise destination");
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
@@ -1307,6 +1320,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
+must(await admin.from("order_payments").update({ withdrawal_required: false }).eq("id", hopsackFit.id), "legacy blazer payout fixture");
 must(await adminUser.client.rpc("release_payment_to_factory", {
   target_payment: hopsackFit.id, note: "DEMO-20260001",
 }), "mark the blazer's fit sample paid");
@@ -1336,6 +1350,16 @@ for (const [title, person, org] of [
   });
   await funded(await dueNow(order, title), CARD);
   await approveOpenStep(order, title, person);
+  if (person === otherDomainFactory) {
+    const destination = must(await person.client.from("factory_payout_accounts").select("id")
+      .eq("org_id",org.id).eq("method","paypal").single(), "demo approval destination");
+    const payments = must(await admin.from("order_payments").select("amount_cents")
+      .eq("order_id",order.id).eq("state","confirmed").not("release_requested_at","is",null), "demo withdrawal earnings");
+    must(await person.client.rpc("request_factory_withdrawal", {
+      target_org: org.id, request_id: crypto.randomUUID(), which: "paypal", target_account: destination.id,
+      expected_amount: payments.reduce((sum,payment)=>sum+Number(payment.amount_cents),0),
+    }), "demo withdrawal awaiting admin approval");
+  }
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production

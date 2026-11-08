@@ -56,6 +56,9 @@ values ('96a10000-0000-0000-0000-000000000001', '96b00000-0000-0000-0000-0000000
 update public.factory_payout_accounts set number_changed_at=now() where org_id='96b00000-0000-0000-0000-0000000000f1';
 insert into public.stripe_connect_accounts(org_id,stripe_account_id,country,transfers_active) values('96b00000-0000-0000-0000-0000000000f1','acct_route_fake','US',true);
 update public.order_payments set stripe_payment_intent_id='pi_route_fake_' || id::text where order_id='96d00000-0000-0000-0000-000000000001';
+-- Legacy already-owed payments retain the pre-withdrawal reconciliation paths.
+update public.order_payments set withdrawal_required=false where id::text like '96f00000-%';
+
 set local session_replication_role = origin;
 
 create function pg_temp.act_as(who int) returns void language sql as $f$
