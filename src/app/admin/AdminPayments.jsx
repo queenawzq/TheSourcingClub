@@ -44,6 +44,7 @@ import {
 } from "../../lib/domain/payment.js";
 import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
+import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
@@ -66,7 +67,8 @@ const ROW_TIME = {
   held: (row) => row.confirmed_at,
 };
 
-const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
+/** Includes a payout Stripe was asked for and may have made: only Retry finds out, so no other rail is offered. */
+const paidByStripe = (row) => (row.factory_stripe_ready || row.stripe_release_started) && row.stripe_payment_intent_id;
 const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
 const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
 const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row) && !paidByPaypal(row);
@@ -424,6 +426,33 @@ function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy,
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
   const [confirming, setConfirming] = useState(null);
+  if (section === "failed" && row.refund_failed_at) {
+    if (confirming) {
+      return (
+        <>
+          <span className="admin-sub admin-row-message" role="alert">
+            {`Refunded ${formatMoney(row.charged_cents ?? row.amount_cents, row.currency)} to ${row.brand_name} outside Stripe, reference ${note.trim()}?`}
+          </span>
+          <button type="button" className="admin-approve" disabled={busy} data-testid="refund-outside-confirm"
+                  onClick={() => { setConfirming(null); onDecide(row, "refund_outside", note); }}>
+            Yes, mark refunded
+          </button>
+          <button type="button" className="admin-reject" disabled={busy} onClick={() => setConfirming(null)}>Cancel</button>
+        </>
+      );
+    }
+    return (
+      <>
+        {said}
+        <button type="button" className="admin-approve" disabled={busy || note.trim().length < REFERENCE_MIN}
+                data-testid="refund-outside"
+                title={note.trim().length < REFERENCE_MIN ? "Enter the reference for this refund" : "Refund the brand first, then mark it here"}
+                onClick={() => setConfirming("refund")}>
+          Mark refunded outside Stripe
+        </button>
+      </>
+    );
+  }
   if (section === "clearing") {
     return underway(row, attempt) ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
   }
@@ -538,7 +567,7 @@ export function useNarrow() {
 
 /** Whether a row in this section has a note and buttons. */
 const rowActs = (section, row, attempt) => section === "payout"
-  || (section === "clearing" && underway(row, attempt)) || (section === "failed" && providerFailed(row, attempt));
+  || (section === "clearing" && underway(row, attempt)) || (section === "failed" && (providerFailed(row, attempt) || Boolean(row.refund_failed_at)));
 
 function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns, notes }) {
   // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
@@ -556,7 +585,12 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      {providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
+      {section === "failed" && row.refund_failed_at ? (
+        <label className="admin-sub">
+          Refund reference (required)
+          <input type="text" data-testid="refund-reference" value={note} onChange={(event) => setNote(event.target.value)} />
+        </label>
+      ) : providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
           Bank reference (required)
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
@@ -603,6 +637,7 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           {section === "payout" && !paidByBank(row) ? (
             <span className="admin-payout-details">
               <strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : paidByPaypal(row) ? "PayPal" : "Payoneer"}</strong>
+              {paidByStripe(row) && !row.factory_stripe_ready ? <span className="admin-sub" data-testid="stripe-started">Stripe may have paid this already. Retry checks with Stripe first.</span> : null}
               {paidByPaypal(row) ? <PayoutField label="Payout email">{attempt?.status === "processing" ? attempt.paid_to : row.paypal_email}</PayoutField> : null}
               {paidByPayoneer(row) ? <PayoutField label="Payout email">{row.payoneer_email}</PayoutField> : null}
             </span>
@@ -812,6 +847,9 @@ export default function AdminPayments() {
           : `${row.order_number}: not paid out. ${result.reason ?? ""}`);
       } else if (decision === "payoneer") {
         await releasePaymentByPayoneer(row.payment_id, { paidTo: row.payoneer_email, payoneerPaymentId: payoneerId, note });
+      } else if (decision === "refund_outside") {
+        const { error: refused } = await supabase.rpc("record_refund_outside_stripe", { target_payment: row.payment_id, reference: note });
+        if (refused) throw refused;
       } else await releasePayment(row.payment_id, note, row.payout_changed_at ?? null);
       await load();
     } catch (failure) {
@@ -866,7 +904,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
   return (
     <main className="admin admin-payments-page">
-      <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1><p>Check payments received and payouts owed to factories.</p></div></header>
+      <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
           {tabs.map(([id, label]) => (
@@ -883,15 +921,14 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
-                 empty="Every approved payment has been paid out."
-                 caption="The brand approved these steps (including before an order was cancelled), or the step needs no approval. Retry the payout, or pay by bank and mark it paid out after sending the money." />
+                 empty="Every approved payment has been paid out." />
       ) : null}
-      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} caption="These did not go through. If the brand's payment failed, it pays again from the order. A refund or payout that was refused needs staff." empty="Nothing has failed." /> : null}
+      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
       {active === "clearing" ? (
         <Section id="clearing" title="Processing" rows={sections.clearing} {...shared} empty="Nothing is processing."
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
-      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} caption="Funded, waiting for the brand to approve the step." empty="Nothing is held." /> : null}
+      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
 
     </main>
   );
