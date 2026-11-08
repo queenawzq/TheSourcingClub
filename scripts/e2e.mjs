@@ -683,6 +683,9 @@ async function main() {
       buffer: await fs.readFile(FIXTURE),
     });
     await page.waitForTimeout(500);
+    // Porto, Portugal: the number is a NIPC, checked by its mod-11 digit
+    // (a fake that passes it; src/shared/registration-number.mjs).
+    await fillNamed(page, "registration-number", "509999999");
     await record(page, "Factory verification", "documents are reviewed by a human, not self-declared");
     await nextCard(page);
     await record(page, "Factory walkthrough");
@@ -705,6 +708,11 @@ async function main() {
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
+
+    const { data: factoryRegistration } = await db.from("company_registrations")
+      .select("country_code, number").eq("org_id", factoryOrg.id).maybeSingle();
+    check(factoryRegistration?.country_code === "PT" && factoryRegistration?.number === "509999999",
+      "the factory's registration number is saved under its country");
 
     const { data: factorySigned } = await db.from("terms_acceptances")
       .select("terms_version, legal_document_id").eq("org_id", factoryOrg.id).single();

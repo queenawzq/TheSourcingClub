@@ -36,6 +36,10 @@ import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
+import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
+import {
+  normaliseAccessCode, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+} from "../../shared/registration-number.mjs";
 
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
@@ -163,6 +167,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Files already in storage, keyed by the designed card's field name, so each
   // card can list them with a Delete that works.
   const [documents, setDocuments] = useState({});
+  // The country the registration number was saved under, or the profile's.
+  const [savedCountry, setSavedCountry] = useState(null);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -191,6 +197,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
         ]);
+        const savedRegistration = await getRegistration(org.id).catch(() => null);
         const certs = await loadCertifications(byKind);
         if (cancelled) return;
 
@@ -246,6 +253,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           );
         }
 
+        if (savedRegistration) {
+          restored["registration-number"] = savedRegistration.number;
+          if (savedRegistration.access_code) restored["registration-access-code"] = savedRegistration.access_code;
+        }
+        setSavedCountry(savedRegistration?.country_code ?? profile.country_code ?? null);
         setValues(restored);
       } catch (loadError) {
         if (!cancelled) setError(loadError);
@@ -284,6 +296,30 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
   /** The country read out of the typed location (see countryCodeFrom in profile.js). */
   const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
+
+  // The registration number's country: from the location typed on step 2
+  // (either kind of vendor), else what was saved. Decides the field's name,
+  // hint and check digit.
+  const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
+  const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
+  const registrationField = useMemo(() => {
+    const copy = registrationCopy(registrationCountry);
+    const lang = language === "zh" ? "zh" : "en";
+    return {
+      label: copy.label[lang],
+      hint: copy.hint[lang],
+      value: values["registration-number"] ?? "",
+      accessCode: copy.accessCode
+        ? { label: copy.accessCode.label[lang], hint: copy.accessCode.hint[lang], value: values["registration-access-code"] ?? "" }
+        : null,
+      check: (value, which) => {
+        if (which === "accessCode") {
+          return normaliseAccessCode(value) === null ? (lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits") : "";
+        }
+        return registrationProblemText(registrationCountry, registrationNumberProblem(registrationCountry, value), lang);
+      },
+    };
+  }, [registrationCountry, language, values]);
 
   const certificationTerm = (name) => findCertificationTerm(name, terms.certification ?? [], language);
 
@@ -412,6 +448,14 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     for (const [field, kind] of refresh) {
       const fresh = await listDocuments(org.id, kind);
       setDocuments((current) => ({ ...current, [field]: fresh }));
+    }
+
+    if (submitted["registration-number"] !== undefined) {
+      await saveRegistration(org.id, {
+        country: registrationCountry,
+        number: submitted["registration-number"],
+        accessCode: submitted["registration-access-code"] ?? "",
+      }, language === "zh" ? "zh" : "en");
     }
 
     const location = submitted[factoryFieldName("Factory Location")];
@@ -590,6 +634,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onUploadCertificate={uploadCertificate}
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
+      registration={registrationField}
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending

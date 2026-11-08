@@ -426,7 +426,7 @@ set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select lives_ok(
   $$ select public.review_document('a2300000-0000-0000-0000-000000000001', 'verified', null) $$,
-  'staff verify Gamma''s business registration'
+  'staff verify Gamma''s business registration file'
 );
 do $$ begin perform public.admin_review_decision('d2300000-0000-0000-0000-00000000000d', 'approved'); end $$;
 do $$ begin perform public.admin_review_decision('d2300000-0000-0000-0000-00000000000b', 'approved'); end $$;
@@ -435,8 +435,8 @@ set local request.jwt.claims = '{"role":"service_role"}';
 
 select is(
   (select coalesce(sum(delta), 0)::int from public.credit_ledger where org_id = 'd2300000-0000-0000-0000-00000000000c'),
-  500,
-  'verifying the business registration grants the 500 too'
+  0,
+  'verifying the business registration FILE grants nothing: only approving the company does (20261108600000)'
 );
 
 select is(

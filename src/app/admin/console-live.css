@@ -205,3 +205,12 @@
     gap: 12px;
   }
 }
+
+/* Official registry panel on the review page (RegistryPanel.jsx). */
+.admin-registry { display: grid; gap: 16px; }
+.admin-registry-sources { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-registry-sources a { text-decoration: none; }
+.admin-registry-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.admin-registry-form .admin-registry-note { grid-column: 1 / -1; }
+.admin-registry-form button { justify-self: start; }
+@media (max-width: 640px) { .admin-registry-form { grid-template-columns: 1fr; } }

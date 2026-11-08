@@ -11,6 +11,7 @@
 import { minutesPerPieceFor, monthlyUnits } from "../../lib/domain/capacity.js";
 import { chipLabels, factoryProfileView } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
+import { checkedMonth } from "../../shared/registration-number.mjs";
 
 const NOT_GIVEN = "—";
 const count = (value) => Number(value).toLocaleString("en");
@@ -92,6 +93,9 @@ export function brandFactoryView(parts, now = new Date()) {
     ],
     trust: [
       { name: "Business registration", status: verified ? "Verified" : parts.registrationDoc ? "Uploaded" : "Not uploaded", document: parts.registrationDoc },
+      // A dated fact, never a score: the month TSC found the company on an
+      // official registry (registry_checks, via factory_registry_fact()).
+      ...(verified && parts.registryCheckedAt ? [{ name: `Official registry · ${checkedMonth(parts.registryCheckedAt)}`, status: "Verified", verified: true }] : []),
       ...parts.certifications.map((cert) => ({ ...trustRow(cert.name, cert.status), document: cert.document })),
       ...(parts.verificationDocs ?? []).filter((doc) => doc.id !== parts.registrationDoc?.id && !parts.certifications.some((cert) => cert.document?.id === doc.id)).map((doc) => ({ name: doc.file_name, status: "Uploaded", document: doc })),
     ],

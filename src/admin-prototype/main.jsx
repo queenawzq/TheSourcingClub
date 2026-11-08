@@ -1123,7 +1123,7 @@ function reviewEmailSentence(result, { subject = null, company = "the company" }
   }
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0 }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0, registryPanel = null }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1257,6 +1257,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </div>
             </Panel>
             ) : null}
+            {/* Live only: the official-registry checks for a vendor. */}
+            {registryPanel && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile)}</Panel>}
             {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
@@ -1913,7 +1915,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, extraNav = [], onSignOut } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, registryPanel = null, extraNav = [], onSignOut } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -2180,7 +2182,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}

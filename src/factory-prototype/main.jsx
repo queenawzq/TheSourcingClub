@@ -7585,6 +7585,9 @@ export function FactoryOnboarding({
   extra = null,
   // Live only: drawn at the top of the step (what staff asked for).
   notice = null,
+  // Live only: the registration number field on the verification step,
+  // { label, hint, value, accessCode: { label, hint, value } | null, check }.
+  registration = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -7669,6 +7672,7 @@ export function FactoryOnboarding({
           documents={documents}
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
+          registration={registration}
         />
         {extra}
 
@@ -7718,7 +7722,7 @@ export function FactoryOnboarding({
 function FactoryOnboardingStep({
   step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
   certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
-  documents = {}, onDeleteDocument, termsAcceptance,
+  documents = {}, onDeleteDocument, termsAcceptance, registration = null,
 }) {
   const walkthroughDocuments = documents["factory-walkthrough"] ?? [];
   // Keys and option lists both resolve through the English copy, so neither
@@ -7952,6 +7956,7 @@ function FactoryOnboardingStep({
         onDeleteCertificate={onDeleteCertificate}
         registrationDocuments={documents["business-registration"] ?? []}
         onDeleteRegistration={onDeleteDocument}
+        registration={registration}
       />
     );
   }
@@ -8275,7 +8280,7 @@ function FactoryOnboardingStep({
 function OnboardingVerification({
   content, language, live, values = {},
   certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate,
-  registrationDocuments = [], onDeleteRegistration,
+  registrationDocuments = [], onDeleteRegistration, registration = null,
 }) {
   const isZh = language === "zh";
   const [certs, setCerts] = useState(() => live
@@ -8384,6 +8389,7 @@ function OnboardingVerification({
         documents={registrationDocuments}
         onDeleteDocument={onDeleteRegistration}
       />
+      {registration && <OnboardingRegistrationNumber registration={registration} />}
       <div className="certification-add-control">
         <label className="factory-onboarding-field">
           <span>{content.certificationLabel}</span>
@@ -8679,6 +8685,35 @@ function OnboardingAssetUploadCard({
       </button>
       <small>{accept}</small>
     </section>
+  );
+}
+
+/**
+ * Live only: the registration number under the registration upload, in the
+ * step's own field style. `check(value)` returns the error to show, or "".
+ */
+function OnboardingRegistrationNumber({ registration }) {
+  const [number, setNumber] = useState(registration.value ?? "");
+  const [code, setCode] = useState(registration.accessCode?.value ?? "");
+  const numberError = registration.check(number, "number");
+  const codeError = registration.accessCode ? registration.check(code, "accessCode") : "";
+  return (
+    <>
+      <label className="factory-onboarding-field">
+        <span>{registration.label}<b className="onboarding-required-mark" aria-hidden="true"> *</b></span>
+        <input name="registration-number" value={number} onChange={(event) => setNumber(event.target.value)} autoComplete="off" spellCheck={false} data-onboarding-required="true" data-valid={numberError ? "false" : "true"} />
+        <small>{registration.hint}</small>
+        <small className="factory-onboarding-validation-message">{numberError}</small>
+      </label>
+      {registration.accessCode && (
+        <label className="factory-onboarding-field">
+          <span>{registration.accessCode.label}</span>
+          <input name="registration-access-code" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="off" inputMode="numeric" data-onboarding-required="true" data-valid={codeError ? "false" : "true"} />
+          <small>{registration.accessCode.hint}</small>
+          <small className="factory-onboarding-validation-message">{codeError}</small>
+        </label>
+      )}
+    </>
   );
 }
 
