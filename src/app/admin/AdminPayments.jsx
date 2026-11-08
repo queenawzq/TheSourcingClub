@@ -61,7 +61,7 @@ function PaymentDate({ value }) {
 /** The row's own date for the section it is in. */
 const ROW_TIME = {
   payout: (row) => row.release_requested_at,
-  failed: (row) => row.refund_failed_at ?? row.failed_at,
+  failed: (row, attempt) => (providerFailed(row, attempt) ? attempt.updated_at : row.refund_failed_at ?? row.failed_at),
   clearing: (row, attempt) => (underway(row, attempt) ? attempt.created_at ?? row.release_requested_at : row.processing_at),
   held: (row) => row.confirmed_at,
 };
@@ -83,6 +83,12 @@ const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "pa
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
 /** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
 const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
+/**
+ * Wise or PayPal's last attempt failed (returned, refused) and the factory has
+ * not changed its details since: listed under Failed, with Pay again.
+ */
+const providerFailed = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "failed"
+  && !(row.payout_changed_at && attempt.updated_at && new Date(row.payout_changed_at) > new Date(attempt.updated_at));
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -407,7 +413,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
                 else if (needsStatement) setStep("statement");
                 else review();
               }}>
-        {`Pay with ${name}`}
+        {attempt?.status === "failed" ? `Pay again with ${name}` : `Pay with ${name}`}
       </button>
     </>
   );
@@ -531,9 +537,12 @@ export function useNarrow() {
 }
 
 /** Whether a row in this section has a note and buttons. */
-const rowActs = (section, row, attempt) => section === "payout" || (section === "clearing" && underway(row, attempt));
+const rowActs = (section, row, attempt) => section === "payout"
+  || (section === "clearing" && underway(row, attempt)) || (section === "failed" && providerFailed(row, attempt));
 
-function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns }) {
+function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns, notes }) {
+  // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
+  const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
   const acts = rowActs(section, row, attempt);
@@ -549,7 +558,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
       ) : null}
       {providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
-          {providerFor(row) ? "If you paid by bank instead: the bank's reference. " : "Bank reference (required). "}The factory and the brand can read it
+          Bank reference (required)
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
       ) : section === "payout" && paidByPayoneer(row) ? null : (
@@ -601,7 +610,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
           {section === "payout" && (paidByPayoneer(row) || paidByPaypal(row)) ? <FactoryContact row={row} /> : null}
         </td>
         <td>
-          <PaymentDate value={ROW_TIME[section](row, attempt)} />
+          <PaymentDate value={ROW_TIME[listedIn](row, attempt)} />
           {row.stripe_payment_intent_id && !(section === "clearing" && underway(row, attempt)) ? (
             <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)}
                target="_blank" rel="noreferrer">Open in Stripe</a>
@@ -609,7 +618,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
         </td>
         {narrow || !columns ? null : (
           <>
-            {section === "payout" ? <td className="payments-note-cell">{acts ? noteInput : null}</td> : null}
+            {notes ? <td className="payments-note-cell">{acts ? noteInput : null}</td> : null}
             <td className="admin-actions">{acts ? buttons : null}</td>
           </>
         )}
@@ -664,6 +673,8 @@ function providerCounts(rows, attempts) {
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
   const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id)));
+  // Only a payout has a note: a bank reference, a Payoneer ID.
+  const notes = columns && (id === "payout" || id === "failed");
   return (
     <section className="payments-queue" data-section={id}>
       <h2>{title} ({rows.length})</h2>
@@ -686,7 +697,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
                 <th>When</th>
                 {narrow || !columns ? null : (
                   <>
-                    {id === "payout" ? <th>Note</th> : null}
+                    {notes ? <th>Note</th> : null}
                     <th className="payments-action-heading">Actions</th>
                   </>
                 )}
@@ -694,7 +705,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
             </thead>
             <tbody>
               {rows.map((row) => (
-                <Row setups={setups} columns={columns} key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
+                <Row setups={setups} columns={columns} notes={notes} key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
                      narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed}
                      attempt={attempts?.get(row.payment_id) ?? null} wise={wise} paypal={paypal} onChanged={onChanged} />
               ))}
@@ -717,12 +728,14 @@ export function boardSections(rows, attempts = new Map()) {
   const cancelled = (row) => row.order_status === "cancelled";
   const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
   const moving = (row) => underway(row, attempts.get(row.payment_id));
+  const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {
-    payout: owed.filter((row) => !moving(row)),
+    payout: owed.filter((row) => !moving(row) && !refused(row)),
     // A cancelled order's held money is refunded automatically; only a refund
     // Stripe refused (20261108300000) needs a person.
     failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
-      || (["confirmed", "processing"].includes(row.state) && cancelled(row) && row.refund_failed_at)),
+      || (["confirmed", "processing"].includes(row.state) && cancelled(row) && row.refund_failed_at))
+      .concat(owed.filter(refused)),
     clearing: [...rows.filter((row) => row.state === "processing" && !cancelled(row)), ...owed.filter(moving)],
     held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row)),
   };
@@ -841,7 +854,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const tabs = TABS.filter(([id]) => id === "payout" || sections[id].length);
   // A queue that empties while open falls back to Payout owed.
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
-  const owedByWise = sections.payout.filter((row) => paidByWise(row) && attempts.get(row.payment_id)?.status !== "processing")
+  const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
   const wiseShort = wise?.balanceCents != null ? Math.max(0, owedByWise - wise.balanceCents) : 0;
   const wiseLine = wise ? (
