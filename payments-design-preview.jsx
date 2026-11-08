@@ -17,7 +17,7 @@ const rows = [
  {...base,payment_id:'preview-10',order_number:'TSC-000536',factory_name:'Guangzhou Leather',payout_method:'paypal',paypal_email:'gz-pay@example.com'},
  {...base,payment_id:'preview-11',order_number:'TSC-000537',factory_name:'Hangzhou Test Knit',state:'sent',sent_at:base.confirmed_at,release_requested_at:null,brand_reference:'WIRE-2207'},
  {...base,payment_id:'preview-12',order_number:'TSC-000538',factory_name:'Ningbo Loomworks',state:'released',failure_reason:'Refunded in Stripe'},
- {...base,payment_id:'preview-13',order_number:'TSC-000539',factory_name:'Atelier Minho',order_status:'cancelled',release_requested_at:null}
+ {...base,payment_id:'preview-13',order_number:'TSC-000539',factory_name:'Atelier Minho',order_status:'cancelled',release_requested_at:null,refund_failed_at:base.confirmed_at,refund_failure:'Paid by bank transfer, not through Stripe: refund it to the brand by bank.'}
 ];
 // Payouts underway with Wise and PayPal.
 const attempts = new Map([

@@ -416,17 +416,19 @@ select is(
     where payment_id = pg_temp.p18_pay('order_a', 'Balance')),
   false, 'and a payout owed to a factory with no Stripe account, to pay by bank');
 -- The overview card is staff's only prompt: it counts exactly what only a
--- person can move on the board (payouts owed, held on cancelled). Bank-wire
--- claims left the board on Nov 7 (20261108200000).
+-- person can move on the board (payouts owed, and a cancelled order's refund
+-- Stripe refused). Bank-wire claims left the board on Nov 7 (20261108200000);
+-- held money on a cancelled order is refunded automatically (20261108300000),
+-- so it counts only once its refund failed (20261108309000).
 select is(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()),
   (select count(*)::integer from public.admin_payment_board() b
     where (b.state = 'confirmed' and b.release_requested_at is not null)
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled')),
+       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)),
   'the overview counts every payment waiting on staff, payouts owed included');
 select ok(
-  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 2,
-  'which here includes the payout owed and the money held on the cancelled order');
+  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
+  'which here includes the payout owed');
 reset role;
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active)

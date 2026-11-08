@@ -23,8 +23,9 @@
  *                    payment Stripe is still confirming, or a payout on its
  *                    way through Wise or PayPal, with its Refresh and Cancel.
  *   Held             funded, the step not approved yet.
- *   Cancelled        money still held on a cancelled order: refund in Stripe.
- *                    The refund is recorded from Stripe and the row leaves.
+ *
+ * Money held on a cancelled order is refunded to the brand automatically
+ * (20261108300000), so the board has no tab for it (John, Nov 7).
  *
  * Phone width: the table scrolls sideways, so a row's note and buttons are
  * drawn on a line of their own under it, where they can be reached without
@@ -60,10 +61,9 @@ function PaymentDate({ value }) {
 /** The row's own date for the section it is in. */
 const ROW_TIME = {
   payout: (row) => row.release_requested_at,
-  failed: (row) => row.failed_at,
+  failed: (row) => row.refund_failed_at ?? row.failed_at,
   clearing: (row, attempt) => (underway(row, attempt) ? attempt.created_at ?? row.release_requested_at : row.processing_at),
   held: (row) => row.confirmed_at,
-  cancelled: (row) => row.confirmed_at ?? row.processing_at,
 };
 
 const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
@@ -582,7 +582,12 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
         <td>
           {section === "clearing" ? <ProviderCell row={row} attempt={attempt} />
             : row.payment_method_label || <span className="admin-sub">—</span>}
-          {section === "failed" && row.failure_reason
+          {section === "failed" && row.refund_failed_at ? (
+            <span className="admin-payout-details" data-testid="refund-failed">
+              <strong className="payout-method-heading">Refund to the brand failed</strong>
+              {row.refund_failure ? <span className="admin-sub">{row.refund_failure}</span> : null}
+            </span>
+          ) : section === "failed" && row.failure_reason
             ? <span className="admin-sub">{row.failure_reason}</span>
             : null}
           {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} stripeSetup={setups?.get(row.order_id)} /> : null}
@@ -714,10 +719,12 @@ export function boardSections(rows, attempts = new Map()) {
   const moving = (row) => underway(row, attempts.get(row.payment_id));
   return {
     payout: owed.filter((row) => !moving(row)),
-    failed: rows.filter((row) => row.state === "failed" && !cancelled(row)),
+    // A cancelled order's held money is refunded automatically; only a refund
+    // Stripe refused (20261108300000) needs a person.
+    failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
+      || (["confirmed", "processing"].includes(row.state) && cancelled(row) && row.refund_failed_at)),
     clearing: [...rows.filter((row) => row.state === "processing" && !cancelled(row)), ...owed.filter(moving)],
     held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row)),
-    cancelled: rows.filter((row) => ["confirmed", "processing"].includes(row.state) && !row.release_requested_at && cancelled(row)),
   };
 }
 
@@ -822,7 +829,7 @@ const STAFF_PAGES = [{ label: "Messages", icon: "messages", href: "/app.html/adm
 
 const TABS = [
   ["payout", "Payout owed"], ["held", "Held"], ["clearing", "Processing"],
-  ["failed", "Failed"], ["cancelled", "Held on cancelled orders"],
+  ["failed", "Failed"],
 ];
 
 /**
@@ -875,10 +882,6 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} /> : null}
-      {active === "cancelled" ? (
-        <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
-                 caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
-      ) : null}
 
     </main>
   );
