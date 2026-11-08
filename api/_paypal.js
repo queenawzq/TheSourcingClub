@@ -87,6 +87,9 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
     return href.split("/").pop() || null;
   };
 
+  const isDuplicate = (answer) => /already exists/i.test(answer.body?.message ?? "")
+    || (answer.body?.details ?? []).some((d) => d.field === "SENDER_BATCH_ID" || /already exists/i.test(d.issue ?? ""));
+
   return {
     provider: "paypal",
     /** The app's address, from the API's. */
@@ -107,6 +110,11 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
       if (answer.status < 300) return { batchId: answer.body.batch_header.payout_batch_id };
       const existing = batchIn(answer);
       if (existing) return { batchId: existing };
+      // It exists but PayPal didn't say where. Read as a refusal this would end the
+      // attempt, and the next press would pay again under a new key.
+      if (isDuplicate(answer)) {
+        throw new PayoutFailure("already_exists", "PayPal says this payment already exists but didn't say where. Check PayPal before paying it any other way.", { unsure: true, status: answer.status });
+      }
       if (answer.body?.name === "INSUFFICIENT_FUNDS") {
         throw new PayoutFailure("short_balance", "TSC's PayPal balance is too low for this. Add money in PayPal, then pay again.", { status: answer.status });
       }

@@ -1,6 +1,6 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
-import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_stripe.js";
+import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * Pay with Wise and Pay with PayPal, one shape behind both routes.
@@ -157,9 +157,9 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     target_payment: paymentId, which: "wise", paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
   const payoutId = claim.payout_id;
+  let transferId = claim.provider_ref;
 
   try {
-    let transferId = claim.provider_ref;
     if (!transferId) {
       const balance = await wise.balance(claim.currency);
       if (balance.cents < Number(claim.amount_cents)) {
@@ -225,11 +225,12 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     }
     // A certain "no" before there's a transfer ends the attempt: nothing went,
     // and the next press gets a new key rather than replaying this answer.
+    // Only when we know that: Wise gave us a transfer whose id may not have saved.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
-    if (!again.data?.provider_ref) {
+    if (!transferId && !again.error && !again.data?.provider_ref) {
       await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
     } else {
-      await record(db, payoutId, { sentence: failure.message });
+      await record(db, payoutId, { sentence: failure.message, new_ref: transferId ?? undefined });
     }
     throw failure;
   }
@@ -261,11 +262,13 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
     target_payment: paymentId, which: "paypal", paid_to_changed_at: changedAt, cny_confirmed: false,
   }));
   const payoutId = claim.payout_id;
+  let batchId = null;
   try {
     const paid = await paypal.pay({
       key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
       currency: claim.currency, reference: `TSC ${claim.order_number}`,
     });
+    batchId = paid.batchId;
     await record(db, payoutId, { new_ref: paid.batchId, new_stage: "sent", keep_lease: true });
     const status = await paypal.status(paid.batchId);
     const state = await applyStatus({ db, payoutId, status, tellOnFailure: status.raw === "RETURNED" ? CHECK_PAYPAL : null });
@@ -275,8 +278,9 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
       await record(db, payoutId, { sentence: failure.message });
       throw failure;
     }
+    // PayPal took the batch once we hold its id, saved or not: never cancelled, never paid again.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
-    if (!again.data?.provider_ref) {
+    if (!batchId && !again.error && !again.data?.provider_ref) {
       const invalid = /address isn't valid/.test(failure.message);
       if (invalid) {
         await finish(db, payoutId, "failed", {
@@ -286,7 +290,7 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
         await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
       }
     } else {
-      await record(db, payoutId, { sentence: failure.message });
+      await record(db, payoutId, { sentence: failure.message, new_ref: batchId ?? undefined });
     }
     throw failure;
   }
@@ -295,6 +299,41 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
 // ---------------------------------------------------------------------------
 // Both
 // ---------------------------------------------------------------------------
+
+const CHARGE_UNCHECKED = "We couldn't check the brand's payment just now, so nothing was sent. Press again in a minute.";
+
+/**
+ * Before Wise or PayPal is asked to pay: is the brand's money still there? A
+ * refund or dispute in Stripe reaches us by a webhook that can be late or lost,
+ * and these payouts come from TSC's own balance, so nothing else would stop
+ * them (Stripe's own transfer has its charge to refuse on; api/_stripe.js checks
+ * the same). A press whose PayPal answer was lost goes ahead: only it can find
+ * out what PayPal did, and it can't pay twice.
+ */
+export async function refuseIfChargeReturned({ db, paymentId, build = stripeFrom }) {
+  const live = await db.from("provider_payouts").select("provider, provider_ref")
+    .eq("payment_id", paymentId).eq("status", "processing").maybeSingle();
+  if (live.data?.provider === "paypal" && !live.data.provider_ref) return;
+  const { data: payment, error } = await db.from("order_payments").select("stripe_charge_id").eq("id", paymentId).maybeSingle();
+  if (error) throw new PayoutFailure("database", CHARGE_UNCHECKED);
+  if (!payment?.stripe_charge_id) return;
+  let stripe;
+  let charge;
+  try {
+    stripe = build();
+    if (!stripe) return;
+    charge = await stripe.charges.retrieve(payment.stripe_charge_id);
+  } catch (failure) {
+    log("charge check", failure, { paymentId });
+    throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+  }
+  if (charge.disputed) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
+  if (Number(charge.amount_refunded) > 0) {
+    // Recorded as the webhook would have, so the board moves on from it.
+    await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { paymentId }));
+    throw new PayoutFailure("charge_refunded", "The brand's payment was refunded, so there is nothing to pay out. Reload the board.");
+  }
+}
 
 export async function cancelAttempt({ client, caller, db, paymentId }) {
   const held = await must(caller.rpc("lease_provider_payout", { target_payment: paymentId }));
@@ -445,6 +484,7 @@ export function payoutRoute({ provider, build, label, settings }) {
       const board = await must(caller.rpc("admin_payment_board"));
       const row = (board ?? []).find((r) => r.payment_id === paymentId);
       if (!row) return reply(response, 404, { error: "That payment isn't on the board any more. Reload the page." });
+      if (action === "pay") await refuseIfChargeReturned({ db, paymentId });
 
       if (provider === "wise") {
         if (action === "preview") {
