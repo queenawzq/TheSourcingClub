@@ -158,6 +158,8 @@ export default defineConfig(({ command, mode }) => ({
         prototype: "prototype.html",
         factoryPrototype: "factory-prototype.html",
         adminPrototype: "admin-prototype.html",
+        // Queena's sample-row view of the staff payments board (#79): no database.
+        paymentsDesignPreview: "payments-design-preview.html",
         factorySurvey: "factory-survey.html",
         factorySurveyThankYou: "factory-survey-thank-you.html"
       }
