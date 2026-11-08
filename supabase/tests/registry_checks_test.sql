@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(57);
 
 -- The rules -------------------------------------------------------------------
 select is(public.registration_number_problem('CN', '91350100M000100Y43'), null, 'CN: published example passes');
@@ -292,6 +292,27 @@ select is(
 select is(
   (select state from public.admin_registry_states() where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
   'found', 'the sole proprietor checked on its documents is found'
+);
+
+-- Staff "VIES found" against VIES's own "not registered" needs confirming.
+reset role;
+insert into public.orgs (id, type, name, slug) values
+  ('d8600000-0000-0000-0000-0000000000f3', 'factory', 'P86 Porto', 'pgtap86-porto');
+insert into public.company_registrations (org_id, country_code, number) values
+  ('d8600000-0000-0000-0000-0000000000f3', 'PT', '509123457');
+select lives_ok(
+  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f3', '509123457', 'vies', 'not_found')$$,
+  'VIES says the number is not registered'
+);
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f3', 'vies', 'found', 'Looks right')$$,
+  '22023', null, 'staff cannot record VIES "found" against it without confirming'
+);
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f3', 'vies', 'found', 'Checked VIES myself: P86 Porto LDA', true)$$,
+  'and can, confirming they checked VIES themselves'
 );
 
 reset role;

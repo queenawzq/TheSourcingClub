@@ -75,7 +75,7 @@ export default function RegistryPanel({ orgId, onChange }) {
     setBusy(true);
     setError(null);
     try {
-      await recordRegistryCheck(orgId, { source, result, note: note.trim() });
+      await recordRegistryCheck(orgId, { source, result, note: note.trim(), confirmed: Boolean(viesDisagrees && overrule) });
       setNote("");
       setResult("found");
       setOverrule(false);
@@ -126,6 +126,7 @@ export default function RegistryPanel({ orgId, onChange }) {
 
       <div className="admin-registry-actions">
         {registration?.number && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("number", registration.number)}>{copied === "number" ? "Copied" : country === "TR" ? "Copy VKN" : "Copy number"}</button>}
+        {registration?.accessCode && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("code", registration.accessCode)}>{copied === "code" ? "Copied" : "Copy access code"}</button>}
         {registration?.registrationLetterNumber && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("letter", registration.registrationLetterNumber)}>{copied === "letter" ? "Copied" : "Copy letter number"}</button>}
         {detail.title && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("title", detail.title)}>{copied === "title" ? "Copied" : "Copy title"}</button>}
         {country === "PT" && registration?.number && <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={vies}>Check on VIES</button>}
@@ -189,7 +190,7 @@ export default function RegistryPanel({ orgId, onChange }) {
             </label>
           </div>
         )}
-        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || !registration || !note.trim() || (viesDisagrees && !overrule)} title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : undefined}>
+        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || !registration || !note.trim() || (viesDisagrees && !overrule)} title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : viesDisagrees && !overrule ? "Tick that you checked VIES yourself" : undefined}>
           Record check
         </button>
       </form>

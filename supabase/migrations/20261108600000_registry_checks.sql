@@ -240,7 +240,10 @@ create or replace function public.admin_record_registry_check(
   target_org uuid,
   source     text,
   result     text,
-  note       text default null
+  note       text default null,
+  -- Staff say they looked at VIES themselves, when VIES's own latest answer
+  -- on this number was not "registered".
+  confirmed  boolean default false
 )
 returns public.registry_checks
 language plpgsql
@@ -270,6 +273,18 @@ begin
 
   select * into reg from public.company_registrations r where r.org_id = target_org;
 
+  if source = 'vies' and result = 'found' and not coalesce(confirmed, false) and exists (
+    select 1 from (
+      select v.result from public.registry_checks v
+       where v.org_id = target_org and v.source = 'vies' and v.automatic
+         and v.number_checked is not distinct from reg.number
+       order by v.checked_at desc limit 1) last
+     where last.result <> 'registered')
+  then
+    raise exception 'VIES itself did not find this number: confirm you checked VIES yourself'
+      using errcode = '22023';
+  end if;
+
   insert into public.registry_checks (org_id, country_code, number_checked, source, result, note, automatic, checked_by)
   values (target_org, reg.country_code, reg.number, source, result, nullif(trim(coalesce(note, '')), ''), false, auth.uid())
   returning * into saved;
@@ -277,8 +292,8 @@ begin
 end;
 $$;
 
-revoke all on function public.admin_record_registry_check(uuid, text, text, text) from public, anon;
-grant execute on function public.admin_record_registry_check(uuid, text, text, text) to authenticated;
+revoke all on function public.admin_record_registry_check(uuid, text, text, text, boolean) from public, anon;
+grant execute on function public.admin_record_registry_check(uuid, text, text, text, boolean) to authenticated;
 
 -- The server's own record (VIES). Service role only: a client that could call
 -- it would write its own "found".

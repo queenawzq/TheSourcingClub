@@ -87,9 +87,9 @@ export async function registryApprovalBlock(orgId) {
 }
 
 /** Staff: record what an official source showed. */
-export async function recordRegistryCheck(orgId, { source, result, note }) {
+export async function recordRegistryCheck(orgId, { source, result, note, confirmed = false }) {
   return unwrap(
-    await supabase.rpc("admin_record_registry_check", { target_org: orgId, source, result, note: note || null }),
+    await supabase.rpc("admin_record_registry_check", { target_org: orgId, source, result, note: note || null, confirmed }),
     "record the check",
   );
 }
