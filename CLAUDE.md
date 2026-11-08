@@ -309,7 +309,7 @@ The app calls `<project>.supabase.co` directly. Only when that fails does it go 
 - **Realtime stays direct.** While the socket is down, every `postgres_changes` listener is run every 20 s with `{ timed: true }` and no payload (`src/lib/supabase.js`). A listener that reads `payload.new` must handle that.
 - **Supabase Auth's per-IP limits see Vercel's address on the fallback.** `Sb-Forwarded-For` needs the secret key, so it can't go in a rewrite. `claim_email_probe` is unaffected: `/api` has the real IP. Each move to the fallback is counted in `auth_connection_failures` with stage `fallback`.
 - **On the fallback a factory's bank number passes through Vercel's network.** Encrypted both ways, no code of ours touches it, `api/` still never sees it.
-- **A password-reset link in an email still opens the Supabase host directly.** Not covered.
+- **A password-reset link opens our own page, not the Supabase host** (`supabase/templates/recovery.html`, `src/lib/recovery-link.mjs`). It goes to the allow-listed address the person asked from with the token in the fragment (never sent to a server, so not in Vercel's logs and not usable by a mail scanner), and `AuthProvider` verifies it with `verifyOtp`, a fetch that takes the fallback like any other. The token is single-use and expires in an hour, as before; unlike the old `?code=` link it no longer needs the browser that asked, so it also opens on a phone. Old `?code=` links still work (`detectSessionInUrl`). e2e's "LOCKED OUT, BEHIND A BLOCK" refuses the direct host and resets through `/sb`.
 - **Chromium itself resends a POST when a reused connection closes before any reply**, up to 7 times seen locally. Nothing in the page can stop it. It's why a write that must not double needs its own guard in the database.
 - `src/lib/older-browsers.mjs` fills `Object.hasOwn`, `.at` and `crypto.randomUUID`, which Vite doesn't: it lowers syntax to Chromium 87 and adds no functions. `:has()` (40 rules) and `@container` (11) still don't work below Chromium 105.
 
@@ -370,6 +370,7 @@ function when it is off. Things that will bite:
 
 A thread belongs to the **request or order it is about**, never to a pair of companies. That is what makes visibility free: `can_see_rfq()` and `is_order_party()` already answer who may read it, so there is no fourth set of rules to keep in step. One thread per order; one per `(rfq, factory)`, because asking four factories is four conversations.
 
+- **One send is one message, whatever the network does** (`20261107580000`). Chromium resends a POST by itself when a connection closes before the reply; on production one message was saved seven times, and nobody can delete a message. `sendMessage` names each send with a fresh `client_id`, a unique index on `(sender_user_id, client_id)` refuses the repeat (23505) before any trigger after it runs, and `insertOnce` then, or when no answer came at all, reads the row back by that name. Rows without a name (the site live during the deploy) are never refused. Anything else that inserts messages from a browser should send a `client_id` too.
 - **Sending is a plain insert**, unlike almost everything else here. The payload is the sender's own words, so a `with check` on `is_thread_party` plus `sender_org_id`/`sender_user_id` says nearly everything worth saying. `delivery` is not the sender's: every insert by a signed-in user is saved as `checking` (trigger, `20261013000500`), and only `/api/screen-message` delivers it. A send is never refused. Messages have no update or delete policy at all: changing the record of what you said is the opposite of what a conversation is for once money is involved.
 - **Off-platform contact details are blocked before a contract and delivered after it** (`20261108100000`; the call of Nov 7, Upwork's rule; no staff review). `delivery` is `checking` → `delivered` | `blocked`, and only functions move it. A contract is `thread_has_contract()`: the order's own thread, or a request thread whose factory holds an order on that request. Any order state counts. `held` and `rejected` remain from before (existing held messages became `blocked`); `release_held_message`, `reject_held_message` and `admin_message_queue()` stay deployed and find nothing.
   - `record_message_screening` is the server's verdict, granted to `service_role` alone, because a client that could call it would deliver its own message unchecked. The server still passes `held` for "flagged"; **the database decides blocked or delivered**, so `message_screenings.outcome = 'held'` means the screen found something, whatever happened next.
@@ -803,7 +804,8 @@ and the backend answers to it rather than the other way round.
   the lookup decides what we *say*, never what we *do*.
 - **A one-time code is still emailed, but only for recovery.** Nothing signs in
   with a code any more. The reset link lands on `app.html?reset=1`, which is
-  allow-listed in `config.toml` as an exact URL.
+  allow-listed in `config.toml` as an exact URL. The link carries `#token_hash=…&type=recovery`, read and removed
+  from the address by `takeRecoveryToken` before the session restores.
 - **Google is coded and hidden.** The design shows the button unconditionally;
   it appears only once `VITE_GOOGLE_AUTH_ENABLED=true`, because a button that
   opens Google and returns an error is worse than one that is not there. To

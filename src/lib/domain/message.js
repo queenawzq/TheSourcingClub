@@ -154,7 +154,7 @@ export async function markRead(threadId) {
  * a file that never came. If none arrives, nothing is sent and the sender is
  * told why. Nothing typed is lost that way, because nothing was typed.
  */
-export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
+export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved, clientId = crypto.randomUUID() }) {
   const typed = (body ?? "").trim();
   if (!typed && !files.length) throw new Error("there is nothing to send");
   // The picker offers only what may go; this is for anything that got past
@@ -190,19 +190,7 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
   }
   const text = typed || fileOnlyBody(uploadedFirst.map((doc) => ({ name: doc.file_name })));
 
-  const message = unwrap(
-    await supabase
-      .from("messages")
-      .insert({
-        thread_id: threadId,
-        sender_org_id: orgId,
-        sender_user_id: userId,
-        body: text,
-      })
-      .select()
-      .single(),
-    "send your message",
-  );
+  const message = await insertOnce({ threadId, orgId, userId, body: text, clientId });
   onSaved?.(message);
 
   // With words typed, the files go after the message, so a failed upload
@@ -228,6 +216,51 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
 
   const screened = await screenMessage(message.id);
   return { message, failed, delivery: screened?.delivery ?? message.delivery };
+}
+
+/**
+ * Write the message row once, however often the request reaches the database.
+ *
+ * Chromium resends a POST by itself when a connection closes before the reply
+ * (seven copies of one message on production). The send is named by
+ * `clientId`, and the database refuses a second row with the same name for
+ * the same person (23505, `messages_one_per_send`). Then, or when no answer
+ * came back at all, the row may already exist: it is read back by that name,
+ * and only if it is not there did the send fail.
+ */
+export async function insertOnce({ threadId, orgId, userId, body, clientId }) {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      thread_id: threadId,
+      sender_org_id: orgId,
+      sender_user_id: userId,
+      body,
+      client_id: clientId,
+    })
+    .select()
+    .single();
+  if (!error) return data;
+  try {
+    const saved = await savedSend(userId, clientId);
+    if (saved) return saved;
+  } catch {
+    // Unreadable is not "saved": the original failure is the answer.
+  }
+  return unwrap({ data, error }, "send your message");
+}
+
+/** The caller's message named `clientId`, if it was saved. */
+export async function savedSend(userId, clientId) {
+  return unwrap(
+    await supabase
+      .from("messages")
+      .select()
+      .eq("sender_user_id", userId)
+      .eq("client_id", clientId)
+      .maybeSingle(),
+    "send your message",
+  );
 }
 
 /**

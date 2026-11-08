@@ -19,6 +19,7 @@
  * SUPABASE_SERVICE_KEY.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 /** Ask the CLI for the running stack's URL and keys. */
@@ -1437,6 +1438,27 @@ console.log("\nphase 3 — the order runs");
       screened.delivery === "delivered" && screened.method === "pattern_only"
         ? ok("the screen delivers an ordinary message (no model key: pattern_only)")
         : fail(`the screen answered ${JSON.stringify(screened)}`);
+
+      // One send is one message (20261107580000): the same request reaching
+      // PostgREST twice, as Chromium's own resend does, saves one row, and
+      // the browser finds it by the name it gave the send.
+      const sendName = randomUUID();
+      const once = {
+        thread_id: threadId, sender_org_id: order.brand_org_id, sender_user_id: brand.id,
+        body: "Resent by the network, saved once.", client_id: sendName,
+      };
+      const { error: firstSend } = await brand.client.from("messages").insert(once).select("id").single();
+      const { error: resend } = await brand.client.from("messages").insert(once).select("id").single();
+      const { data: onceRows } = await brand.client.from("messages").select("id").eq("sender_user_id", brand.id).eq("client_id", sendName);
+      !firstSend && resend?.code === "23505" && (onceRows ?? []).length === 1
+        ? ok("the same send reaching the database twice saves one message, and is found by its name")
+        : fail(`a resent insert: first ${firstSend?.message ?? "ok"}, second ${resend?.code ?? "saved"}, ${(onceRows ?? []).length} rows`);
+      const { error: otherName } = await brand.client.from("messages").insert({ ...once, client_id: randomUUID() }).select("id").single();
+      const { error: noName1 } = await brand.client.from("messages").insert({ ...once, client_id: undefined }).select("id").single();
+      const { error: noName2 } = await brand.client.from("messages").insert({ ...once, client_id: undefined }).select("id").single();
+      !otherName && !noName1 && !noName2
+        ? ok("a new send with the same words is a new message, and a send with no name (the live site's) still saves")
+        : fail("a different send was refused", otherName ?? noName1 ?? noName2);
 
       const rescreened = await screenAs(brand.client, sent?.id);
       rescreened.delivery === "delivered" && rescreened.method === null
