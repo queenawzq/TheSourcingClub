@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
@@ -409,8 +409,8 @@ export function AuthProvider({ children }) {
         }
 
         // The signup screen offers no "keep me logged in": a new account stays
-        // signed in, in this browser.
-        setKeepSignedIn(true);
+        // signed in, in this browser, unless another tab keeps its own there.
+        keepNewAccount();
         const address = email.trim().toLowerCase();
         const answered = await answerInTime(supabase.auth.signUp({
           email: address,

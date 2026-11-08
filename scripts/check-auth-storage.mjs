@@ -56,6 +56,13 @@ function signOut(tab) {
   tab.storage.removeItem(KEY);
   notify(tab, null);
 }
+// signUpWithPassword: the sign-up form has no "Keep me logged in" box.
+function signUp(tab, user) {
+  tab.keepNewAccount(KEY);
+  const session = { access_token: `${user}-${Math.random()}`, user };
+  tab.storage.setItem(KEY, JSON.stringify(session));
+  notify(tab, session);
+}
 const reload = (tab) => JSON.parse(tab.storage.getItem(KEY) ?? "null")?.user ?? null;
 
 let failures = 0;
@@ -104,6 +111,40 @@ check(reload(a) === null, "and it stays out, rather than taking on the kept sess
 signOut(c);
 check(reload(d) === null && d.shown === null, "signing out of the kept session signs out the tabs sharing it");
 check(reload(b) === "demo-factory", "but not an unticked tab");
+
+// Signing up in one tab never changes another tab's account (Nov 7: three
+// testers on one machine; one's onboarding answers went into another's company).
+const fresh = () => { browser.localStorage.map.clear(); browser.tabs = []; };
+fresh();
+const only = openTab();
+signIn(only, "tester-x", false);
+const joiner = openTab();
+signUp(joiner, "tester-y");
+check(only.shown === "tester-x" && reload(only) === "tester-x", "a sign-up next door leaves a this-tab-only tab on its account");
+check(joiner.shown === "tester-y" && reload(joiner) === "tester-y", "and the new account is signed in, in its own tab");
+check(JSON.parse(browser.localStorage.getItem(KEY)).user === "tester-y", "a new account with nobody kept is kept, like a ticked sign-in");
+const joinerTwo = openTab();
+check(joinerTwo.shown === "tester-y", "so a new tab opens as the new account");
+
+fresh();
+const kept = openTab();
+signIn(kept, "tester-x", true);
+const keptTwo = openTab();
+check(keptTwo.shown === "tester-x", "(a second tab shares the kept sign-in)");
+// The signup form shows beside a kept sign-in in a tab that signed in "this
+// tab only" and signed out again: it reads its own, empty, sessionStorage.
+const signer = openTab();
+signIn(signer, "tester-z", false);
+signOut(signer);
+check(signer.shown === null && kept.shown === "tester-x", "(a this-tab-only tab signed out beside it)");
+signUp(signer, "tester-y");
+check(kept.shown === "tester-x" && reload(kept) === "tester-x", "a sign-up next door leaves a kept tab on its account");
+check(keptTwo.shown === "tester-x" && reload(keptTwo) === "tester-x", "and every tab sharing the kept sign-in");
+check(signer.shown === "tester-y" && reload(signer) === "tester-y", "while the new account is signed in, in its own tab only");
+refresh(signer);
+check(JSON.parse(browser.localStorage.getItem(KEY)).user === "tester-x" && kept.shown === "tester-x",
+  "and its token refresh does not overwrite the kept sign-in");
+fresh();
 
 // The password-reset link opens in a new tab and needs the PKCE verifier.
 const e = openTab();

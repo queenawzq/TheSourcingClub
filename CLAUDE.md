@@ -789,6 +789,7 @@ and the backend answers to it rather than the other way round.
   the demo buttons once omitted it and kept every session for the whole
   browser. The PKCE code verifier always goes to `localStorage`, since the reset
   link opens in a new tab. `npm run check:auth` runs it as several tabs.
+  Sign-up has no box: a new account is kept unless the browser already keeps another sign-in, then it stays in its tab (`keepNewAccount`), and Realtime always reads the tab's own token.
 - **Signing out clears the stored token before awaiting the network call.**
   The login screen renders the instant the status flips — deliberately, since
   clearing orgs while the shell thinks it is signed in crashes it to a blank

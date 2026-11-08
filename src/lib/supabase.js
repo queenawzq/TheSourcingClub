@@ -36,6 +36,9 @@ const sessionStore = createSessionStorage(globalThis);
 
 export const setKeepSignedIn = sessionStore.setKeepSignedIn;
 
+/** Before a sign-up: kept, unless the browser already keeps someone else. */
+export const keepNewAccount = () => sessionStore.keepNewAccount(supabase.auth.storageKey);
+
 /** Whether an auth event's session is this tab's own, not one broadcast from another tab. */
 export function isThisTabsSession(session) {
   return sessionStore.isThisTabsSession(supabase.auth.storageKey, session);
@@ -130,6 +133,12 @@ export const supabase = isConfigured
   : null;
 
 if (supabase) {
+  // supabase-js gives Realtime the token of every sign-in broadcast by another
+  // tab, including one AuthProvider ignores. Realtime reads this tab's own
+  // session instead, so a this-tab-only tab never listens as someone else.
+  const setRealtimeAuth = supabase.realtime.setAuth.bind(supabase.realtime);
+  supabase.realtime.setAuth = () => setRealtimeAuth();
+
   // A file's link goes straight into an <img> or a new tab, never through
   // fetch, so it is built for whichever way is open when it is asked for.
   const openBucket = supabase.storage.from.bind(supabase.storage);
