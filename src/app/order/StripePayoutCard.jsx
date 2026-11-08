@@ -9,6 +9,9 @@ import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
+const STRIPE_FORM_NOTE = "Stripe, TSC's payment partner, securely verifies your company and bank details in its form on this page, and may show TSC's registered company name. TSC never stores those details.";
+const EXPRESS_FORM_NOTE = "Stripe, TSC's payment partner, holds your company and bank details. It may ask you to confirm with a code in a small Stripe window, and may show TSC's registered company name.";
+
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
@@ -834,7 +837,7 @@ export default function StripePayoutCard({
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
           <button className="primary-btn" type="button" disabled={busy} onClick={withdraw}>{busy ? "Withdrawing…" : `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
         </>}>
-          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your {withdrawal.previous ? "previous account’s" : "default"} bank account.</p>
+          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your {withdrawal.previous ? "previous account’s" : "default"} bank account. Bank processing time depends on your bank and country.</p>
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}
@@ -908,17 +911,18 @@ export default function StripePayoutCard({
 
       {modal === "add" ? (
         <PayoutModal title="Add a withdrawal method" onClose={closeModal}>
+          <p className="payout-modal-intro">Choose where released earnings are sent.</p>
           <div className="payout-method-options">
             <article className="payout-method-option">
               <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-              <div className="payout-option-copy"><div className="payout-option-title"><strong>Bank account</strong></div></div>
+              <div className="payout-option-copy"><div className="payout-option-title"><strong>Bank account</strong></div><p>Standard payouts directly to your bank. Timing and availability depend on your country.</p></div>
               <button className="primary-btn compact-btn" type="button" data-testid="add-bank-account" disabled={busy} onClick={() => startAdd("bank")}>Set up</button>
             </article>
             <article className="payout-method-option">
               <div className="payout-option-icon payout-card-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>
               </div>
-              <div className="payout-option-copy"><div className="payout-option-title"><strong>Debit card</strong></div></div>
+              <div className="payout-option-copy"><div className="payout-option-title"><strong>Debit card</strong></div><p>Receive eligible payouts on a supported debit card. Stripe confirms availability, timing, and fees.</p></div>
               <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-card" disabled={busy} onClick={() => startAdd("card")}>Set up</button>
             </article>
           </div>
@@ -1030,6 +1034,7 @@ export default function StripePayoutCard({
             {manualBusy ? "Saving…" : "Save"}
           </button>
         </>}>
+          <p className="payout-modal-intro">Use an account in your company’s name. TSC uses these bank details to pay your released earnings.</p>
           {manualFieldsContent}
         </PayoutModal>
       ) : null}
@@ -1040,7 +1045,7 @@ export default function StripePayoutCard({
           onClose={closeModal}
           actions={<><button className="secondary-btn" type="button" onClick={closeModal}>Not now</button><button className="primary-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Continue</button></>}
         >
-          <p className="payout-modal-intro">Your setup link expired. Continue where you left off.</p>
+          <p className="payout-modal-intro">Your Stripe setup link expired or was already used, so Stripe sent you back here. Continue to pick up where you left off.</p>
         </PayoutModal>
       ) : null}
 
@@ -1049,6 +1054,8 @@ export default function StripePayoutCard({
           actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Not now</button>
             <button className="primary-btn" type="button" disabled={busy} onClick={startUpgrade}>{busy ? "Starting…" : "Continue verification"}</button>
             <button className="secondary-btn" type="button" disabled={busy} onClick={finishUpgrade}>Check and finish</button></>}>
+          <p className="payout-modal-intro">After a one-time verification, add, replace and remove bank accounts directly on TSC. Stripe requires a new payout account; confirm your business and bank details again and accept its agreement.</p>
+          <p className="payout-security-copy">Your existing balance stays in your current account. New earnings are held by TSC until the upgrade finishes. Withdraw any remaining balance and wait for it to arrive. Your payout history is kept.</p>
           {balance?.upgrade ? <p role="status">{balance.upgrade.verified ? "Replacement account verified." : "Complete verification for the replacement account."} {balance.upgrade.unsettled ? "Your old account still has funds or a withdrawal settling. Withdraw what's available, then check again." : "The old account is settled."}</p> : null}
           {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
         </PayoutModal>
@@ -1056,6 +1063,7 @@ export default function StripePayoutCard({
       {modal === "upgrade-onboarding" ? (
         <PayoutModal wide title="Verify your replacement payout account" onClose={closeStripeForm}
           actions={<button className="secondary-btn" type="button" onClick={closeStripeForm}>Close</button>}>
+          <p className="payout-security-copy">Your current account and balance stay available until this account is verified and the old account has settled. {STRIPE_FORM_NOTE}</p>
           <StripeConnectEmbed org={org} upgrade form="onboarding" onExit={closeStripeForm} />
         </PayoutModal>
       ) : null}
@@ -1067,6 +1075,7 @@ export default function StripePayoutCard({
           onClose={closeStripeForm}
           actions={<button className="secondary-btn" type="button" onClick={closeStripeForm}>Close</button>}
         >
+          <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p>
           <StripeConnectEmbed org={org} country={supported ? country : undefined} form="onboarding" onExit={closeStripeForm} />
         </PayoutModal>
       ) : null}
@@ -1081,6 +1090,7 @@ export default function StripePayoutCard({
           {handover ? <p className="payout-modal-intro">{handover.intent === "add"
             ? "Under “Payout details”, add the bank account or card, then choose Done."
             : `Under “Payout details”, remove the account ending in ${handover.target?.last4}, then choose Done.`}</p> : null}
+          <p className="payout-security-copy">{managed ? STRIPE_FORM_NOTE : EXPRESS_FORM_NOTE}</p>
           <StripeConnectEmbed org={org} form="account" />
         </PayoutModal>
       ) : null}

@@ -187,7 +187,9 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     workDetails: [
       ["Contract title", title],
       ["Scope of work", order.agreed_scope || order.rfqs?.brief || "As described in the request."],
-      ["Approvals", approvals.length ? approvals.join(", ") : "None"],
+      ["Approvals, revisions, and delivery", approvals.length
+        ? `The brand signs off ${approvals.join(", ")} before the next step opens.`
+        : "No step needs the brand's sign-off."],
     ],
     acceptedQuote: [
       [counterpartyLabel, factoryLine],
@@ -202,6 +204,8 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     paymentTerms: [
       ["Payment split", paymentTerm || `${order.deposit_pct}% deposit · ${order.balance_pct}% balance`],
       ["Sample payment", order.sample_subtotal_cents ? `Samples quoted at ${money(order.sample_subtotal_cents)}` : "No paid samples"],
+      ["Step payments", "A paid step is funded before work begins and held until the brand approves it. A payment-only step is paid to the factory once funded."],
+      ["Release rule", "The next step opens on approval, or on funding a payment-only step; it does not wait for the payout."],
       ["Shipping / incoterms", incoterm || "Not stated in the quote"],
     ],
     attachments: (attachments ?? []).map((doc) => doc.file_name),

@@ -153,14 +153,8 @@ for (const rule of [
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
 
-// Provider internals stay hidden, except the requested bank-option attribution.
-for (const file of ["StripePayoutCard.jsx", "PayoutDetails.jsx", "PayoutSetupSteps.jsx", "AddPayoutMethodForm.jsx", "payment-summary.mjs"]) {
-  const code = readFileSync(new URL(`../src/app/order/${file}`, import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
-    if (file === "StripePayoutCard.jsx" && text === "(Processed with Stripe)") continue;
-    assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
-  }
-}
+// Provider setup/security explanations are deliberately visible again (Nov 8).
+// Keep validating earnings calculations above; provider names in guidance are
+// explanatory copy, not a regression in the money figures.
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board");

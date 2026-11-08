@@ -802,7 +802,7 @@ export default function LiveComposer({ org, rfqId }) {
     >
       {reorder && (
         <p className="composer-note" data-testid="reorder-note">
-          Reordering {reorder.title} with {reorder.factoryName}.
+          Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
         </p>
       )}
       <ReviewScreen

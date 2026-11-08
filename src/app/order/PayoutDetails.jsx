@@ -12,6 +12,7 @@ import { payoutUsdMinor, payoutUsdTotal } from "../../lib/payout-display.mjs";
  * China…), with staff marking it paid by bank as the fallback. Brands never see
  * these details. No screen here names Stripe.
  */
+import PaymentHelp from "./PaymentHelp.jsx";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
@@ -297,10 +298,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : !isOwner ? "owner" : "failed";
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
   const earningsSummary = [
-    ["Total earnings", summary.total],
-    ["Awaiting approval", summary.approval],
-    ["Pending", summary.pending],
-    ["Paid out", summary.paid],
+    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval; excludes unapproved funds held on cancelled orders."],
+    ["Awaiting approval", summary.approval, "Funds TSC holds until the brand approves the step. Once approved, they move to Pending until paid out."],
+    ["Pending", summary.pending, "Approved earnings not yet paid out, including transfers still processing."],
+    ["Paid out", summary.paid, "Step payments TSC has paid to your payout account. Withdrawals are listed below. Figures use estimated USD equivalents when another currency is involved."],
   ];
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
@@ -317,7 +318,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       // A brand pays the step plus TSC's fee; the factory earns the step.
-      note: heldOnCancelledOrder(row) ? "Returned to the brand." : null,
+      note: [
+        row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+        heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
+      ].filter(Boolean).join(" "),
       status: earningStatus(row),
       amount: factoryAmount(row),
       currency: row.currency,
@@ -429,11 +433,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           </label>
           {earningsError ? <p className="projects-empty projects-error" role="alert">{earningsError.message}</p> : <>
           <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
-            {earningsSummary.map(([label, amounts], index) => (
+            {earningsSummary.map(([label, amounts, help], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
                 <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
                   : <span className="payment-currency-value">{formatMoney(payoutUsdTotal(amounts, stripeBalance?.displayFx), "USD")}</span>}</strong>
-                <span className="payment-metric-label">{label}</span>
+                <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
             ))}
           </div>
@@ -441,7 +445,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
           <section className="payout-transactions-section" aria-labelledby="transactions-heading">
             <div className="payout-transactions-header">
-              <h2 id="transactions-heading">Transactions</h2>
+              <div><h2 id="transactions-heading">Transactions</h2>
+                <p>Earnings added to your balance and withdrawals sent to your payout account.</p></div>
               <div className="payout-transaction-filters" role="group" aria-label="Filter transactions">
                 {[["all", "All"], ["earning", "Earnings"], ["withdrawal", "Withdrawals"]].map(([key, label]) => (
                   <button key={key} type="button" className={transactionType === key ? "active" : ""} aria-pressed={transactionType === key} onClick={() => setTransactionType(key)}>{label}</button>
@@ -472,7 +477,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
               </div>
             ) : <p className="projects-empty">{transactionType === "withdrawal"
               ? stripeFigures === "owner" ? "Only a company owner can see these." : stripeFigures ? "Couldn't load withdrawals. Try again shortly." : "No withdrawals yet."
-              : "No transactions yet."}</p>}
+              : "No funded earnings yet. Payments appear here after a brand funds a production step."}</p>}
           </section>
           </>}
         </>
@@ -483,6 +488,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <section className="billing-method-empty">
             <div>
               <strong>Billing methods</strong>
+              <p>{canSettings ? "Save a card to use when you buy credits." : "Only someone with Settings access can add or remove billing methods. Ask an owner for this permission."}</p>
               {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
             </div>
             <button className="primary-btn compact-btn" type="button" disabled={!canSettings || billingBusy || !STRIPE_PUBLISHABLE_KEY} title={canSettings ? undefined : "Needs the Settings access permission"} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button>
@@ -510,7 +516,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             <div>
               <span>Credit balance</span>
               <strong>{credits ? `${credits.balance.toLocaleString()} credits` : creditsError ? "—" : <FigurePlaceholder label="credit balance" className="payout-credit-placeholder" />}</strong>
-              <p>500 credits = $50 value</p>
+              <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
             </div>
             <div className="factory-credit-billing-action live-credit-actions">
               <button className="secondary-btn compact-btn" type="button" onClick={() => { setNotice(null); setInviteOpen(true); }}>Invite a factory</button>
@@ -558,14 +564,14 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           onClose={() => { if (!cardBusy) setRemovingCard(null); }}
           actions={<><button className="secondary-btn" type="button" disabled={cardBusy} onClick={() => setRemovingCard(null)}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={cardBusy} onClick={removeCard}>{cardBusy ? "Removing…" : "Remove card"}</button></>}
         >
-          <p className="payout-modal-intro">{cardBrand(removingCard.brand)} ending in {removingCard.last4}</p>
+          <p className="payout-modal-intro">{cardBrand(removingCard.brand)} ending in {removingCard.last4} will no longer be saved for buying credits.</p>
         </PayoutModal>
       ) : null}
     </section>
   );
 }
 
-export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "" }) {
+export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "Save a card to use when you buy credits." }) {
   return (
     <Elements stripe={billingStripe()}>
       <BillingMethodModal clientSecret={clientSecret} intro={intro} onClose={onClose} onSaved={onSaved} />
