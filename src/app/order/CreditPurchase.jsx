@@ -72,7 +72,6 @@ export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurcha
   if (!isOwner) {
     return (
       <div className="factory-credit-billing-action tsc-credit-buy-action">
-        <p className="tsc-credit-buy-note">Ask someone with Settings access at {orgName || "your company"} to buy credits, or ask an owner for this permission.</p>
         <button className="secondary-btn compact-btn" type="button" disabled title="Needs the Settings access permission">Get more credits</button>
       </div>
     );
@@ -324,7 +323,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       error={problem}
       description={checkout
         ? `${creditsLabel(checkout.credits)} for ${amount}, paid by card. The credits are added as soon as the payment goes through.`
-        : "Choose a pack or enter a custom amount. 10 credits = $1. Minimum 50 credits."}
+        : "10 credits = $1."}
       customMinimumCredits={50}
       customRateCents={10}
       continueLabel={checkout ? (busy ? "Paying…" : `Pay ${amount}`) : busy ? "Starting…" : undefined}

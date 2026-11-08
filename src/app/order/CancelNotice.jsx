@@ -41,11 +41,6 @@ export default function CancelNotice({ order, isFactory, counterparty, title, st
           {proposal.mine ? "You proposed cancelling this order" : `${other} proposed cancelling this order`}{when}
         </strong>
         <p>{proposal.reason}</p>
-        <span>
-          {proposal.mine
-            ? `Waiting for ${other} to accept or keep the order. Until then it carries on.`
-            : "Nothing changes unless you accept. Keeping the order tells them it carries on."}
-        </span>
         {store.error && <p className="composer-error" role="alert">{store.error.message}</p>}
       </div>
       <div className="order-cancel-notice-actions">

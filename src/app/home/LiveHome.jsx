@@ -97,11 +97,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Payment",
       tone: "danger",
       title: `${formatMoney(owed.reduce((total, payment) => total + chargedCents(payment), 0), owed[0].currency)} due`,
-      meta: one
-        ? failed
-          ? "This payment did not go through. Pay again so the production step can start."
-          : "A production step is waiting on this payment before it can start."
-        : `${owed.length} production steps are waiting on payment${failed ? `, and ${failed === 1 ? "one" : failed} did not go through` : ""}.`,
+      meta: !failed ? "" : one ? "Payment failed" : `${failed} of ${owed.length} failed`,
       facts: [],
       // One payment opens its Fund screen; several open Payments, which lists each.
       action: one ? (failed ? "Pay again" : "Fund step") : "View payments",
@@ -114,7 +110,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "Confirm the production steps to start production.",
+      meta: "",
       facts: [],
       action: "Confirm steps",
       // One order opens its steps; several open the list narrowed to them.
@@ -129,7 +125,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Step",
       tone: "warning",
       title: stepsForYou === 1 ? "1 step needs you" : `${stepsForYou} steps need you`,
-      meta: "Approve or comment so the other side can carry on.",
+      meta: "",
       facts: [],
       action: "Review steps",
       onClick: () => (waiting.approvals?.length === 1 ? navigate(`/orders/${waiting.approvals[0]}`) : goTo("projects")),
@@ -141,7 +137,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Quote",
       tone: "info",
       title: `${snapshot.quotes_to_compare} quote${snapshot.quotes_to_compare === 1 ? "" : "s"} to compare`,
-      meta: "Vendors have replied to your request.",
+      meta: "",
       facts: [],
       action: "Compare quotes",
       onClick: () => (waiting.quoted?.length === 1 ? navigate(`/rfqs/${waiting.quoted[0]}/quotes`) : goTo("rfqs")),
@@ -153,7 +149,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Message",
       tone: "info",
       title: `${snapshot.unread_messages} unread message${snapshot.unread_messages === 1 ? "" : "s"}`,
-      meta: "Someone is waiting on a reply.",
+      meta: "",
       facts: [],
       action: "Open conversations",
       onClick: () => goTo("messages"),

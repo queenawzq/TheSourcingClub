@@ -128,7 +128,6 @@ export default function LiveFactoryHome({ org, profile }) {
   const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
   const { unreadCount: unreadNotifications, openActivity, activityDrawer } = useActivity(org.id, {
     isFactory: true,
-    description: "Passive updates from RFQs, files, brands, and production.",
     onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
 
@@ -290,7 +289,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Payment",
       tone: "danger",
       title: "Add a withdrawal method",
-      meta: "Add a withdrawal method so TSC can pay your approved earnings.",
+      meta: "",
       action: "Add",
       onAction: () => navigate("/payout"),
     });
@@ -300,7 +299,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Capacity",
       tone: "danger",
       title: `Confirm ${capacity.title.replace(" capacity", "")} capacity`,
-      meta: "Keep your available capacity current so RFQ matches stay accurate.",
+      meta: "",
       action: "Update",
       onAction: onUpdateCapacity,
     });
@@ -310,7 +309,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "The brand is confirming the production steps. You will be notified when production can start.",
+      meta: "",
       action: "Review",
       onAction: () => {
         const waiting = orders.filter((order) => order.status === "pending_schedule");
@@ -323,7 +322,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Sample",
       tone: "warning",
       title: n(snapshot.steps_awaiting_you) === 1 ? "1 production step needs an update" : `${n(snapshot.steps_awaiting_you)} production steps need an update`,
-      meta: "Post an update so the brand can review and approve.",
+      meta: "",
       action: "Update",
       onAction: () => {
         const waiting = activeOrders.filter((order) => order.order_milestones?.some((step) => step.state === "active"));
@@ -336,7 +335,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Question",
       tone: "info",
       title: `${snapshot.unread_messages} unread message${snapshot.unread_messages === 1 ? "" : "s"}`,
-      meta: "A brand is waiting on a reply.",
+      meta: "",
       action: "Reply",
       onAction: () => navigate("/messages"),
     });
