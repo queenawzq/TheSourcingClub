@@ -209,7 +209,7 @@ export default function RegistryPanel({ orgId, onChange }) {
           {detail.duplicateExplained ? (
             <p className="admin-registry-explained">Explained by {detail.duplicateExplained.reviewedBy ?? "staff"} · {when(detail.duplicateExplained.reviewedAt)}: {detail.duplicateExplained.note}</p>
           ) : (
-            <form className="admin-registry-form" onSubmit={(event) => { event.preventDefault(); run(async () => { await explainDuplicate(orgId, duplicateNote.trim()); setDuplicateNote(""); }); }}>
+            <form className="admin-registry-form admin-registry-duplicate-form" onSubmit={(event) => { event.preventDefault(); run(async () => { await explainDuplicate(orgId, duplicateNote.trim()); setDuplicateNote(""); }); }}>
               <label className="factory-onboarding-field admin-registry-note">
                 <span>Why do they share it? *</span>
                 <textarea value={duplicateNote} onChange={(event) => setDuplicateNote(event.target.value)} rows={2} placeholder="e.g. Same group: the other company is its sales office, confirmed on the licence" />

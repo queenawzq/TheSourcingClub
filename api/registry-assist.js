@@ -10,9 +10,8 @@
  *     them with what the factory typed and flags a trading scope (贸易 /
  *     进出口 / 销售 with no 生产 / 制造 / 加工), quoting the words it found.
  *     Sending the file to OpenRouter is new (the review assist reads only the
- *     file LIST), so it runs only while VERIFY_AI_READS_DOCUMENTS allows it:
- *     on by default off production, off on production until John turns it
- *     on and the privacy policy says so.
+ *     file LIST); the privacy policy says so from 20261108700100.
+ *     VERIFY_AI_READS_DOCUMENTS=off switches it off.
  *
  *   POST { action: "address", orgId, force }
  *     The best address we hold (the registered address a source gave, else
@@ -56,11 +55,14 @@ function bodyOf(request) {
   }
 }
 
-/** Whether a registration may be sent to the model on this deployment. */
+/**
+ * Whether a registration may be sent to the model. On everywhere (approved by
+ * Youssef, Nov 8; privacy policy 20261108700100); VERIFY_AI_READS_DOCUMENTS
+ * set to off, 0, false or no switches it off.
+ */
 export function aiReadsDocuments(env = process.env) {
   const set = String(env.VERIFY_AI_READS_DOCUMENTS ?? "").trim().toLowerCase();
-  if (set) return ["1", "on", "true", "yes"].includes(set);
-  return env.VERCEL_ENV !== "production";
+  return !["0", "off", "false", "no"].includes(set);
 }
 
 const TRADING_WORDS = ["贸易", "进出口", "销售", "批发", "零售", "代理", "ticaret", "dış ticaret", "ihracat", "ithalat", "comércio", "comercio", "trading", "import", "export", "wholesale"];

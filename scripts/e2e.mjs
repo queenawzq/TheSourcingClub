@@ -685,7 +685,7 @@ async function main() {
     await page.waitForTimeout(500);
     // Porto, Portugal: the number is a NIPC, checked by its mod-11 digit
     // (a fake that passes it; src/shared/registration-number.mjs).
-    await fillNamed(page, "registration-number", "509999999");
+    await fillNamed(page, "registration-number", "509999913");
     await record(page, "Factory verification", "documents are reviewed by a human, not self-declared");
     await nextCard(page);
     await record(page, "Factory walkthrough");
@@ -711,7 +711,7 @@ async function main() {
 
     const { data: factoryRegistration } = await db.from("company_registrations")
       .select("country_code, number").eq("org_id", factoryOrg.id).maybeSingle();
-    check(factoryRegistration?.country_code === "PT" && factoryRegistration?.number === "509999999",
+    check(factoryRegistration?.country_code === "PT" && factoryRegistration?.number === "509999913",
       "the factory's registration number is saved under its country");
 
     const { data: factorySigned } = await db.from("terms_acceptances")
@@ -1025,7 +1025,7 @@ async function main() {
     const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
     check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
     await page.locator(".admin-registry-form select").first().selectOption("certidao");
-    await page.locator(".admin-registry-form textarea").fill("E2E: certificate shows this NIPC and the company's name");
+    await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: certificate shows this NIPC and the company's name");
     await clickButton(page, "record check");
     await page.waitForTimeout(2500);
     check(Boolean(await page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows"))),
@@ -3611,7 +3611,7 @@ async function main() {
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it.
-      await page.locator(".admin-registry-form textarea").fill("E2E: the registration document shows this number and name");
+      await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: the registration document shows this number and name");
       await clickButton(page, "record check");
       await page.waitForTimeout(2500);
       await clickButton(page, "approve as");

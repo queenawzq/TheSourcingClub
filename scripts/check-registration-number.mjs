@@ -109,12 +109,12 @@ check("address: judged from the tags by rule, imprecise is unknown", () => {
 check("address: a model's reason that names no tag found is dropped", () => {
   assert.deepEqual(groundedReasons(["landuse=industrial at 40 m", "Looks like a big factory"], [{ tag: "landuse=industrial" }]), ["landuse=industrial at 40 m"]);
 });
-check("AI reads documents: on off production, off on production, the setting wins", () => {
+check("AI reads documents: on everywhere, production included; the setting switches it off", () => {
   assert.equal(aiReadsDocuments({ VERCEL_ENV: "preview" }), true);
   assert.equal(aiReadsDocuments({}), true);
-  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production" }), false);
-  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production", VERIFY_AI_READS_DOCUMENTS: "on" }), true);
-  assert.equal(aiReadsDocuments({ VERIFY_AI_READS_DOCUMENTS: "off" }), false);
+  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production" }), true);
+  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production", VERIFY_AI_READS_DOCUMENTS: "off" }), false);
+  assert.equal(aiReadsDocuments({ VERIFY_AI_READS_DOCUMENTS: "on" }), true);
 });
 check("certificate lookups: OEKO-TEX opens the certificate, amfori has none", () => {
   assert.equal(certificateLookup("oeko-tex-standard-100").url("13.HTR.25381"), "https://www.oeko-tex.com/en/detail/?number=13.HTR.25381");
