@@ -24,7 +24,7 @@ select is(public.registration_number_problem('CN', '91350100M000100I43'), 'forma
 select is(public.registration_number_problem('CN', '91440300MA5F00001A'), null, 'CN: a fake built with the check passes');
 select is(public.registration_number_problem('PT', 'PT 501 964 843'), null, 'PT: published example with prefix passes');
 select is(public.registration_number_problem('PT', '501964844'), 'check_digit', 'PT: wrong check digit');
-select is(public.registration_number_problem('PT', '509999999'), null, 'PT: a fake built with the check passes');
+select is(public.registration_number_problem('PT', '509999905'), null, 'PT: a fake built with the check passes');
 select is(public.registration_number_problem('TR', '483 726 1591'), null, 'TR: a VKN passes its mod-10 check');
 select is(public.registration_number_problem('TR', '4837261592'), 'check_digit', 'TR: wrong VKN check digit');
 select is(public.registration_number_problem('TR', '0123456789000015'), 'format', 'TR: a MERSIS number is not a VKN');
@@ -68,12 +68,12 @@ select lives_ok(
   'and saved, flagged, when the factory confirms it'
 );
 select lives_ok(
-  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', 'PT509999999', '123456789012')$$,
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', 'PT509999905', '123456789012')$$,
   'a member saves a Portuguese number and access code'
 );
 select is(
   (select number || ' ' || access_code || ' ' || check_digit_confirmed from public.company_registrations where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
-  '509999999 1234-5678-9012 false', 'stored normalised, and a passing number is no longer flagged'
+  '509999905 1234-5678-9012 false', 'stored normalised, and a passing number is no longer flagged'
 );
 select throws_ok(
   $$insert into public.company_registrations (org_id, number) values ('d8600000-0000-0000-0000-0000000000f1', 'x')$$,
@@ -84,7 +84,7 @@ select throws_ok(
   '42501', null, 'the factory cannot record its own check'
 );
 select throws_ok(
-  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999999', 'vies', 'found')$$,
+  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999905', 'vies', 'found')$$,
   '42501', null, 'nor the server''s automatic one'
 );
 select throws_ok(
@@ -134,7 +134,7 @@ select throws_ok(
 reset role;
 -- VIES's automatic answer, as the server records it: never a match.
 select lives_ok(
-  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999999', 'vies', 'registered', '{"name":"P86 FACTORY, LDA"}'::jsonb)$$,
+  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999905', 'vies', 'registered', '{"name":"P86 FACTORY, LDA"}'::jsonb)$$,
   'the server records VIES''s answer'
 );
 set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';

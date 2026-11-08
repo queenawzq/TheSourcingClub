@@ -39,17 +39,17 @@ select ok(not public.company_names_match('', ''), 'two blanks are not a match');
 -- Turkey's letter number ------------------------------------------------------
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000004","role":"authenticated"}';
 set local role authenticated;
-select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4837261591')$$,
+select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596')$$,
   '22023', 'registration letter number: missing', 'a Turkish VKN needs the letter number');
-select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4837261591', null, 'ABC123')$$,
+select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ABC123')$$,
   '22023', 'registration letter number: format', 'and it is 14 characters');
-select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4837261591', null, 'ab12 cd34 ef56 78')$$,
+select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ab12 cd34 ef56 78')$$,
   'spaces dropped, 14 characters saved');
 select is((select registration_letter_number from public.company_registrations where org_id = 'd8700000-0000-0000-0000-0000000000f2'),
   'AB12CD34EF5678', 'stored upper-case without spaces');
 select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', null, null, null, false, true)$$,
   'a sole proprietor gives no letter number');
-select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4837261591', null, 'AB12CD34EF5678')$$,
+select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'AB12CD34EF5678')$$,
   'back to the company number');
 
 -- Duplicate numbers: the factory is told yes or no, never which ---------------
@@ -57,7 +57,7 @@ reset role;
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select is(public.registration_in_use('d8700000-0000-0000-0000-0000000000f3'), false, 'no number, not in use');
-select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f3', 'TR', '4837261591', null, 'ZZ12CD34EF5678')$$,
+select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f3', 'TR', '4827361596', null, 'ZZ12CD34EF5678')$$,
   'a second company saves the same VKN: not refused');
 select is(public.registration_in_use('d8700000-0000-0000-0000-0000000000f3'), true, 'and is told it is in use');
 select throws_ok($$select public.registration_in_use('d8700000-0000-0000-0000-0000000000f2')$$, '42501', null, 'but cannot ask about another company');
