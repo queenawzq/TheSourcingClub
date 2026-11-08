@@ -407,26 +407,29 @@ reset role;
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
+-- Held money on a cancelled order is refunded automatically (20261108300000):
+-- staff see it only once a refund failed.
 select is(
-  (select order_status from public.admin_payment_board()
+  (select count(*) from public.admin_payment_board()
     where payment_id = pg_temp.p18_pay('order_b', 'Fit sample, round 1')),
-  'cancelled', 'staff see money held on a cancelled order, to refund it');
+  0::bigint, 'staff do not see money held on a cancelled order while it is refunded automatically');
 select is(
   (select factory_stripe_ready from public.admin_payment_board()
     where payment_id = pg_temp.p18_pay('order_a', 'Balance')),
   false, 'and a payout owed to a factory with no Stripe account, to pay by bank');
 -- The overview card is staff's only prompt: it counts exactly what only a
--- person can move on the board (payouts owed, held on cancelled). Bank-wire
--- claims left the board on Nov 7 (20261108200000).
+-- person can move on the board (payouts owed, a refund that failed on a
+-- cancelled order). Bank-wire claims left the board on Nov 7 (20261108200000);
+-- held money on a cancelled order is refunded automatically (20261108300000).
 select is(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()),
   (select count(*)::integer from public.admin_payment_board() b
     where (b.state = 'confirmed' and b.release_requested_at is not null)
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled')),
+       or (b.state = 'confirmed' and b.order_status = 'cancelled' and b.refund_failed_at is not null)),
   'the overview counts every payment waiting on staff, payouts owed included');
 select ok(
-  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 2,
-  'which here includes the payout owed and the money held on the cancelled order');
+  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
+  'which here includes the payout owed');
 reset role;
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active)
@@ -682,8 +685,8 @@ select public.record_payment_refunded(pg_temp.p18_pay('order_b', 'Fit sample, ro
 select is(
   (select row(state::text, stripe_payment_intent_id is null)::text
      from public.order_payments where id = pg_temp.p18_pay('order_b', 'Fit sample, round 1')),
-  row('cancelled', true)::text,
-  'money held on a cancelled order and refunded in Stripe is cancelled');
+  row('cancelled', false)::text,
+  'money held on a cancelled order and refunded in Stripe is cancelled, and keeps its intent as the record');
 
 -- The bell says what the card will be charged: the step plus the fee, 7% on
 -- this order (order_d's steps are edited after their notices, so not those).
