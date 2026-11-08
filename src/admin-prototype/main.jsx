@@ -7,14 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 
-const adminNav = [
-  { label: "Overview", icon: "home" },
-  { label: "RFQs", icon: "rfq" },
-  { label: "Quotes", icon: "projects" },
-  { label: "Users", icon: "connections" },
-  { label: "Verification", icon: "verification" },
-  { label: "Settings", icon: "settings" }
-];
+import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
 export const initialProfiles = [
   {
@@ -2155,6 +2148,8 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const navigate = (label) => {
     const elsewhere = extraNav.find((item) => item.label === label);
     if (elsewhere) { window.location.href = elsewhere.href; return; }
+    // The prototype has no payments board of its own: Queena's preview stands in.
+    if (label === "Payments") { window.location.assign(window.location.pathname === "/admin-prototype.html" ? "/payments-design-preview.html" : "/app.html/admin/payments"); return; }
     setScreen(label);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -2170,7 +2165,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         active={active}
         ariaLabel="Admin workspace"
         collapsed={collapsed}
-        navItems={[...adminNav, ...extraNav]}
+        navItems={[...adminNav, ...extraNav.filter((item) => !adminNav.some((own) => own.label === item.label))]}
         onSignOut={onSignOut}
         onNav={navigate}
         onProfile={() => navigate("Settings")}
