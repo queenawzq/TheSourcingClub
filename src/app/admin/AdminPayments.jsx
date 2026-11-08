@@ -810,22 +810,19 @@ export default function AdminPayments() {
 
   if (!rows) {
     return (
-      <AdminWorkspaceShell onSignOut={signOut} extraNav={STAFF_PAGES}>
+      <AdminWorkspaceShell onSignOut={signOut}>
         <main className="admin admin-payments-page"><h1>Payments</h1>{error ? <p className="admin-error">{error.message}</p> : <p className="admin-sub">Loading…</p>}</main>
       </AdminWorkspaceShell>
     );
   }
 
   return (
-    <AdminWorkspaceShell onSignOut={signOut} extraNav={STAFF_PAGES}>
+    <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
                      load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} />
     </AdminWorkspaceShell>
   );
 }
-
-/** Staff's other board, which the admin console reaches the same way. */
-const STAFF_PAGES = [{ label: "Messages", icon: "messages", href: "/app.html/admin/messages" }];
 
 const TABS = [
   ["payout", "Payout owed"], ["held", "Held"], ["clearing", "Processing"],
