@@ -237,7 +237,15 @@ export async function decideReview(orgId, decision, note = null, risk = null, ti
   );
 
   if (!NOTIFIES_COMPANY.has(decision)) return review;
+  return { ...review, decisionEmail: await sendReviewEmails(orgId, { decision }) };
+}
 
+/**
+ * Sends the company's due review emails and says what happened
+ * (api/send-review-decision.js lists the outcomes). Never throws: the decision
+ * is recorded either way, and a failure here is an outcome to report.
+ */
+async function sendReviewEmails(orgId, { decision = null, resend = false } = {}) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch("/api/send-review-decision", {
@@ -246,13 +254,32 @@ export async function decideReview(orgId, decision, note = null, risk = null, ti
         "Content-Type": "application/json",
         Authorization: `Bearer ${session?.access_token ?? ""}`,
       },
-      body: JSON.stringify({ orgId }),
+      body: JSON.stringify({ orgId, decision, resend }),
     });
-    const result = await response.json();
-    return { ...review, decisionEmail: result };
-  } catch (error) {
-    return { ...review, decisionEmail: { sent: 0, error: error.message } };
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.outcome) {
+      return { outcome: "error", error: result.error || "The email could not be sent. The daily job will try again." };
+    }
+    return result;
+  } catch {
+    return { outcome: "error", error: "The email service could not be reached. The daily job will try again." };
   }
+}
+
+/** "Resend email" on the review page: the current decision's failed or unsent emails. */
+export function resendReviewEmails(orgId) {
+  return sendReviewEmails(orgId, { resend: true });
+}
+
+/**
+ * Who the company's current review emails went to, and how each went:
+ * { decision, current, recipients: [{ email, name, status, attempts, reason, sent_at }], members_without_email }.
+ */
+export async function reviewEmailStatus(orgId) {
+  return unwrap(
+    await supabase.rpc("admin_review_email_status", { target_org: orgId }),
+    "read the review emails",
+  );
 }
 
 /**

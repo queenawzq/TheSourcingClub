@@ -167,7 +167,7 @@ export function templateDraft(input, topics = []) {
     .map((check) => `${check.check}: ${check.detail}`);
   const items = [...new Set([...topics.filter((topic) => REQUEST_TOPICS.includes(topic)), ...open])];
   const lines = items.length ? items.map((item) => `- ${item}`) : ["- (say what is missing)"];
-  return `Thank you for applying to The Sourcing Club. Before we can finish reviewing your profile, we need the following:\n\n${lines.join("\n")}\n\nYou can add these from your profile. Reply to this email if anything is unclear.`;
+  return `Thank you for applying to The Sourcing Club. Before we can finish reviewing your profile, we need the following:\n\n${lines.join("\n")}\n\nYou can add these from your profile. We look forward to receiving them.`;
 }
 
 export const NOT_SET_UP = "AI suggestions are not set up on this site.";

@@ -279,9 +279,11 @@ export function AuthProvider({ children }) {
       lostAccess,
       dismissLostAccess: () => setLostAccess(null),
 
-      selectOrg(orgId) {
+      // `remember: false` is for a link that says which company it is about:
+      // this page opens on it, and the next visit opens where the person left off.
+      selectOrg(orgId, { remember = true } = {}) {
         setActiveOrgId(orgId);
-        window.localStorage.setItem("tscActiveOrg", orgId);
+        if (remember) window.localStorage.setItem("tscActiveOrg", orgId);
       },
 
       /**

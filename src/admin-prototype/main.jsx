@@ -1022,7 +1022,115 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false }) {
+// Live only (the prototype has no outbox): who the company's current review
+// email went to, and "Resend email" for one that failed or never went.
+const REVIEW_EMAIL_DECISION = {
+  approved: "approval",
+  needs_information: "request for more information",
+  declined: "decline",
+};
+const REVIEW_EMAIL_STATUS = {
+  sent: "Sent",
+  pending: "Waiting to send",
+  sending: "Sending",
+  failed: "Not sent",
+  unconfirmed: "Not confirmed",
+  skipped: "Not sent",
+};
+
+// `sending` is the decision being recorded and emailed elsewhere on the page.
+function ReviewEmailCard({ orgId, companyName, refreshKey, sending = false, onResent }) {
+  const actions = useActions();
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  const load = () => actions.reviewEmailStatus(orgId)
+    .then((value) => { setStatus(value); setError(""); })
+    .catch(() => setError("The email status could not be read. Reload the page to try again."));
+  useEffect(() => { setStatus(null); setError(""); setNotice(null); load(); }, [orgId, refreshKey]);
+
+  const recipients = status?.recipients ?? [];
+  const canResend = Boolean(status?.current) && recipients.some((row) => ["failed", "unconfirmed", "pending"].includes(row.status));
+  const inFlight = busy || sending;
+  const resend = async () => {
+    if (busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await actions.resendReviewEmails(orgId);
+      setNotice(reviewEmailSentence(result, { company: companyName }));
+      onResent?.();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="factory-profile-card admin-review-meta admin-review-email-card">
+      <h2>Email to the company</h2>
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!status && !error && <p className="admin-assist-meta">Loading…</p>}
+      {status && !recipients.length && <p className="admin-assist-meta">No review email has been sent to this company yet.</p>}
+      {status && recipients.length > 0 && (
+        <>
+          <p className="admin-assist-meta">
+            The {REVIEW_EMAIL_DECISION[status.decision] ?? "decision"}{status.current ? "" : " (no longer current)"}:
+          </p>
+          <ul className={`admin-review-email-lines${inFlight ? " is-sending" : ""}`}>
+            {recipients.map((row) => (
+              <li key={row.email}>
+                <span title={row.email}>{row.email}</span>
+                <strong className={`admin-review-email-status ${row.status}`}>
+                  {REVIEW_EMAIL_STATUS[row.status] ?? row.status}
+                  {row.status === "sent" && row.sent_at ? ` · ${new Date(row.sent_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}
+                </strong>
+                {row.reason && row.status !== "sent" && <small>{row.reason.charAt(0).toUpperCase() + row.reason.slice(1)}.</small>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {status?.members_without_email > 0 && (
+        <p className="admin-assist-meta">{status.members_without_email === 1 ? "1 member has" : `${status.members_without_email} members have`} no email address and cannot be emailed.</p>
+      )}
+      {inFlight && <p className="admin-assist-meta" role="status">Sending the email…</p>}
+      {!inFlight && notice && <p className="admin-assist-meta" role="status">{notice}</p>}
+      {(canResend || inFlight) && <button className="secondary-btn" type="button" disabled={inFlight} onClick={resend}>{inFlight ? "Sending…" : "Resend email"}</button>}
+    </section>
+  );
+}
+
+// What happened to a review email, from api/send-review-decision.js's outcome.
+// `subject` is the decision's own words ("Profile declined"); without one the
+// sentence is about a resend.
+function reviewEmailSentence(result, { subject = null, company = "the company" } = {}) {
+  const people = (count) => count === 1 ? "1 person" : `${count} people`;
+  const failedReason = result?.failed?.[0]?.reason;
+  const lead = (rest) => subject ? `${subject}, but ${rest}` : `${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+  switch (result?.outcome) {
+    case "emailed": return subject ? `${subject} and emailed to ${people(result.sent)}.` : `Emailed to ${people(result.sent)}.`;
+    case "partly": {
+      const missing = [...(result.failed ?? []), ...(result.unconfirmed ?? [])];
+      return `${subject ? `${subject} and emailed` : "Emailed"} to ${people(result.sent)}, but ${people(missing.length)} could not be confirmed (${missing[0]?.reason}). Use “Resend email” on this page.`;
+    }
+    case "unconfirmed": return lead("the email service did not confirm the email in time. It may still arrive; “Resend email” retries it without sending a second copy.");
+    case "failed": return lead(`the email could not be sent${failedReason ? ` (${failedReason})` : ""}. Use “Resend email” on this page; the daily job also retries it.`);
+    case "not_configured": return lead("email is not set up on this site, so nothing was emailed.");
+    case "already_sent": return subject
+      ? `No change: ${company} was already sent this, so nothing was sent again.`
+      : "Nothing to resend: every email for this decision was already sent.";
+    case "no_recipients": {
+      const tests = (result.skipped ?? []).length;
+      return lead(`nobody at ${company} has an email address we can send to${tests ? ` (${tests === 1 ? "a test address" : `${tests} test addresses`})` : ""}.`);
+    }
+    default: return lead(`${String(result?.error ?? "the email could not be sent").replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase())}.`);
+  }
+}
+
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1222,6 +1330,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
+            {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>
       </div>
@@ -1252,7 +1361,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setRequestOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2></div></header>
             <div className="admin-request-message-heading">
-              <div><strong>Message to applicant</strong><span>This exact message will be included in the email and in-app notification.</span></div>
+              <div><strong>Message to applicant</strong><span>This exact message will be included in the email and in-app notification. Start a line with "-" to make a bullet.</span></div>
               <button className="secondary-btn admin-ai-suggest-button" type="button" disabled={requestSuggestionLoading || !onSuggestRequest} onClick={suggestRequest}>
                 {requestSuggestionLoading ? "Drafting…" : "Suggest with AI"}
               </button>
@@ -1271,8 +1380,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="decline-title">
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setDeclineOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Final decision</span><h2 id="decline-title">Decline this profile?</h2><p>The applicant will be notified and can contact support if they believe this is an error.</p></div></header>
-            <label className="factory-onboarding-field"><span>Reason</span><textarea value={declineNote} onChange={(event) => setDeclineNote(event.target.value)} placeholder="Explain why this profile cannot be approved..." /></label>
-            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined", declineNote.trim() || null); setDeclineNote(""); }}>Decline profile</button></footer>
+            <label className="factory-onboarding-field"><span>Reason *</span><textarea value={declineNote} onChange={(event) => setDeclineNote(event.target.value)} placeholder="Explain why this profile cannot be approved..." /></label>
+            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" disabled={!declineNote.trim()} title={declineNote.trim() ? undefined : "Write the reason first: the company is told it."} onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined", declineNote.trim()); setDeclineNote(""); }}>Decline profile</button></footer>
           </section>
         </div>
       )}
@@ -1510,6 +1619,7 @@ const TEST_EMAILS = [
   { key: "review-approved", label: "Review decision · Approved", localized: true },
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
+  { key: "review-resubmitted", label: "Review · Company sent its profile back (to staff)" },
   { key: "notification", label: "Notification · New quote", localized: true },
   { key: "team-invite", label: "Team invitation" },
 ];
@@ -1676,12 +1786,19 @@ function DailyJobsPanel() {
   const run = async () => {
     setStatus({ state: "running", message: "" });
     try {
-      const { reminders = {}, emails = {} } = await actions.runDailyJobs();
+      const { reminders = {}, emails = {}, reviews = null } = await actions.runDailyJobs();
       const count = (n, one, many) => `${n ?? 0} ${(n ?? 0) === 1 ? one : many}`;
       const sent = emails.configured === false ? "emails wait until sending is set up" : `${count(emails.sent, "email", "emails")} sent`;
+      // Live only: the review decision emails and staff alerts it retried.
+      const reviewParts = reviews && emails.configured !== false ? [
+        `${count(reviews.sent, "review email", "review emails")} sent`,
+        reviews.alerts ? `${count(reviews.alerts, "alert", "alerts")} to staff sent` : "",
+        reviews.failed ? `${reviews.failed} not sent` : "",
+        reviews.unconfirmed ? `${reviews.unconfirmed} not confirmed` : "",
+      ].filter(Boolean) : [];
       setStatus({
         state: "done",
-        message: `${count(reminders.capacity_reminders, "capacity reminder", "capacity reminders")}, ${count(reminders.due_soon, "step due soon", "steps due soon")}; ${sent}.`,
+        message: `${count(reminders.capacity_reminders, "capacity reminder", "capacity reminders")}, ${count(reminders.due_soon, "step due soon", "steps due soon")}; ${sent}${reviewParts.length ? `; ${reviewParts.join(", ")}` : ""}.`,
       });
     } catch (error) {
       setStatus({ state: "error", message: error.message });
@@ -1959,6 +2076,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   // One decision at a time: a double click on "Approve" recorded it twice
   // and told the company twice.
   const [deciding, setDeciding] = useState(false);
+  const [emailRefresh, setEmailRefresh] = useState(0);
   const decidingRef = useRef(false);
   const decide = async (id, status, note = null, tier = null) => {
     if (decidingRef.current) return;
@@ -1989,13 +2107,16 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     const outcome = status === "Approved" ? `Profile approved${tier ? ` as ${tier[0].toUpperCase()}${tier.slice(1)}` : ""}`
       : status === "Declined" ? "Profile declined"
       : "Information request sent";
-    setToast(
-      !decisionEmail ? outcome
-        : decisionEmail.error ? `${outcome}; email is queued for retry`
-        : decisionEmail.alreadySent ? `${outcome}; email was already sent`
-        : `${outcome} and email sent`
-    );
-    window.setTimeout(() => setToast(""), 2400);
+    // Live only: the prototype's action sends no email. The sentence says
+    // what the server reports, and stays long enough to read when it asks
+    // staff to do something.
+    const company = selectedProfile?.id === id ? selectedProfile.name : "the company";
+    const sentence = decisionEmail
+      ? reviewEmailSentence(decisionEmail, { subject: status === "Needs information" ? "Information request recorded" : outcome, company })
+      : outcome;
+    setEmailRefresh((value) => value + 1);
+    setToast(sentence);
+    window.setTimeout(() => setToast(""), !decisionEmail || decisionEmail.outcome === "emailed" ? 2400 : 7000);
   };
   const deleteFactoryProfile = actions.deleteFactory ? async (id, confirmation) => {
     const result = await actions.deleteFactory(id, confirmation);
@@ -2057,7 +2178,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}
