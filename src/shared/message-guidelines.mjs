@@ -10,7 +10,7 @@
  *
  * Chinese is hand-written, never machine-translated (same rule as the legal
  * documents), and still needs a native speaker's check before it ships.
- * One language per surface: the reader gets one or the other, never both.
+ * One language per screen: the page says which; the live app is English.
  */
 export const MESSAGE_GUIDELINES = {
   en: {
@@ -59,8 +59,11 @@ export const MESSAGE_GUIDELINES = {
   },
 };
 
-/** The reader's guidelines: Chinese for a Chinese browser, English otherwise. */
-export function guidelinesFor(languages) {
-  const first = (Array.isArray(languages) ? languages : [languages]).find(Boolean) ?? "";
-  return /^zh\b/i.test(String(first)) ? MESSAGE_GUIDELINES.zh : MESSAGE_GUIDELINES.en;
+/**
+ * The guidelines in the page's own language. One language per screen (call
+ * of Nov 7): the live app is English, so it passes nothing; the Chinese is for
+ * a page that is itself Chinese, never chosen from the browser.
+ */
+export function guidelinesFor(language) {
+  return language === "zh" ? MESSAGE_GUIDELINES.zh : MESSAGE_GUIDELINES.en;
 }

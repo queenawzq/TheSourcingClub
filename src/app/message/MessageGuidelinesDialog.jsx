@@ -3,14 +3,15 @@
  *
  * No design draws this pop-up's contents; the frame is the design's own dialog
  * (`approve-fund-modal`, as StepUpdatesModal uses), and the words are the
- * three rules in src/shared/message-guidelines.mjs, in the reader's language.
+ * three rules in src/shared/message-guidelines.mjs, in the page's language
+ * (`language`, English unless the page itself is Chinese).
  */
 import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { guidelinesFor } from "../../shared/message-guidelines.mjs";
 
-export default function MessageGuidelinesDialog({ onClose, languages }) {
-  const words = guidelinesFor(languages ?? (typeof navigator === "undefined" ? [] : navigator.languages ?? [navigator.language]));
+export default function MessageGuidelinesDialog({ onClose, language = "en" }) {
+  const words = guidelinesFor(language);
 
   useEffect(() => {
     const onKey = (event) => { if (event.key === "Escape") onClose(); };
