@@ -6597,12 +6597,24 @@ function CertificationCard({ title, detail, icon }) {
  */
 export function FactorySearchScreen({ goTo, live = null }) {
   const vendors = live ? live.vendors : directoryFactories;
+  // Live, below 1180px the panel opens as the marketplace's dialog does.
+  const [filtersOpen, setFiltersOpen, filtersButton] = useFilterDialog();
   return (
     <div className="directory-shell">
-      <section className="directory-filter-panel" aria-label="Factory filters">
+      {filtersOpen && (
+        <button className="marketplace-filter-backdrop" type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
+      )}
+      <section
+        className={filtersOpen ? "directory-filter-panel is-mobile-open" : "directory-filter-panel"}
+        id="directory-filter-panel"
+        role={filtersOpen ? "dialog" : undefined}
+        aria-modal={filtersOpen ? "true" : undefined}
+        aria-label="Factory filters"
+      >
         <div className="directory-filter-header">
           <strong>Filters</strong>
           <button type="button" onClick={live ? live.filters.onReset : undefined}>Reset</button>
+          {filtersOpen && <button type="button" onClick={() => setFiltersOpen(false)}>Close</button>}
         </div>
         {live ? <DirectoryLiveFilters filters={{ ...live.filters, isTrading: live.vendorType === "trading", searchWords: true }} /> : (<>
         <FilterGroup title="Production type">
@@ -6701,6 +6713,7 @@ export function FactorySearchScreen({ goTo, live = null }) {
           <p>{isTrading ? "Filter by when a sourcing team can begin and the order sizes its partner network supports." : "Use quick presets, or open the dropdowns for exact windows and quantities."}</p>
         </FilterGroup>
         </>)}
+        {filtersOpen && live.filters.footer(() => setFiltersOpen(false))}
       </section>
 
       <section className="directory-results" aria-label="Factory search results">
@@ -6724,7 +6737,20 @@ export function FactorySearchScreen({ goTo, live = null }) {
             <span>{live ? live.matching : "matching cut & sew, low MOQ, Trusted or Verified standard"}</span>
           </div>
           <div className="directory-summary-actions">
-            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            {live && (
+              <button
+                ref={filtersButton}
+                className="filter-button compact-filter-button"
+                type="button"
+                aria-controls="directory-filter-panel"
+                aria-expanded={filtersOpen}
+                aria-haspopup="dialog"
+                onClick={() => setFiltersOpen(true)}
+              >
+                {live.filters.buttonLabel}
+              </button>
+            )}
+            {live ? live.sortControl : <button className="filter-button sort-button" type="button">Sort: Best fit</button>}
             <button className="filter-button sort-button" type="button" onClick={live ? live.onCardsView : () => goTo("factoryMarketplace")}>Marketplace cards</button>
           </div>
         </div>
@@ -6742,6 +6768,33 @@ export function FactorySearchScreen({ goTo, live = null }) {
       </section>
     </div>
   );
+}
+
+/**
+ * A filter panel opened as a dialog: closes on Escape, the page behind it
+ * stops scrolling, and closing hands focus back to the button that opened it
+ * (`opener`).
+ */
+function useFilterDialog() {
+  const [open, setOpen] = useState(false);
+  const opener = useRef(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) opener.current?.focus();
+    wasOpen.current = open;
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+  return [open, setOpen, opener];
 }
 
 function FilterGroup({ title, children }) {
@@ -6786,6 +6839,15 @@ function DirectoryLiveFilters({ filters }) {
   const [low, high] = value.moq ?? (moq ? [moq.min, moq.max] : [0, 0]);
   const share = (amount) => (moq && moq.max > moq.min ? ((amount - moq.min) / (moq.max - moq.min)) * 100 : 0);
   const capacityWords = searchWords && isTrading;
+  // A press on the bars moves the nearer handle there; the handles themselves
+  // (the range inputs' thumbs) drag as before. 18px: the track's inset.
+  const moveNearestHandle = (event) => {
+    if (event.target.tagName === "INPUT") return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - box.left - 18) / (box.width - 36)));
+    const amount = Math.round((moq.min + ratio * (moq.max - moq.min)) / moq.step) * moq.step;
+    onMoq(Math.abs(amount - low) <= Math.abs(amount - high) ? [Math.min(amount, high), high] : [low, Math.max(amount, low)]);
+  };
 
   return (
     <>
@@ -6810,7 +6872,7 @@ function DirectoryLiveFilters({ filters }) {
       )}
       {moq && moq.max > moq.min && (
         <FilterGroup title="MOQ range">
-          <div className="moq-chart live-moq-chart" style={{ "--lo": share(low), "--hi": share(high) }}>
+          <div className="moq-chart live-moq-chart" style={{ "--lo": share(low), "--hi": share(high) }} onPointerDown={moveNearestHandle}>
             {moq.bars.map((bar, index) => (
               <span
                 className={bar.to < low || bar.from > high ? "is-outside" : undefined}
@@ -6867,6 +6929,17 @@ function DirectoryLiveFilters({ filters }) {
         <div className="directory-chip-grid">
           {panel.leadTimes.map((option) => chip("leadTimes", option, value.leadTimes.includes(option.id)))}
         </div>
+      </FilterGroup>
+      <FilterGroup title="Club Standard">
+        {panel.tiers.map((option) => (
+          <FilterCheck
+            checked={value.tiers.includes(option.id)}
+            label={option.label}
+            icon={option.icon}
+            key={option.id}
+            onChange={() => onToggle("tiers", option.id)}
+          />
+        ))}
       </FilterGroup>
       <FilterGroup title={capacityWords ? "Network availability" : "Open capacity"}>
         <label className="directory-select">
@@ -7143,6 +7216,7 @@ export function FactoryMarketplaceScreen({ goTo, live = null }) {
           <p>Use quick presets, or open the dropdowns for exact windows and quantities.</p>
         </FilterGroup>
         </>)}
+        {live && filtersOpen && live.filters.footer(() => setFiltersOpen(false))}
       </aside>
 
       <section className="marketplace-results" aria-label={`${isTrading ? "Trading company" : "Factory"} marketplace results`}>
@@ -7171,7 +7245,7 @@ export function FactoryMarketplaceScreen({ goTo, live = null }) {
         <div className="marketplace-summary">
           <div>
             <strong>{live ? live.summary : isTrading ? "14 trading companies" : "36 factories"}</strong>
-            <span>{isTrading ? "showing sourcing regions, partner networks, managed services, and verified company details" : "showing larger samples, exact garment tags, specialties, and verified capability notes"}</span>
+            <span>{live ? live.matching : isTrading ? "showing sourcing regions, partner networks, managed services, and verified company details" : "showing larger samples, exact garment tags, specialties, and verified capability notes"}</span>
           </div>
           <div className="directory-summary-actions">
             <button
@@ -7182,9 +7256,9 @@ export function FactoryMarketplaceScreen({ goTo, live = null }) {
               aria-haspopup="dialog"
               onClick={() => setFiltersOpen(true)}
             >
-              Filters
+              {live ? live.filters.buttonLabel : "Filters"}
             </button>
-            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            {live ? live.sortControl : <button className="filter-button sort-button" type="button">Sort: Best fit</button>}
             {live?.onListView && <button className="filter-button sort-button" type="button" onClick={live.onListView}>List view</button>}
           </div>
         </div>
