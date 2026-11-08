@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(111);
+select plan(113);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -252,6 +252,10 @@ select public.record_payment_processing(pg_temp.p18_pay('order_a', 'Fit sample')
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'processing', 'a bank payment is clearing');
 select is(pg_temp.p18_notes('18b00000-0000-0000-0000-0000000000f1', 'payment_processing', 'order_a'), 1::bigint,
   'the factory is told it is on its way, not to start');
+select ok(
+  (select bool_and(n.body like '%still being confirmed%' and n.body not like '%Stripe%') from public.notifications n
+    where n.kind = 'payment_processing' and n.order_id = (select id from p18 where name = 'order_a')),
+  'in words that name no payment provider');
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -285,6 +289,12 @@ reset role;
 
 select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 53500);
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'confirmed', 'the card payment arrived: TSC holds it');
+select ok(
+  (select n.body like '%received on %' || o.order_number || '%TSC holds it%' from public.notifications n
+     join public.production_orders o on o.id = n.order_id
+    where n.kind = 'payment_confirmed' and n.org_id = '18b00000-0000-0000-0000-00000000000b'
+      and n.order_id = (select id from p18 where name = 'order_a')),
+  'the brand''s "TSC holds it" names the order');
 select is(
   (select row(confirmed_by is null, confirmed_at is not null, release_requested_at is null, payment_method_label)::text
      from public.order_payments where id = pg_temp.p18_pay('order_a', 'Fit sample')),

@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(66);
+select plan(67);
 
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'p15-brand@example.com'),
@@ -213,6 +213,23 @@ select throws_ok(
 );
 
 reset role;
+
+-- Since 20261108100000 a flagged message on a thread with no contract is
+-- blocked, never held (message_block_test.sql). Staff's release, reject and
+-- queue stay deployed for the site that is live while that migration runs,
+-- so this file puts its two messages back into `held` by hand and goes on
+-- testing that those functions still refuse everyone but staff.
+select is(
+  (select string_agg(delivery, ',' order by id) from public.messages
+    where id in ('b5000000-0000-0000-0000-000000000001', 'b5000000-0000-0000-0000-000000000003')),
+  'blocked,blocked',
+  'a flagged message with no contract behind it is blocked, not held'
+);
+
+update public.messages set delivery = 'held', held_for = 'contact_details'
+ where id = 'b5000000-0000-0000-0000-000000000001';
+update public.messages set delivery = 'held', held_for = 'outside_platform'
+ where id = 'b5000000-0000-0000-0000-000000000003';
 
 select is(
   (select delivery from public.messages where id = 'b5000000-0000-0000-0000-000000000001'),
