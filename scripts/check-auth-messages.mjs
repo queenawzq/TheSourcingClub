@@ -43,7 +43,7 @@ for (const [kind, words] of Object.entries(AUTH_MESSAGES)) {
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 check(same(authLanguages({ factory: true, zhPage: true }), ["zh"]), "Chinese vendor page reads Chinese");
-check(same(authLanguages({ factory: true, zhPage: false, browserLanguages: ["zh-CN", "en"] }), ["en", "zh"]), "English vendor page, Chinese browser, reads both");
+check(same(authLanguages({ factory: true, zhPage: false, browserLanguages: ["zh-CN", "en"] }), ["en"]), "English vendor page, Chinese browser, reads English only");
 check(same(authLanguages({ factory: true, zhPage: false, browserLanguages: ["en-US"] }), ["en"]), "English vendor page, English browser");
 check(same(authLanguages({ factory: false, zhPage: false, browserLanguages: ["zh-CN"] }), ["en"]), "brand page stays English");
 check(same(authLanguages({ factory: true, zhPage: false, browserLanguages: ["zu"] }), ["en"]), "another language starting with z is not Chinese");
