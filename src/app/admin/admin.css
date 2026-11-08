@@ -139,12 +139,6 @@
 .admin-pill--confirmed { background: #e6f4ea; }
 .admin-pill--released { background: #eef2ff; }
 
-/* Messages held for review: the message itself is the thing being judged. */
-.admin-message-body { min-width: 220px; max-width: 420px; }
-.admin-decision { min-width: 200px; }
-.admin-decision .admin-actions { display: flex; gap: 8px; margin-top: 8px; }
-.admin-message-body p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.admin-table-hint { margin: 0 0 8px; }
 
 /* The staff board's bank details: what a person needs to send the money. */
 .admin-payout-details { display: flex; flex-direction: column; gap: 3px; min-width: 240px; max-width: 340px; margin-top: 6px; white-space: normal; }
@@ -254,4 +248,21 @@
 }
 @media (max-width: 700px) {
   .payments-workspace .payments-mobile-actions { width: calc(100vw - 142px); }
+}
+
+/* The actions column keeps one width whatever step a row is on, so the table
+   never reflows under the cursor; at 1280 the columns fit without covering
+   the note (q79 tester, Nov 7). */
+.admin-payments-page td.admin-actions,
+.admin-payments-page th.payments-action-heading { max-width: 184px; }
+.admin-payments-page td.admin-actions .admin-row-message { min-width: 0; }
+.admin-payments-page td:nth-child(2) { min-width: 150px; }
+.admin-payments-page td:nth-child(3) { min-width: 120px; }
+@media (max-width: 1440px) {
+  .admin-payments-page td, .admin-payments-page th { padding-left: 10px; padding-right: 10px; }
+  .admin-payments-page .admin-payout-details { min-width: 176px; }
+  .admin-payments-page td:nth-child(2) { min-width: 124px; }
+  .admin-payments-page td:nth-child(3) { min-width: 100px; }
+  .admin-payments-page .payments-note-cell { width: 128px; min-width: 128px; max-width: 128px; }
+  .admin-payments-page .payments-note-cell label { max-width: 128px; }
 }

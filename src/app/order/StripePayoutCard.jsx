@@ -914,7 +914,7 @@ export default function StripePayoutCard({
                   {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
                       {isPayoneer(row) ? null : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>}
-                      {!row.is_primary || payoutRoute !== "manual" ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
+                      {!isPayoneer(row) && (!row.is_primary || payoutRoute !== "manual") ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
                       <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); }}>{cardWords.remove}</button>
                     </div>
                   ) : null}

@@ -1,4 +1,5 @@
 import EvidenceReview from "../matching/EvidenceReview.jsx";
+import RegistryPanel from "./RegistryPanel.jsx";
 /**
  * The admin operations workspace, on live data.
  *
@@ -33,7 +34,6 @@ import "../live-quiet.css";
 // Staff's two boards live outside this page; the sidebar has to reach them.
 const STAFF_PAGES = [
   { label: "Payments", icon: "billing", href: "/app.html/admin/payments" },
-  { label: "Messages", icon: "messages", href: "/app.html/admin/messages" },
 ];
 
 function Gate({ title, children }) {
@@ -134,6 +134,7 @@ function AdminConsole() {
       {/* The design's card says "any email"; live, say which ones it sends. */}
       <App
         matchingPanel={<EvidenceReview staff />}
+        registryPanel={(profile, { onChange } = {}) => <RegistryPanel orgId={profile.id} onChange={onChange} key={profile.id} />}
         testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
         testEmailsUnavailable={reservedEmailNotice(user?.email)}
         // Staff have no org, so nothing can notify them; the design's bell

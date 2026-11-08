@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_notification-sender.js";
 import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-decision-sender.js";
+import { refundCancelledOrders, stripeFrom } from "./_stripe.js";
+import { sweepProviderPayouts } from "./payout-sync.js";
 
 /**
  * The daily job: capacity reminders and steps due soon
@@ -14,6 +16,10 @@ import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-deci
  * staff can also run it from Admin → Settings ("Run daily jobs now") with a
  * POST carrying their own session. Running it twice sends nothing twice:
  * notification_reminders records every reminder that went out.
+ *
+ * It also refunds held money on cancelled orders that is still held (a page
+ * closed before it asked, Stripe down, a refusal): nothing waits on staff.
+ * Each refund is claimed first, so this never refunds twice.
  */
 
 // Leaves room under Vercel's function time limit.
@@ -55,6 +61,16 @@ export default async function handler(request, response) {
     return;
   }
 
+  // Before the emails, so the refund's notifications go out in this run.
+  let refunds = null;
+  try {
+    const stripe = stripeFrom();
+    if (stripe) refunds = await refundCancelledOrders({ stripe, db: service });
+  } catch (error) {
+    console.error("cron-daily: cancelled-order refunds", error?.message);
+    refunds = { error: "the cancelled-order refunds could not be checked" };
+  }
+
   // Reminders are written either way; without a provider they wait queued.
   const emails = { sent: 0, skipped: 0, failed: 0, more: false, configured: false };
   const mail = emailTransport();
@@ -70,7 +86,7 @@ export default async function handler(request, response) {
         emails.more = batch.more;
       } while (emails.more && Date.now() - started < DRAIN_BUDGET_MS);
     } catch (error) {
-      response.status(500).json({ reminders, emails, error: error.message });
+      response.status(500).json({ reminders, refunds, emails, error: error.message });
       return;
     }
   }
@@ -89,10 +105,17 @@ export default async function handler(request, response) {
       reviews.failed += alerts.failed;
       reviews.unconfirmed += alerts.unconfirmed;
     } catch (error) {
-      response.status(500).json({ reminders, emails, reviews, error: error.message });
+      response.status(500).json({ reminders, refunds, emails, reviews, error: error.message });
       return;
     }
   }
 
-  response.status(200).json({ reminders, emails, reviews, error: null });
+  // Wise and PayPal payouts nobody read back (api/payout-sync.js). Never fails the job.
+  try {
+    console.log("payout sweep:", JSON.stringify(await sweepProviderPayouts(service)));
+  } catch (error) {
+    console.error("payout sweep:", error.message);
+  }
+
+  response.status(200).json({ reminders, refunds, emails, reviews, error: null });
 }

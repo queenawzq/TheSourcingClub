@@ -304,7 +304,11 @@ select is(
 select is((select contact_email from public.admin_payment_board() where payment_id = '66800000-0000-0000-0000-000000000001'), 'p66-owner@example.com', 'and who to ask');
 select ok((select payout_has_number and payout_changed_recently from public.admin_payment_board() where payment_id = '66800000-0000-0000-0000-000000000001'), 'and that a number is on file and is new');
 select ok(
-  (select bool_and(to_jsonb(b)::text not like '%000000000000%') from public.admin_payment_board() b),
+  -- Scoped to this file's factories, like every assertion here: other data
+  -- on the board (a seed, an e2e run, another session's stack) is not ours to
+  -- judge, and an unscoped scan failed once on a seeded database (Nov 7).
+  (select bool_and(to_jsonb(b)::text not like '%000000000000%') from public.admin_payment_board() b
+    where b.factory_name like 'P66 %'),
   'no number anywhere on the board');
 
 -- Nothing owed, or Stripe pays it, or not the one TSC pays: stays hidden.

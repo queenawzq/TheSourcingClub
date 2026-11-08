@@ -3429,7 +3429,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
                     {cert.document && live?.onPreviewDocument ? <button className="profile-document-link" type="button" onClick={() => live.onPreviewDocument(cert.document)}>{cert.name}</button> : <strong>{cert.name}</strong>}
-                    <span className={cert.status === "Verified" || cert.status === "Uploaded" ? "verified" : ""}>{cert.status}</span>
+                    <span className={["Verified", "Uploaded", "Confirmed", "Checked"].includes(cert.status) ? "verified" : ""}>{cert.status}</span>
                   </div>
                 ))}
               </div>
@@ -7585,6 +7585,9 @@ export function FactoryOnboarding({
   extra = null,
   // Live only: drawn at the top of the step (what staff asked for).
   notice = null,
+  // Live only: the registration number field on the verification step,
+  // { label, hint, value, confirmed, confirmLabel, second, check, checkSecond }.
+  registration = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -7669,6 +7672,7 @@ export function FactoryOnboarding({
           documents={documents}
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
+          registration={registration}
         />
         {extra}
 
@@ -7718,7 +7722,7 @@ export function FactoryOnboarding({
 function FactoryOnboardingStep({
   step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
   certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
-  documents = {}, onDeleteDocument, termsAcceptance,
+  documents = {}, onDeleteDocument, termsAcceptance, registration = null,
 }) {
   const walkthroughDocuments = documents["factory-walkthrough"] ?? [];
   // Keys and option lists both resolve through the English copy, so neither
@@ -7952,6 +7956,7 @@ function FactoryOnboardingStep({
         onDeleteCertificate={onDeleteCertificate}
         registrationDocuments={documents["business-registration"] ?? []}
         onDeleteRegistration={onDeleteDocument}
+        registration={registration}
       />
     );
   }
@@ -8125,7 +8130,12 @@ function FactoryOnboardingStep({
       if (!isLive) return drawn;
       const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
       if (staticRows.has(english)) return drawn;
-      if (english === "Business registration") return registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
+      if (english === "Business registration") {
+        const fileStatus = registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
+        // Live: the registration number typed on the verification step.
+        const inUse = values?.["registration-in-use"] ? `${listSeparator}${values["registration-in-use"]}` : "";
+        return values?.["registration-number"] ? `${values["registration-number"]}${listSeparator}${fileStatus}${inUse}` : fileStatus;
+      }
       if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? reviewStatus.uploaded : reviewStatus.notUploaded;
       if (/catalogue|samples|portfolio/i.test(english)) {
         const count = Number(values?.["uploaded-samples"]) || 0;
@@ -8275,9 +8285,11 @@ function FactoryOnboardingStep({
 function OnboardingVerification({
   content, language, live, values = {},
   certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate,
-  registrationDocuments = [], onDeleteRegistration,
+  registrationDocuments = [], onDeleteRegistration, registration = null,
 }) {
   const isZh = language === "zh";
+  // Live only: a sole proprietor uploads another document, named on the upload.
+  const [soleProprietor, setSoleProprietor] = useState(Boolean(registration?.noNumber && registration?.noNumberLabel));
   const [certs, setCerts] = useState(() => live
     ? savedCertifications ?? []
     : content.certifications.map(([name, status]) => ({
@@ -8372,7 +8384,7 @@ function OnboardingVerification({
   return (
     <div className="factory-onboarding-section verification-step">
       <OnboardingAssetUploadCard
-        title={content.businessLabel}
+        title={registration?.uploadLabel ? `${soleProprietor && registration.soleUploadLabel ? registration.soleUploadLabel : registration.uploadLabel} *` : content.businessLabel}
         helper=""
         accept={content.businessHelper}
         fileAccept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
@@ -8384,6 +8396,7 @@ function OnboardingVerification({
         documents={registrationDocuments}
         onDeleteDocument={onDeleteRegistration}
       />
+      {registration && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
       <div className="certification-add-control">
         <label className="factory-onboarding-field">
           <span>{content.certificationLabel}</span>
@@ -8679,6 +8692,56 @@ function OnboardingAssetUploadCard({
       </button>
       <small>{accept}</small>
     </section>
+  );
+}
+
+/**
+ * Live only: the registration number under the registration upload, in the
+ * step's own field style. `check(value)` returns `{ error, confirmable }`:
+ * a failed check digit may be confirmed (the tick), anything else must be
+ * fixed. `second` is the country's optional second field.
+ */
+function OnboardingRegistrationNumber({ registration, onNoNumberChange }) {
+  const [number, setNumber] = useState(registration.value ?? "");
+  const [second, setSecond] = useState(registration.second?.value ?? "");
+  const [confirmed, setConfirmed] = useState(Boolean(registration.confirmed));
+  const [noNumber, setNoNumberState] = useState(Boolean(registration.noNumber && registration.noNumberLabel));
+  const setNoNumber = (value) => { setNoNumberState(value); onNoNumberChange?.(value); };
+  const { error, confirmable } = registration.check(number);
+  const secondError = registration.second ? registration.checkSecond(second) : "";
+  const numberValid = noNumber || !error || (confirmable && confirmed);
+  return (
+    <>
+      {registration.noNumberLabel && (
+        <label className="directory-check">
+          <input type="checkbox" name="registration-none" checked={noNumber} onChange={(event) => setNoNumber(event.target.checked)} />
+          <span>{registration.noNumberLabel}</span>
+        </label>
+      )}
+      {!noNumber && (<>
+      <label className="factory-onboarding-field">
+        <span>{registration.label}<b className="onboarding-required-mark" aria-hidden="true"> *</b></span>
+        <input name="registration-number" value={number} onChange={(event) => { setNumber(event.target.value); setConfirmed(false); }} autoComplete="off" spellCheck={false} data-onboarding-required="true" data-valid={numberValid ? "true" : "false"} />
+        <small>{registration.hint}</small>
+        <small className="factory-onboarding-validation-message">{error}</small>
+        {registration.inUseText && number === registration.value && <small className="factory-onboarding-warning" role="status">{registration.inUseText}</small>}
+      </label>
+      {confirmable && (
+        <label className="directory-check">
+          <input type="checkbox" name="registration-confirmed" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>{registration.confirmLabel}</span>
+        </label>
+      )}
+      {registration.second && (
+        <label className="factory-onboarding-field">
+          <span>{registration.second.label}{registration.second.required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
+          <input name="registration-second" value={second} onChange={(event) => setSecond(event.target.value)} autoComplete="off" data-onboarding-required="true" data-valid={secondError ? "false" : "true"} />
+          <small>{registration.second.hint}</small>
+          <small className="factory-onboarding-validation-message">{secondError}</small>
+        </label>
+      )}
+      </>)}
+    </>
   );
 }
 

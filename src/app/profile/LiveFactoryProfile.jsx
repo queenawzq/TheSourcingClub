@@ -18,6 +18,7 @@ import { useRouter } from "../../lib/router.jsx";
 import {
   bookingMonths,
   documentStatus,
+  registrationWord,
   factoryProfileEditForm,
   factoryProfileEditOptions,
   factoryProfileView,
@@ -135,7 +136,7 @@ function fileDialogs(org, parts, reload) {
     verification: {
       accept: DOCUMENT_ACCEPT,
       registration: registration
-        ? { fileName: registration.file_name, status: companyVerified ? "Verified" : registrationStatus, onView: () => viewDocument(registration) }
+        ? { fileName: registration.file_name, status: registrationWord(parts), onView: () => viewDocument(registration) }
         : companyVerified ? { fileName: "Verified by TSC", status: "Verified", onView: null } : null,
       // A verified registration stays as it is: a new file would send the
       // factory back to review.

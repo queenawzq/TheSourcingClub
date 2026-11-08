@@ -21,7 +21,7 @@ const date = (value) => value
   : "—";
 
 function activityDate(payment) {
-  return payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
+  return payment.refunded_at ?? payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
     ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
 }
 

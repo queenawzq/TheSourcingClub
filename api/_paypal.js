@@ -63,12 +63,13 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
     return answer.body.access_token;
   }
 
+  /** A string body goes as it is: a webhook's event must reach PayPal byte for byte. */
   async function call(method, path, body) {
     const bearer = await token();
     const answer = await timedCall({
       fetchImpl, label: LABEL, url: `${base}${path}`, method,
       headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
     });
     if (answer.status === 401) {
       throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { status: 401 });
@@ -135,6 +136,25 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
         factoryFixes: raw === "UNCLAIMED",
         itemId: item.payout_item_id ?? null,
       };
+    },
+
+    /**
+     * PayPal's own check of a webhook's signature: the headers it sent, our
+     * webhook's id (PAYPAL_WEBHOOK_ID) and the event's raw text, unparsed.
+     * True only on PayPal's SUCCESS.
+     */
+    async verifyWebhook({ headers, webhookId, rawEvent }) {
+      const fields = JSON.stringify({
+        auth_algo: headers["paypal-auth-algo"] ?? "",
+        cert_url: headers["paypal-cert-url"] ?? "",
+        transmission_id: headers["paypal-transmission-id"] ?? "",
+        transmission_sig: headers["paypal-transmission-sig"] ?? "",
+        transmission_time: headers["paypal-transmission-time"] ?? "",
+        webhook_id: webhookId,
+      });
+      const answer = await call("POST", "/v1/notifications/verify-webhook-signature",
+        `${fields.slice(0, -1)},"webhook_event":${rawEvent}}`);
+      return answer.status < 300 && answer.body?.verification_status === "SUCCESS";
     },
 
     /** Only an unclaimed payment can be taken back. */

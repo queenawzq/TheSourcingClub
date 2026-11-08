@@ -22,6 +22,7 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
+import { adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
 import {
   adjustCredits,
   claimReview,
@@ -52,7 +53,6 @@ import {
 import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
 import { profileCompletion } from "./profile-completion.js";
-import { heldMessageQueue } from "../../lib/domain/message.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
@@ -147,6 +147,43 @@ function ago(value) {
  * is a real thing to know and is what the screen now says. Nothing is
  * computed here; this maps the row onto the shape the design renders.
  */
+/**
+ * A vendor's official-registry state on its queue row and its checks
+ * (migration 20261108600000). A verified factory whose check was lost (a
+ * later "not found", or a changed number) shows as "Registry check lost"
+ * in the active queue: staff cannot be notified, so the queue is the prompt.
+ * The registration check's line says the registry state, not the old
+ * "not checked against any registry".
+ */
+export function withRegistry(profile, state) {
+  if (!state || profile.entityType === "Brand") return profile;
+  const when = state.checked_at ? shortDate(state.checked_at) : "";
+  const words = state.state === "found"
+    ? (state.kind === "document" ? `Registration document checked ${when}.` : `Found on an official registry ${when}.`)
+    : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number or name changed."
+    : "No registry check recorded yet.";
+  // "100% complete" read as checked when nothing had been: until a check is
+  // recorded an uploaded registration is "Uploaded · not checked", with no figure.
+  const uploaded = Boolean(state.registration_uploaded_at);
+  const checks = profile.checks.map(([label, result, value, detail]) => (label === "Business registration"
+    ? [label,
+      state.state === "found" ? "Verified" : uploaded ? "Uploaded · not checked" : result,
+      state.state === "found" ? 100 : uploaded ? null : value,
+      `${String(detail ?? "")
+        .replace(/ ?(Not yet reviewed\.|Marked verified[^.]*\.)? ?Contents are not checked against any registry\./, "")
+        // The database writes the upload day in UTC; say it in the reader's
+        // zone, like the check's own date.
+        .replace(/^Uploaded \d{2} \w{3} \d{4}/, state.registration_uploaded_at ? `Uploaded ${shortDate(state.registration_uploaded_at)}` : "$&")} ${words}`.trim()]
+    // The same duplicate the registry panel names: a shared registration
+    // number, which the old card (legal name and website only) said nothing of.
+    : label === "Duplicate company signal" && state.duplicates > 0
+      ? [label, state.duplicate_explained ? "Explained" : "Review", null,
+        `Shares its registration number with ${(state.duplicate_names ?? []).join(", ")}.${state.duplicate_explained ? " Staff recorded why." : ""} ${String(detail ?? "").replace(/^No other company[^.]*\.\s*/, "")}`.trim()]
+    : [label, result, value, detail]));
+  const lost = state.state === "lost" && profile.status === "Approved";
+  return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };
+}
+
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
@@ -323,22 +360,16 @@ export function createAdminAdapter({ user, signOut }) {
   return {
     viewer: { isAdmin: true, org: null, user },
 
-    verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
+    verificationQueue: () => Promise.all([verificationQueue(), adminRegistryStates()])
+      .then(([rows, states]) => rows.map((row) => withRegistry(toReviewProfile(row), states.get(row.orgId)))),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
-    // Held messages are counted from their queue rather than in
-    // admin_overview_metrics: nobody is notified of them either, so the
-    // overview card is their only prompt.
     adminMetrics: async () => {
-      const [metrics, held] = await Promise.all([overviewMetrics(), heldMessageQueue()]);
-      // Like the payments and messages cards, the profiles card links to
-      // where its figure is acted on: this workspace's own queue.
-      return {
-        ...metrics,
-        messagesHeld: held?.length ?? 0,
-        messagesHref: "/app.html/admin/messages",
-        profilesHref: "?screen=verification",
-      };
+      const metrics = await overviewMetrics();
+      // Like the payments card, the profiles card links to where its figure
+      // is acted on: this workspace's own queue. No messages card: messages
+      // are blocked or delivered at once, nothing waits on staff (Nov 7).
+      return { ...metrics, profilesHref: "?screen=verification" };
     },
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
@@ -402,6 +433,13 @@ export function createAdminAdapter({ user, signOut }) {
       reviewAssist,
       latestReviewAssists,
       reviewAssistInput,
+
+      /**
+       * Why a vendor cannot be approved yet, or null: approving needs a
+       * person's "found, matches" on its current registration number (the
+       * database refuses it otherwise). Live only.
+       */
+      approvalBlock: registryApprovalBlock,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.

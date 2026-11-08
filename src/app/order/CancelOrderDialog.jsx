@@ -18,7 +18,7 @@ import { createPortal } from "react-dom";
 
 /** What accepting does today (close_order, migration 035). Said before, not after. */
 export const CANCEL_CONSEQUENCES =
-  "Steps not yet done stop, and any payment TSC has not confirmed is cancelled. Payments TSC has already confirmed stay on the record.";
+  "Steps not yet done stop, and any payment TSC has not confirmed is cancelled. Money TSC holds for steps not yet paid out goes back to the brand.";
 
 export default function CancelOrderDialog({ mode = "propose", title, counterparty, reason = "", busy = false, error = null, onConfirm, onClose }) {
   const [text, setText] = useState("");

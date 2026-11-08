@@ -296,13 +296,6 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
           <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
           <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
           <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
-          {/* Live only: messages held for review. Nobody can be notified of
-              them either, so this card is their only prompt. The design has
-              no moderation, so the prototype's mock passes nothing and keeps
-              its four cards. */}
-          {metrics.messagesHeld != null && (
-            <MetricCard label="Messages held for review" value={metrics.messagesHeld} note="Contact details, waiting on a decision" tone="red" href={metrics.messagesHref} linkLabel="Open messages" />
-          )}
           {/* Where the design puts "low-confidence checks". There is no
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
@@ -1123,7 +1116,7 @@ function reviewEmailSentence(result, { subject = null, company = "the company" }
   }
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0 }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0, registryPanel = null, onRegistryChange = null }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1146,6 +1139,16 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const actions = useActions();
   const eligibility = submission?.trustEligibility ?? null;
   const isVendor = profile?.entityType === "Factory" || profile?.entityType === "Trading company";
+  // Live only: why a vendor cannot be approved yet (no registry check that
+  // found it), re-read whenever the registry panel records a check.
+  const [registryChanged, setRegistryChanged] = useState(0);
+  const [approveBlock, setApproveBlock] = useState(null);
+  useEffect(() => {
+    if (!actions.approvalBlock || !isVendor || !profile?.id) return undefined;
+    let cancelled = false;
+    actions.approvalBlock(profile.id).then((reason) => { if (!cancelled) setApproveBlock(reason); }, () => {});
+    return () => { cancelled = true; };
+  }, [actions, isVendor, profile?.id, registryChanged]);
   const deleteLabel = isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1227,7 +1230,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
-            <Panel title="Verification checks" subtitle="No check contacts an outside registry or certifier.">
+            <Panel title="Verification checks" subtitle={registryPanel ? undefined : "No check contacts an outside registry or certifier."}>
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
                   const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
@@ -1248,7 +1251,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                     >
                       <div className="admin-check-copy"><strong>{label}</strong><p>{detail}</p><span>Source: submitted evidence</span></div>
                       <div className="admin-check-result">
-                        <div className="admin-check-confidence"><strong>{confidence}%</strong><span>complete</span></div>
+                        {confidence != null && <div className="admin-check-confidence"><strong>{confidence}%</strong><span>complete</span></div>}
                         <StatusPill tone={tone}>{result}</StatusPill>
                       </div>
                     </article>
@@ -1257,6 +1260,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </div>
             </Panel>
             ) : null}
+            {/* Live only: the official-registry checks for a vendor. */}
+            {registryPanel && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile, { onChange: () => { setRegistryChanged((n) => n + 1); onRegistryChange?.(); } })}</Panel>}
             {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
@@ -1315,9 +1320,10 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" disabled={deciding} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
+              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
                 {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
               </button>
+              {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
@@ -1913,7 +1919,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, extraNav = [], onSignOut } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, registryPanel = null, extraNav = [], onSignOut } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -2180,7 +2186,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel ? reloadQueue : null} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}

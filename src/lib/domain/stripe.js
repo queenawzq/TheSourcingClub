@@ -59,6 +59,9 @@ export const startCheckout = (paymentId) => call("stripe-checkout", { paymentId 
 /** Read the payment back from Stripe now (after confirming, or while clearing). */
 export const syncPayment = (paymentId) => call("stripe-sync", { paymentId });
 
+/** Refund a cancelled order's held money to the brand (also done daily). */
+export const refundCancelledOrder = (orderId) => call("stripe-refund", { orderId });
+
 /** Pay a held, approved payment out to the factory. */
 export const requestRelease = (paymentId) => call("stripe-release", { paymentId });
 

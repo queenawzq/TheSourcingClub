@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { emailTransport, sendDueNotificationEmails } from "./_notification-sender.js";
@@ -9,7 +9,8 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
  *
  * Two endpoints point here in Stripe's dashboard, each with its own signing
  * secret: one for TSC's own account (payment_intent.processing / succeeded /
- * payment_failed, charge.refunded) and one for connected accounts
+ * payment_failed, charge.refunded, refund.updated / refund.failed /
+ * charge.refund.updated for a cancelled order's refund that failed) and one for connected accounts
  * (account.updated). Locally,
  * `stripe listen` forwards both with one secret.
  *
@@ -107,6 +108,14 @@ export default async function handler(request, response) {
         // Not an order payment: a refunded credit pack takes its credits back.
         const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
         if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
+        break;
+      }
+      case "refund.updated":
+      case "refund.failed":
+      case "charge.refund.updated": {
+        // Our refund of a cancelled order's held money, failed after Stripe
+        // accepted it: the money is held again and staff see why.
+        await applyRefundUpdate({ db, refund: event.data.object });
         break;
       }
       case "account.updated": {

@@ -145,6 +145,7 @@ const secondFactory = await demoUser(LOGINS.secondFactory);
 const pendingBrand = await demoUser(LOGINS.pendingBrand);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
+const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const secondBrand = await demoUser(LOGINS.secondBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
@@ -154,7 +155,7 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -502,6 +503,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "new factory profile");
 must(await admin.from("factory_certifications").insert({
   org_id: newFactoryOrg.id,
@@ -553,6 +556,35 @@ must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.al
   subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
 })))), "the new China factory's tags");
 must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
+// A factory in Türkiye waiting for review, with its tax number (VKN): the review
+// page's "Official registry" panel shows Turkey's sources for it. Nothing
+// checked yet, so staff record the first check.
+const turkeyFactoryOrg = must(await turkeyFactory.client.rpc("create_org", { org_name: LOGINS.turkeyFactory.name, org_kind: "factory" }), "create the Turkish factory");
+must(await admin.from("factory_profiles").upsert({
+  org_id: turkeyFactoryOrg.id, country_code: "TR", location: "Izmir, Türkiye", founded_year: 2009, employee_count: 140,
+  moq: 500, typical_lead_days: 40, intro: "Denim cut, sew and wash under one roof.",
+  onboarding_completed_at: new Date().toISOString(), verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
+}), "the Turkish factory's profile");
+{
+  const path = `${turkeyFactoryOrg.id}/business_registration/${crypto.randomUUID()}-Ticaret-Sicil-Gazetesi.pdf`;
+  const pdf = new TextEncoder().encode("%PDF-1.4\n% demo registration, not a real document\n");
+  must(await turkeyFactory.client.storage.from("org-private").upload(path, pdf, { contentType: "application/pdf" }), "upload the Turkish registration");
+  must(await admin.from("documents").insert({
+    org_id: turkeyFactoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: "Ticaret Sicil Gazetesi.pdf", mime_type: "application/pdf", size_bytes: pdf.length, status: "pending",
+  }), "record the Turkish registration");
+}
+// Fake numbers that pass each country's check (scripts/check-registration-number.mjs).
+must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", registration_letter_number: "DEMO0000000001" }), "the Turkish factory's tax number");
+must(await factory.client.rpc("save_company_registration", { target_org: factoryOrg.id, country: "PT", number: "509999999", access_code: "1234-5678-9012" }), "Demo Factory's NIPC");
+must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91330100MA2B7C4D3F" }), "Ningbo Loomworks's credit code");
+// Staff found both verified ones on their registries, so a brand reads
+// "Official registry · <month>" on their profiles.
+must(await adminUser.client.rpc("admin_record_registry_check", { target_org: factoryOrg.id, source: "certidao", result: "found", note: "Demo: name and address match" }), "Demo Factory's registry check");
+must(await adminUser.client.rpc("admin_record_registry_check", { target_org: secondFactoryOrg.id, source: "document", result: "found", note: "Demo: licence shows this code and the name" }), "Ningbo Loomworks's registry check");
+
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
 // must grow to hold it. The decision goes through the admin's own call, so
@@ -570,6 +602,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and light outerwear, cut and sewn in-house.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "returned factory profile");
 const RETURNED_NOTE = [
   "Thank you for submitting your profile. Before we can verify Harbour Line Apparel we need a few more things from you:",
@@ -838,33 +872,19 @@ must(await factory.client.from("saved_brands").insert({
   org_id: factoryOrg.id, brand_org_id: brandOrg.id, saved_by: factory.id,
 }), "factory saves the brand");
 
-// A message staff already turned down: the brand shared an email address. It
-// was held, then rejected with a reason, so the brand sees "Not delivered"
-// and has the notification; the factory never saw it.
-const rejectedMessage = must(await brand.client.from("messages").insert({
-  thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
-  body: "You can also email me directly at sourcing@demo-brand.example.",
-}).select("id").single(), "message to reject");
-must(await admin.rpc("record_message_screening", {
-  target_message: rejectedMessage.id, outcome: "held", method: "pattern", reason: "email address",
-}), "hold the message to reject");
-must(await adminUser.client.rpc("reject_held_message", {
-  target_message: rejectedMessage.id,
-  note: "Email addresses can't be shared here. Please keep the conversation on The Sourcing Club.",
-}), "reject the message");
-
-// A message held for review: the brand asks to move to WeChat. It is saved to
-// be checked first, like every message, and the verdict is recorded with the secret key, as the
-// server does. The brand sees it in the thread; the factory sees nothing of
-// it until staff release it.
-const heldMessage = must(await brand.client.from("messages").insert({
+// A blocked message: before any order, the brand asks to move to WeChat. It
+// is saved to be checked first, like every message, and the verdict is
+// recorded with the secret key, as the server does; with no contract behind
+// the thread the database blocks it (20261108100000). The brand sees it marked
+// "Not sent" with the guidelines; the factory sees nothing of it.
+const blockedMessage = must(await brand.client.from("messages").insert({
   thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
   body: "Easier to sort the details on WeChat, my ID is demo_brand_88.",
 }).select("id").single(), "message to check");
 must(await admin.rpc("record_message_screening", {
-  target_message: heldMessage.id, outcome: "held", method: "pattern", reason: "WeChat ID",
-}), "hold the message");
-console.log("a message held for review, on the request conversation above");
+  target_message: blockedMessage.id, outcome: "held", method: "pattern", reason: "WeChat ID",
+}), "block the message");
+console.log("a blocked message, on the request conversation above");
 
 console.log("orders");
 // 1. Waiting for its production steps, the state right after an award.
@@ -1431,6 +1451,7 @@ done. Every login uses the password "${PASSWORD}".
   pending brand   ${LOGINS.pendingBrand.email}   (waiting for verification)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
+  Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory

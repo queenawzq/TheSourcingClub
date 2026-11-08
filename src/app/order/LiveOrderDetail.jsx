@@ -157,6 +157,9 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
       return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
       return "Paid";
+    case "cancelled":
+      // Held money that went back to the brand when the order was cancelled.
+      return payment.refunded_at && !isFactory ? "Refunded" : "";
     default:
       return "";
   }
@@ -168,6 +171,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind, needsMethod);
 
+  if (milestone.state === "cancelled") return money ? `Cancelled · ${money}` : "Cancelled";
   if (milestone.state === "complete") {
     return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
   }
