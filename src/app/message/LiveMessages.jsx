@@ -549,7 +549,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // The bubble's side and label: the reader's own messages on the
           // right with their own name, whichever side the reader is on.
           own: mine,
-          timestamp: sentAt(message),
+          timestamp: message.reading_at ?? sentAt(message),
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.

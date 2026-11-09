@@ -365,9 +365,9 @@ select is(
 );
 
 select is(
-  (select last_body from public.message_thread_summary where id = 'b4000000-0000-0000-0000-000000000002'),
-  'Easier by email: buyer@p15-brand.example',
-  'and as its own last message in the thread'
+  (select coalesce(last_body, '(none)') from public.message_thread_summary where id = 'b4000000-0000-0000-0000-000000000002'),
+  '(none)',
+  'but a message that was not sent is not the conversation''s preview'
 );
 
 select throws_ok(

@@ -6,6 +6,7 @@
  * stalls an order. Both lists matter, the second as much as the first.
  */
 import { findContactDetails, forModel } from "../api/_message-patterns.js";
+import { inReadingOrder } from "../src/shared/message-order.mjs";
 
 const HOLD = [
   ["Email me at sourcing@demo-brand.example.com", "an email address"],
@@ -180,7 +181,26 @@ for (const files of DELIVER_FILES) {
   if (result.hit) fail(`false hit on attachment ${files.join(", ")} (${result.reason})`);
 }
 
-const total = HOLD.length + HOLD_FILES.length + DELIVER.length + DELIVER_FILES.length;
+// The order a conversation reads in: seconds of screening must not swap two
+// messages, and a released message still arrives as new.
+const at = (seconds) => new Date(Date.UTC(2026, 10, 9, 12, 0, seconds)).toISOString();
+const order = (rows) => inReadingOrder(rows).map((row) => row.id).join(" ");
+const READING = [
+  ["clean, then blocked while the first was screened", [
+    { id: "b", created_at: at(3), delivered_at: null },
+    { id: "a", created_at: at(0), delivered_at: at(6) },
+  ], "a b"],
+  ["released long after a later blocked one stays new, and the blocked one keeps its place", [
+    { id: "held", created_at: at(0), delivered_at: new Date(Date.UTC(2026, 10, 9, 13)).toISOString() },
+    { id: "blocked", created_at: at(5), delivered_at: null },
+    { id: "clean", created_at: at(10), delivered_at: at(12) },
+  ], "blocked clean held"],
+];
+for (const [what, rows, expected] of READING) {
+  if (order(rows) !== expected) fail(`reading order, ${what}: got "${order(rows)}", expected "${expected}"`);
+}
+
+const total = HOLD.length + HOLD_FILES.length + DELIVER.length + DELIVER_FILES.length + READING.length;
 if (failures) {
   console.log(`check:messages: ${failures} of ${total} pattern checks failed`);
   process.exit(1);

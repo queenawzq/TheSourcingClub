@@ -13,6 +13,7 @@
  */
 import { kickNotificationEmails, supabase, unwrap } from "../supabase.js";
 import { attachmentRefusal, uploadDocument } from "./documents.js";
+import { inReadingOrder } from "../../shared/message-order.mjs";
 
 const THREAD_COLUMNS = `
   id, rfq_id, order_id, brand_org_id, factory_org_id, last_message_at, created_at,
@@ -108,9 +109,7 @@ export async function listMessages(threadId, orgId) {
       .order("created_at"),
     "load the messages",
   );
-  // The thread reads in delivery order. The sender's own blocked or rejected
-  // messages were never delivered and keep the time they were written.
-  return [...(rows ?? [])].sort((a, b) => Date.parse(sentAt(a)) - Date.parse(sentAt(b)));
+  return inReadingOrder(rows ?? []);
 }
 
 /** The words of a message that is only files. */
