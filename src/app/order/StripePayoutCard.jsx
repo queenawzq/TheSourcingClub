@@ -804,7 +804,7 @@ export default function StripePayoutCard({
   const manualSuccessor = removingManual?.is_primary && otherManual.length
     ? otherManual.find((row) => row.id === promoteId) ?? otherManual[0]
     : null;
-  const manualLabel = (row) => (isPayoneer(row) ? `Payoneer ${row.payoneer_email}` : isPaypal(row) ? `PayPal ${row.paypal_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
+  const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
 
   async function removeManualMethod() {
     setRemoveError(null);
