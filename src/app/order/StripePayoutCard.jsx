@@ -830,6 +830,17 @@ export default function StripePayoutCard({
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
 
+  const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
+    ?? (manualSuccessor
+      ? `${manualLabel(manualSuccessor)}${manualSuccessor.bank_name ? ` (${manualSuccessor.bank_name})` : ""} becomes your default.`
+      : !removingManual.is_primary
+        ? null
+        : !otherProviderMethods.length
+          ? "You'll have no withdrawal method. Earnings wait until you add one."
+          : payoutRoute === "manual" && nextProviderMethod
+            ? `${methodLabel(nextProviderMethod)} becomes your default.`
+            : null);
+
   async function removeManualMethod() {
     setRemoveError(null);
     try {
@@ -1038,16 +1049,7 @@ export default function StripePayoutCard({
             ? <button className="secondary-btn" type="button" onClick={backToList}>Back</button>
             : <><button className="secondary-btn" type="button" onClick={backToList}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={manualBusy} onClick={removeManualMethod}>{manualBusy ? "Removing…" : "Remove method"}</button></>}
         >
-          <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalRefusal
-            ?? (manualSuccessor
-              ? `${manualLabel(manualSuccessor)}${manualSuccessor.bank_name ? ` (${manualSuccessor.bank_name})` : ""} becomes your default.`
-              : !removingManual.is_primary
-                ? null
-                : !otherProviderMethods.length
-                  ? "You'll have no withdrawal method. Earnings wait until you add one."
-                  : payoutRoute === "manual" && nextProviderMethod
-                    ? `${methodLabel(nextProviderMethod)} becomes your default.`
-                    : null)}</p>
+          {manualRemovalLine ? <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalLine}</p> : null}
           {!manualRemovalRefusal && otherManual.length > 1 && removingManual.is_primary ? (
             <label className="payout-country-field">
               <span>New default</span>
