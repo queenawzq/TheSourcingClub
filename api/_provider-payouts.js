@@ -1,5 +1,6 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
+import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
@@ -131,22 +132,24 @@ async function wiseBalance(wise, currency) {
 }
 
 export async function wisePreview({ wise, caller, db, row, cnyConfirmed }) {
-  // First: Wise marks the balance route unavailable on a quote larger than the
-  // balance (seen on the sandbox), and "short by" is the sentence staff can act on.
+  // First: a step the balance can't cover even before the fee needs no recipient
+  // made, so the bank number isn't read for a payment that can't go.
   const balance = await wiseBalance(wise, row.currency);
-  const shortByCents = Math.max(0, Number(row.amount_cents) - balance.balanceCents);
-  if (shortByCents > 0) return { shortByCents, feeCents: null, arrivesCents: null, arrivesCurrency: row.wise_currency, nothingLeft: false, ...balance };
+  const stepShort = Number(row.amount_cents) - balance.balanceCents;
+  if (stepShort > 0) return { shortByCents: stepShort, feeCents: null, totalCents: null, arrivesCents: null, arrivesCurrency: row.wise_currency, ...balance };
   const recipientId = await ensureWiseRecipient({
     caller, db, wise, accountId: row.payout_account_id, existingId: row.wise_recipient_id, cnyConfirmed,
   });
   const quote = await wise.quote({
-    sourceCurrency: row.currency, targetCurrency: row.wise_currency, sourceCents: row.amount_cents, recipientId,
+    sourceCurrency: row.currency, targetCurrency: row.wise_currency, amountCents: row.amount_cents, recipientId,
   });
+  const shortByCents = Math.max(0, quote.totalCents - balance.balanceCents);
+  if (quote.balanceRefused && !shortByCents) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
   return {
     feeCents: quote.feeCents,
+    totalCents: quote.totalCents,
     arrivesCents: quote.arrivesCents,
     arrivesCurrency: quote.arrivesCurrency,
-    nothingLeft: quote.arrivesCents <= 0,
     shortByCents,
     ...balance,
   };
@@ -159,13 +162,20 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
   const payoutId = claim.payout_id;
   let transferId = claim.provider_ref;
 
+  // An attempt that has been pressed before may already have a transfer we never
+  // heard about, so it keeps its key: only a first press can end here.
+  async function shortBalance(byCents, words = "") {
+    const sentence = `Wise balance is short by ${money(byCents, claim.currency)}${words}. Top up TSC's Wise balance, then pay again.`;
+    if (claim.resumed) await record(db, payoutId, { sentence });
+    else await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
+    return { done: "short_balance", sentence };
+  }
+
   try {
     if (!transferId) {
       const balance = await wise.balance(claim.currency);
       if (balance.cents < Number(claim.amount_cents)) {
-        const sentence = `Wise balance is short by ${money(Number(claim.amount_cents) - balance.cents, claim.currency)}. Top up TSC's Wise balance, then pay again.`;
-        await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
-        return { done: "short_balance", sentence };
+        return await shortBalance(Number(claim.amount_cents) - balance.cents, " before Wise's fee");
       }
       const recipientId = await ensureWiseRecipient({
         caller, db, wise, accountId: claim.account_id, existingId: claim.wise_recipient_id, cnyConfirmed,
@@ -173,13 +183,10 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       // A fresh quote every time: Wise returns the first transfer for this key,
       // whichever quote comes with it (seen on the sandbox), and an old one expires.
       const quote = await wise.quote({
-        sourceCurrency: claim.currency, targetCurrency: row.wise_currency, sourceCents: claim.amount_cents, recipientId,
+        sourceCurrency: claim.currency, targetCurrency: row.wise_currency, amountCents: claim.amount_cents, recipientId,
       });
-      if (quote.arrivesCents <= 0) {
-        const sentence = "Wise's fee is more than this payment, so nothing would arrive. Pay it another way.";
-        await finish(db, payoutId, "cancelled", { raw_status: "nothing_left", sentence });
-        return { done: "nothing_left", sentence };
-      }
+      if (quote.totalCents > balance.cents) return await shortBalance(quote.totalCents - balance.cents);
+      if (quote.balanceRefused) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
       await record(db, payoutId, { new_quote: quote.id, new_fee: quote.feeCents, keep_lease: true });
       const transfer = await wise.createTransfer({
         recipientId, quoteId: quote.id, key: claim.key, reference: String(claim.order_number).slice(0, 30),

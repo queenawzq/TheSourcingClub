@@ -176,15 +176,18 @@ function PayoutField({ label, children }) {
   return <span className="payout-detail-field"><span className="payout-detail-label">{label}</span><span className="payout-detail-value">{children}</span></span>;
 }
 
-function FactoryContact({ row }) {
-  const parts = [row.contact_name, row.contact_phone].filter((part) => part && part.trim());
-  return row.contact_email || parts.length ? (
-    <PayoutField label="Factory contact">
-      {parts.length ? `${parts.join(", ")}, ` : null}
-      {row.contact_email ? <a href={`mailto:${row.contact_email}`}>{row.contact_email}</a> : null}
+function Contact({ label, parts: given, email }) {
+  const parts = given.filter((part) => part && part.trim());
+  return email || parts.length ? (
+    <PayoutField label={label}>
+      {parts.length ? `${parts.join(", ")}${email ? ", " : ""}` : null}
+      {email ? <a href={`mailto:${email}`}>{email}</a> : null}
     </PayoutField>
   ) : <span className="admin-sub">No contact on file for this company.</span>;
 }
+
+const FactoryContact = ({ row }) => <Contact label="Factory contact" parts={[row.contact_name, row.contact_phone]} email={row.contact_email} />;
+const BrandContact = ({ row }) => <Contact label="Brand contact" parts={[row.brand_name, row.brand_contact_name, row.brand_contact_phone]} email={row.brand_contact_email} />;
 
 /** Everything staff need to send the money, on the row. */
 function BankDetails({ row, onViewed, stripeSetup }) {
@@ -316,7 +319,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
               : `With ${name}: ${(attempt.provider_status ?? "processing").replaceAll("_", " ").toLowerCase()}.`)}
         </span>
         {attempt.received_minor != null && attempt.received_currency
-          ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}${attempt.fee_minor != null ? ` after ${name}'s fee of ${moneyIn(attempt.fee_minor, row.currency)}` : ""}`}</span>
+          ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}.${attempt.fee_minor != null ? ` ${name} fee ${moneyIn(attempt.fee_minor, row.currency)}.` : ""}`}</span>
           : null}
         {transferUrl ? <a className="admin-sub" href={transferUrl} target="_blank" rel="noreferrer" data-testid="open-in-wise">Open in Wise</a> : null}
         {unclaimed && paypal?.appUrl ? <a className="admin-sub" href={paypal.appUrl} target="_blank" rel="noreferrer" data-testid="open-in-paypal">Open PayPal</a> : null}
@@ -372,20 +375,19 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
         {said}
         <span className="admin-sub admin-row-message" role="alert">
           {provider === "wise"
-            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)} in total. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
             : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
         </span>
         {short ? (
           <span className="admin-error admin-row-message" data-testid="wise-short">
-            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}. Top up TSC's Wise balance, then press Check again. `}
+            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}${preview.feeCents == null ? " before Wise's fee" : ""}. Top up TSC's Wise balance, then press Check again. `}
             <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
           </span>
         ) : null}
-        {preview.nothingLeft ? <span className="admin-error admin-row-message">Wise's fee is more than this payment, so nothing would arrive. Pay it another way.</span> : null}
         {short ? (
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
-          <button type="button" className="admin-approve" disabled={working || preview.nothingLeft} data-testid="provider-confirm"
+          <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
                   onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
             {working ? "Paying…" : "Yes, pay"}
           </button>
@@ -578,6 +580,7 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
             <span className="admin-payout-details" data-testid="refund-failed">
               <strong className="payout-method-heading">Refund to the brand failed</strong>
               {row.refund_failure ? <span className="admin-sub">{row.refund_failure}</span> : null}
+              <BrandContact row={row} />
             </span>
           ) : section === "failed" && row.failure_reason
             ? <span className="admin-sub">{row.failure_reason}</span>
@@ -587,6 +590,9 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
             <span className="admin-payout-details">
               <strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : "PayPal"}</strong>
               {paidByStripe(row) && !row.factory_stripe_ready ? <span className="admin-sub" data-testid="stripe-started">Stripe may have paid this already. Retry checks with Stripe first.</span> : null}
+              {paidByPaypal(row) && row.payout_changed_recently ? (
+                <span className="shared-card-status warning payout-change-status" data-testid="payout-changed">{`PayPal address updated ${agoWords(row.payout_changed_at)}. Verify before sending.`}</span>
+              ) : null}
               {paidByPaypal(row) ? <PayoutField label="Payout email">{attempt?.status === "processing" ? attempt.paid_to : row.paypal_email}</PayoutField> : null}
             </span>
           ) : null}
@@ -843,7 +849,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const wiseLine = wise ? (
     <p className={wise.problem || wiseShort ? "admin-error" : "admin-sub"} data-testid="wise-balance">
       {wise.problem ?? `Wise balance: ${moneyIn(wise.balanceCents, wise.currency)}.`}
-      {wiseShort ? ` Short by ${moneyIn(wiseShort, wise.currency)} for what's owed. Top up TSC's Wise balance. ` : " "}
+      {wiseShort ? ` Short by ${moneyIn(wiseShort, wise.currency)} for what's owed, before Wise's fees. Top up TSC's Wise balance. ` : " "}
       {wise.balancesUrl ? <a href={wise.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a> : null}
     </p>
   ) : null;

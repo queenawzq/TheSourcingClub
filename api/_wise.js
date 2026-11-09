@@ -38,6 +38,9 @@ const WISE_FAILURES = {
   charged_back: "This transfer was charged back. Check why in Wise before paying again.",
 };
 
+export const CANT_PAY_FROM_BALANCE = "Wise can't pay this from TSC's balance right now. Check the balance's currency in Wise.";
+const BALANCE_TOO_LOW = "error.payInmethod.disabled";
+
 export const WISE_ISSUE = "Wise has stopped this transfer until an issue is cleared. Open it in Wise to see what it needs.";
 
 /** Wise's keys for the fields it refused, the same ones as wise_details. */
@@ -107,23 +110,45 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
       return String(answer.body.id);
     },
 
-    /** The fee and what arrives depend on the recipient, so one is always named. */
-    async quote({ sourceCurrency, targetCurrency = payoutCurrency, sourceCents, recipientId }) {
-      const answer = await call("POST", `/v3/profiles/${profile}/quotes`, {
-        sourceCurrency, targetCurrency, sourceAmount: Number(decimal(sourceCents)),
-        targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
-      });
-      if (answer.status >= 300) throw refused(answer, "quote this payment");
-      const option = (answer.body.paymentOptions ?? []).find((o) => o.payIn === "BALANCE");
-      if (!option || option.disabled) {
-        throw new PayoutFailure("quote_unavailable", "Wise can't pay this from TSC's balance right now. Check the balance's currency in Wise.");
-      }
+    /**
+     * TSC pays Wise's fee on top, so the quote fixes what arrives: the whole step,
+     * converted at Wise's rate. The rate comes from a first quote of the step; the
+     * second fixes the target, and its sourceAmount is what leaves TSC's balance,
+     * fee included (seen on the sandbox). The fee depends on the recipient, so one
+     * is always named.
+     *
+     * A quote larger than the balance comes back with the balance route disabled and
+     * its figures intact (seen on the sandbox): the caller says how short it is.
+     */
+    async quote({ sourceCurrency, targetCurrency = payoutCurrency, amountCents, recipientId }) {
+      const ask = async (amounts) => {
+        const answer = await call("POST", `/v3/profiles/${profile}/quotes`, {
+          sourceCurrency, targetCurrency, ...amounts,
+          targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
+        });
+        if (answer.status >= 300) throw refused(answer, "quote this payment");
+        return answer.body;
+      };
+      const unavailable = new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
+      const sameCurrency = sourceCurrency === targetCurrency;
+      const rate = sameCurrency ? 1 : Number((await ask({ sourceAmount: Number(decimal(amountCents)) })).rate);
+      if (!(rate > 0)) throw unavailable;
+      const wanted = Math.round(Number(amountCents) * rate);
+      const body = await ask({ targetAmount: Number(decimal(wanted)) });
+      const option = (body.paymentOptions ?? []).find((o) => o.payIn === "BALANCE");
+      const balanceRefused = Boolean(option?.disabled) && option.disabledReason?.code === BALANCE_TOO_LOW;
+      if (!option || (option.disabled && !balanceRefused)) throw unavailable;
+      const arrivesCents = cents(option.targetAmount);
+      // Wise rounds a currency without cents to a whole unit, and nothing else moves it.
+      if (Math.abs(arrivesCents - wanted) > (sameCurrency ? 0 : 100)) throw unavailable;
       return {
-        id: answer.body.id,
+        id: body.id,
         feeCents: cents(option.fee?.total),
-        arrivesCents: cents(option.targetAmount),
+        totalCents: cents(option.sourceAmount),
+        arrivesCents,
         arrivesCurrency: targetCurrency,
-        rate: answer.body.rate ?? null,
+        rate: body.rate ?? null,
+        balanceRefused,
       };
     },
 
