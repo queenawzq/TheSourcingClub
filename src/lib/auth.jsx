@@ -371,6 +371,8 @@ export function AuthProvider({ children }) {
       activeOrg,
       lostAccess,
       dismissLostAccess: () => setLostAccess(null),
+      // Sent back to the sign-in page, which says this: it outlives the session.
+      noteLostAccess: setLostAccess,
 
       // `remember: false` is for a link that says which company it is about:
       // this page opens on it, and the next visit opens where the person left off.
@@ -406,6 +408,7 @@ export function AuthProvider({ children }) {
        * twice, because the address is already taken.
        */
       async signUpWithPassword({ email, password, fullName, companyName, accountType }) {
+        setLostAccess(null);
         setError(null);
 
         if (password.length < MIN_PASSWORD_LENGTH) {
@@ -498,6 +501,7 @@ export function AuthProvider({ children }) {
        * the box said.
        */
       async signInWithPassword({ email, password, keepSignedIn }) {
+        setLostAccess(null);
         requireKeepChoice(keepSignedIn);
         setError(null);
         setKeepSignedIn(keepSignedIn);
@@ -599,6 +603,7 @@ export function AuthProvider({ children }) {
 
       /** Exchange the emailed code for a session, kept as the login form's box says. */
       async verifyEmailCode(email, token, { keepSignedIn } = {}) {
+        setLostAccess(null);
         requireKeepChoice(keepSignedIn);
         setError(null);
         setKeepSignedIn(keepSignedIn);
