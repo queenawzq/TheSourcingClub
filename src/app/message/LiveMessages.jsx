@@ -40,6 +40,8 @@ const initialsOf = (name) =>
 /** After this long still being checked, a message says so even before the screen has been asked again. */
 const SAY_CHECKING_AFTER_MS = 15 * 1000;
 
+const BLOCKED_OUTSIDE = "TSC doesn't allow arranging to talk or pay outside TSC. Repeated attempts may restrict your account. See the";
+
 /**
  * What the sender is told about a message that has not reached the other side.
  * Nothing in the first seconds of being checked: that is how long a check
@@ -65,7 +67,7 @@ function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
       label: words.notSent,
       note: (
         <>
-          {words.blocked}{" "}
+          {message.review_note === "outside_platform" ? BLOCKED_OUTSIDE : words.blocked}{" "}
           <button type="button" className="message-guidelines-link" onClick={onGuidelines} data-testid="message-guidelines-link">{words.link}</button>.
         </>
       ),

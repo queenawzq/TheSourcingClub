@@ -54,7 +54,7 @@ const VERDICT = {
   required: ["hold", "kind", "reason"],
   properties: {
     hold: { type: "boolean" },
-    // What the screen found, kept with the verdict (messages.held_for is no longer shown).
+    // What the screen found: a blocked message tells its sender which (20261109400000).
     kind: { type: "string", enum: ["contact_details", "outside_platform", "none"] },
     reason: { type: "string" },
   },

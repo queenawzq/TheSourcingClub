@@ -75,6 +75,8 @@ const HOLD_FILES = [
 ];
 
 const DELIVER = [
+  // Blocked by the model as outside_platform: a pattern would say "contact details" to its sender.
+  "skip the platform fee, pay our bank directly",
   "Could you confirm the lab dip timing before we award?",
   "Order TSC-000013 is ready for the fit sample.",
   "TSC-000090 and TSC-000091 ship together",
