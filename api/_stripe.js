@@ -515,8 +515,10 @@ export async function releasePayment({ stripe, db, paymentId }) {
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
-    const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
-    const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+    let already;
+    for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+      if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
+    }
     if (already) {
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
       return { released: true, reason: already.id };
