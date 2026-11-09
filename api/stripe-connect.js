@@ -197,6 +197,8 @@ export default async function handler(request, response) {
         return reply(response, 409, { error: "Your withdrawal methods are changed in the form on this page." });
       }
       const accountId = existing.stripe_account_id;
+      // Before Stripe is asked: its webhook for this change may beat our reply.
+      await db.from("stripe_connect_accounts").update({ methods_changed_by_tsc_at: new Date().toISOString() }).eq("org_id", orgId);
       let notice;
       try {
         if (action === "add_method") {

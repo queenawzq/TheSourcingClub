@@ -13,12 +13,14 @@
  */
 import assert from "node:assert/strict";
 import { createPublicKey, createSign, generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { WISE_PUBLIC_KEYS, paypalRef, wisePublicKey, wiseRef, wiseSignatureOk } from "../api/_payout-webhooks.js";
 import { paypalFrom } from "../api/_paypal.js";
 import { wiseFrom } from "../api/_wise.js";
 import wiseWebhook from "../api/wise-webhook.js";
 import paypalWebhook from "../api/paypal-webhook.js";
 import { sweepProviderPayouts } from "../api/payout-sync.js";
+import { tellExternalAccountEvent } from "../api/_stripe-payouts.js";
 
 const json = (status, body) => ({ status, headers: new Headers(), text: async () => JSON.stringify(body ?? null) });
 const KEY = "0b7c8d1e-1111-4222-8333-944455556666";
@@ -232,6 +234,51 @@ assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: 
   assert.deepEqual(swept, { wise: { configured: false }, paypal: { configured: false } }, "no settings, nothing swept, nothing thrown");
   const live = await sweepProviderPayouts({}, { WISE_API_BASE: "https://api.wise.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "1", WISE_PAYOUT_CURRENCY: "CNY" });
   assert.equal(live.wise.error, "live_elsewhere", "a live Wise account away from production is refused, not thrown");
+}
+
+// --- A bank changed in the embedded form is told to the company ------------------
+{
+  const bankDb = ({ changedAt = null, org = "org" } = {}) => {
+    const inserted = [];
+    return { inserted, from() { const q = { select: () => q, eq: () => q,
+      maybeSingle: async () => ({ data: org ? { org_id: org, methods_changed_by_tsc_at: changedAt } : null }),
+      insert: async (row) => { inserted.push(row); return {}; } }; return q; } };
+  };
+  const bank = { id: "ba_1", object: "bank_account", last4: "4321", currency: "usd" };
+  const event = (type, object, previous) => ({ type, account: "acct", created: Math.floor(Date.now() / 1000), data: { object, previous_attributes: previous } });
+
+  for (const [type, words] of [["created", /Bank account ending in 4321 was added/], ["deleted", /Bank account ending in 4321 was removed/]]) {
+    const db = bankDb();
+    assert.equal(await tellExternalAccountEvent(db, event(`account.external_account.${type}`, bank)), true, `${type} is told`);
+    assert.match(db.inserted[0].body, words);
+    assert.match(db.inserted[0].body, /email operations@/, "and says who to tell if nobody made it");
+    assert.doesNotMatch(db.inserted[0].body, /stripe|wise/i, "in words that name no provider");
+    assert.equal(db.inserted[0].org_id, "org");
+    assert.equal(db.inserted[0].kind, "payout_method_changed");
+  }
+  const becameDefault = bankDb();
+  assert.equal(await tellExternalAccountEvent(becameDefault, event("account.external_account.updated", { ...bank, default_for_currency: true }, { default_for_currency: false })), true);
+  assert.match(becameDefault.inserted[0].body, /is now your default/);
+  const statusFlip = bankDb();
+  assert.equal(await tellExternalAccountEvent(statusFlip, event("account.external_account.updated", bank, { status: "new" })), false, "a status flip says nothing");
+  assert.deepEqual(statusFlip.inserted, []);
+
+  const echo = bankDb({ changedAt: new Date().toISOString() });
+  assert.equal(await tellExternalAccountEvent(echo, event("account.external_account.created", bank)), false, "TSC's own change is not told twice");
+  assert.deepEqual(echo.inserted, []);
+  const later = bankDb({ changedAt: new Date(Date.now() - 600_000).toISOString() });
+  assert.equal(await tellExternalAccountEvent(later, event("account.external_account.created", bank)), true, "a change long after TSC's own is someone else's");
+  const stranger = bankDb({ org: null });
+  assert.equal(await tellExternalAccountEvent(stranger, event("account.external_account.created", bank)), false, "an account we don't know is left");
+  assert.deepEqual(stranger.inserted, []);
+  assert.equal(await tellExternalAccountEvent(bankDb(), { ...event("account.external_account.created", bank), account: undefined }), false, "TSC's own account has none of these");
+}
+
+// The route answers those events, and no withdrawal-request case came back with them.
+{
+  const route = readFileSync("api/stripe-webhook.js", "utf8");
+  for (const type of ["created", "updated", "deleted"]) assert(route.includes(`case "account.external_account.${type}"`), `the webhook handles ${type}`);
+  assert(!route.includes('case "payout.'), "payout events have no job here");
 }
 
 console.log("check:payout-webhooks: webhooks and the sweep read payouts back with nobody on the board");

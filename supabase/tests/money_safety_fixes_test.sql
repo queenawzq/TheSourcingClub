@@ -239,7 +239,8 @@ set constraints all immediate;
 set constraints all deferred;
 reset role;
 select is(pg_temp.notices('f1'), (select was + 1 from n97), 'Stripe to manual on the bank already primary tells the company');
-select ok(pg_temp.last_notice('f1') like 'TSC now pays your bank account at P97 Bank ending 1234.%', 'and says which');
+-- Every notice in this transaction has the same created_at, so "last" cannot pick one here.
+select ok(exists(select 1 from public.notifications n where n.org_id = '97b00000-0000-0000-0000-0000000000f1' and n.kind = 'payout_method_changed' and n.body like 'TSC now pays your bank account at P97 Bank ending 1234.%'), 'and says which');
 update n97 set was = pg_temp.notices('f1');
 
 select pg_temp.act_as(1); set local role authenticated;
