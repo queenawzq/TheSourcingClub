@@ -11,9 +11,11 @@ import { connectInstanceFor } from "../../lib/stripe-connect-embed.js";
  * Stripe draws its own errors once a form is showing. Before that it draws
  * nothing at all, so the loading line and a failure to load are ours. Its
  * "loader started" callback comes at once and its frame then stays one pixel
- * high for up to 20 s, so the form has arrived when the frame has a height.
+ * high for up to 20 s, then about 130 px while its own placeholder shows, so
+ * the form has arrived when the frame is taller than that.
  */
-const ARRIVED_PX = 40;
+const ARRIVED_PX = 200;
+const STARTED_PX = 40;
 const GIVE_UP_MS = 45000;
 
 export default function StripeConnectEmbed({ org, country, form, onExit, upgrade = false }) {
@@ -24,16 +26,20 @@ export default function StripeConnectEmbed({ org, country, form, onExit, upgrade
 
   useEffect(() => {
     if (!frame.current || !STRIPE_PUBLISHABLE_KEY) return undefined;
-    const timer = window.setTimeout(() => {
-      if (!shownRef.current) setFailure("The form could not load.");
-    }, GIVE_UP_MS);
-    const watcher = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.height < ARRIVED_PX) return;
+    const arrive = () => {
       shownRef.current = true;
       setShown(true);
       setFailure(null);
       window.clearTimeout(timer);
       watcher.disconnect();
+    };
+    const timer = window.setTimeout(() => {
+      // A short form is still a form: only an empty frame has failed.
+      if ((frame.current?.offsetHeight ?? 0) >= STARTED_PX) arrive();
+      else if (!shownRef.current) setFailure("The form could not load.");
+    }, GIVE_UP_MS);
+    const watcher = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.height >= ARRIVED_PX) arrive();
     });
     watcher.observe(frame.current);
     return () => {
@@ -57,7 +63,7 @@ export default function StripeConnectEmbed({ org, country, form, onExit, upgrade
       {failure ? (
         <p className="tsc-connect-status error" role="alert">{failure} Close this window and try again.</p>
       ) : !shown ? (
-        <p className="tsc-connect-status" role="status">Loading…</p>
+        <div className="tsc-connect-status tsc-connect-loading" role="status"><div className="spinner" aria-hidden="true" />Loading…</div>
       ) : null}
       <div ref={frame}>
         <ConnectComponentsProvider connectInstance={connectInstanceFor(org.id, country, upgrade)}>

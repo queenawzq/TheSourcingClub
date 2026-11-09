@@ -181,7 +181,9 @@
    edge and Stripe's form scrolled past beneath it, showing under the bar.
    Here the footer ends the dialog, and × stays at the top. */
 .payout-modal.tsc-connect-modal .brand-profile-modal-actions { position: static; border-radius: 0 0 var(--card-radius, 8px) var(--card-radius, 8px); }
-.tsc-connect-embed { display: grid; gap: 12px; min-height: 120px; }
+/* align-content: stretched to the dialog, the frame looked as if the form had arrived. */
+.tsc-connect-embed { display: grid; align-content: start; gap: 12px; min-height: 120px; }
+.tsc-connect-loading { display: grid; justify-items: center; align-content: center; gap: 12px; min-height: 280px; }
 .tsc-connect-status { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
 .tsc-connect-status.error { color: var(--danger); }
 
