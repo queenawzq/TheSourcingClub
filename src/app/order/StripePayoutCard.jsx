@@ -66,6 +66,16 @@ function methodLabel(method) {
   return `${method.type === "card" ? "Debit card" : "Bank transfer"}${method.last4 ? ` ····${method.last4}` : ""}`;
 }
 
+/**
+ * Why the default could not change, in the factory's words. The database's
+ * sentence about a payout in progress is written for staff.
+ */
+function defaultRefusal(failure) {
+  const refused = failure?.cause ?? failure;
+  if (refused?.code !== "22023") return failure;
+  return new Error(/pending payout/i.test(refused.message ?? "") ? "You can change your default once the current payout finishes." : refused.message);
+}
+
 const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 /**
@@ -704,8 +714,8 @@ export default function StripePayoutCard({
       if (result.error) throw result.error;
       setPayoutRoute("stripe");
       await load().catch(setError);
-      setMethodNotice("Bank account is now your default.");
-    } catch (failure) { setRemoveError(failure); }
+      setMethodNotice(`${methodLabel(method)} is now your default.`);
+    } catch (failure) { setRemoveError(defaultRefusal(failure)); }
     finally { setMethodBusy(false); }
   };
 
@@ -801,7 +811,7 @@ export default function StripePayoutCard({
       await load().catch(setError);
       setMethodNotice(`${manualLabel(row)} is now your default.`);
     } catch (failure) {
-      setManualError(failure);
+      setManualError(defaultRefusal(failure));
     }
   }
 
@@ -815,6 +825,9 @@ export default function StripePayoutCard({
   const manualSuccessor = removingManual?.is_primary && otherManual.length
     ? otherManual.find((row) => row.id === promoteId) ?? otherManual[0]
     : null;
+  // Removing the last manual method hands payouts back to the banks below it.
+  const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
+  const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
 
   async function removeManualMethod() {
@@ -893,7 +906,8 @@ export default function StripePayoutCard({
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {account?.transfers_active && payoutRoute === "manual" ? <p className="payout-balance-line">Future payouts go to {manualAccount ? manualLabel(manualAccount) : "your default withdrawal method"}. The balance above can still be withdrawn.{handFigures?.balance ? ` Awaiting payout: ${formatMoney(payoutUsdTotal(handFigures.balance), "USD")}.` : ""}</p> : null}
+          {/* Not in the balance above, which is what the bank account holds. */}
+          {account?.transfers_active && payoutRoute === "manual" && payoutUsdTotal(handFigures?.balance ?? []) > 0 ? <p className="payout-balance-line">Awaiting payout: {formatMoney(payoutUsdTotal(handFigures.balance), "USD")}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
@@ -1027,9 +1041,13 @@ export default function StripePayoutCard({
           <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalRefusal
             ?? (manualSuccessor
               ? `${manualLabel(manualSuccessor)}${manualSuccessor.bank_name ? ` (${manualSuccessor.bank_name})` : ""} becomes your default.`
-              : removingManual.is_primary
-                ? "You'll have no withdrawal method. Earnings wait until you add one."
-                : null)}</p>
+              : !removingManual.is_primary
+                ? null
+                : !otherProviderMethods.length
+                  ? "You'll have no withdrawal method. Earnings wait until you add one."
+                  : payoutRoute === "manual" && nextProviderMethod
+                    ? `${methodLabel(nextProviderMethod)} becomes your default.`
+                    : null)}</p>
           {!manualRemovalRefusal && otherManual.length > 1 && removingManual.is_primary ? (
             <label className="payout-country-field">
               <span>New default</span>
