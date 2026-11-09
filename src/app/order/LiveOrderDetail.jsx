@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { earningStatus } from "./payment-summary.mjs";
+import { earningStatus, refundPendingWord } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -134,7 +134,7 @@ function actionFor(milestone, viewer) {
  * brand approves the step, then pays the factory; a payment-only step (a
  * deposit or balance) has nothing to approve and is paid out once funded.
  */
-function paymentLine(payment, isFactory, kind, needsMethod = null) {
+function paymentLine(payment, isFactory, kind, needsMethod = null, order = null) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
@@ -153,6 +153,7 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
+      if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
       if (!payment.release_requested_at) return "Funded: held by TSC";
       return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
@@ -167,9 +168,9 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
 
 /** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod, order }) {
   const payment = milestone.payment;
-  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod);
+  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod, order);
 
   if (milestone.state === "cancelled") return money ? `Cancelled · ${money}` : "Cancelled";
   if (milestone.state === "complete") {
@@ -502,6 +503,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // the rest, so the rows offer only these.
   const viewer = {
     isFactory,
+    order,
     org,
     factoryName: order.factory?.name,
     canFund: can(org, "releaseFunds"),

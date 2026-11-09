@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
-  staffBankNote, withdrawalProblem, withdrawalRows,
+  refundPendingWord, staffBankNote, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 
 const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
@@ -54,6 +54,11 @@ assert.equal(earningStatus(approved), "Pending");
 assert.equal(earningStatus(held), "Awaiting approval");
 assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled")), "Order cancelled");
 assert.equal(earningStatus(earnings.find((row) => row.id === "paid")), "Paid");
+// What the brand reads for the same money: held on a cancelled order is on its way back, approved first is still owed.
+assert.equal(refundPendingWord({ state: "confirmed", release_requested_at: null }, { status: "cancelled" }), "Refund pending");
+assert.equal(refundPendingWord({ state: "confirmed", release_requested_at: null }, { status: "active" }), null);
+assert.equal(refundPendingWord({ state: "confirmed", ...APPROVED }, { status: "cancelled" }), null);
+assert.equal(refundPendingWord({ state: "cancelled", refunded_at: "2026-11-02T00:00:00Z" }, { status: "cancelled" }), null);
 assert.equal(earningStatus.length, 1, "the word comes from the payment alone, so owner and member read the same");
 
 // Every payment sent has its own withdrawal row, and the figures still add up:

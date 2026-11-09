@@ -22,15 +22,17 @@ import { plainCardReason } from "../../shared/card-words.mjs";
 import { chargedCents, orderFeeBps } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
+import { refundPendingWord } from "../order/payment-summary.mjs";
 
 /**
  * One word for where a payment stands, on the list and its details page. A
  * paid step the brand has approved reads Approved until it is paid; a deposit
  * or balance has nothing to approve, so it stays Funded.
  */
-export function paymentStatusWord(payment) {
+export function paymentStatusWord(payment, order) {
   // Held money that went back when the order was cancelled.
   if (payment.state === "cancelled" && payment.refunded_at) return "Refunded";
+  if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
@@ -73,7 +75,7 @@ export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
   const listed = payments.filter((payment) => byOrder.has(payment.order_id));
 
   const rows = listed
-    .filter((payment) => paymentStatusWord(payment))
+    .filter((payment) => paymentStatusWord(payment, byOrder.get(payment.order_id)))
     .sort((a, b) => {
       const owed = Number(OWED.has(b.state)) - Number(OWED.has(a.state));
       if (owed) return owed;
@@ -89,7 +91,7 @@ export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
         client: vendorOf(order),
         date: day(payment.state === "due" ? (payment.order_milestones?.due_on ?? payment.due_at ?? movedAt(payment)) : movedAt(payment)),
         meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,
-        status: paymentStatusWord(payment),
+        status: paymentStatusWord(payment, order),
         state: payment.state,
         amount: formatMoney(chargedCents(payment), payment.currency),
       };

@@ -12,7 +12,7 @@ import "../order/payout.css";
 import "./brand-payment-detail.css";
 
 /** The list's word, plus the states the list leaves out. */
-const statusWord = (payment) => paymentStatusWord(payment)
+const statusWord = (payment, order) => paymentStatusWord(payment, order)
   ?? ({ cancelled: "Cancelled", not_due: "Not due" })[payment.state]
   ?? "Payment";
 
@@ -67,8 +67,8 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       title: payment.order_milestones?.title ?? "Payment",
       orderTitle: order.rfqs?.title ?? order.order_number,
       factory: order.factory?.name ?? "Factory",
-      status: statusWord(payment),
-      statusKey: statusWord(payment).toLowerCase().replaceAll(" ", "-"),
+      status: statusWord(payment, order),
+      statusKey: statusWord(payment, order).toLowerCase().replaceAll(" ", "-"),
       failure: failureLine(payment),
       // A due payment is dated when it falls due, as on the list; the rest when they moved.
       date: payment.state === "due" && payment.order_milestones?.due_on

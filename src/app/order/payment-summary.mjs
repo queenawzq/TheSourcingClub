@@ -28,6 +28,8 @@ const attempts = (row) => row.provider_payouts ?? [];
 const moving = (attempt) => attempt.status === "processing" && Boolean(attempt.money_left_at) && !attempt.details_asked_at;
 export const onItsWay = (row) => toBeSent(row) && attempts(row).some(moving);
 export const heldOnCancelledOrder = (row) => row.state === "confirmed" && !row.release_requested_at && row.order?.status === "cancelled";
+/** The brand's one wording for that money, until it is back with them; null for any other payment. */
+export const refundPendingWord = (payment, order) => (heldOnCancelledOrder({ ...payment, order }) ? "Refund pending" : null);
 
 /**
  * Whether Stripe's answer changes this factory's figures: only once TSC has
