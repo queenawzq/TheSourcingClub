@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
-  registrationNumberProblem, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
+  REGISTRATION_COUNTRIES, registrationNumberProblem, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
 } from "../src/shared/registration-number.mjs";
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
@@ -173,6 +173,13 @@ check("VIES invalid → not_found", () => assert.equal(viesResult({ valid: false
 check("VIES member state down → could_not_check", () => assert.equal(viesResult({ valid: false, userError: "MS_UNAVAILABLE" }).result, "could_not_check"));
 check("VIES error wrapper → could_not_check", () => assert.equal(viesResult({ actionSucceed: false, errorWrappers: [{ error: "MS_MAX_CONCURRENT_REQ" }] }).result, "could_not_check"));
 check("no answer → could_not_check", () => assert.equal(viesResult(null).result, "could_not_check"));
+
+// One language per locale: the English words carry no Chinese (a document's Turkish or Portuguese name stays).
+check("English copy has no Chinese", () => {
+  const english = Object.values(REGISTRATION_COUNTRIES).flatMap((copy) => [copy.label, copy.hint, copy.upload, copy.soleUpload, copy.second?.label, copy.second?.hint]).map((text) => text?.en ?? "");
+  assert.deepEqual(english.filter((text) => /[\u3400-\u9fff]/.test(text)), []);
+});
+check("China's upload in each language", () => assert.deepEqual(REGISTRATION_COUNTRIES.CN.upload, { en: "Business licence", zh: "营业执照" }));
 
 if (failures) {
   console.error(`\n${failures} registration check(s) failed`);

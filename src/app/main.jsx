@@ -819,10 +819,6 @@ function ChooseOrgType() {
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
         <h1>Which side are you on?</h1>
-        <p className="gate-note">
-          This decides what you see. It cannot be changed later without our help,
-          so pick the one that matches your business.
-        </p>
 
         <div className="kind-grid">
           <button

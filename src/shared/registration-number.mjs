@@ -28,7 +28,7 @@ export const REGISTRATION_COUNTRIES = {
   CN: {
     label: { en: "Unified Social Credit Code", zh: "统一社会信用代码" },
     hint: { en: "18 characters, on your business licence", zh: "18 位，见营业执照" },
-    upload: { en: "Business licence (营业执照)", zh: "营业执照" },
+    upload: { en: "Business licence", zh: "营业执照" },
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
@@ -167,7 +167,7 @@ export function registrationFlags(country, raw, { confirmed = false } = {}) {
   const flags = [];
   const problem = registrationNumberProblem(country, value);
   if (country === "CN" && value.length === 18) {
-    if (value.slice(0, 2) === "92") flags.push("92: individual business (个体工商户), not a company");
+    if (value.slice(0, 2) === "92") flags.push("92: individual business, not a company");
     else if (value.slice(0, 2) !== "91" && value.slice(0, 2) !== "93") flags.push(`Starts ${value.slice(0, 2)}: not a registered enterprise (91)`);
     if (orgCodeCheckChar(value.slice(8, 16)) !== value[16]) flags.push("Organisation-code check (17th character) doesn't match; some real codes fail it");
   }
