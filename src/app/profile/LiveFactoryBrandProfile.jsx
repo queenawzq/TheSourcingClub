@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * A brand's profile as a vendor sees it, on the designed
  * `FactoryBrandPublicProfilePage`, with the brand's real profile behind it.
@@ -28,6 +29,7 @@ function Frame({ children }) {
 }
 
 export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = null }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const [state, setState] = useState({ parts: undefined, error: null });
   const [saving, setSaving] = useState(false);
@@ -97,10 +99,11 @@ export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = 
     <>
       <FactoryBrandPublicProfilePage
         brandName={parts.data?.name}
-        language="en"
+        language={language}
         onBack={back}
         live={{
           ...factoryBrandView(parts),
+          orgId: brandOrgId,
           back: { label: backLabel, onClick: back },
           save: { saved: parts.saved, busy: saving, onToggle: toggleSave },
           contact,

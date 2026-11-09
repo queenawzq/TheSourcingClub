@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The factory's own requests — the ones it was invited to or has quoted on —
  * on Queena's designed screen.
@@ -102,6 +103,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}) {
 }
 
 export default function LiveFactoryRfqs({ org }) {
+  const { language } = useFactoryLanguage();
   const organization = useFactoryRfqOrganization(org.id);
   const { navigate } = useRouter();
   const [tabs, setTabs] = useState(null);
@@ -155,7 +157,7 @@ export default function LiveFactoryRfqs({ org }) {
 
   return (
     <FactoryRfqsPage
-      language="en"
+      language={language}
       rfqsByTab={tabs}
       organization={organization}
       onBrowseRfqs={() => navigate("/browse")}

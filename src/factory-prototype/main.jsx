@@ -1,3 +1,5 @@
+import FactoryTranslatedTitle, { FactoryTranslationCard } from "../shared/FactoryTranslatedTitle.jsx";
+import { factoryInterfaceZh, translateFactoryInterfaceZh } from "../shared/factory-interface-zh.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
@@ -303,6 +305,8 @@ export const nav = [
 ];
 
 const factoryMainZhText = {
+  "Log out": "退出登录",
+  "Language": "语言",
   "Dashboard": "控制台",
   "Production orders": "生产订单",
   "Browse RFQs": "浏览询价",
@@ -731,6 +735,7 @@ const factoryMainZhText = {
   "Payment status": "付款状态",
   "Verified": "已验证",
   "New York, USA": "纽约，美国",
+    "London, UK": "伦敦，英国",
   "Los Angeles, USA": "洛杉矶，美国",
   "Toronto, Canada": "多伦多，加拿大",
   "Miami, USA": "迈阿密，美国",
@@ -1188,10 +1193,11 @@ function translateFactoryMainText(value) {
   if (!trimmed) return value;
   const leading = value.match(/^\s*/)?.[0] || "";
   const trailing = value.match(/\s*$/)?.[0] || "";
-  let translated = factoryMainZhText[trimmed] || trimmed;
+  let translated = factoryInterfaceZh[trimmed] || factoryMainZhText[trimmed] || trimmed;
   factoryMainZhReplacements.forEach(([pattern, replacement]) => {
     translated = translated.replace(pattern, replacement);
   });
+  translated = translateFactoryInterfaceZh(translated);
   return `${leading}${translated}${trailing}`;
 }
 
@@ -1212,30 +1218,51 @@ function translateFactoryMainDom(root) {
   const textNodes = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode);
   textNodes.forEach((node) => {
-    node.nodeValue = translateFactoryMainText(node.nodeValue);
+    const translated = translateFactoryMainText(node.nodeValue);
+    if (node.nodeValue !== translated) node.nodeValue = translated;
   });
 
-  root.querySelectorAll("input[placeholder]").forEach((input) => {
-    input.placeholder = translateFactoryMainText(input.placeholder);
+  root.querySelectorAll("input[placeholder], textarea[placeholder]").forEach((input) => {
+    const translated = translateFactoryMainText(input.placeholder);
+    if (input.placeholder !== translated) input.placeholder = translated;
   });
   root.querySelectorAll("[aria-label]").forEach((element) => {
-    element.setAttribute("aria-label", translateFactoryMainText(element.getAttribute("aria-label") || ""));
+    const original = element.getAttribute("aria-label") || "";
+    const translated = translateFactoryMainText(original);
+    if (translated !== original) element.setAttribute("aria-label", translated);
+  });
+  root.querySelectorAll("[data-placeholder]").forEach((element) => {
+    const original = element.getAttribute("data-placeholder") || "";
+    const translated = translateFactoryMainText(original);
+    if (translated !== original) element.setAttribute("data-placeholder", translated);
   });
   root.querySelectorAll("[title]").forEach((element) => {
-    element.setAttribute("title", translateFactoryMainText(element.getAttribute("title") || ""));
+    const original = element.getAttribute("title") || "";
+    const translated = translateFactoryMainText(original);
+    if (translated !== original) element.setAttribute("title", translated);
   });
 }
 
-function FactoryMainLanguageLayer({ language }) {
+export function FactoryMainLanguageLayer({ language }) {
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     if (language !== "zh") return;
-    const frame = window.requestAnimationFrame(() => {
-      translateFactoryMainDom(document.querySelector(".factory-flow"));
+    // Factory dialogs use portals outside the app shell. Include them as well.
+    if (!document.querySelector(".factory-flow")) return;
+    const root = document.body;
+    let frame;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(translate);
     });
-    return () => window.cancelAnimationFrame(frame);
-  });
-
+    function translate() {
+      observer.disconnect();
+      translateFactoryMainDom(root);
+      observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "data-placeholder", "aria-label", "title"] });
+    }
+    translate();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [language]);
   return null;
 }
 
@@ -4588,7 +4615,7 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const meta = [rfq.brand, rfq.location, rfq.trust].filter(Boolean).join(" · ");
 
   return (
-    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row shared-responsive-card">
+    <FactoryTranslationCard className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row shared-responsive-card">
       <header className="factory-request-card-top shared-card-header">
         <div className="factory-request-title shared-card-heading">
           {dashboardPhoto || primaryImage ? (
@@ -4602,7 +4629,7 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
             <div className="factory-avatar">{rfq.initials}</div>
           )}
           <div>
-            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
+            <FactoryTranslatedTitle title={rfq.title} id={rfq.id} language={language} />
             <p data-no-translate>
               {isZh ? getTranslatedListMeta(meta) : meta}
             </p>
@@ -4623,9 +4650,9 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
             </div>
           ))}
         </div>
-        <p data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
+        <FactoryTranslatedTitle as="p" field="description" title={rfq.description} id={rfq.id} language={language} />
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -4714,7 +4741,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const imagePosition = dashboardPhoto?.position;
 
   return (
-    <article className="factory-project-dashboard-row shared-responsive-card shared-dashboard-card">
+    <FactoryTranslationCard className="factory-project-dashboard-row shared-responsive-card shared-dashboard-card">
       <header className="factory-project-dashboard-heading shared-card-heading">
           {/* A live order has no reference photo yet, and an <img> with no
               source draws a broken-image tile. The tile keeps its place in
@@ -4732,7 +4759,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
             </span>
           )}
           <div>
-            <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
+            <FactoryTranslatedTitle as="strong" title={project.title} id={project.id} kind="order" language={language} />
             <p className="project-meta" data-no-translate>
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
@@ -4754,7 +4781,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
       <div className="factory-project-dashboard-progress">
           <ProjectProgress progress={project.progress} steps={project.steps} />
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5084,7 +5111,7 @@ export function FactoryBrandPublicProfilePage({ brandName, language = "en", onBa
   };
 
   return (
-    <main className="factory-profile-page brand-profile-page factory-brand-public-page">
+    <FactoryTranslationCard as="main" className="factory-profile-page brand-profile-page factory-brand-public-page">
       <div className="brand-profile brand-profile-redesign is-public-view">
         <div className="factory-profile-shell">
           <button className="factory-profile-public-back" type="button" onClick={view.back.onClick}>← {view.back.label}</button>
@@ -5101,7 +5128,7 @@ export function FactoryBrandPublicProfilePage({ brandName, language = "en", onBa
               </div>
               <div>
                 <div className="factory-profile-title-row">
-                  <h1>{view.name}</h1>
+                  <FactoryTranslatedTitle title={view.name} language={language} as="h1" />
                 </div>
                 <p>{view.heroLine}</p>
                 <div className="tag-row compact-tags factory-profile-hero-tags">
@@ -5122,7 +5149,7 @@ export function FactoryBrandPublicProfilePage({ brandName, language = "en", onBa
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Overview")} />
-                <p>{view.intro || view.empty.intro}</p>
+                {view.intro ? <FactoryTranslatedTitle title={view.intro} id={view.orgId} kind="brand" field="intro" language={language} as="p" /> : <p>{view.empty.intro}</p>}
                 <div className="factory-profile-detail-grid">
                   {view.overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
                 </div>
@@ -5183,7 +5210,7 @@ export function FactoryBrandPublicProfilePage({ brandName, language = "en", onBa
           </div>
         </div>
       </div>
-    </main>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5263,6 +5290,7 @@ export function FactorySavedPage({
           )
         ) : (
           <section className="factory-saved-rfq-list" aria-label="Saved RFQs">
+            {savedRfqs.length === 0 && <p className="factory-dashboard-empty">{tx("No saved RFQs yet. Save a request to keep it here.")}</p>}
             {savedRfqs.map((project) => (
               <FactorySavedRfqCard project={project} language={language} onViewRfq={onViewRfq} key={project.title} />
             ))}
@@ -5279,12 +5307,12 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
   const fitTone = brand.fit === "Good fit" ? "good" : brand.fit === "Potential fit" ? "warn" : "strong";
 
   return (
-    <article className="factory-saved-brand-card">
+    <FactoryTranslationCard className="factory-saved-brand-card">
       <header>
         <button className="factory-saved-brand-identity factory-saved-brand-link" type="button" onClick={() => onViewBrand(brand)}>
           <div className="factory-avatar">{brand.logoUrl ? <img src={brand.logoUrl} alt="" /> : brand.initials}</div>
           <div>
-            <h2>{brand.name}</h2>
+            <FactoryTranslatedTitle title={brand.name} language={language} />
             <p>{tx(brand.location)}</p>
           </div>
         </button>
@@ -5295,7 +5323,7 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
           )}
         </div>
       </header>
-      {brand.summary && <p className="factory-saved-brand-summary">{brand.summary}</p>}
+      {brand.summary && <FactoryTranslatedTitle title={brand.summary} id={brand.orgId} kind="brand" field="intro" language={language} as="p" />}
       {brand.trust && (
         <div className="factory-request-trust factory-saved-brand-trust">
           <span className="factory-request-trust-icon" aria-hidden="true">$</span>
@@ -5308,7 +5336,7 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
           <span className="tag garment-tag" key={tag}>{tx(tag)}</span>
         ))}
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5319,12 +5347,12 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
   const [primaryImage] = project.images || [];
 
   return (
-    <article className="factory-request-card factory-saved-rfq-card">
+    <FactoryTranslationCard className="factory-request-card factory-saved-rfq-card">
       <header className="factory-request-card-top">
         <div className="factory-request-title">
           <div className="factory-avatar">{project.initials}</div>
           <div className="rfq-main">
-            <h2 data-no-translate>{title}</h2>
+            <FactoryTranslatedTitle title={project.title} id={project.id} language={language} />
             <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
           </div>
         </div>
@@ -5367,7 +5395,7 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
           </figure>
         )}
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5813,12 +5841,12 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
   ].filter(Boolean);
 
   return (
-    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card shared-responsive-card" : "factory-request-card factory-rfq-card shared-responsive-card"}>
+    <FactoryTranslationCard className={rfq.featured ? "factory-request-card featured factory-rfq-card shared-responsive-card" : "factory-request-card factory-rfq-card shared-responsive-card"}>
       <header className="factory-request-card-top shared-card-header">
         <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{rfq.initials}</div>
           <div className="rfq-main">
-            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
+            <FactoryTranslatedTitle title={rfq.title} id={rfq.id} language={language} />
             <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
           </div>
         </div>
@@ -5862,8 +5890,8 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
               </div>
             ))}
           </div>
-          <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
-          {isZh && <ListTranslationMeta />}
+          <FactoryTranslatedTitle as="p" field="description" title={rfq.description} id={rfq.id} language={language} />
+          {isZh && !rfq.id && <ListTranslationMeta />}
           {!rfq.id && (
             <div className="factory-request-trust">
               <span className="factory-request-trust-icon" aria-hidden="true">$</span>
@@ -5901,7 +5929,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
           ))}
         </div>
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5911,7 +5939,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
 // Withdraw grey out and the reason is shown under them.
 export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage, quoteBlocked }) {
   return (
-    <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
+    <FactoryTranslationCard as="main" className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-rfq-read-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
@@ -5941,11 +5969,11 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
                 no quote yet it is given empty values rather than the design's
                 example, because a fabricated price on a request you have not
                 quoted is the worst thing this screen could show. */}
-            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quote} />
+            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quote} requestId={project.id} />
           </section>
 
           <aside className="factory-submit-side">
-            <FactoryPriceTotalCard project={project} total={priceTotal} />
+            <FactoryPriceTotalCard project={project} total={priceTotal} language={language} />
 
             {/* `status` is what this vendor actually sent. Without it the
                 design's example stands, which live would show as a $18.40
@@ -5970,7 +5998,7 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           </aside>
         </div>
       </div>
-    </main>
+    </FactoryTranslationCard>
   );
 }
 
@@ -5978,7 +6006,7 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
 // prototype passes none and keeps the design's example figures; live, a card
 // that invented a $5,780 total for a vendor with no quote is worse than no
 // card at all.
-function FactoryPriceTotalCard({ project, total }) {
+function FactoryPriceTotalCard({ project, total, language }) {
   const rows = total
     ? [
       ["Unit price", total.unitPrice],
@@ -6001,7 +6029,7 @@ function FactoryPriceTotalCard({ project, total }) {
     <section className="factory-submit-card factory-review-card">
       <header className="factory-review-card-header">
         <h2>Price total</h2>
-        <p>{[total?.brand ?? project.brand, total?.location ?? project.location].filter(Boolean).join(" · ")}</p>
+        <p>{language === "zh" ? getTranslatedListMeta([total?.brand ?? project.brand, total?.location ?? project.location].filter(Boolean).join(" · ")) : [total?.brand ?? project.brand, total?.location ?? project.location].filter(Boolean).join(" · ")}</p>
       </header>
 
       <div className="factory-review-rows">
@@ -6360,12 +6388,12 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured factory-active-project-card shared-responsive-card" : "factory-request-card factory-active-project-card shared-responsive-card"}>
+    <FactoryTranslationCard className={project.featured ? "factory-request-card featured factory-active-project-card shared-responsive-card" : "factory-request-card factory-active-project-card shared-responsive-card"}>
       <header className="factory-request-card-top shared-card-header">
         <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
-            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
+            <FactoryTranslatedTitle title={project.title} id={project.id} kind="order" language={language} />
             <p className="project-meta" data-no-translate>
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
@@ -6408,10 +6436,10 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
               </div>
             ))}
           </div>
-          <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
-          {isZh && <ListTranslationMeta />}
+          <FactoryTranslatedTitle as="p" field="description" title={project.description} id={project.id} kind="order" language={language} />
+          {isZh && !project.id && <ListTranslationMeta />}
           <div className="project-status-row">
-            {project.statusDetail && <span><strong>Current status:</strong> {project.statusDetail}</span>}
+            {project.statusDetail && <span><strong>Current status:</strong> {isZh && project.statusDetail.includes(" proposed cancelling: ") ? <span data-no-translate>{project.statusDetail.startsWith("You proposed") ? "你提议取消订单：" : `${project.statusDetail.split(" proposed cancelling: ")[0]} 提议取消订单：`}{project.statusDetail.split(" proposed cancelling: ").slice(1).join(" proposed cancelling: ")}</span> : project.statusDetail}</span>}
           </div>
           <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
@@ -6425,7 +6453,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           )}
         </div>
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
@@ -7301,7 +7329,7 @@ function FactorySettingsScreen({ companyType = "factory", language = "en" }) {
               </div>
               <div className="settings-form-grid">
                 <label>
-                  <span>{tx("Account name")}</span>
+                  <span>{tx(companyType === "trading" ? "Company name" : "Factory name")}</span>
                   <input defaultValue={account.name} />
                 </label>
                 <label>
@@ -9059,7 +9087,7 @@ function OnboardingChipGroup({ label, options, selected = [], required = false, 
             onClick={() => toggleOption(option)}
             key={option}
           >
-            {option}
+            {isZh ? translateFactoryMainText(option) : option}
           </button>
         ))}
       </div>
@@ -9179,12 +9207,12 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
   ];
 
   return (
-    <article data-testid="open-rfq-card" className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
+    <FactoryTranslationCard data-testid="open-rfq-card" className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
       <header className="factory-request-card-top shared-card-header">
         <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
-            <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
+            <FactoryTranslatedTitle title={project.title} id={project.id} language={language} />
             <p data-no-translate>
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}
             </p>
@@ -9208,7 +9236,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
             ))}
           </div>
           {isZh ? (
-            <TranslatedProjectSummary project={project} />
+            <TranslatedProjectSummary project={project} language={language} />
           ) : (
             <p data-no-translate>{project.specialty}</p>
           )}
@@ -9250,12 +9278,13 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           ))}
         </div>
       </div>
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
 function getTranslatedProjectTitle(title) {
   const translatedTitles = {
+    "Untitled request": "未命名询价",
     "Organic cotton woven shirt production": "有机棉梭织衬衫生产订单",
     "Premium knit capsule for resort drop": "高级针织度假系列生产订单",
     "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
@@ -9277,6 +9306,7 @@ function ListTranslationMeta() {
 function getTranslatedListMeta(meta) {
   const replacements = {
     "New York, USA": "纽约，美国",
+    "London, UK": "伦敦，英国",
     "Los Angeles, USA": "洛杉矶，美国",
     "Toronto, Canada": "多伦多，加拿大",
     "Miami, USA": "迈阿密，美国",
@@ -9295,9 +9325,9 @@ function getTranslatedListMeta(meta) {
     "Started Jul 8": "7 月 8 日开始"
   };
 
-  return meta.split(" · ").map((part, index) => {
+  return meta.split(" · ").map(part => part.trim()).filter(Boolean).map((part, index) => {
     if (index === 0) return part;
-    return replacements[part] || part;
+    return replacements[part] || translateFactoryMainText(part);
   }).join(" · ");
 }
 
@@ -9319,10 +9349,11 @@ function getTranslatedListDescription(item) {
       "低起订量再生尼龙泳装套装系列，包含撞色包边。"
   };
 
-  return translatedDescriptions[item.description] || getTranslatedProjectSummary(item);
+  return translatedDescriptions[item.description] || item.description || getTranslatedProjectSummary(item);
 }
 
-function TranslatedProjectSummary({ project }) {
+function TranslatedProjectSummary({ project, language }) {
+  if (project.id) return <FactoryTranslatedTitle as="p" field="description" title={project.specialty || project.description} id={project.id} language={language} />;
   return (
     <div className="brand-card-translation">
       <strong>{getTranslatedProjectSummary(project)}</strong>
@@ -9657,7 +9688,7 @@ export function FactoryProjectProgressDetail({
     <main className="factory-detail-page factory-project-detail-page">
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
-        <h1 data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</h1>
+        <FactoryTranslatedTitle title={title} id={order?.id} kind="order" language={language} as="h1" />
         <p className="factory-project-detail-subtitle" data-no-translate>{isZh ? getTranslatedListMeta(subtitle) : subtitle}</p>
         {onCancelOrder && (
           <OrderCardMenu customTabs={[]} onToggleTab={() => {}}>
@@ -10212,7 +10243,7 @@ export function FactorySubmitQuote({
   };
 
   return (
-    <main className="factory-detail-page factory-submit-page factory-prepare-quote-page" ref={cardRef}>
+    <FactoryTranslationCard as="main" className="factory-detail-page factory-submit-page factory-prepare-quote-page" ref={cardRef}>
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
@@ -10233,7 +10264,7 @@ export function FactorySubmitQuote({
         <div className="factory-submit-layout">
           <section className="factory-submit-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
-            <FactoryQuoteSections companyType={companyType} language={language} values={values} />
+            <FactoryQuoteSections companyType={companyType} language={language} values={values} requestId={project.id} />
           </section>
 
           <FactoryQuoteReminder companyType={companyType} />
@@ -10263,7 +10294,7 @@ export function FactorySubmitQuote({
           </button>
         </div>
       </footer>
-    </main>
+    </FactoryTranslationCard>
   );
 }
 
@@ -10302,7 +10333,7 @@ export function FactoryReviewTotal({
     ? (isZh ? "发送中…" : "Sending…")
     : isZh ? `发送报价，使用 ${cost} 额度` : `Send for ${cost} credits`;
   return (
-    <main className="factory-detail-page factory-submit-page factory-review-page">
+    <FactoryTranslationCard as="main" className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-review-header">
           <button className="text-link" type="button" onClick={onEdit}>‹ Back to edit quote</button>
@@ -10343,11 +10374,11 @@ export function FactoryReviewTotal({
         <div className="factory-review-layout">
           <section className="factory-review-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
-            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quoteValues} />
+            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quoteValues} requestId={project.id} />
           </section>
 
           <aside className="factory-review-side">
-            <FactoryPriceTotalCard project={project} total={priceTotal} />
+            <FactoryPriceTotalCard project={project} total={priceTotal} language={language} />
 
             <section className="factory-submit-card factory-credit-cost-card">
               <div className="factory-credit-card-header">
@@ -10392,7 +10423,7 @@ export function FactoryReviewTotal({
           <button className="primary-btn" type="button" disabled={busy || short} onClick={onSendQuote}>{sendForCredits}</button>
         </div>
       </footer>
-    </main>
+    </FactoryTranslationCard>
   );
 }
 
@@ -10418,12 +10449,12 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
     ?? (attachments?.length ? () => attachments.forEach((file) => file.onOpen?.()) : undefined);
 
   return (
-    <article className="factory-submit-card factory-submit-project-card factory-request-card">
+    <FactoryTranslationCard className="factory-submit-card factory-submit-project-card factory-request-card">
       <header className="factory-request-card-top">
         <div className="factory-request-title">
           <div className="factory-avatar">{project.initials}</div>
           <div>
-            <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
+            <FactoryTranslatedTitle title={project.title} id={project.id} language={language} />
             <p data-no-translate>{isZh ? getTranslatedListMeta([project.brand, project.location, project.posted].filter(Boolean).join(" · ")) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
@@ -10445,7 +10476,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
             ))}
           </div>
           {isZh ? (
-            <TranslatedProjectSummary project={project} />
+            <TranslatedProjectSummary project={project} language={language} />
           ) : (
             <p data-no-translate>{project.specialty}</p>
           )}
@@ -10501,11 +10532,11 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
           <button className="text-link" type="button" onClick={downloadFiles}>Download files</button>
         </div>
       )}
-    </article>
+    </FactoryTranslationCard>
   );
 }
 
-function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values }) {
+function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values, requestId }) {
   const [sampleIds, setSampleIds] = useState(() => values
     ? Object.keys(values).filter((key) => /^sample\.\d+\.stage$/.test(key)).map((key) => Number(key.split(".")[1])).sort((a, b) => a - b)
     : [0, 1]);
@@ -10610,7 +10641,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
               ].filter(([, value]) => value).map(([label, value]) => (
                 <div key={label}>
                   <span>{label}</span>
-                  <p data-no-translate>{value}</p>
+                  {requestId && ["Requested material", "What the brand needs sourced"].includes(label)
+                    ? <FactoryTranslatedTitle title={value} id={requestId} language={language} field={label === "Requested material" ? "material" : "sourcingDetails"} as="p" />
+                    : <p data-no-translate>{isZh && ["Services requested", "Sourcing responsibility"].includes(label) ? translateFactoryMainText(value) : value}</p>}
                 </div>
               ))}
             </div>
@@ -10670,8 +10703,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
         {!readOnly && <button className="factory-add-stage" type="button" onClick={addMaterialCost}>+ Add material cost</button>}
       </SubmitSection>
 
-      <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
-        <div className="factory-submit-sample-rows">
+      <SubmitSection compact title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
+        <div className="factory-submit-sample-rows" hidden={sampleIds.length === 0}>
           {sampleIds.map((index) => (
             <SamplePlanRow key={index} index={index}
               stage={values?.[`sample.${index}.stage`] ?? (!values && index < 2 ? ["Fit sample", "PP sample"][index] : "")}
@@ -10693,7 +10726,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
           description={
             values?.brandQuestions?.length
-              ? `Brand asks: ${values.brandQuestions.join(" ")}`
+              ? `${isZh ? "品牌询问：" : "Brand asks: "}${values.brandQuestions.join(" ")}`
               : values ? "" : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
           }
           descriptionNoTranslate
@@ -10715,7 +10748,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
         {values?.brandAdditionalDetails && (
           <section className="factory-brand-additional-details">
             <span>Brand additional details</span>
-            <p data-no-translate>{values.brandAdditionalDetails}</p>
+            <FactoryTranslatedTitle title={values.brandAdditionalDetails} id={requestId} language={language} field="additionalDetails" as="p" />
           </section>
         )}
         <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
@@ -10816,9 +10849,9 @@ export function FactoryQuoteSent({
   );
 }
 
-function SubmitSection({ title, description, helper, children, descriptionNoTranslate = false }) {
+function SubmitSection({ title, description, helper, children, descriptionNoTranslate = false, compact = false }) {
   return (
-    <article className="factory-submit-card factory-submit-section">
+    <article className={`factory-submit-card factory-submit-section${compact ? " is-empty-quote-section" : ""}`}>
       <h2>{title}</h2>
       <p data-no-translate={descriptionNoTranslate || undefined}>{description}</p>
       {helper && <small className="submit-section-language-hint">{helper}</small>}

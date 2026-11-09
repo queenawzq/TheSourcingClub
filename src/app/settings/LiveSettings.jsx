@@ -33,6 +33,7 @@
  * switches are the company's (notification_preferences), loaded on their own
  * so that a failure there does not blank the page.
  */
+import { FactoryLanguageSwitch } from "../../shared/useFactoryLanguage.jsx";
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
@@ -427,6 +428,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   return (
     <>
       <SettingsScreen
+        languageControl={isFactory ? <FactoryLanguageSwitch /> : null}
         accountType={isFactory ? "factory" : "brand"}
         permissionsNote={isOwner ? null : ""}
         onSaveAccount={canSettings ? async (details) => {

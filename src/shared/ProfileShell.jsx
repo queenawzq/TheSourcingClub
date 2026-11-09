@@ -2,6 +2,7 @@ import React from "react";
 
 export function PrototypeSideNav({
   account,
+  accountExtra,
   active,
   ariaLabel,
   collapsed,
@@ -26,6 +27,7 @@ export function PrototypeSideNav({
           <small>{account.type}</small>
         </div>
       </button>
+      {accountExtra}
       <nav>
         {navItems.map((item, index) => (
           <React.Fragment key={item.label}>

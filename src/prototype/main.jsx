@@ -2495,6 +2495,7 @@ export function SettingsScreen({
   team: liveTeam,
   account: liveAccount,
   onSaveAccount,
+  languageControl,
   paymentMethods: livePaymentMethods,
   invites: liveInvites,
   onAddPaymentMethod,
@@ -2759,6 +2760,7 @@ export function SettingsScreen({
                   <span>Location</span>
                   <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
                 </label>
+                {languageControl && <div className="settings-language-control">{languageControl}</div>}
               </div>
             </section>
 

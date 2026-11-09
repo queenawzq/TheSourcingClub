@@ -121,7 +121,7 @@ export function orderFiles(rfqDocuments, updates, milestones) {
  * said at that figure, as everywhere else the brand sees it. A payout stays
  * at the step amount, which is what the factory is paid.
  */
-export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null }) {
+export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null, language = "en" }) {
   const names = {
     [order.brand_org_id]: order.brand?.name ?? "The brand",
     [order.factory_org_id]: order.factory?.name ?? "The factory",
@@ -132,6 +132,33 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
 
   const sentence = (row) => {
     const step = row.milestone_title;
+    if (language === "zh") {
+      const actor = row.actor_org_id === viewerOrgId ? "你" : names[row.actor_org_id] ?? "TSC";
+      switch (row.kind) {
+        case "message": return `最近消息 ${relativeTime(row.at, now)}`;
+        case "update_posted": return `${actor}发布了${step}的更新`;
+        case "step_submitted": return `${actor}提交了${step}，等待批准`;
+        case "step_approved": return `${actor}批准了${step}`;
+        case "step_completed": return `${step}已完成`;
+        case "payment_due": return `${step}待付款 ${paid(row)}`;
+        case "payment_sent": return `${actor}将${step}的 ${paid(row)} 标记为已支付`;
+        case "payment_processing": return `${step}的付款正在处理中`;
+        case "payment_failed": return viewerOrgId === order.factory_org_id ? null : `${step}付款失败`;
+        case "payment_confirmed": return `${step}已付款 ${paid(row)}，由TSC托管`;
+        case "payment_released": return `TSC已支付${step}的 ${money(row.detail)}`;
+        case "payment_refunded": return `${step}的款项已退还品牌`;
+        case "payment_refunded_after_payout": return `${step}的款项在支付后已退还品牌`;
+        case "schedule_agreed": return `${actor}确认了生产步骤`;
+        case "order_activated": return "生产已开始";
+        case "cancellation_proposed": return `${actor}提议取消订单`;
+        case "cancellation_declined": return `${actor}选择保留订单`;
+        case "cancellation_withdrawn": return `${actor}撤回了取消提议`;
+        case "order_completed": return "订单已完成";
+        case "order_cancelled": return "订单已取消";
+        case "order_created": return `订单 ${row.detail ?? ""} 已创建`;
+        default: return null;
+      }
+    }
     switch (row.kind) {
       case "message": return `Last message ${relativeTime(row.at, now)}`;
       case "update_posted": return `${who(row.actor_org_id)} posted on ${step}`;

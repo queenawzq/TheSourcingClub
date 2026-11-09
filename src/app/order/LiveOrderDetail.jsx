@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * A production order, on Queena's designed screens: each side its own.
  *
@@ -267,6 +268,7 @@ async function brandCharges(orderId) {
 }
 
 export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = false, tab = "overview", step = null }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const [order, setOrder] = useState(null);
   const [milestones, setMilestones] = useState([]);
@@ -586,6 +588,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
   const counterparty = { name: other ?? "", initials: initials(other), location };
   const header = {
+    id: order.id,
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
@@ -649,7 +652,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     return (
       <>
       <FactoryProjectProgressDetail
-        language="en"
+        language={language}
         onBack={() => navigate("/orders")}
         order={header}
         milestones={shaped}
@@ -663,7 +666,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order, viewerOrgId: org.id })}
+        activity={activityLines(activity, { order, viewerOrgId: org.id, language })}
         files={orderFiles(requestFiles, updates, milestones)}
         onOpenFile={openFile}
         contract={contract}

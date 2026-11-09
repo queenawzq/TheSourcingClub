@@ -3,9 +3,11 @@
  * behind it; live, it opens a short menu of the orders vendors' profiles can
  * be sorted by (vendor-directory-view.js SORTS).
  */
+import { translateFactoryInterfaceZh } from "../../shared/factory-interface-zh.mjs";
 import React, { useEffect, useRef, useState } from "react";
 
-export default function BrowseSort({ options, value, onChange, ariaLabel = "Sort vendors" }) {
+export default function BrowseSort({ options, value, onChange, ariaLabel = "Sort vendors", language = "en" }) {
+  const tx = value => language === "zh" ? translateFactoryInterfaceZh(value) : value;
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   const current = options.find((option) => option.key === value) ?? options[0];
@@ -35,10 +37,10 @@ export default function BrowseSort({ options, value, onChange, ariaLabel = "Sort
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
       >
-        Sort: {current.label}
+        {language === "zh" ? "排序：" : "Sort: "}{tx(current.label)}
       </button>
       {open && (
-        <div className="browse-sort-menu" role="menu" aria-label={ariaLabel}>
+        <div className="browse-sort-menu" role="menu" aria-label={tx(ariaLabel)}>
           {options.map((option) => (
             <button
               type="button"
@@ -51,7 +53,7 @@ export default function BrowseSort({ options, value, onChange, ariaLabel = "Sort
                 setOpen(false);
               }}
             >
-              {option.label}
+              {tx(option.label)}
             </button>
           ))}
         </div>

@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The vendor's saved brands and saved requests, on Queena's designed Saved
  * page.
@@ -20,6 +21,7 @@ import "../profile/profile.css";
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveSaved({ org }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const [rows, setRows] = useState(null);
   const [brands, setBrands] = useState(null);
@@ -75,7 +77,7 @@ export default function LiveSaved({ org }) {
 
   return (
     <FactorySavedPage
-      language="en"
+      language={language}
       rfqs={saved}
       brands={brands}
       // Saved brands first, as the design; a vendor with none opens on its requests.

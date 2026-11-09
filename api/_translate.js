@@ -30,7 +30,7 @@ export function softTranslation(reason) {
   return { source_language: null, target_language: null, translation: null, error: reason };
 }
 
-export async function translateText(input, { timeoutMs = 8000, context = "message" } = {}) {
+export async function translateText(input, { timeoutMs = 8000, context = "message", targetLanguage = "en" } = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return softTranslation("no model key configured on the server");
 
@@ -57,7 +57,7 @@ export async function translateText(input, { timeoutMs = 8000, context = "messag
           {
             role: "user",
             content:
-`Translate this ${context === "factory profile" ? "factory profile text for a clothing brand" : "message between a clothing brand and a garment factory"}. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
+`Translate this ${context === "factory profile" ? "factory profile text for a clothing brand" : "message between a clothing brand and a garment factory"}. Detect its source language using its ISO 639 language code. ${targetLanguage === "zh" ? 'Translate this garment production request text into Simplified Chinese. Return target_language "zh". If it is already Chinese, return source_language "zh", target_language "zh", and the unchanged text.' : 'Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.'}
 
 Rules:
 - Translate what was written. Do not soften, expand, summarise or add pleasantries.
@@ -77,7 +77,7 @@ ${text.slice(0, 4000)}
             function: {
               name: "submit_translation",
               description: "Return the translated message.",
-              parameters: SCHEMA,
+              parameters: { ...SCHEMA, properties: { ...SCHEMA.properties, target_language: { type: "string", enum: [targetLanguage] } } },
             },
           },
         ],
@@ -99,18 +99,18 @@ ${text.slice(0, 4000)}
 
     const fields = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    if (!/^[a-z]{2,3}$/.test(fields.source_language ?? "") || fields.target_language !== "en") {
+    if (!/^[a-z]{2,3}$/.test(fields.source_language ?? "") || fields.target_language !== targetLanguage) {
       return softTranslation("the model returned an invalid language");
     }
     const translated = typeof fields.translation === "string" ? fields.translation.trim() : "";
-    if (fields.source_language !== "en" && (!translated || translated === text)) {
+    if (fields.source_language !== targetLanguage && (!translated || translated === text)) {
       return softTranslation("nothing to translate into");
     }
 
     return {
       source_language: fields.source_language,
       target_language: fields.target_language,
-      translation: fields.source_language === "en" ? null : translated,
+      translation: fields.source_language === targetLanguage ? null : translated,
       model: payload.model ?? MODEL,
       error: null,
     };

@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from "../../lib/auth.jsx";
 import { isConfigured } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
+import "../../prototype/styles.css";
 import "./admin-login.css";
+import AdminAccessDenied from "./AdminAccessDenied.jsx";
 
 // One-click demo sign-in, on test builds only: a production build has
 // __DEMO_SIGN_IN__ = false and leaves this import out (see vite.config.js).
@@ -199,12 +201,7 @@ function AdminLogin() {
               <p>Add the Supabase credentials before signing in.</p>
             </div>
           ) : accessState === "denied" ? (
-            <div className="admin-login-access-denied">
-              <span aria-hidden="true">!</span>
-              <h3>This account does not have staff access</h3>
-              <p>Ask an existing administrator to add this email to the platform staff list.</p>
-              <button type="button" onClick={signOut}>Use another account</button>
-            </div>
+            <AdminAccessDenied onUseAnotherAccount={signOut} />
           ) : checking ? (
             <div className="admin-login-checking" role="status">
               <span className="admin-login-spinner" aria-hidden="true" />

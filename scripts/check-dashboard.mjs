@@ -144,7 +144,8 @@ function checkFirstPaint(label, html, company) {
 
 try {
   const { RouterProvider } = await server.ssrLoadModule("/src/lib/router.jsx");
-  const render = (element) => renderToStaticMarkup(createElement(RouterProvider, null, element));
+  const { AuthProvider } = await server.ssrLoadModule("/src/lib/auth.jsx");
+  const render = (element) => renderToStaticMarkup(createElement(AuthProvider, null, createElement(RouterProvider, null, element)));
   const LiveHome = (await server.ssrLoadModule("/src/app/home/LiveHome.jsx")).default;
   const LiveFactoryHome = (await server.ssrLoadModule("/src/app/home/LiveFactoryHome.jsx")).default;
   const brand = { id: "b", name: "Check Brand", role: "owner", type: "brand" };

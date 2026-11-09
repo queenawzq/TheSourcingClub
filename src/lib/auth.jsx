@@ -381,7 +381,7 @@ export function AuthProvider({ children }) {
        * failing the whole signup would leave an account they cannot sign into
        * twice, because the address is already taken.
        */
-      async signUpWithPassword({ email, password, fullName, companyName, accountType }) {
+      async signUpWithPassword({ email, password, fullName, companyName, accountType, language }) {
         setError(null);
 
         if (password.length < MIN_PASSWORD_LENGTH) {
@@ -401,6 +401,7 @@ export function AuthProvider({ children }) {
               full_name: fullName?.trim() || null,
               company_name: companyName?.trim() || null,
               account_type: accountType === "factory" ? "factory" : "brand",
+              interface_language: accountType === "factory" && language === "zh" ? "zh" : "en",
             },
             emailRedirectTo: window.location.origin + window.location.pathname,
           },

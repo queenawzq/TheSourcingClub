@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * Submitting a quote, on Queena's designed screen.
  *
@@ -159,6 +160,7 @@ function missingQuoteFields(values, terms, companyType) {
 }
 
 export default function LiveQuoteForm({ org, rfqId, profile }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);
@@ -362,8 +364,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   return (
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-      language="en"
+      language={language}
       project={{
+        id: rfq.id,
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
         quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",

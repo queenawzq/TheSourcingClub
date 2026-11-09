@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The factory dashboard, on Queena's designed screen.
  *
@@ -116,6 +117,7 @@ const n = (value) => Number(value) || 0;
 const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryHome({ org, profile }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
   // The first read failed: nothing is known, so no layout can be drawn.
@@ -245,7 +247,7 @@ export default function LiveFactoryHome({ org, profile }) {
         <FactoryDashboardPage
           companyType={isTrading ? "trading" : "factory"}
           dashboardState={layout}
-          language="en"
+          language={language}
           orgName={org.name}
           unreadCount={n(unreadNotifications)}
           onOpenActivity={openActivity}
@@ -350,7 +352,7 @@ export default function LiveFactoryHome({ org, profile }) {
     <>
     {drawer && (
       <FactoryCapacityDrawer
-        language="en"
+        language={language}
         initial={drawer.initial}
         months={drawer.window.map(SHORT_MONTH)}
         onClose={() => setDrawer(null)}
@@ -361,7 +363,7 @@ export default function LiveFactoryHome({ org, profile }) {
       companyType={isTrading ? "trading" : "factory"}
       dashboardState={layout}
       notice={<HomeNotice text={notice} />}
-      language="en"
+      language={language}
       orgName={org.name}
       creditBalance={credits ?? 0}
       unreadCount={n(unreadNotifications)}

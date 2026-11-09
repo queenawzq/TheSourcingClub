@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The confirmation after a quote goes out, on Queena's designed screen.
  *
@@ -27,6 +28,7 @@ import QuoteActionDialog, { reviseCopy } from "./QuoteActionDialog.jsx";
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveQuoteSent({ org, rfqId, profile }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);
@@ -101,8 +103,9 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
       )}
       <FactoryQuoteSent
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-        language="en"
+        language={language}
         project={{
+          id: rfq?.id,
           title: rfq?.title ?? "your quote",
           brand: rfq?.orgs?.name ?? "the brand",
           quantity: rfq?.quantity_total ? `${rfq.quantity_total} units` : "",

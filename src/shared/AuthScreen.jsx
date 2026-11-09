@@ -90,10 +90,10 @@ export function AuthScreen({
     loginIntro: "登录以继续进入供应商工作台。",
     google: "使用 Google 继续",
     divider: "或使用邮箱继续",
-    name: "姓名",
+    name: "联系人姓名",
     namePlaceholder: "你的姓名",
-    company: "公司名称",
-    companyPlaceholder: "你的公司",
+    company: "工厂名称",
+    companyPlaceholder: "你的工厂名称",
     email: "工作邮箱",
     password: "密码",
     newPasswordPlaceholder: `至少 ${minPasswordLength} 个字符`,
@@ -133,6 +133,7 @@ export function AuthScreen({
     onAuthenticate?.({
       mode,
       accountType,
+      language: isZh ? "zh" : "en",
       email: String(form.get("email") ?? ""),
       password: String(form.get("password") ?? ""),
       fullName: String(form.get("fullName") ?? ""),
@@ -190,12 +191,12 @@ export function AuthScreen({
             {isSignup && (
               <div className={invitation ? undefined : "auth-field-row"}>
                 <label className="auth-field">
-                  <span>{copy?.name ?? "Your name"}</span>
+                  <span>{copy?.name ?? (isFactory ? "Contact name" : "Your name")}</span>
                   <input type="text" name="fullName" defaultValue={invitation?.name ?? undefined} placeholder={copy?.namePlaceholder ?? "Your full name"} autoComplete="name" required />
                 </label>
                 {!invitation && <label className="auth-field">
-                  <span>{copy?.company ?? (isFactory ? "Company name" : "Brand name")}</span>
-                  <input type="text" name="companyName" placeholder={copy?.companyPlaceholder ?? (isFactory ? "Your company" : "Your brand")} autoComplete="organization" required />
+                  <span>{copy?.company ?? (isFactory ? "Factory name" : "Brand name")}</span>
+                  <input type="text" name="companyName" placeholder={copy?.companyPlaceholder ?? (isFactory ? "Your factory name" : "Your brand")} autoComplete="organization" required />
                 </label>}
               </div>
             )}

@@ -11,6 +11,7 @@ import EvidenceReview from "../matching/EvidenceReview.jsx";
  * Everything is the vendor reading and writing its own rows, so no new access
  * rule is involved.
  */
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 import { useAuth } from "../../lib/auth.jsx";
 import React, { useCallback, useEffect, useState } from "react";
 import { FactoryManufacturingProfilePage, FactoryProfileCompletionPage, TradingCompanyProfilePage } from "../../factory-prototype/main.jsx";
@@ -188,12 +189,12 @@ function Completion({ view, verified, editors, isTrading, org }) {
  */
 export default function LiveFactoryProfile({ org, page = "profile", editor = null }) {
   const { refreshOrgs } = useAuth();
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const { parts, error, reload } = useProfileParts(org);
 
   if (!parts) return <Waiting error={error} />;
 
-  const language = new URLSearchParams(window.location.search).get("lang") === "zh" ? "zh" : "en";
   const isTrading = parts.profile?.vendor_kind === "trading_company";
   const verified = parts.profile?.verification_status === "verified";
   const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts, new Date(), language);

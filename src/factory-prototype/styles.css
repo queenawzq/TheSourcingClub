@@ -11470,3 +11470,33 @@ button.sort-button {
   color: #5b6577;
 }
 
+/* Translated RFQ titles share their header line with the card-wide toggle. */
+.factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-translated-title.is-title > h2 {
+  width: auto;
+  flex: 0 1 auto;
+  transform: none;
+}
+
+/* Keep translated request and order descriptions at the same medium weight. */
+.factory-flow .factory-translated-title.is-description > p {
+  font-weight: 500;
+}
+
+/* Translation wrappers must not add paragraph margins to compact card gaps. */
+.factory-flow .factory-request-card .factory-translated-title.is-description,
+.factory-flow .factory-request-card .factory-translated-title.is-description > p {
+  margin-block: 0;
+}
+.factory-flow .factory-request-card .factory-request-brief {
+  row-gap: 8px;
+}
+
+/* Sample plans fit their content in both the quote form and read-only view. */
+.factory-submit-section.is-empty-quote-section {
+  min-height: 0;
+  gap: 10px;
+  padding-block: 24px;
+}
+.factory-submit-section.is-empty-quote-section .factory-submit-sample-rows[hidden] {
+  display: none;
+}

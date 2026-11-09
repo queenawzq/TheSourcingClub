@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The review step, on Queena's designed screen.
  *
@@ -47,6 +48,7 @@ const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 const SHORT_OF_CREDITS = /costs (\d+) credits and you have (-?\d+)/;
 
 export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const quotePath = withRequestOrigin(`/browse/${rfqId}/quote`, requestOrigin);
@@ -145,7 +147,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
     <>
     <FactoryReviewTotal
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-      language="en"
+      language={language}
       creditBalance={balance}
       creditCost={cost}
       quoteType={null}
@@ -191,6 +193,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
         ])),
       }}
       project={{
+        id: rfq.id,
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
         initials: initials(rfq.orgs?.name),

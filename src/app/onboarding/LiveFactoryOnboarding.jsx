@@ -16,6 +16,8 @@ import MatchingProfile from "../matching/MatchingProfile.jsx";
  * factory that fills the form in Chinese writes to the same columns as one
  * that fills it in English.
  */
+import { useAuth } from "../../lib/auth.jsx";
+import { useFactoryLanguage, saveFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
@@ -60,7 +62,6 @@ const TERMS_STEP = 9;
  * is the failure mode to watch for when the design adds a field.
  */
 const COLUMN_FOR_LABEL = {
-  "Factory Name": "legal_name",
   "Year Founded": "founded_year",
   "Website URL": "website_url",
   "Factory Location": "location",
@@ -74,7 +75,6 @@ const COLUMN_FOR_LABEL = {
 
   // Trading-company copy. Six of these share a column with the factory
   // question they mirror; the rest arrived with migration 20260920000500.
-  "Company Name": "legal_name",
   "Headquarters / primary sourcing office": "location",
   "Team size": "employee_count",
   "About the trading company": "intro",
@@ -131,6 +131,7 @@ const KIND_FOR_LABEL = {
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
+  const { refreshOrgs } = useAuth();
   const [step, setStep] = useState(initialStep);
   // True from "Update my profile" until the profile is sent back to staff.
   const [resubmitting, setResubmitting] = useState(false);
@@ -141,7 +142,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
-  const [language, setLanguage] = useState("en");
+  const { language: savedLanguage } = useFactoryLanguage();
+  const [language, setLanguage] = useState(savedLanguage);
+  useEffect(() => setLanguage(savedLanguage), [savedLanguage]);
+  async function changeLanguage(next) {
+    try { await saveFactoryLanguage(next); setLanguage(next); setError(null); }
+    catch (error) { setError(error); }
+  }
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
 
@@ -210,7 +217,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (profile.vendor_kind === "trading_company") setCompanyType("trading");
         else if (profile.vendor_kind) setCompanyType("factory");
 
-        const restored = {};
+        const restored = { [factoryFieldName("Factory Name")]: org.name, [factoryFieldName("Company Name")]: org.name };
         if (logos?.length) restored["uploaded-logo"] = String(logos.length);
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
@@ -343,6 +350,15 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
   async function persist(submitted) {
     const patch = {};
+    const nameKey = factoryFieldName(companyType === "trading" ? "Company Name" : "Factory Name");
+    const submittedName = submitted[nameKey];
+    if (submittedName !== undefined) {
+      const name = String(submittedName).trim();
+      if (!name || name.length > 200) throw new Error(language === "zh" ? "请输入工厂名称（不超过200个字符）。" : "Factory name is required and must be at most 200 characters.");
+      const { error } = await supabase.rpc("rename_factory", { target_org: org.id, factory_name: name });
+      if (error) throw error;
+      await refreshOrgs();
+    }
     if (companyType) patch.vendor_kind = companyType === "trading" ? "trading_company" : "manufacturer";
     const links = [];
 
@@ -551,7 +567,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       language={language}
       step={step}
       isReviewEdit={reviewEditStep !== null}
-      onLanguageChange={setLanguage}
+      onLanguageChange={changeLanguage}
       onCompanyTypeChange={setCompanyType}
       onBack={() => {
         if (reviewEditStep !== null) {

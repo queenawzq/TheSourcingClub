@@ -37,6 +37,8 @@ import LiveContract from "./quote/LiveContract.jsx";
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
 import { brandNavItems } from "../prototype/main.jsx";
+import { FactoryMainLanguageLayer } from "../factory-prototype/main.jsx";
+import { FactoryLanguageSwitch, useFactoryLanguage } from "../shared/useFactoryLanguage.jsx";
 import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
 import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
@@ -194,6 +196,7 @@ function SignIn({ invitation = null }) {
         fullName: submitted.fullName,
         companyName: submitted.companyName,
         accountType: submitted.accountType,
+        language: submitted.language,
       });
     } else {
       await signInWithPassword({
@@ -900,6 +903,7 @@ const initialsOf = (name) =>
  * edge while it was missing.
  */
 function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut, children }) {
+  const { language } = useFactoryLanguage();
   const { navigate, path } = useRouter();
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
 
@@ -923,6 +927,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
     <div className={`app-shell${collapsed ? " nav-collapsed" : ""}${isFactory ? " factory-flow" : ""}`}>
       <PrototypeSideNav
         account={{ initials: initialsOf(activeOrg.name), name: activeOrg.name, type: accountType }}
+        accountExtra={isFactory ? <div className="factory-sidebar-language"><FactoryLanguageSwitch /></div> : null}
         active={activeNavFor(path, isFactory)}
         ariaLabel={accountType}
         collapsed={collapsed}
@@ -939,6 +944,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
       {!collapsed && (
         <button className="mobile-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setCollapsed(true)} />
       )}
+      {isFactory && <><FactoryMainLanguageLayer language={language} /></>}
       {children}
       {orgs.length > 1 && !collapsed ? (
         <select

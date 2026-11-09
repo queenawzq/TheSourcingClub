@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * A request as a factory reads it, on Queena's designed screens.
  *
@@ -25,6 +26,7 @@ import { FactoryProjectDetail, FactoryReadOnlyRfqPage } from "../../factory-prot
 import {
   brandProfileForFactory,
   brandSummary,
+  matchScoresForRfq,
   getQuestions,
   getRfq,
   isRequestSaved,
@@ -53,6 +55,7 @@ import { sourcingChoiceLabel } from "./resume-fields.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
+import { assessFactories, matchingEnabled } from "../../lib/domain/matching.js";
 import { matchFit } from "./match-fit.js";
 import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
@@ -96,6 +99,7 @@ function statusOf(quote, rfq) {
 }
 
 export default function LiveRequestView({ org, user, rfqId, profile }) {
+  const { language } = useFactoryLanguage();
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const backTarget = getRequestBackTarget(requestOrigin);
@@ -169,16 +173,23 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       lastBrandView(rfq.id),
       getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
       isRequestSaved(org.id, rfq.id).catch(() => false),
+      (async () => {
+        if (await matchingEnabled()) {
+          const rows = await assessFactories("rfq", rfq.id, [org.id]);
+          const assessment = rows.get(org.id);
+          return { score: assessment?.score ?? null, status: assessment?.status ?? null };
+        }
+        const scores = await matchScoresForRfq(rfq.id, [org.id]);
+        return { score: scores.get(org.id) ?? null, status: null };
+      })().catch(() => ({ score: null, status: null })),
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
     ])
-      .then(([summary, viewed, documents, savedAlready, profile]) => {
+      .then(([summary, viewed, documents, savedAlready, scores, profile]) => {
         if (cancelled) return;
         setExtras({
-          // No fit label to a factory about itself (Nov 7): a brand that
-          // invited it has answered "is it a fit?", and below 60 the band
-          // says "Not a fit" to nearly every vendor on a plain request.
-          match: null,
+          match: scores.score,
+          matchStatus: scores.status,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: documents.files ?? [],
@@ -247,6 +258,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
 
   // The request itself, in the shape both designed screens read.
   const project = {
+    id: rfq.id,
     title: rfq.title || "Request",
     brand: rfq.orgs?.name ?? "",
     initials: initials(rfq.orgs?.name),
@@ -307,7 +319,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         {gate}
         <FactoryProjectDetail
           companyType={isTrading ? "trading" : "factory"}
-          language="en"
+          language={language}
           project={project}
           brief={rfq.brief ?? ""}
           details={{
@@ -338,8 +350,17 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           capabilities={[]}
           // Nothing to show still passes an object: with none the design draws
           // its own "Strong fit".
-          match={extras.match === null ? { summary: "", label: "", tone: "" } : {
-            summary: `${extras.match}% match`,
+          match={extras.matchStatus === "excluded" ? {
+            summary: language === "zh" ? "你的工厂资料暂未满足此需求的全部必需条件。请检查品牌要求与工厂能力资料。" : "Your factory profile does not meet all mandatory requirements for this request. Review the requirements and your factory capabilities.",
+            label: language === "zh" ? "不符合必需条件" : "Not eligible", tone: "tradeoff",
+          } : extras.matchStatus === "needs_confirmation" ? {
+            summary: language === "zh" ? `匹配度为 ${extras.match}%。部分能力或生产时间仍需确认。` : `${extras.match}% match. Some capabilities or production timing still need confirmation.`,
+            label: language === "zh" ? "需要确认" : "Needs confirmation", tone: "warn",
+          } : extras.match === null ? {
+            summary: language === "zh" ? "暂时无法计算匹配度。请查看品牌需求，确认是否符合你的生产能力。" : "Match information is unavailable. Review the request against your production capabilities.",
+            label: "", tone: "",
+          } : {
+            summary: language === "zh" ? `根据工厂资料与品牌需求计算，匹配度为 ${extras.match}%。` : `${extras.match}% match based on your factory profile and the brand's request.`,
             label: fit?.label ?? "",
             tone: fit?.tone ?? "",
           }}
@@ -449,7 +470,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // first render, and they load after the quote: remount when they arrive.
         key={`materials-${materialLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={language}
         project={project}
         // This vendor's own quote, read back: the terms it sent and the
         // sample plan it priced, not the design's example.

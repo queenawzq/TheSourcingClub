@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * A factory's production orders, on its own designed list.
  *
@@ -15,6 +16,7 @@ import useOrderCancel from "./useOrderCancel.jsx";
 import useOrderTabs from "./useOrderTabs.js";
 
 function Orders({ org, user, onViewOrder }) {
+  const { language } = useFactoryLanguage();
   const { data, loading, error, reload } = useOrders();
   const tabStore = useOrderTabs(org, user);
   const cancelStore = useOrderCancel({ onViewOrder });
@@ -27,7 +29,7 @@ function Orders({ org, user, onViewOrder }) {
   return (
     <>
       <FactoryProjectsPage
-        language="en"
+        language={language}
         live={{ projects, loading, error, reload, tabStore, cancelStore }}
         onViewProject={onViewOrder}
       />

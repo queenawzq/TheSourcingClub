@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * The factory's view of the marketplace, on Queena's designed screen.
  *
@@ -82,6 +83,7 @@ function fitBand(score) {
 }
 
 export default function LiveBrowse({ org, profile }) {
+  const { language } = useFactoryLanguage();
   // Visibility and the right to quote are separate, and the designs express
   // only the first. A factory that can see the marketplace but cannot yet bid
   // has to be told which it is — finding out at the quote button is finding
@@ -207,7 +209,7 @@ export default function LiveBrowse({ org, profile }) {
       )}
       <FactoryBrowsePage
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={language}
         projects={projects}
         emptyNote={rfqs.length ? "No open requests match these filters." : "No open requests right now."}
         live={{
@@ -228,7 +230,7 @@ export default function LiveBrowse({ org, profile }) {
             </div>
           ),
           matching: matchingLine(panel, chosen, query, sort),
-          sortControl: <BrowseSort options={SORTS} value={sort} onChange={setSort} ariaLabel="Sort requests" />,
+          sortControl: <BrowseSort language={language} options={SORTS} value={sort} onChange={setSort} ariaLabel="Sort requests" />,
           search: query,
           onSearch: setQuery,
         }}

@@ -18875,3 +18875,28 @@ textarea.note-field::placeholder {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.factory-language-control label { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-muted); }
+.factory-language-control select { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; padding: 6px; }
+.factory-language-control p { font-size: 12px; color: var(--danger); }
+.nav-collapsed .factory-language-control label > span { display: none; }
+.settings-language-control { margin-top: 0; max-width: 320px; }
+.settings-language-control .factory-language-control select { min-height: 40px; }
+
+.factory-sidebar-language { margin-top: 14px; width: 100%; }
+.factory-sidebar-language .factory-language-control label { display: grid; gap: 5px; }
+.factory-sidebar-language + nav { margin-top: 20px; }
+.side-nav.collapsed .factory-sidebar-language label > span { display: none; }
+.side-nav.collapsed .factory-sidebar-language select { width: 48px; padding: 5px 0; font-size: 11px; }
+@media (max-width: 1180px) { .factory-sidebar-language label > span { display: none; } .factory-sidebar-language select { width: 48px; padding: 5px 0; font-size: 11px; } }
+.settings-language-control .factory-language-control label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+.settings-language-control .factory-language-control label > span { display: block; font-size: 13px; font-weight: 500; line-height: 18px; }
+.factory-language-control select { appearance: none; font-weight: 500; padding-left: 12px; padding-right: 34px; background: var(--surface) url("/assets/prototype-icons/dropdown.svg") no-repeat calc(100% - 12px) center / 16px 16px; }
+.side-nav.collapsed .factory-sidebar-language select { padding-right: 16px; background-position: right 2px center; background-size: 12px 12px; }
+@media (max-width: 1180px) { .factory-sidebar-language select { padding-right: 16px; background-position: right 2px center; background-size: 12px 12px; } }
+.factory-translated-title { min-width: 0; }
+.factory-translated-title .brand-brief-translation-meta { margin-top: 6px; gap: 10px; flex-wrap: wrap; }
+.factory-translated-title .brand-brief-translation-meta button { white-space: nowrap; }
+.factory-translated-title.is-title { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; row-gap: 4px; }
+.factory-translated-title.is-title > h2,
+.factory-translated-title.is-title > strong { margin: 0; }
+.factory-translated-title.is-title .brand-brief-translation-meta { margin-top: 0; flex: 0 0 auto; }

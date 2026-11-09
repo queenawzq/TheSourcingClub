@@ -1,3 +1,4 @@
+import { useFactoryLanguage } from "../../shared/useFactoryLanguage.jsx";
 /**
  * Buying credits: the design's "Get more credits" button and its
  * `CreditPurchaseModal`, wired to Stripe.
@@ -136,6 +137,7 @@ function CreditPacksPlaceholder() {
 }
 
 function CreditPurchaseFlow({ orgId, onClose, onDone }) {
+  const { language } = useFactoryLanguage();
   const stripe = useStripe();
   const elements = useElements();
   const [packs, setPacks] = useState(null);
@@ -313,7 +315,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
   // tall as the page, and the dialog was centred below the fold.
   return createPortal((
     <CreditPurchaseModal
-      language="en"
+      language={language}
       className="tsc-credit-buy-modal"
       layerClassName="factory-invite-modal-layer"
       packs={packs ?? []}
