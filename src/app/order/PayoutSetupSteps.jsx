@@ -13,7 +13,7 @@ import { supabase } from "../../lib/supabase.js";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs";
-import { PayoutModal, transferName } from "./StripePayoutCard.jsx";
+import { PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
 /** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
@@ -161,7 +161,7 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
             {shown("number", numberError) ? <small className="live-stripe-error" role="alert">{say(numberError)}</small> : null}
           </label>
           <label>
-            <span>{words.again} {hasStoredNumber && !typed ? "" : "*"}</span>
+            <span>{numberField ? reEnter(say(numberField.label)) : words.again} {hasStoredNumber && !typed ? "" : "*"}</span>
             <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={numberAgain}
                    onBlur={leave("again")} onChange={(event) => setNumberAgain(event.target.value)} />
             {shown("again", againError) ? <small className="live-stripe-error" role="alert">{againError}</small> : null}

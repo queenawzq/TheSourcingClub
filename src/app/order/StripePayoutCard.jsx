@@ -71,6 +71,9 @@ function methodLabel(method) {
 /** Where a country has two bank options, this one needs telling from "Bank account". */
 export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
 
+/** "Re-enter IBAN", "Re-enter account number": the second field says what the first one is. */
+export const reEnter = (label) => `Re-enter ${/^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label}`;
+
 /**
  * Why the default could not change, in the factory's words. The database's
  * sentence about a payout in progress is written for staff.
@@ -363,7 +366,8 @@ export default function StripePayoutCard({
       supabase.from("factory_payout_preferences").select("route").eq("org_id", org.id).maybeSingle(),
     ]);
     if (preference.error) throw new Error("Could not load your default withdrawal method. Try again.");
-    setPayoutRoute(preference.data?.route ?? (saved?.transfers_active ? "stripe" : "manual"));
+    // The database's rule (uses_stripe_payout): an account that can't take transfers pays nobody.
+    setPayoutRoute(saved?.transfers_active && preference.data?.route !== "manual" ? "stripe" : "manual");
     setAccount(saved);
     accountKnown.current = true;
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
@@ -502,6 +506,10 @@ export default function StripePayoutCard({
     try {
       // No account means the form never got as far as creating one.
       if (await connectAccountFor(org.id)) await connectAction(org.id, "refresh");
+      // Finished just now: a new method becomes the default, unless a payout is under way.
+      if (!account?.transfers_active && (await connectAccountFor(org.id))?.transfers_active) {
+        await supabase.rpc("choose_payout_method", { target_org: org.id, target_account: null });
+      }
       const next = await load();
       if (wentToDo) setMethodNotice(handoverResult(wentToDo, next?.methods ?? []));
       setHandover(null);
@@ -620,7 +628,7 @@ export default function StripePayoutCard({
                  placeholder={hasStoredNumber ? `Ending ${editingBank.account_number_last4}` : ""} />
         </label>
         <label>
-          <span>Re-enter account number{hasStoredNumber && !typedNumber ? "" : " *"}</span>
+          <span>{reEnter(bankFields.numberLabel)}{hasStoredNumber && !typedNumber ? "" : " *"}</span>
           <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={manualForm.account_number_again} required={!hasStoredNumber || Boolean(typedNumber)} onChange={onManualFieldChange("account_number_again")} />
         </label>
         <label>
@@ -643,14 +651,15 @@ export default function StripePayoutCard({
     </div>
   ) : null;
 
-  const providerMethodRows = connectedMethods.length ? connectedMethods : account?.transfers_active ? [{
+  // An account still being set up pays nobody: it has its own row, to finish it.
+  const providerMethodRows = !account?.transfers_active ? [] : connectedMethods.length ? connectedMethods : [{
     id: "connected-account",
     type: "bank_account",
     name: "",
     last4: "",
     currency: currency.toLowerCase(),
     default: true,
-  }] : [];
+  }];
 
   const openSecureManagement = () => {
     setHandover(null);
@@ -720,10 +729,16 @@ export default function StripePayoutCard({
 
   // A new account is in (and, for a Replace, the old one out: the server
   // does both in one request).
-  function methodAdded(result) {
+  async function methodAdded(result) {
+    const added = result.methods?.find((method) => method.default && !connectedMethods.some((old) => old.id === method.id));
     applyMethods(result);
     setReplacing(null);
     setModal("manage");
+    // Added as the default while TSC pays a saved method: it takes over too.
+    if (!added || replacing || payoutRoute !== "manual") return;
+    const chosen = await supabase.rpc("choose_payout_method", { target_org: org.id, target_account: null });
+    if (chosen.error) setMethodNotice(`${methodLabel(added)} is saved but isn't your default yet. ${chosen.error.code === "22023" ? "Make it your default once the current payout finishes." : "Try Make default."}`);
+    else setPayoutRoute("stripe");
   }
 
   const startAdd = () => {
@@ -777,10 +792,10 @@ export default function StripePayoutCard({
     }
   }
 
-  // A method added while the factory is paid on its first bank account takes
-  // over (John, Nov 8): adding one and still being paid elsewhere was the bug.
+  // A method added beside another takes over, however the factory is paid now
+  // (John, Nov 8): adding one and still being paid elsewhere was the bug.
   async function savingNewMethod(save) {
-    const takesOver = !manualEditingId && account?.transfers_active && payoutRoute === "stripe";
+    const takesOver = !manualEditingId && (payoutRoute === "stripe" || manualAccounts.some((row) => row.is_primary));
     takingOver.current = takesOver;
     try {
       const row = await save();
@@ -861,16 +876,19 @@ export default function StripePayoutCard({
   const needsMore = Boolean(account?.details_submitted && account.requirements_due?.length);
   // Withdrawals stopped with nothing due: under review, nothing to finish.
   const paused = Boolean(account?.transfers_active && !account.payouts_enabled && !account.requirements_due?.length);
+  // What is saved is what TSC pays, whatever unfinished account sits beside it.
+  const savedMethod = Boolean(manualAccount && manualComplete(manualAccount));
+  const verifying = Boolean(account?.details_submitted && !needsMore);
   const payoutSetupLine = account?.transfers_active
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
     ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : ""
-    : account?.details_submitted && !needsMore
-      ? "Verification in progress"
-      : account
-        ? isOwner ? "Finish setup to receive earnings." : ""
-        : manualAccount && manualComplete(manualAccount)
-          ? manualLabel(manualAccount)
+    : savedMethod
+      ? manualLabel(manualAccount)
+      : verifying
+        ? "Verification in progress"
+        : account
+          ? isOwner ? "Finish setup to receive earnings." : ""
           : manualAccount
             ? isOwner ? "Add your full account number." : ""
             : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
@@ -935,9 +953,12 @@ export default function StripePayoutCard({
             {(account.payouts_enabled && !needsMore) || paused ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
             </>
-          ) : account ? (
+          ) : account && !savedMethod ? (
+            <>
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
-          ) : manualAccount && !manualComplete(manualAccount) ? (
+            <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-method" disabled={busy} onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
+            </>
+          ) : manualAccount && !savedMethod ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Add account number</button>
           ) : (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
@@ -970,6 +991,13 @@ export default function StripePayoutCard({
             <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ {cardWords.add}</button>
           </div>
           <div className="payout-method-list">
+            {account && !account.transfers_active ? (
+              <article className="payout-method-row" data-testid="payout-unfinished-bank">
+                <div className="payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
+                <div className="payout-method-name"><strong>Bank account</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
+                {verifying ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
+              </article>
+            ) : null}
             {account ? providerMethodRows.map((method) => (
               <article className="payout-method-row" key={method.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
