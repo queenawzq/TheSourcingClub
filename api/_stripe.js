@@ -575,8 +575,10 @@ function stripeMadeNoTransfer(failure) {
 async function settleStartedRelease({ stripe, db, payment }) {
   if (!payment.stripe_release_started) return null;
   if (payment.release_claimed_at && Date.parse(payment.release_claimed_at) > Date.now() - 10 * 60 * 1000) return null;
-  const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
-  const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+  let already;
+  for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+    if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
+  }
   if (already) {
     await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
     return { released: true, reason: already.id };
