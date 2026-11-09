@@ -467,7 +467,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         accountLocked={!canSettings}
         onChangePassword={changePassword}
         nameLocked={!isOwner}
-        saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
         notificationEmailNotes={EMAIL_NOTES}
