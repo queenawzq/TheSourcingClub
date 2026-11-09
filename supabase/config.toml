@@ -172,8 +172,6 @@ additional_redirect_urls = [
   "https://the-sourcing-club.vercel.app",
   "https://the-sourcing-club.vercel.app/app.html",
   "https://the-sourcing-club.vercel.app/app.html?reset=1",
-  # Vercel gives every preview deploy its own hostname.
-  "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
