@@ -12,7 +12,7 @@
  */
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, useAuth } from "../lib/auth.jsx";
+import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
@@ -643,7 +643,9 @@ function companyErrorText(error, kind) {
 
 function ChooseOrgType() {
   const { user, refreshOrgs, lostAccess, noteLostAccess, signOut: endSession } = useAuth();
-  const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
+  // Someone who was in a company goes back to that company's sign-in: an
+  // invited member's account may have no type of its own.
+  const signOut = () => signOutInto((departure || lostAccess ? lastCompanyKind(user?.id) : null) ?? user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
   // again: their company is created from those answers, and this card shows
@@ -698,6 +700,8 @@ function ChooseOrgType() {
         setInvitations(pending);
         setUnreadable(false);
         setDeparture(gone);
+        // Starting afresh: the name from the signup form may be the company they left.
+        if (gone?.byChoice) setName("");
         // An invitation wins: joining is what an invited person should do.
         // Creating from the signup answers is only for someone who just signed up.
         if (pending.length || gone || lostAccess || !answeredKind || !answeredName) {
@@ -715,9 +719,10 @@ function ChooseOrgType() {
     return () => { cancelled = true; };
   }, [attempt]);
 
-  // Removed from or left their company, and not invited anywhere: back to the
-  // regular sign-in page (Queena, Nov 6), which says what happened.
-  const goneFrom = departure ? (departure.orgName ?? "your company") : lostAccess;
+  // Removed from their company, and not invited anywhere: back to the regular
+  // sign-in page (Queena, Nov 6), which says what happened. Someone who left by
+  // choice is an account with no company, and may start a new one.
+  const goneFrom = departure?.byChoice ? null : departure ? (departure.orgName ?? "your company") : lostAccess;
   const toSignIn = !autoCreating && !unreadable && Boolean(goneFrom) && !waiting.length;
   useEffect(() => {
     if (!toSignIn) return;
@@ -759,7 +764,7 @@ function ChooseOrgType() {
 
   const goneNotice = goneFrom ? (
     <p className="gate-error" role="status" data-testid="lost-access">
-      {departure?.byChoice ? `You left ${goneFrom}.` : `You no longer have access to ${goneFrom}.`}
+      You no longer have access to {goneFrom}.
     </p>
   ) : null;
 

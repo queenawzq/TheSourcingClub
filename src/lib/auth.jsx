@@ -66,6 +66,10 @@ function reportNoAnswer(stage, authError, portal) {
   }
 }
 
+const LAST_ORG_KIND = "tscLastOrgKind";
+/** The kind of company this person was last working in on this browser, or null. */
+export const lastCompanyKind = (userId) => (userId ? window.localStorage.getItem(`${LAST_ORG_KIND}:${userId}`) : null);
+
 const alreadyRegistered = (authError) =>
   authError?.code === "user_already_exists" || /already registered/i.test(authError?.message ?? "");
 
@@ -316,6 +320,14 @@ export function AuthProvider({ children }) {
       window.localStorage.setItem("tscActiveOrg", orgs[0].id);
     }
   }, [orgs, activeOrgId]);
+
+  // Which side this person was last on, for after they have lost the company:
+  // by then neither the membership nor the company can be read.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    const current = orgs.find((org) => org.id === activeOrgId) ?? orgs[0];
+    if (userId && current) window.localStorage.setItem(`${LAST_ORG_KIND}:${userId}`, current.type);
+  }, [orgs, activeOrgId, session?.user?.id]);
 
   const reloadOrgs = useCallback(async () => {
     const seq = ++orgLoadSeq.current;
