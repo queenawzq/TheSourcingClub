@@ -13,12 +13,11 @@ import { supabase } from "../../lib/supabase.js";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs";
-import { PayoutModal } from "./StripePayoutCard.jsx";
+import { PayoutModal, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
 /** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
 const BANK_WORDS = {
-  titleNew: "Bank transfer",
   titleEdit: "Edit bank account",
   titleFinish: "Add your full account number",
   bankName: "Bank name",
@@ -123,7 +122,7 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
   return (
     <PayoutModal
       keepOpen
-      title={!row ? words.titleNew : row.number_changed_at ? words.titleEdit : words.titleFinish}
+      title={!row ? transferName(country) : row.number_changed_at ? words.titleEdit : words.titleFinish}
       onClose={onClose}
       actions={<>
         {problem ? <p className="live-stripe-error payout-modal-refusal" role="alert">{problem.message}</p> : null}

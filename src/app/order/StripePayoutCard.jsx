@@ -69,7 +69,7 @@ function methodLabel(method) {
 }
 
 /** Where a country has two bank options, this one needs telling from "Bank account". */
-const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
+export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
 
 /**
  * Why the default could not change, in the factory's words. The database's

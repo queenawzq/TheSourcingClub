@@ -86,7 +86,7 @@ Standard, sortable, ranked like the dashboard's recommended factories), the bran
 "Save factory" on a vendor's profile), the brand's **Payments** (`/payments`,
 the designed `BillingScreen`: its order payments as Due / Processing / Failed
 / Funded / Paid, each at the total charged with the fee, with the order
-summary's figures, and its discount codes), the brand's **Fund** step
+summary's figures; its discount codes stay hidden until one can be used), the brand's **Fund** step
 (`/orders/:id/payments/:pid`, the designed `FundScreen` and `SuccessScreen`
 in `FlowShell`, with Stripe's Payment Element in the billing card; see
 **Payments** below), and the whole **admin console**
