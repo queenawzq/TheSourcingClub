@@ -266,3 +266,13 @@
   .admin-payments-page .payments-note-cell { width: 128px; min-width: 128px; max-width: 128px; }
   .admin-payments-page .payments-note-cell label { max-width: 128px; }
 }
+
+/* On a phone the sidebar is out of the way behind its toggle (the toggle sits
+   in the page's top padding), so the board takes the full width. */
+@media (max-width: 700px) {
+  .payments-workspace, .payments-workspace.nav-collapsed { padding-left: 0; }
+  .payments-workspace .payments-mobile-actions, .payments-workspace.nav-collapsed .payments-mobile-actions { width: calc(100vw - 64px); }
+  .admin-payments-page .payments-mobile-actions label { display: grid; gap: 4px; white-space: normal; }
+  .admin-payments-page .payments-mobile-actions input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .admin-payments-page .payments-queue-tabs { flex-wrap: wrap; overflow-x: visible; row-gap: 8px; }
+}
