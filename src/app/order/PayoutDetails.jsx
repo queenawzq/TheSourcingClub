@@ -45,10 +45,10 @@ const stripeDateLabel = (value) => value
   ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
   : "Date pending";
 
-/** "Bank ····6789", from the methods Stripe lists; nothing for one since removed. */
+/** "Bank transfer ····6789", from the methods Stripe lists; nothing for one since removed. */
 const payoutDestination = (payout, balance) => {
   const method = balance?.methods?.find((item) => item.id === payout.destination);
-  return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank"} ····${method.last4}` : null;
+  return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank transfer"} ····${method.last4}` : null;
 };
 
 const cardBrand = (brand) => (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : "Card");

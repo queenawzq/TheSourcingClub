@@ -61,9 +61,9 @@ function availableFrom(balance) {
     : null;
 }
 
-/** "Bank ····2345", the words the method list uses. */
+/** "Bank transfer ····2345", one label for a bank wherever it is drawn. */
 function methodLabel(method) {
-  return `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`;
+  return `${method.type === "card" ? "Debit card" : "Bank transfer"}${method.last4 ? ` ····${method.last4}` : ""}`;
 }
 
 const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -124,6 +124,8 @@ export function bankOwedSentence(owed) {
   return `TSC is about to pay ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(" and ")} to this account.`;
 }
 
+const FOCUS_STOPS = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), iframe, [tabindex]:not([tabindex="-1"])';
+
 export function PayoutModal({ children, title, onClose, actions, wide = false, className = "", keepOpen = false }) {
   const dialog = useRef(null);
   // Into the dialog on opening, and back where it was on closing. One step
@@ -139,6 +141,16 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
       // An open "..." menu takes the Esc (the list closes it); a form with
       // typed details is left only by its own buttons.
       if (event.key === "Escape" && !keepOpen && !document.querySelector(".payout-method-popover")) onClose();
+      // Tab stays in the dialog: the page behind it is not in use.
+      if (event.key !== "Tab" || !dialog.current) return;
+      const stops = [...dialog.current.querySelectorAll(FOCUS_STOPS)].filter((element) => element.getClientRects().length);
+      if (!stops.length) return;
+      const active = document.activeElement;
+      const outside = !dialog.current.contains(active);
+      if (event.shiftKey ? outside || active === dialog.current || active === stops[0] : outside || active === stops[stops.length - 1]) {
+        event.preventDefault();
+        (event.shiftKey ? stops[stops.length - 1] : stops[0]).focus();
+      }
     };
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKeyDown);
@@ -229,7 +241,7 @@ export function PayoutCardPlaceholder({ isOwner = false }) {
     <section className="live-payout-method-card live-stripe-payout-card payout-card-placeholder" data-testid="payout-card-placeholder">
       <div className="live-payout-balance">
         <span className="payout-label-placeholder" aria-hidden="true" />
-        <strong><span className="payout-balance-placeholder" role="status" aria-label="Loading payouts" /></strong>
+        <strong><span className="payout-balance-placeholder" role="status" aria-label="Loading withdrawals" /></strong>
         <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
         <p className="payment-provider-note" aria-hidden="true"><span className="payout-note-placeholder" /></p>
       </div>
@@ -457,8 +469,6 @@ export default function StripePayoutCard({
       await load();
     } catch (failure) {
       setError(failure);
-      setBalanceStatus("failed");
-      onBalanceChange?.(null);
     } finally {
       setBusy(false);
     }
@@ -547,6 +557,7 @@ export default function StripePayoutCard({
     if (!busy && !manualBusy) {
       setMethodMenu(null);
       setManualPressed(false);
+      setError(null);
       setModal(null);
       onFlowClose?.();
     }
@@ -830,18 +841,18 @@ export default function StripePayoutCard({
   const payoutSetupLine = account?.transfers_active
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
-    ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can see the available balance."
+    ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : ""
     : account?.details_submitted && !needsMore
       ? "Verification in progress"
       : account
-        ? isOwner ? "Finish setup to receive earnings." : "Ask a company owner to finish setup."
+        ? isOwner ? "Finish setup to receive earnings." : ""
         : manualAccount && manualComplete(manualAccount)
           ? manualLabel(manualAccount)
           : manualAccount
-            ? isOwner ? "Add your full account number." : "Ask a company owner to add the full account number."
+            ? isOwner ? "Add your full account number." : ""
             : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
-  const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : "Ask a company owner to check the withdrawal details.";
+  const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : null;
 
   return (
     <>
@@ -854,7 +865,7 @@ export default function StripePayoutCard({
             <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
-            <p data-testid="payout-how-paid">{payoutSetupLine}</p>
+            {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           </> : <>
           <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"}</span>
           <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(balance.available, balance.displayFx), "USD")
@@ -864,7 +875,7 @@ export default function StripePayoutCard({
             : "—"}</strong>
           {balanceStatus === "loading" && balanceWaiting ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
-          ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
+          ) : !balance && !payoutSetupLine ? null : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
               pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
@@ -886,7 +897,7 @@ export default function StripePayoutCard({
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
-          {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
+          {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
           {isOwner ? account?.transfers_active ? (
@@ -907,7 +918,10 @@ export default function StripePayoutCard({
           ) : (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
           )
-          : <button className="primary-btn compact-btn" type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>}
+          : <>
+            {account?.transfers_active ? <button className="primary-btn compact-btn" type="button" disabled title="Only a company owner can withdraw">Withdraw to bank</button> : null}
+            <button className={`${account?.transfers_active ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
+          </>}
         </div>
       </section> : null}
 

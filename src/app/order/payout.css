@@ -134,7 +134,7 @@
 .payout-method-name { display: grid; gap: 3px; min-width: 0; }
 .payout-method-name strong { overflow: hidden; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .payout-method-name span { color: var(--text-muted); font-size: 12px; }
-.payout-method-default { display: inline-flex; align-items: center; justify-self: start; white-space: nowrap; min-height: var(--pill-height); padding: var(--pill-padding); border: 0; border-radius: var(--pill-radius); background: #eaf2ff; color: var(--blue); font-size: var(--pill-font-size); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.payout-method-default { display: inline-flex; align-items: center; justify-self: start; white-space: nowrap; min-height: var(--pill-height); padding: var(--pill-padding); border: 0; border-radius: var(--pill-radius); background: #eaf2ff; color: var(--blue); font-size: var(--pill-font-size); font-weight: 700; text-transform: uppercase; letter-spacing: 0; }
 .payout-method-menu { position: relative; }
 .payout-more-button:hover, .payout-more-button[aria-expanded="true"] { border-color: #bdcbe0; background: #f7f9fc; }
 .payout-more-button:disabled { cursor: wait; opacity: .55; }

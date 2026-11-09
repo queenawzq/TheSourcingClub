@@ -508,7 +508,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),
     canSetSteps: can(org, "rfqFlow"),
-    needsMethod: noMethod ? (isOwner ? "Add a withdrawal method" : "Ask a company owner to add a withdrawal method") : null,
+    needsMethod: noMethod && isOwner ? "Add a withdrawal method" : null,
   };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.

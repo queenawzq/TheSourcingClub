@@ -52,5 +52,3 @@ export default function PaymentHelp({ label, children }) {
       onPointerEnter={() => { clearTimeout(closeTimer.current); setHovered(true); }} onPointerLeave={leave}>{children}</span>, document.body) : null}
   </>;
 }
-
-export const PENDING_HELP = "Pending payments become available to withdraw after processing.";

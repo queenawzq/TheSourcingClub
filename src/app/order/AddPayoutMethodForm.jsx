@@ -157,7 +157,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         {isFirst ? null : (
           <label className="payout-default-choice">
             <input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />
-            <span>Send my withdrawals to this account</span>
+            <span>Make default</span>
           </label>
         )}
       </div>

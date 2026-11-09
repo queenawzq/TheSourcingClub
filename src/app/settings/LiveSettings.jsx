@@ -143,7 +143,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             id: method.id,
             label: method.default && stripeDefault ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
             // The words Payments uses for this account; never a bank name as Stripe holds it.
-            name: `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`,
+            name: `${method.type === "card" ? "Debit card" : "Bank transfer"}${method.last4 ? ` ····${method.last4}` : ""}`,
             note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: stripeDefault ? "Default" : "Connected", name: "Withdrawal account" }];
         }
