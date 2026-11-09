@@ -386,6 +386,64 @@ assert.equal(checkWords("anything", ["somethingNew"]), "Check your bank details"
   assert.equal(status.state, "failed");
 }
 
+// --- PayPal: a retry after a lost answer never pays twice ----------------------
+{
+  // A database that hands back a claim, so each failure is seen exactly as written.
+  const claimDb = ({ resumed = false, ref = null } = {}) => {
+    const db = {
+      calls: [],
+      from() { const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: { provider_ref: null } }) }; return q; },
+      async rpc(name, args) {
+        db.calls.push([name, args]);
+        if (name === "claim_provider_payout") return { data: { payout_id: "payout", key: "same-key", resumed, provider_ref: ref, paypal_email: "a@b.c", amount_cents: 100, currency: "USD", order_number: "T-1" } };
+        return { data: null };
+      },
+    };
+    db.caller = db;
+    return db;
+  };
+  const finished = (db) => db.calls.filter(([name]) => name === "finish_provider_payout").map(([, args]) => args.outcome);
+  const scripted = (tokenStatus, [status, body]) => paypalFrom(PAYPAL_ENV, async (url) => (url.includes("oauth2")
+    ? json(tokenStatus, tokenStatus === 200 ? { access_token: "t" } : {})
+    : json(status, body)));
+
+  for (const [label, tokenStatus, answer] of [
+    ["token 503", 503, [200, {}]],
+    ["token 401", 401, [200, {}]],
+    ["not enough funds", 200, [422, { name: "INSUFFICIENT_FUNDS" }]],
+    ["a plain refusal", 200, [400, { name: "SOMETHING" }]],
+    ["an invalid address", 200, [422, { name: "VALIDATION_ERROR", details: [{ field: "items[0].receiver" }] }]],
+  ]) {
+    const db = claimDb({ resumed: true });
+    await assert.rejects(paypalPress(scripted(tokenStatus, answer), db), (f) => f.unsure === true && !/nothing was sent/i.test(f.message), label);
+    assert.deepEqual(finished(db), [], `${label} on a retry after a lost answer ends nothing, or staff could pay it again under a new key`);
+  }
+  for (const status of [401, 403, 500]) {
+    await assert.rejects(scripted(status, [200, {}]).pay({ key: "k", email: "a", amountCents: 1, currency: "USD", reference: "r" }),
+      (f) => f.unsure === true && !/nothing was sent/i.test(f.message), `token ${status} is unsure`);
+  }
+  {
+    const db = claimDb();
+    await assert.rejects(paypalPress(scripted(200, [422, { name: "INSUFFICIENT_FUNDS" }]), db), /too low/);
+    assert.deepEqual(finished(db), ["cancelled"], "a first press PayPal refuses outright still ends, so staff can fix it");
+  }
+  {
+    const db = claimDb();
+    await assert.rejects(paypalPress({ pay: async () => { throw new TypeError("no batch_header"); } }, db), TypeError);
+    assert.deepEqual(finished(db), [], "an answer we could not read is not a refusal");
+  }
+  {
+    const db = claimDb({ resumed: true, ref: "BATCH" });
+    let posted = 0;
+    const answer = await paypalPress({
+      pay: async () => { posted += 1; return { batchId: "NEW" }; },
+      status: async (id) => { assert.equal(id, "BATCH"); return { state: "sent", raw: "PENDING" }; },
+    }, db);
+    assert.equal(posted, 0, "with a batch id on file PayPal is read, never posted to");
+    assert.equal(answer.done, "sent");
+  }
+}
+
 // --- Going live is settings, and only production holds a live account ---------
 for (const env of [{}, { VERCEL_ENV: "preview" }, { VERCEL_ENV: "development" }]) {
   assert.throws(() => wiseFrom({ ...WISE_ENV, WISE_API_BASE: "https://api.wise.com", ...env }), /only allowed on the production site/);

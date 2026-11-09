@@ -257,20 +257,25 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
 // PayPal
 // ---------------------------------------------------------------------------
 
+const LOST_PAYPAL_ANSWER = "PayPal's first answer was lost and this retry was refused, so we don't know if it went. Check PayPal, then press again: it can't pay twice.";
+
 export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which: "paypal", paid_to_changed_at: changedAt, cny_confirmed: false,
   }));
   const payoutId = claim.payout_id;
-  let batchId = null;
+  let batchId = claim.provider_ref ?? null;
   try {
-    const paid = await paypal.pay({
-      key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
-      currency: claim.currency, reference: `TSC ${claim.order_number}`,
-    });
-    batchId = paid.batchId;
-    await record(db, payoutId, { new_ref: paid.batchId, new_stage: "sent", keep_lease: true });
-    const status = await paypal.status(paid.batchId);
+    // PayPal has this one: read it, never send it again. Its key doesn't last for ever.
+    if (!batchId) {
+      const paid = await paypal.pay({
+        key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
+        currency: claim.currency, reference: `TSC ${claim.order_number}`,
+      });
+      batchId = paid.batchId;
+      await record(db, payoutId, { new_ref: paid.batchId, new_stage: "sent", keep_lease: true });
+    }
+    const status = await paypal.status(batchId);
     const state = await applyStatus({ db, payoutId, status, tellOnFailure: status.raw === "RETURNED" ? CHECK_PAYPAL : null });
     return { done: state, sentence: status.waiting ?? null };
   } catch (failure) {
@@ -280,7 +285,14 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
     }
     // PayPal took the batch once we hold its id, saved or not: never cancelled, never paid again.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
-    if (!batchId && !again.error && !again.data?.provider_ref) {
+    // A press after a lost answer may be refused for any reason while the first
+    // batch stands, and an answer we couldn't read is no answer: neither ends this,
+    // or staff approve again under a new key and PayPal pays twice.
+    if (!batchId && claim.resumed) {
+      await record(db, payoutId, { sentence: LOST_PAYPAL_ANSWER });
+      throw new PayoutFailure(failure.kind ?? "unknown", LOST_PAYPAL_ANSWER, { unsure: true, status: failure.status });
+    }
+    if (failure instanceof PayoutFailure && !batchId && !again.error && !again.data?.provider_ref) {
       const invalid = /address isn't valid/.test(failure.message);
       if (invalid) {
         await finish(db, payoutId, "failed", {

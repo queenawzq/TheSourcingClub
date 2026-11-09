@@ -55,10 +55,11 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
       body: "grant_type=client_credentials",
     });
     if (answer.status === 401 || answer.status === 403) {
-      throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { status: answer.status });
+      // Unsure, both: this may be the second press of a payment whose first answer was lost.
+      throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { unsure: true, status: answer.status });
     }
     if (answer.status >= 300 || !answer.body?.access_token) {
-      throw new PayoutFailure("provider_down", "PayPal is having trouble, so nothing was sent. Press again in a minute.", { status: answer.status });
+      throw new PayoutFailure("provider_down", "PayPal is having trouble. Press again in a minute: it can't pay twice.", { unsure: true, status: answer.status });
     }
     return answer.body.access_token;
   }
