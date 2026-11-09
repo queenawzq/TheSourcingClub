@@ -7,9 +7,9 @@
  * its transaction page; a due one opens the Fund screen on its order for an
  * owner, who alone may pay (begin_payment_checkout). A member's due row opens
  * the transaction page, which says so up front.
- * Discounts: the brand's real credit and discount codes (credits.js), the
- * same ones the dashboard's Savings card shows. Nothing redeems a code at
- * payment yet, so the design's "Use an unused code at payment" is not said.
+ * Discounts: hidden, with the dashboard's Savings card, until a code can be
+ * used at payment (DISCOUNTS_USABLE). When on: the brand's real credit and
+ * discount codes (credits.js).
  *
  * Cards are entered only in Stripe's own form on the Fund screen, and nothing
  * is saved here, so the design's saved cards and invoices are left out.
@@ -24,6 +24,8 @@ import { useRouter } from "../../lib/router.jsx";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
+
+const DISCOUNTS_USABLE = false;
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
@@ -43,8 +45,8 @@ export default function LiveBrandPayments({ org }) {
       const orders = (await listOrders(org.id)).filter((order) => order.brand_org_id === org.id);
       const [payments, codes, savings] = await Promise.all([
         listPaymentsForOrders(orders.map((order) => order.id)),
-        listDiscountCodes(org.id),
-        savingsFor(org.id),
+        DISCOUNTS_USABLE ? listDiscountCodes(org.id) : [],
+        DISCOUNTS_USABLE ? savingsFor(org.id) : null,
       ]);
       return { loaded: { orders, payments }, codes, savings };
     })().then(
@@ -92,6 +94,7 @@ export default function LiveBrandPayments({ org }) {
             return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
           }),
           empty: "No payment transactions yet.",
+          hideDiscounts: !DISCOUNTS_USABLE,
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
           codesNote: "Codes can't be applied to a payment yet.",

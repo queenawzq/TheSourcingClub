@@ -1529,7 +1529,7 @@ function CloseIconButton({ label }) {
  * `live` (the brand's Payments page in the app): { metrics: [[label, value,
  * tone]], rows: [{ id, title, client, meta, date, status, amount, href, onOpen }],
  * empty, discount: { amount, note } | null, codes, onCopy(code), copied,
- * codesNote? }.
+ * codesNote?, hideDiscounts? }.
  * Without it the prototype draws its examples, unchanged.
  */
 export function BillingScreen({ accountType = "brand", live = null }) {
@@ -1574,7 +1574,7 @@ export function BillingScreen({ accountType = "brand", live = null }) {
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
           </div>
         )}
-        {!isFactory && (
+        {!isFactory && !live?.hideDiscounts && (
           <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Brand payment type">
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
             <button className={tab === "discounts" ? "active" : ""} type="button" role="tab" aria-selected={tab === "discounts"} onClick={() => setTab("discounts")}>Discounts</button>

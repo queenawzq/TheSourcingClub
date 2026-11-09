@@ -46,6 +46,9 @@ import { can, permissionHint } from "../../lib/domain/org.js";
  * request to score against yet), a rating, and an order count a brand may
  * not read. A new brand has no conversations, so there is no Message.
  */
+/** Off until a code can be used at payment: nothing to save with yet, so no Savings panel. */
+const DISCOUNTS_USABLE = false;
+
 function toRecommendedCard(vendor, navigate, quoteLocked = "") {
   const name = vendor.orgs?.name ?? "Vendor";
   return {
@@ -200,7 +203,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       listRfqs(org.id),
       listOrders(org.id),
       listThreads(org.id),
-      savingsFor(org.id),
+      DISCOUNTS_USABLE ? savingsFor(org.id) : null,
       listArchivedOrderIds(org.id),
       // Waited for with the rest, so the first full paint is usually the final one.
       withinCap(vendorsRead, null),

@@ -4047,10 +4047,8 @@ async function main() {
     check(paymentFigures.held === figure("confirmed"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("confirmed")})`);
     check("due now" in paymentFigures && "remaining" in paymentFigures, "with Due now and Remaining beside them");
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
-    // Discount codes can't be applied to a payment yet, but #103 restored the
-    // tab bar and whether it stays is waiting on Queena: this pins what is there now.
-    check(/Discounts/.test(await page.locator(".billing-page-shell .billing-tabs").first().innerText()) && !/\$50 discount/.test(paymentsText),
-      "the Discounts tab is shown (waiting on Queena), and not the design's $50 example");
+    // Discount codes can't be applied to a payment yet, so the tab is hidden until they can.
+    check(!/Discounts/.test(paymentsText) && !/\$50 discount/.test(paymentsText), "no Discounts tab, and not the design's $50 example");
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
     // A transaction opens its own page; a due payment opens the Fund screen on its order.
