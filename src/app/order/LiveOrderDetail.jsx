@@ -150,10 +150,11 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
+      // Held on a cancelled order it is on its way back to the brand: both sides read that.
+      if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
-      if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
       if (!payment.release_requested_at) return "Funded: held by TSC";
       return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
@@ -591,13 +592,15 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const factoryLine = [order.factory?.name, isFactory ? "" : location].filter(Boolean).join(" · ");
   const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
   const counterparty = { name: other ?? "", initials: initials(other), location };
+  const refundPendingCents = milestones.reduce((sum, { payment }) => sum + (refundPendingWord(payment ?? {}, order) ? Number(payment.amount_cents) : 0), 0);
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
     total: money(charged ? charged.order.total_charged_cents : order.total_cents),
-    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents),
+    // Money going back to the brand was never the factory's (as on its Payments page).
+    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),
