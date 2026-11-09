@@ -2545,7 +2545,7 @@ async function main() {
       await page.waitForTimeout(2500);
       const { data: added } = await db.from("factory_payout_accounts")
         .select("id, method, is_primary").eq("paypal_email", secondPaypal).single();
-      check(added?.method === "paypal" && added?.is_primary === false, "a second PayPal account is saved, beside the one TSC pays");
+      check(added?.method === "paypal" && added?.is_primary === true, "a new PayPal account becomes the one TSC pays");
       if (added?.id) await db.from("factory_payout_accounts").delete().eq("id", added.id);
 
       await signOutFully(page);
