@@ -46,6 +46,19 @@ export const WISE_ISSUE = "Wise has stopped this transfer until an issue is clea
 /** Wise's keys for the fields it refused, the same ones as wise_details. */
 export const refusedFields = (errors) => [...new Set((errors ?? []).map((e) => e?.path).filter(isFieldKey))];
 
+const ABOUT_TSC = /balance|insufficient|fund|quote|limit|exceed|profile|your account|sanction|compliance|reference|purpose|expired|duplicate|temporar|try again|unavailable|maintenance|permission|not allowed|(recipient|account)\b.{0,20}(not found|does ?n.t exist|deactivat|inactive|deleted)/i;
+const ABOUT_THE_BANK = /recipient|beneficiary|\bbank\b|iban|swift|\bbic\b|sort ?code|routing|account ?(number|holder|name|details)|this account/i;
+
+/**
+ * Whether a refusal at the quote or transfer is the factory's to fix. Only when
+ * it is plainly about the bank it gave and names nothing of TSC's: anything
+ * unclear stays with staff, since a factory can't fix what isn't wrong.
+ */
+export function detailsAtFault(errors) {
+  const said = (errors ?? []).map((e) => `${e?.code ?? ""} ${e?.message ?? ""}`).join(" ");
+  return ABOUT_THE_BANK.test(said) && !ABOUT_TSC.test(said);
+}
+
 export function wiseFrom(env = process.env, fetchImpl = fetch) {
   const base = apiBase(env, "WISE_API_BASE", LABEL);
   const token = env.WISE_API_TOKEN;
@@ -79,6 +92,17 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
       // The field's key only: an error's arguments repeat the value typed.
       fields: refusedFields(errors),
     });
+  }
+
+  /** After the recipient exists, a refusal may still be about the factory's bank. */
+  function refusedPaying(answer, doing) {
+    const failure = refused(answer, doing);
+    if (detailsAtFault(answer.body?.errors)) {
+      failure.kind = "details_rejected";
+      // These requests carry no bank field, so a path here is one of ours.
+      failure.fields = [];
+    }
+    return failure;
   }
 
   return {
@@ -126,7 +150,7 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
           sourceCurrency, targetCurrency, ...amounts,
           targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
         });
-        if (answer.status >= 300) throw refused(answer, "quote this payment");
+        if (answer.status >= 300) throw refusedPaying(answer, "quote this payment");
         return answer.body;
       };
       const unavailable = new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
@@ -158,7 +182,7 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
         targetAccount: recipientId, quoteUuid: quoteId, customerTransactionId: key,
         details: { reference, transferPurpose: "GOODS" },
       });
-      if (answer.status >= 300) throw refused(answer, "create this transfer");
+      if (answer.status >= 300) throw refusedPaying(answer, "create this transfer");
       return { id: String(answer.body.id), status: answer.body.status };
     },
 

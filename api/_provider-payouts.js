@@ -15,7 +15,7 @@ import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripe
  *             (api/wise-webhook.js, api/paypal-webhook.js) and the daily sweep
  *             (api/payout-sync.js) do the same read. Previews sit behind Vercel's
  *             sign-in, where no webhook can reach: there the sweep and the board do it.
- *   tell      Wise refused the details: the attempt fails and the factory is told.
+ *   tell      Wise refused the details, at the recipient or later: the factory is told.
  *
  * Whether someone may do this is the database's call, as the caller. Whether the
  * money went is only ever written with the server's key, from what the provider said.
@@ -27,6 +27,7 @@ const STAFF_ONLY = "This is limited to platform staff.";
 export const FUND_IN_WISE = "Transfer created. Fund it in Wise.";
 export const CHECK_BANK = "Check your bank details";
 export const CHECK_PAYPAL = "Check your PayPal address";
+const STILL_OPEN = "This payment is still open, so the factory wasn't told. Press again to see where it is.";
 
 /** How long to give Wise's status to catch up with a payment it just took. */
 export let FUND_SETTLE_MS = 1500;
@@ -237,6 +238,8 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     if (!transferId && !again.error && !again.data?.provider_ref) {
       await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
     } else {
+      // The attempt stays open, so finding out where it is comes first.
+      if (failure.kind === "details_rejected") failure.kind = "refused";
       await record(db, payoutId, { sentence: failure.message, new_ref: transferId ?? undefined });
     }
     throw failure;
@@ -248,6 +251,11 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
+  // A live attempt may have gone. Failing it here would let the next press pay again.
+  if (claim.resumed) {
+    await record(db, claim.payout_id, { sentence: STILL_OPEN });
+    throw new PayoutFailure("database", STILL_OPEN);
+  }
   await finish(db, claim.payout_id, "failed", {
     failure: "details_rejected", raw_status: "details_rejected", sentence,
     tell_factory: which === "paypal" ? CHECK_PAYPAL : checkWords(sentence, named),

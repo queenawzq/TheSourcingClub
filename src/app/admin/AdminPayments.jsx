@@ -116,6 +116,7 @@ function AccountNumber({ row, onViewed }) {
   const [problem, setProblem] = useState(null);
   const [copied, setCopied] = useState(false);
   const timer = useRef(null);
+  const numberLabel = row.payout_number_kind === "iban" ? "IBAN" : "Account number";
   const hide = useCallback(() => {
     clearTimeout(timer.current);
     setShown(null);
@@ -155,13 +156,13 @@ function AccountNumber({ row, onViewed }) {
     <span className="admin-payout-number">
       {shown ? (
         <>
-          <PayoutField label="Account number"><span data-testid="revealed-number">{shown.account_number}</span></PayoutField>
+          <PayoutField label={numberLabel}><span data-testid="revealed-number">{shown.account_number}</span></PayoutField>
           <span className="payout-number-actions"><button type="button" className="admin-link payout-text-action" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
           <button type="button" className="admin-link payout-text-action" onClick={hide}>Hide</button></span>
         </>
       ) : (
         <>
-          <PayoutField label="Account number">{`····${row.payout_last4 ?? ""}`}</PayoutField>
+          <PayoutField label={numberLabel}>{`····${row.payout_last4 ?? ""}`}</PayoutField>
           <button type="button" className="admin-link payout-text-action" disabled={busy} data-testid="reveal-number" onClick={reveal}>
             {busy ? "Showing…" : "Show number"}
           </button>
@@ -174,6 +175,24 @@ function AccountNumber({ row, onViewed }) {
 
 function PayoutField({ label, children }) {
   return <span className="payout-detail-field"><span className="payout-detail-label">{label}</span><span className="payout-detail-value">{children}</span></span>;
+}
+
+const DETAIL_LABELS = { swiftCode: "SWIFT / BIC", bic: "SWIFT / BIC", abartn: "Routing number", ifscCode: "IFSC code", bsbCode: "BSB code", cpf: "CPF", cnpj: "CNPJ" };
+const countryName = (code) => (/^[A-Z]{2}$/.test(code ?? "") ? bankCountry.of(code) : code);
+
+/**
+ * What the factory typed for this account, in the order a bank form asks. The
+ * name is on its own row and the number is never in here.
+ */
+function typedBankDetails(row) {
+  const details = row.wise_details ?? {};
+  const address = ["address.firstLine", "address.city", "address.state", "address.postCode"].map((key) => details[key]);
+  const line = [...address, countryName(details["address.country"])].filter(Boolean).join(", ");
+  const rest = Object.entries(details)
+    .filter(([key, value]) => value && !key.startsWith("address.") && !["accountHolderName", "legalType"].includes(key))
+    .filter(([key]) => !(row.payout_swift && DETAIL_LABELS[key] === "SWIFT / BIC"))
+    .map(([key, value]) => [DETAIL_LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, (_, a, b) => `${a} ${b.toLowerCase()}`).replace(/^./, (c) => c.toUpperCase()), String(value)]);
+  return [...rest, ...(line ? [["Address", line]] : [])];
 }
 
 function Contact({ label, parts: given, email }) {
@@ -221,7 +240,8 @@ function BankDetails({ row, onViewed, stripeSetup }) {
       <PayoutField label="Account holder">{row.payout_holder || "Not provided"}</PayoutField>
       <PayoutField label="Bank">{`${row.payout_bank || "Not provided"}${country ? `, ${country}` : ""}`}</PayoutField>
       {row.payout_branch ? <PayoutField label="Branch">{row.payout_branch}</PayoutField> : null}
-      <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField>
+      {row.payout_swift || !row.wise_recipient_type ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField> : null}
+      {typedBankDetails(row).map(([label, value]) => <PayoutField key={label} label={label}>{value}</PayoutField>)}
       {row.payout_has_number
         ? <AccountNumber row={row} onViewed={onViewed} />
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
@@ -346,6 +366,11 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const lastFailed = ["failed", "cancelled"].includes(attempt?.status) && attempt.staff_sentence && !fixedSince
     ? <span className="admin-error admin-row-message" data-testid="provider-last-failure">{attempt.staff_sentence}</span> : null;
 
+  // Still offered after a reload: what the press heard is gone, the attempt isn't.
+  // Telling sends nothing, so it passes the statement the payment's press asked for.
+  const refusedDetails = problem?.kind === "details_rejected"
+    || (Boolean(lastFailed) && attempt.status === "cancelled" && attempt.provider_status === "details_rejected");
+
   if (step === "statement") {
     return (
       <>
@@ -401,9 +426,9 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     <>
       {said}
       {lastFailed}
-      {problem?.kind === "details_rejected" ? (
+      {refusedDetails ? (
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
-                onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem.message, statement, problem.fields))}>
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem?.message ?? attempt.staff_sentence, needsStatement, problem?.fields))}>
           Tell the factory to fix its details
         </button>
       ) : null}

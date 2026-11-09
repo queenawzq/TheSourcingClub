@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { paypalFrom, PAYPAL_UNCLAIMED } from "../api/_paypal.js";
 import { cancelAttempt, checkWords, FUND_IN_WISE, setFundSettleMs, tellFactoryDetails, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
 import { PayoutFailure, withoutSecrets } from "../api/_payout-provider.js";
-import { wiseFrom, WISE_STATES } from "../api/_wise.js";
+import { detailsAtFault, wiseFrom, WISE_STATES } from "../api/_wise.js";
 import { releasePayment } from "../api/_stripe.js";
 import { ensureWiseRecipient, recipientBody } from "../api/_wise-recipient.js";
 
@@ -337,6 +337,54 @@ for (const [label, options] of [
   await pay(wise, db);
   assert.equal(db.payout.key, "key-2", "new attempt, new key");
   assert.equal(fake.state.funded, 1);
+}
+{
+  // Refused at the transfer, about the factory's bank (the sandbox's words, Nov 9).
+  const said = "We could not send to this account as we are unable to recognise the bank of the recipient.";
+  const fake = fakeWise({ failNext: [{ match: "POST /v1/transfers", status: 422, body: { errors: [{ code: "x", path: "targetAccount", message: said }] } }] }); const db = fakeDb({ recipient: "900" });
+  const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
+  await assert.rejects(pay(wise, db), (f) => f.kind === "details_rejected" && f.fields.length === 0);
+  assert.equal(db.payout.status, "cancelled", "nothing went");
+  assert.deepEqual(db.told, [], "staff decide, as at the recipient");
+  await tellFactoryDetails({ caller: db.caller, db, paymentId: "x", which: "wise", sentence: `Wise refused this: ${said}`, fields: [] });
+  assert.deepEqual(db.told, ["Check your bank details"], "the factory reads our words, never the provider's");
+  assert.equal(db.payout.status, "failed");
+  assert.equal(db.payout.provider_ref, null, "telling it made no transfer");
+  await pay(wise, db);
+  assert.equal(fake.state.funded, 1, "paying after the fix pays once");
+}
+{
+  // TSC's problem at the transfer or the quote: the factory hears nothing.
+  for (const [match, message] of [["POST /v1/transfers", "Your balance is insufficient to pay this recipient."], ["/quotes", "This quote has expired for the recipient."]]) {
+    const fake = fakeWise({ failNext: [{ match, status: 422, body: { errors: [{ code: "x", message }] } }] }); const db = fakeDb({ recipient: "900" });
+    await assert.rejects(pay(wiseFrom(WISE_ENV, fake.fetchImpl), db), (f) => f.kind === "refused");
+    assert.deepEqual(db.told, []);
+  }
+  // Wise's trouble says so and can't be told either.
+  const fake = fakeWise({ failNext: [{ match: "POST /v1/transfers", status: 503 }] }); const db = fakeDb({ recipient: "900" });
+  await assert.rejects(pay(wiseFrom(WISE_ENV, fake.fetchImpl), db), (f) => f.kind === "provider_down" && f.unsure);
+  assert.equal(db.payout.status, "processing", "a retry keeps its key");
+}
+for (const [message, fault] of [
+  ["The recipient's IBAN could not be used.", true],
+  ["This bank does not accept transfers in this currency.", true],
+  ["Recipient not found.", false],
+  ["Daily limit reached for this recipient.", false],
+  ["Payments to this bank are temporarily unavailable.", false],
+  ["Reference contains invalid characters.", false],
+  ["Something went wrong.", false],
+]) assert.equal(detailsAtFault([{ code: "x", message }]), fault, message);
+{
+  // Refused while another press's transfer is on record: the attempt stays open, and is nothing to tell.
+  const fake = fakeWise({ failNext: [{ match: "POST /v1/transfers", status: 422, body: { errors: [{ code: "x", message: "Unable to recognise the bank of the recipient." }] } }] }); const db = fakeDb({ recipient: "900" });
+  db.from = () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { provider_ref: "5000" } }) }) }) });
+  await assert.rejects(pay(wiseFrom(WISE_ENV, fake.fetchImpl), db), (f) => f.kind === "refused");
+  assert.equal(db.payout.status, "processing");
+  // And a stale page can't end it: the next press could then pay again.
+  await assert.rejects(tellFactoryDetails({ caller: db.caller, db, paymentId: "x", which: "wise", sentence: "Wise refused this.", fields: [] }), /still open/);
+  assert.equal(db.payout.status, "processing");
+  assert.deepEqual(db.told, []);
+  assert.equal(db.leased, false, "and the lease is given back");
 }
 {
   // A recipient refused is the factory's to fix, and it says which field.
