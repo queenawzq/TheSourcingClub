@@ -172,6 +172,11 @@
 /* A phone gets the whole width: the rail folds to a menu button, and opens
    over the page as the design's expanded nav does. */
 @media (max-width: 760px) {
+  /* The last four digits are what tell two accounts apart: never cut off. */
+  .payout-method-row .payout-method-name strong {
+    white-space: normal;
+  }
+
   :root {
     --nav-collapsed-page-offset: 0px;
   }

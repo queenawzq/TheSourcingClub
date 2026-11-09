@@ -61,10 +61,15 @@ function availableFrom(balance) {
     : null;
 }
 
-/** "Bank transfer ····2345", one label for a bank wherever it is drawn. */
+const endingIn = (name, last4) => `${name}${last4 ? ` ····${last4}` : ""}`;
+
+/** "Bank account ····2345", the name it was added under, wherever it is drawn. */
 function methodLabel(method) {
-  return `${method.type === "card" ? "Debit card" : "Bank transfer"}${method.last4 ? ` ····${method.last4}` : ""}`;
+  return endingIn(method.type === "card" ? "Debit card" : "Bank account", method.last4);
 }
+
+/** Where a country has two bank options, this one needs telling from "Bank account". */
+const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
 
 /**
  * Why the default could not change, in the factory's words. The database's
@@ -186,12 +191,6 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
   );
 }
 
-/** What the chooser says under a bank transfer: the time only where it is known. */
-const bankTransferLines = (country) => [
-  country === "CN" ? "Usually 1–2 business days" : country === "US" ? "Usually 0–3 business days" : null,
-  "Fee deducted from the payout",
-].filter(Boolean);
-
 /** Presentation only; the live payout flow owns every setup action. */
 export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {
   const words = LIST_WORDS;
@@ -211,7 +210,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong></div><ul>{(supported ? ["Usually 1–4 business days", "No TSC fee"] : bankTransferLines(country)).map((line) => <li key={line}>{line}</li>)}</ul></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong></div></div>
                   <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
                           onClick={onBank}>{words.setUp}</button>
                 </article>
@@ -223,7 +222,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 {supported ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{words.bank}</strong></div><ul>{bankTransferLines(country).map((line) => <li key={line}>{line}</li>)}</ul></div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)}</strong></div></div>
                     <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
                             onClick={onWise}>{words.setUp}</button>
                   </article>
@@ -828,7 +827,7 @@ export default function StripePayoutCard({
   // Removing the last manual method hands payouts back to the banks below it.
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
-  const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
+  const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : endingIn(transferName(row.bank_country), row.account_number_last4));
 
   const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
     ?? (manualSuccessor
@@ -1115,7 +1114,7 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "setup-bank" ? (
-        <PayoutModal keepOpen title={manualEditingId ? "Edit bank account" : "Bank transfer"} onClose={closeModal} actions={<>
+        <PayoutModal keepOpen title={manualEditingId ? "Edit bank account" : transferName(country)} onClose={closeModal} actions={<>
           {/* In the footer, beside Save: this form can be taller than its dialog. */}
           {manualError ? <p className="live-stripe-error payout-modal-refusal" role="alert">{manualError.message}</p> : null}
           <button className="secondary-btn" type="button" onClick={backFromStep}>Back</button>
