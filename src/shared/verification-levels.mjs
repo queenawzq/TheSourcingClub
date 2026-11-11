@@ -101,7 +101,7 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   const warned = (kind) => (d.warnings ?? []).some((w) => w?.kind === kind);
   if (x.verificationWatermark || d.verificationWatermark || warned("verificationWatermark")) reasons.push("Marked for verification use only (normal)");
   // B2: the authorisation proof (handwritten note or company seal) travels with the reading.
-  if (d.authorisation?.level) reasons.push(`Authorisation: ${(d.authorisation.reasons ?? [d.authorisation.level]).join("; ")}`);
+  if (d.authorisation?.level && d.authorisation.level !== "unknown") reasons.push(`Authorisation: ${(d.authorisation.reasons ?? [d.authorisation.level]).join("; ")}`);
   // The reader's doubt (wrong length, failing check digit, one character off, nothing read): look, not "differs".
   for (const line of d.unsure ?? []) {
     if (level !== "low") level = "medium";

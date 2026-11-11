@@ -39,12 +39,13 @@ export const REGISTRATION_COUNTRIES = {
     second: {
       column: "registration_letter_number",
       label: { en: "Letter number (Dilekçe No.)", zh: "证明编号（Dilekçe No.）" },
-      hint: { en: "14 characters, on the same letter", zh: "14 位，见同一份证明" },
-      required: true,
+      hint: { en: "14 characters, only if you upload the tax registration letter", zh: "14 位，仅在上传纳税登记证明时填写" },
+      // Most factories hold the tax plate (vergi levhası), which has no letter number.
+      required: false,
     },
     // What the registration upload is, named as on the document.
-    upload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
-    soleUpload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
+    upload: { en: "Tax plate (vergi levhası) or tax registration letter (mükellefiyet yazısı)", zh: "税牌（vergi levhası）或纳税登记证明（mükellefiyet yazısı）" },
+    soleUpload: { en: "Tax plate (vergi levhası) or tax registration letter (mükellefiyet yazısı)", zh: "税牌（vergi levhası）或纳税登记证明（mükellefiyet yazısı）" },
     // A sole proprietor's tax number is the owner's national ID: never asked.
     soleProprietor: true,
   },

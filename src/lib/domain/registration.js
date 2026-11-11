@@ -44,9 +44,10 @@ export async function saveRegistration(orgId, { country, number, second = "", co
     accessCode = normaliseAccessCode(second);
     if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
   } else if (country === "TR") {
+    // Optional: the tax plate (vergi levhası) has no letter number.
     registrationLetterNumber = normaliseRegistrationLetter(second);
-    if (registrationLetterNumber === "") throw new Error(zh ? "请填写证明编号（Dilekçe No.）" : "Enter the letter number (Dilekçe No.)");
-    if (registrationLetterNumber === null) throw new Error(zh ? "证明编号为 14 位字母或数字" : "The letter number is 14 letters and digits");
+    if (registrationLetterNumber === "") registrationLetterNumber = null;
+    else if (registrationLetterNumber === null) throw new Error(zh ? "证明编号为 14 位字母或数字" : "The letter number is 14 letters and digits");
   }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
