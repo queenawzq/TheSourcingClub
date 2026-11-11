@@ -20,7 +20,10 @@ import { recordSignal, requestRegistryAssist } from "../../lib/domain/registrati
 import { urlFor } from "../../lib/domain/documents.js";
 import { dateFrom } from "../../lib/dates.js";
 import { certificateLookup, mapLinks, reverseImageLinks } from "../../shared/certificate-lookups.mjs";
+import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import { FilePreview, Pill, when } from "./RegistryPanel.jsx";
+import { CHECKS, LEVEL_TONE, LEVEL_WORDS, deriveLevels, mergeArrived, overallLevel } from "../../shared/verification-levels.mjs";
+import "./verification-levels.css";
 
 const ADDRESS_WORDS = { industrial: "Industrial area", office: "Office or commercial building", residential: "Residential area", unknown: "Can't tell" };
 const ADDRESS_TONE = { industrial: "success", office: "danger", residential: "warning", unknown: "neutral" };
@@ -77,7 +80,6 @@ export function TradingSignals({ detail, extra }) {
 function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, onChange }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const tried = useRef(false);
   const read = async () => {
     setBusy(true);
     setProblem("");
@@ -86,14 +88,7 @@ function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId,
     if (!answer.available) setProblem(answer.reason);
     else onChange();
   };
-  // Staff need not remember to press it: the latest file is read on the
-  // current number once, when the panel opens without such a reading.
-  const current = reading && reading.subjectId === latestFileId && reading.details?.numberAtReading === currentNumber;
-  useEffect(() => {
-    if (tried.current || !hasFile || !latestFileId || current) return;
-    tried.current = true;
-    read();
-  }, [hasFile, latestFileId, current]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The panel reads the latest file once by itself (useAutoRead).
   const details = reading?.details;
   const extracted = details?.extracted ?? {};
   return (
@@ -266,25 +261,189 @@ function Certificate({ orgId, cert, check, title, onChange }) {
   );
 }
 
-export default function VerificationSignals({ orgId, detail, extra, onChange }) {
-  if (!extra) return <p>Loading…</p>;
+/** The row's grey line: when it was checked. */
+function rowMeta(item) {
+  return item.checkedAt ? when(item.checkedAt) : "";
+}
+
+function AddressCompare({ item }) {
+  const rows = [["typed", "Typed by the factory"], ["license", "On the license"], ["registry", "On the registry"]];
+  return (
+    <dl className="admin-signal-fields">
+      {rows.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{item.details?.[key] || "Not given"}</dd></div>)}
+    </dl>
+  );
+}
+
+/** What a row opens: the check's evidence, links and record forms. */
+function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange, onClose }) {
   const signals = extra.signals ?? [];
+  const closeRef = useRef(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const reading = latest(signals, "document_reading");
+  let body = null;
+  if (item.key === "license_read" || item.key === "trading_scope") {
+    body = <DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} />;
+  } else if (item.key === "registry") {
+    body = registryBody?.();
+  } else if (item.key === "address_owner") {
+    body = <AddressCompare item={item} />;
+  } else if (item.key === "address_site") {
+    body = <AddressCheck orgId={orgId} check={signals.find((signal) => signal.kind === "address" && signal.automatic)} onChange={onChange} />;
+  } else if (item.key === "photos") {
+    body = (extra.photos ?? []).length ? extra.photos.map((photo) => (
+      <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} onChange={onChange} key={photo.id} />
+    )) : null;
+  }
+  const extraLines = Object.entries(item.details ?? {}).filter(([key, value]) => typeof value === "string" && value && !["typed", "license", "registry", "source", "fileName", "address", "from", "displayName", "how", "number", "result", "quote"].includes(key));
+  return (
+    <div className="approve-fund-modal-layer admin-evidence-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="approve-fund-modal admin-review-modal admin-evidence-modal admin-level-modal" role="dialog" aria-modal="true" aria-labelledby="level-detail-title">
+        <button ref={closeRef} className="settings-drawer-close" type="button" aria-label="Close" onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+        <header>
+          <div><span>Verification check</span><h2 id="level-detail-title">{label}</h2></div>
+        </header>
+        <div className="admin-level-detail">
+          <div className="admin-level-summary">
+            <Pill tone={LEVEL_TONE[item.level]}>{LEVEL_WORDS[item.level]}</Pill>
+            <ul className="admin-signal-reasons">{item.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+            {extraLines.length > 0 && (
+              <dl className="admin-signal-fields">
+                {extraLines.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}
+              </dl>
+            )}
+            {item.checkedAt && <span className="admin-signal-meta">{when(item.checkedAt)}</span>}
+          </div>
+          {body && <div className="admin-level-evidence">{body}</div>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Queena, Nov 9: one row per check, the level on the right, click for the
+ * details. Levels come from src/shared/verification-levels.mjs (fixed rules).
+ */
+export function ScoreRows({ results, overall, onOpen }) {
+  return (
+    <section className="admin-levels" aria-label="Verification levels">
+      <div className={`admin-levels-overall level-${overall.level}`}>
+        <div>
+          <span>Overall</span>
+          <strong>{LEVEL_WORDS[overall.level]}</strong>
+        </div>
+        <p>{overall.reasons.join(" · ")}</p>
+        {overall.level === "low" && <Pill tone="danger">Flagged</Pill>}
+      </div>
+      <div className="admin-check-list admin-levels-list">
+        {results.map((item) => {
+          const label = CHECKS.find((check) => check.key === item.key)?.label ?? item.key;
+          const meta = rowMeta(item);
+          return (
+            <article
+              className={`admin-check-row admin-level-row level-${item.level}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${label}: ${LEVEL_WORDS[item.level]}. View details`}
+              onClick={() => onOpen(item.key)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(item.key); }
+              }}
+              data-check={item.key}
+              key={item.key}
+            >
+              <div className="admin-check-copy">
+                <strong>{label}</strong>
+                {item.reasons.slice(0, 2).map((reason) => <p key={reason}>{reason}</p>)}
+                {meta && <span>{meta}</span>}
+              </div>
+              <div className="admin-check-result">
+                <div className="admin-check-confidence"><strong>{LEVEL_WORDS[item.level]}</strong><span>level</span></div>
+                {item.level === "low" && <Pill tone="danger">Flagged</Pill>}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Results that arrived in the shared contract's shape (`{ key, level,
+ * reasons, details, checkedAt }`), wherever the server puts them. The
+ * coordinator wires the final field names.
+ */
+function arrivedResults(detail, extra) {
+  const signalResults = (extra?.signals ?? []).map((signal) => signal.details?.levelResult).filter(Boolean);
+  return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults];
+}
+
+/**
+ * Session 2's states land here: the trader-block reason, back to review
+ * after a rename, the AI-read China number. Names are the coordinator's.
+ */
+function stateFlags(detail) {
+  return {
+    tradingReason: detail?.tradingReason ?? detail?.tradingOverride?.reason ?? null,
+  };
+}
+
+/** Read the latest registration once, when the panel opens without a current reading. */
+function useAutoRead(orgId, extra, detail, onChange) {
+  const tried = useRef(false);
+  const signals = extra?.signals ?? [];
+  const reading = latest(signals, "document_reading");
+  const latestFileId = extra?.registrationFiles?.[0]?.id ?? null;
+  const currentNumber = detail?.registration?.number ?? null;
+  const current = reading && reading.subjectId === latestFileId && reading.details?.numberAtReading === currentNumber;
+  useEffect(() => {
+    if (tried.current || !extra || !latestFileId || current) return;
+    tried.current = true;
+    requestRegistryAssist(orgId, "read_document").then((answer) => { if (answer.available) onChange(); });
+  }, [extra, latestFileId, current]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+export default function VerificationSignals({ orgId, detail, extra, registryBody, onChange }) {
+  const [open, setOpen] = useState(null);
+  useAutoRead(orgId, extra, detail, onChange);
+  if (!extra) return <p>Loading…</p>;
+  const country = detail?.registration?.country ?? detail?.countryCode ?? null;
+  const named = detail ? { ...detail, checks: (detail.checks ?? []).map((check) => ({ ...check, sourceLabel: registrySourceLabel(country, check.source) })) } : detail;
+  const results = mergeArrived(deriveLevels({ detail: named, extra, states: stateFlags(detail) }), arrivedResults(detail, extra));
+  const overall = overallLevel(results);
+  const openItem = results.find((item) => item.key === open);
   return (
     <div className="admin-signals">
-      <DocumentReading orgId={orgId} reading={latest(signals, "document_reading")} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} />
-      <AddressCheck orgId={orgId} check={signals.find((signal) => signal.kind === "address" && signal.automatic)} onChange={onChange} />
-      <section className="admin-signal-block">
-        <h3>Factory photos</h3>
-        {(extra.photos ?? []).length ? extra.photos.map((photo) => (
-          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} onChange={onChange} key={photo.id} />
-        )) : <p>No photos uploaded.</p>}
-      </section>
+      <ScoreRows results={results} overall={overall} onOpen={setOpen} />
+      {openItem && (
+        <LevelDetail
+          item={openItem}
+          label={CHECKS.find((check) => check.key === openItem.key)?.label ?? openItem.key}
+          orgId={orgId}
+          detail={detail}
+          extra={extra}
+          registryBody={registryBody}
+          onChange={onChange}
+          onClose={() => setOpen(null)}
+        />
+      )}
       <section className="admin-signal-block">
         <h3>Certificates</h3>
         {(extra.certificates ?? []).length ? extra.certificates.map((cert) => (
-          <Certificate orgId={orgId} cert={cert} check={latest(signals, "certificate", cert.id)} title={detail?.title} onChange={onChange} key={cert.id} />
+          <Certificate orgId={orgId} cert={cert} check={latest(signals(extra), "certificate", cert.id)} title={detail?.title} onChange={onChange} key={cert.id} />
         )) : <p>No certificates listed.</p>}
       </section>
     </div>
   );
+}
+
+function signals(extra) {
+  return extra?.signals ?? [];
 }

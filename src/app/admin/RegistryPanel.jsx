@@ -1,6 +1,8 @@
 /**
  * "Official registry" on the staff review page (live only, inside the admin
- * design's own Panel): what can be checked about a vendor, top to bottom.
+ * design's own Panel). Verification v3 (Queena, Nov 9): one row per check
+ * with its level, overall on top, and each row opens its details
+ * (VerificationSignals). The registry row opens what is below:
  *
  *   - Trading-company signals: one block, words, no score (Queena, Nov 5:
  *     "trading companies pretend to be factories").
@@ -12,7 +14,8 @@
  *   - The registration document beside the check, and every check recorded.
  *   - The form to record a check: what the source showed, and, when it names
  *     another company, "The names differ and I checked why".
- *   - Then VerificationSignals: AI reading, address, photos, certificates.
+ *   - The other rows (license read, trading scope, addresses, photos, video)
+ *     and certificates are VerificationSignals'.
  *
  * VIES's answer is never a match, and neither is a name the database finds
  * different: approval needs a person's "found" on the current number, a
@@ -32,7 +35,7 @@ import { urlFor } from "../../lib/domain/documents.js";
 import {
   companyNamesMatch, registrationFlags, registryResultLabel, registryResultsFor, registrySourceLabel, registrySources, registrySourceUrl,
 } from "../../shared/registration-number.mjs";
-import VerificationSignals, { TradingSignals } from "./VerificationSignals.jsx";
+import VerificationSignals from "./VerificationSignals.jsx";
 
 const TONE = { found: "success", registered: "info", mismatch: "warning", not_found: "danger", could_not_check: "neutral" };
 // Our own words for a VIES call that did not answer; a provider's code is not shown.
@@ -181,10 +184,10 @@ export default function RegistryPanel({ orgId, onChange }) {
   const files = extra?.registrationFiles ?? [];
   const missingSecond = country === "TR" && registration?.number && !registration?.registrationLetterNumber;
 
-  return (
-    <div className="admin-registry">
-      <TradingSignals detail={detail} extra={extra} />
-
+  // The registry row's details: what was typed, the sources, every check
+  // recorded and the form to record one.
+  const registryBody = () => (
+    <div className="admin-registry admin-registry-body">
       <div className="admin-detail-grid">
         <ProfileDetailPair label="Country" value={countryName(country) ?? (detail.location || "Not set")} />
         <ProfileDetailPair label="Company title" value={title || "Not given"} />
@@ -343,8 +346,12 @@ export default function RegistryPanel({ orgId, onChange }) {
           Record check
         </button>
       </form>
+    </div>
+  );
 
-      <VerificationSignals orgId={orgId} detail={detail} extra={extra} onChange={changed} />
+  return (
+    <div className="admin-registry">
+      <VerificationSignals orgId={orgId} detail={detail} extra={extra} registryBody={registryBody} onChange={changed} />
     </div>
   );
 }
