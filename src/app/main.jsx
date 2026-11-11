@@ -14,6 +14,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import { createRoot } from "react-dom/client";
 import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
+import { keepEmailLanguage } from "../lib/email-language.js";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
@@ -1008,6 +1009,8 @@ function Shell() {
   // The other side of a call is shown its time in this person's zone, so the
   // browser's zone is saved once per sign-in (a no-op when unchanged).
   useEffect(() => { saveMyTimeZone(); }, [user?.id]);
+  // Emails are written in the language this person chose on the pages (中文 or English).
+  useEffect(() => keepEmailLanguage(user?.id), [user?.id]);
 
   const loadProfile = useCallback(() => {
     const load = isFactory ? getFactoryProfile : getBrandProfile;
