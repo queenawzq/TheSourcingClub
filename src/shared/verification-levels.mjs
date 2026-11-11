@@ -432,6 +432,23 @@ export function computeLevels({ detail, extra, sourceLabel = (country, source) =
   const country = detail?.registration?.country ?? detail?.countryCode ?? null;
   const named = detail ? { ...detail, checks: (detail.checks ?? []).map((check) => ({ ...check, sourceLabel: sourceLabel(country, check.source) })) } : detail;
   const states = stateFlags(detail, extra);
-  const results = applyRules(mergeArrived(deriveLevels({ detail: named, extra, states }), arrivedResults(detail, extra)), states);
+  const results = withLicenseCopy(applyRules(mergeArrived(deriveLevels({ detail: named, extra, states }), arrivedResults(detail, extra)), states), extra);
   return { results, overall: overallLevel(results) };
+}
+
+/**
+ * The photo check also fingerprints license uploads across TSC (B2): the
+ * same license image at another company, uploaded earlier, makes the License
+ * read row Low with the reason. A staff reason on the row still lifts it.
+ */
+export function withLicenseCopy(results, extra) {
+  const photo = (extra?.checkResults ?? []).find((item) => item?.key === "photos");
+  const copy = photo?.licenseCopy ?? photo?.details?.licenseCopy ?? null;
+  if (!copy || copy.level !== "low") return results;
+  return results.map((item) => item.key !== "license_read" ? item : {
+    ...item,
+    level: item.details?.explanation?.note ? "medium" : "low",
+    reasons: [...(copy.reasons ?? ["The same license image was uploaded by another company first"]), ...(item.reasons ?? [])],
+    details: { ...(item.details ?? {}), licenseCopy: copy },
+  });
 }
