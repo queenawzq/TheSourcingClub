@@ -84,6 +84,18 @@ await check("CN licence against English typed city: another city differs", () =>
   assert.equal(c.verdict, "differs");
   assert.equal(c.differs[0].part, "city");
 });
+await check("CN: one character apart (北纬 read as 北绣) nearly matches, never differs", () => {
+  const c = compareAddresses("广东省广州市番禺区北纬四路28号", "广东省广州市番禺区北绣四路28号");
+  assert.equal(c.verdict, "near");
+  assert.equal(c.near[0].part, "road");
+  const owner = addressOwnerCheck({ license: "广东省广州市番禺区北纬四路28号", registry: "广东省广州市番禺区北绣四路28号", typed: "" });
+  assert.equal(owner.level, "medium");
+  assert.match(owner.reasons[0], /one character apart/);
+  // A dropped character is near too; two characters, another district or another number are not.
+  assert.equal(compareAddresses("广东省广州市番禺区北纬四路28号", "广东省广州市番禺区北四路28号").verdict, "near");
+  assert.equal(compareAddresses("广东省广州市番禺区北纬四路28号", "广东省广州市番禺区南京西路28号").verdict, "differs");
+  assert.equal(compareAddresses("广东省广州市番禺区北纬四路28号", "广东省广州市番禺区北纬四路29号").verdict, "differs");
+});
 await check("PT: other postcode and city differ", () => {
   const c = compareAddresses("Rua da Indústria, 125, 4470-211 Maia", "Avenida da Liberdade 110, 1250-146 Lisboa");
   assert.equal(c.verdict, "differs");

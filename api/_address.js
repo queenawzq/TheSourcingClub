@@ -178,6 +178,19 @@ function sameValue(a, b) {
   return x === y || (Math.min(x.length, y.length) >= 2 && (x.includes(y) || y.includes(x)));
 }
 
+/** Two Chinese names one character apart: one substituted, added or dropped. */
+export function oneCharApart(x, y) {
+  const a = [...fold(x)];
+  const b = [...fold(y)];
+  if (!a.length || !b.length || !hasHan(a.join("")) || Math.abs(a.length - b.length) > 1 || a.join("") === b.join("")) return false;
+  if (Math.min(a.length, b.length) < 2) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  if (a.length === b.length) return a.slice(i + 1).join("") === b.slice(i + 1).join("");
+  const [longer, shorter] = a.length > b.length ? [a, b] : [b, a];
+  return longer.slice(i + 1).join("") === shorter.slice(i).join("");
+}
+
 /** A part of a Chinese address in pinyin, when we know the name. */
 function latinOf(value) {
   return pinyinOf(String(value ?? "").replace(/(省|市|区|县|镇)$/, ""));
@@ -188,6 +201,7 @@ function latinOf(value) {
  * `{ verdict: "match" | "partial" | "differs" | "unknown", same: [], differs: [{ part, a, b }] }`.
  *   match: road and number (or postcode and road) agree and nothing differs;
  *   partial: only the area agrees (city, district…), nothing differs;
+ *   near: one Chinese character apart in a name (a misread), nothing else differs;
  *   differs: a part both name is different.
  */
 export function compareAddresses(rawA, rawB) {
@@ -211,6 +225,7 @@ export function compareAddresses(rawA, rawB) {
     if (differs.length) return { verdict: "differs", same, differs, note: "scripts" };
     return { verdict: same.length ? "partial" : "unknown", same, differs, note: "scripts" };
   }
+  const near = [];
   for (const part of PARTS) {
     // A number or postcode is the same only when it is exactly the same: 28 is not 280.
     const verdict = part === "number" || part === "postcode"
@@ -218,9 +233,12 @@ export function compareAddresses(rawA, rawB) {
       : sameValue(a.parts[part], b.parts[part]);
     if (verdict === null) continue;
     if (verdict) same.push(part);
+    // One Chinese character apart is more often a blurry read (北纬 / 北绣) than another place.
+    else if (a.script === "han" && oneCharApart(a.parts[part], b.parts[part])) near.push({ part, a: a.parts[part], b: b.parts[part] });
     else differs.push({ part, a: a.parts[part], b: b.parts[part] });
   }
-  if (differs.length) return { verdict: "differs", same, differs };
+  if (differs.length) return { verdict: "differs", same, differs, near };
+  if (near.length) return { verdict: "near", same, differs, near };
   if (same.includes("road") && (same.includes("number") || same.includes("postcode"))) return { verdict: "match", same, differs };
   if (same.length) return { verdict: "partial", same, differs };
   // Nothing parsed on one side: compare the whole text.
@@ -290,6 +308,12 @@ export function addressOwnerCheck({ typed, license, registry, typedFrom = "locat
     level = "medium";
     for (const c of differing) reasons.push(describe(c));
     reasons.push("To settle: a factory can produce away from its registered address; ask for a lease, a utility bill or a video of the production site");
+  } else if (comparisons.some((c) => c.verdict === "near")) {
+    level = "medium";
+    for (const c of comparisons.filter((c) => c.verdict === "near")) {
+      reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} nearly match, one character apart: ${c.near.map((d) => `${PART_WORDS[d.part]} (${d.a} / ${d.b})`).join(", ")}`);
+    }
+    reasons.push("To settle: look at the licence; a blurry character is often misread");
   } else if (comparisons.some((c) => c.verdict === "match") && !comparisons.some((c) => c.verdict === "partial" && c.between.includes("license") && c.note !== "scripts")) {
     level = "high";
     for (const c of comparisons.filter((c) => c.verdict === "match")) reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} give the same street and number`);
