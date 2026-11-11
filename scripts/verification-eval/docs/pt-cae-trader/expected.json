@@ -1,0 +1,23 @@
+{
+  "about": "A Portuguese wholesaler: the objeto names confecção, but the only CAE is 46420 (wholesale of clothing). The code decides: trading scope must fire.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "PT",
+    "number": "516330195",
+    "title": "Têxteis Luso Export, Lda",
+    "location": "Avenida da Boavista 1200, Porto"
+  },
+  "fields": {
+    "registrationNumber": "516330195",
+    "legalName": "TÊXTEIS LUSO EXPORT, LDA.",
+    "activityCodeIncludes": "46420"
+  },
+  "flags": {
+    "trading_scope": true,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

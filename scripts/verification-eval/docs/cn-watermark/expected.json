@@ -1,0 +1,27 @@
+{
+  "about": "A factory's licence with \"仅供The Sourcing Club认证使用 他用无效\" written across it, as factories do on the copy they send, and NO specimen stamp. The watermark is normal: no specimen flag, reported as a verification watermark. The founding date is read.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); invented company and number, carries a verification watermark instead of the stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "杭州余杭锦程针织服饰有限公司",
+    "location": "浙江省杭州市余杭区仁和街道永泰路66号"
+  },
+  "fields": {
+    "registrationNumber": "91330110MA2H3K8D5Y",
+    "legalName": "杭州余杭锦程针织服饰有限公司",
+    "legalRepresentative": "郑美玲",
+    "address": "浙江省杭州市余杭区仁和街道永泰路66号",
+    "businessScopeIncludes": "生产",
+    "foundingDate": "2014年09月03日"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": false,
+    "unreadable": false,
+    "verification_watermark": true
+  }
+}

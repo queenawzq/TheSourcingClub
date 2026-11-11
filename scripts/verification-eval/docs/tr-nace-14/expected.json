@@ -1,0 +1,24 @@
+{
+  "about": "A Turkish knitwear maker whose activity line prints NACE 14.39.01 with no \"imalat\" word. The code alone says making: no trading flag.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "TR",
+    "number": "3276501482",
+    "title": "Ege Örme Giyim Sanayi ve Ticaret Ltd. Şti.",
+    "location": "Atatürk Organize Sanayi Bölgesi, Çiğli, İzmir"
+  },
+  "fields": {
+    "registrationNumber": "3276501482",
+    "legalName": "EGE ÖRME GİYİM SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+    "taxOffice": "ÇİĞLİ VERGİ DAİRESİ",
+    "activityCodeIncludes": "14.39"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}
