@@ -69,8 +69,19 @@ export async function getBrandProfile(orgId) {
   );
 }
 
+/**
+ * The production address is staff-only for everyone outside the company: a
+ * trigger moves it from factory_profiles into factory_production_addresses
+ * (members and staff read it), so it is read back from there.
+ */
+async function withProductionAddress(orgId, profile) {
+  if (!profile) return profile;
+  const { data } = await supabase.from("factory_production_addresses").select("address").eq("org_id", orgId).maybeSingle();
+  return { ...profile, production_address: data?.address ?? null };
+}
+
 export async function getFactoryProfile(orgId) {
-  return unwrap(
+  const profile = unwrap(
     await supabase
       .from("factory_profiles")
       .select(FACTORY_COLUMNS)
@@ -78,6 +89,7 @@ export async function getFactoryProfile(orgId) {
       .maybeSingle(),
     "load your factory profile",
   );
+  return withProductionAddress(orgId, profile);
 }
 
 /**
@@ -99,7 +111,7 @@ export async function saveBrandProfile(orgId, patch) {
 }
 
 export async function saveFactoryProfile(orgId, patch) {
-  return unwrap(
+  const saved = unwrap(
     await supabase
       .from("factory_profiles")
       .upsert({ org_id: orgId, ...patch }, { onConflict: "org_id" })
@@ -107,6 +119,7 @@ export async function saveFactoryProfile(orgId, patch) {
       .single(),
     "save your factory profile",
   );
+  return withProductionAddress(orgId, saved);
 }
 
 /**
