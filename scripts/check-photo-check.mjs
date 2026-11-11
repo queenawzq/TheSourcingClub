@@ -7,7 +7,7 @@
  *   node scripts/check-photo-check.mjs
  */
 import assert from "node:assert/strict";
-import { photoLevel, licenseCopyLevel, readLook, runPhotoCheck } from "../api/photo-check.js";
+import { photoLevel, licenseCopyLevel, readLook, runPhotoCheck, recomputePhotoMarks } from "../api/photo-check.js";
 import { fingerprint } from "../api/_photo-hash.js";
 
 let passed = 0;
@@ -105,6 +105,16 @@ test("a similar license is never evidence", () => {
   assert.equal(licenseCopyLevel([copy("similar", true)]).level, null);
 });
 
+// Demo companies -------------------------------------------------------------
+test("a copy between two demo companies never counts", () => {
+  assert.equal(photoLevel({ workshop: [own(floor("a"))], copies: [{ ...copy("exact", true), bothDemo: true }] }).level, "high");
+  assert.equal(licenseCopyLevel([{ ...copy("exact", true), bothDemo: true }]).level, null);
+});
+test("a real company and a demo one still count", () => {
+  assert.equal(photoLevel({ workshop: [own(floor("a"))], copies: [{ ...copy("exact", true), bothDemo: false }] }).level, "low");
+  assert.equal(licenseCopyLevel([{ ...copy("exact", true), bothDemo: false }]).level, "low");
+});
+
 // The model's answer --------------------------------------------------------
 test("readLook keeps the schema and maps v3's otherCompanyMark", () => {
   assert.equal(readLook({ kind: "factory_floor", mark: "client_label", matchesProducts: "yes" }).ai.mark, "client_label");
@@ -131,6 +141,25 @@ test("runPhotoCheck answers unavailable instead of throwing", () => {
     assert.equal(r.available, false);
     assert.ok(r.reason);
   }
+});
+
+// Staff's mark recomputes the stored result at once, with no download or AI.
+const recorded = [];
+const stored = { key: "photos", level: "medium", reasons: ["x"], details: { perPhoto: [{ documentId: "a", workshop: true, staffMark: null, ai: floor("a").ai }], duplicates: [], licenseCopies: [] } };
+const fake = {
+  from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { result: stored } }) }) }) }) }) }),
+  rpc: async (name, args) => {
+    if (name === "photo_staff_marks") return { data: [{ document_id: "a", result: "own" }] };
+    if (name === "record_photo_check") { recorded.push(args.check_result); return { data: null }; }
+    throw new Error(`unexpected ${name}`);
+  },
+  storage: { from() { throw new Error("no download expected"); } },
+};
+const recomputed = await recomputePhotoMarks({ orgId: "o", asServer: fake });
+test("recording Own on every workshop photo lifts the stored result to High at once", () => {
+  assert.equal(recomputed.level, "high");
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].details.perPhoto[0].staffMark, "own");
 });
 
 console.log(`check-photo-check: ${passed} passed${process.exitCode ? ", some FAILED" : ""}`);

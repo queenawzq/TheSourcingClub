@@ -2,6 +2,9 @@
  * The photos check (verification v3, outcome 6; v3.1 fix round, Nov 11).
  *
  *   POST { orgId }  (staff token)  →  { key: "photos", level, reasons, details, checkedAt, licenseCopy }
+ *   POST { orgId, marksOnly: true }  →  the same, recomputed from the stored
+ *     evidence and staff's latest marks (`recomputePhotoMarks`), right after
+ *     staff record "Own photos" or "Found elsewhere" on a photo
  *   runPhotoCheck({ orgId, asServer, requestedBy })  →  the same, or { available: false, reason }
  *
  * `runPhotoCheck` is what the automatic run (`api/verification-run.js`) calls
@@ -90,7 +93,7 @@ const companies = (n) => plural(n, "other company", "other companies");
  */
 export function photoLevel({ workshop = [], copies = [], staffMarks = [] }) {
   const reasons = [];
-  const later = copies.filter((c) => c.mineLater);
+  const later = counted(copies).filter((c) => c.mineLater);
   const exactLater = later.filter((c) => c.match === "exact");
   const similarLater = later.filter((c) => c.match !== "exact");
   const elsewhere = staffMarks.filter((m) => m.result === "found_elsewhere");
@@ -141,13 +144,16 @@ export function photoLevel({ workshop = [], copies = [], staffMarks = [] }) {
   return { level: "high", reasons: [`${floor.length} of ${looked.length} workshop photos show a working production floor; staff found them to be the factory's own; no copy elsewhere on TSC.`] };
 }
 
+/** A copy between two demo companies is not evidence (the seed shares placeholder files). */
+const counted = (copies) => copies.filter((c) => !c.bothDemo);
+
 /**
  * The same license image at another company (B2). Exact copies only. Low for
  * the company that uploaded later; the earlier one is told to staff and keeps
  * its level (null).
  */
 export function licenseCopyLevel(copies = []) {
-  const exact = copies.filter((c) => c.match === "exact");
+  const exact = counted(copies).filter((c) => c.match === "exact");
   if (!exact.length) return { level: null, reasons: [], copies: [] };
   const later = exact.filter((c) => c.mineLater);
   const names = (list) => [...new Set(list.map((c) => c.otherOrgName || "another company"))].join(", ");
@@ -332,6 +338,54 @@ async function backfillOthers(asServer, orgId) {
 // The check
 // ---------------------------------------------------------------------------
 
+/** Sets `bothDemo` on each copy whose two companies are both demo companies (`org_is_demo`). */
+async function markDemo(asServer, orgId, copies) {
+  const ids = [...new Set([orgId, ...copies.map((c) => c.otherOrgId)])];
+  // org_is_demo(): orgs.is_demo, or a company the demo seed started (its first member a demo login).
+  const flags = ids.length > 1 ? await Promise.all(ids.map(async (id) => [id, (await asServer.rpc("org_is_demo", { target_org: id })).data === true])) : [];
+  const demo = new Set(flags.filter(([, isDemo]) => isDemo).map(([id]) => id));
+  for (const c of copies) c.bothDemo = demo.has(orgId) && demo.has(c.otherOrgId);
+  return copies;
+}
+
+/**
+ * Staff recorded a mark on a photo ("Own photos", "Found elsewhere"): the
+ * stored result is recomputed at once from its own evidence and the latest
+ * marks, with no download and no AI call. With no stored result, the whole
+ * check runs. Never throws.
+ */
+export async function recomputePhotoMarks({ orgId, asServer, requestedBy = null } = {}) {
+  try {
+    if (!orgId || !asServer) return { available: false, reason: "No company given." };
+    const [{ data: stored }, { data: marks }] = await Promise.all([
+      asServer.from("photo_checks").select("result").eq("org_id", orgId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      asServer.rpc("photo_staff_marks", { target_org: orgId }),
+    ]);
+    const previous = stored?.result;
+    if (!previous?.details?.perPhoto) return runPhotoCheck({ orgId, asServer, requestedBy });
+    const markOf = new Map((marks ?? []).map((m) => [m.document_id, m.result]));
+    const entries = previous.details.perPhoto.map((e) => ({ ...e, staffMark: markOf.get(e.documentId) ?? null }));
+    const workshop = entries.filter((e) => e.workshop);
+    const staffMarks = entries.filter((e) => e.staffMark).map((e) => ({ documentId: e.documentId, result: e.staffMark }));
+    const duplicates = previous.details.duplicates ?? [];
+    const { level, reasons } = photoLevel({ workshop, copies: duplicates, staffMarks });
+    const result = {
+      ...previous,
+      level,
+      reasons,
+      details: { ...previous.details, perPhoto: entries },
+      licenseCopy: licenseCopyLevel(previous.details.licenseCopies ?? []),
+      checkedAt: new Date().toISOString(),
+    };
+    const { error } = await asServer.rpc("record_photo_check", { target_org: orgId, check_result: result, checker: requestedBy });
+    if (error) console.error("photo-check record", error.code, error.message);
+    return result;
+  } catch (error) {
+    console.error("photo-check marks", orgId, error?.message ?? error);
+    return { available: false, reason: "The photo check could not be updated. Run it again." };
+  }
+}
+
 /**
  * Runs the whole check with the server key and records it. Never throws:
  * any failure answers `{ available: false, reason }`.
@@ -430,6 +484,7 @@ async function check(asServer, orgId, requestedBy) {
     otherUploadedAt: row.theirs_uploaded_at,
     mineLater: row.mine_later === true,
   }));
+  await markDemo(asServer, orgId, allCopies);
   const duplicates = allCopies.filter((c) => c.group === "photo");
   const licenseCopies = allCopies.filter((c) => c.group === "license");
   for (const { entry } of perPhoto) entry.duplicateOf = duplicates.filter((d) => d.documentId === entry.documentId);
@@ -487,7 +542,7 @@ export default async function handler(request, response) {
   if (!supabaseUrl || !anonKey || !serviceKey) return json(response, 200, { available: false, reason: "The server is not set up for this." });
 
   const token = String(request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-  const { orgId } = bodyOf(request);
+  const { orgId, marksOnly } = bodyOf(request);
   if (!token || !orgId) return json(response, 400, { error: "Sign in again, then retry." });
 
   const asCaller = createClient(supabaseUrl, anonKey, {
@@ -501,6 +556,7 @@ export default async function handler(request, response) {
   }
   const { data: who } = await asCaller.auth.getUser(token);
   const asServer = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const result = await runPhotoCheck({ orgId, asServer, requestedBy: who?.user?.id ?? null });
+  const run = marksOnly ? recomputePhotoMarks : runPhotoCheck;
+  const result = await run({ orgId, asServer, requestedBy: who?.user?.id ?? null });
   return json(response, 200, result);
 }
