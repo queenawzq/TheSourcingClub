@@ -338,12 +338,14 @@ export async function addressAnswer({ detail, signals, fetchImpl, callModelImpl,
  * registry checks and the signals.
  */
 async function addressInputs(asServer, orgId) {
-  const [reg, profile, checks, signals, title] = await Promise.all([
+  const [reg, profile, checks, signals, title, production] = await Promise.all([
     asServer.from("company_registrations").select("country_code, number").eq("org_id", orgId).maybeSingle(),
     asServer.from("factory_profiles").select("*").eq("org_id", orgId).maybeSingle(),
     asServer.from("registry_checks").select("details, automatic, number_checked, checked_at").eq("org_id", orgId).order("checked_at", { ascending: false }),
     asServer.from("verification_signals").select("kind, subject_id, result, details, automatic, checked_at").eq("org_id", orgId).order("checked_at", { ascending: false }).limit(200),
     asServer.rpc("company_title", { target_org: orgId }),
+    // Staff-only since 20261111120000: a trigger moves it out of factory_profiles.
+    asServer.from("factory_production_addresses").select("address").eq("org_id", orgId).maybeSingle(),
   ]);
   const failed = [reg, profile, checks, signals].find((answer) => answer.error);
   if (failed) throw new Error(failed.error.message);
@@ -361,7 +363,7 @@ async function addressInputs(asServer, orgId) {
     registration: { country: reg.data?.country_code ?? profile.data?.country_code ?? null, number: reg.data?.number ?? null },
     countryCode: reg.data?.country_code ?? profile.data?.country_code ?? null,
     location: profile.data?.location ?? null,
-    productionAddress: profile.data?.production_address ?? null,
+    productionAddress: production?.data?.address ?? profile.data?.production_address ?? null,
     checks: withNames,
   };
   const list = (signals.data ?? []).map((signal) => ({
