@@ -2511,6 +2511,7 @@ export function SettingsScreen({
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
+  billingMethodNote = "",
   billingLocked = "",
   paymentLocked = "",
   inviteLocked = "",
@@ -2789,6 +2790,7 @@ export function SettingsScreen({
               <h3>{isFactory ? "Payment methods" : "Payment method"}</h3>
               <p>{isFactory ? "Manage where you receive earnings and which method is used for billing." : "Add, update, or remove the payment methods used for production milestones."}</p>
             </div>
+            {billingMethodNote && (!isFactory || paymentTab === "billing") ? <p className="settings-billing-note">{billingMethodNote}</p> : null}
             {isFactory ? (
               <>
                 <div className="settings-access-tabs billing-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
