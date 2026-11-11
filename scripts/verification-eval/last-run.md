@@ -1,6 +1,6 @@
 # Verification eval — last run
 
-Run 2026-11-11T15:39:55.456Z · model `anthropic/claude-haiku-5.5` · 17 documents · code at `this worktree`
+Run 2026-11-11T15:44:32.160Z · model `anthropic/claude-haiku-5.5` · 17 documents · code at `this worktree`
 
 | Score | Result |
 |---|---|
@@ -11,29 +11,29 @@ Run 2026-11-11T15:39:55.456Z · model `anthropic/claude-haiku-5.5` · 17 documen
 | Verification watermark reported (not a specimen) | 1/1 |
 | Unreadable caught | 1/1 |
 | Documents not read (service failure, not scored) | 0 |
-| False alarms | 0 (of 94 checks that should stay quiet) |
+| False alarms | 0 (of 78 checks that should stay quiet) |
 
 ## Per document
 
 | Document | Fields | Flags expected | Flags raised | Verdict | ms |
 |---|---|---|---|---|---|
-| cn-address-differs | 5/5 | address_differs, specimen_or_edited | address_differs, specimen_or_edited | ok | 4118 |
-| cn-edited-number | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2598 |
-| cn-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2640 |
-| cn-name-differs | 5/5 | name_differs, specimen_or_edited | name_differs, specimen_or_edited | ok | 3295 |
-| cn-photo-skewed | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3069 |
-| cn-photo-unreadable | – | specimen_or_edited, unreadable | unreadable | missed specimen_or_edited | 2738 |
-| cn-trader | 5/5 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 3006 |
-| cn-watermark | 6/6 | verification_watermark | verification_watermark | ok | 2983 |
-| cn-zero-width | 4/5 | specimen_or_edited | specimen_or_edited | wrong address | 2447 |
-| pt-cae-confeccao | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2720 |
-| pt-cae-trader | 3/3 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2479 |
-| pt-factory | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2572 |
-| pt-number-differs | 2/2 | number_differs, specimen_or_edited | number_differs, specimen_or_edited | ok | 2816 |
-| tr-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2698 |
-| tr-nace-14 | 4/4 | specimen_or_edited | specimen_or_edited | ok | 3180 |
-| tr-trader | 4/4 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2979 |
-| tr-zero-width-typed | 3/3 | specimen_or_edited | specimen_or_edited | ok | 2901 |
+| cn-address-differs | 5/5 | address_differs, specimen_or_edited | address_differs, specimen_or_edited | ok | 3287 |
+| cn-edited-number | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3023 |
+| cn-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3211 |
+| cn-name-differs | 5/5 | name_differs, specimen_or_edited | name_differs, specimen_or_edited | ok | 2727 |
+| cn-photo-skewed | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2476 |
+| cn-photo-unreadable | – | specimen_or_edited, unreadable | unreadable | missed specimen_or_edited | 2179 |
+| cn-trader | 5/5 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2631 |
+| cn-watermark | 6/6 | verification_watermark | verification_watermark | ok | 2941 |
+| cn-zero-width | 4/5 | specimen_or_edited | specimen_or_edited | wrong address | 2439 |
+| pt-cae-confeccao | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2601 |
+| pt-cae-trader | 3/3 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2798 |
+| pt-factory | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2875 |
+| pt-number-differs | 2/2 | number_differs, specimen_or_edited | number_differs, specimen_or_edited | ok | 2657 |
+| tr-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2812 |
+| tr-nace-14 | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2698 |
+| tr-trader | 4/4 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2909 |
+| tr-zero-width-typed | 3/3 | specimen_or_edited | specimen_or_edited | ok | 2988 |
 
 ## Field misses
 

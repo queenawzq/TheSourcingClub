@@ -129,7 +129,11 @@ async function runCase(id) {
 }
 
 // --- scoring ---------------------------------------------------------------
-const plain = (s) => String(s ?? "").normalize("NFKC").replace(/[\s\p{Cf}，,。.、;；:：()（）\-—'"]/gu, "").toLowerCase();
+// Turkish case rules for TR ("DANIŞMANLIK" → "danışmanlık"), then ı and i as one letter, since I and İ are swapped in print.
+const plain = (s, country) => {
+  const text = String(s ?? "").normalize("NFKC").replace(/[\s\p{Cf}，,。.、;；:：()（）\-—'"]/gu, "");
+  return country === "TR" ? text.toLocaleLowerCase("tr").replace(/ı/g, "i") : text.toLowerCase();
+};
 
 function flagsFrom(body) {
   const out = {};
@@ -168,12 +172,12 @@ function fieldResults(expected, body, country) {
       const codes = Array.isArray(got.activityCodes) ? got.activityCodes : [];
       rows.push({ key: "activityCodes", ok: codes.some((code) => String(code).includes(value)), want: `…${value}…`, got: codes.join(" | ") });
     } else if (key === "businessScopeIncludes") {
-      rows.push({ key: "businessScope", ok: plain(got.businessScope).includes(plain(value)), want: `…${value}…`, got: got.businessScope ?? "" });
+      rows.push({ key: "businessScope", ok: plain(got.businessScope, country).includes(plain(value, country)), want: `…${value}…`, got: got.businessScope ?? "" });
     } else if (key === "registrationNumber") {
       const ok = normaliseRegistrationNumber(country, got.registrationNumber ?? "") === normaliseRegistrationNumber(country, value);
       rows.push({ key, ok, want: value, got: got.registrationNumber ?? "" });
     } else {
-      rows.push({ key, ok: plain(got[key]) === plain(value) || (key === "legalName" && plain(got.legalNameEnglish) === plain(value)), want: value, got: got[key] ?? "" });
+      rows.push({ key, ok: plain(got[key], country) === plain(value, country) || (key === "legalName" && plain(got.legalNameEnglish, country) === plain(value, country)), want: value, got: got[key] ?? "" });
     }
   }
   return rows;
@@ -211,6 +215,8 @@ for (const r of results) {
   for (const name of FLAG_NAMES) {
     const want = Boolean(r.expected.flags?.[name]);
     if (!(name in r.flags)) { flagTally[name].na += 1; continue; }
+    // A watermark is information, not an alarm: scored only where a case says what to expect.
+    if (name === "verification_watermark" && !(name in (r.expected.flags ?? {}))) { flagTally[name].na += 1; continue; }
     const got = r.flags[name];
     if (want && got) flagTally[name].caught += 1;
     else if (want) flagTally[name].missed += 1;
@@ -248,7 +254,7 @@ for (const r of results) {
   const want = FLAG_NAMES.filter((f) => r.expected.flags?.[f]);
   const raised = FLAG_NAMES.filter((f) => r.flags[f]);
   const missed = want.filter((f) => f in r.flags && !r.flags[f]);
-  const extra = raised.filter((f) => !r.expected.flags?.[f]);
+  const extra = raised.filter((f) => !r.expected.flags?.[f] && !(f === "verification_watermark" && !(f in (r.expected.flags ?? {}))));
   const na = want.filter((f) => !(f in r.flags));
   const bad = r.fields.filter((f) => !f.ok).map((f) => f.key);
   const verdict = [

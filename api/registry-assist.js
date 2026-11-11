@@ -40,6 +40,9 @@ import {
   addressOwnerCheck, addressSiteCheck, addressSources, isPrecise, judgeFromTags, nominatim, overpass, overpassQuery,
   ownTag, shorterAddress, summariseTags,
 } from "./_address.js";
+// ownerAtReading (session "address", A4) is read through the namespace, so this
+// file loads whether or not that export has landed yet.
+import * as addressRules from "./_address.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM helpers lazily.
 const loadRegistrationNumber = () => import("../src/shared/registration-number.mjs");
 
@@ -199,17 +202,60 @@ export function documentWarnings(extracted) {
  * Where the document's text differs from what the factory typed. Each line
  * quotes the document. Never "fake": a person decides what a difference means.
  */
-export function documentDifferences(extracted, { country, number, title } = {}, { companyNamesMatch, normaliseRegistrationNumber }) {
-  const lines = [];
+export function documentDifferences(extracted, typedValues = {}, helpers = {}) {
+  return compareDocument(extracted, typedValues, helpers).differences;
+}
+
+const CJK = /[\u3400-\u9fff\uf900-\ufaff]/u;
+/** At most one character inserted, removed or changed between a and b. */
+function oneEditApart(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  let j = 0;
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j += 1;
+  return a.length - i - j <= 1 && b.length - i - j <= 1;
+}
+
+/**
+ * One character apart on a Chinese (or other CJK) text of four or more
+ * characters: a blurred photo's misread (森仲华 / 森神华), which staff look at,
+ * never "differs". Exported for the address rules to share.
+ */
+export function nearlySameCjk(a, b, key = (text) => String(text ?? "").normalize("NFKC").replace(/[\s\p{P}\p{Cf}]/gu, "")) {
+  const x = key(a);
+  const y = key(b);
+  if (!x || !y || x === y || !CJK.test(x) || !CJK.test(y)) return false;
+  return Math.min(x.length, y.length) >= 4 && oneEditApart(x, y);
+}
+
+/**
+ * The document against what the factory typed: `differences` (each quoting
+ * the document; a person decides what one means), and `unsure`: a number
+ * read with the wrong length or a failing check digit while the typed one is
+ * valid, no number read at all, or a name one character off on a CJK name.
+ * Unsure is "look at it", never "differs".
+ */
+export function compareDocument(extracted, { country, number, title } = {}, { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem }) {
+  const differences = [];
+  const unsure = [];
   const docNumber = normaliseRegistrationNumber(country, extracted?.registrationNumber ?? "");
   const typed = normaliseRegistrationNumber(country, number ?? "");
-  if (docNumber && typed && docNumber !== typed) lines.push({ field: "number", document: extracted.registrationNumber, typed: number });
-  if (!docNumber && typed) lines.push({ field: "number", document: "", typed: number });
+  const problem = (value) => (registrationNumberProblem && country ? registrationNumberProblem(country, value) : null);
+  if (docNumber && typed && docNumber !== typed) {
+    const docProblem = problem(docNumber);
+    if (docProblem && !problem(typed)) unsure.push({ field: "number", document: extracted.registrationNumber, typed: number, reason: docProblem === "check_digit" ? "The number read fails its check digit" : "The number read has the wrong length or characters" });
+    else differences.push({ field: "number", document: extracted.registrationNumber, typed: number });
+  }
+  if (!docNumber && typed) unsure.push({ field: "number", document: "", typed: number, reason: "No number could be read off the document" });
   const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
   if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
-    lines.push({ field: "name", document: names.join(" / "), typed: title });
+    const key = companyNameKey ? (text) => companyNameKey(text).replace(/\s+/g, "") : undefined;
+    if (names.some((name) => nearlySameCjk(name, title, key))) unsure.push({ field: "name", document: names.join(" / "), typed: title, reason: "One character differs: check the document" });
+    else differences.push({ field: "name", document: names.join(" / "), typed: title });
   }
-  return lines;
+  return { differences, unsure };
 }
 
 const READ_SCHEMA = {
@@ -565,7 +611,8 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
   extracted.markedAsSample = look.specimen;
   extracted.looksEdited = look.edited;
   extracted.verificationWatermark = look.watermark;
-  const differences = extracted.readable === false ? [] : documentDifferences(extracted, { country: registration.country, number: registration.number, title: detail?.title }, helpers);
+  const { differences, unsure } = extracted.readable === false ? { differences: [], unsure: [] }
+    : compareDocument(extracted, { country: registration.country, number: registration.number, title: detail?.title }, helpers);
   const scope = tradingScope(extracted.businessScope, extracted.activityCodes);
   const foundedOn = isoDateFrom(extracted.foundingDate);
   const authorisation = authorisationFrom(await authorisationRead, {
@@ -574,9 +621,17 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
   // A reading holds for the number and name it was compared with: the
   // database ignores it once either changes (registry_reading_differs).
   const details = {
-    extracted, differences, tradingScope: scope, warnings: look.warnings, overruled: look.overruled, numberCheck, foundedOn, authorisation,
+    extracted, differences, unsure, tradingScope: scope, warnings: look.warnings, overruled: look.overruled, numberCheck, foundedOn, authorisation,
     model, fileId: file.id, fileName: file.name, numberAtReading: registration.number ?? null, titleAtReading: detail?.title ?? null,
   };
+  // A4: the address owner as judged at this reading, for the score row.
+  let ownerResult = null;
+  try {
+    ownerResult = typeof addressRules.ownerAtReading === "function" ? addressRules.ownerAtReading({ detail, signals, extracted }) : null;
+  } catch (error) {
+    console.error("registry-assist ownerAtReading", error?.message);
+  }
+  if (ownerResult) details.levelResult = ownerResult;
   const { error: saveError } = await asServer.rpc("record_verification_signal", {
     target_org: orgId, kind: "document_reading", subject: file.id,
     result: extracted.readable === false ? "unreadable" : differences.length ? "differs" : "agrees", details, requested_by: requestedBy,
@@ -584,7 +639,7 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
   if (saveError) console.error("registry-assist save reading", saveError.message);
   // The licence's address against the typed and registry ones, straight away.
   const sources = addressSources(detail, signals);
-  const addressOwner = extracted.readable === false ? null : addressOwnerCheck({ ...sources, license: String(extracted.address ?? "").trim() });
+  const addressOwner = ownerResult ?? (extracted.readable === false ? null : addressOwnerCheck({ ...sources, license: String(extracted.address ?? "").trim() }));
   return { available: true, ...details, addressOwner };
 }
 
@@ -606,10 +661,13 @@ export async function runReadDocument({ orgId, asServer, requestedBy = null }) {
         .eq("org_id", orgId).order("checked_at", { ascending: false }).limit(20),
     ]);
     if (files.error) return { available: false, reason: "The company's documents could not be read." };
+    // B4: the production address, once its column exists; a missing column is no address.
+    const production = await asServer.from("factory_profiles").select("production_address").eq("org_id", orgId).maybeSingle();
     const detail = {
       registration: { country: registration.data?.country_code ?? null, number: registration.data?.number ?? null },
       title: title.data ?? null,
       location: profile.data?.location ?? null,
+      productionAddress: production.error ? null : production.data?.production_address ?? null,
     };
     const fileRows = (files.data ?? []).map((row) => ({ id: row.id, bucket: row.bucket, path: row.storage_path, name: row.file_name, mimeType: row.mime_type, createdAt: row.created_at }));
     const signalRows = (signals.data ?? []).map((row) => ({ kind: row.kind, details: row.details, automatic: row.automatic, checkedAt: row.checked_at }));
