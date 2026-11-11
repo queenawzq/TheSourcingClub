@@ -969,32 +969,13 @@ async function main() {
     await factoryPage.locator('input[name="email"]').first().fill(`e2e-factory-${stamp}@example.com`);
     await factoryPage.locator('input[name="password"]').first().fill(PASSWORD);
     await clickButton(factoryPage, "log in");
-    await waitForHeading(factoryPage, "we need a little more information", 40000);
+    // v3 (Queena, Nov 9): no "we need a little more information" card and no
+    // repeated note: the factory lands straight on its profile summary, whose
+    // own warnings say what to edit. Staff's words reach it by email.
+    await waitForHeading(factoryPage, "review your profile", 40000);
     const askedText = await factoryPage.locator("body").innerText();
-    check(askedText.includes(askFor.split("\n")[0]) && askedText.includes(askFor.split("\n").at(-1)), "the factory reads the request staff wrote, on its own screen");
-    // The note ran out of the card and over the step dots. Measured, not
-    // looked at: every box inside the card, and the card above the dots.
-    const finishCardFits = () => factoryPage.evaluate(() => {
-      const card = document.querySelector(".factory-onboarding-card, .brand-onboarding-card");
-      const dots = document.querySelector(".factory-onboarding-progress, .brand-onboarding-progress");
-      if (!card) return "no card";
-      const box = card.getBoundingClientRect();
-      const out = [...card.querySelectorAll("*")].filter((el) => {
-        const r = el.getBoundingClientRect();
-        return r.height > 0 && (r.bottom > box.bottom + 1 || r.right > box.right + 1 || r.left < box.left - 1);
-      });
-      if (out.length) return `${out.length} boxes outside the card, first ${out[0].tagName.toLowerCase()}.${out[0].className}`;
-      if (card.scrollHeight > card.clientHeight + 1) return `card scrolls (${card.scrollHeight} > ${card.clientHeight})`;
-      if (dots && dots.getBoundingClientRect().top < box.bottom - 1) return "the card runs over the step dots";
-      return "fits";
-    });
-    const fitsWide = await finishCardFits();
-    check(fitsWide === "fits", `the long request fits its card at desktop width (${fitsWide})`);
-    await factoryPage.setViewportSize(375, 812);
-    await factoryPage.waitForTimeout(500);
-    const fitsNarrow = await finishCardFits();
-    check(fitsNarrow === "fits", `and at 375px wide (${fitsNarrow})`);
-    await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
+    check(!/we need a little more information/i.test(askedText), "the factory lands on its profile summary, with no extra page first");
+    await record(factoryPage, "Factory asked for more information", "straight to the profile summary");
 
     const answering = createClient(
       process.env.SUPABASE_URL ?? stack.API_URL,

@@ -1,6 +1,6 @@
 # Verification eval — last run
 
-Run 2026-11-11T15:39:55.456Z · model `anthropic/claude-haiku-5.5` · 17 documents · code at `this worktree`
+Run 2026-11-11T15:46:13.546Z · model `anthropic/claude-haiku-5.5` · 17 documents · code at `this worktree`
 
 | Score | Result |
 |---|---|
@@ -17,23 +17,23 @@ Run 2026-11-11T15:39:55.456Z · model `anthropic/claude-haiku-5.5` · 17 documen
 
 | Document | Fields | Flags expected | Flags raised | Verdict | ms |
 |---|---|---|---|---|---|
-| cn-address-differs | 5/5 | address_differs, specimen_or_edited | address_differs, specimen_or_edited | ok | 4118 |
-| cn-edited-number | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2598 |
-| cn-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2640 |
-| cn-name-differs | 5/5 | name_differs, specimen_or_edited | name_differs, specimen_or_edited | ok | 3295 |
-| cn-photo-skewed | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3069 |
-| cn-photo-unreadable | – | specimen_or_edited, unreadable | unreadable | missed specimen_or_edited | 2738 |
-| cn-trader | 5/5 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 3006 |
-| cn-watermark | 6/6 | verification_watermark | verification_watermark | ok | 2983 |
-| cn-zero-width | 4/5 | specimen_or_edited | specimen_or_edited | wrong address | 2447 |
-| pt-cae-confeccao | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2720 |
-| pt-cae-trader | 3/3 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2479 |
-| pt-factory | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2572 |
-| pt-number-differs | 2/2 | number_differs, specimen_or_edited | number_differs, specimen_or_edited | ok | 2816 |
-| tr-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2698 |
-| tr-nace-14 | 4/4 | specimen_or_edited | specimen_or_edited | ok | 3180 |
-| tr-trader | 4/4 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2979 |
-| tr-zero-width-typed | 3/3 | specimen_or_edited | specimen_or_edited | ok | 2901 |
+| cn-address-differs | 5/5 | address_differs, specimen_or_edited | address_differs, specimen_or_edited | ok | 3217 |
+| cn-edited-number | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2628 |
+| cn-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 2872 |
+| cn-name-differs | 5/5 | name_differs, specimen_or_edited | name_differs, specimen_or_edited | ok | 3222 |
+| cn-photo-skewed | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3090 |
+| cn-photo-unreadable | – | specimen_or_edited, unreadable | unreadable | missed specimen_or_edited | 2166 |
+| cn-trader | 5/5 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 3116 |
+| cn-watermark | 6/6 | verification_watermark | verification_watermark | ok | 2621 |
+| cn-zero-width | 4/5 | specimen_or_edited | specimen_or_edited | wrong address | 2509 |
+| pt-cae-confeccao | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2805 |
+| pt-cae-trader | 3/3 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 3006 |
+| pt-factory | 4/4 | specimen_or_edited | specimen_or_edited | ok | 2647 |
+| pt-number-differs | 2/2 | number_differs, specimen_or_edited | number_differs, specimen_or_edited | ok | 2658 |
+| tr-factory | 5/5 | specimen_or_edited | specimen_or_edited | ok | 3509 |
+| tr-nace-14 | 4/4 | specimen_or_edited | specimen_or_edited | ok | 3736 |
+| tr-trader | 4/4 | trading_scope, specimen_or_edited | trading_scope, specimen_or_edited | ok | 2858 |
+| tr-zero-width-typed | 3/3 | specimen_or_edited | specimen_or_edited | ok | 3364 |
 
 ## Field misses
 

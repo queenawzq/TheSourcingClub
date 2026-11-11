@@ -140,8 +140,8 @@ function flagsFrom(body) {
   const diffs = Array.isArray(body.differences) ? body.differences : [];
   out.unreadable = extracted.readable === false;
   out.trading_scope = Boolean(body.tradingScope?.trading);
-  out.name_differs = diffs.some((d) => d.field === "name");
-  out.number_differs = diffs.some((d) => d.field === "number");
+  out.name_differs = diffs.some((d) => d.field === "name" && !d.nearly);
+  out.number_differs = diffs.some((d) => d.field === "number" && !d.nearly);
   // Address and specimen: whatever shape the extended reading gives them.
   const addressKnown = diffs.some((d) => d.field === "address") || "addressDiffers" in body || "address" in (body.comparison ?? {}) || body.addressCheck !== undefined;
   if (body.addressOwner?.details?.comparisons) {

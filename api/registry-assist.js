@@ -206,13 +206,30 @@ export function documentDifferences(extracted, { country, number, title } = {}, 
   const lines = [];
   const docNumber = normaliseRegistrationNumber(country, extracted?.registrationNumber ?? "");
   const typed = normaliseRegistrationNumber(country, number ?? "");
-  if (docNumber && typed && docNumber !== typed) lines.push({ field: "number", document: extracted.registrationNumber, typed: number });
+  // A China code is always 18 characters: a read of any other length is the
+  // reader's doubt, not the document's (a real 18-character code was read
+  // with 19 on a phone photo). Staff look; it is not "differs".
+  const unsureRead = country === "CN" && docNumber && docNumber.length !== 18;
+  if (docNumber && typed && docNumber !== typed) lines.push({ field: "number", document: extracted.registrationNumber, typed: number, ...(unsureRead || oneCharApart(docNumber, typed) ? { nearly: true } : {}) });
   if (!docNumber && typed) lines.push({ field: "number", document: "", typed: number });
   const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
   if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
-    lines.push({ field: "name", document: names.join(" / "), typed: title });
+    // One character apart on a Chinese name is usually a blurry photo (森仲华 read as 森神华).
+    const nearly = names.some((name) => /[\u4e00-\u9fff]/.test(name) && String(name).length >= 4 && oneCharApart(String(name), String(title)));
+    lines.push({ field: "name", document: names.join(" / "), typed: title, ...(nearly ? { nearly: true } : {}) });
   }
   return lines;
+}
+
+/** True when a and b differ by one substituted, added or dropped character. */
+export function oneCharApart(a, b) {
+  a = String(a ?? ""); b = String(b ?? "");
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  let j = 0;
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j += 1;
+  return a.length - i - j <= 1 && b.length - i - j <= 1;
 }
 
 const READ_SCHEMA = {

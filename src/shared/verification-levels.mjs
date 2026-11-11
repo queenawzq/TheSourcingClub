@@ -103,6 +103,12 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   // B2: the authorisation proof (handwritten note or company seal) travels with the reading.
   if (d.authorisation?.level) reasons.push(`Authorisation: ${(d.authorisation.reasons ?? [d.authorisation.level]).join("; ")}`);
   for (const line of d.differences ?? []) {
+    if (line.nearly) {
+      // One character apart, or a China code of the wrong length: the reader's doubt. Staff compare with the image.
+      if (level !== "low") level = "medium";
+      reasons.push(`${line.field === "number" ? "Number" : "Name"} nearly matches: document "${line.document || "none"}", typed "${line.typed ?? ""}" (compare with the image)`);
+      continue;
+    }
     level = "low";
     reasons.push(`${line.field === "number" ? "Number" : "Name"} differs: document "${line.document || "none"}", typed "${line.typed ?? ""}"`);
   }
