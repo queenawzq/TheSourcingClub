@@ -14,7 +14,8 @@
  * model. The model is told nothing about a test: it sees what staff's
  * button would send it.
  *
- * Needs OPENROUTER_API_KEY (environment, or .env.local here or in the main
+ * Needs OPENROUTER_API_KEY (environment, or the file EVAL_ENV_FILE names, or
+ * .env.local here or in the main
  * checkout). Never printed.
  *
  * Each case is docs/<case>/document.(png|jpg|pdf) + expected.json:
@@ -36,7 +37,7 @@ const DOCS = path.join(HERE, "docs");
 
 // --- the key, never printed ------------------------------------------------
 function keyFromEnvFiles() {
-  const candidates = [path.join(ROOT, ".env.local"), path.resolve(ROOT, "../../../.env.local"), path.resolve(ROOT, "../.env.local")];
+  const candidates = [...(process.env.EVAL_ENV_FILE ? [path.resolve(process.env.EVAL_ENV_FILE)] : []), path.join(ROOT, ".env.local"),path.resolve(ROOT, "../../../.env.local"), path.resolve(ROOT, "../.env.local")];
   for (const file of candidates) {
     if (!fs.existsSync(file)) continue;
     const line = fs.readFileSync(file, "utf8").split("\n").find((l) => /^\s*OPENROUTER_API_KEY\s*=/.test(l));
