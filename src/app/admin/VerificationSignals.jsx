@@ -250,7 +250,10 @@ function resultLabel(results, key) {
   return results.find((item) => item.key === key)?.label ?? key;
 }
 
-function Photo({ orgId, photo, check, onChange }) {
+const PHOTO_KIND_WORDS = { factory_floor: "Production floor", product_closeup: "Product close-up", stock_or_marketing: "Stock or marketing picture", office_or_showroom: "Office or showroom", other: "Something else" };
+const PHOTO_KIND_TONE = { factory_floor: "success", product_closeup: "neutral", stock_or_marketing: "danger", office_or_showroom: "warning", other: "warning" };
+
+function Photo({ orgId, photo, check, look, onChange }) {
   const [href, setHref] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -267,6 +270,15 @@ function Photo({ orgId, photo, check, onChange }) {
           {href && reverseImageLinks(href).map((link) => <a className="text-link" href={link.href} target="_blank" rel="noreferrer noopener" key={link.key}>{link.label} ↗</a>)}
         </div>
         {local && <p className="admin-signal-meta">Local photo: the search sites can't open it.</p>}
+        {look?.ai && (
+          <p>
+            <Pill tone={PHOTO_KIND_TONE[look.ai.kind] ?? "neutral"}>{PHOTO_KIND_WORDS[look.ai.kind] ?? look.ai.kind}</Pill>{" "}
+            {look.ai.mark && look.ai.mark !== "none" && <Pill tone={look.ai.mark === "client_label" ? "neutral" : "warning"}>{look.ai.mark === "client_label" ? "Client label" : `Sign: ${look.ai.markText || "another company"}`}</Pill>}{" "}
+            {look.ai.seen && <span className="admin-signal-meta">AI: {look.ai.seen}</span>}
+          </p>
+        )}
+        {look?.aiFailure && <p className="admin-signal-meta">{look.aiFailure}</p>}
+        {look?.duplicateOf?.length > 0 && <p className="admin-signal-meta">Same or similar photo at {look.duplicateOf.length} other {look.duplicateOf.length === 1 ? "company" : "companies"} on TSC.</p>}
         {check && (
           <p>
             <Pill tone={check.result === "own" ? "success" : check.result === "found_elsewhere" ? "danger" : "neutral"}>{resultLabel(PHOTO_RESULTS, check.result)}</Pill>{" "}
@@ -438,7 +450,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
       <>
         <PhotoCheckButton orgId={orgId} hasPhotos={(extra.photos ?? []).length > 0} onChange={onChange} />
         {(extra.photos ?? []).map((photo) => (
-          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} onChange={onChange} key={photo.id} />
+          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} look={(item.details?.perPhoto ?? []).find((p) => p.documentId === photo.id)} onChange={onChange} key={photo.id} />
         ))}
       </>
     );
