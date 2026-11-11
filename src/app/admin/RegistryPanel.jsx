@@ -29,7 +29,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ProfileDetailPair } from "../../shared/ProfileShell.jsx";
 import {
-  adminRegistryDetail, adminVerificationSignals, adminVerificationRules, explainDuplicate, latestPhotoCheck, recordRegistryCheck, requestViesCheck,
+  adminCompanyClaims, adminRegistryDetail, adminTermsSigner, adminVerificationSignals, adminVerificationRules, explainDuplicate, latestPhotoCheck, recordRegistryCheck, requestViesCheck,
 } from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import {
@@ -107,7 +107,9 @@ export default function RegistryPanel({ orgId, onChange }) {
       adminVerificationSignals(orgId).catch(() => ({ signals: [], photos: [], registrationFiles: [], certificates: [] })),
       latestPhotoCheck(orgId),
       adminVerificationRules(orgId),
-    ]).then(([signals, photoResult, rules]) => setExtra({ ...signals, rules, checkResults: photoResult ? [photoResult] : [] }));
+      adminCompanyClaims(orgId),
+      adminTermsSigner(orgId),
+    ]).then(([signals, photoResult, rules, claims, signer]) => setExtra({ ...signals, rules, claims, signer, checkResults: photoResult ? [photoResult] : [] }));
   }, [orgId]);
   useEffect(() => { setDetail(null); setExtra(null); setError(null); load(); }, [load]);
 
@@ -179,11 +181,15 @@ export default function RegistryPanel({ orgId, onChange }) {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const flags = registration?.number ? registrationFlags(country, registration.number) : [];
+  const allFlags = registration?.number ? registrationFlags(country, registration.number) : [];
+  // One answer about the number's check characters, not "Matches" beside "doesn't match".
+  const orgCodeFails = allFlags.some((flag) => flag.startsWith("Organisation-code check"));
+  const flags = allFlags.filter((flag) => !flag.startsWith("Organisation-code check"));
   if (registration?.noCompanyNumber) flags.push("No company number (sole proprietor): check the documents");
   const checkDigit = !registration?.number ? null
     : registration.problem === "check_digit" ? (registration.confirmed ? "Doesn't match (factory confirmed it)" : "Doesn't match")
     : registration.problem ? "Wrong format"
+    : orgCodeFails ? "Last character matches; the 17th (organisation code) doesn't, which some real codes fail"
     : ["CN", "TR", "PT"].includes(country) ? "Matches" : "None for this country";
   const files = extra?.registrationFiles ?? [];
   const missingSecond = country === "TR" && registration?.number && !registration?.registrationLetterNumber;

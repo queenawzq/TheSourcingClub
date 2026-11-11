@@ -87,3 +87,12 @@
     grid-row: 2;
   }
 }
+
+/* v3.1: the queue row's level, the address parts that differ, the reason form. */
+.admin-row-level.level-low strong { color: var(--danger, #c0392b); }
+.admin-address-compare { margin-top: 12px; }
+.admin-address-compare h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.admin-address-parts { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-address-parts th, .admin-address-parts td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line, #e5e5e5); vertical-align: top; }
+.admin-address-parts tbody th { font-weight: 500; white-space: nowrap; }
+.admin-explain-form { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line, #e5e5e5); }
