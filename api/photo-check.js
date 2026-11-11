@@ -99,7 +99,11 @@ export function photoLevel({ workshop = [], copies = [], staffMarks = [] }) {
   const elsewhere = staffMarks.filter((m) => m.result === "found_elsewhere");
   const looked = workshop.filter((p) => p.ai);
   const stock = looked.filter((p) => p.ai.kind === "stock_or_marketing");
-  const marked = looked.filter((p) => p.ai.mark === "watermark_or_other_company");
+  // A mark on a real production floor is a question (whose sign is it?), not proof: Medium. Elsewhere it is Low.
+  const markedFloor = looked.filter((p) => p.ai.mark === "watermark_or_other_company" && p.ai.kind === "factory_floor");
+  const marked = looked.filter((p) => p.ai.mark === "watermark_or_other_company" && p.ai.kind !== "factory_floor");
+  // Uploaded as workshop photos but showing an office, a showroom or something else: a trader's sign.
+  const notProduction = looked.filter((p) => p.ai.kind === "office_or_showroom" || p.ai.kind === "other");
   const clientLabel = looked.filter((p) => p.ai.mark === "client_label");
   const floor = looked.filter((p) => p.ai.kind === "factory_floor");
   const offProduct = looked.filter((p) => p.ai.matchesProducts === "no");
@@ -112,6 +116,8 @@ export function photoLevel({ workshop = [], copies = [], staffMarks = [] }) {
   if (elsewhere.length) reasons.push(`Staff found ${plural(elsewhere.length, "photo", "photos")} elsewhere online.`);
   if (stock.length) reasons.push(`${stock.length} of ${looked.length} workshop photos look like stock or marketing pictures.`);
   if (marked.length) reasons.push(`A watermark or another company's sign on ${plural(marked.length, "workshop photo", "workshop photos")}.`);
+  const floorNow = looked.filter((p) => p.ai.kind === "factory_floor");
+  if (!floorNow.length && notProduction.length) reasons.push(`No workshop photo shows production; ${notProduction.length} of ${looked.length} show an office, a showroom or something else.`);
   if (reasons.length) {
     reasons.push("To settle: ask the factory for new photos of its own workshop, or record a reason.");
     return { level: "low", reasons };
@@ -123,6 +129,7 @@ export function photoLevel({ workshop = [], copies = [], staffMarks = [] }) {
     const orgs = new Set(similarLater.map((c) => c.otherOrgId)).size;
     medium.push(`${plural(new Set(similarLater.map((c) => c.documentId)).size, "photo", "photos")}: a resized or edited copy of one uploaded first by ${companies(orgs)} on TSC. To settle: compare them in the details.`);
   }
+  if (markedFloor.length) medium.push(`A sign naming another company on ${plural(markedFloor.length, "production-floor photo", "production-floor photos")}${markedFloor[0].ai.markText ? ` ("${markedFloor[0].ai.markText}")` : ""}. To settle: ask whose sign it is.`);
   if (clientLabel.length) medium.push(`A brand label on a garment in ${plural(clientLabel.length, "workshop photo", "workshop photos")}: a client's order, or not this factory's. To settle: ask whose order it is.`);
 
   if (!workshop.length) {
@@ -208,7 +215,8 @@ The factory is "${companyName}". It says it makes: ${products.length ? products.
 kind: factory_floor = a real working production space (sewing lines, cutting tables, machines, fabric rolls, stock, workers), photographed on site; product_closeup = garments or fabric photographed plainly; stock_or_marketing = a staged, studio-lit, polished or generic picture of the kind sold on stock sites or used in advertising, a render, or a screenshot of a website; office_or_showroom; other.
 mark:
 - client_label = a brand name or label on garments, hang tags or cartons being made or packed. Factories make clothes for brands, so this is normal and is NOT a sign of another factory.
-- watermark_or_other_company = a stock-site or photographer's watermark over the picture, or the sign, logo or name of a company OTHER than "${companyName}" on the building, the walls, machines or uniforms.
+- watermark_or_other_company = a stock-site or photographer's watermark over the picture, or the sign, logo or name of a company OTHER than "${companyName}" on the building, the walls or uniforms.
+  NOT a mark (use none): production-line or section signs ("LINE-8", "Cutting", "3F", "QC"), numbers, safety or work-rule posters, and the maker's name on machines or equipment (JUKI, Brother, Pegasus, Siruba, Gerber...). Every factory has these.
 - none = neither.
 markText: the words of that mark as printed, else "".
 matchesProducts: whether what is being made or shown fits the products listed. cannot_tell if the photo shows no product.

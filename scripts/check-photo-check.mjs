@@ -46,8 +46,14 @@ test("a client's brand label on a garment is Medium at most, never Low", () => {
   assert.equal(r.level, "medium");
   assert.match(r.reasons.join(" "), /brand label/);
 });
-test("a watermark or another company's sign is Low", () => {
-  assert.equal(photoLevel({ workshop: [own(floor("a", { mark: "watermark_or_other_company" }))] }).level, "low");
+test("another company's sign on a real production floor is Medium (ask whose sign it is)", () => {
+  assert.equal(photoLevel({ workshop: [own(floor("a", { mark: "watermark_or_other_company" }))] }).level, "medium");
+});
+test("a watermark on a photo that is not a production floor is Low", () => {
+  assert.equal(photoLevel({ workshop: [floor("a", { kind: "product_closeup", mark: "watermark_or_other_company" })] }).level, "low");
+});
+test("workshop photos that show only an office or showroom are Low", () => {
+  assert.equal(photoLevel({ workshop: [floor("a", { kind: "office_or_showroom" }), floor("b", { kind: "product_closeup" })] }).level, "low");
 });
 test("a stock picture is Low", () => {
   assert.equal(photoLevel({ workshop: [floor("a", { kind: "stock_or_marketing" })] }).level, "low");
