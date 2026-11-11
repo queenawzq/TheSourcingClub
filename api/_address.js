@@ -8,9 +8,12 @@
  *     compared part by part: province, city, district, town, road, number,
  *     postcode. A licence address that differs is the strongest sign of a
  *     trader showing someone else's factory, so it is Low.
- *   address_site: the licence's full address placed on the map; when placed
- *     at street level or better, the OpenStreetMap tags around it say
- *     industrial, office or residential.
+ *   address_site: the licence's full address placed on the map (limited to
+ *     the registration's country); when placed at street level or better,
+ *     the place's own class, a reverse lookup at building level and, when
+ *     it answers, Overpass's tags around it say industrial, office or
+ *     residential. An office unit in the licence's words (1203室, Kat 3,
+ *     Sala 2) is a reason of its own (v3.1, A7).
  *
  * Every check returns the shared contract
  *   { key, level: "high" | "medium" | "low" | "unknown", reasons: string[], details, checkedAt }
@@ -230,46 +233,72 @@ export function compareAddresses(rawA, rawB) {
 const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", postcode: "postcode" };
 const SOURCE_WORDS = { typed: "the address the factory typed", license: "the licence", registry: "the registry" };
 
-/** Where each address comes from. Never a registry address for another company. */
+/**
+ * Where each address comes from. Never a registry address for another company.
+ * The typed address is the factory's production address when it gave one
+ * (B4, `factory_profiles.production_address`), else its location.
+ */
 export function addressSources(detail, signals) {
   const number = detail?.registration?.number ?? null;
   const fromCheck = (detail?.checks ?? []).find((check) => check.details?.address && check.numberChecked === number && check.nameMatches !== false);
   const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address
     && (signal.details?.numberAtReading ?? null) === number);
+  const production = String(detail?.productionAddress ?? detail?.production_address ?? "").trim();
   return {
-    typed: String(detail?.location ?? "").trim(),
+    typed: production || String(detail?.location ?? "").trim(),
+    typedFrom: production ? "production" : "location",
     license: String(reading?.details?.extracted?.address ?? "").trim(),
     registry: fromCheck ? String(fromCheck.details.address).replace(/\s*\n\s*/g, ", ").trim() : "",
     registryFrom: fromCheck ? (fromCheck.automatic ? "VIES" : "the registry check") : "",
+    country: String(detail?.registration?.country ?? detail?.countryCode ?? "").trim().toUpperCase(),
   };
 }
 
-/** address_owner: typed vs licence vs registry. */
-export function addressOwnerCheck({ typed, license, registry }, now = new Date()) {
+// A different city or province is another place; a different street in the
+// same city can be an honest factory producing away from its registered seat.
+const PLACE_PARTS = new Set(["province", "city"]);
+
+/**
+ * address_owner: typed vs licence vs registry.
+ *   low: the licence and the registry disagree, or the typed address is in
+ *     another city or province than the licence or registry;
+ *   medium: the typed address differs only below the city (another street),
+ *     or only the area agrees;
+ *   high: two sources agree to street and number (or postcode) and nothing differs;
+ *   unknown: nothing to compare.
+ */
+export function addressOwnerCheck({ typed, license, registry, typedFrom = "location" }, now = new Date()) {
   const pairs = [["license", "typed"], ["license", "registry"], ["registry", "typed"]];
   const addresses = { typed, license, registry };
+  const words = { ...SOURCE_WORDS, typed: typedFrom === "production" ? "the production address the factory typed" : SOURCE_WORDS.typed };
   const comparisons = [];
   for (const [x, y] of pairs) {
     if (!addresses[x] || !addresses[y]) continue;
     comparisons.push({ between: [x, y], ...compareAddresses(addresses[x], addresses[y]) });
   }
+  const parts = Object.fromEntries(Object.entries(addresses).filter(([, text]) => text).map(([key, text]) => [key, parseAddress(text).parts]));
   const reasons = [];
   let level = "unknown";
   const differing = comparisons.filter((c) => c.verdict === "differs");
-  if (differing.length) {
+  const serious = differing.filter((c) => !c.between.includes("typed") || c.differs.some((d) => PLACE_PARTS.has(d.part)));
+  const describe = (c) => `${capital(words[c.between[0]])} and ${words[c.between[1]]} differ: ${c.differs.map((d) => `${PART_WORDS[d.part]} (${d.a} / ${d.b})`).join(", ")}`;
+  if (serious.length) {
     level = "low";
-    for (const c of differing) {
-      const parts = c.differs.map((d) => `${PART_WORDS[d.part]} (${d.a} / ${d.b})`).join(", ");
-      reasons.push(`${capital(SOURCE_WORDS[c.between[0]])} and ${SOURCE_WORDS[c.between[1]]} differ: ${parts}`);
-    }
+    for (const c of differing) reasons.push(describe(c));
+    reasons.push("To settle: ask the factory why, and for a document or video of the site at the licence's address");
+  } else if (differing.length) {
+    level = "medium";
+    for (const c of differing) reasons.push(describe(c));
+    reasons.push("To settle: a factory can produce away from its registered address; ask for a lease, a utility bill or a video of the production site");
   } else if (comparisons.some((c) => c.verdict === "match") && !comparisons.some((c) => c.verdict === "partial" && c.between.includes("license") && c.note !== "scripts")) {
     level = "high";
-    for (const c of comparisons.filter((c) => c.verdict === "match")) reasons.push(`${capital(SOURCE_WORDS[c.between[0]])} and ${SOURCE_WORDS[c.between[1]]} give the same street and number`);
+    for (const c of comparisons.filter((c) => c.verdict === "match")) reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} give the same street and number`);
   } else if (comparisons.some((c) => c.verdict === "partial")) {
     level = "medium";
     for (const c of comparisons.filter((c) => c.verdict === "partial")) {
-      reasons.push(`${capital(SOURCE_WORDS[c.between[0]])} and ${SOURCE_WORDS[c.between[1]]} agree on ${c.same.map((p) => PART_WORDS[p] ?? p).join(", ")} only`);
+      reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} agree on ${c.same.map((p) => PART_WORDS[p] ?? p).join(", ")} only`);
     }
+    reasons.push("To settle: the factory's full production address, or a video of the site");
   } else if (!license) {
     reasons.push("No address read from the licence yet");
   } else if (!typed && !registry) {
@@ -277,7 +306,58 @@ export function addressOwnerCheck({ typed, license, registry }, now = new Date()
   } else {
     reasons.push("The addresses could not be compared");
   }
-  return { key: "address_owner", level, reasons, details: { addresses, comparisons }, checkedAt: now.toISOString() };
+  return { key: "address_owner", level, reasons, details: { addresses, typedFrom, parts, comparisons }, checkedAt: now.toISOString() };
+}
+
+/**
+ * The address_owner result for a reading that has just copied a licence
+ * address (A4): saved as the reading's details.levelResult. Null when the
+ * document could not be read or printed no address.
+ */
+export function ownerAtReading({ detail, signals, extracted }) {
+  const address = String(extracted?.address ?? "").trim();
+  if (!address || extracted?.readable === false) return null;
+  return addressOwnerCheck({ ...addressSources(detail, signals), license: address });
+}
+
+// ---------------------------------------------------------------------------
+// An office address, from its words alone (A7)
+// ---------------------------------------------------------------------------
+
+// A unit in a tower: 1203室, or an office-building word with a floor or room
+// number. 厂房 or 栋 alone (a factory building) is not one.
+const CN_ROOM = /(\d+)\s*室/;
+const CN_TOWER = /(大厦|大廈|广场|廣場|中心|写字楼|寫字樓|商务楼|商務樓)/;
+const CN_FLOOR = /(\d+|[一二三四五六七八九十]+)\s*(楼|樓|层|層|F)/i;
+const LATIN_OFFICE = [
+  /\bi[sş]\s*merkezi\b/i,
+  /\bkat\s*[:.]?\s*\d+/i,
+  /\bescrit[oó]rio\s*(n\.?\s*º?\s*)?\d+/i,
+  /\bsala\s*(n\.?\s*º?\s*)?\d+/i,
+  /\bpiso\s*\d+/i,
+  /\bplaza\b.*\d/i,
+];
+
+/** `{ words }` when the address reads as an office unit, else null. */
+export function officeAddressText(raw) {
+  const text = clean(raw);
+  if (!text) return null;
+  if (hasHan(text)) {
+    const room = text.match(CN_ROOM);
+    if (room) return { words: room[0] };
+    const tower = text.match(CN_TOWER);
+    const floor = tower && text.slice(tower.index).match(CN_FLOOR);
+    if (tower && floor) return { words: `${tower[0]}…${floor[0]}` };
+    return null;
+  }
+  const merkezi = text.match(LATIN_OFFICE[0]);
+  // İş Merkezi is the building; with any floor, door or unit number it is an office.
+  if (merkezi && /\d/.test(text)) return { words: merkezi[0] };
+  for (const pattern of LATIN_OFFICE.slice(1)) {
+    const hit = text.match(pattern);
+    if (hit) return { words: hit[0].trim() };
+  }
+  return null;
 }
 
 const capital = (text) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -392,18 +472,96 @@ export function ownTag(hit) {
   return ["landuse", "building", "man_made", "industrial", "office"].includes(hitClass) && hit?.type ? `${hitClass}=${hit.type}` : null;
 }
 
-/** address_site: from the judgement to a level. */
-export function addressSiteCheck(site, now = new Date()) {
+/** Whether the hit is a road rather than a building or site. */
+export function isRoad(hit) {
+  const hitClass = hit?.category ?? hit?.class ?? "";
+  return hitClass === "highway" || (hit?.addresstype ?? "") === "road";
+}
+
+/**
+ * Whether the map placed the address in the city and postcode it names
+ * (A6). `{ part, expected, got }` when it did not, else null.
+ */
+export function placeMismatch(raw, hit) {
+  const { script, parts } = parseAddress(raw);
+  const address = hit?.address ?? {};
+  if (parts.postcode && address.postcode) {
+    const want = String(parts.postcode).replace(/\D/g, "");
+    const got = String(address.postcode).replace(/\D/g, "");
+    const n = Math.min(want.length, got.length, 4);
+    if (n >= 4 && want.slice(0, n) !== got.slice(0, n)) return { part: "postcode", expected: parts.postcode, got: address.postcode };
+  }
+  // A city we read with confidence: Chinese, or next to a postcode, or Turkey's "district/city".
+  if (parts.city && (script === "han" || parts.postcode || parts.district)) {
+    const everything = fold([...Object.values(address), hit?.display_name ?? ""].join(" "));
+    const city = fold(parts.city);
+    const py = latinOf(parts.city);
+    if (everything && city && !everything.includes(city) && !(py && everything.includes(py))) {
+      return { part: "city", expected: parts.city, got: address.city ?? address.town ?? address.county ?? address.state ?? address.province ?? "" };
+    }
+  }
+  return null;
+}
+
+/**
+ * Nominatim's address keys name the land-use area the point is in
+ * ("industrial": "石碁工业区"). Each one is a tag at 0 m.
+ */
+export function areaTags(...addresses) {
+  const map = { industrial: "landuse=industrial", commercial: "landuse=commercial", retail: "landuse=retail", residential: "landuse=residential" };
+  const out = [];
+  for (const address of addresses) {
+    for (const [key, tag] of Object.entries(map)) {
+      if (address?.[key] && !out.some((t) => t.tag === tag)) out.push({ tag, count: 1, nearest: 0, name: String(address[key]).slice(0, 80) });
+    }
+  }
+  return out;
+}
+
+const LEVEL_ORDER = ["low", "medium", "high"];
+const capLevel = (level, cap) => (LEVEL_ORDER.includes(level) && LEVEL_ORDER.indexOf(level) > LEVEL_ORDER.indexOf(cap) ? cap : level);
+
+/**
+ * address_site: from the judgement to a level (v3.1).
+ *   industrial: High only when address_owner is High too, else Medium;
+ *   office or residential: Medium, settled by a video or a visit;
+ *   an office unit in the licence's words: Medium, Low when address_owner is Low;
+ *   capped at Medium when placed from the typed address, on a road, or
+ *   from the shortened query; Can't tell when not placed at street level,
+ *   placed in another city or postcode, or the map data didn't answer.
+ */
+export function addressSiteCheck(site, { owner = null, now = new Date() } = {}) {
   const reasons = [...(site.reasons ?? [])];
+  const ownerLevel = owner?.level ?? "unknown";
   let level = "unknown";
-  if (!site.found) level = "unknown";
-  else if (!site.precise) level = "unknown";
-  else if (site.judgement === "industrial") level = "high";
-  else if (site.judgement === "office" || site.judgement === "residential") level = "low";
-  else if (site.mixed) level = "medium";
-  else if (site.tagsUnavailable && !reasons.some((r) => r.includes("didn't answer"))) reasons.push("The map's building data didn't answer");
-  if (site.from && site.from !== "the licence") reasons.push(`Placed from ${site.from}, not the licence`);
-  return { key: "address_site", level, reasons, details: site, checkedAt: now.toISOString() };
+  if (!site.found || !site.precise || site.mismatch) level = "unknown";
+  else if (site.judgement === "industrial") {
+    level = ownerLevel === "high" ? "high" : "medium";
+    if (level === "medium") reasons.push("To settle: the address belongs to this factory (licence, registry and typed address agree), or a video of the site");
+  } else if (site.judgement === "office" || site.judgement === "residential") {
+    level = "medium";
+    reasons.push("Needs a video or a visit");
+  } else if (site.mixed) {
+    level = "medium";
+    reasons.push("To settle: a video of the site");
+  } else if (site.tagsUnavailable && !reasons.some((r) => r.includes("didn't answer"))) reasons.push("The map's building data didn't answer");
+  if (site.mismatch) reasons.unshift(`The map placed it in another ${site.mismatch.part} (${site.mismatch.got || "unnamed"}, not ${site.mismatch.expected})`);
+  if (site.found && site.precise && !site.mismatch) {
+    const caps = [
+      site.fromTyped && "Placed from the address the factory typed, not the licence",
+      site.road && "Placed on the street, not a building",
+      site.shortened && "Placed from a shortened address",
+    ].filter(Boolean);
+    if (caps.length && level === "high") level = "medium";
+    reasons.push(...caps);
+  }
+  if (site.officeText) {
+    reasons.unshift(`The licence's address reads as an office unit (${site.officeText.words})`);
+    level = ownerLevel === "low" ? "low" : capLevel(level === "unknown" ? "medium" : level, "medium");
+    if (level === "medium") reasons.push("Needs a video or a visit");
+  }
+  if (site.from && site.from !== "the licence" && !site.fromTyped) reasons.push(`Placed from ${site.from}, not the licence`);
+  return { key: "address_site", level, reasons: [...new Set(reasons)], details: site, checkedAt: now.toISOString() };
 }
 
 export function overpassQuery(lat, lon) {
@@ -440,12 +598,26 @@ async function fetchJson(url, init, timeoutMs, fetchImpl = fetch) {
 
 // One request a second to Nominatim, per server instance.
 let lastNominatim = 0;
-export async function nominatim(query, { base, deadline, fetchImpl } = {}) {
+async function nominatimTurn() {
   const wait = lastNominatim + 1100 - Date.now();
+  lastNominatim = Math.max(Date.now(), lastNominatim + 1100);
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-  lastNominatim = Date.now();
+}
+
+/** Search, limited to the registration's country when we know it (A6). */
+export async function nominatim(query, { base, deadline, fetchImpl, countryCode = "" } = {}) {
+  await nominatimTurn();
   const params = new URLSearchParams({ format: "jsonv2", limit: "1", addressdetails: "1", q: query });
+  if (/^[A-Za-z]{2}$/.test(countryCode)) params.set("countrycodes", countryCode.toLowerCase());
   return fetchJson(`${base}?${params}`, {}, Math.min(3000, deadline - Date.now()), fetchImpl);
+}
+
+/** What is at the point, building level (zoom 18). */
+export async function nominatimReverse(lat, lon, { base, deadline, fetchImpl } = {}) {
+  await nominatimTurn();
+  const params = new URLSearchParams({ format: "jsonv2", zoom: "18", addressdetails: "1", lat: String(lat), lon: String(lon) });
+  const url = String(base).replace(/\/search\/?$/, "/reverse");
+  return fetchJson(`${url}?${params}`, {}, Math.min(2500, deadline - Date.now()), fetchImpl);
 }
 
 /** The first mirror that answers, each with a short timeout, inside the deadline. */
