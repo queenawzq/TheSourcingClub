@@ -124,8 +124,12 @@ function parseLatin(raw) {
     if (road) out.road = road[1].replace(/^.*\b(?:mahallesi|mah\.?|mh\.?)\s+/, "").trim();
     const no = lower.match(/\bno\s*[:.]?\s*(\d+[a-z]?)/);
     if (no) out.number = no[1];
-    const pc = lower.match(/\b(\d{5})\b/);
-    if (pc) out.postcode = pc[1];
+    // A Turkish postcode is 5 digits starting with a province code (01-81).
+    // Organised industrial zones number their streets ("10003 Sokak"), so a
+    // number followed by a street word is a street, not a postcode.
+    const pc = [...lower.matchAll(/\b(\d{5})\b(?!\s*\.?\s*(?:sokak|sokagi|sok\.?|sk\.?|cadde|caddesi|cad\.?|cd\.?|bulvari|blv\.?))/g)]
+      .map((m) => m[1]).find((code) => Number(code.slice(0, 2)) >= 1 && Number(code.slice(0, 2)) <= 81);
+    if (pc) out.postcode = pc;
     // "Merter / Güngören / İstanbul": the last two names are district and city.
     const slash = lower.replace(/\bturkiye\b|\bturkey\b/g, "").split("/").map((s) => s.trim().split(/[\s,]+/).filter(Boolean).pop()).filter(Boolean);
     if (slash.length >= 2) {

@@ -98,8 +98,9 @@ export function brandFactoryView(parts, now = new Date()) {
       {
         // Says what was checked: an official registry, or the company's own
         // uploaded registration document.
+        // v3.1: approved although its licence's scope is trading only: the brand is told.
         name: parts.registryCheckedAt
-          ? `${parts.registryCheckKind === "document" ? "Registration document" : "Official registry"} · checked ${checkedMonth(parts.registryCheckedAt)}`
+          ? `${parts.registryCheckKind === "document" ? "Registration document" : "Official registry"} · checked ${checkedMonth(parts.registryCheckedAt)}${parts.registryTradingScope ? " · licence scope: trading" : ""}`
           : "Business registration",
         // No file link: a brand does not open a factory's registration
         // documents (20261108600000), and so cannot see whether one is on

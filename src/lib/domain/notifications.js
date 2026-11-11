@@ -10,7 +10,7 @@
 import { supabase, unwrap } from "../supabase.js";
 
 export async function listNotifications(orgId, { limit = 20 } = {}) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("notifications")
       .select("id, kind, subject_type, subject_id, order_id, title, body, data, read_at, created_at")
@@ -19,6 +19,22 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
       .limit(limit),
     "load your notifications",
   );
+  const shown = withoutMatchBesideInvite(rows ?? []);
+  // Hidden ones are marked read too, so the bell's count matches the list.
+  const hidden = (rows ?? []).filter((row) => !shown.includes(row) && !row.read_at).map((row) => row.id);
+  if (hidden.length) supabase.from("notifications").update({ read_at: new Date().toISOString() }).in("id", hidden).then(() => {}, () => {});
+  return shown;
+}
+
+/**
+ * A factory invited to a request was also told "New request that matches
+ * you" for it (the request is published a moment before the invitations go
+ * out). The invitation says more, so the match notice is not shown beside it.
+ * The row stays: the email outbox records "invited to quote instead" from it.
+ */
+export function withoutMatchBesideInvite(rows) {
+  const invited = new Set(rows.filter((row) => row.kind === "rfq_invited").map((row) => row.subject_id));
+  return rows.filter((row) => !(row.kind === "rfq_matched" && invited.has(row.subject_id)));
 }
 
 /**
