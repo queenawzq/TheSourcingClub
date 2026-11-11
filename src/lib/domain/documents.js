@@ -32,6 +32,11 @@ const PRIVATE_KINDS = new Set([
   "milestone_update",
   // Whatever two parties send each other. Private for the same reason.
   "message_attachment",
+  // Verification evidence: the factory's own workshop and production lines,
+  // and the licence shown with a handwritten note or a sealed letter. Read by
+  // staff and the automatic checks, never a brand.
+  "factory_photo",
+  "authorisation",
 ]);
 
 /**

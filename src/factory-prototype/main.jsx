@@ -1468,6 +1468,7 @@ const onboardingCopy = {
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
           ["Factory Location", "City, Country"],
+          ["Production Address", "Full address of your production site"],
           ["Nearest Port", "e.g. Port of Shanghai"],
           ["Total Employees", "e.g. 120"]
         ],
@@ -1530,6 +1531,10 @@ const onboardingCopy = {
         businessLabel: "Business registration certificate *",
         businessUpload: "Click or drag files to upload",
         businessHelper: "Required for verification.",
+        photosTitle: "Factory & production line photos",
+        photosHelper: "Your own workshop and production lines, as they are today.",
+        authorisationTitle: "Authorisation",
+        authorisationHelper: "A photo of your licence with \"The Sourcing Club\" and today's date handwritten on paper beside it, or a letter stamped with your company seal.",
         certificationLabel: "Add certifications you hold",
         search: "Search or select a certification",
         add: "Add certification",
@@ -1558,7 +1563,7 @@ const onboardingCopy = {
         title: "Review your profile",
         intro: "Confirm the main details brands will use to understand and match with your factory.",
         sections: [
-          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
+          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Location", "Dongguan, China"], ["Production Address", "No. 8 Industrial Road, Humen, Dongguan"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
           ["Factory context", [["About the factory", "Full-service woven and cut & sew factory focused on premium small-batch production, sampling support, and export quality."], ["Factory logo", "Uploaded"], ["Samples & product catalogues", "3 uploads"]]],
           ["Production fit", [["Manufacturing model", "OEM / made to specification, Full package production (FPP)"], ["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Market Level & Retail Price", "Premium / contemporary (retail $100-$500)"]]],
           ["Specialty, services, markets & tools", [["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Design Services", "Pattern making, Sample development"], ["Primary export markets", "United States & Canada, European Union"], ["3D & digital tools", "None selected"], ["Key machines or equipment", "Flatlock, linking, embroidery, washing"]]],
@@ -1603,7 +1608,7 @@ const onboardingCopy = {
       },
       {
         title: "告诉我们你的工厂信息",
-        fields: [["工厂名称", "例如：金线服装制造", true], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
+        fields: [["工厂名称", "例如：金线服装制造", true], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["生产地址", "生产厂区的完整地址"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
         helper: "你最常使用的海港或机场。"
       },
       {
@@ -1659,6 +1664,10 @@ const onboardingCopy = {
         businessLabel: "营业执照 / 公司注册文件 *",
         businessUpload: "点击或拖拽文件上传",
         businessHelper: "验证必填。",
+        photosTitle: "工厂及生产线照片",
+        photosHelper: "你自己的车间和生产线的近期实拍。",
+        authorisationTitle: "授权证明",
+        authorisationHelper: "营业执照照片，旁边放一张手写\"The Sourcing Club\"和今天日期的纸；或加盖公章的授权信。",
         certificationLabel: "添加你已持有的认证",
         search: "搜索或选择认证",
         add: "添加认证",
@@ -1687,7 +1696,7 @@ const onboardingCopy = {
         title: "确认你的工厂资料",
         intro: "请确认品牌将看到并用于匹配的主要信息。",
         sections: [
-          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["所在地", "中国东莞"], ["最近港口", "深圳"], ["员工总数", "120"]]],
+          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["所在地", "中国东莞"], ["生产地址", "东莞市虎门镇工业路8号"], ["最近港口", "深圳"], ["员工总数", "120"]]],
           ["工厂背景", [["工厂介绍", "专注高级小批量生产、打样支持和出口品质的全服务梭织与针织裁剪缝制工厂。"], ["工厂 Logo", "已上传"], ["样品与产品目录册", "已上传 3 个文件"]]],
           ["生产匹配", [["合作生产模式", "OEM / 按品牌规格生产，全包生产 FPP"], ["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["市场层级与成品零售价", "高级成衣 / 当代品牌（成品零售价 $100-$500）"]]],
           ["专长、服务、市场与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "制版，样衣开发"], ["主要出口市场", "美国与加拿大，欧盟"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
@@ -1795,6 +1804,8 @@ const tradingOnboardingCopy = {
         businessLabel: "Business registration certificate *",
         businessUpload: "Click or drag files to upload",
         businessHelper: "Required for verification.",
+        authorisationTitle: "Authorisation",
+        authorisationHelper: "A photo of your licence with \"The Sourcing Club\" and today's date handwritten on paper beside it, or a letter stamped with your company seal.",
         certificationLabel: "Add certifications or memberships",
         search: "Search or add a certification",
         add: "Add certification",
@@ -1919,6 +1930,8 @@ tradingOnboardingCopy.zh = {
       businessLabel: "营业执照 / 公司注册文件 *",
       businessUpload: "点击或拖拽文件上传",
       businessHelper: "验证必填。",
+      authorisationTitle: "授权证明",
+      authorisationHelper: "营业执照照片，旁边放一张手写\"The Sourcing Club\"和今天日期的纸；或加盖公章的授权信。",
       certificationLabel: "添加认证或会员资质",
       search: "搜索或添加认证",
       add: "添加认证",
@@ -7955,6 +7968,8 @@ function FactoryOnboardingStep({
         onUploadCertificate={onUploadCertificate}
         onDeleteCertificate={onDeleteCertificate}
         registrationDocuments={documents["business-registration"] ?? []}
+        photoDocuments={documents["factory-photos"] ?? []}
+        authorisationDocuments={documents["authorisation"] ?? []}
         onDeleteRegistration={onDeleteDocument}
         registration={registration}
       />
@@ -8285,7 +8300,7 @@ function FactoryOnboardingStep({
 function OnboardingVerification({
   content, language, live, values = {},
   certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate,
-  registrationDocuments = [], onDeleteRegistration, registration = null,
+  registrationDocuments = [], photoDocuments = [], authorisationDocuments = [], onDeleteRegistration, registration = null,
 }) {
   const isZh = language === "zh";
   // Live only: a sole proprietor uploads another document, named on the upload.
@@ -8397,6 +8412,36 @@ function OnboardingVerification({
         onDeleteDocument={onDeleteRegistration}
       />
       {registration && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
+      {content.photosTitle && (
+        <OnboardingAssetUploadCard
+          title={content.photosTitle}
+          helper={content.photosHelper}
+          accept={isZh ? "PNG、JPG 或 HEIC" : "PNG, JPG, or HEIC"}
+          fileAccept=".png,.jpg,.jpeg,.heic,.heif,image/png,image/jpeg,image/heic,image/heif"
+          uploadLabel={content.businessUpload}
+          uploadMoreLabel={isZh ? "上传更多" : "Upload more"}
+          uploadedLabel={isZh ? "已上传" : "Uploaded"}
+          deleteLabel={content.deleteCertificate}
+          name="factory-photos"
+          documents={photoDocuments}
+          onDeleteDocument={onDeleteRegistration}
+        />
+      )}
+      {content.authorisationTitle && (
+        <OnboardingAssetUploadCard
+          title={content.authorisationTitle}
+          helper={content.authorisationHelper}
+          accept={isZh ? "PDF、PNG 或 JPG" : "PDF, PNG, or JPG"}
+          fileAccept=".pdf,.png,.jpg,.jpeg,.heic,.heif,application/pdf,image/png,image/jpeg,image/heic,image/heif"
+          uploadLabel={content.businessUpload}
+          uploadMoreLabel={isZh ? "上传更多" : "Upload more"}
+          uploadedLabel={isZh ? "已上传" : "Uploaded"}
+          deleteLabel={content.deleteCertificate}
+          name="authorisation"
+          documents={authorisationDocuments}
+          onDeleteDocument={onDeleteRegistration}
+        />
+      )}
       <div className="certification-add-control">
         <label className="factory-onboarding-field">
           <span>{content.certificationLabel}</span>
