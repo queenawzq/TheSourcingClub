@@ -24,8 +24,9 @@
  *       mirror that answers. The rule decides (building on the point, else
  *       the land use the point is inside, else what is within 150 m); the
  *       model words a judgement only when the rule can't, and only with
- *       reasons that name a tag we found. Industrial High, office or
- *       residential Low, mixed Medium, town-level Can't tell.
+ *       reasons that name a tag we found. Levels: siteDetails and
+ *       addressSiteCheck (v3.1: office or residential Medium, Can't tell
+ *       when the map can't say). runAddressCheck runs both from the server.
  *     read_document also returns `addressOwner`, and `warnings` when the
  *     document is marked as a sample or looks edited.
  *
@@ -37,8 +38,8 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { modelFailure } from "./admin-review-assist.js";
 import {
-  addressOwnerCheck, addressSiteCheck, addressSources, isPrecise, judgeFromTags, nominatim, overpass, overpassQuery,
-  ownTag, shorterAddress, summariseTags,
+  addressOwnerCheck, addressSiteCheck, addressSources, areaTags, distanceMetres, isPrecise, isRoad, judgeFromTags, nominatim,
+  nominatimReverse, officeAddressText, ownTag, overpass, overpassQuery, placeMismatch, shorterAddress, summariseTags,
 } from "./_address.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM helpers lazily.
 const loadRegistrationNumber = () => import("../src/shared/registration-number.mjs");
@@ -48,8 +49,10 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL_TIMEOUT_MS = 8000;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const NOMINATIM = process.env.NOMINATIM_URL ?? "https://nominatim.openstreetmap.org/search";
-// The whole address check, both lookups and the model, stays inside this.
-const ADDRESS_BUDGET_MS = 8000;
+// The whole address check, the lookups and the model, stays inside this.
+const ADDRESS_BUDGET_MS = 9000;
+// Overpass gets one short try: from most places it answers in 30-50 s or not at all.
+const OVERPASS_WAIT_MS = 2500;
 const REPEAT_MS = 10 * 60 * 1000;
 
 function json(response, status, body) {
@@ -228,51 +231,75 @@ export function bestAddress(detail, signals) {
 }
 
 /**
- * The site: the licence's full address placed by Nominatim (a shorter form
- * if the full one finds nothing), then the tags around it from Overpass,
- * then the model's wording, all inside ADDRESS_BUDGET_MS.
+ * The site (v3.1, A6/A7): the licence's full address placed by Nominatim in
+ * the registration's country (a shorter form if the full one finds nothing).
+ * At street level or better, the place's own class, a reverse lookup at
+ * building level and one short Overpass try run side by side; the rule
+ * decides from what came back, the model words a judgement only when the
+ * rule can't. Never throws; everything inside ADDRESS_BUDGET_MS.
  */
 export async function siteDetails(sources, { fetchImpl, callModelImpl = callModel } = {}) {
   const deadline = Date.now() + ADDRESS_BUDGET_MS;
+  const typedFrom = sources.typedFrom === "production" ? "the factory's production address" : "the factory's location";
   const candidates = [
     sources.license && { address: sources.license, from: "the licence" },
     sources.registry && { address: sources.registry, from: sources.registryFrom || "the registry check" },
-    sources.typed && { address: sources.typed, from: "the factory's location" },
+    sources.typed && { address: sources.typed, from: typedFrom, fromTyped: true },
   ].filter(Boolean);
-  if (!candidates.length) return { found: false, address: "", from: "", judgement: "unknown", reasons: ["The company has given no address"], tags: [], how: "rule" };
-  const { address, from } = candidates[0];
+  // An office unit in the licence's (else the registry's) own words.
+  const officeText = officeAddressText(sources.license || sources.registry || "");
+  if (!candidates.length) return { found: false, address: "", from: "", judgement: "unknown", reasons: ["The company has given no address"], tags: [], how: "rule", officeText };
+  const { address, from, fromTyped = false } = candidates[0];
+  const countryCode = String(sources.country ?? "");
   let hit = null;
   let queried = address;
   let lookupFailed = false;
   for (const query of [address, shorterAddress(address)].filter(Boolean)) {
     if (deadline - Date.now() < 2500) break;
-    const place = await nominatim(query, { base: NOMINATIM, deadline, fetchImpl });
-    if (place.error) { lookupFailed = true; break; }
+    const place = await nominatim(query, { base: NOMINATIM, deadline, fetchImpl, countryCode });
+    // A slow answer to one form is not the end: the next form may still come back.
+    if (place.error) { lookupFailed = true; continue; }
     hit = place.data?.[0] ?? null;
     queried = query;
     if (hit) break;
   }
+  const common = { address, from, fromTyped, countryCode, officeText };
   if (!hit) {
     return {
-      address, from, found: false, judgement: "unknown", tags: [], how: "rule",
+      ...common, found: false, lookupFailed, judgement: "unknown", tags: [], how: "rule",
       reasons: [lookupFailed ? "OpenStreetMap didn't answer" : "OpenStreetMap found no place for this address"],
     };
   }
   const lat = Number(hit.lat);
   const lon = Number(hit.lon);
   const precise = isPrecise(hit);
-  // A town says nothing about the building: no tags are read for it.
-  const around = precise ? await overpass(overpassQuery(lat, lon), { deadline: deadline - 1500, fetchImpl }) : { data: { elements: [] }, tried: [] };
+  const placed = {
+    ...common, queried, shortened: queried !== address, road: isRoad(hit), found: true, lat, lon,
+    placedAs: hit.addresstype ?? hit.type ?? "", displayName: hit.display_name ?? "", placeRank: Number(hit.place_rank ?? 0), precise,
+    mismatch: placeMismatch(address, hit),
+  };
+  // Placed in another city or postcode: what is there says nothing about this factory.
+  if (placed.mismatch) return { ...placed, tags: [], how: "rule", judgement: "unknown", reasons: [] };
+  // A town says nothing about the building: nothing is read for it.
+  if (!precise) return { ...placed, tags: [], how: "rule", ...judgeFromTags([], false) };
+  const [around, reverse] = await Promise.all([
+    overpass(overpassQuery(lat, lon), { deadline: Math.min(deadline - 1500, Date.now() + OVERPASS_WAIT_MS), mirrors: OVERPASS_FIRST, fetchImpl }),
+    nominatimReverse(lat, lon, { base: NOMINATIM, deadline: deadline - 1500, fetchImpl }),
+  ]);
   const tags = around.error ? [] : summariseTags(around.data?.elements, lat, lon);
+  const add = (tag) => { if (tag && !tags.some((t) => t.tag === tag.tag)) tags.push(tag); };
   const own = ownTag(hit);
-  if (own && !tags.some((t) => t.tag === own)) tags.unshift({ tag: own, count: 1, nearest: 0 });
+  if (own) add({ tag: own, count: 1, nearest: 0 });
+  const back = reverse.error ? null : reverse.data;
+  const backTag = back && !back.error ? ownTag(back) : null;
+  if (backTag) add({ tag: backTag, count: 1, nearest: back.lat != null ? distanceMetres(lat, lon, Number(back.lat), Number(back.lon)) : null });
+  for (const tag of areaTags(hit.address, back?.address)) add(tag);
+  tags.sort((a, b) => (a.nearest ?? 1e9) - (b.nearest ?? 1e9));
   let judged = judgeFromTags(tags, precise);
   // No tags because no server answered is not "no tags there".
-  if (around.error && judged.judgement === "unknown") judged = { judgement: "unknown", reasons: ["The map's building data didn't answer"] };
+  if (around.error && judged.judgement === "unknown" && !judged.mixed) judged = { judgement: "unknown", reasons: ["The map's building data didn't answer"] };
   let how = "rule";
-  // The model words the judgement only when the rule could not decide; its
-  // reasons must name a tag we found.
-  if (precise && tags.length && judged.judgement === "unknown" && deadline - Date.now() > 1500) {
+  if (tags.length && judged.judgement === "unknown" && deadline - Date.now() > 1500) {
     const { fields } = await callModelImpl([
       { role: "system", content: ADDRESS_INSTRUCTIONS },
       { role: "user", content: `Data:\n${JSON.stringify({ placedAs: hit.addresstype ?? hit.type, tags })}` },
@@ -284,9 +311,88 @@ export async function siteDetails(sources, { fetchImpl, callModelImpl = callMode
     }
   }
   return {
-    address, from, queried, found: true, lat, lon, placedAs: hit.addresstype ?? hit.type ?? "", displayName: hit.display_name ?? "",
-    placeRank: Number(hit.place_rank ?? 0), precise, tags, tagsUnavailable: Boolean(around.error), mirrors: around.tried ?? [], how, ...judged,
+    ...placed, tags, tagsUnavailable: Boolean(around.error), mirrors: around.tried ?? [],
+    reverse: back && !back.error ? { placedAs: back.addresstype ?? back.type ?? "", tag: backTag, displayName: back.display_name ?? "" } : null,
+    how, ...judged,
   };
+}
+
+const OVERPASS_FIRST = [process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter"];
+
+/**
+ * Both address checks as one JSON-safe answer: the site details, with
+ * `checks` = [address_owner, address_site]. Each check gets its own copy of
+ * what it describes, so nothing contains itself (the Nov 11 preview 500).
+ */
+export async function addressAnswer({ detail, signals, fetchImpl, callModelImpl, now = new Date() }) {
+  const sources = addressSources(detail, signals);
+  const owner = addressOwnerCheck(sources, now);
+  const site = await siteDetails(sources, { fetchImpl, callModelImpl });
+  const details = { ...site, checks: [owner, addressSiteCheck({ ...site }, { owner, now })] };
+  return JSON.parse(JSON.stringify(details));
+}
+
+/**
+ * What the address checks read, through the server key (the staff RPCs
+ * refuse it): the registration, the typed and production address, the
+ * registry checks and the signals.
+ */
+async function addressInputs(asServer, orgId) {
+  const [reg, profile, checks, signals, title] = await Promise.all([
+    asServer.from("company_registrations").select("country_code, number").eq("org_id", orgId).maybeSingle(),
+    asServer.from("factory_profiles").select("*").eq("org_id", orgId).maybeSingle(),
+    asServer.from("registry_checks").select("details, automatic, number_checked, checked_at").eq("org_id", orgId).order("checked_at", { ascending: false }),
+    asServer.from("verification_signals").select("kind, subject_id, result, details, automatic, checked_at").eq("org_id", orgId).order("checked_at", { ascending: false }).limit(200),
+    asServer.rpc("company_title", { target_org: orgId }),
+  ]);
+  const failed = [reg, profile, checks, signals].find((answer) => answer.error);
+  if (failed) throw new Error(failed.error.message);
+  // A registry address counts only for the company it names.
+  const withNames = await Promise.all((checks.data ?? []).map(async (check) => {
+    const name = String(check.details?.name ?? "").trim();
+    let nameMatches = null;
+    if (name && title.data) {
+      const { data, error } = await asServer.rpc("company_names_match", { a: name, b: title.data });
+      if (!error && typeof data === "boolean") nameMatches = data;
+    }
+    return { details: check.details, automatic: check.automatic, numberChecked: check.number_checked, checkedAt: check.checked_at, nameMatches };
+  }));
+  const detail = {
+    registration: { country: reg.data?.country_code ?? profile.data?.country_code ?? null, number: reg.data?.number ?? null },
+    countryCode: reg.data?.country_code ?? profile.data?.country_code ?? null,
+    location: profile.data?.location ?? null,
+    productionAddress: profile.data?.production_address ?? null,
+    checks: withNames,
+  };
+  const list = (signals.data ?? []).map((signal) => ({
+    kind: signal.kind, subjectId: signal.subject_id, result: signal.result, details: signal.details, automatic: signal.automatic, checkedAt: signal.checked_at,
+  }));
+  return { detail, signals: list };
+}
+
+/**
+ * The address checks, run and saved by the server (AUTO): called by the
+ * staff button, the factory's upload and the daily job. Never throws.
+ * Returns `{ available: true, ...details }` or `{ available: false, reason }`.
+ */
+export async function runAddressCheck({ orgId, asServer, requestedBy = null, fetchImpl, callModelImpl } = {}) {
+  try {
+    if (!orgId || !asServer) return { available: false, reason: "No company to check." };
+    const { detail, signals } = await addressInputs(asServer, orgId);
+    const details = await addressAnswer({ detail, signals, fetchImpl, callModelImpl });
+    // Recorded as one "address" signal; result is the site's judgement, as before.
+    const { error: saveError } = await asServer.rpc("record_verification_signal", {
+      target_org: orgId, kind: "address", subject: null, result: details.judgement || "unknown", details, requested_by: requestedBy,
+    });
+    if (saveError) {
+      console.error("registry-assist save address", saveError.message);
+      return { available: false, reason: "The address check could not be saved." };
+    }
+    return { available: true, ...details };
+  } catch (error) {
+    console.error("registry-assist address", error?.message ?? error);
+    return { available: false, reason: "The address check failed. Run it again." };
+  }
 }
 
 export default async function handler(request, response) {
@@ -365,17 +471,8 @@ export default async function handler(request, response) {
     if (last && !force && Date.now() - new Date(last.checkedAt).getTime() < REPEAT_MS) {
       return json(response, 200, { available: true, repeated: true, ...last.details });
     }
-    const sources = addressSources(detail, signals);
-    const owner = addressOwnerCheck(sources);
-    const details = await siteDetails(sources);
-    // The site check carries the site details; give it a copy, or details.checks[1].details is details itself.
-    details.checks = [owner, addressSiteCheck({ ...details })];
-    // Recorded as one "address" signal; result is the site's judgement, as before.
-    const { error: saveError } = await asServer.rpc("record_verification_signal", {
-      target_org: orgId, kind: "address", subject: null, result: details.judgement, details, requested_by: requestedBy,
-    });
-    if (saveError) console.error("registry-assist save address", saveError.message);
-    return json(response, 200, { available: true, ...details });
+    // Staff passed the check above; the server reads and saves.
+    return json(response, 200, await runAddressCheck({ orgId, asServer, requestedBy }));
   }
 
   return json(response, 400, { error: "unknown action" });
