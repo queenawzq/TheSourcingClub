@@ -102,6 +102,11 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   if (x.verificationWatermark || d.verificationWatermark || warned("verificationWatermark")) reasons.push("Marked for verification use only (normal)");
   // B2: the authorisation proof (handwritten note or company seal) travels with the reading.
   if (d.authorisation?.level) reasons.push(`Authorisation: ${(d.authorisation.reasons ?? [d.authorisation.level]).join("; ")}`);
+  // The reader's doubt (wrong length, failing check digit, one character off, nothing read): look, not "differs".
+  for (const line of d.unsure ?? []) {
+    if (level !== "low") level = "medium";
+    reasons.push(`${line.field === "number" ? "Number" : "Name"} unsure: ${line.reason ?? "check the document"}${line.document ? ` (read "${line.document}")` : ""}`);
+  }
   for (const line of d.differences ?? []) {
     if (line.nearly) {
       // One character apart, or a China code of the wrong length: the reader's doubt. Staff compare with the image.

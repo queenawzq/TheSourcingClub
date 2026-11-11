@@ -14,7 +14,7 @@ import {
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
 import {
-  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, documentDifferences, documentWarnings, groundedReasons,
+  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, compareDocument, documentDifferences, nearlySameCjk, documentWarnings, groundedReasons,
   isoDateFrom, judgeFromTags, tradingScope,
 } from "../api/registry-assist.js";
 
@@ -226,6 +226,20 @@ check("v3.1 B2: authorisation", () => {
   assert.equal(authorisationCheck({ readable: true, handwrittenText: "", hasRedSeal: true, sealText: "义乌市恒越进出口贸易有限公司" }, { names: name, now }, helpers).level, "low");
   assert.equal(authorisationCheck({ readable: true, handwrittenText: "hello", hasRedSeal: false }, { names: name, now }, helpers).level, "medium");
   assert.equal(authorisationCheck(null, {}, helpers).level, "unknown");
+});
+check("public licences: a misread number or one CJK character is unsure, not differs", () => {
+  const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };
+  // 19 characters read for an 18-character code.
+  let seen = compareDocument({ registrationNumber: "913304837550908666L", legalName: "" }, { country: "CN", number: "91330483755908666L", title: "" }, helpers);
+  assert.deepEqual([seen.differences.length, seen.unsure.map((u) => u.field)], [0, ["number"]]);
+  seen = compareDocument({ registrationNumber: "", legalName: "温州森神华服饰有限公司" }, { country: "CN", number: "", title: "温州森仲华服饰有限公司" }, helpers);
+  assert.deepEqual([seen.differences.length, seen.unsure.map((u) => u.field)], [0, ["name"]]);
+  // Two characters off is still a different company.
+  seen = compareDocument({ registrationNumber: "", legalName: "温州森神宝服饰有限公司" }, { country: "CN", number: "", title: "温州森仲华服饰有限公司" }, helpers);
+  assert.deepEqual(seen.differences.map((d) => d.field), ["name"]);
+  assert.equal(nearlySameCjk("温州市瓯海经济开发区北绣四路4号", "温州市瓯海经济开发区北纬四路4号"), true);
+  assert.equal(nearlySameCjk("Ningbo Textile", "Ningbo Textila"), false);
+  assert.equal(nearlySameCjk("宁波", "宁海"), false);
 });
 if (failures) {
   console.error(`\n${failures} registration check(s) failed`);
