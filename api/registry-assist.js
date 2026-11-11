@@ -368,7 +368,8 @@ export default async function handler(request, response) {
     const sources = addressSources(detail, signals);
     const owner = addressOwnerCheck(sources);
     const details = await siteDetails(sources);
-    details.checks = [owner, addressSiteCheck(details)];
+    // The site check carries the site details; give it a copy, or details.checks[1].details is details itself.
+    details.checks = [owner, addressSiteCheck({ ...details })];
     // Recorded as one "address" signal; result is the site's judgement, as before.
     const { error: saveError } = await asServer.rpc("record_verification_signal", {
       target_org: orgId, kind: "address", subject: null, result: details.judgement, details, requested_by: requestedBy,

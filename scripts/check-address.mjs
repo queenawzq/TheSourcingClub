@@ -204,6 +204,13 @@ await check("siteDetails: every map server down → unknown, never a verdict", a
   assert.equal(addressSiteCheck(site).level, "unknown");
 });
 
+await check("the address answer as saved and sent can be turned into JSON (Nov 11 preview crash)", async () => {
+  const { impl } = fakeFetch({ nominatimAnswers: [nominatim.street], overpassAnswers: [500, 500, 500, 500] });
+  const details = await siteDetails({ license: "广东省广州市番禺区石碁镇市莲路28号" }, { fetchImpl: impl, callModelImpl: async () => ({}) });
+  details.checks = [addressOwnerCheck({ license: "广东省广州市番禺区石碁镇市莲路28号", typed: "Guangzhou" }), addressSiteCheck({ ...details })];
+  assert.doesNotThrow(() => JSON.stringify(details));
+});
+
 if (failures) {
   console.log(`\n${failures} failed`);
   process.exit(1);
