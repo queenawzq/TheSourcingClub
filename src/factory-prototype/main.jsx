@@ -8780,7 +8780,7 @@ function OnboardingRegistrationNumber({ registration, onNoNumberChange }) {
       {registration.second && (
         <label className="factory-onboarding-field">
           <span>{registration.second.label}{registration.second.required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
-          <input name="registration-second" value={second} onChange={(event) => setSecond(event.target.value)} autoComplete="off" data-onboarding-required="true" data-valid={secondError ? "false" : "true"} />
+          <input name="registration-second" value={second} onChange={(event) => setSecond(event.target.value)} autoComplete="off" data-onboarding-required={registration.second.required === false ? "false" : "true"} data-valid={secondError ? "false" : "true"} />
           <small>{registration.second.hint}</small>
           <small className="factory-onboarding-validation-message">{secondError}</small>
         </label>

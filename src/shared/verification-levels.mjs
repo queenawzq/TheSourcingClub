@@ -389,7 +389,8 @@ export function applyRules(results, { explanations = {} } = {}) {
       // Low only with the owner mismatch on an office address.
       if (item.level === "low" && !(office && owner === "low")) set("medium");
     }
-    if (item.key === "photos" && item.level === "high" && !item.details?.staffOwnAll) {
+    // The automatic photo check (details.perPhoto) gives High only when staff marked every photo "own".
+    if (item.key === "photos" && item.level === "high" && !item.details?.staffOwnAll && !item.details?.perPhoto) {
       set("medium", "Staff to record \"own\" from the reverse-search links");
     }
     const why = explanations?.[item.key];

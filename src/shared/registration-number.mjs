@@ -35,7 +35,7 @@ export const REGISTRATION_COUNTRIES = {
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
-    hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı)", zh: "10 位数字，见纳税登记证明" },
+    hint: { en: "10 digits, on your tax plate (vergi levhası) or tax registration letter", zh: "10 位数字，见税牌或纳税登记证明" },
     second: {
       column: "registration_letter_number",
       label: { en: "Letter number (Dilekçe No.)", zh: "证明编号（Dilekçe No.）" },

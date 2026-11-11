@@ -375,7 +375,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       },
       checkSecond: (value) => {
         if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
-        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === "") return lang === "zh" ? "请填写证明编号" : "Enter the letter number";
+        // Turkey's letter number is optional: the tax plate (vergi levhası) has none.
         if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "14 位字母或数字" : "14 letters and digits";
         return "";
       },

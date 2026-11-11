@@ -48,7 +48,26 @@ export async function countUnreadNotifications(orgId) {
     .eq("org_id", orgId)
     .is("read_at", null);
   unwrap(result, "count your notifications");
-  return result.count ?? 0;
+  // Not counted: a "matches you" notice the list hides beside its invitation.
+  const { data: matched } = await supabase
+    .from("notifications")
+    .select("subject_id")
+    .eq("org_id", orgId)
+    .eq("kind", "rfq_matched")
+    .is("read_at", null)
+    .limit(50);
+  let hidden = 0;
+  if (matched?.length) {
+    const { data: invited } = await supabase
+      .from("notifications")
+      .select("subject_id")
+      .eq("org_id", orgId)
+      .eq("kind", "rfq_invited")
+      .in("subject_id", matched.map((row) => row.subject_id));
+    const invitedIds = new Set((invited ?? []).map((row) => row.subject_id));
+    hidden = matched.filter((row) => invitedIds.has(row.subject_id)).length;
+  }
+  return Math.max(0, (result.count ?? 0) - hidden);
 }
 
 export async function markRead(notificationId) {
