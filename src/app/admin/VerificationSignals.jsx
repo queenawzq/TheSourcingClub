@@ -16,7 +16,7 @@
  * in one block. Words for a person, never a score or a decision.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { recordSignal, requestRegistryAssist, runPhotoCheck } from "../../lib/domain/registration.js";
+import { explainTradingScope, recordSignal, requestRegistryAssist, runPhotoCheck } from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { dateFrom } from "../../lib/dates.js";
 import { certificateLookup, mapLinks, reverseImageLinks } from "../../shared/certificate-lookups.mjs";
@@ -288,7 +288,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
   const reading = latest(signals, "document_reading");
   let body = null;
   if (item.key === "license_read" || item.key === "trading_scope") {
-    body = <DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} />;
+    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} /></>;
   } else if (item.key === "registry") {
     body = registryBody?.();
   } else if (item.key === "address_owner") {
@@ -418,10 +418,40 @@ function arrivedResults(detail, extra) {
  * Session 2's states land here: the trader-block reason, back to review
  * after a rename, the AI-read China number. Names are the coordinator's.
  */
-function stateFlags(detail) {
+function stateFlags(detail, extra) {
+  const rules = extra?.rules ?? null;
   return {
-    tradingReason: detail?.tradingReason ?? detail?.tradingOverride?.reason ?? null,
+    tradingReason: rules?.tradingOnly?.explanation?.note ?? detail?.tradingReason ?? detail?.tradingOverride?.reason ?? null,
+    reopenings: rules?.reopenings ?? [],
   };
+}
+
+/** A trading-only license blocks approval until staff say why it may pass. */
+function TradingReasonForm({ orgId, rules, onChange }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState(null);
+  const trading = rules?.tradingOnly;
+  if (!trading) return null;
+  if (trading.explanation) return <p className="admin-signal-note">Staff reason: {trading.explanation.note}</p>;
+  const save = async (event) => {
+    event.preventDefault();
+    if (!note.trim()) return;
+    setBusy(true);
+    setFailure(null);
+    try { await explainTradingScope(orgId, note.trim()); onChange(); } catch (error) { setFailure(error.message); }
+    setBusy(false);
+  };
+  return (
+    <form className="admin-signal-form" onSubmit={save}>
+      <label>
+        Why may this company be approved as a factory?
+        <textarea name="trading-reason" rows={3} value={note} onChange={(event) => setNote(event.target.value)} required />
+      </label>
+      <button type="submit" className="secondary-btn" disabled={busy || !note.trim()}>{busy ? "Saving…" : "Save reason"}</button>
+      {failure && <p className="admin-error" role="alert">{failure}</p>}
+    </form>
+  );
 }
 
 /** Read the latest registration once, when the panel opens without a current reading. */
@@ -445,7 +475,7 @@ export default function VerificationSignals({ orgId, detail, extra, registryBody
   if (!extra) return <p>Loading…</p>;
   const country = detail?.registration?.country ?? detail?.countryCode ?? null;
   const named = detail ? { ...detail, checks: (detail.checks ?? []).map((check) => ({ ...check, sourceLabel: registrySourceLabel(country, check.source) })) } : detail;
-  const results = mergeArrived(deriveLevels({ detail: named, extra, states: stateFlags(detail) }), arrivedResults(detail, extra));
+  const results = mergeArrived(deriveLevels({ detail: named, extra, states: stateFlags(detail, extra) }), arrivedResults(detail, extra));
   const overall = overallLevel(results);
   const openItem = results.find((item) => item.key === open);
   return (

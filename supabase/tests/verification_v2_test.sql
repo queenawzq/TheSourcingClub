@@ -165,6 +165,8 @@ set local role authenticated;
 select is((select state from public.admin_registry_states() where org_id = 'd8700000-0000-0000-0000-0000000000f2'), 'lost', 'and staff see the check lost');
 reset role;
 update public.company_registrations set number = null, no_company_number = true where org_id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3: clearing a verified factory's number sends it to review; this case is about the sole-proprietor fact, so put it back.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 update public.orgs set name = 'Örme Tekstil' where id = 'd8700000-0000-0000-0000-0000000000f2';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;

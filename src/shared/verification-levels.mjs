@@ -112,7 +112,7 @@ export function registry(detail) {
   }
   if (reg.problem && !reg.confirmed) { level = lowerOf(level, "low"); reasons.push(reg.problem === "check_digit" ? "Check digit doesn't match" : "Number has the wrong format"); }
   if (detail.nameDiffers) { level = lowerOf(level, "low"); reasons.push(`Registry names another company: ${detail.nameDiffers}`); }
-  if (detail.renamedSinceCheck) { level = lowerOf(level, "low"); reasons.push("Renamed since the check"); }
+  if (detail.renamedSinceCheck || (detail.reopenings ?? []).length) { level = lowerOf(level, "low"); reasons.push("Name or number changed since the check"); }
   if (detail.duplicates?.length) {
     const names = detail.duplicates.map((other) => other.name).join(", ");
     if (detail.duplicateExplained) { level = capAt(level, "medium"); reasons.push(`Number shared with ${names} (explained)`); }
@@ -247,7 +247,7 @@ export function deriveLevels({ detail, extra, states = {} }) {
   const addressSignal = signals.find((signal) => signal.kind === "address" && signal.automatic) ?? latest(signals, "address");
   return [
     licenseRead({ reading, hasFile: files.length > 0, latestFileId: files[0]?.id ?? null, currentNumber: detail?.registration?.number ?? null }),
-    registry(detail),
+    registry(detail ? { ...detail, reopenings: states.reopenings ?? [] } : detail),
     tradingScope({ reading, tradingReason: states.tradingReason ?? detail?.tradingReason ?? null }),
     addressOwner({
       typed: detail?.address ?? detail?.typedAddress ?? detail?.location ?? null,

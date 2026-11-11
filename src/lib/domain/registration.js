@@ -167,6 +167,18 @@ export async function requestRegistryAssist(orgId, action, extra = {}) {
   return result;
 }
 
+/** Verification v3 states for a company: approval problem, number source, trader reason, reopenings. Staff only. */
+export async function adminVerificationRules(orgId) {
+  const { data, error } = await supabase.rpc("admin_verification_rules", { target_org: orgId });
+  return error ? null : data ?? null;
+}
+
+/** Staff record why a trading-only license may still be approved. */
+export async function explainTradingScope(orgId, note) {
+  const { error } = await supabase.rpc("admin_explain_trading_scope", { target_org: orgId, note });
+  if (error) throw error;
+}
+
 /** Runs the automatic photo check (staff only). Same answer shape as requestRegistryAssist. */
 export async function runPhotoCheck(orgId) {
   const { data: { session } } = await supabase.auth.getSession();
