@@ -79,31 +79,50 @@ export function TradingSignals({ detail, extra }) {
   );
 }
 
+const NUMBER_PROBLEM_WORDS = { check_digit: "check digit fails", old_number: "old 15-digit number", format: "wrong format" };
+
 /** A3: staff type the number off the image when the AI's reading fails its check digit or is missing. */
-function StaffNumberForm({ orgId, currentNumber, onChange }) {
+function StaffNumberForm({ orgId, currentNumber, numberRead, staffNumber, onChange }) {
   const [number, setNumber] = useState("");
+  const [note, setNote] = useState("");
+  const [hongKong, setHongKong] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState(null);
   const save = async (event) => {
     event.preventDefault();
     setBusy(true);
     setFailure(null);
-    try { await adminSetRegistrationNumber(orgId, number.replace(/\s+/g, "").toUpperCase()); setNumber(""); onChange(); } catch (error) { setFailure(error.message); }
+    try {
+      await adminSetRegistrationNumber(orgId, number.replace(/\s+/g, "").toUpperCase(), note.trim(), hongKong ? "HK" : null);
+      setNumber("");
+      setNote("");
+      onChange();
+    } catch (error) { setFailure(/check_digit/.test(error.message) ? "The check digit doesn't match: check the number against the image" : error.message); }
     setBusy(false);
   };
   return (
     <form className="admin-signal-form" onSubmit={save}>
+      {numberRead?.number && numberRead.problem && <p className="admin-registry-differs">Read {numberRead.number}: {NUMBER_PROBLEM_WORDS[numberRead.problem] ?? numberRead.problem}</p>}
+      {staffNumber?.number && <p className="admin-signal-meta">Typed by {staffNumber.enteredBy ?? "staff"}{staffNumber.enteredAt ? ` · ${when(staffNumber.enteredAt)}` : ""}: {staffNumber.number}{staffNumber.note ? ` · ${staffNumber.note}` : ""}</p>}
       <label className="factory-onboarding-field">
         <span>{currentNumber ? "Correct the number from the image" : "Type the number from the image"}</span>
         <input name="staff-registration-number" value={number} onChange={(event) => setNumber(event.target.value)} autoComplete="off" spellCheck={false} />
       </label>
-      <button className="secondary-btn compact-btn" type="submit" disabled={busy || !number.trim()}>{busy ? "Saving…" : "Save number"}</button>
+      <label className="factory-onboarding-field">
+        <span>Where you read it *</span>
+        <input name="staff-registration-note" value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <label className="directory-check">
+        <input type="checkbox" checked={hongKong} onChange={(event) => setHongKong(event.target.checked)} />
+        <span>Hong Kong company registration (CR)</span>
+      </label>
+      <button className="secondary-btn compact-btn" type="submit" disabled={busy || !number.trim() || !note.trim()}>{busy ? "Saving…" : "Save number"}</button>
       {failure && <p className="factory-onboarding-save-error" role="alert">{failure}</p>}
     </form>
   );
 }
 
-function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, signer, country, onChange }) {
+function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, signer, country, rules, onChange }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const read = async () => {
@@ -144,7 +163,7 @@ function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId,
           <span className="admin-signal-meta">Copied by AI from {details.fileName ?? "the document"} · {when(reading.checkedAt)}{reading.checkedBy ? ` · asked by ${reading.checkedBy}` : ""}</span>
         </>
       ) : !hasFile ? <p>No registration document uploaded.</p> : null}
-      {hasFile && (country === "CN" || !currentNumber) && <StaffNumberForm orgId={orgId} currentNumber={currentNumber} onChange={onChange} />}
+      {hasFile && (country === "CN" || !currentNumber || rules?.numberRead?.problem) && <StaffNumberForm orgId={orgId} currentNumber={currentNumber} numberRead={rules?.numberRead} staffNumber={rules?.staffNumber} onChange={onChange} />}
     </section>
   );
 }
@@ -342,7 +361,7 @@ function ExplainForm({ orgId, checkKey, explanation, onChange }) {
   };
   return (
     <form className="admin-signal-form admin-explain-form" onSubmit={save}>
-      {explanation?.note && <p className="admin-signal-note">Staff reason: {explanation.note}{explanation.reviewedBy ? ` · ${explanation.reviewedBy}` : ""}{explanation.reviewedAt ? ` · ${when(explanation.reviewedAt)}` : ""}</p>}
+      {explanation?.note && <p className="admin-signal-note">Staff reason: {explanation.note}{explanation.reasonedBy ? ` · ${explanation.reasonedBy}` : ""}{explanation.reasonedAt ? ` · ${when(explanation.reasonedAt)}` : ""}</p>}
       <label className="factory-onboarding-field">
         <span>{explanation?.note ? "Change the reason" : "Reason"}</span>
         <textarea name={`reason-${checkKey}`} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
@@ -398,7 +417,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
   const reading = latest(signals, "document_reading");
   let body = null;
   if (item.key === "license_read" || item.key === "trading_scope") {
-    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} signer={item.key === "license_read" ? extra.signer : null} country={detail?.registration?.country ?? detail?.countryCode ?? null} onChange={onChange} /></>;
+    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} signer={item.key === "license_read" ? extra.signer : null} country={detail?.registration?.country ?? detail?.countryCode ?? null} rules={extra.rules} onChange={onChange} /></>;
   } else if (item.key === "registry") {
     body = registryBody?.();
   } else if (item.key === "address_owner") {

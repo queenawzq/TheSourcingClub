@@ -107,6 +107,8 @@ export function approvalBlockText(detail) {
   if (problem === "name_differs") return `The registry names another company (${detail.nameDiffers}): record a check confirming why`;
   if (problem === "document_differs") return "The AI reading of the document shows another number or name: record a check confirming why";
   if (problem === "duplicate") return "Another company uses this registration number: explain it first";
+  if (problem === "number_check_digit_fails") return "The number read off the license fails its check digit: type it from the image";
+  if (problem === "number_needs_staff") return "This license needs its number typed by staff (old 15-digit or Hong Kong)";
   return null;
 }
 
@@ -230,15 +232,15 @@ export async function adminRegistryStates() {
  * so they can be matched to the migration in one place.
  */
 export const V31_RPC = {
-  setNumber: { name: "admin_set_registration_number", args: (orgId, number) => ({ target_org: orgId, number }) },
+  setNumber: { name: "admin_set_registration_number", args: (orgId, number, note, country) => ({ target_org: orgId, number, note, country: country ?? null }) },
   explainCheck: { name: "admin_explain_check", args: (orgId, checkKey, note) => ({ target_org: orgId, check_key: checkKey, note }) },
   companyFacts: { name: "admin_record_company_facts", args: (orgId, { insuredStaff, foundedOn }) => ({ target_org: orgId, insured_staff: insuredStaff, founded_on: foundedOn }) },
 };
 
 /** Staff type the number off the license image (number_source = 'staff'). */
-export async function adminSetRegistrationNumber(orgId, number) {
+export async function adminSetRegistrationNumber(orgId, number, note, country = null) {
   const rpc = V31_RPC.setNumber;
-  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, number)), "save the number");
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, number, note, country)), "save the number");
 }
 
 /** Staff record why a row's level may stand: lifts Low to Medium, shown on the row. */
