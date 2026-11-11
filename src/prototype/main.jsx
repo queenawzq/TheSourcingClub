@@ -2456,8 +2456,8 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
 
 export const settingsPermissionLabels = [
   { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and steps", single: true },
-  { key: "approve", label: "Approve samples", detail: "Approve steps" },
-  { key: "releaseFunds", label: "Release funds", detail: "Fund steps" },
+  { key: "approve", label: "Approve samples", detail: "Approve lab dips, strike-offs, samples and other production steps" },
+  { key: "releaseFunds", label: "Release funds", detail: "Fund production steps and approve the release of held payments" },
   { key: "primaryContact", label: "Primary contact", detail: "Main vendor contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
@@ -3167,8 +3167,7 @@ export function SettingsScreen({
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
-                  {/* Live, every member with an email gets these: there are no
-                      per-member permissions yet to narrow it to. */}
+                  {/* Email switches apply to the company; action permissions are per person. */}
                   <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
                 </div>
                 <label className="settings-switch" title={notificationEmailsLocked || undefined}>

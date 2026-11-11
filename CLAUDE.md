@@ -702,16 +702,15 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   security has its own "Change password", open to every member whatever their
   permissions: the current password is checked by signing in again, because
   `secure_password_change` is off.
-- **A missing permission greys the action out, with the permission in its hover
-  text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
-  accepted). Whole flows a person may not use (the composer, the quote form) say
-  "Not available to you" instead of drawing a form full of disabled inputs, and a
-  read-only form that looks editable keeps its sentence (Settings → Basic
-  information).
+- **A missing permission greys the action out and explains what is needed.**
+  Keep the permission in hover text and in visible helper text where a person
+  must understand why they cannot continue, including on a phone. Whole flows
+  a person may not use still gate access rather than drawing an editable form.
+
 
 ### Design copy the live app leaves out
 
-Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step carries the short description `20261108200527` gave it, on production and waiting on Queena's decision; a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet. The dashboard's Savings card and the Payments page's Discounts tab show anyway (#103, waiting on Queena's decision), each saying so in one line.
+Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step has no description (`20261107400000`); a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet, so the dashboard's Savings card (and with it Invite brand) and the Payments tab are hidden; put them back when they can.
 
 ### Mock data leaking into the live app
 
