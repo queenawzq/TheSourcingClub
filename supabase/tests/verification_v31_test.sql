@@ -4,7 +4,7 @@
 -- Fixtures prefixed pgtap31-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(55);
+select plan(57);
 
 insert into auth.users (id, email) values
   ('c3100000-0000-0000-0000-000000000001', 'p31-admin@example.com'),
@@ -168,6 +168,11 @@ select throws_ok($$select public.admin_record_company_facts('d3100000-0000-0000-
 select is(public.admin_registry_detail('d3100000-0000-0000-0000-0000000000f4') ->> 'productionAddress',
   '浙江省宁波市鄞州区工业园路 18 号 3 栋', 'staff read the production address');
 select ok((select count(*) from public.admin_org_documents('d3100000-0000-0000-0000-0000000000f4')) = 2, 'staff see the authorisation and the workshop photo');
+select is((select string_agg(x ->> 'kind' || ' ' || (x ->> 'bucket'), ',') from jsonb_array_elements(
+            public.admin_verification_signals('d3100000-0000-0000-0000-0000000000f4') -> 'photos') x),
+  'factory_photo org-private', 'the workshop photo is in the staff panel''s photos; the authorisation is not');
+select lives_ok($$select public.admin_record_signal('d3100000-0000-0000-0000-0000000000f4', 'photo', 'a3100000-0000-0000-0000-000000000005', 'own',
+  'Reverse search found nothing; matches the video', '{}'::jsonb)$$, 'staff record it as the factory''s own');
 reset role;
 
 select * from finish();
