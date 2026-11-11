@@ -156,6 +156,8 @@ select lives_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000
 select lives_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f2', 'approved')$$, 'approved');
 reset role;
 update public.orgs set name = 'Bosphorus Premium Knit' where id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3.1: any rename of a verified factory sends it back to review; these cases test the registry-fact logic, so keep it verified.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000003","role":"authenticated"}';
 set local role authenticated;
 select is(public.factory_registry_fact('d8700000-0000-0000-0000-0000000000f2'), null, 'a rename after approval takes the brand''s fact away');
@@ -168,6 +170,8 @@ update public.company_registrations set number = null, no_company_number = true 
 -- v3: clearing a verified factory's number sends it to review; this case is about the sole-proprietor fact, so put it back.
 update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 update public.orgs set name = 'Örme Tekstil' where id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3.1: any rename of a verified factory sends it back to review; these cases test the registry-fact logic, so keep it verified.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select lives_ok($$select public.admin_record_registry_check('d8700000-0000-0000-0000-0000000000f2', 'gib', 'found', 'Sole proprietor, letter seen')$$, 'a sole proprietor checked');

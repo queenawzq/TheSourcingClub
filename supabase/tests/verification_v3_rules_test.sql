@@ -4,7 +4,7 @@
 -- Fixtures prefixed pgtap93-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(38);
+select plan(40);
 
 insert into auth.users (id, email) values
   ('c9300000-0000-0000-0000-000000000001', 'p93-admin@example.com'),
@@ -118,5 +118,12 @@ update public.factory_profiles set verification_status = 'verified' where org_id
 update public.factory_profiles set legal_name = '宁波新名字针织有限公司 ' where org_id = 'd9300000-0000-0000-0000-0000000000f3';
 select is((select verification_status::text from public.factory_profiles where org_id = 'd9300000-0000-0000-0000-0000000000f3'), 'verified', 'a trailing space is not a change');
 
+reset role;
+-- v3.1: a verified factory WITH a legal name that renames its company (Settings, orgs.name) goes back to review too.
+update public.factory_profiles set legal_name = 'Display Rename Legal Co' where org_id = 'd9300000-0000-0000-0000-0000000000f3';
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd9300000-0000-0000-0000-0000000000f3';
+update public.orgs set name = 'Display Rename New Name' where id = 'd9300000-0000-0000-0000-0000000000f3';
+select is((select verification_status::text from public.factory_profiles where org_id = 'd9300000-0000-0000-0000-0000000000f3'), 'pending', 'renaming the company in Settings sends a verified factory with a legal name back to review');
+select ok(exists (select 1 from public.notifications where org_id = 'd9300000-0000-0000-0000-0000000000f3' and kind = 'verification_reopened' and title like 'Your company name changed%'), 'and the factory is told its company name changed');
 select * from finish();
 rollback;
