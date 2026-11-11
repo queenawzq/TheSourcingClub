@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * src/app/live-quiet.css hides the design's intro sentences on the live app.
+ * src/app/live-quiet.css contains live layout and empty-state adjustments.
  * It must never be able to hide what a person needs: a control, a heading or
  * an error. Each selector of a hiding rule is read here.
  */
