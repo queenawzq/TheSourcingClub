@@ -424,7 +424,7 @@ function CompanyFactsForm({ orgId, facts, onChange }) {
 }
 
 /** What a row opens: the check's evidence, links and record forms. */
-function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange, onClose }) {
+function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange, onLocalChange, onClose }) {
   const signals = extra.signals ?? [];
   const closeRef = useRef(null);
   useEffect(() => {
@@ -450,7 +450,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
       <>
         <PhotoCheckButton orgId={orgId} hasPhotos={(extra.photos ?? []).length > 0} onChange={onChange} />
         {(extra.photos ?? []).map((photo) => (
-          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} look={(item.details?.perPhoto ?? []).find((p) => p.documentId === photo.id)} onChange={onChange} key={photo.id} />
+          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} look={(item.details?.perPhoto ?? []).find((p) => p.documentId === photo.id)} onChange={onLocalChange ?? onChange} key={photo.id} />
         ))}
       </>
     );
@@ -619,7 +619,7 @@ function useAutoRun(orgId, extra, detail, onChange) {
   return running;
 }
 
-export default function VerificationSignals({ orgId, detail, extra, registryBody, onChange }) {
+export default function VerificationSignals({ orgId, detail, extra, registryBody, onChange, onLocalChange }) {
   const [open, setOpen] = useState(null);
   const running = useAutoRun(orgId, extra, detail, onChange);
   if (!extra) return <p>Loading…</p>;
@@ -637,6 +637,7 @@ export default function VerificationSignals({ orgId, detail, extra, registryBody
           extra={extra}
           registryBody={registryBody}
           onChange={onChange}
+          onLocalChange={onLocalChange}
           onClose={() => setOpen(null)}
         />
       )}

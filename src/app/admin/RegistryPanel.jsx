@@ -361,7 +361,8 @@ export default function RegistryPanel({ orgId, onChange }) {
 
   return (
     <div className="admin-registry">
-      <VerificationSignals orgId={orgId} detail={detail} extra={extra} registryBody={registryBody} onChange={changed} />
+      {/* A photo or certificate mark only needs this panel re-read: reloading the whole page closed the details window, so staff couldn't see it was recorded. */}
+      <VerificationSignals orgId={orgId} detail={detail} extra={extra} registryBody={registryBody} onChange={changed} onLocalChange={load} />
     </div>
   );
 }
