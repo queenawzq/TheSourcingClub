@@ -424,7 +424,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
   const reading = latest(signals, "document_reading");
   let body = null;
   if (item.key === "license_read" || item.key === "trading_scope") {
-    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} signer={item.key === "license_read" ? extra.signer : null} country={detail?.registration?.country ?? detail?.countryCode ?? null} rules={extra.rules} onChange={onChange} /></>;
+    body = <><DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} signer={item.key === "license_read" ? extra.signer : null} country={detail?.registration?.country ?? detail?.countryCode ?? null} rules={extra.rules} onChange={onChange} /></>;
   } else if (item.key === "registry") {
     body = registryBody?.();
   } else if (item.key === "address_owner") {

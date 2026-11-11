@@ -109,6 +109,7 @@ export function approvalBlockText(detail) {
   if (problem === "duplicate") return "Another company uses this registration number: explain it first";
   if (problem === "number_check_digit_fails") return "The number read off the license fails its check digit: type it from the image";
   if (problem === "number_needs_staff") return "This license needs its number typed by staff (old 15-digit or Hong Kong)";
+  if (problem === "trading_only") return "The license's business scope is trading only: record a reason in the Trading scope row first";
   return null;
 }
 

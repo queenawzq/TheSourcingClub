@@ -608,7 +608,9 @@ export function authorisationCheck(fields, { names = [], uploadedAt = null, lega
   const known = names.filter((name) => String(name ?? "").trim());
   const matches = (text) => Boolean(text) && known.some((name) => companyNamesMatch?.(text, name) || plainText(text).includes(plainText(name)) || plainText(name).includes(plainText(text)));
   const sealMatches = fields.hasRedSeal === true && (matches(sealName) || (!sealName && matches(fields.companyName)));
-  const sealOther = fields.hasRedSeal === true && sealName && known.length && !matches(sealName);
+  // On a license photo the red seal is the registry's (登记机关, 市场监督管理局, Ticaret Sicil...), not a company's.
+  const authoritySeal = /登记机关|市场监督管理|工商行政管理|行政审批|registration authority|ticaret sicil|conservat[oó]ria/i.test(String(sealName ?? ""));
+  const sealOther = fields.hasRedSeal === true && sealName && !authoritySeal && known.length && !matches(sealName);
   let level = "medium";
   let settle = "";
   if (fields.looksEdited === true) {
