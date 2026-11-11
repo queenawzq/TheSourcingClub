@@ -230,7 +230,7 @@ export async function adminRegistryStates() {
  * so they can be matched to the migration in one place.
  */
 export const V31_RPC = {
-  setNumber: { name: "admin_set_registration_number", args: (orgId, number) => ({ target_org: orgId, number }) },
+  setNumber: { name: "admin_set_registration_number", args: (orgId, number, note = null, country = null) => ({ target_org: orgId, number, note, country }) },
   explainCheck: { name: "admin_explain_check", args: (orgId, checkKey, note) => ({ target_org: orgId, check_key: checkKey, note }) },
   companyFacts: { name: "admin_record_company_facts", args: (orgId, { insuredStaff, foundedOn }) => ({ target_org: orgId, insured_staff: insuredStaff, founded_on: foundedOn }) },
 };

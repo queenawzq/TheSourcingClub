@@ -34,8 +34,8 @@ const RANK = { low: 0, medium: 1, high: 2 };
  * in one place so the coordinator can rename them here.
  */
 export const FIELD_NAMES = {
-  // admin_verification_rules(): staff reasons per check, { [checkKey]: { note, reviewedAt, reviewedBy } }
-  explanations: "explanations",
+  // admin_verification_rules(): staff reasons per check, { [checkKey]: { note, reasonedAt, reasonedBy } } (migration 20261111120000)
+  explanations: "reasons",
   // admin_verification_rules(): staff-recorded facts, { insuredStaff, foundedOn, recordedAt }
   companyFacts: "companyFacts",
   // document_reading details.tradingScope: activity codes printed on the document (PT CAE, TR NACE)

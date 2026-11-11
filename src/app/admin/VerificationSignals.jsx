@@ -342,7 +342,7 @@ function ExplainForm({ orgId, checkKey, explanation, onChange }) {
   };
   return (
     <form className="admin-signal-form admin-explain-form" onSubmit={save}>
-      {explanation?.note && <p className="admin-signal-note">Staff reason: {explanation.note}{explanation.reviewedBy ? ` · ${explanation.reviewedBy}` : ""}{explanation.reviewedAt ? ` · ${when(explanation.reviewedAt)}` : ""}</p>}
+      {explanation?.note && <p className="admin-signal-note">Staff reason: {explanation.note}{(explanation.reasonedBy ?? explanation.reviewedBy) ? ` · ${explanation.reasonedBy ?? explanation.reviewedBy}` : ""}{(explanation.reasonedAt ?? explanation.reviewedAt) ? ` · ${when(explanation.reasonedAt ?? explanation.reviewedAt)}` : ""}</p>}
       <label className="factory-onboarding-field">
         <span>{explanation?.note ? "Change the reason" : "Reason"}</span>
         <textarea name={`reason-${checkKey}`} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
