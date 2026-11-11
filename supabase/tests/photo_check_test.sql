@@ -1,5 +1,5 @@
 -- ============================================================================
--- Photo checks (20261111200000) and copies across TSC (20261111300000, v3.1)
+-- Photo checks (20261111200000) and copies across TSC (20261111210000, v3.1)
 -- ----------------------------------------------------------------------------
 -- `pgtap111p-` prefixed, every assertion scoped to its own fixtures.
 -- Mostly negative: a factory, a brand and a signed-out visitor read nothing,
