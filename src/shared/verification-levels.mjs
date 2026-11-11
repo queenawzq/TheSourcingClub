@@ -164,7 +164,14 @@ export function registry(detail) {
   if (detail.duplicates?.length) {
     const names = detail.duplicates.map((other) => other.name).join(", ");
     if (detail.duplicateExplained) { level = capAt(level, "medium"); reasons.push(`Number shared with ${names} (explained)`); }
-    else { level = lowerOf(level, "low"); reasons.push(`Number also used by ${names}`); }
+    else {
+      // A shared number alone can't say who owns it: the first to sign up may be the trader using a real
+      // factory's license. Low only when the other company is already verified; otherwise Medium for both,
+      // and the license-copy check (which knows who uploaded first) and staff decide.
+      const verifiedOther = detail.duplicates.some((other) => other.status === "verified");
+      level = verifiedOther ? lowerOf(level, "low") : lowerOf(capAt(level, "medium"), "medium");
+      reasons.push(`Number also used by ${names}${verifiedOther ? " (already verified)" : ""}`, "To settle: ask both for the license photo with 'The Sourcing Club' and today's date, or explain the shared number");
+    }
   }
   return result("registry", level, reasons, { number: reg.number, source: top ? sourceWords(top) : null, result: top?.result ?? null }, checkedAt);
 }
