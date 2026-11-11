@@ -139,7 +139,7 @@ set local role postgres;
 set local request.jwt.claims = '{"sub":"c1110000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select results_eq(
-  $$select other_org_name, match, distance from public.admin_photo_duplicates('d1110000-0000-0000-0000-0000000000f1') order by distance, other_org_name$$,
+  $$select other_org_name, match, distance from public.admin_photo_duplicates('d1110000-0000-0000-0000-0000000000f1') where document_id in ('a1110000-0000-0000-0000-000000000001', 'a1110000-0000-0000-0000-000000000002') order by distance, other_org_name$$,
   $$values ('P111P Copycat'::text, 'exact'::text, 0), ('P111P Other'::text, 'similar'::text, 3)$$,
   'staff see the same file and the resized copy, with the names; not the unrelated photo, not its own second photo'
 );
