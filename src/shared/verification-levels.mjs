@@ -98,7 +98,10 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   if (x.specimen || d.specimen || x.markedAsSample) { level = "low"; reasons.push("Looks like a specimen or sample"); }
   // Edited is the AI's impression, not evidence: Medium until staff compare it with the registry.
   if (x.edited || d.edited || x.looksEdited) { level = lowerOf(level, "medium"); reasons.push("Looks edited: compare it with the registry"); }
-  if (x.verificationWatermark || d.verificationWatermark) reasons.push("Marked for verification use only (normal)");
+  const warned = (kind) => (d.warnings ?? []).some((w) => w?.kind === kind);
+  if (x.verificationWatermark || d.verificationWatermark || warned("verificationWatermark")) reasons.push("Marked for verification use only (normal)");
+  // B2: the authorisation proof (handwritten note or company seal) travels with the reading.
+  if (d.authorisation?.level) reasons.push(`Authorisation: ${(d.authorisation.reasons ?? [d.authorisation.level]).join("; ")}`);
   for (const line of d.differences ?? []) {
     level = "low";
     reasons.push(`${line.field === "number" ? "Number" : "Name"} differs: document "${line.document || "none"}", typed "${line.typed ?? ""}"`);
@@ -163,7 +166,7 @@ export function tradingScope({ reading, tradingReason }) {
   if (!reading) return result("trading_scope", "unknown", ["License not read"]);
   if (!scope?.read) return result("trading_scope", "unknown", ["No business scope on the document"], {}, at);
   if (scope.recognised === false) return result("trading_scope", "unknown", ["No trading or making words recognised"], { quote: scope.quote ?? null }, at);
-  const codes = activityCodesOf(scope);
+  const codes = activityCodesOf(scope).length ? activityCodesOf(scope) : activityCodesOf({ activityCodes: reading?.details?.extracted?.activityCodes });
   const making = codes.filter((code) => /^1[345]/.test(code));
   const wholesale = codes.filter((code) => /^46/.test(code));
   const details = { quote: scope.quote ?? null, ...(codes.length ? { codes: codes.join(", ") } : {}) };
