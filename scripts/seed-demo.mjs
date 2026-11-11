@@ -155,7 +155,9 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const callUsers = {};
+for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -618,6 +620,45 @@ const RETURNED_NOTE = [
 must(await adminUser.client.rpc("admin_review_decision_with_tier", {
   target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
 }), "ask the returned factory for more information");
+
+// The Nov 11 verification demo (notes/demo-call-2026-11-11): each factory as
+// the real licence it will upload prints it, finished onboarding, nothing
+// uploaded, and asked by staff for its licence and workshop photos, so it
+// signs in straight to its profile summary. Uploading and confirming runs
+// every check by itself.
+const CALL_SETUP = {
+  callA: { country: "CN", address: "南通市海门市余东镇启凤街文峰路22号", employees: 120 },
+  callB: { country: "CN", address: "四川省广元市利州区万缘街道胤国路国投大厦20-1号", employees: 8 },
+  callC: { country: "CN", address: "合肥市新站区瑶海工业园区纬二路北合肥雷神数控科技有限公司科研楼4楼", employees: 60 },
+  callD1: { country: "CN", address: "南通市海门市余东镇启凤街文峰路22号", employees: 120 },
+  callD2: { country: "CN", address: "广东省东莞市大朗镇盈丰七街76号101室", employees: 45 },
+  callE1: { country: "TR", address: "Yenimahalle, Ankara", number: "8010693555", employees: 25 },
+  callE2: { country: "PT", address: "Marrazes, Leiria", number: "501395970", employees: 15 },
+  callE3: { country: "PT", address: "Rua do Parque Industrial 88, Barcelos", number: "515920487", employees: 90 },
+};
+const CALL_NOTE = "Please upload your business licence and two or three photos of your production floor, then confirm your profile.";
+for (const [key, setup] of Object.entries(CALL_SETUP)) {
+  const user = callUsers[key];
+  const org = must(await user.client.rpc("create_org", { org_name: LOGINS[key].name, org_kind: "factory" }), `create ${key}`);
+  must(await admin.from("factory_profiles").upsert({
+    org_id: org.id,
+    legal_name: LOGINS[key].name,
+    country_code: setup.country,
+    location: setup.address,
+    employee_count: setup.employees,
+    onboarding_completed_at: new Date().toISOString(),
+    verification_status: "pending",
+    published_at: new Date().toISOString(),
+  }), `${key} profile`);
+  // Written by the member, as onboarding does: a trigger moves it to the staff-only table.
+  must(await user.client.from("factory_profiles").update({ production_address: setup.address }).eq("org_id", org.id), `${key} production address`);
+  must(await user.client.rpc("save_company_registration", {
+    target_org: org.id, country: setup.country, number: setup.number ?? null,
+  }), `${key} registration`);
+  must(await adminUser.client.rpc("admin_review_decision_with_tier", {
+    target_org: org.id, decision: "needs_information", note: CALL_NOTE, risk: null, tier: null,
+  }), `${key} asked for its documents`);
+}
 
 // A company staff can review but nobody can be emailed about: no members, so
 // a decision on it shows "nobody at … has an email address we can send to".
