@@ -34,6 +34,7 @@
     "check:bank-number": "node scripts/check-bank-number.mjs",
     "check:e2e-exit": "node scripts/check-e2e-exit.mjs",
     "check:registration": "node scripts/check-registration-number.mjs",
+    "check:address": "node scripts/check-address.mjs",
     "check:screen": "node scripts/check-message-screen.mjs"
   },
   "dependencies": {

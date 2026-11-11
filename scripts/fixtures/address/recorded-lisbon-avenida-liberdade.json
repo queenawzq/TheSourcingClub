@@ -1,0 +1,2363 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-11T14:41:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 8249937213,
+  "lat": 38.7213043,
+  "lon": -9.1458521,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "196-200",
+    "addr:postcode": "1269-121",
+    "addr:street": "Avenida da Liberdade",
+    "country": "CA",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "level": "3",
+    "name": "Embaixada do Canadá",
+    "name:ar": "السفارة الكندية",
+    "name:en": "Embassy of Canada",
+    "name:es": "Embajada de Canadá",
+    "name:fr": "Ambassade du Canada",
+    "office": "diplomatic",
+    "target": "PT",
+    "website": "https://www.canadainternational.gc.ca/portugal/index.aspx",
+    "wikidata": "Q104414224"
+  }
+},
+{
+  "type": "node",
+  "id": 8249937214,
+  "lat": 38.7214000,
+  "lon": -9.1459312,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "200",
+    "addr:postcode": "1250-147",
+    "addr:street": "Avenida da Liberdade",
+    "country": "AU",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "level": "2",
+    "name": "Embaixada da Austrália",
+    "name:en": "Embassy of Australia",
+    "name:fr": "Ambassade d'Australie",
+    "office": "diplomatic",
+    "target": "PT",
+    "website": "https://portugal.embassy.gov.au",
+    "wikidata": "Q782854"
+  }
+},
+{
+  "type": "node",
+  "id": 8316455668,
+  "lat": 38.7213522,
+  "lon": -9.1458917,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "200",
+    "addr:postcode": "1250-147",
+    "addr:street": "Avenida da Liberdade",
+    "check_date": "2024-11-03",
+    "contact:facebook": "https://www.facebook.com/IrlEmbLisbon",
+    "contact:phone": "+351 21 330 8200",
+    "contact:twitter": "https://twitter.com/IrlEmbLisbon",
+    "contact:website": "https://www.ireland.ie/en/portugal/lisbon/",
+    "contact:youtube": "https://youtube.com/user/IrishForeignMinistry",
+    "country": "IE",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "emergency:phone": "+351 21 330 8200",
+    "level": "4",
+    "name": "Embaixada da Irlanda",
+    "name:am": "የአየርላንድ ኤምባሲ",
+    "name:ar": "سفارة أيرلندا",
+    "name:bg": "Посолство на Ирландия",
+    "name:cs": "Velvyslanectví Irska",
+    "name:da": "Den irske ambassade",
+    "name:de": "Botschaft von Irland",
+    "name:el": "Πρεσβεία της Ιρλανδίας",
+    "name:en": "Embassy of Ireland",
+    "name:es": "Embajada de Irlanda",
+    "name:fi": "Irlannin Suurlähetystö",
+    "name:fr": "Ambassade d'Irlande",
+    "name:ga": "Ambasáid na hÉireann",
+    "name:hr": "Veleposlanstvo Irske",
+    "name:hu": "Írország Nagykövetség",
+    "name:id": "Kedutaan Besar Irlandia",
+    "name:it": "Ambasciata d'Irlanda",
+    "name:ja": "アイルランド大使館",
+    "name:lt": "Airijos Respublikos ambasada",
+    "name:lv": "Īrijas vēstniecība",
+    "name:nl": "Ambassade van Ierland",
+    "name:no": "Irlands ambassade",
+    "name:pl": "Ambasada Irlandii",
+    "name:pt": "Embaixada da Irlanda",
+    "name:ro": "Ambasada Irlandei",
+    "name:ru": "Посольство Ирландии",
+    "name:sk": "Veľvyslanectvo Írska",
+    "name:sl": "Irsko veleposlaništvo",
+    "name:sv": "Irlands ambassad",
+    "name:tr": "İrlanda Büyükelçiliği",
+    "name:vi": "Đại sứ quán Ireland",
+    "name:zh": "爱尔兰大使馆",
+    "office": "diplomatic",
+    "opening_hours": "Mo-Fr 09:30-12:30 open \"By appointment only\";PH off",
+    "subject:wikimedia_commons": "File:Edifício Victória, Avenida da Liberdade, Lisboa 02.jpg",
+    "target": "PT;AO;CV;GW",
+    "wikidata": "Q104792936"
+  }
+},
+{
+  "type": "node",
+  "id": 8379553172,
+  "lat": 38.7193172,
+  "lon": -9.1455722,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "1",
+    "addr:postcode": "1269-052",
+    "addr:street": "Rua do Salitre",
+    "check_date": "2026-03-28",
+    "country": "ES",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "name": "Embaixada de Espanha",
+    "name:en": "Embassy of Spain",
+    "name:es": "Embajada de España",
+    "name:fr": "Ambassade d'Espagne",
+    "office": "diplomatic",
+    "phone": "+351 21 347 23 81",
+    "target": "PT",
+    "website": "http://www.exteriores.gob.es/Embajadas/LISBOA",
+    "wikidata": "Q105137037"
+  }
+},
+{
+  "type": "node",
+  "id": 8416521684,
+  "lat": 38.7212565,
+  "lon": -9.1458126,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "200",
+    "addr:postcode": "1250-147",
+    "addr:street": "Avenida da Liberdade",
+    "country": "SK",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "level": "5",
+    "name": "Embaixada da Eslováquia",
+    "name:en": "Embassy of Slovakia",
+    "name:fr": "Ambassade de Slovaquie",
+    "name:sk": "Veľvyslanectvo Slovenskej republiky",
+    "office": "diplomatic",
+    "phone": "+351 213583300",
+    "target": "PT",
+    "website": "https://www.mzv.sk/web/lisabon",
+    "wikidata": "Q105428401"
+  }
+},
+{
+  "type": "node",
+  "id": 8419260407,
+  "lat": 38.7195184,
+  "lon": -9.1442375,
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "144",
+    "addr:postcode": "1250-146",
+    "addr:street": "Avenida da Liberdade",
+    "country": "PE",
+    "diplomatic": "embassy",
+    "embassy": "yes",
+    "level": "8",
+    "name": "Embaixada do Peru",
+    "name:en": "Embassy of Peru",
+    "name:es": "Embajada del Perú",
+    "name:fr": "Ambassade du Pérou",
+    "office": "diplomatic",
+    "phone": "+351 21 382 7470",
+    "target": "PT",
+    "website": "http://www.embaixadaperu.pt",
+    "wikidata": "Q105460744"
+  }
+},
+{
+  "type": "node",
+  "id": 8679092012,
+  "lat": 38.7193589,
+  "lon": -9.1455415,
+  "tags": {
+    "addr:housenumber": "3",
+    "addr:street": "R. do Salitre",
+    "check_date": "2024-05-08",
+    "consulate": "yes",
+    "country": "ES",
+    "diplomatic": "consulate",
+    "name": "Consulado de España",
+    "name:fr": "Consulat d'Espagne",
+    "office": "diplomatic",
+    "target": "PT"
+  }
+},
+{
+  "type": "way",
+  "id": 96192095,
+  "bounds": {
+    "minlat": 38.7187645,
+    "minlon": -9.1454466,
+    "maxlat": 38.7191638,
+    "maxlon": -9.1450705
+  },
+  "geometry": [
+    { "lat": 38.7189005, "lon": -9.1450705 },
+    { "lat": 38.7187645, "lon": -9.1453189 },
+    { "lat": 38.7187991, "lon": -9.1453329 },
+    { "lat": 38.7188337, "lon": -9.1453469 },
+    { "lat": 38.7188683, "lon": -9.1453609 },
+    { "lat": 38.7189029, "lon": -9.1453749 },
+    { "lat": 38.7189203, "lon": -9.1453819 },
+    { "lat": 38.7189376, "lon": -9.1453888 },
+    { "lat": 38.7189722, "lon": -9.1454028 },
+    { "lat": 38.7190068, "lon": -9.1454168 },
+    { "lat": 38.7190414, "lon": -9.1454308 },
+    { "lat": 38.7190760, "lon": -9.1454448 },
+    { "lat": 38.7190893, "lon": -9.1454466 },
+    { "lat": 38.7190982, "lon": -9.1454436 },
+    { "lat": 38.7191066, "lon": -9.1454352 },
+    { "lat": 38.7191196, "lon": -9.1454113 },
+    { "lat": 38.7191325, "lon": -9.1453875 },
+    { "lat": 38.7191455, "lon": -9.1453636 },
+    { "lat": 38.7191584, "lon": -9.1453397 },
+    { "lat": 38.7191634, "lon": -9.1453268 },
+    { "lat": 38.7191638, "lon": -9.1453125 },
+    { "lat": 38.7191595, "lon": -9.1452992 },
+    { "lat": 38.7191514, "lon": -9.1452893 },
+    { "lat": 38.7191305, "lon": -9.1452711 },
+    { "lat": 38.7191096, "lon": -9.1452529 },
+    { "lat": 38.7190887, "lon": -9.1452346 },
+    { "lat": 38.7190678, "lon": -9.1452164 },
+    { "lat": 38.7190469, "lon": -9.1451982 },
+    { "lat": 38.7190260, "lon": -9.1451799 },
+    { "lat": 38.7190051, "lon": -9.1451617 },
+    { "lat": 38.7189842, "lon": -9.1451435 },
+    { "lat": 38.7189633, "lon": -9.1451252 },
+    { "lat": 38.7189423, "lon": -9.1451070 },
+    { "lat": 38.7189214, "lon": -9.1450888 },
+    { "lat": 38.7189005, "lon": -9.1450705 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "hotel",
+    "building:levels": "7",
+    "roof:levels": "1"
+  }
+},
+{
+  "type": "way",
+  "id": 96766860,
+  "bounds": {
+    "minlat": 38.7201101,
+    "minlon": -9.1467240,
+    "maxlat": 38.7205899,
+    "maxlon": -9.1462336
+  },
+  "geometry": [
+    { "lat": 38.7205899, "lon": -9.1465440 },
+    { "lat": 38.7203299, "lon": -9.1463172 },
+    { "lat": 38.7202340, "lon": -9.1462336 },
+    { "lat": 38.7201595, "lon": -9.1463877 },
+    { "lat": 38.7201375, "lon": -9.1464719 },
+    { "lat": 38.7201286, "lon": -9.1465121 },
+    { "lat": 38.7201235, "lon": -9.1465428 },
+    { "lat": 38.7201101, "lon": -9.1466231 },
+    { "lat": 38.7201652, "lon": -9.1466380 },
+    { "lat": 38.7204925, "lon": -9.1467240 },
+    { "lat": 38.7205273, "lon": -9.1466598 },
+    { "lat": 38.7205434, "lon": -9.1466301 },
+    { "lat": 38.7205899, "lon": -9.1465440 }
+  ],
+  "tags": {
+    "amenity": "cinema",
+    "building": "yes",
+    "building:levels": "4",
+    "name": "São Jorge",
+    "wikidata": "Q1092450",
+    "wikimedia_commons": "Category:Cinema São Jorge",
+    "wikipedia": "pt:Cinema São Jorge"
+  }
+},
+{
+  "type": "way",
+  "id": 96766904,
+  "bounds": {
+    "minlat": 38.7204925,
+    "minlon": -9.1468989,
+    "maxlat": 38.7208387,
+    "maxlon": -9.1465440
+  },
+  "geometry": [
+    { "lat": 38.7205273, "lon": -9.1466598 },
+    { "lat": 38.7204925, "lon": -9.1467240 },
+    { "lat": 38.7207880, "lon": -9.1468989 },
+    { "lat": 38.7208343, "lon": -9.1468115 },
+    { "lat": 38.7208387, "lon": -9.1467953 },
+    { "lat": 38.7208385, "lon": -9.1467782 },
+    { "lat": 38.7208338, "lon": -9.1467622 },
+    { "lat": 38.7208251, "lon": -9.1467492 },
+    { "lat": 38.7205899, "lon": -9.1465440 },
+    { "lat": 38.7205434, "lon": -9.1466301 },
+    { "lat": 38.7205675, "lon": -9.1466506 },
+    { "lat": 38.7205550, "lon": -9.1466764 },
+    { "lat": 38.7205273, "lon": -9.1466598 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "4",
+    "wikidata": "Q135529258"
+  }
+},
+{
+  "type": "way",
+  "id": 96766905,
+  "bounds": {
+    "minlat": 38.7207009,
+    "minlon": -9.1476476,
+    "maxlat": 38.7213237,
+    "maxlon": -9.1468724
+  },
+  "geometry": [
+    { "lat": 38.7210758, "lon": -9.1476476 },
+    { "lat": 38.7213237, "lon": -9.1471841 },
+    { "lat": 38.7209784, "lon": -9.1468829 },
+    { "lat": 38.7209649, "lon": -9.1468733 },
+    { "lat": 38.7209494, "lon": -9.1468724 },
+    { "lat": 38.7209352, "lon": -9.1468805 },
+    { "lat": 38.7209254, "lon": -9.1468959 },
+    { "lat": 38.7207009, "lon": -9.1473187 },
+    { "lat": 38.7208301, "lon": -9.1474314 },
+    { "lat": 38.7209942, "lon": -9.1471308 },
+    { "lat": 38.7211281, "lon": -9.1472470 },
+    { "lat": 38.7209646, "lon": -9.1475498 },
+    { "lat": 38.7210758, "lon": -9.1476476 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "hotel",
+    "building:levels": "9"
+  }
+},
+{
+  "type": "way",
+  "id": 96851669,
+  "bounds": {
+    "minlat": 38.7199647,
+    "minlon": -9.1476587,
+    "maxlat": 38.7205941,
+    "maxlon": -9.1468844
+  },
+  "geometry": [
+    { "lat": 38.7205941, "lon": -9.1475100 },
+    { "lat": 38.7202216, "lon": -9.1471873 },
+    { "lat": 38.7203264, "lon": -9.1469975 },
+    { "lat": 38.7201960, "lon": -9.1468844 },
+    { "lat": 38.7199647, "lon": -9.1473195 },
+    { "lat": 38.7200891, "lon": -9.1474274 },
+    { "lat": 38.7201406, "lon": -9.1473341 },
+    { "lat": 38.7205156, "lon": -9.1476587 },
+    { "lat": 38.7205941, "lon": -9.1475100 }
+  ],
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housename": "Centro Europeu Jean Monnet",
+    "addr:postcode": "1250-135",
+    "addr:street": "Rua Júlio César Machado",
+    "building": "office",
+    "building:levels": "11",
+    "building:part": "yes",
+    "name": "Centro Europeu Jean Monnet"
+  }
+},
+{
+  "type": "way",
+  "id": 96851671,
+  "bounds": {
+    "minlat": 38.7198576,
+    "minlon": -9.1462416,
+    "maxlat": 38.7200132,
+    "maxlon": -9.1461139
+  },
+  "geometry": [
+    { "lat": 38.7200100, "lon": -9.1461139 },
+    { "lat": 38.7198576, "lon": -9.1461586 },
+    { "lat": 38.7198718, "lon": -9.1462416 },
+    { "lat": 38.7200132, "lon": -9.1462098 },
+    { "lat": 38.7200100, "lon": -9.1461139 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 96851676,
+  "bounds": {
+    "minlat": 38.7197822,
+    "minlon": -9.1465615,
+    "maxlat": 38.7198906,
+    "maxlon": -9.1464694
+  },
+  "geometry": [
+    { "lat": 38.7197822, "lon": -9.1464980 },
+    { "lat": 38.7198024, "lon": -9.1465615 },
+    { "lat": 38.7198511, "lon": -9.1465388 },
+    { "lat": 38.7198716, "lon": -9.1465293 },
+    { "lat": 38.7198906, "lon": -9.1465206 },
+    { "lat": 38.7198782, "lon": -9.1464694 },
+    { "lat": 38.7197822, "lon": -9.1464980 }
+  ],
+  "tags": {
+    "addr:housenumber": "44-46",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 96851677,
+  "bounds": {
+    "minlat": 38.7198024,
+    "minlon": -9.1466550,
+    "maxlat": 38.7199513,
+    "maxlon": -9.1465045
+  },
+  "geometry": [
+    { "lat": 38.7198024, "lon": -9.1465615 },
+    { "lat": 38.7198323, "lon": -9.1466550 },
+    { "lat": 38.7199513, "lon": -9.1466064 },
+    { "lat": 38.7199283, "lon": -9.1465045 },
+    { "lat": 38.7198906, "lon": -9.1465206 },
+    { "lat": 38.7198716, "lon": -9.1465293 },
+    { "lat": 38.7198822, "lon": -9.1465689 },
+    { "lat": 38.7198655, "lon": -9.1465769 },
+    { "lat": 38.7198511, "lon": -9.1465388 },
+    { "lat": 38.7198024, "lon": -9.1465615 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "building:levels": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 96851679,
+  "bounds": {
+    "minlat": 38.7199183,
+    "minlon": -9.1466064,
+    "maxlat": 38.7200204,
+    "maxlon": -9.1464508
+  },
+  "geometry": [
+    { "lat": 38.7199513, "lon": -9.1466064 },
+    { "lat": 38.7200204, "lon": -9.1465957 },
+    { "lat": 38.7200116, "lon": -9.1464537 },
+    { "lat": 38.7199450, "lon": -9.1464508 },
+    { "lat": 38.7199183, "lon": -9.1464582 },
+    { "lat": 38.7199283, "lon": -9.1465045 },
+    { "lat": 38.7199513, "lon": -9.1466064 }
+  ],
+  "tags": {
+    "addr:housenumber": "4",
+    "addr:street": "Rua Júlio César Machado",
+    "building": "apartments",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 96851681,
+  "bounds": {
+    "minlat": 38.7200099,
+    "minlon": -9.1466231,
+    "maxlat": 38.7201235,
+    "maxlon": -9.1464187
+  },
+  "geometry": [
+    { "lat": 38.7201101, "lon": -9.1466231 },
+    { "lat": 38.7200204, "lon": -9.1465957 },
+    { "lat": 38.7200116, "lon": -9.1464537 },
+    { "lat": 38.7200099, "lon": -9.1464267 },
+    { "lat": 38.7200685, "lon": -9.1464187 },
+    { "lat": 38.7200748, "lon": -9.1465313 },
+    { "lat": 38.7201235, "lon": -9.1465428 },
+    { "lat": 38.7201101, "lon": -9.1466231 }
+  ],
+  "tags": {
+    "addr:housenumber": "6",
+    "addr:street": "Rua Júlio César Machado",
+    "building": "apartments",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 96851682,
+  "bounds": {
+    "minlat": 38.7196893,
+    "minlon": -9.1462696,
+    "maxlat": 38.7198069,
+    "maxlon": -9.1461795
+  },
+  "geometry": [
+    { "lat": 38.7197864, "lon": -9.1461795 },
+    { "lat": 38.7196893, "lon": -9.1462072 },
+    { "lat": 38.7197092, "lon": -9.1462696 },
+    { "lat": 38.7197897, "lon": -9.1462511 },
+    { "lat": 38.7198069, "lon": -9.1462470 },
+    { "lat": 38.7197864, "lon": -9.1461795 }
+  ],
+  "tags": {
+    "addr:housenumber": "34-36",
+    "addr:street": "Rua do Salitre",
+    "building": "yes",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 96851683,
+  "bounds": {
+    "minlat": 38.7200100,
+    "minlon": -9.1463877,
+    "maxlat": 38.7202340,
+    "maxlon": -9.1461045
+  },
+  "geometry": [
+    { "lat": 38.7200146, "lon": -9.1462607 },
+    { "lat": 38.7200132, "lon": -9.1462098 },
+    { "lat": 38.7200100, "lon": -9.1461139 },
+    { "lat": 38.7200353, "lon": -9.1461065 },
+    { "lat": 38.7200572, "lon": -9.1461045 },
+    { "lat": 38.7200757, "lon": -9.1461058 },
+    { "lat": 38.7200951, "lon": -9.1461125 },
+    { "lat": 38.7202340, "lon": -9.1462336 },
+    { "lat": 38.7201595, "lon": -9.1463877 },
+    { "lat": 38.7200146, "lon": -9.1462607 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "6",
+    "wikidata": "Q135529259",
+    "wikimedia_commons": "Category:Edifício na Avenida da Liberdade, n.º 173"
+  }
+},
+{
+  "type": "way",
+  "id": 96851684,
+  "bounds": {
+    "minlat": 38.7196374,
+    "minlon": -9.1469417,
+    "maxlat": 38.7197922,
+    "maxlon": -9.1467095
+  },
+  "geometry": [
+    { "lat": 38.7197922, "lon": -9.1469256 },
+    { "lat": 38.7197758, "lon": -9.1467095 },
+    { "lat": 38.7196374, "lon": -9.1467271 },
+    { "lat": 38.7196646, "lon": -9.1469417 },
+    { "lat": 38.7197922, "lon": -9.1469256 }
+  ],
+  "tags": {
+    "addr:housenumber": "51",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 96851686,
+  "bounds": {
+    "minlat": 38.7197092,
+    "minlon": -9.1463398,
+    "maxlat": 38.7198090,
+    "maxlon": -9.1462511
+  },
+  "geometry": [
+    { "lat": 38.7197092, "lon": -9.1462696 },
+    { "lat": 38.7197316, "lon": -9.1463398 },
+    { "lat": 38.7198090, "lon": -9.1463167 },
+    { "lat": 38.7197897, "lon": -9.1462511 },
+    { "lat": 38.7197092, "lon": -9.1462696 }
+  ],
+  "tags": {
+    "addr:city": "Lisboa",
+    "addr:housenumber": "38-40",
+    "addr:postcode": "1250-144",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 96851691,
+  "bounds": {
+    "minlat": 38.7197316,
+    "minlon": -9.1464980,
+    "maxlat": 38.7199450,
+    "maxlon": -9.1462926
+  },
+  "geometry": [
+    { "lat": 38.7197316, "lon": -9.1463398 },
+    { "lat": 38.7198090, "lon": -9.1463167 },
+    { "lat": 38.7199032, "lon": -9.1462926 },
+    { "lat": 38.7199450, "lon": -9.1464508 },
+    { "lat": 38.7199183, "lon": -9.1464582 },
+    { "lat": 38.7198782, "lon": -9.1464694 },
+    { "lat": 38.7197822, "lon": -9.1464980 },
+    { "lat": 38.7197316, "lon": -9.1463398 }
+  ],
+  "tags": {
+    "addr:housenumber": "42",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 96851695,
+  "bounds": {
+    "minlat": 38.7197864,
+    "minlon": -9.1462470,
+    "maxlat": 38.7198718,
+    "maxlon": -9.1461586
+  },
+  "geometry": [
+    { "lat": 38.7198576, "lon": -9.1461586 },
+    { "lat": 38.7197864, "lon": -9.1461795 },
+    { "lat": 38.7198069, "lon": -9.1462470 },
+    { "lat": 38.7198718, "lon": -9.1462416 },
+    { "lat": 38.7198576, "lon": -9.1461586 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 97684201,
+  "bounds": {
+    "minlat": 38.7195392,
+    "minlon": -9.1464925,
+    "maxlat": 38.7196863,
+    "maxlon": -9.1463069
+  },
+  "geometry": [
+    { "lat": 38.7196863, "lon": -9.1464355 },
+    { "lat": 38.7196443, "lon": -9.1463069 },
+    { "lat": 38.7195595, "lon": -9.1463532 },
+    { "lat": 38.7195392, "lon": -9.1463644 },
+    { "lat": 38.7195820, "lon": -9.1464925 },
+    { "lat": 38.7196137, "lon": -9.1464751 },
+    { "lat": 38.7196863, "lon": -9.1464355 }
+  ],
+  "tags": {
+    "addr:housenumber": "33-37",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 97684249,
+  "bounds": {
+    "minlat": 38.7193694,
+    "minlon": -9.1461105,
+    "maxlat": 38.7195508,
+    "maxlon": -9.1459058
+  },
+  "geometry": [
+    { "lat": 38.7195508, "lon": -9.1460204 },
+    { "lat": 38.7195133, "lon": -9.1459058 },
+    { "lat": 38.7194192, "lon": -9.1459573 },
+    { "lat": 38.7194406, "lon": -9.1460216 },
+    { "lat": 38.7193694, "lon": -9.1460606 },
+    { "lat": 38.7193861, "lon": -9.1461105 },
+    { "lat": 38.7194112, "lon": -9.1460968 },
+    { "lat": 38.7195508, "lon": -9.1460204 }
+  ],
+  "tags": {
+    "addr:street": "Rua do Salitre",
+    "building": "yes",
+    "building:levels": "2"
+  }
+},
+{
+  "type": "way",
+  "id": 97684260,
+  "bounds": {
+    "minlat": 38.7193116,
+    "minlon": -9.1459985,
+    "maxlat": 38.7195133,
+    "maxlon": -9.1458117
+  },
+  "geometry": [
+    { "lat": 38.7195133, "lon": -9.1459058 },
+    { "lat": 38.7194826, "lon": -9.1458117 },
+    { "lat": 38.7193116, "lon": -9.1459032 },
+    { "lat": 38.7193440, "lon": -9.1459985 },
+    { "lat": 38.7194192, "lon": -9.1459573 },
+    { "lat": 38.7195133, "lon": -9.1459058 }
+  ],
+  "tags": {
+    "addr:street": "Rua do Salitre",
+    "building": "yes",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 97684284,
+  "bounds": {
+    "minlat": 38.7194096,
+    "minlon": -9.1463070,
+    "maxlat": 38.7196149,
+    "maxlon": -9.1460953
+  },
+  "geometry": [
+    { "lat": 38.7196149, "lon": -9.1462167 },
+    { "lat": 38.7195752, "lon": -9.1460953 },
+    { "lat": 38.7194361, "lon": -9.1461715 },
+    { "lat": 38.7194096, "lon": -9.1461860 },
+    { "lat": 38.7194500, "lon": -9.1463070 },
+    { "lat": 38.7195295, "lon": -9.1462634 },
+    { "lat": 38.7196149, "lon": -9.1462167 }
+  ],
+  "tags": {
+    "addr:street": "Rua do Salitre",
+    "building": "yes",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 97684314,
+  "bounds": {
+    "minlat": 38.7196137,
+    "minlon": -9.1465992,
+    "maxlat": 38.7197270,
+    "maxlon": -9.1464355
+  },
+  "geometry": [
+    { "lat": 38.7197270, "lon": -9.1465599 },
+    { "lat": 38.7196863, "lon": -9.1464355 },
+    { "lat": 38.7196137, "lon": -9.1464751 },
+    { "lat": 38.7196551, "lon": -9.1465992 },
+    { "lat": 38.7197270, "lon": -9.1465599 }
+  ],
+  "tags": {
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 97684333,
+  "bounds": {
+    "minlat": 38.7196268,
+    "minlon": -9.1467271,
+    "maxlat": 38.7197758,
+    "maxlon": -9.1465599
+  },
+  "geometry": [
+    { "lat": 38.7197758, "lon": -9.1467095 },
+    { "lat": 38.7197270, "lon": -9.1465599 },
+    { "lat": 38.7196551, "lon": -9.1465992 },
+    { "lat": 38.7196331, "lon": -9.1466063 },
+    { "lat": 38.7196540, "lon": -9.1466787 },
+    { "lat": 38.7196268, "lon": -9.1467002 },
+    { "lat": 38.7196374, "lon": -9.1467271 },
+    { "lat": 38.7197758, "lon": -9.1467095 }
+  ],
+  "tags": {
+    "addr:housenumber": "49",
+    "addr:street": "Rua do Salitre",
+    "building": "apartments",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 97684341,
+  "bounds": {
+    "minlat": 38.7194112,
+    "minlon": -9.1461715,
+    "maxlat": 38.7195752,
+    "maxlon": -9.1460204
+  },
+  "geometry": [
+    { "lat": 38.7195752, "lon": -9.1460953 },
+    { "lat": 38.7195508, "lon": -9.1460204 },
+    { "lat": 38.7194112, "lon": -9.1460968 },
+    { "lat": 38.7194361, "lon": -9.1461715 },
+    { "lat": 38.7195752, "lon": -9.1460953 }
+  ],
+  "tags": {
+    "addr:street": "Rua do Salitre",
+    "building": "yes",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 97684349,
+  "bounds": {
+    "minlat": 38.7195295,
+    "minlon": -9.1463532,
+    "maxlat": 38.7196443,
+    "maxlon": -9.1462167
+  },
+  "geometry": [
+    { "lat": 38.7196443, "lon": -9.1463069 },
+    { "lat": 38.7196149, "lon": -9.1462167 },
+    { "lat": 38.7195295, "lon": -9.1462634 },
+    { "lat": 38.7195595, "lon": -9.1463532 },
+    { "lat": 38.7196443, "lon": -9.1463069 }
+  ],
+  "tags": {
+    "addr:housenumber": "29",
+    "addr:street": "Rua do Salitre",
+    "addr:unit": "A",
+    "building": "yes",
+    "building:levels": "4",
+    "name": "rotation",
+    "opening_hours": "Mo-Sa 11:30-20:00; Su 14:00-20:00",
+    "phone": "+351 962 976 292",
+    "shoes": "high_end_sneakers",
+    "shop": "shoes",
+    "website": "https://www.rotation.pt/"
+  }
+},
+{
+  "type": "way",
+  "id": 98544531,
+  "bounds": {
+    "minlat": 38.7202275,
+    "minlon": -9.1452257,
+    "maxlat": 38.7207272,
+    "maxlon": -9.1446726
+  },
+  "geometry": [
+    { "lat": 38.7207272, "lon": -9.1448821 },
+    { "lat": 38.7205582, "lon": -9.1452004 },
+    { "lat": 38.7205451, "lon": -9.1452169 },
+    { "lat": 38.7205280, "lon": -9.1452257 },
+    { "lat": 38.7205096, "lon": -9.1452255 },
+    { "lat": 38.7204927, "lon": -9.1452163 },
+    { "lat": 38.7204639, "lon": -9.1451912 },
+    { "lat": 38.7204159, "lon": -9.1451494 },
+    { "lat": 38.7203679, "lon": -9.1451075 },
+    { "lat": 38.7203200, "lon": -9.1450657 },
+    { "lat": 38.7202720, "lon": -9.1450238 },
+    { "lat": 38.7202275, "lon": -9.1449850 },
+    { "lat": 38.7202709, "lon": -9.1449028 },
+    { "lat": 38.7203033, "lon": -9.1448438 },
+    { "lat": 38.7203662, "lon": -9.1449005 },
+    { "lat": 38.7204788, "lon": -9.1446937 },
+    { "lat": 38.7204907, "lon": -9.1446726 },
+    { "lat": 38.7207272, "lon": -9.1448821 }
+  ],
+  "tags": {
+    "amenity": "theatre",
+    "architect": "Raul Lino",
+    "architect:wikidata": "Q823123",
+    "building": "yes",
+    "name": "Tivoli",
+    "website": "https://www.teatrotivolibbva.pt/",
+    "wikidata": "Q10378931",
+    "wikimedia_commons": "Category:Teatro Tivoli"
+  }
+},
+{
+  "type": "way",
+  "id": 98544532,
+  "bounds": {
+    "minlat": 38.7197675,
+    "minlon": -9.1446595,
+    "maxlat": 38.7199846,
+    "maxlon": -9.1442937
+  },
+  "geometry": [
+    { "lat": 38.7197675, "lon": -9.1445838 },
+    { "lat": 38.7198542, "lon": -9.1446595 },
+    { "lat": 38.7199842, "lon": -9.1443768 },
+    { "lat": 38.7199683, "lon": -9.1443652 },
+    { "lat": 38.7199846, "lon": -9.1443293 },
+    { "lat": 38.7199395, "lon": -9.1442937 },
+    { "lat": 38.7199229, "lon": -9.1443279 },
+    { "lat": 38.7198925, "lon": -9.1443025 },
+    { "lat": 38.7198101, "lon": -9.1444784 },
+    { "lat": 38.7198169, "lon": -9.1444837 },
+    { "lat": 38.7197675, "lon": -9.1445838 }
+  ],
+  "tags": {
+    "addr:housenumber": "166",
+    "addr:street": "Avenida da Liberdade",
+    "alt_name": "Palacete Lambertini",
+    "building": "house",
+    "building:levels": "5",
+    "castle_type": "palace",
+    "description": "Mandada construir por iniciativa de Miguel A. Lambertini, foi projetada, em 1901, pelo arq. Nicola Bigaglia. Este edifício recebeu, ex-aequo com outro imóvel, uma Menção Honrosa do Prémio Valmor de 1904, facto que não agradou de todo ao seu propr",
+    "historic": "castle",
+    "name": "Casa Lambertini",
+    "source": "dadosabertos.cm-lisboa.pt",
+    "source:name": "CICL",
+    "wikidata": "Q133467843",
+    "wikimedia_commons": "Category:Palacete Lambertini"
+  }
+},
+{
+  "type": "way",
+  "id": 98544536,
+  "bounds": {
+    "minlat": 38.7193086,
+    "minlon": -9.1444404,
+    "maxlat": 38.7196854,
+    "maxlon": -9.1440193
+  },
+  "geometry": [
+    { "lat": 38.7196854, "lon": -9.1442695 },
+    { "lat": 38.7195722, "lon": -9.1441719 },
+    { "lat": 38.7195830, "lon": -9.1441533 },
+    { "lat": 38.7195561, "lon": -9.1441303 },
+    { "lat": 38.7195627, "lon": -9.1441175 },
+    { "lat": 38.7195475, "lon": -9.1441038 },
+    { "lat": 38.7195312, "lon": -9.1441366 },
+    { "lat": 38.7193952, "lon": -9.1440193 },
+    { "lat": 38.7193086, "lon": -9.1441835 },
+    { "lat": 38.7196031, "lon": -9.1444404 },
+    { "lat": 38.7196408, "lon": -9.1443634 },
+    { "lat": 38.7196854, "lon": -9.1442695 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "yes",
+    "building:levels": "8",
+    "name": "Edifício MCB"
+  }
+},
+{
+  "type": "way",
+  "id": 98544541,
+  "bounds": {
+    "minlat": 38.7212022,
+    "minlon": -9.1449902,
+    "maxlat": 38.7213238,
+    "maxlon": -9.1448128
+  },
+  "geometry": [
+    { "lat": 38.7212022, "lon": -9.1449299 },
+    { "lat": 38.7212713, "lon": -9.1449902 },
+    { "lat": 38.7213149, "lon": -9.1448736 },
+    { "lat": 38.7213238, "lon": -9.1448486 },
+    { "lat": 38.7212668, "lon": -9.1448128 },
+    { "lat": 38.7212580, "lon": -9.1448282 },
+    { "lat": 38.7212022, "lon": -9.1449299 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 98544551,
+  "bounds": {
+    "minlat": 38.7196031,
+    "minlon": -9.1445088,
+    "maxlat": 38.7197335,
+    "maxlon": -9.1443634
+  },
+  "geometry": [
+    { "lat": 38.7196031, "lon": -9.1444404 },
+    { "lat": 38.7196815, "lon": -9.1445088 },
+    { "lat": 38.7197335, "lon": -9.1444156 },
+    { "lat": 38.7196408, "lon": -9.1443634 },
+    { "lat": 38.7196031, "lon": -9.1444404 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "yes",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 98544559,
+  "bounds": {
+    "minlat": 38.7196815,
+    "minlon": -9.1445838,
+    "maxlat": 38.7198925,
+    "maxlon": -9.1442267
+  },
+  "geometry": [
+    { "lat": 38.7196815, "lon": -9.1445088 },
+    { "lat": 38.7197675, "lon": -9.1445838 },
+    { "lat": 38.7198169, "lon": -9.1444837 },
+    { "lat": 38.7198101, "lon": -9.1444784 },
+    { "lat": 38.7198925, "lon": -9.1443025 },
+    { "lat": 38.7198172, "lon": -9.1442267 },
+    { "lat": 38.7197737, "lon": -9.1443239 },
+    { "lat": 38.7198040, "lon": -9.1443457 },
+    { "lat": 38.7197722, "lon": -9.1444189 },
+    { "lat": 38.7197430, "lon": -9.1443956 },
+    { "lat": 38.7197335, "lon": -9.1444156 },
+    { "lat": 38.7196815, "lon": -9.1445088 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "yes",
+    "building:levels": "3",
+    "wikidata": "Q135529260"
+  }
+},
+{
+  "type": "way",
+  "id": 99804266,
+  "bounds": {
+    "minlat": 38.7209978,
+    "minlon": -9.1455744,
+    "maxlat": 38.7212413,
+    "maxlon": -9.1452606
+  },
+  "geometry": [
+    { "lat": 38.7211430, "lon": -9.1455744 },
+    { "lat": 38.7212413, "lon": -9.1453973 },
+    { "lat": 38.7210962, "lon": -9.1452606 },
+    { "lat": 38.7209978, "lon": -9.1454457 },
+    { "lat": 38.7211430, "lon": -9.1455744 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 99804342,
+  "bounds": {
+    "minlat": 38.7215086,
+    "minlon": -9.1454488,
+    "maxlat": 38.7218420,
+    "maxlon": -9.1450766
+  },
+  "geometry": [
+    { "lat": 38.7215086, "lon": -9.1451972 },
+    { "lat": 38.7217970, "lon": -9.1454488 },
+    { "lat": 38.7218360, "lon": -9.1453439 },
+    { "lat": 38.7218420, "lon": -9.1453276 },
+    { "lat": 38.7217638, "lon": -9.1452591 },
+    { "lat": 38.7217059, "lon": -9.1452085 },
+    { "lat": 38.7216494, "lon": -9.1451590 },
+    { "lat": 38.7215553, "lon": -9.1450766 },
+    { "lat": 38.7215086, "lon": -9.1451972 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 99804387,
+  "bounds": {
+    "minlat": 38.7210671,
+    "minlon": -9.1460536,
+    "maxlat": 38.7215701,
+    "maxlon": -9.1455744
+  },
+  "geometry": [
+    { "lat": 38.7214526, "lon": -9.1460536 },
+    { "lat": 38.7210671, "lon": -9.1457173 },
+    { "lat": 38.7211430, "lon": -9.1455744 },
+    { "lat": 38.7211854, "lon": -9.1456126 },
+    { "lat": 38.7211975, "lon": -9.1455908 },
+    { "lat": 38.7214930, "lon": -9.1458500 },
+    { "lat": 38.7215234, "lon": -9.1457913 },
+    { "lat": 38.7215701, "lon": -9.1458309 },
+    { "lat": 38.7215219, "lon": -9.1459237 },
+    { "lat": 38.7215058, "lon": -9.1459539 },
+    { "lat": 38.7214526, "lon": -9.1460536 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "architect": "Fernando da Silva Pinheiro",
+    "building": "yes",
+    "building:levels": "7",
+    "name": "Edifício Vitória",
+    "wikidata": "Q1284589"
+  }
+},
+{
+  "type": "way",
+  "id": 99804400,
+  "bounds": {
+    "minlat": 38.7214309,
+    "minlon": -9.1457289,
+    "maxlat": 38.7216794,
+    "maxlon": -9.1454566
+  },
+  "geometry": [
+    { "lat": 38.7214866, "lon": -9.1454566 },
+    { "lat": 38.7216794, "lon": -9.1456247 },
+    { "lat": 38.7216238, "lon": -9.1457289 },
+    { "lat": 38.7215534, "lon": -9.1456672 },
+    { "lat": 38.7215363, "lon": -9.1456995 },
+    { "lat": 38.7214785, "lon": -9.1456489 },
+    { "lat": 38.7214941, "lon": -9.1456197 },
+    { "lat": 38.7214309, "lon": -9.1455633 },
+    { "lat": 38.7214866, "lon": -9.1454566 }
+  ],
+  "tags": {
+    "addr:housenumber": "17",
+    "addr:street": "Rua Rodrigues Sampaio",
+    "architect": "Cassiano Branco",
+    "architect:wikidata": "Q517971",
+    "building": "yes",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 99804403,
+  "bounds": {
+    "minlat": 38.7209221,
+    "minlon": -9.1457173,
+    "maxlat": 38.7211430,
+    "maxlon": -9.1454457
+  },
+  "geometry": [
+    { "lat": 38.7210671, "lon": -9.1457173 },
+    { "lat": 38.7209221, "lon": -9.1455909 },
+    { "lat": 38.7209978, "lon": -9.1454457 },
+    { "lat": 38.7211430, "lon": -9.1455744 },
+    { "lat": 38.7210671, "lon": -9.1457173 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "yes",
+    "building:levels": "8"
+  }
+},
+{
+  "type": "way",
+  "id": 99804443,
+  "bounds": {
+    "minlat": 38.7212413,
+    "minlon": -9.1455633,
+    "maxlat": 38.7214866,
+    "maxlon": -9.1452910
+  },
+  "geometry": [
+    { "lat": 38.7212968, "lon": -9.1452910 },
+    { "lat": 38.7214866, "lon": -9.1454566 },
+    { "lat": 38.7214309, "lon": -9.1455633 },
+    { "lat": 38.7213725, "lon": -9.1455133 },
+    { "lat": 38.7213548, "lon": -9.1455472 },
+    { "lat": 38.7212809, "lon": -9.1454839 },
+    { "lat": 38.7212999, "lon": -9.1454476 },
+    { "lat": 38.7212413, "lon": -9.1453973 },
+    { "lat": 38.7212968, "lon": -9.1452910 }
+  ],
+  "tags": {
+    "architect": "Cassiano Branco",
+    "architect:wikidata": "Q517971",
+    "building": "yes",
+    "building:levels": "8"
+  }
+},
+{
+  "type": "way",
+  "id": 99804479,
+  "bounds": {
+    "minlat": 38.7209939,
+    "minlon": -9.1453973,
+    "maxlat": 38.7212968,
+    "maxlon": -9.1450699
+  },
+  "geometry": [
+    { "lat": 38.7212413, "lon": -9.1453973 },
+    { "lat": 38.7212968, "lon": -9.1452910 },
+    { "lat": 38.7210434, "lon": -9.1450699 },
+    { "lat": 38.7209939, "lon": -9.1451629 },
+    { "lat": 38.7210962, "lon": -9.1452606 },
+    { "lat": 38.7212413, "lon": -9.1453973 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "7"
+  }
+},
+{
+  "type": "way",
+  "id": 99804527,
+  "bounds": {
+    "minlat": 38.7212713,
+    "minlon": -9.1451972,
+    "maxlat": 38.7215553,
+    "maxlon": -9.1448736
+  },
+  "geometry": [
+    { "lat": 38.7212713, "lon": -9.1449902 },
+    { "lat": 38.7215086, "lon": -9.1451972 },
+    { "lat": 38.7215553, "lon": -9.1450766 },
+    { "lat": 38.7214690, "lon": -9.1450037 },
+    { "lat": 38.7213149, "lon": -9.1448736 },
+    { "lat": 38.7212713, "lon": -9.1449902 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 99958224,
+  "bounds": {
+    "minlat": 38.7206678,
+    "minlon": -9.1454978,
+    "maxlat": 38.7209471,
+    "maxlon": -9.1450215
+  },
+  "geometry": [
+    { "lat": 38.7208154, "lon": -9.1454978 },
+    { "lat": 38.7206858, "lon": -9.1453847 },
+    { "lat": 38.7206740, "lon": -9.1453732 },
+    { "lat": 38.7206678, "lon": -9.1453560 },
+    { "lat": 38.7206686, "lon": -9.1453370 },
+    { "lat": 38.7206763, "lon": -9.1453208 },
+    { "lat": 38.7208351, "lon": -9.1450215 },
+    { "lat": 38.7209471, "lon": -9.1451199 },
+    { "lat": 38.7208456, "lon": -9.1453118 },
+    { "lat": 38.7208904, "lon": -9.1453538 },
+    { "lat": 38.7208154, "lon": -9.1454978 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "7"
+  }
+},
+{
+  "type": "way",
+  "id": 99958286,
+  "bounds": {
+    "minlat": 38.7216238,
+    "minlon": -9.1458985,
+    "maxlat": 38.7218713,
+    "maxlon": -9.1456247
+  },
+  "geometry": [
+    { "lat": 38.7216238, "lon": -9.1457289 },
+    { "lat": 38.7218144, "lon": -9.1458985 },
+    { "lat": 38.7218713, "lon": -9.1457921 },
+    { "lat": 38.7216794, "lon": -9.1456247 },
+    { "lat": 38.7216238, "lon": -9.1457289 }
+  ],
+  "tags": {
+    "architect": "Raul Rodrigues Lima",
+    "architect:wikidata": "Q10357631",
+    "building": "yes",
+    "building:levels": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 99958304,
+  "bounds": {
+    "minlat": 38.7208351,
+    "minlon": -9.1451629,
+    "maxlat": 38.7210434,
+    "maxlon": -9.1449496
+  },
+  "geometry": [
+    { "lat": 38.7209939, "lon": -9.1451629 },
+    { "lat": 38.7210434, "lon": -9.1450699 },
+    { "lat": 38.7209130, "lon": -9.1449563 },
+    { "lat": 38.7209002, "lon": -9.1449496 },
+    { "lat": 38.7208863, "lon": -9.1449496 },
+    { "lat": 38.7208734, "lon": -9.1449561 },
+    { "lat": 38.7208634, "lon": -9.1449683 },
+    { "lat": 38.7208351, "lon": -9.1450215 },
+    { "lat": 38.7209471, "lon": -9.1451199 },
+    { "lat": 38.7209939, "lon": -9.1451629 }
+  ],
+  "tags": {
+    "building": "yes",
+    "building:levels": "7"
+  }
+},
+{
+  "type": "way",
+  "id": 99958462,
+  "bounds": {
+    "minlat": 38.7208154,
+    "minlon": -9.1455909,
+    "maxlat": 38.7209978,
+    "maxlon": -9.1453538
+  },
+  "geometry": [
+    { "lat": 38.7209221, "lon": -9.1455909 },
+    { "lat": 38.7208154, "lon": -9.1454978 },
+    { "lat": 38.7208904, "lon": -9.1453538 },
+    { "lat": 38.7209978, "lon": -9.1454457 },
+    { "lat": 38.7209221, "lon": -9.1455909 }
+  ],
+  "tags": {
+    "addr:street": "Avenida da Liberdade",
+    "building": "yes",
+    "building:levels": "8"
+  }
+},
+{
+  "type": "way",
+  "id": 101292705,
+  "bounds": {
+    "minlat": 38.7147387,
+    "minlon": -9.1504021,
+    "maxlat": 38.7255564,
+    "maxlon": -9.1394347
+  },
+  "geometry": [
+    { "lat": 38.7242475, "lon": -9.1502794 },
+    { "lat": 38.7244361, "lon": -9.1504021 },
+    { "lat": 38.7244494, "lon": -9.1503072 },
+    { "lat": 38.7244092, "lon": -9.1500731 },
+    { "lat": 38.7244248, "lon": -9.1498892 },
+    { "lat": 38.7244169, "lon": -9.1497707 },
+    { "lat": 38.7245038, "lon": -9.1495245 },
+    { "lat": 38.7246987, "lon": -9.1492535 },
+    { "lat": 38.7248097, "lon": -9.1490816 },
+    { "lat": 38.7248592, "lon": -9.1490429 },
+    { "lat": 38.7249301, "lon": -9.1490051 },
+    { "lat": 38.7250000, "lon": -9.1489805 },
+    { "lat": 38.7252617, "lon": -9.1489118 },
+    { "lat": 38.7255564, "lon": -9.1483717 },
+    { "lat": 38.7209844, "lon": -9.1445815 },
+    { "lat": 38.7201691, "lon": -9.1440796 },
+    { "lat": 38.7198725, "lon": -9.1438672 },
+    { "lat": 38.7195371, "lon": -9.1434627 },
+    { "lat": 38.7190390, "lon": -9.1430175 },
+    { "lat": 38.7186355, "lon": -9.1426872 },
+    { "lat": 38.7177663, "lon": -9.1419756 },
+    { "lat": 38.7178196, "lon": -9.1418165 },
+    { "lat": 38.7178946, "lon": -9.1415909 },
+    { "lat": 38.7179140, "lon": -9.1414983 },
+    { "lat": 38.7178651, "lon": -9.1414592 },
+    { "lat": 38.7175234, "lon": -9.1411655 },
+    { "lat": 38.7161222, "lon": -9.1399712 },
+    { "lat": 38.7159745, "lon": -9.1401815 },
+    { "lat": 38.7156846, "lon": -9.1399099 },
+    { "lat": 38.7155666, "lon": -9.1398093 },
+    { "lat": 38.7154707, "lon": -9.1397158 },
+    { "lat": 38.7154336, "lon": -9.1396762 },
+    { "lat": 38.7153075, "lon": -9.1396038 },
+    { "lat": 38.7150791, "lon": -9.1394347 },
+    { "lat": 38.7150364, "lon": -9.1395269 },
+    { "lat": 38.7149524, "lon": -9.1400467 },
+    { "lat": 38.7147613, "lon": -9.1406413 },
+    { "lat": 38.7147387, "lon": -9.1407491 },
+    { "lat": 38.7151054, "lon": -9.1410568 },
+    { "lat": 38.7148836, "lon": -9.1414954 },
+    { "lat": 38.7161027, "lon": -9.1429314 },
+    { "lat": 38.7178317, "lon": -9.1445922 },
+    { "lat": 38.7185200, "lon": -9.1453885 },
+    { "lat": 38.7200110, "lon": -9.1465561 },
+    { "lat": 38.7222561, "lon": -9.1486101 },
+    { "lat": 38.7222990, "lon": -9.1486465 },
+    { "lat": 38.7224708, "lon": -9.1487977 },
+    { "lat": 38.7225353, "lon": -9.1488545 },
+    { "lat": 38.7225636, "lon": -9.1488783 },
+    { "lat": 38.7225884, "lon": -9.1489002 },
+    { "lat": 38.7227742, "lon": -9.1490638 },
+    { "lat": 38.7242475, "lon": -9.1502794 }
+  ],
+  "tags": {
+    "landuse": "retail"
+  }
+},
+{
+  "type": "way",
+  "id": 141341957,
+  "bounds": {
+    "minlat": 38.7190767,
+    "minlon": -9.1486647,
+    "maxlat": 38.7284360,
+    "maxlon": -9.1419143
+  },
+  "geometry": [
+    { "lat": 38.7255564, "lon": -9.1483717 },
+    { "lat": 38.7259072, "lon": -9.1478284 },
+    { "lat": 38.7260533, "lon": -9.1479662 },
+    { "lat": 38.7262250, "lon": -9.1481326 },
+    { "lat": 38.7260198, "lon": -9.1483981 },
+    { "lat": 38.7263955, "lon": -9.1486647 },
+    { "lat": 38.7272066, "lon": -9.1481748 },
+    { "lat": 38.7279545, "lon": -9.1476986 },
+    { "lat": 38.7280168, "lon": -9.1474077 },
+    { "lat": 38.7279624, "lon": -9.1471556 },
+    { "lat": 38.7278118, "lon": -9.1468820 },
+    { "lat": 38.7281632, "lon": -9.1466116 },
+    { "lat": 38.7283751, "lon": -9.1452371 },
+    { "lat": 38.7284360, "lon": -9.1451188 },
+    { "lat": 38.7281228, "lon": -9.1448845 },
+    { "lat": 38.7272880, "lon": -9.1441333 },
+    { "lat": 38.7268402, "lon": -9.1447341 },
+    { "lat": 38.7259614, "lon": -9.1439402 },
+    { "lat": 38.7254717, "lon": -9.1445785 },
+    { "lat": 38.7246479, "lon": -9.1438243 },
+    { "lat": 38.7243627, "lon": -9.1435700 },
+    { "lat": 38.7246975, "lon": -9.1429477 },
+    { "lat": 38.7246772, "lon": -9.1427997 },
+    { "lat": 38.7243459, "lon": -9.1425025 },
+    { "lat": 38.7242078, "lon": -9.1424435 },
+    { "lat": 38.7240614, "lon": -9.1423147 },
+    { "lat": 38.7240865, "lon": -9.1420412 },
+    { "lat": 38.7235633, "lon": -9.1419768 },
+    { "lat": 38.7232829, "lon": -9.1426098 },
+    { "lat": 38.7230601, "lon": -9.1435721 },
+    { "lat": 38.7220818, "lon": -9.1433072 },
+    { "lat": 38.7220190, "lon": -9.1435861 },
+    { "lat": 38.7219771, "lon": -9.1436129 },
+    { "lat": 38.7217218, "lon": -9.1435003 },
+    { "lat": 38.7216647, "lon": -9.1436727 },
+    { "lat": 38.7214098, "lon": -9.1434247 },
+    { "lat": 38.7211153, "lon": -9.1429649 },
+    { "lat": 38.7210061, "lon": -9.1428502 },
+    { "lat": 38.7208119, "lon": -9.1426326 },
+    { "lat": 38.7207617, "lon": -9.1425572 },
+    { "lat": 38.7207307, "lon": -9.1424615 },
+    { "lat": 38.7206150, "lon": -9.1419143 },
+    { "lat": 38.7203407, "lon": -9.1420841 },
+    { "lat": 38.7199849, "lon": -9.1420090 },
+    { "lat": 38.7198928, "lon": -9.1420412 },
+    { "lat": 38.7191459, "lon": -9.1429079 },
+    { "lat": 38.7190767, "lon": -9.1429692 },
+    { "lat": 38.7195413, "lon": -9.1433930 },
+    { "lat": 38.7199102, "lon": -9.1438297 },
+    { "lat": 38.7209844, "lon": -9.1445815 },
+    { "lat": 38.7255564, "lon": -9.1483717 }
+  ],
+  "tags": {
+    "landuse": "residential"
+  }
+},
+{
+  "type": "way",
+  "id": 141439242,
+  "bounds": {
+    "minlat": 38.7154392,
+    "minlon": -9.1481225,
+    "maxlat": 38.7184905,
+    "maxlon": -9.1429314
+  },
+  "geometry": [
+    { "lat": 38.7179547, "lon": -9.1472662 },
+    { "lat": 38.7174985, "lon": -9.1476739 },
+    { "lat": 38.7175083, "lon": -9.1477790 },
+    { "lat": 38.7174724, "lon": -9.1478655 },
+    { "lat": 38.7173529, "lon": -9.1477777 },
+    { "lat": 38.7172683, "lon": -9.1479367 },
+    { "lat": 38.7169739, "lon": -9.1481225 },
+    { "lat": 38.7163552, "lon": -9.1473949 },
+    { "lat": 38.7162082, "lon": -9.1472357 },
+    { "lat": 38.7159252, "lon": -9.1456037 },
+    { "lat": 38.7158553, "lon": -9.1456208 },
+    { "lat": 38.7157644, "lon": -9.1449727 },
+    { "lat": 38.7160426, "lon": -9.1450188 },
+    { "lat": 38.7162929, "lon": -9.1447256 },
+    { "lat": 38.7157824, "lon": -9.1439778 },
+    { "lat": 38.7155731, "lon": -9.1436559 },
+    { "lat": 38.7154903, "lon": -9.1435130 },
+    { "lat": 38.7154392, "lon": -9.1433555 },
+    { "lat": 38.7159298, "lon": -9.1431696 },
+    { "lat": 38.7161027, "lon": -9.1429314 },
+    { "lat": 38.7178317, "lon": -9.1445922 },
+    { "lat": 38.7176626, "lon": -9.1448380 },
+    { "lat": 38.7175705, "lon": -9.1449399 },
+    { "lat": 38.7174444, "lon": -9.1451679 },
+    { "lat": 38.7179673, "lon": -9.1459304 },
+    { "lat": 38.7182025, "lon": -9.1454227 },
+    { "lat": 38.7184905, "lon": -9.1457051 },
+    { "lat": 38.7179547, "lon": -9.1472662 }
+  ],
+  "tags": {
+    "landuse": "residential"
+  }
+},
+{
+  "type": "way",
+  "id": 141439254,
+  "bounds": {
+    "minlat": 38.7181338,
+    "minlon": -9.1538556,
+    "maxlat": 38.7210783,
+    "maxlon": -9.1461653
+  },
+  "geometry": [
+    { "lat": 38.7199784, "lon": -9.1538349 },
+    { "lat": 38.7198599, "lon": -9.1538556 },
+    { "lat": 38.7198340, "lon": -9.1535667 },
+    { "lat": 38.7196856, "lon": -9.1535947 },
+    { "lat": 38.7192333, "lon": -9.1524924 },
+    { "lat": 38.7189238, "lon": -9.1527917 },
+    { "lat": 38.7189378, "lon": -9.1528192 },
+    { "lat": 38.7188394, "lon": -9.1529123 },
+    { "lat": 38.7189003, "lon": -9.1530339 },
+    { "lat": 38.7189415, "lon": -9.1529926 },
+    { "lat": 38.7190489, "lon": -9.1531050 },
+    { "lat": 38.7189203, "lon": -9.1532774 },
+    { "lat": 38.7186970, "lon": -9.1529730 },
+    { "lat": 38.7185639, "lon": -9.1527015 },
+    { "lat": 38.7188568, "lon": -9.1524117 },
+    { "lat": 38.7186243, "lon": -9.1520672 },
+    { "lat": 38.7184175, "lon": -9.1522896 },
+    { "lat": 38.7181338, "lon": -9.1517977 },
+    { "lat": 38.7181964, "lon": -9.1517170 },
+    { "lat": 38.7183816, "lon": -9.1519869 },
+    { "lat": 38.7188860, "lon": -9.1513807 },
+    { "lat": 38.7196519, "lon": -9.1505411 },
+    { "lat": 38.7196038, "lon": -9.1500986 },
+    { "lat": 38.7194852, "lon": -9.1501123 },
+    { "lat": 38.7194636, "lon": -9.1498196 },
+    { "lat": 38.7194691, "lon": -9.1494109 },
+    { "lat": 38.7194448, "lon": -9.1486019 },
+    { "lat": 38.7196498, "lon": -9.1486207 },
+    { "lat": 38.7196980, "lon": -9.1480494 },
+    { "lat": 38.7195640, "lon": -9.1480413 },
+    { "lat": 38.7195703, "lon": -9.1472984 },
+    { "lat": 38.7196394, "lon": -9.1473010 },
+    { "lat": 38.7196352, "lon": -9.1467968 },
+    { "lat": 38.7194719, "lon": -9.1461653 },
+    { "lat": 38.7200513, "lon": -9.1466137 },
+    { "lat": 38.7200527, "lon": -9.1466453 },
+    { "lat": 38.7197911, "lon": -9.1466734 },
+    { "lat": 38.7198348, "lon": -9.1472734 },
+    { "lat": 38.7198361, "lon": -9.1474405 },
+    { "lat": 38.7201563, "lon": -9.1474378 },
+    { "lat": 38.7201446, "lon": -9.1482149 },
+    { "lat": 38.7205010, "lon": -9.1482403 },
+    { "lat": 38.7204637, "lon": -9.1486266 },
+    { "lat": 38.7198202, "lon": -9.1485101 },
+    { "lat": 38.7197197, "lon": -9.1491858 },
+    { "lat": 38.7197252, "lon": -9.1495595 },
+    { "lat": 38.7198288, "lon": -9.1505721 },
+    { "lat": 38.7210783, "lon": -9.1516627 },
+    { "lat": 38.7200119, "lon": -9.1538295 },
+    { "lat": 38.7199784, "lon": -9.1538349 }
+  ],
+  "tags": {
+    "landuse": "residential"
+  }
+},
+{
+  "type": "way",
+  "id": 150216150,
+  "bounds": {
+    "minlat": 38.7191556,
+    "minlon": -9.1466797,
+    "maxlat": 38.7195143,
+    "maxlon": -9.1460695
+  },
+  "geometry": [
+    { "lat": 38.7195143, "lon": -9.1465750 },
+    { "lat": 38.7193548, "lon": -9.1466797 },
+    { "lat": 38.7191706, "lon": -9.1462384 },
+    { "lat": 38.7191687, "lon": -9.1462293 },
+    { "lat": 38.7191706, "lon": -9.1462202 },
+    { "lat": 38.7191744, "lon": -9.1462128 },
+    { "lat": 38.7191811, "lon": -9.1462054 },
+    { "lat": 38.7191556, "lon": -9.1461458 },
+    { "lat": 38.7192654, "lon": -9.1460695 },
+    { "lat": 38.7193009, "lon": -9.1461537 },
+    { "lat": 38.7193151, "lon": -9.1461450 },
+    { "lat": 38.7193301, "lon": -9.1461808 },
+    { "lat": 38.7193712, "lon": -9.1461568 },
+    { "lat": 38.7195143, "lon": -9.1465750 }
+  ],
+  "tags": {
+    "amenity": "theatre",
+    "building": "yes",
+    "name": "Teatro Maria Vitória",
+    "wikidata": "Q3516762",
+    "wikimedia_commons": "Category:Teatro Maria Vitória",
+    "wikipedia": "en:Teatro Maria Vitória"
+  }
+},
+{
+  "type": "way",
+  "id": 447451672,
+  "bounds": {
+    "minlat": 38.7197887,
+    "minlon": -9.1441062,
+    "maxlat": 38.7199517,
+    "maxlon": -9.1438601
+  },
+  "geometry": [
+    { "lat": 38.7198685, "lon": -9.1441062 },
+    { "lat": 38.7197887, "lon": -9.1440512 },
+    { "lat": 38.7198229, "lon": -9.1439820 },
+    { "lat": 38.7198836, "lon": -9.1438601 },
+    { "lat": 38.7199517, "lon": -9.1439272 },
+    { "lat": 38.7198685, "lon": -9.1441062 }
+  ],
+  "tags": {
+    "addr:housenumber": "173",
+    "addr:street": "Rua de São José",
+    "building": "apartments",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 447451676,
+  "bounds": {
+    "minlat": 38.7199550,
+    "minlon": -9.1442163,
+    "maxlat": 38.7201049,
+    "maxlon": -9.1439993
+  },
+  "geometry": [
+    { "lat": 38.7201049, "lon": -9.1440505 },
+    { "lat": 38.7200249, "lon": -9.1439993 },
+    { "lat": 38.7199550, "lon": -9.1441678 },
+    { "lat": 38.7200324, "lon": -9.1442163 },
+    { "lat": 38.7201049, "lon": -9.1440505 }
+  ],
+  "tags": {
+    "addr:housenumber": "185",
+    "addr:street": "Rua de São José",
+    "building": "apartments",
+    "building:levels": "4"
+  }
+},
+{
+  "type": "way",
+  "id": 447452525,
+  "bounds": {
+    "minlat": 38.7197164,
+    "minlon": -9.1439820,
+    "maxlat": 38.7198836,
+    "maxlon": -9.1437610
+  },
+  "geometry": [
+    { "lat": 38.7197164, "lon": -9.1438805 },
+    { "lat": 38.7198229, "lon": -9.1439820 },
+    { "lat": 38.7198836, "lon": -9.1438601 },
+    { "lat": 38.7197829, "lon": -9.1437610 },
+    { "lat": 38.7197164, "lon": -9.1438805 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "building:levels": "3"
+  }
+},
+{
+  "type": "way",
+  "id": 495956115,
+  "bounds": {
+    "minlat": 38.7220094,
+    "minlon": -9.1457428,
+    "maxlat": 38.7222008,
+    "maxlon": -9.1454683
+  },
+  "geometry": [
+    { "lat": 38.7220094, "lon": -9.1456340 },
+    { "lat": 38.7221342, "lon": -9.1457428 },
+    { "lat": 38.7221722, "lon": -9.1456266 },
+    { "lat": 38.7222008, "lon": -9.1455408 },
+    { "lat": 38.7220819, "lon": -9.1454683 },
+    { "lat": 38.7220711, "lon": -9.1454932 },
+    { "lat": 38.7220094, "lon": -9.1456340 }
+  ],
+  "tags": {
+    "landuse": "construction",
+    "name": "Hotel"
+  }
+},
+{
+  "type": "way",
+  "id": 496383202,
+  "bounds": {
+    "minlat": 38.7198705,
+    "minlon": -9.1471664,
+    "maxlat": 38.7200712,
+    "maxlon": -9.1467853
+  },
+  "geometry": [
+    { "lat": 38.7198840, "lon": -9.1471664 },
+    { "lat": 38.7200712, "lon": -9.1468117 },
+    { "lat": 38.7200434, "lon": -9.1467893 },
+    { "lat": 38.7199934, "lon": -9.1467853 },
+    { "lat": 38.7198705, "lon": -9.1468117 },
+    { "lat": 38.7198840, "lon": -9.1471664 }
+  ],
+  "tags": {
+    "landuse": "grass"
+  }
+},
+{
+  "type": "way",
+  "id": 552199567,
+  "bounds": {
+    "minlat": 38.7175698,
+    "minlon": -9.1479895,
+    "maxlat": 38.7182326,
+    "maxlon": -9.1471158
+  },
+  "geometry": [
+    { "lat": 38.7178580, "lon": -9.1473854 },
+    { "lat": 38.7177607, "lon": -9.1474781 },
+    { "lat": 38.7176789, "lon": -9.1475561 },
+    { "lat": 38.7176827, "lon": -9.1476504 },
+    { "lat": 38.7175698, "lon": -9.1477517 },
+    { "lat": 38.7176776, "lon": -9.1479895 },
+    { "lat": 38.7177566, "lon": -9.1479272 },
+    { "lat": 38.7178036, "lon": -9.1478902 },
+    { "lat": 38.7180842, "lon": -9.1476691 },
+    { "lat": 38.7182326, "lon": -9.1472246 },
+    { "lat": 38.7181605, "lon": -9.1471894 },
+    { "lat": 38.7180100, "lon": -9.1471158 },
+    { "lat": 38.7179570, "lon": -9.1472662 },
+    { "lat": 38.7179020, "lon": -9.1472344 },
+    { "lat": 38.7178427, "lon": -9.1473462 },
+    { "lat": 38.7178504, "lon": -9.1473658 },
+    { "lat": 38.7178580, "lon": -9.1473854 }
+  ],
+  "tags": {
+    "architect": "Frederico Valsassina Arquitectos",
+    "architect:landscape": "Sofia Raimundo",
+    "construction": "residential",
+    "contractor": "Alves Ribeiro",
+    "design:acoustics": "Certiprojecto",
+    "design:electrical": "RS Engenharia",
+    "design:hvac": "Gestão de Energia Térmica",
+    "design:masterplan": "Reify Urban Creators",
+    "design:solid_waste": "LAQRE",
+    "design:structural": "A2P",
+    "design:telecom": "RS Engenharia",
+    "design:utilities": "Campo d'Água",
+    "developer": "EastBanc Portugal;Príncipe Real Fundo de Reabilitação Urbana",
+    "landuse": "construction",
+    "name": "Rua da Alegria 76"
+  }
+},
+{
+  "type": "way",
+  "id": 569409942,
+  "bounds": {
+    "minlat": 38.7198782,
+    "minlon": -9.1447892,
+    "maxlat": 38.7201180,
+    "maxlon": -9.1444190
+  },
+  "geometry": [
+    { "lat": 38.7201169, "lon": -9.1445272 },
+    { "lat": 38.7200929, "lon": -9.1445079 },
+    { "lat": 38.7201180, "lon": -9.1444562 },
+    { "lat": 38.7200866, "lon": -9.1444281 },
+    { "lat": 38.7200616, "lon": -9.1444785 },
+    { "lat": 38.7199942, "lon": -9.1444190 },
+    { "lat": 38.7198782, "lon": -9.1446804 },
+    { "lat": 38.7200030, "lon": -9.1447892 },
+    { "lat": 38.7201169, "lon": -9.1445272 }
+  ],
+  "tags": {
+    "addr:housenumber": "170",
+    "addr:street": "Avenida da Liberdade",
+    "architect": "Cassiano Branco",
+    "architect:wikidata": "Q517971",
+    "building": "commercial",
+    "building:levels": "4",
+    "old_name": "Hotel Vitória",
+    "wikidata": "Q66814330",
+    "wikimedia_commons": "Category:Edifício do antigo Hotel Vitória"
+  }
+},
+{
+  "type": "way",
+  "id": 633433923,
+  "bounds": {
+    "minlat": 38.7200324,
+    "minlon": -9.1443271,
+    "maxlat": 38.7202774,
+    "maxlon": -9.1440505
+  },
+  "geometry": [
+    { "lat": 38.7200324, "lon": -9.1442163 },
+    { "lat": 38.7200608, "lon": -9.1442341 },
+    { "lat": 38.7200560, "lon": -9.1442466 },
+    { "lat": 38.7201460, "lon": -9.1443030 },
+    { "lat": 38.7201507, "lon": -9.1442904 },
+    { "lat": 38.7202012, "lon": -9.1443271 },
+    { "lat": 38.7202774, "lon": -9.1441463 },
+    { "lat": 38.7201049, "lon": -9.1440505 },
+    { "lat": 38.7200324, "lon": -9.1442163 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 633433925,
+  "bounds": {
+    "minlat": 38.7198685,
+    "minlon": -9.1441678,
+    "maxlat": 38.7200249,
+    "maxlon": -9.1439272
+  },
+  "geometry": [
+    { "lat": 38.7199517, "lon": -9.1439272 },
+    { "lat": 38.7200249, "lon": -9.1439993 },
+    { "lat": 38.7199550, "lon": -9.1441678 },
+    { "lat": 38.7198685, "lon": -9.1441062 },
+    { "lat": 38.7199517, "lon": -9.1439272 }
+  ],
+  "tags": {
+    "addr:housenumber": "179",
+    "addr:street": "Rua de São José",
+    "building": "apartments",
+    "building:levels": "5"
+  }
+},
+{
+  "type": "way",
+  "id": 854392415,
+  "bounds": {
+    "minlat": 38.7211373,
+    "minlon": -9.1449299,
+    "maxlat": 38.7212580,
+    "maxlon": -9.1447637
+  },
+  "geometry": [
+    { "lat": 38.7212580, "lon": -9.1448282 },
+    { "lat": 38.7212022, "lon": -9.1449299 },
+    { "lat": 38.7211373, "lon": -9.1448733 },
+    { "lat": 38.7211854, "lon": -9.1447637 },
+    { "lat": 38.7212580, "lon": -9.1448282 }
+  ],
+  "tags": {
+    "building": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 854392416,
+  "bounds": {
+    "minlat": 38.7210004,
+    "minlon": -9.1448733,
+    "maxlat": 38.7211854,
+    "maxlon": -9.1446651
+  },
+  "geometry": [
+    { "lat": 38.7211373, "lon": -9.1448733 },
+    { "lat": 38.7210153, "lon": -9.1447669 },
+    { "lat": 38.7210057, "lon": -9.1447533 },
+    { "lat": 38.7210005, "lon": -9.1447362 },
+    { "lat": 38.7210004, "lon": -9.1447179 },
+    { "lat": 38.7210055, "lon": -9.1447007 },
+    { "lat": 38.7210218, "lon": -9.1446699 },
+    { "lat": 38.7210336, "lon": -9.1446695 },
+    { "lat": 38.7210450, "lon": -9.1446657 },
+    { "lat": 38.7210568, "lon": -9.1446651 },
+    { "lat": 38.7210665, "lon": -9.1446680 },
+    { "lat": 38.7211854, "lon": -9.1447637 },
+    { "lat": 38.7211373, "lon": -9.1448733 }
+  ],
+  "tags": {
+    "building": "apartments",
+    "name": "Liberdade Premium Apartments"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844510,
+  "bounds": {
+    "minlat": 38.7217021,
+    "minlon": -9.1472495,
+    "maxlat": 38.7217651,
+    "maxlon": -9.1471687
+  },
+  "geometry": [
+    { "lat": 38.7217068, "lon": -9.1471854 },
+    { "lat": 38.7217161, "lon": -9.1471745 },
+    { "lat": 38.7217278, "lon": -9.1471687 },
+    { "lat": 38.7217403, "lon": -9.1471688 },
+    { "lat": 38.7217520, "lon": -9.1471747 },
+    { "lat": 38.7217605, "lon": -9.1471866 },
+    { "lat": 38.7217651, "lon": -9.1472017 },
+    { "lat": 38.7217650, "lon": -9.1472178 },
+    { "lat": 38.7217604, "lon": -9.1472328 },
+    { "lat": 38.7217511, "lon": -9.1472437 },
+    { "lat": 38.7217394, "lon": -9.1472495 },
+    { "lat": 38.7217268, "lon": -9.1472494 },
+    { "lat": 38.7217151, "lon": -9.1472435 },
+    { "lat": 38.7217066, "lon": -9.1472316 },
+    { "lat": 38.7217021, "lon": -9.1472165 },
+    { "lat": 38.7217022, "lon": -9.1472004 },
+    { "lat": 38.7217068, "lon": -9.1471854 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844511,
+  "bounds": {
+    "minlat": 38.7203874,
+    "minlon": -9.1461028,
+    "maxlat": 38.7204504,
+    "maxlon": -9.1460220
+  },
+  "geometry": [
+    { "lat": 38.7204007, "lon": -9.1460970 },
+    { "lat": 38.7203921, "lon": -9.1460852 },
+    { "lat": 38.7203875, "lon": -9.1460702 },
+    { "lat": 38.7203874, "lon": -9.1460541 },
+    { "lat": 38.7203919, "lon": -9.1460391 },
+    { "lat": 38.7204011, "lon": -9.1460281 },
+    { "lat": 38.7204127, "lon": -9.1460221 },
+    { "lat": 38.7204253, "lon": -9.1460220 },
+    { "lat": 38.7204371, "lon": -9.1460278 },
+    { "lat": 38.7204457, "lon": -9.1460395 },
+    { "lat": 38.7204504, "lon": -9.1460545 },
+    { "lat": 38.7204504, "lon": -9.1460706 },
+    { "lat": 38.7204459, "lon": -9.1460857 },
+    { "lat": 38.7204367, "lon": -9.1460967 },
+    { "lat": 38.7204251, "lon": -9.1461027 },
+    { "lat": 38.7204125, "lon": -9.1461028 },
+    { "lat": 38.7204007, "lon": -9.1460970 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844512,
+  "bounds": {
+    "minlat": 38.7222320,
+    "minlon": -9.1471303,
+    "maxlat": 38.7222902,
+    "maxlon": -9.1470557
+  },
+  "geometry": [
+    { "lat": 38.7222448, "lon": -9.1471241 },
+    { "lat": 38.7222349, "lon": -9.1471095 },
+    { "lat": 38.7222320, "lon": -9.1470905 },
+    { "lat": 38.7222368, "lon": -9.1470722 },
+    { "lat": 38.7222482, "lon": -9.1470594 },
+    { "lat": 38.7222631, "lon": -9.1470557 },
+    { "lat": 38.7222773, "lon": -9.1470620 },
+    { "lat": 38.7222873, "lon": -9.1470766 },
+    { "lat": 38.7222902, "lon": -9.1470956 },
+    { "lat": 38.7222853, "lon": -9.1471139 },
+    { "lat": 38.7222739, "lon": -9.1471266 },
+    { "lat": 38.7222591, "lon": -9.1471303 },
+    { "lat": 38.7222448, "lon": -9.1471241 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844513,
+  "bounds": {
+    "minlat": 38.7220212,
+    "minlon": -9.1475300,
+    "maxlat": 38.7220862,
+    "maxlon": -9.1474467
+  },
+  "geometry": [
+    { "lat": 38.7220355, "lon": -9.1475230 },
+    { "lat": 38.7220244, "lon": -9.1475067 },
+    { "lat": 38.7220212, "lon": -9.1474855 },
+    { "lat": 38.7220267, "lon": -9.1474650 },
+    { "lat": 38.7220394, "lon": -9.1474508 },
+    { "lat": 38.7220559, "lon": -9.1474467 },
+    { "lat": 38.7220719, "lon": -9.1474537 },
+    { "lat": 38.7220829, "lon": -9.1474700 },
+    { "lat": 38.7220862, "lon": -9.1474912 },
+    { "lat": 38.7220807, "lon": -9.1475116 },
+    { "lat": 38.7220680, "lon": -9.1475258 },
+    { "lat": 38.7220515, "lon": -9.1475300 },
+    { "lat": 38.7220355, "lon": -9.1475230 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844514,
+  "bounds": {
+    "minlat": 38.7219161,
+    "minlon": -9.1468531,
+    "maxlat": 38.7219727,
+    "maxlon": -9.1467805
+  },
+  "geometry": [
+    { "lat": 38.7219203, "lon": -9.1467956 },
+    { "lat": 38.7219286, "lon": -9.1467858 },
+    { "lat": 38.7219391, "lon": -9.1467805 },
+    { "lat": 38.7219504, "lon": -9.1467806 },
+    { "lat": 38.7219609, "lon": -9.1467860 },
+    { "lat": 38.7219686, "lon": -9.1467966 },
+    { "lat": 38.7219727, "lon": -9.1468101 },
+    { "lat": 38.7219726, "lon": -9.1468246 },
+    { "lat": 38.7219684, "lon": -9.1468380 },
+    { "lat": 38.7219601, "lon": -9.1468478 },
+    { "lat": 38.7219496, "lon": -9.1468531 },
+    { "lat": 38.7219383, "lon": -9.1468530 },
+    { "lat": 38.7219278, "lon": -9.1468476 },
+    { "lat": 38.7219202, "lon": -9.1468370 },
+    { "lat": 38.7219161, "lon": -9.1468235 },
+    { "lat": 38.7219161, "lon": -9.1468090 },
+    { "lat": 38.7219203, "lon": -9.1467956 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844516,
+  "bounds": {
+    "minlat": 38.7205980,
+    "minlon": -9.1457034,
+    "maxlat": 38.7206546,
+    "maxlon": -9.1456309
+  },
+  "geometry": [
+    { "lat": 38.7206505, "lon": -9.1456880 },
+    { "lat": 38.7206423, "lon": -9.1456979 },
+    { "lat": 38.7206318, "lon": -9.1457033 },
+    { "lat": 38.7206205, "lon": -9.1457034 },
+    { "lat": 38.7206100, "lon": -9.1456982 },
+    { "lat": 38.7206023, "lon": -9.1456877 },
+    { "lat": 38.7205980, "lon": -9.1456742 },
+    { "lat": 38.7205980, "lon": -9.1456597 },
+    { "lat": 38.7206020, "lon": -9.1456462 },
+    { "lat": 38.7206102, "lon": -9.1456363 },
+    { "lat": 38.7206207, "lon": -9.1456309 },
+    { "lat": 38.7206321, "lon": -9.1456309 },
+    { "lat": 38.7206426, "lon": -9.1456361 },
+    { "lat": 38.7206503, "lon": -9.1456466 },
+    { "lat": 38.7206545, "lon": -9.1456601 },
+    { "lat": 38.7206546, "lon": -9.1456745 },
+    { "lat": 38.7206505, "lon": -9.1456880 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844517,
+  "bounds": {
+    "minlat": 38.7189647,
+    "minlon": -9.1442763,
+    "maxlat": 38.7190365,
+    "maxlon": -9.1442065
+  },
+  "geometry": [
+    { "lat": 38.7189697, "lon": -9.1442222 },
+    { "lat": 38.7189647, "lon": -9.1442405 },
+    { "lat": 38.7189675, "lon": -9.1442595 },
+    { "lat": 38.7189774, "lon": -9.1442742 },
+    { "lat": 38.7189822, "lon": -9.1442763 },
+    { "lat": 38.7189871, "lon": -9.1442751 },
+    { "lat": 38.7189909, "lon": -9.1442709 },
+    { "lat": 38.7189984, "lon": -9.1442638 },
+    { "lat": 38.7190069, "lon": -9.1442591 },
+    { "lat": 38.7190159, "lon": -9.1442558 },
+    { "lat": 38.7190252, "lon": -9.1442554 },
+    { "lat": 38.7190321, "lon": -9.1442538 },
+    { "lat": 38.7190365, "lon": -9.1442468 },
+    { "lat": 38.7190364, "lon": -9.1442378 },
+    { "lat": 38.7190318, "lon": -9.1442311 },
+    { "lat": 38.7190103, "lon": -9.1442123 },
+    { "lat": 38.7189998, "lon": -9.1442066 },
+    { "lat": 38.7189884, "lon": -9.1442065 },
+    { "lat": 38.7189778, "lon": -9.1442120 },
+    { "lat": 38.7189697, "lon": -9.1442222 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844518,
+  "bounds": {
+    "minlat": 38.7200667,
+    "minlon": -9.1458243,
+    "maxlat": 38.7201309,
+    "maxlon": -9.1457421
+  },
+  "geometry": [
+    { "lat": 38.7201256, "lon": -9.1458068 },
+    { "lat": 38.7201307, "lon": -9.1457919 },
+    { "lat": 38.7201309, "lon": -9.1457756 },
+    { "lat": 38.7201262, "lon": -9.1457605 },
+    { "lat": 38.7201173, "lon": -9.1457488 },
+    { "lat": 38.7201056, "lon": -9.1457424 },
+    { "lat": 38.7200929, "lon": -9.1457421 },
+    { "lat": 38.7200811, "lon": -9.1457482 },
+    { "lat": 38.7200720, "lon": -9.1457595 },
+    { "lat": 38.7200669, "lon": -9.1457745 },
+    { "lat": 38.7200667, "lon": -9.1457908 },
+    { "lat": 38.7200714, "lon": -9.1458059 },
+    { "lat": 38.7200803, "lon": -9.1458175 },
+    { "lat": 38.7200920, "lon": -9.1458240 },
+    { "lat": 38.7201047, "lon": -9.1458243 },
+    { "lat": 38.7201165, "lon": -9.1458182 },
+    { "lat": 38.7201256, "lon": -9.1458068 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844520,
+  "bounds": {
+    "minlat": 38.7202060,
+    "minlon": -9.1454276,
+    "maxlat": 38.7203378,
+    "maxlon": -9.1452884
+  },
+  "geometry": [
+    { "lat": 38.7202179, "lon": -9.1453562 },
+    { "lat": 38.7202930, "lon": -9.1454217 },
+    { "lat": 38.7203036, "lon": -9.1454274 },
+    { "lat": 38.7203150, "lon": -9.1454276 },
+    { "lat": 38.7203256, "lon": -9.1454220 },
+    { "lat": 38.7203337, "lon": -9.1454117 },
+    { "lat": 38.7203378, "lon": -9.1453983 },
+    { "lat": 38.7203378, "lon": -9.1453840 },
+    { "lat": 38.7203337, "lon": -9.1453707 },
+    { "lat": 38.7203261, "lon": -9.1453601 },
+    { "lat": 38.7202507, "lon": -9.1452943 },
+    { "lat": 38.7202402, "lon": -9.1452886 },
+    { "lat": 38.7202288, "lon": -9.1452884 },
+    { "lat": 38.7202183, "lon": -9.1452939 },
+    { "lat": 38.7202102, "lon": -9.1453042 },
+    { "lat": 38.7202061, "lon": -9.1453177 },
+    { "lat": 38.7202060, "lon": -9.1453321 },
+    { "lat": 38.7202102, "lon": -9.1453456 },
+    { "lat": 38.7202179, "lon": -9.1453562 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844522,
+  "bounds": {
+    "minlat": 38.7186723,
+    "minlon": -9.1441912,
+    "maxlat": 38.7189205,
+    "maxlon": -9.1439508
+  },
+  "geometry": [
+    { "lat": 38.7186769, "lon": -9.1439666 },
+    { "lat": 38.7186724, "lon": -9.1439801 },
+    { "lat": 38.7186723, "lon": -9.1439948 },
+    { "lat": 38.7186766, "lon": -9.1440084 },
+    { "lat": 38.7186846, "lon": -9.1440188 },
+    { "lat": 38.7188754, "lon": -9.1441852 },
+    { "lat": 38.7188859, "lon": -9.1441910 },
+    { "lat": 38.7188973, "lon": -9.1441912 },
+    { "lat": 38.7189078, "lon": -9.1441857 },
+    { "lat": 38.7189159, "lon": -9.1441753 },
+    { "lat": 38.7189204, "lon": -9.1441619 },
+    { "lat": 38.7189205, "lon": -9.1441473 },
+    { "lat": 38.7189162, "lon": -9.1441337 },
+    { "lat": 38.7189082, "lon": -9.1441233 },
+    { "lat": 38.7187172, "lon": -9.1439567 },
+    { "lat": 38.7187068, "lon": -9.1439510 },
+    { "lat": 38.7186954, "lon": -9.1439508 },
+    { "lat": 38.7186849, "lon": -9.1439563 },
+    { "lat": 38.7186769, "lon": -9.1439666 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844524,
+  "bounds": {
+    "minlat": 38.7198818,
+    "minlon": -9.1458362,
+    "maxlat": 38.7200409,
+    "maxlon": -9.1456743
+  },
+  "geometry": [
+    { "lat": 38.7200397, "lon": -9.1457970 },
+    { "lat": 38.7200401, "lon": -9.1457670 },
+    { "lat": 38.7199338, "lon": -9.1456743 },
+    { "lat": 38.7199118, "lon": -9.1456859 },
+    { "lat": 38.7198969, "lon": -9.1456857 },
+    { "lat": 38.7198818, "lon": -9.1457140 },
+    { "lat": 38.7200219, "lon": -9.1458362 },
+    { "lat": 38.7200409, "lon": -9.1458007 },
+    { "lat": 38.7200397, "lon": -9.1457970 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844525,
+  "bounds": {
+    "minlat": 38.7199542,
+    "minlon": -9.1457185,
+    "maxlat": 38.7201097,
+    "maxlon": -9.1455502
+  },
+  "geometry": [
+    { "lat": 38.7199693, "lon": -9.1455502 },
+    { "lat": 38.7199542, "lon": -9.1455785 },
+    { "lat": 38.7199597, "lon": -9.1455960 },
+    { "lat": 38.7199595, "lon": -9.1456254 },
+    { "lat": 38.7200662, "lon": -9.1457185 },
+    { "lat": 38.7200815, "lon": -9.1457107 },
+    { "lat": 38.7200331, "lon": -9.1456685 },
+    { "lat": 38.7200408, "lon": -9.1456542 },
+    { "lat": 38.7200484, "lon": -9.1456400 },
+    { "lat": 38.7201020, "lon": -9.1456868 },
+    { "lat": 38.7201097, "lon": -9.1456726 },
+    { "lat": 38.7199693, "lon": -9.1455502 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844528,
+  "bounds": {
+    "minlat": 38.7190029,
+    "minlon": -9.1445369,
+    "maxlat": 38.7192913,
+    "maxlon": -9.1442661
+  },
+  "geometry": [
+    { "lat": 38.7192689, "lon": -9.1444378 },
+    { "lat": 38.7190801, "lon": -9.1442732 },
+    { "lat": 38.7190711, "lon": -9.1442683 },
+    { "lat": 38.7190615, "lon": -9.1442661 },
+    { "lat": 38.7190517, "lon": -9.1442669 },
+    { "lat": 38.7190424, "lon": -9.1442705 },
+    { "lat": 38.7190280, "lon": -9.1442753 },
+    { "lat": 38.7190133, "lon": -9.1442773 },
+    { "lat": 38.7190084, "lon": -9.1442785 },
+    { "lat": 38.7190046, "lon": -9.1442828 },
+    { "lat": 38.7190029, "lon": -9.1442889 },
+    { "lat": 38.7190039, "lon": -9.1442952 },
+    { "lat": 38.7190072, "lon": -9.1443001 },
+    { "lat": 38.7192761, "lon": -9.1445348 },
+    { "lat": 38.7192809, "lon": -9.1445369 },
+    { "lat": 38.7192858, "lon": -9.1445358 },
+    { "lat": 38.7192897, "lon": -9.1445316 },
+    { "lat": 38.7192913, "lon": -9.1445255 },
+    { "lat": 38.7192904, "lon": -9.1445191 },
+    { "lat": 38.7192865, "lon": -9.1445008 },
+    { "lat": 38.7192847, "lon": -9.1444820 },
+    { "lat": 38.7192839, "lon": -9.1444695 },
+    { "lat": 38.7192809, "lon": -9.1444576 },
+    { "lat": 38.7192758, "lon": -9.1444469 },
+    { "lat": 38.7192689, "lon": -9.1444378 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844529,
+  "bounds": {
+    "minlat": 38.7197340,
+    "minlon": -9.1456513,
+    "maxlat": 38.7199327,
+    "maxlon": -9.1454465
+  },
+  "geometry": [
+    { "lat": 38.7197340, "lon": -9.1455154 },
+    { "lat": 38.7198823, "lon": -9.1456448 },
+    { "lat": 38.7198940, "lon": -9.1456512 },
+    { "lat": 38.7199067, "lon": -9.1456513 },
+    { "lat": 38.7199185, "lon": -9.1456452 },
+    { "lat": 38.7199276, "lon": -9.1456338 },
+    { "lat": 38.7199326, "lon": -9.1456188 },
+    { "lat": 38.7199327, "lon": -9.1456025 },
+    { "lat": 38.7199279, "lon": -9.1455874 },
+    { "lat": 38.7199190, "lon": -9.1455758 },
+    { "lat": 38.7197706, "lon": -9.1454465 },
+    { "lat": 38.7197340, "lon": -9.1455154 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+},
+{
+  "type": "way",
+  "id": 1011844530,
+  "bounds": {
+    "minlat": 38.7184616,
+    "minlon": -9.1445416,
+    "maxlat": 38.7186595,
+    "maxlon": -9.1443414
+  },
+  "geometry": [
+    { "lat": 38.7184668, "lon": -9.1443594 },
+    { "lat": 38.7184617, "lon": -9.1443745 },
+    { "lat": 38.7184616, "lon": -9.1443909 },
+    { "lat": 38.7184664, "lon": -9.1444060 },
+    { "lat": 38.7184754, "lon": -9.1444177 },
+    { "lat": 38.7186095, "lon": -9.1445347 },
+    { "lat": 38.7186254, "lon": -9.1445416 },
+    { "lat": 38.7186418, "lon": -9.1445375 },
+    { "lat": 38.7186545, "lon": -9.1445234 },
+    { "lat": 38.7186595, "lon": -9.1445083 },
+    { "lat": 38.7186595, "lon": -9.1444920 },
+    { "lat": 38.7186547, "lon": -9.1444768 },
+    { "lat": 38.7186457, "lon": -9.1444652 },
+    { "lat": 38.7185118, "lon": -9.1443484 },
+    { "lat": 38.7184959, "lon": -9.1443414 },
+    { "lat": 38.7184795, "lon": -9.1443454 },
+    { "lat": 38.7184668, "lon": -9.1443594 }
+  ],
+  "tags": {
+    "landuse": "flowerbed"
+  }
+}
+
+  ]
+}
