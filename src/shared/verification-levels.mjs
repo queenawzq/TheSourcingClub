@@ -34,9 +34,9 @@ const RANK = { low: 0, medium: 1, high: 2 };
  * in one place so the coordinator can rename them here.
  */
 export const FIELD_NAMES = {
-  // admin_verification_rules(): staff reasons per check, { [checkKey]: { note, reasonedAt, reasonedBy } } (migration 20261111120000)
+  // admin_verification_rules(): staff reasons per check, { [checkKey]: { note, reasonedAt, reasonedBy } } (sql, e08429f)
   explanations: "reasons",
-  // admin_verification_rules(): staff-recorded facts, { insuredStaff, foundedOn, recordedAt }
+  // admin_verification_rules(): { insuredStaff, foundedOn, recordedAt, claimedEmployees, claimedFoundedYear } (sql, e08429f)
   companyFacts: "companyFacts",
   // document_reading details.tradingScope: activity codes printed on the document (PT CAE, TR NACE)
   activityCodes: ["activityCodes", "codes"],
@@ -413,6 +413,8 @@ export function arrivedResults(detail, extra) {
   return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults, ...addressResults];
 }
 
+const claimsFrom = (facts) => (facts ? { workers: facts.claimedEmployees ?? null, foundedYear: facts.claimedFoundedYear ?? null } : null);
+
 /** The staff states the rules read, from admin_verification_rules and the claims. */
 export function stateFlags(detail, extra) {
   const rules = extra?.rules ?? null;
@@ -421,7 +423,7 @@ export function stateFlags(detail, extra) {
     reopenings: rules?.reopenings ?? [],
     explanations: rules?.[FIELD_NAMES.explanations] ?? {},
     companyFacts: rules?.[FIELD_NAMES.companyFacts] ?? null,
-    claims: extra?.claims ?? null,
+    claims: extra?.claims ?? claimsFrom(rules?.[FIELD_NAMES.companyFacts]),
   };
 }
 
