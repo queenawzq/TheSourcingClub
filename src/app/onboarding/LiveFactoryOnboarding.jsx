@@ -21,7 +21,6 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
-import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import {
@@ -135,9 +134,18 @@ const KIND_FOR_LABEL = {
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
-  const [step, setStep] = useState(initialStep);
-  // True from "Update my profile" until the profile is sent back to staff.
-  const [resubmitting, setResubmitting] = useState(false);
+  // Asked for more information, the factory lands on its profile summary
+  // (Queena, Nov 9): no card in between.
+  const askedForMore = review?.state === "needs_information";
+  const [step, setStep] = useState(askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep);
+  // True while answering staff's request, until the profile is sent back.
+  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
+  // A request that arrives while the finish card is open opens the summary too.
+  useEffect(() => {
+    if (!askedForMore || step < LAST_STEP) return;
+    setResubmitting(true);
+    setStep(REVIEW_STEP);
+  }, [askedForMore, step]);
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
@@ -589,8 +597,17 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
 
       // Staff asked for more information: finishing answers them, whether the
-      // factory came in by "Update my profile" or went back through the steps.
+      // factory came in from the email or went back through the steps.
       const answering = resubmitting || review?.state === "needs_information";
+      if (step === REVIEW_STEP && answering && termsAcceptance) {
+        // Terms already signed: confirming the summary sends it back to staff
+        // and stays on the summary, with no page after it.
+        await resubmitForReview(org.id);
+        setResubmitting(false);
+        onComplete();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       if (step === LAST_STEP - 1 && answering) {
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
@@ -685,7 +702,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
-      notice={(resubmitting || (review?.state === "needs_information" && step < LAST_STEP)) && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       completion={reviewCompletion(review, {
         language: language,
         onUpdate: () => {

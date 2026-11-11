@@ -8622,34 +8622,6 @@ function OnboardingAssetUploadCard({
         <strong>{title}</strong>
         {helper && <span>{helper}</span>}
       </div>
-      {hasFiles && (
-        <div className="factory-brand-uploaded-files" aria-live="polite">
-          {documents.map((doc) => (
-            <div className="onboarding-uploaded-file" key={doc.id}>
-              <div>
-                <span>{doc.file_name}</span>
-                <small>{uploadedLabel}</small>
-              </div>
-              <button type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
-                <img src="/assets/prototype-icons/trash.svg" alt="" />
-                {deleteLabel}
-              </button>
-            </div>
-          ))}
-          {files.map((file) => (
-            <div className="onboarding-uploaded-file" key={file.id}>
-              <div>
-                <span>{file.name}</span>
-                <small className="is-pending">{uploadedLabel}</small>
-              </div>
-              <button type="button" onClick={() => publish(files.filter((item) => item.id !== file.id))}>
-                <img src="/assets/prototype-icons/trash.svg" alt="" />
-                {deleteLabel}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
       <input
         ref={inputRef}
         className="onboarding-file-input"
@@ -8691,6 +8663,34 @@ function OnboardingAssetUploadCard({
         {hasFiles ? uploadMoreLabel : uploadLabel}
       </button>
       <small>{accept}</small>
+      {hasFiles && (
+        <div className="factory-brand-uploaded-files" aria-live="polite">
+          {documents.map((doc) => (
+            <div className="onboarding-uploaded-file" key={doc.id}>
+              <div>
+                <span>{doc.file_name}</span>
+                <small>{uploadedLabel}</small>
+              </div>
+              <button type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {deleteLabel}
+              </button>
+            </div>
+          ))}
+          {files.map((file) => (
+            <div className="onboarding-uploaded-file" key={file.id}>
+              <div>
+                <span>{file.name}</span>
+                <small className="is-pending">{uploadedLabel}</small>
+              </div>
+              <button type="button" onClick={() => publish(files.filter((item) => item.id !== file.id))}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {deleteLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

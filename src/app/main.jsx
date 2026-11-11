@@ -170,7 +170,7 @@ function SignIn({ invitation = null }) {
 
   const [mode, setMode] = useState(invitation ? (invitation.hasAccount ? "login" : "signup") : params.get("mode") === "signup" && !lostAccess ? "signup" : "login");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(() => (lostAccess ? `You no longer have access to ${lostAccess}.` : reviewOrgFromUrl() ? "Sign in to see what we need from you." : null));
+  const [notice, setNotice] = useState(() => (lostAccess ? `You no longer have access to ${lostAccess}.` : null));
   const [resetFor, setResetFor] = useState(null);
   // The address a sign-in code was emailed to, and so the code-entry screen.
   const [codeFor, setCodeFor] = useState(null);
