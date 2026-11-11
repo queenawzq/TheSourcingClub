@@ -1,0 +1,47 @@
+{
+ "version": 0.6,
+ "generator": "Overpass API 0.7.62",
+ "osm3s": {
+  "timestamp_osm_base": "2026-11-11T14:00:00Z"
+ },
+ "elements": [
+  {
+   "type": "way",
+   "id": 31,
+   "geometry": [
+    {
+     "lat": 41.2511,
+     "lon": -8.6205
+    },
+    {
+     "lat": 41.2511,
+     "lon": -8.619499999999999
+    },
+    {
+     "lat": 41.252100000000006,
+     "lon": -8.619499999999999
+    },
+    {
+     "lat": 41.252100000000006,
+     "lon": -8.6205
+    },
+    {
+     "lat": 41.2511,
+     "lon": -8.6205
+    }
+   ],
+   "tags": {
+    "landuse": "industrial"
+   }
+  },
+  {
+   "type": "node",
+   "id": 32,
+   "lat": 41.2491,
+   "lon": -8.62,
+   "tags": {
+    "office": "company"
+   }
+  }
+ ]
+}

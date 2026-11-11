@@ -1,0 +1,24 @@
+{
+ "street": [
+  {
+   "lat": "22.9631590",
+   "lon": "113.4622815",
+   "category": "highway",
+   "type": "primary",
+   "place_rank": 26,
+   "addresstype": "road",
+   "display_name": "市莲路南浦村段, 南浦村, 石碁镇, 番禺区, 广州市, 广东省, 中国"
+  }
+ ],
+ "town": [
+  {
+   "lat": "22.98",
+   "lon": "113.47",
+   "category": "boundary",
+   "type": "administrative",
+   "place_rank": 16,
+   "addresstype": "town",
+   "display_name": "石碁镇, 番禺区, 广州市"
+  }
+ ]
+}

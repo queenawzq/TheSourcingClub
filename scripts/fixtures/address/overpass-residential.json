@@ -1,0 +1,75 @@
+{
+ "version": 0.6,
+ "generator": "Overpass API 0.7.62",
+ "osm3s": {
+  "timestamp_osm_base": "2026-11-11T14:00:00Z"
+ },
+ "elements": [
+  {
+   "type": "relation",
+   "id": 21,
+   "members": [
+    {
+     "type": "way",
+     "ref": 5,
+     "role": "outer",
+     "geometry": [
+      {
+       "lat": 41.1575,
+       "lon": -8.645
+      },
+      {
+       "lat": 41.1575,
+       "lon": -8.639
+      },
+      {
+       "lat": 41.1635,
+       "lon": -8.639
+      },
+      {
+       "lat": 41.1635,
+       "lon": -8.645
+      },
+      {
+       "lat": 41.1575,
+       "lon": -8.645
+      }
+     ]
+    }
+   ],
+   "tags": {
+    "landuse": "residential",
+    "type": "multipolygon"
+   }
+  },
+  {
+   "type": "way",
+   "id": 22,
+   "geometry": [
+    {
+     "lat": 41.1609,
+     "lon": -8.6421
+    },
+    {
+     "lat": 41.1609,
+     "lon": -8.6419
+    },
+    {
+     "lat": 41.161100000000005,
+     "lon": -8.6419
+    },
+    {
+     "lat": 41.161100000000005,
+     "lon": -8.6421
+    },
+    {
+     "lat": 41.1609,
+     "lon": -8.6421
+    }
+   ],
+   "tags": {
+    "building": "apartments"
+   }
+  }
+ ]
+}
