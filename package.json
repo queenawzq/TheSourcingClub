@@ -37,7 +37,8 @@
     "check:registration": "node scripts/check-registration-number.mjs",
     "check:address": "node scripts/check-address.mjs",
     "check:screen": "node scripts/check-message-screen.mjs",
-    "eval:verification": "node scripts/verification-eval/run.mjs"
+    "eval:verification": "node scripts/verification-eval/run.mjs",
+    "check:auto": "node scripts/check-verification-run.mjs"
   },
   "dependencies": {
     "@stripe/connect-js": "3.4.6",
