@@ -83,7 +83,12 @@ export function photoLevel({ photoCount, duplicates, perPhoto }) {
     reasons.push("The AI look did not run. Use the reverse-search links.");
     return { level: "unknown", reasons };
   }
-  if (!floor.length) reasons.push("No photo shows a factory floor.");
+  if (!floor.length) {
+    // No photo shows a factory at all: there is no evidence of a factory.
+    reasons.push("No photo shows a factory floor.");
+    if (offProduct.length) reasons.push(`${offProduct.length} of ${looked.length} photos do not fit the products claimed.`);
+    return { level: "low", reasons };
+  }
   if (offProduct.length) reasons.push(`${offProduct.length} of ${looked.length} photos do not fit the products claimed.`);
   if (reasons.length) return { level: "medium", reasons };
   reasons.push(`${floor.length} of ${looked.length} photos show a working factory floor; none found elsewhere on TSC.`);
