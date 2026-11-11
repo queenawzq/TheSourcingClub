@@ -1,0 +1,24 @@
+{
+  "about": "A clean Portuguese certidão permanente (PDF) of a garment maker (CAE 14131), typed NIPC matches.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "PT",
+    "number": "514876328",
+    "title": "Fiação e Confeções do Ave, Lda",
+    "location": "Rua da Indústria 245, Zona Industrial de Ronfe, Guimarães"
+  },
+  "fields": {
+    "registrationNumber": "514876328",
+    "legalName": "FIAÇÃO E CONFEÇÕES DO AVE, LDA.",
+    "address": "Rua da Indústria, n.º 245, Zona Industrial de Ronfe, 4805-470 Guimarães",
+    "businessScopeIncludes": "confeção"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

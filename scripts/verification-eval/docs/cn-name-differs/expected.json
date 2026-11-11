@@ -1,0 +1,25 @@
+{
+  "about": "The factory typed another company's name than the licence's.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "东莞市新时代服装有限公司",
+    "location": "广东省东莞市虎门镇路东社区工业区二路6号"
+  },
+  "fields": {
+    "registrationNumber": "91441900MA4UJ8P2WU",
+    "legalName": "东莞市锦绣针织制衣有限公司",
+    "legalRepresentative": "李振东",
+    "address": "广东省东莞市虎门镇路东社区工业区二路6号",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": true,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "about": "A PDF whose text layer has an invisible U+200B inside the code (copied documents carry these). The typed number is the clean code, so no number difference may fire.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "91350582MA31W9B3KD",
+    "title": "晋江市鸿盛运动服饰有限公司",
+    "location": "福建省晋江市陈埭镇鞋都工业区5号"
+  },
+  "fields": {
+    "registrationNumber": "91350582MA31W9B3KD",
+    "legalName": "晋江市鸿盛运动服饰有限公司",
+    "legalRepresentative": "林国荣",
+    "address": "福建省晋江市陈埭镇鞋都工业区5号",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

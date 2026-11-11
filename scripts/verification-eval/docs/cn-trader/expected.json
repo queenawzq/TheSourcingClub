@@ -1,0 +1,25 @@
+{
+  "about": "Trading only: 批发、零售、货物进出口、贸易代理, no 生产/制造/加工. Trading scope must fire.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "义乌市恒越进出口贸易有限公司",
+    "location": "浙江省义乌市稠城街道工人北路1088号国际商贸城B座1602室"
+  },
+  "fields": {
+    "registrationNumber": "91330782MA2EC3N1TM",
+    "legalName": "义乌市恒越进出口贸易有限公司",
+    "legalRepresentative": "王晓梅",
+    "address": "浙江省义乌市稠城街道工人北路1088号国际商贸城B座1602室",
+    "businessScopeIncludes": "批发"
+  },
+  "flags": {
+    "trading_scope": true,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

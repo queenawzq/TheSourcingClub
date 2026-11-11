@@ -34,7 +34,8 @@
     "check:bank-number": "node scripts/check-bank-number.mjs",
     "check:e2e-exit": "node scripts/check-e2e-exit.mjs",
     "check:registration": "node scripts/check-registration-number.mjs",
-    "check:screen": "node scripts/check-message-screen.mjs"
+    "check:screen": "node scripts/check-message-screen.mjs",
+    "eval:verification": "node scripts/verification-eval/run.mjs"
   },
   "dependencies": {
     "@stripe/connect-js": "3.4.6",

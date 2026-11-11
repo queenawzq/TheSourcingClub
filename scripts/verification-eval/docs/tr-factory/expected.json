@@ -1,0 +1,25 @@
+{
+  "about": "A clean Turkish vergi levhası of a garment maker (imalatı), typed VKN matches.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "TR",
+    "number": "0684127392",
+    "title": "Anadolu Tekstil Konfeksiyon Sanayi ve Ticaret Ltd. Şti.",
+    "location": "Organize Sanayi Bölgesi 4. Cadde No:17 Yeşilyurt, Denizli"
+  },
+  "fields": {
+    "registrationNumber": "0684127392",
+    "legalName": "ANADOLU TEKSTİL KONFEKSİYON SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+    "address": "ORGANİZE SANAYİ BÖLGESİ 4. CADDE NO: 17 YEŞİLYURT / DENİZLİ",
+    "taxOffice": "PAMUKKALE VERGİ DAİRESİ",
+    "businessScopeIncludes": "imalat"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}
