@@ -16,6 +16,7 @@
     "check:dates": "node scripts/check-dates.mjs",
     "check:adapters": "node scripts/check-adapters.mjs",
     "check:prototype": "node scripts/check-prototype.mjs",
+    "check:levels": "node scripts/check-verification-levels.mjs",
     "check:quiet": "node scripts/check-quiet.mjs",
     "check:review-email": "node scripts/check-review-email.mjs",
     "check:dashboard": "node scripts/check-dashboard.mjs",
