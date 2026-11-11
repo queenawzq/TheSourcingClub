@@ -140,10 +140,13 @@ export async function adminVerificationSignals(orgId) {
 
 /** Staff: a photo's reverse search, or a certificate's check. */
 export async function recordSignal(orgId, { kind, subjectId, result, note, details = {} }) {
-  return unwrap(
+  const saved = unwrap(
     await supabase.rpc("admin_record_signal", { target_org: orgId, kind, subject: subjectId, result, note, details }),
     "record the check",
   );
+  // A photo mark ("Own photos", "Found elsewhere") changes the photos level now, not at "Run again".
+  if (kind === "photo") await runPhotoCheck(orgId, { marksOnly: true });
+  return saved;
 }
 
 /**
@@ -180,14 +183,14 @@ export async function explainTradingScope(orgId, note) {
 }
 
 /** Runs the automatic photo check (staff only). Same answer shape as requestRegistryAssist. */
-export async function runPhotoCheck(orgId) {
+export async function runPhotoCheck(orgId, { marksOnly = false } = {}) {
   const { data: { session } } = await supabase.auth.getSession();
   let response;
   try {
     response = await fetch("/api/photo-check", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
-      body: JSON.stringify({ orgId }),
+      body: JSON.stringify(marksOnly ? { orgId, marksOnly: true } : { orgId }),
     });
   } catch {
     return { available: false, reason: "The server couldn't be reached." };

@@ -11,7 +11,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(40);
 
 -- Fixtures --------------------------------------------------------------------
 insert into auth.users (id, email) values
@@ -24,6 +24,9 @@ insert into public.orgs (id, type, name, slug) values
   ('d1110000-0000-0000-0000-0000000000f2', 'factory', 'P111P Copycat', 'pgtap111p-copycat'),
   ('d1110000-0000-0000-0000-0000000000f3', 'factory', 'P111P Other',   'pgtap111p-other'),
   ('d1110000-0000-0000-0000-0000000000b1', 'brand',   'P111P Brand',   'pgtap111p-brand');
+insert into public.orgs (id, type, name, slug, is_demo) values
+  ('d1110000-0000-0000-0000-0000000000d1', 'factory', 'P111P Demo One', 'pgtap111p-demo-one', true),
+  ('d1110000-0000-0000-0000-0000000000d2', 'factory', 'P111P Demo Two', 'pgtap111p-demo-two', true);
 insert into public.org_members (org_id, user_id, role) values
   ('d1110000-0000-0000-0000-0000000000f1', 'c1110000-0000-0000-0000-000000000002', 'owner'),
   ('d1110000-0000-0000-0000-0000000000b1', 'c1110000-0000-0000-0000-000000000003', 'owner');
@@ -41,7 +44,11 @@ insert into public.documents (id, org_id, kind, bucket, storage_path, file_name,
   ('a1110000-0000-0000-0000-000000000009', 'd1110000-0000-0000-0000-0000000000f2', 'authorisation',         'org-private', 'd1110000-0000-0000-0000-0000000000f2/auth.jpg', 'auth.jpg', '2026-03-01'),
   ('a1110000-0000-0000-0000-00000000000a', 'd1110000-0000-0000-0000-0000000000f3', 'business_registration', 'org-private', 'd1110000-0000-0000-0000-0000000000f3/lic.jpg',  'lic.jpg',  '2026-01-01'),
   ('a1110000-0000-0000-0000-00000000000b', 'd1110000-0000-0000-0000-0000000000f3', 'product_image',         'org-public',  'd1110000-0000-0000-0000-0000000000f3/lic.jpg',  'lic.jpg',  '2026-01-01'),
-  ('a1110000-0000-0000-0000-00000000000c', 'd1110000-0000-0000-0000-0000000000f3', 'logo',                  'org-public',  'd1110000-0000-0000-0000-0000000000f3/logo.png', 'logo.png', '2026-01-01');
+  ('a1110000-0000-0000-0000-00000000000c', 'd1110000-0000-0000-0000-0000000000f3', 'logo',                  'org-public',  'd1110000-0000-0000-0000-0000000000f3/logo.png', 'logo.png', '2026-01-01'),
+  -- the demo seed's shared placeholder, and a real company with the same file
+  ('a1110000-0000-0000-0000-00000000000d', 'd1110000-0000-0000-0000-0000000000d1', 'product_image',         'org-public',  'd1110000-0000-0000-0000-0000000000d1/p.jpg',    'p.jpg',    '2026-01-01'),
+  ('a1110000-0000-0000-0000-00000000000e', 'd1110000-0000-0000-0000-0000000000d2', 'product_image',         'org-public',  'd1110000-0000-0000-0000-0000000000d2/p.jpg',    'p.jpg',    '2026-01-02'),
+  ('a1110000-0000-0000-0000-00000000000f', 'd1110000-0000-0000-0000-0000000000f3', 'product_image',         'org-public',  'd1110000-0000-0000-0000-0000000000f3/p.jpg',    'p.jpg',    '2026-01-03');
 -- Staff marked the first factory's workshop photo: found elsewhere, then own.
 insert into public.verification_signals (org_id, kind, subject_id, result, checked_at) values
   ('d1110000-0000-0000-0000-0000000000f1', 'photo', 'a1110000-0000-0000-0000-000000000006', 'found_elsewhere', '2026-04-01'),
@@ -69,7 +76,10 @@ select lives_ok($$
          public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000a', repeat('2', 64), '0000000000000001'),
          -- the license file posted as a product image elsewhere: another group
          public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000b', repeat('1', 64), '0000000000000000'),
-         public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000c', repeat('e', 64), '0f0f0f0f0f0f0f0f')
+         public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000c', repeat('e', 64), '0f0f0f0f0f0f0f0f'),
+         public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000d', repeat('f', 64), 'f0f0f0f0f0f0f0f0'),
+         public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000e', repeat('f', 64), 'f0f0f0f0f0f0f0f0'),
+         public.record_photo_fingerprint('a1110000-0000-0000-0000-00000000000f', repeat('f', 64), 'f0f0f0f0f0f0f0f0')
 $$, 'server fingerprints workshop photos, licenses and an authorisation');
 
 -- v3.1: only the later uploader is flagged (A8)
@@ -98,6 +108,21 @@ select is(
   (select count(*)::int from public.photo_copies('d1110000-0000-0000-0000-0000000000f3') where document_id in ('a1110000-0000-0000-0000-00000000000a', 'a1110000-0000-0000-0000-00000000000b', 'a1110000-0000-0000-0000-00000000000c')),
   0, 'a photo never matches a license file, and a logo is never compared'
 );
+select results_eq(
+  $$select other_org_id from public.photo_copies('d1110000-0000-0000-0000-0000000000d2')$$,
+  $$values ('d1110000-0000-0000-0000-0000000000f3'::uuid)$$,
+  'two demo companies sharing a placeholder are not a copy; a real company with the same file still is'
+);
+select results_eq(
+  $$select other_org_id, mine_later from public.photo_copies('d1110000-0000-0000-0000-0000000000f3') where document_id = 'a1110000-0000-0000-0000-00000000000f' order by other_org_id$$,
+  $$values ('d1110000-0000-0000-0000-0000000000d1'::uuid, true), ('d1110000-0000-0000-0000-0000000000d2'::uuid, true)$$,
+  'a real company that copied demo files is still flagged'
+);
+select ok(
+  (select public.org_is_demo(o.id) from public.orgs o where o.slug = 'demo-factory') is not false,
+  'org_is_demo answers for a seeded company (true, or null when the seed has not run)'
+);
+select is(public.org_is_demo('d1110000-0000-0000-0000-0000000000f1'), false, 'a real company is not demo');
 select is(
   (select result from public.photo_staff_marks('d1110000-0000-0000-0000-0000000000f1') where document_id = 'a1110000-0000-0000-0000-000000000006'),
   'own', 'the latest staff mark on a photo wins'
