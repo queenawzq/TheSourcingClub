@@ -70,7 +70,7 @@ function chinaLicence(d) {
   </table></div>
   <div class="foot"><div class="seal">登记机关</div>${d.authority}<br>${d.issued}</div>
   <div class="note">国家企业信用信息公示系统网址：</div>
-  ${STAMP}</div></body></html>`;
+  ${d.stamp ?? STAMP}</div></body></html>`;
 }
 
 function turkeyLetter(d) {
@@ -98,7 +98,7 @@ function turkeyLetter(d) {
   <table class="years"><tr><td class="k">TAKVİM YILI</td><td>2023</td><td>2024</td><td>2025</td></tr>
   <tr><td class="k">BEYAN EDİLEN MATRAH</td><td>4.812.300,00</td><td>6.105.900,00</td><td>7.443.210,00</td></tr></table>
   <div class="foot">Onay Kodu: ${d.approval} — Bu belge elektronik ortamda oluşturulmuştur. Doğruluğunu www.gib.gov.tr adresinden kontrol edebilirsiniz.</div>
-  ${STAMP}</div></body></html>`;
+  ${d.stamp ?? STAMP}</div></body></html>`;
 }
 
 function portugalCertidao(d) {
@@ -128,7 +128,7 @@ function portugalCertidao(d) {
   <p>GERÊNCIA: ${d.managers}</p>
   <p>Forma de obrigar: Com a assinatura de um gerente.</p>
   <p>Conservatória do Registo Comercial de ${d.registry}</p>
-  ${STAMP}</div></body></html>`;
+  ${d.stamp ?? STAMP}</div></body></html>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,11 +157,22 @@ const editedShown = `${editedTrue.slice(0, 12)}<span style="font-family:Arial,sa
 const editedNumber = editedTrue.slice(0, 12) + "583917";
 const shanghai = { ...base, code: editedNumber, codeHtml: editedShown, name: "上海浦东嘉禾服装制造有限公司", rep: "黄志强", scope: FACTORY_SCOPE, address: "上海市浦东新区康桥镇秀浦路2555号5幢", authority: "上海市浦东新区市场监督管理局" };
 
+// A verification watermark, as a factory writes across the copy it sends (v3.1, A5):
+// normal, never a specimen. This one document carries no SPECIMEN stamp; it
+// is still made up (invented company, people and number).
+const WATERMARK = `<div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:9">${Array.from({ length: 5 }, (_, i) =>
+  `<div style="position:absolute;left:-80px;top:${120 + i * 190}px;transform:rotate(-18deg);white-space:nowrap;font:600 44px/1 'PingFang SC','Songti SC',sans-serif;color:rgba(60,60,160,.28)">仅供The Sourcing Club认证使用　他用无效　仅供The Sourcing Club认证使用</div>`).join("")}</div>`;
+const hangzhou = { ...base, code: uscc("91330110MA2H3K8D5"), name: "杭州余杭锦程针织服饰有限公司", rep: "郑美玲", scope: FACTORY_SCOPE, address: "浙江省杭州市余杭区仁和街道永泰路66号", authority: "杭州市余杭区市场监督管理局", founded: "2014年09月03日", term: "2014年09月03日至长期", stamp: WATERMARK };
+
 const ZW = "​";
 
 const turkey = { name: "ANADOLU TEKSTİL KONFEKSİYON SANAYİ VE TİCARET LİMİTED ŞİRKETİ", address: "ORGANİZE SANAYİ BÖLGESİ 4. CADDE NO: 17 YEŞİLYURT / DENİZLİ", office: "PAMUKKALE VERGİ DAİRESİ", vkn: vkn("068412739"), started: "02.09.2011", activity: "141302 — Dış giyim eşyası imalatı (dokuma kumaştan)", approval: "TSCE2V0SPEC1MEN" };
 const turkeyTrader = { name: "BOĞAZİÇİ TEKSTİL DIŞ TİCARET LİMİTED ŞİRKETİ", address: "MERKEZEFENDİ MAH. 10/1 SOK. NO: 5 İÇ KAPI NO: 12 ZEYTİNBURNU / İSTANBUL", office: "ZEYTİNBURNU VERGİ DAİRESİ", vkn: vkn("183305927"), started: "15.03.2018", activity: "464201 — Giyim eşyası toptan ticareti (iç giyim dahil)", approval: "TSCE2V0SPEC1MEN2" };
 const portugal = { access: "1234-5678-9012", nipc: nipc("51487632"), name: "FIAÇÃO E CONFEÇÕES DO AVE, LDA.", address: "Rua da Indústria, n.º 245, Zona Industrial de Ronfe, 4805-470 Guimarães", object: "Fabricação e confeção de vestuário exterior em série, malhas e artigos têxteis; comércio por grosso dos produtos fabricados.", cae: "14131-R3 — Confeção de outro vestuário exterior em série", managers: "MARIA JOÃO PEREIRA COSTA; ANTÓNIO MANUEL FERREIRA SILVA", registry: "Guimarães" };
+
+const portugalCae = { ...portugal, access: "4321-8765-2109", nipc: nipc("51592048"), name: "MALHAS E CONFECÇÕES DO CÁVADO, LDA.", address: "Rua do Parque Industrial, n.º 88, 4750-333 Barcelos", object: "Confecção de vestuário exterior e interior em malha; comércio por grosso e a retalho de artigos têxteis.", cae: "14131-R3 — Confecção de outro vestuário exterior em série; CAE secundário 46420-R3 — Comércio por grosso de vestuário e de acessórios", managers: "RUI FILIPE MACHADO ARAÚJO", registry: "Barcelos" };
+const portugalTraderCae = { ...portugal, access: "9876-1234-5555", nipc: nipc("51633019"), name: "TÊXTEIS LUSO EXPORT, LDA.", address: "Avenida da Boavista, n.º 1200, 4100-130 Porto", object: "Confecção, comércio por grosso, importação e exportação de vestuário e artigos têxteis.", cae: "46420-R3 — Comércio por grosso de vestuário e de acessórios", managers: "SOFIA MARQUES TEIXEIRA", registry: "Porto" };
+const turkeyNace = { ...turkey, name: "EGE ÖRME GİYİM SANAYİ VE TİCARET LİMİTED ŞİRKETİ", address: "ATATÜRK ORGANİZE SANAYİ BÖLGESİ 10003 SOK. NO: 9 ÇİĞLİ / İZMİR", office: "ÇİĞLİ VERGİ DAİRESİ", vkn: vkn("327650148"), started: "11.05.2009", activity: "NACE 14.39.01 — Örme ve tığ işi kazak, hırka, süveter, yelek ve benzeri eşyalar", approval: "TSCE2V0SPEC1MEN3" };
 
 const chinaFields = (d, number = d.code) => ({
   registrationNumber: number, legalName: d.name, legalRepresentative: d.rep, address: d.address,
@@ -253,6 +264,33 @@ const CASES = [
     fields: { registrationNumber: portugal.nipc, legalName: portugal.name },
     flags: { ...allFlags, number_differs: true },
   },
+  {
+    id: "cn-watermark", kind: "png", html: chinaLicence(hangzhou),
+    about: "A factory's licence with \"仅供The Sourcing Club认证使用 他用无效\" written across it, as factories do on the copy they send, and NO specimen stamp. The watermark is normal: no specimen flag, reported as a verification watermark. The founding date is read.",
+    typed: { country: "CN", number: "", title: "杭州余杭锦程针织服饰有限公司", location: "浙江省杭州市余杭区仁和街道永泰路66号" },
+    fields: { ...chinaFields(hangzhou), foundingDate: "2014年09月03日" }, flags: { ...allFlags, specimen_or_edited: false, verification_watermark: true },
+  },
+  {
+    id: "pt-cae-confeccao", kind: "pdf", html: portugalCertidao(portugalCae),
+    about: "A Portuguese certidão whose objeto says \"Confecção … comércio\" (the cç spelling) and prints CAE 14131 (making) with a secondary 46420. The making code decides: no trading flag.",
+    typed: { country: "PT", number: portugalCae.nipc, title: "Malhas e Confecções do Cávado, Lda", location: "Rua do Parque Industrial 88, Barcelos" },
+    fields: { registrationNumber: portugalCae.nipc, legalName: portugalCae.name, businessScopeIncludes: "Confecção", activityCodeIncludes: "14131" },
+    flags: { ...allFlags },
+  },
+  {
+    id: "pt-cae-trader", kind: "pdf", html: portugalCertidao(portugalTraderCae),
+    about: "A Portuguese wholesaler: the objeto names confecção, but the only CAE is 46420 (wholesale of clothing). The code decides: trading scope must fire.",
+    typed: { country: "PT", number: portugalTraderCae.nipc, title: "Têxteis Luso Export, Lda", location: "Avenida da Boavista 1200, Porto" },
+    fields: { registrationNumber: portugalTraderCae.nipc, legalName: portugalTraderCae.name, activityCodeIncludes: "46420" },
+    flags: { ...allFlags, trading_scope: true },
+  },
+  {
+    id: "tr-nace-14", kind: "png", html: turkeyLetter(turkeyNace),
+    about: "A Turkish knitwear maker whose activity line prints NACE 14.39.01 with no \"imalat\" word. The code alone says making: no trading flag.",
+    typed: { country: "TR", number: turkeyNace.vkn, title: "Ege Örme Giyim Sanayi ve Ticaret Ltd. Şti.", location: "Atatürk Organize Sanayi Bölgesi, Çiğli, İzmir" },
+    fields: { registrationNumber: turkeyNace.vkn, legalName: turkeyNace.name, taxOffice: turkeyNace.office, activityCodeIncludes: "14.39" },
+    flags: { ...allFlags },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -283,7 +321,8 @@ im = im.crop((0, 0, im.width, im.height // 2)).resize((280, 100)).filter(ImageFi
 im.save(dst)`,
 };
 
-for (const c of CASES) {
+const only = process.argv.slice(2);
+for (const c of CASES.filter((x) => !only.length || only.includes(x.id))) {
   const dir = path.join(DOCS, c.id);
   fs.mkdirSync(dir, { recursive: true });
   for (const old of fs.readdirSync(dir)) if (old.startsWith("document.")) fs.rmSync(path.join(dir, old));
@@ -298,7 +337,7 @@ for (const c of CASES) {
   }
   const expected = {
     about: c.about,
-    source: "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+    source: c.html.includes("测试样本") || c.html.includes("SPECIMEN / ") ? "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp" : "made up (scripts/verification-eval/make-docs.mjs); invented company and number, carries a verification watermark instead of the stamp",
     typed: c.typed,
     fields: c.fields,
     flags: c.flags,

@@ -26,6 +26,9 @@
  *
  * A flag the code under test does not produce yet is "n/a", never a miss:
  * read_document is being extended in parallel (specimen flag, address).
+ * EVAL_DOCS_DIR=<folder> reads the cases from another folder instead of
+ * docs/ (e.g. real public documents kept out of the repo); the report is
+ * then written to <folder>/last-run.md, not into the repo.
  * Writes scripts/verification-eval/last-run.md.
  */
 import fs from "node:fs";
@@ -33,7 +36,12 @@ import path from "node:path";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(HERE, "../..");
-const DOCS = path.join(HERE, "docs");
+// EVAL_DOCS_DIR points the run at another folder of cases (same layout),
+// e.g. real public documents kept outside the repo. Default: docs/ here.
+const DOCS = process.env.EVAL_DOCS_DIR ? path.resolve(process.env.EVAL_DOCS_DIR) : path.join(HERE, "docs");
+// The report quotes what was read (real people's names on real documents),
+// so a run over another folder writes its report there, not into the repo.
+const REPORT = process.env.EVAL_DOCS_DIR ? path.join(DOCS, "last-run.md") : path.join(HERE, "last-run.md");
 
 // --- the key, never printed ------------------------------------------------
 function keyFromEnvFiles() {
@@ -143,9 +151,11 @@ function flagsFrom(body) {
   const sources = [extracted, body, body.documentWarnings ?? {}, body.authenticity ?? {}];
   const found = sources.flatMap((s) => specimenKeys.filter((k) => k in s).map((k) => s[k]));
   if (found.length || Array.isArray(body.warnings)) {
+    // A verification watermark ("仅供…认证使用") is its own warning, never a specimen (v3.1).
     out.specimen_or_edited = found.some((v) => v === true || (typeof v === "string" && v && !/^(no|false|none)$/i.test(v)))
-      || (Array.isArray(body.warnings) && body.warnings.some((w) => /specimen|edit|sample|tamper/i.test(JSON.stringify(w))));
+      || (Array.isArray(body.warnings) && body.warnings.some((w) => w?.kind !== "verificationWatermark" && /specimen|edit|sample|tamper/i.test(JSON.stringify(w))));
   }
+  if (Array.isArray(body.warnings)) out.verification_watermark = body.warnings.some((w) => w?.kind === "verificationWatermark");
   return out;
 }
 
@@ -154,7 +164,10 @@ function fieldResults(expected, body, country) {
   const got = body?.extracted ?? {};
   const rows = [];
   for (const [key, value] of Object.entries(want)) {
-    if (key === "businessScopeIncludes") {
+    if (key === "activityCodeIncludes") {
+      const codes = Array.isArray(got.activityCodes) ? got.activityCodes : [];
+      rows.push({ key: "activityCodes", ok: codes.some((code) => String(code).includes(value)), want: `…${value}…`, got: codes.join(" | ") });
+    } else if (key === "businessScopeIncludes") {
       rows.push({ key: "businessScope", ok: plain(got.businessScope).includes(plain(value)), want: `…${value}…`, got: got.businessScope ?? "" });
     } else if (key === "registrationNumber") {
       const ok = normaliseRegistrationNumber(country, got.registrationNumber ?? "") === normaliseRegistrationNumber(country, value);
@@ -166,7 +179,7 @@ function fieldResults(expected, body, country) {
   return rows;
 }
 
-const FLAG_NAMES = ["trading_scope", "name_differs", "number_differs", "address_differs", "specimen_or_edited", "unreadable"];
+const FLAG_NAMES = ["trading_scope", "name_differs", "number_differs", "address_differs", "specimen_or_edited", "verification_watermark", "unreadable"];
 
 // --- run -------------------------------------------------------------------
 const only = process.argv.slice(2);
@@ -185,6 +198,8 @@ for (const id of cases) {
   }
   results.push(r);
   console.log(`${r.ms} ms${r.body?.available === false ? ` (not read: ${r.body.reason})` : ""}`);
+  // EVAL_DEBUG=1: what the reading returned, to see why a case failed.
+  if (process.env.EVAL_DEBUG) console.log(JSON.stringify({ extracted: r.body?.extracted, warnings: r.body?.warnings, overruled: r.body?.overruled, tradingScope: r.body?.tradingScope }, null, 1));
 }
 
 // Totals: a flag counts only where the code produced it.
@@ -215,6 +230,7 @@ const summary = [
   ["Traders caught", ratio(t("trading_scope").caught, t("trading_scope").caught + t("trading_scope").missed)],
   ["Mismatches caught (name, number, address)", ratio(mismatchCaught, mismatchAll) + (t("address_differs").na ? ` (address n/a on ${t("address_differs").na})` : "")],
   ["Specimen / edited caught", t("specimen_or_edited").na === results.length ? "n/a (not produced by this code)" : ratio(t("specimen_or_edited").caught, t("specimen_or_edited").caught + t("specimen_or_edited").missed)],
+  ["Verification watermark reported (not a specimen)", ratio(t("verification_watermark").caught, t("verification_watermark").caught + t("verification_watermark").missed)],
   ["Unreadable caught", ratio(t("unreadable").caught, t("unreadable").caught + t("unreadable").missed)],
   ["Documents not read (service failure, not scored)", `${results.filter((r) => r.body?.available === false).length}`],
   ["False alarms", `${sum((x) => x.falseAlarm)} (of ${sum((x) => x.falseAlarm + x.quiet)} checks that should stay quiet)`],
@@ -251,8 +267,8 @@ const notRead = results.filter((r) => r.body?.available === false);
 if (notRead.length) lines.push(``, `## Not read`, ``, ...notRead.map((r) => `- **${r.id}**: ${r.body.reason}`));
 const unknown = [...new Set(results.flatMap((r) => r.unknown))];
 if (unknown.length) lines.push(``, `## Database reads answered empty`, ``, `The handler asked for these; the eval answered nothing. Add them to run.mjs if they matter:`, ``, ...unknown.map((u) => `- \`${u}\``));
-lines.push(``, `Made-up documents all carry a SPECIMEN / 测试样本 stamp, so "specimen" should fire on every one of them; a false alarm for it can only be measured on a real public document (docs/public-*).`);
+lines.push(``, `Made-up documents carry a SPECIMEN / 测试样本 stamp, so "specimen" should fire on them, except cn-watermark: it carries only a "仅供The Sourcing Club认证使用 他用无效" watermark, which must NOT read as a specimen (its false alarm is the one measured here).`);
 
 const report = `${lines.join("\n")}\n`;
-fs.writeFileSync(path.join(HERE, "last-run.md"), report);
+fs.writeFileSync(REPORT, report);
 console.log(`\n${report}`);

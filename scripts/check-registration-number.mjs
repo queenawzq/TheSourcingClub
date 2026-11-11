@@ -9,11 +9,14 @@
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
-  REGISTRATION_COUNTRIES, registrationNumberProblem, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
+  REGISTRATION_COUNTRIES, registrationNumberProblem, usccCheckChar, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
 } from "../src/shared/registration-number.mjs";
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
-import { aiReadsDocuments, bestAddress, documentDifferences, groundedReasons, judgeFromTags, tradingScope } from "../api/registry-assist.js";
+import {
+  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, documentDifferences, documentWarnings, groundedReasons,
+  isoDateFrom, judgeFromTags, tradingScope,
+} from "../api/registry-assist.js";
 
 let failures = 0;
 function check(name, fn) {
@@ -181,6 +184,49 @@ check("English copy has no Chinese", () => {
 });
 check("China's upload in each language", () => assert.deepEqual(REGISTRATION_COUNTRIES.CN.upload, { en: "Business licence", zh: "营业执照" }));
 
+check("v3.1 A2: making words and activity codes (PT CAE, TR NACE)", () => {
+  assert.equal(tradingScope("Confecção de vestuário; comércio por grosso").trading, false);
+  assert.equal(tradingScope("Konfeksiyon üretimi ve ticaret").trading, false);
+  assert.equal(tradingScope("Sản xuất, may trang phục; xuất nhập khẩu").trading, false);
+  assert.equal(tradingScope("x", ["14131-R3 — Confeção de outro vestuário"]).makingFrom, "codes");
+  assert.equal(tradingScope("服装生产").makingFrom, "words");
+  // The registry's code decides over the words.
+  assert.equal(tradingScope("Confecção e comércio", ["46420 — Comércio por grosso de vestuário"]).trading, true);
+  assert.equal(tradingScope("", ["NACE 14.39.01 — Örme kazak"]).trading, false);
+  assert.deepEqual(activityDivisions(["CAE 14131-R3", "NACE 46.42", "68100"]), { making: ["CAE 14131-R3"], trade: ["NACE 46.42"], other: ["68100"] });
+});
+check("v3.1 A3: China's code read with O/I/S/Z means 0/1/5/2", () => {
+  const code = `91330203MA2AH7K5X${usccCheckChar("91330203MA2AH7K5X")}`;
+  const read = chinaNumberFromDocument(code.replace(/0/g, "O").replace(/1/g, "I"), { normaliseRegistrationNumber, registrationNumberProblem });
+  assert.deepEqual([read.number, read.mapped, read.problem], [code, true, null]);
+  assert.equal(chinaNumberFromDocument(`${code.slice(0, 17)}${code[17] === "1" ? "2" : "1"}`, { normaliseRegistrationNumber, registrationNumberProblem }).problem, "check_digit");
+});
+check("v3.1 A5: a verification watermark is not a specimen; text under a seal is not an edit", () => {
+  let look = documentWarnings({ markedAsSample: true, sampleReason: "Watermark 仅供The Sourcing Club认证使用 across the page" });
+  assert.deepEqual([look.specimen, look.watermark], [false, true]);
+  look = documentWarnings({ markedAsSample: true, sampleReason: "Red SPECIMEN / 测试样本 stamp", watermarkText: "他用无效" });
+  assert.deepEqual([look.specimen, look.watermark], [true, true]);
+  assert.equal(documentWarnings({ verificationWatermark: true, watermarkText: "" }).watermark, false);
+  assert.equal(documentWarnings({ verificationWatermark: true, watermarkText: "SPECIMEN" }).specimen, true);
+  assert.equal(documentWarnings({ looksEdited: true, editedReason: "Some characters appear under the red seal" }).edited, false);
+  assert.equal(documentWarnings({ looksEdited: true, editedReason: "The last six digits are in a different font" }).edited, true);
+});
+check("v3.1 B3: founding date", () => {
+  assert.equal(isoDateFrom("2016年04月18日"), "2016-04-18");
+  assert.equal(isoDateFrom("02.09.2011"), "2011-09-02");
+  assert.equal(isoDateFrom("2031-01-01"), null);
+});
+check("v3.1 B2: authorisation", () => {
+  const now = new Date("2026-11-11T12:00:00Z");
+  const helpers = { companyNamesMatch };
+  const name = ["宁波明纬服饰制造有限公司"];
+  assert.equal(authorisationCheck({ readable: true, handwrittenText: "The Sourcing Club 2026.11.10", handwrittenDate: "2026.11.10", hasRedSeal: false }, { names: name, uploadedAt: now.toISOString(), now }, helpers).level, "high");
+  assert.equal(authorisationCheck({ readable: true, handwrittenText: "The Sourcing Club 2025.01.10", handwrittenDate: "2025.01.10", hasRedSeal: false }, { names: name, uploadedAt: now.toISOString(), now }, helpers).level, "medium");
+  assert.equal(authorisationCheck({ readable: true, handwrittenText: "", hasRedSeal: true, sealText: "宁波明纬服饰制造有限公司" }, { names: name, now }, helpers).level, "high");
+  assert.equal(authorisationCheck({ readable: true, handwrittenText: "", hasRedSeal: true, sealText: "义乌市恒越进出口贸易有限公司" }, { names: name, now }, helpers).level, "low");
+  assert.equal(authorisationCheck({ readable: true, handwrittenText: "hello", hasRedSeal: false }, { names: name, now }, helpers).level, "medium");
+  assert.equal(authorisationCheck(null, {}, helpers).level, "unknown");
+});
 if (failures) {
   console.error(`\n${failures} registration check(s) failed`);
   process.exit(1);

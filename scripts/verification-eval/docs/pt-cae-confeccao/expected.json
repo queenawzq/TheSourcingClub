@@ -1,0 +1,24 @@
+{
+  "about": "A Portuguese certidão whose objeto says \"Confecção … comércio\" (the cç spelling) and prints CAE 14131 (making) with a secondary 46420. The making code decides: no trading flag.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "PT",
+    "number": "515920487",
+    "title": "Malhas e Confecções do Cávado, Lda",
+    "location": "Rua do Parque Industrial 88, Barcelos"
+  },
+  "fields": {
+    "registrationNumber": "515920487",
+    "legalName": "MALHAS E CONFECÇÕES DO CÁVADO, LDA.",
+    "businessScopeIncludes": "Confecção",
+    "activityCodeIncludes": "14131"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}
