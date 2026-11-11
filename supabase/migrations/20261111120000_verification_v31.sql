@@ -13,8 +13,9 @@
 -- B3  Company facts staff record from the annual report: insured staff and
 --     founding date (admin_record_company_facts). Staff-only table: a brand
 --     can read factory_profiles.
--- B4  factory_profiles.production_address, written by the factory's own
---     profile save (factory_profiles_write), read by staff in
+-- B4  The production address, written by the factory's own
+--     profile save (factory_profiles.production_address, moved by a trigger
+--     to factory_production_addresses: members and staff only), read by staff in
 --     admin_registry_detail().
 -- B2  Document kinds 'authorisation' (who may act for the company) and
 --     'factory_photo' (workshop and production line). Both go to the private
@@ -81,7 +82,64 @@ alter table public.factory_profiles
     check (production_address is null or char_length(production_address) <= 500);
 
 comment on column public.factory_profiles.production_address is
-  'Full street address of the production site, as the factory typed it. The address checks use it as the typed address.';
+  'Write-only: a value written here moves to factory_production_addresses and the column is left null, because a brand can read factory_profiles. An empty string clears it.';
+
+-- The full street address is a contact detail: a brand must not read it
+-- before a contract. It lives here, read by the company's members and staff.
+create table if not exists public.factory_production_addresses (
+  org_id     uuid primary key references public.orgs (id) on delete cascade,
+  address    text not null check (char_length(address) between 1 and 500),
+  updated_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.factory_production_addresses enable row level security;
+revoke all on public.factory_production_addresses from anon, authenticated;
+grant select on public.factory_production_addresses to authenticated;
+grant all on public.factory_production_addresses to service_role;
+
+drop policy if exists factory_production_addresses_read on public.factory_production_addresses;
+create policy factory_production_addresses_read on public.factory_production_addresses
+  for select to authenticated
+  using (public.is_org_member(org_id) or public.is_platform_admin());
+
+-- The profile save stays the way to write it: whoever may write the profile
+-- row (factory_profiles_write) writes the address, and the column never
+-- holds it.
+create or replace function public.move_production_address()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  said text := nullif(trim(public.strip_invisible(new.production_address)), '');
+begin
+  if new.production_address is null then
+    return new;
+  end if;
+  if said is null then
+    delete from public.factory_production_addresses where org_id = new.org_id;
+  else
+    insert into public.factory_production_addresses as a (org_id, address, updated_by, updated_at)
+    values (new.org_id, said, auth.uid(), now())
+    on conflict (org_id) do update
+      set address = excluded.address,
+          updated_by = excluded.updated_by,
+          updated_at = case when a.address is distinct from excluded.address then now() else a.updated_at end;
+  end if;
+  new.production_address := null;
+  return new;
+end;
+$$;
+
+revoke all on function public.move_production_address() from public, anon, authenticated;
+
+-- Named to fire first among the BEFORE triggers on factory_profiles.
+drop trigger if exists factory_profiles_a_move_production_address on public.factory_profiles;
+create trigger factory_profiles_a_move_production_address
+  before insert or update on public.factory_profiles
+  for each row execute function public.move_production_address();
 
 -- ---------------------------------------------------------------------------
 -- A3. China's number
@@ -677,7 +735,7 @@ begin
         'updatedAt', r.updated_at)
         from public.company_registrations r where r.org_id = target_org),
     'location', (select f.location from public.factory_profiles f where f.org_id = target_org),
-    'productionAddress', (select f.production_address from public.factory_profiles f where f.org_id = target_org),
+    'productionAddress', (select a.address from public.factory_production_addresses a where a.org_id = target_org),
     'title', public.company_title(target_org),
     'displayName', (select o.name from public.orgs o where o.id = target_org),
     'current', case when current_check.id is null then null else to_jsonb(current_check) end,

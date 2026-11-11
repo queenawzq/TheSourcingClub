@@ -4,7 +4,7 @@
 -- Fixtures prefixed pgtap31-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(49);
+select plan(55);
 
 insert into auth.users (id, email) values
   ('c3100000-0000-0000-0000-000000000001', 'p31-admin@example.com'),
@@ -50,9 +50,19 @@ select lives_ok($$insert into public.documents (id, org_id, kind, bucket, storag
 
 -- B4: the production address, through the profile's own write -------------------
 select lives_ok($$update public.factory_profiles set production_address = '浙江省宁波市鄞州区工业园路 18 号 3 栋'
-  where org_id = 'd3100000-0000-0000-0000-0000000000f4'$$, 'a member saves its production address');
+  where org_id = 'd3100000-0000-0000-0000-0000000000f4'$$, 'a member saves its production address through the profile');
+select is((select production_address from public.factory_profiles where org_id = 'd3100000-0000-0000-0000-0000000000f4'), null,
+  'the profile row, which brands read, never holds it');
+select is((select address from public.factory_production_addresses where org_id = 'd3100000-0000-0000-0000-0000000000f4'),
+  '浙江省宁波市鄞州区工业园路 18 号 3 栋', 'the company reads it back from its own table');
+select lives_ok($$update public.factory_profiles set intro = 'Knitwear' where org_id = 'd3100000-0000-0000-0000-0000000000f4'$$,
+  'saving the profile without it');
+select is((select count(*)::int from public.factory_production_addresses where org_id = 'd3100000-0000-0000-0000-0000000000f4'), 1,
+  'keeps it');
 select throws_ok($$update public.factory_profiles set production_address = repeat('x', 501)
   where org_id = 'd3100000-0000-0000-0000-0000000000f4'$$, '23514', null, 'an address over 500 characters is refused');
+select throws_ok($$insert into public.factory_production_addresses (org_id, address) values ('d3100000-0000-0000-0000-0000000000f4', 'x')$$,
+  '42501', null, 'no direct write');
 update public.factory_profiles set production_address = 'not mine' where org_id = 'd3100000-0000-0000-0000-0000000000f1';
 select throws_ok($$select public.admin_registry_detail('d3100000-0000-0000-0000-0000000000f4')$$, '42501', null, 'a member cannot read the staff detail');
 select throws_ok($$select public.admin_record_company_facts('d3100000-0000-0000-0000-0000000000f4', 5, null)$$, '42501', null, 'a member cannot record company facts');
@@ -68,6 +78,8 @@ select is((select production_address from public.factory_profiles where org_id =
 -- A3: a failing check digit is never stored --------------------------------------
 set local request.jwt.claims = '{"sub":"c3100000-0000-0000-0000-000000000002","role":"authenticated"}';
 set local role authenticated;
+select is((select count(*)::int from public.factory_production_addresses where org_id = 'd3100000-0000-0000-0000-0000000000f4'), 0,
+  'another company cannot read it');
 select lives_ok($$select public.save_company_registration('d3100000-0000-0000-0000-0000000000f1', 'CN', '')$$, 'a Chinese factory saves with no number');
 reset role;
 select lives_ok($$select public.record_verification_signal('d3100000-0000-0000-0000-0000000000f1', 'document_reading', 'a3100000-0000-0000-0000-000000000001', 'agrees',
