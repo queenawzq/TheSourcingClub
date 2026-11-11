@@ -1005,11 +1005,14 @@ async function main() {
     // (20261108600000): "Approve" is greyed until one is recorded.
     const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
     check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
+    // v3: the registry form sits in the Registry row's details window.
+    await page.locator('.admin-level-row[data-check="registry"]').first().click();
+    await waitFor(page, ".admin-registry-form select", 15000);
     await page.locator(".admin-registry-form select").first().selectOption("certidao");
     await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: certificate shows this NIPC and the company's name");
     await clickButton(page, "record check");
-    check(await within(page, () => page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows") || null), 20000) !== null,
-      "the registry check is recorded on the review page");
+    check(await within(page, () => page.evaluate(() => /found/i.test(document.querySelector('.admin-level-row[data-check="registry"]')?.innerText ?? "") || null), 20000) !== null,
+      "the registry check is recorded on the review page (the Registry row says found)");
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
@@ -3590,7 +3593,9 @@ async function main() {
       }
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
-      // Approving needs a registry check that found it.
+      // Approving needs a registry check that found it (v3: in the Registry row's details).
+      await page.locator('.admin-level-row[data-check="registry"]').first().click();
+      await waitFor(page, ".admin-registry-form", 15000);
       await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: the registration document shows this number and name");
       await clickButton(page, "record check");
       await page.waitForTimeout(2500);

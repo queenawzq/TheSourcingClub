@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-11-11T15:41:44.577Z against `http://127.0.0.1:5214/app.html`.
+Recorded 2026-11-11T15:50:13.203Z against `http://127.0.0.1:5214/app.html`.
 
-**34 steps, 30 assertions, 1 failed.**
+**35 steps, 42 assertions, 1 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -45,7 +45,8 @@ out of Postgres to confirm the screen and the database agree.
 | 31 | Admin sign-in | cold start, no session | [31-admin-sign-in.png](31-admin-sign-in.png) |
 | 32 | Admin signed in | email and password, on the designed screen | [32-admin-signed-in.png](32-admin-signed-in.png) |
 | 33 | Verification queue | an admin with no org of their own can still work | [33-verification-queue.png](33-verification-queue.png) |
-| 34 | FAILED HERE | no visible button matching "request more information" — page showed "(no heading)" | [34-failure.png](34-failure.png) |
+| 34 | Factory asked for more information | straight to the profile summary | [34-factory-asked-for-more-information.png](34-factory-asked-for-more-information.png) |
+| 35 | FAILED HERE | Could not find an element for the given xPath(s): .admin-registry-form select — page showed "Atelier E2E 1794412175487" | [35-failure.png](35-failure.png) |
 
 ## Assertions
 
@@ -79,6 +80,18 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ match score computed between the two orgs just created: 57% (weak)
 - ✅ the factory is waiting for a decision in the live queue
 - ✅ the queue row for this factory was found and opened
+- ✅ the request dialog labels its message once (1)
+- ✅ the toast says the request was emailed, and to how many ("Information request recorded and emailed to 1 person.")
+- ✅ the review page says who was emailed (Email to the company The request for more information: e2e-factory-1794412175487@example.com Sent · Nov 11, 2026, 10:50 )
+- ✅ and the email carries the request exactly as staff wrote it
+- ✅ the review summary shows the note just sent, without a reload
+- ✅ and the badge says Needs information
+- ✅ and Profile status says the same (Needs information)
+- ✅ no chip heading is drawn without chips (0)
+- ✅ the factory lands on its profile summary, with no extra page first
+- ✅ the factory sends its profile back to staff's queue
+- ✅ and staff are emailed, with a link to the review
+- ✅ Approve is greyed until a registry check finds the company
 
 ## The one worth reading twice
 
