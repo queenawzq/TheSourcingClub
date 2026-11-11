@@ -259,9 +259,12 @@ export function toReviewProfile(row) {
     // the submission (profile-completion.js), so both sides see one number.
     completion: null,
     // The designed panel renders [label, result, value, detail] tuples.
-    checks: (row.verificationChecks ?? []).map(
-      (check) => [check.label, check.result, check.value, check.detail],
-    ),
+    // v3.1: a factory's photos are judged by the Photos row (workshop photos,
+    // automatic); the old "Production evidence" card counted only public
+    // product images and contradicted it, so factories don't get it.
+    checks: (row.verificationChecks ?? [])
+      .filter((check) => check.label !== "Production evidence")
+      .map((check) => [check.label, check.result, check.value, check.detail]),
   };
 }
 
