@@ -21,6 +21,7 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import { saveEmailLanguage } from "../../lib/email-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import {
@@ -659,7 +660,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       language={language}
       step={step}
       isReviewEdit={reviewEditStep !== null}
-      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); }}
+      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); saveEmailLanguage(user?.id); }}
       onCompanyTypeChange={setCompanyType}
       onBack={() => {
         if (reviewEditStep !== null) {
