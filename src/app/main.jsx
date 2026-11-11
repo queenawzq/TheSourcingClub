@@ -12,7 +12,7 @@
  */
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, useAuth } from "../lib/auth.jsx";
+import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
@@ -50,7 +50,6 @@ import LiveFund from "./order/LiveFund.jsx";
 import "./live-quiet.css";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
-import AdminMessages from "./admin/AdminMessages.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
@@ -162,15 +161,16 @@ function SignIn({ invitation = null }) {
     minPasswordLength,
     clearError,
     error,
+    lostAccess,
   } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
   // An invitation decides the kind, whichever portal the link was opened on.
   const accountType = invitation?.kind ?? portalFromUrl();
 
-  const [mode, setMode] = useState(invitation ? (invitation.hasAccount ? "login" : "signup") : params.get("mode") === "signup" ? "signup" : "login");
+  const [mode, setMode] = useState(invitation ? (invitation.hasAccount ? "login" : "signup") : params.get("mode") === "signup" && !lostAccess ? "signup" : "login");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(() => (reviewOrgFromUrl() ? "Sign in to see what we need from you." : null));
+  const [notice, setNotice] = useState(() => (lostAccess ? `You no longer have access to ${lostAccess}.` : reviewOrgFromUrl() ? "Sign in to see what we need from you." : null));
   const [resetFor, setResetFor] = useState(null);
   // The address a sign-in code was emailed to, and so the code-entry screen.
   const [codeFor, setCodeFor] = useState(null);
@@ -642,8 +642,10 @@ function companyErrorText(error, kind) {
 }
 
 function ChooseOrgType() {
-  const { user, refreshOrgs, lostAccess, dismissLostAccess, signOut: endSession } = useAuth();
-  const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
+  const { user, refreshOrgs, lostAccess, noteLostAccess, signOut: endSession } = useAuth();
+  // Someone who was in a company goes back to that company's sign-in: an
+  // invited member's account may have no type of its own.
+  const signOut = () => signOutInto((departure || lostAccess ? lastCompanyKind(user?.id) : null) ?? user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
   // again: their company is created from those answers, and this card shows
@@ -656,14 +658,20 @@ function ChooseOrgType() {
   const [name, setName] = useState(answeredName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [autoCreating, setAutoCreating] = useState(Boolean(answeredKind && answeredName));
+  // Nothing is drawn until the account has been read: this form must not be
+  // on screen, even for a moment, for someone who has left a company.
+  const [autoCreating, setAutoCreating] = useState(true);
+  const [unreadable, setUnreadable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // Someone who was invited lands here, and used to be told to create an
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
   // The company they were removed from or left. Kept in the database, because
   // state in this tab does not survive a reload, and a reload must not read as
-  // a fresh signup.
+  // a fresh signup. A recorded departure is what separates them from the two
+  // people this card is for, who have never been in a company: a signup whose
+  // company failed to save, and a first Google sign-in.
   const [departure, setDeparture] = useState(null);
   // "Start my own instead" is an answer to these invitations, not to any later one.
   const [skipped, setSkipped] = useState([]);
@@ -678,17 +686,25 @@ function ChooseOrgType() {
     Promise.all([
       // A failed read is "don't know": it must not read as "not invited".
       listMyInvitations().catch(() => null),
-      // Unknown counts as "has left": asking again costs a click, while a
+      // Unknown is not "never left": the card waits for an answer, since a
       // company created by mistake cannot be taken back.
-      myLastDeparture(user?.id).catch(() => ({ orgName: null, byChoice: false, unknown: true })),
+      myLastDeparture(user?.id).catch(() => ({ unknown: true })),
     ])
       .then(async ([pending, gone]) => {
         if (cancelled) return;
-        setInvitations(pending ?? []);
-        if (gone && !gone.unknown) setDeparture(gone);
+        if (!pending || gone?.unknown) {
+          setUnreadable(true);
+          setAutoCreating(false);
+          return;
+        }
+        setInvitations(pending);
+        setUnreadable(false);
+        setDeparture(gone);
+        // Starting afresh: the name from the signup form may be the company they left.
+        if (gone?.byChoice) setName("");
         // An invitation wins: joining is what an invited person should do.
         // Creating from the signup answers is only for someone who just signed up.
-        if (!pending || pending.length || gone || lostAccess || !answeredKind || !answeredName) {
+        if (pending.length || gone || lostAccess || !answeredKind || !answeredName) {
           setAutoCreating(false);
           return;
         }
@@ -701,9 +717,35 @@ function ChooseOrgType() {
         if (!cancelled) setAutoCreating(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
 
-  if (autoCreating) return <Loading label="Setting up your account…" />;
+  // Removed from their company, and not invited anywhere: back to the regular
+  // sign-in page (Queena, Nov 6), which says what happened. Someone who left by
+  // choice is an account with no company, and may start a new one.
+  const goneFrom = departure?.byChoice ? null : departure ? (departure.orgName ?? "your company") : lostAccess;
+  const toSignIn = !autoCreating && !unreadable && Boolean(goneFrom) && !waiting.length;
+  useEffect(() => {
+    if (!toSignIn) return;
+    noteLostAccess(goneFrom);
+    signOut();
+  }, [toSignIn]);
+
+  if (autoCreating || toSignIn) return <Loading label="Setting up your account…" />;
+
+  if (unreadable) {
+    return (
+      <div className="gate">
+        <div className="gate-card">
+          <p className="gate-eyebrow">Signed in as {user?.email}</p>
+          <h1>Your account didn&rsquo;t load</h1>
+          <div className="gate-row">
+            <button type="button" className="primary-btn" onClick={() => { setAutoCreating(true); setAttempt((count) => count + 1); }}>Try again</button>
+            <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -713,7 +755,6 @@ function ChooseOrgType() {
     setError(null);
     try {
       await createOrg(name, kind);
-      dismissLostAccess();
       await refreshOrgs();
     } catch (createError) {
       setError(createError);
@@ -721,10 +762,9 @@ function ChooseOrgType() {
     }
   }
 
-  const goneFrom = departure ? (departure.orgName ?? "your company") : lostAccess;
   const goneNotice = goneFrom ? (
     <p className="gate-error" role="status" data-testid="lost-access">
-      {departure?.byChoice ? `You left ${goneFrom}.` : `You no longer have access to ${goneFrom}.`} Join another company or start your own.
+      You no longer have access to {goneFrom}.
     </p>
   ) : null;
 
@@ -762,9 +802,11 @@ function ChooseOrgType() {
           ))}
           {error ? <p className="gate-error">{companyErrorText(error, kind)}</p> : null}
           <div className="gate-row">
-            <button type="button" className="quiet-btn" onClick={() => setSkipped(invitations.map((invitation) => invitation.id))}>
-              Start my own organisation instead
-            </button>
+            {goneFrom ? null : (
+              <button type="button" className="quiet-btn" onClick={() => setSkipped(invitations.map((invitation) => invitation.id))}>
+                Start my own organisation instead
+              </button>
+            )}
             <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
           </div>
         </div>
@@ -776,12 +818,7 @@ function ChooseOrgType() {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
-        {goneNotice}
         <h1>Which side are you on?</h1>
-        <p className="gate-note">
-          This decides what you see. It cannot be changed later without our help,
-          so pick the one that matches your business.
-        </p>
 
         <div className="kind-grid">
           <button
@@ -1671,7 +1708,6 @@ function AdminGate({ children, noOrg = false }) {
 function AdminRoutes() {
   return useRoute([
     { path: "/admin/payments", render: () => <AdminPayments /> },
-    { path: "/admin/messages", render: () => <AdminMessages /> },
     { render: () => <AdminConsoleRedirect /> },
   ]);
 }

@@ -55,20 +55,22 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
       body: "grant_type=client_credentials",
     });
     if (answer.status === 401 || answer.status === 403) {
-      throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { status: answer.status });
+      // Unsure, both: this may be the second press of a payment whose first answer was lost.
+      throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { unsure: true, status: answer.status });
     }
     if (answer.status >= 300 || !answer.body?.access_token) {
-      throw new PayoutFailure("provider_down", "PayPal is having trouble, so nothing was sent. Press again in a minute.", { status: answer.status });
+      throw new PayoutFailure("provider_down", "PayPal is having trouble. Press again in a minute: it can't pay twice.", { unsure: true, status: answer.status });
     }
     return answer.body.access_token;
   }
 
+  /** A string body goes as it is: a webhook's event must reach PayPal byte for byte. */
   async function call(method, path, body) {
     const bearer = await token();
     const answer = await timedCall({
       fetchImpl, label: LABEL, url: `${base}${path}`, method,
       headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
     });
     if (answer.status === 401) {
       throw new PayoutFailure("key_refused", "PayPal refused TSC's API keys. Check PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.", { status: 401 });
@@ -85,6 +87,9 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
     const href = (detail.link ?? [])[0]?.href ?? "";
     return href.split("/").pop() || null;
   };
+
+  const isDuplicate = (answer) => /already exists/i.test(answer.body?.message ?? "")
+    || (answer.body?.details ?? []).some((d) => d.field === "SENDER_BATCH_ID" || /already exists/i.test(d.issue ?? ""));
 
   return {
     provider: "paypal",
@@ -106,6 +111,11 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
       if (answer.status < 300) return { batchId: answer.body.batch_header.payout_batch_id };
       const existing = batchIn(answer);
       if (existing) return { batchId: existing };
+      // It exists but PayPal didn't say where. Read as a refusal this would end the
+      // attempt, and the next press would pay again under a new key.
+      if (isDuplicate(answer)) {
+        throw new PayoutFailure("already_exists", "PayPal says this payment already exists but didn't say where. Check PayPal before paying it any other way.", { unsure: true, status: answer.status });
+      }
       if (answer.body?.name === "INSUFFICIENT_FUNDS") {
         throw new PayoutFailure("short_balance", "TSC's PayPal balance is too low for this. Add money in PayPal, then pay again.", { status: answer.status });
       }
@@ -135,6 +145,25 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
         factoryFixes: raw === "UNCLAIMED",
         itemId: item.payout_item_id ?? null,
       };
+    },
+
+    /**
+     * PayPal's own check of a webhook's signature: the headers it sent, our
+     * webhook's id (PAYPAL_WEBHOOK_ID) and the event's raw text, unparsed.
+     * True only on PayPal's SUCCESS.
+     */
+    async verifyWebhook({ headers, webhookId, rawEvent }) {
+      const fields = JSON.stringify({
+        auth_algo: headers["paypal-auth-algo"] ?? "",
+        cert_url: headers["paypal-cert-url"] ?? "",
+        transmission_id: headers["paypal-transmission-id"] ?? "",
+        transmission_sig: headers["paypal-transmission-sig"] ?? "",
+        transmission_time: headers["paypal-transmission-time"] ?? "",
+        webhook_id: webhookId,
+      });
+      const answer = await call("POST", "/v1/notifications/verify-webhook-signature",
+        `${fields.slice(0, -1)},"webhook_event":${rawEvent}}`);
+      return answer.status < 300 && answer.body?.verification_status === "SUCCESS";
     },
 
     /** Only an unclaimed payment can be taken back. */

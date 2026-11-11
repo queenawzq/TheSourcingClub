@@ -19,9 +19,13 @@
 
 begin;
 
+-- These fixtures approve factories that have no registration number; the
+-- registry guard (20261108600000) is tested in registry_checks_test.sql.
+set local tsc.skip_registry_guard = 'on';
+
 create extension if not exists pgtap with schema extensions;
 
-select plan(111);
+select plan(113);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -252,6 +256,10 @@ select public.record_payment_processing(pg_temp.p18_pay('order_a', 'Fit sample')
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'processing', 'a bank payment is clearing');
 select is(pg_temp.p18_notes('18b00000-0000-0000-0000-0000000000f1', 'payment_processing', 'order_a'), 1::bigint,
   'the factory is told it is on its way, not to start');
+select ok(
+  (select bool_and(n.body like '%still being confirmed%' and n.body not like '%Stripe%') from public.notifications n
+    where n.kind = 'payment_processing' and n.order_id = (select id from p18 where name = 'order_a')),
+  'in words that name no payment provider');
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -285,6 +293,12 @@ reset role;
 
 select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 53500);
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'confirmed', 'the card payment arrived: TSC holds it');
+select ok(
+  (select n.body like '%received on %' || o.order_number || '%TSC holds it%' from public.notifications n
+     join public.production_orders o on o.id = n.order_id
+    where n.kind = 'payment_confirmed' and n.org_id = '18b00000-0000-0000-0000-00000000000b'
+      and n.order_id = (select id from p18 where name = 'order_a')),
+  'the brand''s "TSC holds it" names the order');
 select is(
   (select row(confirmed_by is null, confirmed_at is not null, release_requested_at is null, payment_method_label)::text
      from public.order_payments where id = pg_temp.p18_pay('order_a', 'Fit sample')),
@@ -416,17 +430,19 @@ select is(
     where payment_id = pg_temp.p18_pay('order_a', 'Balance')),
   false, 'and a payout owed to a factory with no Stripe account, to pay by bank');
 -- The overview card is staff's only prompt: it counts exactly what only a
--- person can move on the board (wire claims, payouts owed, held on cancelled).
+-- person can move on the board (payouts owed, and a cancelled order's refund
+-- Stripe refused). Bank-wire claims left the board on Nov 7 (20261108309000);
+-- held money on a cancelled order is refunded automatically (20261108300000),
+-- so it counts only once its refund failed (20261108309000).
 select is(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()),
   (select count(*)::integer from public.admin_payment_board() b
-    where b.state = 'sent'
-       or (b.state = 'confirmed' and b.release_requested_at is not null)
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled')),
+    where (b.state = 'confirmed' and b.release_requested_at is not null)
+       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)),
   'the overview counts every payment waiting on staff, payouts owed included');
 select ok(
-  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 2,
-  'which here includes the payout owed and the money held on the cancelled order');
+  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
+  'which here includes the payout owed');
 reset role;
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active)
@@ -640,12 +656,18 @@ select lives_ok($$select public.approve_milestone(pg_temp.p18_step('order_d', 'F
   'and approves the step');
 reset role;
 
+-- Stripe can no longer pay this factory, so a person does (20261108710000).
+update public.stripe_connect_accounts set transfers_active = false
+ where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
+
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select lives_ok(
   $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Fit sample'), 'paid by bank')$$,
   'staff mark an approved Stripe-funded payment paid out by bank');
 reset role;
+update public.stripe_connect_accounts set transfers_active = true
+ where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
 select is(pg_temp.p18_state('order_d', 'Fit sample'), 'released', 'it is paid out');
 
 select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'The payment was refunded.');
@@ -682,8 +704,8 @@ select public.record_payment_refunded(pg_temp.p18_pay('order_b', 'Fit sample, ro
 select is(
   (select row(state::text, stripe_payment_intent_id is null)::text
      from public.order_payments where id = pg_temp.p18_pay('order_b', 'Fit sample, round 1')),
-  row('cancelled', true)::text,
-  'money held on a cancelled order and refunded in Stripe is cancelled');
+  row('cancelled', false)::text,
+  'money held on a cancelled order and refunded in Stripe is cancelled, and keeps its intent as the record');
 
 -- The bell says what the card will be charged: the step plus the fee, 7% on
 -- this order (order_d's steps are edited after their notices, so not those).

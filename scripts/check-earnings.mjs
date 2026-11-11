@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
-  staffBankNote, withdrawalProblem, withdrawalRows,
+  refundPendingWord, staffBankNote, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 
 const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
@@ -54,6 +54,11 @@ assert.equal(earningStatus(approved), "Pending");
 assert.equal(earningStatus(held), "Awaiting approval");
 assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled")), "Order cancelled");
 assert.equal(earningStatus(earnings.find((row) => row.id === "paid")), "Paid");
+// What the brand reads for the same money: held on a cancelled order is on its way back, approved first is still owed.
+assert.equal(refundPendingWord({ state: "confirmed", release_requested_at: null }, { status: "cancelled" }), "Refund pending");
+assert.equal(refundPendingWord({ state: "confirmed", release_requested_at: null }, { status: "active" }), null);
+assert.equal(refundPendingWord({ state: "confirmed", ...APPROVED }, { status: "cancelled" }), null);
+assert.equal(refundPendingWord({ state: "cancelled", refunded_at: "2026-11-02T00:00:00Z" }, { status: "cancelled" }), null);
 assert.equal(earningStatus.length, 1, "the word comes from the payment alone, so owner and member read the same");
 
 // Every payment sent has its own withdrawal row, and the figures still add up:
@@ -143,7 +148,8 @@ assert.equal(earningStatus(transferred[0]), "Paid", "the same word as the order 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
 for (const rule of [
-  'payout: rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
+  // Owed, whichever tab draws it: a Wise or PayPal payout underway is shown under Processing.
+  'const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
   'held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row))',
 ]) {
   assert.ok(board.includes(rule), `the board's rule changed; check payment-summary.mjs: ${rule}`);
@@ -153,8 +159,13 @@ for (const rule of [
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
 
-// Provider setup/security explanations are deliberately visible again (Nov 8).
-// Keep validating earnings calculations above; provider names in guidance are
-// explanatory copy, not a regression in the money figures.
+// Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
+for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "order/PayoutSetupSteps.jsx", "order/AddPayoutMethodForm.jsx", "order/payment-summary.mjs", "order/StripeConnectEmbed.jsx", "order/LiveFund.jsx", "payments/LiveBrandPaymentDetail.jsx"]) {
+  const code = readFileSync(new URL(`../src/app/${file}`, import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
+    assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
+  }
+}
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board");

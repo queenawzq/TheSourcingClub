@@ -138,6 +138,11 @@ insert into public.rfq_colour_splits(rfq_id,colour,quantity,sort) values('f99000
 insert into public.taxonomy_links(subject_type,subject_id,org_id,term_id) select 'rfq','f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000001',term_id from public.taxonomy_links where subject_type='brand_profile' and subject_id='b9900000-0000-0000-0000-000000000001';
 insert into public.matching_requirements(subject_type,subject_id,org_id,quantity,colour_quantities,required_term_ids) values('rfq','f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000001',300,array[150,150],array['c9900000-0000-0000-0000-000000000003'::uuid]);
 update public.matching_settings set enabled=true where id;
+-- A brand invites only a verified factory (20261108700000); this one is
+-- verified as a company and still provisional for matching.
+update public.factory_profiles set verification_status='verified' where org_id='b9900000-0000-0000-0000-000000000002';
+-- Verifying grants the onboarding credits; this suite counts credits from file reviews only.
+delete from public.credit_ledger where org_id='b9900000-0000-0000-0000-000000000002' and reason='onboarding_grant';
 set local role authenticated;
 select throws_ok($$insert into public.rfq_invitations(rfq_id,factory_org_id) values('f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000002')$$,'22023',null,'provisional invitation requires explicit acknowledgement');
 select lives_ok($$insert into public.rfq_invitations(rfq_id,factory_org_id,matching_acknowledged) values('f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000002',true)$$,'acknowledged provisional invitation allowed');

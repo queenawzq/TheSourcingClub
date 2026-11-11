@@ -129,7 +129,7 @@ async function sync({ stripe, db, caller, body, response }) {
     return reply(response, 200, purchase);
   } catch (failure) {
     logStripeFailure("stripe-credits", failure, { purchaseId });
-    return reply(response, 502, { error: sentenceFor(failure, "This purchase could not be checked with Stripe just now. Reload the page in a few minutes.") });
+    return reply(response, 502, { error: sentenceFor(failure, "This purchase could not be checked just now. Reload the page in a few minutes.") });
   }
 }
 

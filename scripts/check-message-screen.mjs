@@ -26,6 +26,7 @@ const DELIVER = [
 const HOLD = [
   ["Let's move this conversation off the platform, it will be faster for both of us.", "outside_platform"],
   ["We could skip the platform fee if you pay us directly by bank transfer.", "outside_platform"],
+  ["skip the platform fee, pay our bank directly", "outside_platform"],
   ["Easier to talk on WeChat, can you add me? My id is lina_rue_2026", "contact_details"],
 ];
 

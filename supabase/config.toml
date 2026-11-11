@@ -172,8 +172,6 @@ additional_redirect_urls = [
   "https://the-sourcing-club.vercel.app",
   "https://the-sourcing-club.vercel.app/app.html",
   "https://the-sourcing-club.vercel.app/app.html?reset=1",
-  # Vercel gives every preview deploy its own hostname.
-  "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
@@ -290,6 +288,12 @@ sender_name = "The Sourcing Club"
 [auth.email.template.magic_link]
 subject = "Your Sourcing Club sign-in code"
 content_path = "./supabase/templates/magic_link.html"
+
+# The reset link lands on our own page, never on <project>.supabase.co, which
+# looks blocked in mainland China. src/lib/recovery-link.mjs reads it.
+[auth.email.template.recovery]
+subject = "Reset your Sourcing Club password"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]

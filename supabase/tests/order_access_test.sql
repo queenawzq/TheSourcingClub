@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(69);
+select plan(72);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -92,6 +92,14 @@ create temporary table p3 as
 select id as order_id from public.production_orders
 where quote_id = 'f3000000-0000-0000-0000-0000000000f1';
 grant select on p3 to public;
+
+select is(
+  (select n.title from public.notifications n
+    where n.kind = 'quote_accepted' and n.order_id = (select order_id from p3)),
+  (select format('Your quote for "%s" was accepted', r.title) from public.rfqs r
+    join public.production_orders o on o.rfq_id = r.id where o.id = (select order_id from p3)),
+  'the winning factory is told which request its quote won'
+);
 
 -- ---------------------------------------------------------------------------
 -- The order exists, and its money is right
@@ -639,6 +647,21 @@ select is(
   (select state::text from public.order_milestones where id = (select fit_id from p3m)),
   'submitted',
   'confirmed money funds the step; the step still waits for the brand''s approval'
+);
+
+reset role;
+select is(
+  (select row(charged_cents, amount_received_cents)::text from public.order_payments where id = (select pay_id from p3p)),
+  (select row(amount_cents + public.payment_fee_cents(id), amount_cents + public.payment_fee_cents(id))::text
+     from public.order_payments where id = (select pay_id from p3p)),
+  'a bank payment confirmed by staff records the step plus TSC''s fee, as a card payment does'
+);
+select ok(
+  (select n.body like public.format_money(p.amount_cents + public.payment_fee_cents(p.id), p.currency) || ' received.%'
+     from public.notifications n join public.order_payments p on p.id = n.subject_id
+    where n.kind = 'payment_confirmed' and n.subject_id = (select pay_id from p3p)
+      and n.org_id = (select brand_org_id from public.production_orders where id = (select order_id from p3))),
+  'and the brand is told the figure it paid, fee included'
 );
 
 reset role;

@@ -39,7 +39,7 @@ const HANDLE = /(^|[\s(（,，:：])@(?=[a-z0-9_.]*[a-z])[a-z0-9_.]{3,}/i;
 
 // Apps whose name alone, next to an invitation or an id, means "talk there".
 const APPS = [
-  ["WeChat", String.raw`we\s?chat|weixin|wei\s?xin|微信|威信|薇信`],
+  ["WeChat", String.raw`we\s?chat|weixin|wei\s?xin|微\s*信|威\s*信|薇\s*信`],
   ["WhatsApp", String.raw`whats\s?app|whatsap|wa\.me`],
   ["Telegram", String.raw`telegram|t\.me\/`],
   ["Skype", String.raw`skype`],
@@ -49,7 +49,7 @@ const APPS = [
   // Not "messenger" alone: it is a bag, a courier, a word.
   ["Facebook", String.raw`facebook|fb\s?messenger`],
   ["LinkedIn", String.raw`linkedin`],
-  ["DingTalk", String.raw`dingtalk|钉钉`],
+  ["DingTalk", String.raw`dingtalk|钉\s*钉`],
 ];
 // Short or everyday names ("line", "signal", "qq", "tg", "vx") count only
 // with an id right after them.
@@ -57,6 +57,8 @@ const SHORT_APP_IDS = [
   ["QQ", /\bq\s?q\s*(?:号|号码|id|no\.?|number)?\s*[:：]?\s*\d{5,}/i],
   ["WeChat", /\b(?:vx|v信|wx)\s*(?:号|id)?\s*[:：]?\s*[a-z0-9_-]{5,}/i],
   ["Line", /\bline\s*id\s*[:：]?\s*[a-z0-9_.-]{4,}/i],
+  // A Skype id is often "live:" and something short.
+  ["Skype", /\bskype\b[^.!?\n]{0,25}\blive:[a-z0-9._-]{2,}/i],
   ["Telegram", /\btg\s*[:：@]\s*[a-z0-9_]{4,}/i],
 ];
 // What makes a mention of an app an invitation rather than a remark: asking
@@ -93,6 +95,9 @@ const DATE_LIKE = /^(?:19|20)\d{2}(?:0[1-9]|1[0-2])/;
 const UNIT_AFTER = /^\s*(?:units?|pcs|pieces?|pc|sets?|pairs?|件|个|套|条|gsm|g|kg|cm|mm|m|yards?|yds?|meters?|metres?|%|usd|rmb|cny|dollars?|元)\b/i;
 const CN_MOBILE = /(?<!\d)1[3-9]\d{9}(?!\d)/;
 const CN_NUMERALS = /[零〇一二三四五六七八九两幺](?:\s*[零〇一二三四五六七八九两幺]){6,}/;
+// The same in English: seven digit-words in a row is nobody's sentence.
+const DIGIT_WORD = "(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)";
+const EN_NUMERALS = new RegExp(String.raw`\b${DIGIT_WORD}(?:[\s,-]+${DIGIT_WORD}){6,}\b`, "i");
 
 const digitsIn = (value) => value.replace(/\D/g, "");
 
@@ -116,7 +121,7 @@ function phoneIn(text) {
     if (UNIT_AFTER.test(text.slice(match.index + match[0].length))) continue;
     return true;
   }
-  return CN_MOBILE.test(text) || CN_NUMERALS.test(text);
+  return CN_MOBILE.test(text) || CN_NUMERALS.test(text) || EN_NUMERALS.test(text);
 }
 
 function emailIn(text) {
@@ -129,8 +134,8 @@ function emailIn(text) {
 // "j o h n @ g m a i l . c o m", "1 3 8 1 2 3 4 5 6 7 8": one character at a
 // time, so that no pattern sees a word. Joining every run of three or more
 // single characters reads them as typed; "S M L XL" becomes "SML XL", which
-// nothing matches.
-const SPACED_OUT = /(?<!\S)\S(?:[ \t]\S(?!\S)){2,}/g;
+// nothing matches. The last letter may touch punctuation ("w e c h a t: x").
+const SPACED_OUT = /(?<!\S)\S(?:[ \t]+\S(?![^\s:：,，.;；!?])){2,}/g;
 const squeeze = (text) => text.replace(SPACED_OUT, (run) => run.replace(/[ \t]/g, ""));
 
 function linkIn(text) {
@@ -159,6 +164,17 @@ function appIn(text, { nameAlone = false } = {}) {
     if (pattern.test(text)) return label;
   }
   return null;
+}
+
+/**
+ * What the model reads of a message: all of it up to 4,000 characters, then its
+ * start and its end, so padding cannot push the part that matters out of view.
+ */
+export const MODEL_CHARS = 4000;
+export function forModel(text) {
+  if (text.length <= MODEL_CHARS) return text;
+  const half = MODEL_CHARS / 2;
+  return `${text.slice(0, half)}\n[...]\n${text.slice(-half)}`;
 }
 
 /** What, if anything, in one piece of text is a way to reach someone off the platform. */

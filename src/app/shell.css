@@ -798,3 +798,7 @@ body {
   line-height: 24px;
 }
 .tsc-review-note li { font-size: inherit; line-height: inherit; color: inherit; }
+
+/* The factory's registration number is already another company's on TSC
+   (verification v2): one line under the field, never a refusal. */
+.factory-onboarding-field .factory-onboarding-warning { display: block; color: var(--danger); margin-top: 4px; }

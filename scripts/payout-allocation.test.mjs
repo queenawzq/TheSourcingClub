@@ -85,10 +85,10 @@ test("a card payment TSC paid out by bank counts as paid out, and never as a bal
   assert.deepEqual(earningsSummaryFor(rows, "All clients").paid, [{ currency: "USD", amount: 6500 }]);
   assert.equal(earningStatus(rows[0]), "Paid");
 });
-test("an earning Stripe is still processing is pending, not credited to the balance", () => {
+test("an approved earning not yet paid out says Approved, not Paid", () => {
   const row = { id: "a", state: "released", stripe_transfer_id: "tr_a" };
   assert.equal(earningStatus(row), "Paid");
-  assert.equal(earningStatus({ state: "confirmed", release_requested_at: "x" }), "Pending");
+  assert.equal(earningStatus({ state: "confirmed", release_requested_at: "x" }), "Approved");
   assert.equal(earningStatus({ state: "confirmed" }), "Awaiting approval");
 });
 test("before the earnings are read, every figure is unknown, never zero", () => {

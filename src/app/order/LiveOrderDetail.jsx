@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { earningStatus } from "./payment-summary.mjs";
+import { earningStatus, refundPendingWord } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -134,7 +134,7 @@ function actionFor(milestone, viewer) {
  * brand approves the step, then pays the factory; a payment-only step (a
  * deposit or balance) has nothing to approve and is paid out once funded.
  */
-function paymentLine(payment, isFactory, kind, needsMethod = null) {
+function paymentLine(payment, isFactory, kind, needsMethod = null, order = null) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
@@ -150,6 +150,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
+      // Held on a cancelled order it is on its way back to the brand: both sides read that.
+      if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
@@ -157,6 +159,9 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
       return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
       return "Paid";
+    case "cancelled":
+      // Held money that went back to the brand when the order was cancelled.
+      return payment.refunded_at && !isFactory ? "Refunded" : "";
     default:
       return "";
   }
@@ -164,10 +169,11 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
 
 /** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod, order }) {
   const payment = milestone.payment;
-  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod);
+  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod, order);
 
+  if (milestone.state === "cancelled") return money ? `Cancelled · ${money}` : "Cancelled";
   if (milestone.state === "complete") {
     return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
   }
@@ -502,13 +508,14 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // the rest, so the rows offer only these.
   const viewer = {
     isFactory,
+    order,
     org,
     factoryName: order.factory?.name,
     canFund: can(org, "releaseFunds"),
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),
     canSetSteps: can(org, "rfqFlow"),
-    needsMethod: noMethod ? (isOwner ? "Add a withdrawal method" : "Ask a company owner to add a withdrawal method") : null,
+    needsMethod: noMethod && isOwner ? "Add a withdrawal method" : null,
   };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.
@@ -589,13 +596,15 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const factoryLine = [order.factory?.name, isFactory ? "" : location].filter(Boolean).join(" · ");
   const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
   const counterparty = { name: other ?? "", initials: initials(other), location };
+  const refundPendingCents = milestones.reduce((sum, { payment }) => sum + (refundPendingWord(payment ?? {}, order) ? Number(payment.amount_cents) : 0), 0);
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
     total: money(charged ? charged.order.total_charged_cents : order.total_cents),
-    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents),
+    // Money going back to the brand was never the factory's (as on its Payments page).
+    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),

@@ -2,8 +2,7 @@
  * A factory's payout methods where Stripe cannot pay out (mainland China, Hong
  * Kong…), in factory_payout_accounts. The one marked is_primary is "the one TSC
  * pays": a bank account (through Wise when it was set up on Wise's form, by
- * staff otherwise) or a PayPal address. A Payoneer row from before stays until
- * its owner removes it; a new one cannot be added.
+ * staff otherwise) or a PayPal address.
  *
  * A factory may keep more than one (John, 2026-10-29): Add always saves a new
  * row, never overwriting another; the first one saved is the one TSC pays,
@@ -18,7 +17,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
-const COLUMNS = "id, is_primary, method, payoneer_email, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
+const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
 
 // The database's refusals, in the owner's words. No raise there carries a value.
 const SAVE_REFUSALS = {
@@ -114,7 +113,7 @@ export function useManualPayouts(orgId) {
     try {
       const bank_country = "bank_country" in details ? details.bank_country : editing?.bank_country ?? null;
       // The number goes to the database and nowhere else; the page keeps only what comes back.
-      unwrap(await supabase.rpc("save_bank_payout_account", {
+      const row = unwrap(await supabase.rpc("save_bank_payout_account", {
         target_org: orgId,
         target_account: editing?.id ?? null,
         bank_name: form.bank_name,
@@ -130,6 +129,7 @@ export function useManualPayouts(orgId) {
       setForm((current) => ({ ...current, account_number: "", account_number_again: "" }));
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       throw inWords(failure);
     } finally {
@@ -141,7 +141,7 @@ export function useManualPayouts(orgId) {
   async function saveWise({ bankName, type, currency, details, numberKey, number, numberAgain }) {
     setBusy(true);
     try {
-      unwrap(await supabase.rpc("save_wise_payout_account", {
+      const row = unwrap(await supabase.rpc("save_wise_payout_account", {
         target_org: orgId,
         target_account: editingId,
         bank_name: bankName,
@@ -154,6 +154,7 @@ export function useManualPayouts(orgId) {
       }), "save your payout account");
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       throw inWords(failure);
     } finally {
@@ -168,7 +169,7 @@ export function useManualPayouts(orgId) {
     if (email !== paypalEmail(form.paypal_email_confirm)) throw new Error("The two email addresses don't match.");
     setBusy(true);
     try {
-      unwrap(editing
+      const row = unwrap(editing
         ? await supabase.from("factory_payout_accounts").update({ paypal_email: email }).eq("id", editing.id).select().single()
         // The one TSC pays only if there is none yet.
         : await supabase.from("factory_payout_accounts")
@@ -177,6 +178,7 @@ export function useManualPayouts(orgId) {
       "save your payout account");
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       if (failure?.cause?.code === "23505") throw new Error("This PayPal account is already on file.");
       throw inWords(failure, new Error("Couldn't save your PayPal account right now. Nothing changed. Try again."));

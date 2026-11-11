@@ -1,6 +1,7 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
-import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_stripe.js";
+import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
+import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * Pay with Wise and Pay with PayPal, one shape behind both routes.
@@ -9,9 +10,12 @@ import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_s
  *   pay       claim, call the provider with the attempt's key, read back. Pressing
  *             again resumes the same attempt with the same key.
  *   cancel    take back a transfer nobody funded, or a PayPal payment nobody claimed.
- *   sync      read back everything that can still change. Previews sit behind
- *             Vercel's sign-in, where no webhook can reach, so nothing waits for one.
- *   tell      Wise refused the details: the attempt fails and the factory is told.
+ *   sync      read back everything that can still change. The board does this while
+ *             open; with nobody watching, Wise's and PayPal's webhooks
+ *             (api/wise-webhook.js, api/paypal-webhook.js) and the daily sweep
+ *             (api/payout-sync.js) do the same read. Previews sit behind Vercel's
+ *             sign-in, where no webhook can reach: there the sweep and the board do it.
+ *   tell      Wise refused the details, at the recipient or later: the factory is told.
  *
  * Whether someone may do this is the database's call, as the caller. Whether the
  * money went is only ever written with the server's key, from what the provider said.
@@ -23,6 +27,12 @@ const STAFF_ONLY = "This is limited to platform staff.";
 export const FUND_IN_WISE = "Transfer created. Fund it in Wise.";
 export const CHECK_BANK = "Check your bank details";
 export const CHECK_PAYPAL = "Check your PayPal address";
+const STILL_OPEN = "This payment is still open, so the factory wasn't told. Press again to see where it is.";
+
+/** How long to give Wise's status to catch up with a payment it just took. */
+export let FUND_SETTLE_MS = 1500;
+export const setFundSettleMs = (ms) => { FUND_SETTLE_MS = ms; };
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Which details Wise refused, in our words: the factory reads these, and Wise's
@@ -123,22 +133,24 @@ async function wiseBalance(wise, currency) {
 }
 
 export async function wisePreview({ wise, caller, db, row, cnyConfirmed }) {
-  // First: Wise marks the balance route unavailable on a quote larger than the
-  // balance (seen on the sandbox), and "short by" is the sentence staff can act on.
+  // First: a step the balance can't cover even before the fee needs no recipient
+  // made, so the bank number isn't read for a payment that can't go.
   const balance = await wiseBalance(wise, row.currency);
-  const shortByCents = Math.max(0, Number(row.amount_cents) - balance.balanceCents);
-  if (shortByCents > 0) return { shortByCents, feeCents: null, arrivesCents: null, arrivesCurrency: row.wise_currency, nothingLeft: false, ...balance };
+  const stepShort = Number(row.amount_cents) - balance.balanceCents;
+  if (stepShort > 0) return { shortByCents: stepShort, feeCents: null, totalCents: null, arrivesCents: null, arrivesCurrency: row.wise_currency, ...balance };
   const recipientId = await ensureWiseRecipient({
     caller, db, wise, accountId: row.payout_account_id, existingId: row.wise_recipient_id, cnyConfirmed,
   });
   const quote = await wise.quote({
-    sourceCurrency: row.currency, targetCurrency: row.wise_currency, sourceCents: row.amount_cents, recipientId,
+    sourceCurrency: row.currency, targetCurrency: row.wise_currency, amountCents: row.amount_cents, recipientId,
   });
+  const shortByCents = Math.max(0, quote.totalCents - balance.balanceCents);
+  if (quote.balanceRefused && !shortByCents) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
   return {
     feeCents: quote.feeCents,
+    totalCents: quote.totalCents,
     arrivesCents: quote.arrivesCents,
     arrivesCurrency: quote.arrivesCurrency,
-    nothingLeft: quote.arrivesCents <= 0,
     shortByCents,
     ...balance,
   };
@@ -149,15 +161,22 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     target_payment: paymentId, which: "wise", paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
   const payoutId = claim.payout_id;
+  let transferId = claim.provider_ref;
+
+  // An attempt that has been pressed before may already have a transfer we never
+  // heard about, so it keeps its key: only a first press can end here.
+  async function shortBalance(byCents, words = "") {
+    const sentence = `Wise balance is short by ${money(byCents, claim.currency)}${words}. Top up TSC's Wise balance, then pay again.`;
+    if (claim.resumed) await record(db, payoutId, { sentence });
+    else await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
+    return { done: "short_balance", sentence };
+  }
 
   try {
-    let transferId = claim.provider_ref;
     if (!transferId) {
       const balance = await wise.balance(claim.currency);
       if (balance.cents < Number(claim.amount_cents)) {
-        const sentence = `Wise balance is short by ${money(Number(claim.amount_cents) - balance.cents, claim.currency)}. Top up TSC's Wise balance, then pay again.`;
-        await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
-        return { done: "short_balance", sentence };
+        return await shortBalance(Number(claim.amount_cents) - balance.cents, " before Wise's fee");
       }
       const recipientId = await ensureWiseRecipient({
         caller, db, wise, accountId: claim.account_id, existingId: claim.wise_recipient_id, cnyConfirmed,
@@ -165,13 +184,10 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       // A fresh quote every time: Wise returns the first transfer for this key,
       // whichever quote comes with it (seen on the sandbox), and an old one expires.
       const quote = await wise.quote({
-        sourceCurrency: claim.currency, targetCurrency: row.wise_currency, sourceCents: claim.amount_cents, recipientId,
+        sourceCurrency: claim.currency, targetCurrency: row.wise_currency, amountCents: claim.amount_cents, recipientId,
       });
-      if (quote.arrivesCents <= 0) {
-        const sentence = "Wise's fee is more than this payment, so nothing would arrive. Pay it another way.";
-        await finish(db, payoutId, "cancelled", { raw_status: "nothing_left", sentence });
-        return { done: "nothing_left", sentence };
-      }
+      if (quote.totalCents > balance.cents) return await shortBalance(quote.totalCents - balance.cents);
+      if (quote.balanceRefused) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
       await record(db, payoutId, { new_quote: quote.id, new_fee: quote.feeCents, keep_lease: true });
       const transfer = await wise.createTransfer({
         recipientId, quoteId: quote.id, key: claim.key, reference: String(claim.order_number).slice(0, 30),
@@ -186,6 +202,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     // Only a transfer still waiting is funded: a press after a timeout may find
     // the first press's funding already went.
     const before = await wise.status(transferId);
+    let funded = false;
     if (before.raw === "incoming_payment_waiting") {
       const funding = await wise.fund(transferId);
       if (!funding.funded) {
@@ -195,8 +212,18 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
         await record(db, payoutId, { new_stage: "awaiting_funding", new_status: before.raw, sentence });
         return { done: funding.why, sentence, transferUrl: wise.transferUrl(transferId) };
       }
+      funded = true;
     }
-    const after = await wise.status(transferId);
+    let after = await wise.status(transferId);
+    // Wise answers the payment before the transfer's status catches up (seen on the
+    // sandbox: the balance had dropped, the status still said waiting, and the board
+    // asked staff to fund it again). Read once more; if it still lags, Wise accepted
+    // the payment, so it is sent, and the next read-back settles the rest.
+    if (funded && after.raw === "incoming_payment_waiting") {
+      await pause(FUND_SETTLE_MS);
+      after = await wise.status(transferId);
+      if (after.raw === "incoming_payment_waiting") after = { ...after, state: "sent", waiting: null };
+    }
     const state = await applyStatus({ db, payoutId, status: after, tellOnFailure: after.raw === "bounced_back" ? CHECK_BANK : null });
     return { done: state, transferUrl: wise.transferUrl(transferId) };
   } catch (failure) {
@@ -206,11 +233,14 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     }
     // A certain "no" before there's a transfer ends the attempt: nothing went,
     // and the next press gets a new key rather than replaying this answer.
+    // Only when we know that: Wise gave us a transfer whose id may not have saved.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
-    if (!again.data?.provider_ref) {
+    if (!transferId && !again.error && !again.data?.provider_ref) {
       await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
     } else {
-      await record(db, payoutId, { sentence: failure.message });
+      // The attempt stays open, so finding out where it is comes first.
+      if (failure.kind === "details_rejected") failure.kind = "refused";
+      await record(db, payoutId, { sentence: failure.message, new_ref: transferId ?? undefined });
     }
     throw failure;
   }
@@ -221,6 +251,11 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
+  // A live attempt may have gone. Failing it here would let the next press pay again.
+  if (claim.resumed) {
+    await record(db, claim.payout_id, { sentence: STILL_OPEN });
+    throw new PayoutFailure("database", STILL_OPEN);
+  }
   await finish(db, claim.payout_id, "failed", {
     failure: "details_rejected", raw_status: "details_rejected", sentence,
     tell_factory: which === "paypal" ? CHECK_PAYPAL : checkWords(sentence, named),
@@ -237,18 +272,25 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
 // PayPal
 // ---------------------------------------------------------------------------
 
+const LOST_PAYPAL_ANSWER = "PayPal's first answer was lost and this retry was refused, so we don't know if it went. Check PayPal, then press again: it can't pay twice.";
+
 export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which: "paypal", paid_to_changed_at: changedAt, cny_confirmed: false,
   }));
   const payoutId = claim.payout_id;
+  let batchId = claim.provider_ref ?? null;
   try {
-    const paid = await paypal.pay({
-      key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
-      currency: claim.currency, reference: `TSC ${claim.order_number}`,
-    });
-    await record(db, payoutId, { new_ref: paid.batchId, new_stage: "sent", keep_lease: true });
-    const status = await paypal.status(paid.batchId);
+    // PayPal has this one: read it, never send it again. Its key doesn't last for ever.
+    if (!batchId) {
+      const paid = await paypal.pay({
+        key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
+        currency: claim.currency, reference: `TSC ${claim.order_number}`,
+      });
+      batchId = paid.batchId;
+      await record(db, payoutId, { new_ref: paid.batchId, new_stage: "sent", keep_lease: true });
+    }
+    const status = await paypal.status(batchId);
     const state = await applyStatus({ db, payoutId, status, tellOnFailure: status.raw === "RETURNED" ? CHECK_PAYPAL : null });
     return { done: state, sentence: status.waiting ?? null };
   } catch (failure) {
@@ -256,8 +298,16 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
       await record(db, payoutId, { sentence: failure.message });
       throw failure;
     }
+    // PayPal took the batch once we hold its id, saved or not: never cancelled, never paid again.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
-    if (!again.data?.provider_ref) {
+    // A press after a lost answer may be refused for any reason while the first
+    // batch stands, and an answer we couldn't read is no answer: neither ends this,
+    // or staff approve again under a new key and PayPal pays twice.
+    if (!batchId && claim.resumed) {
+      await record(db, payoutId, { sentence: LOST_PAYPAL_ANSWER });
+      throw new PayoutFailure(failure.kind ?? "unknown", LOST_PAYPAL_ANSWER, { unsure: true, status: failure.status });
+    }
+    if (failure instanceof PayoutFailure && !batchId && !again.error && !again.data?.provider_ref) {
       const invalid = /address isn't valid/.test(failure.message);
       if (invalid) {
         await finish(db, payoutId, "failed", {
@@ -267,7 +317,7 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
         await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
       }
     } else {
-      await record(db, payoutId, { sentence: failure.message });
+      await record(db, payoutId, { sentence: failure.message, new_ref: batchId ?? undefined });
     }
     throw failure;
   }
@@ -276,6 +326,41 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
 // ---------------------------------------------------------------------------
 // Both
 // ---------------------------------------------------------------------------
+
+const CHARGE_UNCHECKED = "We couldn't check the brand's payment just now, so nothing was sent. Press again in a minute.";
+
+/**
+ * Before Wise or PayPal is asked to pay: is the brand's money still there? A
+ * refund or dispute in Stripe reaches us by a webhook that can be late or lost,
+ * and these payouts come from TSC's own balance, so nothing else would stop
+ * them (Stripe's own transfer has its charge to refuse on; api/_stripe.js checks
+ * the same). A press whose PayPal answer was lost goes ahead: only it can find
+ * out what PayPal did, and it can't pay twice.
+ */
+export async function refuseIfChargeReturned({ db, paymentId, build = stripeFrom }) {
+  const live = await db.from("provider_payouts").select("provider, provider_ref")
+    .eq("payment_id", paymentId).eq("status", "processing").maybeSingle();
+  if (live.data?.provider === "paypal" && !live.data.provider_ref) return;
+  const { data: payment, error } = await db.from("order_payments").select("stripe_charge_id").eq("id", paymentId).maybeSingle();
+  if (error) throw new PayoutFailure("database", CHARGE_UNCHECKED);
+  if (!payment?.stripe_charge_id) return;
+  let stripe;
+  let charge;
+  try {
+    stripe = build();
+    if (!stripe) return;
+    charge = await stripe.charges.retrieve(payment.stripe_charge_id);
+  } catch (failure) {
+    log("charge check", failure, { paymentId });
+    throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+  }
+  if (charge.disputed) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
+  if (Number(charge.amount_refunded) > 0) {
+    // Recorded as the webhook would have, so the board moves on from it.
+    await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { paymentId }));
+    throw new PayoutFailure("charge_refunded", "The brand's payment was refunded, so there is nothing to pay out. Reload the board.");
+  }
+}
 
 export async function cancelAttempt({ client, caller, db, paymentId }) {
   const held = await must(caller.rpc("lease_provider_payout", { target_payment: paymentId }));
@@ -311,30 +396,69 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
   }
 }
 
+const READ_BACK_COLUMNS = "id, status, provider_ref, received_currency, paid_at";
+
+/**
+ * Ask the provider where one attempt is, and record it. Only the provider's own
+ * answer is written: a webhook or the sweep only says "look now".
+ */
+export async function readBack({ client, db, row }) {
+  const status = await client.status(row.provider_ref);
+  const wasPaid = row.status === "paid";
+  // The quote staff confirmed stands until it arrives. Wise's figure before that
+  // can be for another pay-in route (seen on the sandbox).
+  const arrived = status.state === "paid";
+  const tell = status.state === "failed"
+    ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
+    : null;
+  return applyStatus({
+    db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
+    received: arrived ? status.arrivesCents ?? null : null, receivedIn: arrived && status.arrivesCents != null ? row.received_currency : null,
+  });
+}
+
+/**
+ * A webhook named a transfer (Wise) or a batch (PayPal). Find our attempt by that
+ * ref, or by the key we sent when the press's answer was lost before the ref was
+ * kept (PayPal's sender_item_id), then read it back. Null when this database has
+ * no such attempt: another site on the same account, or a test event.
+ */
+export async function readBackRef({ client, db, ref, key = null }) {
+  let row = null;
+  if (ref) {
+    const found = await db.from("provider_payouts").select(READ_BACK_COLUMNS)
+      .eq("provider", client.provider).eq("provider_ref", String(ref)).maybeSingle();
+    if (found.error) throw new PayoutFailure("database", "provider_payouts could not be read", { detail: found.error.code });
+    row = found.data;
+  }
+  if (!row && key && /^[0-9a-f-]{36}$/i.test(key)) {
+    const attempt = await db.from("provider_payout_attempts").select("payout_id").eq("attempt_key", key).maybeSingle();
+    if (attempt.data?.payout_id) {
+      const found = await db.from("provider_payouts").select(READ_BACK_COLUMNS)
+        .eq("id", attempt.data.payout_id).eq("provider", client.provider).maybeSingle();
+      row = found.data;
+      if (row && !row.provider_ref && ref) {
+        await record(db, row.id, { new_ref: String(ref) });
+        row = { ...row, provider_ref: String(ref) };
+      }
+    }
+  }
+  if (!row?.provider_ref) return null;
+  if (!["processing", "paid"].includes(row.status)) return row.status;
+  return readBack({ client, db, row });
+}
+
 /** Everything of this provider's that can still change. Paid ones for 30 days: a transfer can come back. */
 export async function syncAttempts({ client, db }) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
   const { data: rows, error } = await db.from("provider_payouts")
-    .select("id, status, provider_ref, received_currency, paid_at")
+    .select(READ_BACK_COLUMNS)
     .eq("provider", client.provider)
     .not("provider_ref", "is", null)
     .or(`status.eq.processing,and(status.eq.paid,paid_at.gte.${since})`)
     .limit(50);
   if (error) throw new PayoutFailure("database", "The board couldn't read its payments. Reload the page.");
-  const answers = await Promise.allSettled((rows ?? []).map(async (row) => {
-    const status = await client.status(row.provider_ref);
-    const wasPaid = row.status === "paid";
-    // The quote staff confirmed stands until it arrives. Wise's figure before that
-    // can be for another pay-in route (seen on the sandbox).
-    const arrived = status.state === "paid";
-    const tell = status.state === "failed"
-      ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
-      : null;
-    return applyStatus({
-      db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
-      received: arrived ? status.arrivesCents ?? null : null, receivedIn: arrived && status.arrivesCents != null ? row.received_currency : null,
-    });
-  }));
+  const answers = await Promise.allSettled((rows ?? []).map((row) => readBack({ client, db, row })));
   const unread = answers.filter((a) => a.status === "rejected");
   for (const a of unread) log("provider sync", a.reason, { provider: client.provider });
   return { read: answers.length - unread.length, unread: unread.length };
@@ -387,6 +511,7 @@ export function payoutRoute({ provider, build, label, settings }) {
       const board = await must(caller.rpc("admin_payment_board"));
       const row = (board ?? []).find((r) => r.payment_id === paymentId);
       if (!row) return reply(response, 404, { error: "That payment isn't on the board any more. Reload the page." });
+      if (action === "pay") await refuseIfChargeReturned({ db, paymentId });
 
       if (provider === "wise") {
         if (action === "preview") {

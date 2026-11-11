@@ -19,6 +19,9 @@
  * - A tab that chose "keep" — or made no choice and holds nothing of its own,
  *   e.g. a new tab or a reopened browser — uses localStorage, shared by every
  *   such tab.
+ * - A tab signed out (by itself or by a tab sharing its sign-in) becomes "only
+ *   this tab" with nothing in it, until it signs in again: AuthProvider, on
+ *   SIGNED_OUT. So a sign-in made next door afterwards is not its sign-in.
  * - The PKCE code verifier always goes to localStorage: the password-reset
  *   link it belongs to opens in a NEW tab, which must be able to read it.
  *
@@ -84,6 +87,16 @@ export function createSessionStorage(win) {
   }
 
   /**
+   * Called right before a sign-up, which has no checkbox. A new account is
+   * kept, like a ticked sign-in, unless this browser already keeps another
+   * sign-in: then it stays in this tab, because writing it over the shared
+   * one would turn every tab keeping that sign-in into the new account.
+   */
+  function keepNewAccount(storageKey) {
+    setKeepSignedIn(safe(() => local().getItem(storageKey)) === null);
+  }
+
+  /**
    * Whether an auth event's session is the one this tab holds under
    * `storageKey`. supabase-js broadcasts every sign-in, sign-out and refresh
    * to all tabs on the site; a tab keeping its own sign-in must not take on
@@ -95,5 +108,5 @@ export function createSessionStorage(win) {
     return (stored?.access_token ?? null) === (session?.access_token ?? null);
   }
 
-  return { storage, setKeepSignedIn, isThisTabsSession };
+  return { storage, setKeepSignedIn, keepNewAccount, isThisTabsSession };
 }

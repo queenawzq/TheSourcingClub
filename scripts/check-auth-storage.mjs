@@ -9,7 +9,9 @@
  * click-through ever exercises, so this runs the adapter as several tabs: one
  * shared localStorage, a sessionStorage each, and supabase-js's broadcast.
  */
+import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
+import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
 
 const KEY = "sb-test-auth-token";
 
@@ -37,6 +39,7 @@ function notify(from, session) {
   for (const tab of browser.tabs) {
     if (tab !== from && !tab.isThisTabsSession(KEY, session)) continue;
     tab.shown = session?.user ?? null;
+    if (!session) tab.setKeepSignedIn(false); // AuthProvider, on SIGNED_OUT
   }
 }
 function signIn(tab, user, keep) {
@@ -54,6 +57,13 @@ function refresh(tab) {
 function signOut(tab) {
   tab.storage.removeItem(KEY);
   notify(tab, null);
+}
+// signUpWithPassword: the sign-up form has no "Keep me logged in" box.
+function signUp(tab, user) {
+  tab.keepNewAccount(KEY);
+  const session = { access_token: `${user}-${Math.random()}`, user };
+  tab.storage.setItem(KEY, JSON.stringify(session));
+  notify(tab, session);
 }
 const reload = (tab) => JSON.parse(tab.storage.getItem(KEY) ?? "null")?.user ?? null;
 
@@ -104,6 +114,60 @@ signOut(c);
 check(reload(d) === null && d.shown === null, "signing out of the kept session signs out the tabs sharing it");
 check(reload(b) === "demo-factory", "but not an unticked tab");
 
+// Signing up in one tab never changes another tab's account (Nov 7: three
+// testers on one machine; one's onboarding answers went into another's company).
+const fresh = () => { browser.localStorage.map.clear(); browser.tabs = []; };
+fresh();
+const only = openTab();
+signIn(only, "tester-x", false);
+const joiner = openTab();
+signUp(joiner, "tester-y");
+check(only.shown === "tester-x" && reload(only) === "tester-x", "a sign-up next door leaves a this-tab-only tab on its account");
+check(joiner.shown === "tester-y" && reload(joiner) === "tester-y", "and the new account is signed in, in its own tab");
+check(JSON.parse(browser.localStorage.getItem(KEY)).user === "tester-y", "a new account with nobody kept is kept, like a ticked sign-in");
+const joinerTwo = openTab();
+check(joinerTwo.shown === "tester-y", "so a new tab opens as the new account");
+
+fresh();
+const kept = openTab();
+signIn(kept, "tester-x", true);
+const keptTwo = openTab();
+check(keptTwo.shown === "tester-x", "(a second tab shares the kept sign-in)");
+// The signup form shows beside a kept sign-in in a tab that signed in "this
+// tab only" and signed out again: it reads its own, empty, sessionStorage.
+const signer = openTab();
+signIn(signer, "tester-z", false);
+signOut(signer);
+check(signer.shown === null && kept.shown === "tester-x", "(a this-tab-only tab signed out beside it)");
+signUp(signer, "tester-y");
+check(kept.shown === "tester-x" && reload(kept) === "tester-x", "a sign-up next door leaves a kept tab on its account");
+check(keptTwo.shown === "tester-x" && reload(keptTwo) === "tester-x", "and every tab sharing the kept sign-in");
+check(signer.shown === "tester-y" && reload(signer) === "tester-y", "while the new account is signed in, in its own tab only");
+refresh(signer);
+check(JSON.parse(browser.localStorage.getItem(KEY)).user === "tester-x" && kept.shown === "tester-x",
+  "and its token refresh does not overwrite the kept sign-in");
+
+// Flows test, Nov 8: a kept sign-in, a new tab opened as that person, Log out
+// there (the only way to reach sign-up), then sign up. The first tab went on
+// drawing its screen as the new account and saved its answers on that company.
+fresh();
+const firstTab = openTab();
+signIn(firstTab, "tester-a", true);
+const newTab = openTab();
+check(newTab.shown === "tester-a", "(a new tab opens as the kept sign-in)");
+signOut(newTab);
+check(firstTab.shown === null, "logging out there signs the first tab out");
+signUp(newTab, "tester-b");
+check(newTab.shown === "tester-b" && reload(newTab) === "tester-b", "the new account is signed in where it was made");
+check(firstTab.shown === null && reload(firstTab) === null, "and the tab signed out next door does not become the new account");
+refresh(newTab);
+check(firstTab.shown === null, "nor when the new account's token refreshes");
+check(openTab().shown === "tester-b", "a tab opened afterwards is the new account, which nobody else keeps");
+signIn(firstTab, "tester-a", false);
+check(firstTab.shown === "tester-a" && newTab.shown === "tester-b" && reload(firstTab) === "tester-a" && reload(newTab) === "tester-b",
+  "and the first tab can sign back in beside it, two sign-ins side by side");
+fresh();
+
 // The password-reset link opens in a new tab and needs the PKCE verifier.
 const e = openTab();
 e.setKeepSignedIn(false);
@@ -117,6 +181,25 @@ check(old.storage.getItem(KEY) !== null && JSON.parse(old.storage.getItem(KEY)).
   "a session an earlier build kept in this tab is still found");
 old.storage.setItem(KEY, JSON.stringify({ access_token: "old2", user: "old-user" }));
 check(browser.localStorage.getItem(KEY) === null, "and its refresh stays in the tab");
+
+// The reset email links to our own page with the token in the fragment
+// (src/lib/recovery-link.mjs): read once, and gone from the address at once.
+const linkWindow = (href) => {
+  const win = { location: new URL(href), history: { state: null, replaceState(_s, _t, next) { win.location = new URL(next); } } };
+  return win;
+};
+const linked = linkWindow("https://example.test/app.html?reset=1#token_hash=pkce_0a1b2c3d4e5f60718293a4b5c6d7e8f9&type=recovery");
+check(takeRecoveryToken(linked) === "pkce_0a1b2c3d4e5f60718293a4b5c6d7e8f9", "the reset link's token is read from the fragment");
+check(linked.location.href === "https://example.test/app.html?reset=1", "and taken out of the address, keeping ?reset=1");
+check(takeRecoveryToken(linked) === null, "so a refresh does not use it again");
+check(takeRecoveryToken(linkWindow("https://example.test/app.html#token_hash=abc&type=signup")) === null, "another kind of link is left alone");
+check(takeRecoveryToken(linkWindow("https://example.test/app.html?reset=1&code=xyz")) === null, "a link from before (?code=) is left to supabase-js");
+const keepOther = linkWindow("https://example.test/app.html?reset=1#type=recovery&token_hash=abc&tab=x");
+check(takeRecoveryToken(keepOther) === "abc" && keepOther.location.hash === "#tab=x", "the rest of the fragment stays");
+
+// notify() above stands in for AuthProvider; this is the line it stands in for.
+check(/event === "SIGNED_OUT"\) setKeepSignedIn\(false\)/.test(readFileSync("src/lib/auth.jsx", "utf8")),
+  "AuthProvider parks a signed-out tab");
 
 if (failures) {
   console.error(`\n${failures} check(s) failed: "Keep me logged in" does not hold across tabs.`);

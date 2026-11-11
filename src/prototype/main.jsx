@@ -1529,7 +1529,7 @@ function CloseIconButton({ label }) {
  * `live` (the brand's Payments page in the app): { metrics: [[label, value,
  * tone]], rows: [{ id, title, client, meta, date, status, amount, href, onOpen }],
  * empty, discount: { amount, note } | null, codes, onCopy(code), copied,
- * codesNote? }.
+ * codesNote?, hideDiscounts? }.
  * Without it the prototype draws its examples, unchanged.
  */
 export function BillingScreen({ accountType = "brand", live = null }) {
@@ -1574,7 +1574,7 @@ export function BillingScreen({ accountType = "brand", live = null }) {
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
           </div>
         )}
-        {!isFactory && (
+        {!isFactory && !live?.hideDiscounts && (
           <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Brand payment type">
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
             <button className={tab === "discounts" ? "active" : ""} type="button" role="tab" aria-selected={tab === "discounts"} onClick={() => setTab("discounts")}>Discounts</button>
@@ -8379,7 +8379,7 @@ export function ProjectsScreen({
               ? "No cancelled orders."
               : activeTab !== "active"
               ? "No orders in this tab yet. Add one from an order's ··· menu."
-              : "No production orders yet. One appears here when a quote is awarded."}
+              : live ? "No production orders yet." : "No production orders yet. One appears here when a quote is awarded."}
           </p>
         ) : (
           ordersForTab.map((project) => (
@@ -8796,7 +8796,7 @@ function ProjectFilesPanel({ files: liveFiles, onOpenFile }) {
       <h2>Files</h2>
       <div className="project-detail-file-list" data-testid={liveFiles ? "order-files" : undefined}>
         {liveFiles && !files.length && (
-          <p className="muted">No files yet. The request's attachments and photos posted on a step appear here.</p>
+          <p className="muted">No files yet.</p>
         )}
         {files.map((file) => (
           <button className="project-detail-file-row" type="button" key={file.id} onClick={() => onOpenFile?.(file)}>
@@ -9110,7 +9110,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
         <header>
           <p>{closing ? "Mark done" : "Approve step"}</p>
           <h2 id="approve-step-title">{closing ? `Mark ${milestone.title} done` : `Approve ${live ? milestone.title : milestone.title.toLowerCase()}`}</h2>
-          <span>This marks the production step as approved and lets {other} continue to the next step.</span>
+          {!live && <span>This marks the production step as approved and lets {other} continue to the next step.</span>}
         </header>
         <div className="approve-fund-summary single">
           <div>
@@ -9159,7 +9159,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           </h2>
           {/* Live, the brand funded this step through Stripe and TSC holds
               the money: approving pays it to the factory. */}
-          <span>{live ? `Approving releases ${releaseAmount} held by TSC to ${other}.` : "Funds will move from project funds to Atelier Minho after approval."}</span>
+          {live ? null : <span>Funds will move from project funds to Atelier Minho after approval.</span>}
         </header>
         <div className="approve-fund-summary">
           <div>
@@ -9945,19 +9945,19 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
         <span className="success-mark">✓</span>
         <div className="success-copy">
           <h2>Your quote request is live</h2>
-          {liveLine ? <p>{liveLine} Vendors can review the request, ask questions, and submit quotes before the deadline.</p> : <p>
+          {liveLine ? <p>{liveLine}</p> : <p>
             {sentTo ?? <>We sent the brief to {vendorCount} selected {vendorCount === 1 ? "vendor" : "vendors"}.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>}
         </div>
-        <section className="success-next-panel">
+        {liveLine ? null : <section className="success-next-panel">
           <h3>What happens next</h3>
           <ul className="success-next-list">
             <li>Vendors review your brief, attachments, and sourcing responsibilities.</li>
             <li>You will see responses, questions, and quote status updates on the quotes page.</li>
             <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
           </ul>
-        </section>
+        </section>}
         <div className="success-actions">
           {liveLine ? null : <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
             Review quotes

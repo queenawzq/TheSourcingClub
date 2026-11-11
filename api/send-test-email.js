@@ -88,7 +88,7 @@ async function samplePayoutChange(locale, name) {
     category: "account",
     kind: "payout_method_changed",
     title: "Your payout methods changed",
-    body: "Payoneer account sample@example.com was added. If nobody at your company made this change, email operations@contact.sourcing-club.com now.",
+    body: "PayPal account sample@example.com was added. If nobody at your company made this change, email operations@contact.sourcing-club.com now.",
   }, {
     appUrl: appUrl(),
     logoUrl: EMAIL_LOGO_URL,

@@ -19,6 +19,7 @@
  * SUPABASE_SERVICE_KEY.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 /** Ask the CLI for the running stack's URL and keys. */
@@ -572,6 +573,8 @@ let winningQuote = null;
 let losingQuote = null;
 let awardedQuote = null;
 let f1Client = null;      // the winning factory acts as itself: RPCs key on auth.uid()
+let losingOrgId = null;     // the losing factory's company and person, for the
+let losingUserId = null;    // contact-details block (no contract with the brand)
 let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
                             // service_role cannot act on a factory's behalf
 {
@@ -582,6 +585,8 @@ let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
   const { data: f2org } = await f2.client.rpc("create_org", {
     org_name: `Atelier Two ${stamp}`, org_kind: "factory",
   });
+  losingOrgId = f2org?.id ?? null;
+  losingUserId = f2.id;
 
   const factoryOrgId = (await admin.from("orgs").select("id").eq("name", `Atelier ${stamp}`).maybeSingle()).data?.id;
   const orgs = [factoryOrgId, f2org.id].filter(Boolean);
@@ -1024,10 +1029,11 @@ console.log("\nphase 3 — the order runs");
       : fail(`the factory sees ${(commentSeen ?? []).length} brand comments, expected 1`);
 
     // Reminders: once a day per step, and only between the two parties.
-    const reminded = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
-    reminded.error ? fail("the brand reminds the factory about an open step", reminded.error)
-                   : ok("the brand reminds the factory about an open step");
-    const { error: remindedTwice } = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    // The factory has posted on this step, so it is the factory's reminder to send.
+    const reminded = await factoryClient.rpc("remind_milestone", { target_milestone: first.id });
+    reminded.error ? fail("the factory reminds the brand about a step it has updated", reminded.error)
+                   : ok("the factory reminds the brand about a step it has updated");
+    const { error: remindedTwice } = await factoryClient.rpc("remind_milestone", { target_milestone: first.id });
     remindedTwice ? ok("a second reminder the same day is refused")
                   : fail("a second reminder the same day went through");
     const { error: strangerRemind } = await losingFactory.rpc("remind_milestone", { target_milestone: first.id });
@@ -1434,6 +1440,27 @@ console.log("\nphase 3 — the order runs");
         ? ok("the screen delivers an ordinary message (no model key: pattern_only)")
         : fail(`the screen answered ${JSON.stringify(screened)}`);
 
+      // One send is one message (20261107580000): the same request reaching
+      // PostgREST twice, as Chromium's own resend does, saves one row, and
+      // the browser finds it by the name it gave the send.
+      const sendName = randomUUID();
+      const once = {
+        thread_id: threadId, sender_org_id: order.brand_org_id, sender_user_id: brand.id,
+        body: "Resent by the network, saved once.", client_id: sendName,
+      };
+      const { error: firstSend } = await brand.client.from("messages").insert(once).select("id").single();
+      const { error: resend } = await brand.client.from("messages").insert(once).select("id").single();
+      const { data: onceRows } = await brand.client.from("messages").select("id").eq("sender_user_id", brand.id).eq("client_id", sendName);
+      !firstSend && resend?.code === "23505" && (onceRows ?? []).length === 1
+        ? ok("the same send reaching the database twice saves one message, and is found by its name")
+        : fail(`a resent insert: first ${firstSend?.message ?? "ok"}, second ${resend?.code ?? "saved"}, ${(onceRows ?? []).length} rows`);
+      const { error: otherName } = await brand.client.from("messages").insert({ ...once, client_id: randomUUID() }).select("id").single();
+      const { error: noName1 } = await brand.client.from("messages").insert({ ...once, client_id: undefined }).select("id").single();
+      const { error: noName2 } = await brand.client.from("messages").insert({ ...once, client_id: undefined }).select("id").single();
+      !otherName && !noName1 && !noName2
+        ? ok("a new send with the same words is a new message, and a send with no name (the live site's) still saves")
+        : fail("a different send was refused", otherName ?? noName1 ?? noName2);
+
       const rescreened = await screenAs(brand.client, sent?.id);
       rescreened.delivery === "delivered" && rescreened.method === null
         ? ok("screening it again changes nothing")
@@ -1525,33 +1552,47 @@ console.log("\nphase 3 — the order runs");
       selfVerdict ? ok("a sender CANNOT record the verdict on its own message")
                   : fail("LEAK: a sender delivered its own message past the check");
 
-      const holding = await screenAs(brand.client, held?.id);
-      holding.delivery === "held" && holding.method === "pattern"
-        ? ok("the screen holds it on the patterns, without asking a model")
-        : fail(`the screen answered ${JSON.stringify(holding)}`);
+      // The order is a contract: contact details are delivered (20261108100000).
+      const passing = await screenAs(brand.client, held?.id);
+      passing.delivery === "delivered" && passing.method === "pattern"
+        ? ok("after a contract, the patterns still find the WeChat ID, and it is delivered")
+        : fail(`the screen answered ${JSON.stringify(passing)}`);
 
-      const { data: heldRow } = await brand.client.from("messages").select("held_for").eq("id", held?.id).single();
-      heldRow?.held_for === "contact_details" && holding.heldFor === "contact_details"
-        ? ok("and its sender can read what it was held for (contact details), so the page says the right thing")
-        : fail(`the sender reads held_for ${heldRow?.held_for} (screen said ${holding.heldFor})`);
+      const { data: why } = await admin.from("message_screenings").select("outcome, reason").eq("message_id", held?.id).single();
+      why?.outcome === "held" && why?.reason === "a WeChat contact"
+        ? ok(`and records what it found ("${why.reason}")`)
+        : fail(`the screening is ${JSON.stringify(why)}`);
 
-      const { data: why } = await admin.from("message_screenings").select("reason").eq("message_id", held?.id).single();
-      why?.reason === "a WeChat contact"
-        ? ok(`and records why, for staff ("${why.reason}")`)
-        : fail(`the screening reason is ${why?.reason}`);
+      const { data: factorySeesIt } = await factoryClient.from("messages").select("id").eq("id", held?.id);
+      (factorySeesIt ?? []).length === 1
+        ? ok("the factory reads it")
+        : fail("the factory cannot read a message delivered after a contract");
 
-      const { data: factorySeesHeld } = await factoryClient
-        .from("messages").select("id").eq("id", held?.id);
-      (factorySeesHeld ?? []).length === 0
-        ? ok("the factory CANNOT read a held message")
-        : fail("LEAK: the factory read a held message");
-
-      const { data: afterHold } = await admin
-        .from("notifications").select("id")
-        .eq("subject_type", "thread").eq("subject_id", threadId);
-      afterHold.length === 1
+      // Before a contract: the losing factory, on its own request thread.
+      const { data: rivalThread, error: rivalThreadError } = await losingFactory
+        .rpc("open_rfq_thread", { target_rfq: rfqId, factory_org: losingOrgId });
+      const rivalThreadId = rivalThread?.id ?? rivalThread;
+      rivalThreadError ? fail("the losing factory opens its request conversation", rivalThreadError)
+                       : ok("the losing factory opens its request conversation");
+      const { data: blockedMsg } = await losingFactory.from("messages").insert({
+        thread_id: rivalThreadId,
+        sender_org_id: losingOrgId,
+        sender_user_id: losingUserId,
+        body: "Easier on WeChat, my ID is smoke_rival_88",
+      }).select("id").single();
+      const blocking = await screenAs(losingFactory, blockedMsg?.id);
+      blocking.delivery === "blocked"
+        ? ok("with no contract, a WeChat ID is blocked")
+        : fail(`the screen answered ${JSON.stringify(blocking)}`);
+      const { data: brandSeesBlocked } = await brand.client.from("messages").select("id").eq("id", blockedMsg?.id);
+      (brandSeesBlocked ?? []).length === 0
+        ? ok("the brand CANNOT read a blocked message")
+        : fail("LEAK: the brand read a blocked message");
+      const { data: blockNotices } = await admin.from("notifications").select("id")
+        .eq("subject_type", "thread").eq("subject_id", rivalThreadId);
+      (blockNotices ?? []).length === 0
         ? ok("and is not notified of it")
-        : fail(`expected still one notification, got ${afterHold.length}`);
+        : fail(`a blocked message notified someone (${blockNotices.length})`);
 
       // Calls on the same conversation: the exact signatures and the select
       // string src/lib/domain/calls.js uses, so a renamed argument or an
@@ -1656,8 +1697,10 @@ console.log("\nphase 3 — the order runs");
       const stranger = await joinAs(losingFactory, proposed?.id, { zoom: true });
       stranger.status === 404 ? ok("an outsider CANNOT join (and cannot tell the call exists)") : fail(`LEAK: an outsider's join answered ${stranger.status}`);
       const early = await joinAs(factoryClient, proposed?.id, { zoom: true });
-      early.status === 409 && !early.signature
-        ? ok("a party is told the call opens 10 minutes before it starts")
+      // Joining is open any time before the start, so it gets as far as Zoom,
+      // and the smoke test's made-up Zoom keys are refused there.
+      early.status === 502 && !early.signature
+        ? ok("a party may join ahead of the start")
         : fail(`an early join answered ${early.status}`);
 
       // Moved to now by the secret key, as only a test may: without Zoom set
@@ -1667,7 +1710,7 @@ console.log("\nphase 3 — the order runs");
       unset.status === 503 && /set up/.test(unset.error ?? "")
         ? ok("without Zoom, Join says video isn't set up yet")
         : fail(`a join without Zoom answered ${unset.status} ${unset.error}`);
-      const { data: noMeeting } = await admin.from("call_meetings").select("call_id").eq("call_id", proposed?.id);
+      const { data: noMeeting } = await admin.from("call_meetings").select("call_id").eq("call_id", proposed?.id).not("meeting_number", "is", null);
       (noMeeting ?? []).length === 0
         ? ok("and no meeting was claimed")
         : fail("a join without Zoom claimed a meeting");
@@ -2469,6 +2512,7 @@ console.log("\ncredits — granted on verification, invites, staff adjustments")
     .update({ verification_status: "verified" }).eq("org_id", mill.id);
   selfVerify ? ok("a factory CANNOT verify itself") : fail("LEAK: a factory set its own profile to verified");
 
+  await registryChecked(staff.client, mill.id);
   const { error: decideError } = await staff.client.rpc("admin_review_decision", { target_org: mill.id, decision: "approved" });
   if (decideError) fail("staff approve the factory", decideError);
   const { data: lines } = await owner.client.from("credit_ledger").select("delta, reason").eq("org_id", mill.id);
@@ -2542,6 +2586,7 @@ console.log("\ncredits — granted on verification, invites, staff adjustments")
     : fail("the invite was not linked", link);
 
   await admin.from("factory_profiles").insert({ org_id: joinedOrg.id });
+  await registryChecked(staff.client, joinedOrg.id);
   await staff.client.rpc("admin_review_decision", { target_org: joinedOrg.id, decision: "approved" });
   const { data: earned } = await owner.client.from("credit_ledger").select("delta").eq("org_id", mill.id).eq("reason", "referral_grant");
   (earned ?? []).length === 1 && earned[0].delta === 500
@@ -2857,6 +2902,7 @@ console.log("\nreview decision emails (20261104200000)");
       ? ok("and \"Resend email\" sends it")
       : fail(`resend: ${JSON.stringify({ outcome: resent.outcome, sent: resent.sent, error: resent.error })}`);
 
+    await registryChecked(staff.client, org.id);
     await decide("approved", null);
     const unset = await kick({ decision: "approved" }, { MAILPIT_URL: null });
     unset.outcome === "not_configured"
@@ -2957,3 +3003,19 @@ console.log(
   failures ? `\n${failures} check(s) failed\n` : "\nAll smoke checks passed\n",
 );
 process.exit(failures ? 1 : 0);
+
+
+/**
+ * Approving a factory needs staff's "found" registry check on its current
+ * number (20261108600000). A number written with the server key, then the
+ * check as staff, the way a reviewer would.
+ */
+async function registryChecked(staffClient, orgId) {
+  const { error: numberError } = await admin.from("company_registrations")
+    .upsert({ org_id: orgId, number: `SMOKE${Date.now()}` });
+  if (numberError) fail("give the factory a registration number", numberError);
+  const { error } = await staffClient.rpc("admin_record_registry_check", {
+    target_org: orgId, source: "document", result: "found", note: "Smoke: the document shows this number and name",
+  });
+  if (error) fail("staff record a registry check", error);
+}

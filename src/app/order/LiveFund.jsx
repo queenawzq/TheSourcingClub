@@ -124,7 +124,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
       <div className="rfq-page">
         <button type="button" className="quiet-btn" onClick={back}>← Back to the order</button>
         <h1>Payments are not set up on this site yet</h1>
-        <p className="muted" data-testid="payments-not-set-up">This site has no Stripe keys, so no payment can be taken here.</p>
+        <p className="muted" data-testid="payments-not-set-up">No payment can be taken on this site.</p>
       </div>
     </main>
   );
@@ -223,15 +223,13 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     ? Boolean(elements && Object.values(newCardComplete).every(Boolean))
     : Boolean(selectedCardId);
   const ready = Boolean(stripe && paymentMethodReady && agreed.every(Boolean) && !busy);
-  // Explain the actual release rule before the brand pays.
-  const step = checkout.title.toLowerCase();
-  const paymentOnlyNote = `Add ${figures.total} for ${step}. This step needs no approval: TSC pays it to ${factory} once it is funded.`;
-  const approvalNote = `Add ${figures.total} for ${step}. TSC holds it while ${factory} works on the step, and pays ${factory} only when you approve it.`;
+  // The one thing the brand must know before paying is the one box it ticks:
+  // a deposit or balance goes straight to the factory, a paid step waits for
+  // its approval. The page's other sentences said the same thing again.
   const fundingMilestone = {
     title: checkout.title,
     amount: figures.total,
     railStep: checkout.title,
-    fundNote: paymentOnly ? paymentOnlyNote : approvalNote,
   };
   const heading = { eyebrow: "FUND" };
 
@@ -298,7 +296,6 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
       primaryDisabled={!ready}
       fundingMilestone={fundingMilestone}
       heading={heading}
-      centerText={`${figures.total} incl. ${figures.feeLabel.replace("TSC service fee", "service fee")}`}
       rail={{
         fund: {
           ...rail,
@@ -388,11 +385,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                       />
                     </label>
                   </div>
-                  <p className="muted save-card-note">This card will be saved securely to your company for future payments.</p>
+                  <p className="muted save-card-note">Saved for future payments.</p>
                 </div>
-              ) : (
-                <p className="muted save-card-note">{figures.total} is charged to the card you choose. To pay with another card, add a new one.</p>
-              )}
+              ) : null}
               {savedCards.length > 0 && (
                 <button
                   className="billing-add-btn live-add-card-btn"
@@ -405,12 +400,6 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                   {addingCard ? "Use a saved card" : "+ Add a new card"}
                 </button>
               )}
-              <p className="muted live-payment-note">
-                {paymentOnly
-                  ? `This step needs no approval: once your payment goes through, TSC pays it to ${factory}.`
-                  : `TSC holds this card payment and pays ${factory} only when you approve the step.`}
-              </p>
-              <p className="muted live-payment-note">TSC may hold funds if the payment is disputed.</p>
             </div>
           ),
         }}
@@ -435,17 +424,15 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       return {
         title: payment.state === "verify" ? "Confirm your bank account" : "Payment processing",
         message: payment.state === "verify"
-          ? `Stripe will send two small deposits to your bank account in 1–2 business days. Confirm their amounts from Stripe's email to finish paying ${total}.`
-          : `${total} from ${ending(payment.payment_method_label)} is on its way. Stripe is still confirming it.`,
-        next: `${factory} is told now and starts ${step.toLowerCase()} when the payment goes through. If it fails, you can pay again from the order.`,
+          ? `Two small deposits reach your bank account in 1–2 business days. Confirm their amounts from the email to finish paying ${total}.`
+          : `${total} from ${ending(payment.payment_method_label)} is on its way.`,
+        next: "If it fails, you can pay again from the order.",
       };
     }
     return {
-      title: isFirst ? "Payment received" : `${step} funded`,
-      message: `${total} was charged to ${ending(payment.payment_method_label)}. ${factory} has been told that ${step.toLowerCase()} is ready to begin.`,
-      next: paymentOnly
-        ? `This step needs no approval, so TSC pays it to ${factory} now that it is funded. You can message the factory or follow its updates from the order.`
-        : `TSC holds this payment until you approve the step, then pays ${factory}. You can message the factory or follow its updates from the order.`,
+      title: "Payment received",
+      message: `${total} was charged to ${ending(payment.payment_method_label)}.`,
+      next: null,
     };
   }, [payment.state, payment.payment_method_label, total, factory, step, isFirst, paymentOnly]);
 
@@ -457,15 +444,9 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
-        description: paymentOnly
-          ? `Stripe is confirming your payment. This step needs no approval: TSC pays it to ${factory} once it goes through.`
-          : "Stripe is confirming your payment. The factory starts when it goes through, and funds are only released after you approve the step.",
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
-        description: paymentOnly
-          ? `This step needs no approval, so TSC pays it to ${factory} now that it is funded.`
-          : `TSC holds this payment. ${factory} can start, and it is only released after you approve the step.`,
       }}
       onBack={onBack}
       onNext={onBack}

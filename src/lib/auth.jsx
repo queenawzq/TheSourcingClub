@@ -18,11 +18,12 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
+import { takeRecoveryToken } from "./recovery-link.mjs";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -64,6 +65,10 @@ function reportNoAnswer(stage, authError, portal) {
     // Never surfaces.
   }
 }
+
+const LAST_ORG_KIND = "tscLastOrgKind";
+/** The kind of company this person was last working in on this browser, or null. */
+export const lastCompanyKind = (userId) => (userId ? window.localStorage.getItem(`${LAST_ORG_KIND}:${userId}`) : null);
 
 const alreadyRegistered = (authError) =>
   authError?.code === "user_already_exists" || /already registered/i.test(authError?.message ?? "");
@@ -181,7 +186,25 @@ export function AuthProvider({ children }) {
       setSession(null);
     }, SESSION_RESTORE_TIMEOUT_MS);
 
-    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+    // A password-reset link carries its token in the fragment and lands here
+    // (src/lib/recovery-link.mjs). Verifying it is a fetch, so it goes direct
+    // or through our own host like everything else; the restore waits for it,
+    // since a slow route can take longer than the usual restore allows.
+    const recoveryToken = takeRecoveryToken(window);
+    const recovered = recoveryToken === null
+      ? Promise.resolve()
+      : (window.clearTimeout(restoreTimeout), answerInTime(
+        supabase.auth.verifyOtp({ token_hash: recoveryToken, type: "recovery" }),
+      ).then(({ error: verifyError }) => {
+        if (!verifyError || cancelled) return;
+        const unreachable = verifyError.message === TIMED_OUT || isNoAnswer(verifyError);
+        if (unreachable) reportNoAnswer("reset", verifyError);
+        setError(authFailure(unreachable ? "reset_link_network" : "reset_link_used"));
+      }, () => {
+        if (!cancelled) setError(authFailure("reset_link_network"));
+      }));
+
+    recovered.then(() => supabase.auth.getSession()).then(({ data, error: sessionError }) => {
       if (cancelled) return;
       if (sessionError) {
         if (restored) return;
@@ -202,11 +225,16 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       // supabase-js tells every tab on the site about every sign-in, sign-out
       // and refresh. A tab signed in without "Keep me logged in" holds its
       // own session, and must not turn into whoever signed in next door.
       if (!isThisTabsSession(nextSession)) return;
+      // Signed out, here or next door: this tab now holds nobody, and stays
+      // that way until it signs in itself. Left on the shared store, whoever
+      // signs up in another tab next became this tab too, with its old screen
+      // still drawn and its answers saved on the new company (Nov 8).
+      if (event === "SIGNED_OUT") setKeepSignedIn(false);
       if (!nextSession) {
         closeCallWindowsForSignOut();
         keepPortalInAddress(orgsRef.current, activeOrgIdRef.current);
@@ -293,6 +321,14 @@ export function AuthProvider({ children }) {
     }
   }, [orgs, activeOrgId]);
 
+  // Which side this person was last on, for after they have lost the company:
+  // by then neither the membership nor the company can be read.
+  useEffect(() => {
+    const userId = session?.user?.id;
+    const current = orgs.find((org) => org.id === activeOrgId) ?? orgs[0];
+    if (userId && current) window.localStorage.setItem(`${LAST_ORG_KIND}:${userId}`, current.type);
+  }, [orgs, activeOrgId, session?.user?.id]);
+
   const reloadOrgs = useCallback(async () => {
     const seq = ++orgLoadSeq.current;
     const rows = await listMyOrgs(session?.user?.id);
@@ -347,6 +383,8 @@ export function AuthProvider({ children }) {
       activeOrg,
       lostAccess,
       dismissLostAccess: () => setLostAccess(null),
+      // Sent back to the sign-in page, which says this: it outlives the session.
+      noteLostAccess: setLostAccess,
 
       // `remember: false` is for a link that says which company it is about:
       // this page opens on it, and the next visit opens where the person left off.
@@ -382,6 +420,7 @@ export function AuthProvider({ children }) {
        * twice, because the address is already taken.
        */
       async signUpWithPassword({ email, password, fullName, companyName, accountType }) {
+        setLostAccess(null);
         setError(null);
 
         if (password.length < MIN_PASSWORD_LENGTH) {
@@ -390,8 +429,8 @@ export function AuthProvider({ children }) {
         }
 
         // The signup screen offers no "keep me logged in": a new account stays
-        // signed in, in this browser.
-        setKeepSignedIn(true);
+        // signed in, in this browser, unless another tab keeps its own there.
+        keepNewAccount();
         const address = email.trim().toLowerCase();
         const answered = await answerInTime(supabase.auth.signUp({
           email: address,
@@ -474,6 +513,7 @@ export function AuthProvider({ children }) {
        * the box said.
        */
       async signInWithPassword({ email, password, keepSignedIn }) {
+        setLostAccess(null);
         requireKeepChoice(keepSignedIn);
         setError(null);
         setKeepSignedIn(keepSignedIn);
@@ -575,6 +615,7 @@ export function AuthProvider({ children }) {
 
       /** Exchange the emailed code for a session, kept as the login form's box says. */
       async verifyEmailCode(email, token, { keepSignedIn } = {}) {
+        setLostAccess(null);
         requireKeepChoice(keepSignedIn);
         setError(null);
         setKeepSignedIn(keepSignedIn);

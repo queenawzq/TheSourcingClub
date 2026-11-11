@@ -92,6 +92,39 @@ export async function listPayoutMethods(stripe, accountId, defaultCurrency) {
     .sort((a, b) => Number(b.default) - Number(a.default));
 }
 
+const OPERATIONS_LINE = "If nobody at your company made this change, email operations@contact.sourcing-club.com now.";
+/** "Bank account ending in 2345" from Stripe's own object. */
+const named = (method) => `${method.object === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`;
+
+/** How long after TSC's own change an account.external_account event is that change's echo. */
+const OWN_CHANGE_MS = 120_000;
+
+/**
+ * Stripe's embedded form can add, replace or remove a bank with TSC hearing only
+ * this webhook. TSC's own add, default and remove already said so.
+ * Returns whether a bell was written.
+ */
+export async function tellExternalAccountEvent(db, event) {
+  const method = event.data.object;
+  if (!event.account || !method) return false;
+  const known = await db.from("stripe_connect_accounts").select("org_id, methods_changed_by_tsc_at")
+    .eq("stripe_account_id", event.account).maybeSingle();
+  if (known.error) throw new Error(known.error.message);
+  if (!known.data) return false;
+  const said = event.type.endsWith(".created") ? `${named(method)} was added as a withdrawal method.`
+    : event.type.endsWith(".deleted") ? `${named(method)} was removed from your withdrawal methods.`
+    : event.data.previous_attributes && "default_for_currency" in event.data.previous_attributes && method.default_for_currency ? `${named(method)} is now your default.`
+    : null;
+  if (!said) return false;
+  const own = known.data.methods_changed_by_tsc_at ? event.created * 1000 - Date.parse(known.data.methods_changed_by_tsc_at) : null;
+  if (own !== null && own > -30_000 && own < OWN_CHANGE_MS) return false;
+  const { error } = await db.from("notifications").insert({
+    org_id: known.data.org_id, kind: "payout_method_changed", title: "Your payout methods changed", body: `${said} ${OPERATIONS_LINE}`,
+  });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 /** A refusal said in the factory's words: a 422 the screen shows as it is. */
 export class PayoutMethodRefusal extends Error {}
 
@@ -111,7 +144,7 @@ export async function addPayoutMethod(stripe, accountId, { token, makeDefault })
     const options = await payoutBankOptions(stripe, account.country);
     const bank = details.bank_account;
     if (!bank || !options.currencies[bank.currency]?.includes(bank.country)) {
-      throw new PayoutMethodRefusal("Stripe does not support that bank country and currency for your company. Choose a supported combination.");
+      throw new PayoutMethodRefusal("That bank country and currency can't be used for your company. Choose a supported combination.");
     }
   }
   return stripe.accounts.createExternalAccount(accountId, {

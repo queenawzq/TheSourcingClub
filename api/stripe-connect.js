@@ -77,7 +77,7 @@ export default async function handler(request, response) {
         const code = String(country ?? "").toUpperCase();
         if (!PAYOUT_COUNTRIES.has(code)) {
           return reply(response, 422, {
-            error: "Stripe can't pay out to companies in that country yet. Add your bank details instead, and TSC pays you by bank transfer.",
+            error: "Choose another withdrawal method for this country.",
           });
         }
         // card_payments as well as transfers: outside the US, Stripe accepts
@@ -117,7 +117,7 @@ export default async function handler(request, response) {
       return reply(response, 200, { url: link.url });
     }
 
-    if (!existing) return reply(response, 404, { error: "payouts through Stripe are not set up yet" });
+    if (!existing) return reply(response, 404, { error: "Withdrawals are not set up yet." });
 
     if (action === "bank_options") {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
@@ -197,6 +197,8 @@ export default async function handler(request, response) {
         return reply(response, 409, { error: "Your withdrawal methods are changed in the form on this page." });
       }
       const accountId = existing.stripe_account_id;
+      // Before Stripe is asked: its webhook for this change may beat our reply.
+      await db.from("stripe_connect_accounts").update({ methods_changed_by_tsc_at: new Date().toISOString() }).eq("org_id", orgId);
       let notice;
       try {
         if (action === "add_method") {
@@ -252,6 +254,6 @@ export default async function handler(request, response) {
   } catch (failure) {
     if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
     logStripeFailure("stripe-connect", failure, { action });
-    return reply(response, 502, { error: sentenceFor(failure, "Stripe could not do that just now, so nothing changed. Try again in a few minutes.") });
+    return reply(response, 502, { error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes.") });
   }
 }

@@ -159,6 +159,8 @@ const REFUND_REASONS = {
   step_unpaid: "This step no longer takes a payment. You were refunded.",
   payment_gone: "This step no longer takes a payment. You were refunded.",
   other_intent: "This step was already being paid another way. You were refunded.",
+  // Held money on an order both sides cancelled (refundCancelledPayment).
+  cancelled_order: "The order was cancelled. You were refunded.",
 };
 const REFUNDED = "The payment was refunded.";
 
@@ -253,6 +255,108 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
 }
 
+/** What the brand reads when a cancelled order's held money goes back. */
+const CANCELLED_REFUND = "The order was cancelled. You were refunded.";
+
+/**
+ * The refund failure staff read on the board, by Stripe's code: never
+ * Stripe's message, which can quote a key.
+ */
+export function cancelRefundFailure(failure) {
+  const code = failure?.code ?? failure?.raw?.code;
+  if (code === "charge_disputed") return "The brand disputed this charge: settle it in Stripe's dispute, not by refund.";
+  if (code === "insufficient_funds" || code === "balance_insufficient") {
+    return "TSC's Stripe balance is too low to refund this. Top it up, then refund the payment in Stripe.";
+  }
+  if (code === "charge_expired_for_refund") return "Stripe can no longer refund this charge (too old). Refund the brand by bank.";
+  if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
+    return "Stripe refused TSC's key, so nothing was refunded. Fix STRIPE_SECRET_KEY, then refund the payment in Stripe.";
+  }
+  if (failure?.refundStatus) return `Stripe says the refund ${failure.refundStatus === "canceled" ? "was cancelled" : "failed"}. Refund the brand in Stripe.`;
+  return "Stripe refused the refund. Open the payment in Stripe and refund it there.";
+}
+
+const OUTAGE_TYPES = new Set(["StripeConnectionError", "StripeAPIError", "StripeRateLimitError"]);
+
+/**
+ * Refund one held payment on a cancelled order to the brand, in full (fee
+ * included). Claimed first (claim_cancellation_refund), so the webhook, the
+ * accepting page and the daily job never refund twice; the claim's time is in
+ * the idempotency key, so a refusal Stripe stored is never replayed on the next
+ * try. A refund already made on the charge (by staff, or a try whose reply was
+ * lost) is recorded instead of making another.
+ *
+ * Returns "refunded", "failed", "retry" (Stripe unreachable: the lease runs
+ * out and the next try goes again) or the claim's refusal.
+ */
+export async function refundCancelledPayment({ stripe, db, paymentId }) {
+  const claim = await rpc(db, "claim_cancellation_refund", { target_payment: paymentId });
+  if (claim?.refused) return claim.refused;
+
+  try {
+    const existing = await stripe.refunds.list({ payment_intent: claim.intent, limit: 100 });
+    const made = existing.data.find((refund) => ["succeeded", "pending"].includes(refund.status));
+    if (!made) {
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: claim.intent,
+          reason: "requested_by_customer",
+          metadata: { payment_id: claim.payment_id, order_id: claim.order_id, tsc_problem: "cancelled_order" },
+        },
+        { idempotencyKey: claim.key },
+      );
+      if (!["succeeded", "pending"].includes(refund.status)) {
+        const failure = new Error(`refund ${refund.status}`);
+        failure.refundStatus = refund.status;
+        throw failure;
+      }
+    }
+  } catch (failure) {
+    logStripeFailure("cancel-refund", failure, { paymentId });
+    if (OUTAGE_TYPES.has(failure?.type)) return "retry";
+    await rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
+    return "failed";
+  }
+  await rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: claim.intent, reason: CANCELLED_REFUND });
+  return "refunded";
+}
+
+/**
+ * A refund Stripe accepted and later failed (refund.updated, refund.failed,
+ * charge.refund.updated). Only our own cancelled-order refunds: the money is
+ * held again, and staff see why. Returns the payment row, or null.
+ */
+export async function applyRefundUpdate({ db, refund }) {
+  if (!["failed", "canceled"].includes(refund?.status)) return null;
+  const paymentId = refund.metadata?.tsc_problem === "cancelled_order" ? refund.metadata.payment_id : null;
+  if (!paymentId) return null;
+  const failure = new Error(`refund ${refund.status}`);
+  failure.refundStatus = refund.status;
+  return rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
+}
+
+/**
+ * Every held payment still to refund on cancelled orders (or on one order).
+ * Returns { refunded, failed, retry } counts; one payment's failure never
+ * stops the next.
+ */
+export async function refundCancelledOrders({ stripe, db, orderId = null }) {
+  const counts = { refunded: 0, failed: 0, retry: 0 };
+  const ids = await rpc(db, "cancellation_refunds_due", { target_order: orderId });
+  for (const id of ids ?? []) {
+    try {
+      const outcome = await refundCancelledPayment({ stripe, db, paymentId: id });
+      if (outcome in counts) counts[outcome] += 1;
+      // Held with no Stripe charge: recorded as failed, for staff.
+      if (outcome === "no_stripe_charge") counts.failed += 1;
+    } catch (failure) {
+      logStripeFailure("cancel-refund", failure, { paymentId: id });
+      counts.retry += 1;
+    }
+  }
+  return counts;
+}
+
 /**
  * Record what a PaymentIntent says about its payment. Shared by the webhook,
  * /api/stripe-sync and the checkout, so all reach the same answer; every
@@ -327,7 +431,7 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
 export async function releasePayment({ stripe, db, paymentId }) {
   const { data: payment, error } = await db
     .from("order_payments")
-    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, production_orders (factory_org_id, order_number)")
+    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, release_claimed_at, stripe_release_started, production_orders (factory_org_id, order_number)")
     .eq("id", paymentId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -355,18 +459,33 @@ export async function releasePayment({ stripe, db, paymentId }) {
     return { released: false, reason: "the brand's payment was refunded in Stripe, so there is nothing to pay out" };
   }
 
+  // Disputed: the card network may take this money back, so it waits, as the
+  // Wise and PayPal paths do. A payout already started is settled first, so
+  // the dispute cannot leave the factory's route pinned.
+  if (charge.disputed) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
+    return { released: false, reason: "the brand disputed this payment, so the payout waits until that is settled" };
+  }
+
   let { data: account } = await db
     .from("stripe_connect_accounts")
     .select("stripe_account_id, transfers_active")
     .eq("org_id", payment.production_orders.factory_org_id)
     .maybeSingle();
   if (!account?.transfers_active) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
 
   const selectedStripe = await db.rpc("uses_stripe_payout", { target_org: payment.production_orders.factory_org_id });
   if (selectedStripe.error) throw new Error(selectedStripe.error.message);
-  if (!selectedStripe.data) return { released: false, reason: "the factory selected another payout method" };
+  if (!selectedStripe.data) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
+    return { released: false, reason: "the factory selected another payout method" };
+  }
 
   // A transfer credits earnings, never an automatic withdrawal to the bank.
   // Configure existing accounts before any money can reach them.
@@ -377,8 +496,14 @@ export async function releasePayment({ stripe, db, paymentId }) {
   // of them claim the payment and tells the rest it is taken. A claim left by
   // a call that died mid-way lapses after 10 minutes.
   const claimedAt = await rpc(db, "claim_payment_release", { target_payment: payment.id });
-  if (!claimedAt) return { released: false, reason: "already being paid" };
+  if (!claimedAt) {
+    const { data: upgrading } = await db.from("stripe_connect_upgrades").select("org_id")
+      .eq("org_id", payment.production_orders.factory_org_id).is("completed_at", null).not("new_account_id", "is", null).limit(1);
+    return { released: false, reason: upgrading?.length ? "the factory is still updating its payout account: this is paid once that finishes" : "already being paid" };
+  }
 
+  // Only once Stripe has listed no transfer can a refusal mean none exists.
+  let foundNoTransfer = false;
   try {
     // A caller may have read the old account just before an upgrade completed.
     // The claim serialises against cutover; re-read its destination afterwards.
@@ -390,12 +515,15 @@ export async function releasePayment({ stripe, db, paymentId }) {
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
-    const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
-    const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+    let already;
+    for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+      if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
+    }
     if (already) {
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
       return { released: true, reason: already.id };
     }
+    foundNoTransfer = true;
 
     // One key per claim: Stripe's own retries inside this call reuse it, and
     // the next claim gets a new one, because Stripe replays a key's first
@@ -421,14 +549,42 @@ export async function releasePayment({ stripe, db, paymentId }) {
   } catch (failure) {
     // Hand the claim back so the next try (a webhook retry, staff's Retry)
     // need not wait for it to lapse. The exact time string goes back, so a
-    // newer claim is never cleared by mistake.
+    // newer claim is never cleared by mistake. When Stripe refused outright
+    // the payment is no longer pinned to it either.
     try {
-      await db.rpc("release_payment_claim", { target_payment: payment.id, claimed: claimedAt });
+      await db.rpc(foundNoTransfer && stripeMadeNoTransfer(failure) ? "record_stripe_release_not_sent" : "release_payment_claim",
+        { target_payment: payment.id, claimed: claimedAt });
     } catch {
       // the claim lapses on its own after 10 minutes
     }
     throw failure;
   }
+}
+
+/** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about whether a transfer exists. */
+function stripeMadeNoTransfer(failure) {
+  return [400, 402, 403, 404].includes(failure?.statusCode);
+}
+
+/**
+ * Stripe can no longer be asked to pay this payment, and an earlier call
+ * started it. Look: a transfer that went is recorded; if none did, the
+ * payment is unpinned so another rail can pay it. A claim still live may be
+ * mid-call, so it is left alone.
+ */
+async function settleStartedRelease({ stripe, db, payment }) {
+  if (!payment.stripe_release_started) return null;
+  if (payment.release_claimed_at && Date.parse(payment.release_claimed_at) > Date.now() - 10 * 60 * 1000) return null;
+  let already;
+  for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+    if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
+  }
+  if (already) {
+    await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
+    return { released: true, reason: already.id };
+  }
+  await rpc(db, "record_stripe_release_not_sent", { target_payment: payment.id, claimed: payment.release_claimed_at });
+  return null;
 }
 
 /** Save what Stripe says about a factory's account. */

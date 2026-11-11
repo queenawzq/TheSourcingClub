@@ -155,16 +155,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             id: method.id,
             label: method.default && stripeDefault ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
             // The words Payments uses for this account; never a bank name as Stripe holds it.
-            name: `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`,
+            name: `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ····${method.last4}` : ""}`,
             note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: stripeDefault ? "Default" : "Connected", name: "Withdrawal account" }];
         }
-          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "payoneer" ? {
-            id: account.id,
-            label: account.is_primary && !stripeDefault ? "Default" : "Payoneer",
-            name: "Payoneer",
-            note: account.payoneer_email,
-          } : account.method === "paypal" ? {
+          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "paypal" ? {
             id: account.id,
             label: account.is_primary && !stripeDefault ? "Default" : "PayPal",
             name: "PayPal",
@@ -298,7 +293,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   }
 
   // Settings' list is built from the accounts, so it is read again after a change.
-  const savePayout = async (details) => { await payouts.save(details); await reload(); };
+  const savePayout = async (details) => { const row = await payouts.save(details); await reload(); return row; };
   const removePayout = async (account, promote) => { await payouts.remove(account, promote); await reload(); };
   const makePrimaryPayout = async (account) => { await payouts.makePrimary(account); await reload(); };
 
@@ -489,7 +484,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         accountLocked={!canSettings}
         onChangePassword={changePassword}
         nameLocked={!isOwner}
-        saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
         notificationEmailNotes={isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES}
@@ -514,8 +508,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onMakePrimaryManual={makePrimaryPayout}
           manualForm={payouts.form}
           onManualFieldChange={payouts.setField}
-          onSavePaypal={async () => { await payouts.savePaypal(); await reload(); }}
-          onSaveWise={async (details) => { await payouts.saveWise(details); await reload(); }}
+          onSavePaypal={async () => { const row = await payouts.savePaypal(); await reload(); return row; }}
+          onSaveWise={async (details) => { const row = await payouts.saveWise(details); await reload(); return row; }}
           onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}
@@ -537,7 +531,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       {billingSecret ? (
         <BillingMethodFlow
           clientSecret={billingSecret}
-          intro={isFactory ? undefined : "Save a card to use when funding production milestones."}
+          intro={undefined}
           onClose={() => setBillingSecret(null)}
           onSaved={() => { setBillingSecret(null); loadCards(); }}
         />

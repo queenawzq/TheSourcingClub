@@ -1,0 +1,21 @@
+<!-- Password-reset email.
+     The link lands on our own page (the allow-listed address the person asked
+     from, e.g. app.html?reset=1), with the token in the fragment. The page
+     verifies it with verifyOtp, a fetch that can go through our own host when
+     <project>.supabase.co is unreachable. Supabase's own {{ .ConfirmationURL }}
+     opens that host in the browser, which nothing of ours can carry.
+     See src/lib/recovery-link.mjs. -->
+<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#0B1020">
+  <p style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5A6B87;margin:0 0 8px">
+    The Sourcing Club
+  </p>
+  <h1 style="font-size:22px;line-height:28px;margin:0 0 16px">Reset your password</h1>
+
+  <p style="margin:0 0 24px">
+    <a href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&type=recovery" style="display:inline-block;background:#1A4DF2;color:#FFFFFF;font-size:14px;font-weight:600;text-decoration:none;padding:10px 18px;border-radius:8px">Choose a new password</a>
+  </p>
+
+  <p style="font-size:13px;line-height:18px;color:#5A6B87;margin:0;border-top:1px solid #D7E0EA;padding-top:16px">
+    The link expires in an hour and works once. If you did not ask to reset your password, ignore this email.
+  </p>
+</div>

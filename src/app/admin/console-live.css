@@ -205,3 +205,57 @@
     gap: 12px;
   }
 }
+
+/* Official registry panel on the review page (RegistryPanel.jsx). */
+.admin-registry { display: grid; gap: 16px; min-width: 0; }
+.admin-registry-panel { min-width: 0; }
+.admin-registry-sources { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.admin-registry-sources a { overflow-wrap: anywhere; }
+.admin-registry-actions,
+.admin-registry-flags { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-registry-flags .project-status { white-space: normal; height: auto; text-align: left; }
+.admin-registry-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.admin-registry-form .admin-registry-note { grid-column: 1 / -1; }
+.admin-registry-form button { justify-self: start; }
+@media (max-width: 640px) { .admin-registry-form { grid-template-columns: 1fr; } }
+/* A registry row has one pill and no confidence figure: the design's two
+   68px columns would squeeze it. Rows open nothing, so they don't look it. */
+.admin-registry .admin-check-result { display: flex; justify-content: flex-end; width: auto; }
+.admin-registry .admin-check-result .project-status { white-space: nowrap; }
+.admin-registry .admin-check-row { cursor: default; }
+.admin-registry .admin-check-row:hover { background: none; box-shadow: none; }
+@media (max-width: 640px) { .admin-registry .admin-check-row { grid-template-columns: 1fr; } .admin-registry .admin-check-result { justify-content: flex-start; } }
+
+/* Verification v2: the registry panel's new parts (live only). */
+.admin-approve-block { margin: 8px 0 0; color: var(--danger, #b33416); font-size: 13px; }
+.admin-registry h3 { font-size: 14px; margin: 16px 0 8px; }
+.admin-registry-duplicates ul { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 4px; }
+.admin-registry-duplicates li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.admin-registry-differs { color: var(--danger, #b33416); }
+.admin-registry-explained, .admin-registry-current, .admin-signal-meta { color: var(--text-muted, #5a6b87); font-size: 13px; }
+.admin-registry-preview { margin: 8px 0; max-width: 100%; }
+.admin-registry-preview img { max-width: 100%; max-height: 420px; border: 1px solid var(--border, #d7e0ea); border-radius: 8px; }
+.admin-registry-preview iframe { width: 100%; height: 420px; border: 1px solid var(--border, #d7e0ea); border-radius: 8px; }
+.admin-signals-summary { border: 1px solid var(--border, #d7e0ea); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+.admin-signals-summary h3 { margin-top: 0; }
+.admin-signals-summary dl, .admin-signal-fields { display: grid; gap: 6px; margin: 0; }
+.admin-signals-summary dl > div, .admin-signal-fields > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.admin-signals-summary dd, .admin-signal-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.admin-signals-summary .project-status { white-space: normal; height: auto; text-align: left; }
+.admin-signal-block { border-top: 1px solid var(--border, #d7e0ea); padding-top: 4px; margin-top: 16px; min-width: 0; }
+.admin-signal-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+.admin-signal-reasons { margin: 4px 0; padding-left: 18px; }
+.admin-signal-photo { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; margin: 12px 0; }
+.admin-signal-photo img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border, #d7e0ea); }
+.admin-signal-cert { margin: 12px 0; min-width: 0; }
+.admin-signal-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.admin-signal-form input, .admin-signal-form select { height: 34px; min-width: 0; flex: 1 1 160px; border: 1px solid var(--border, #d7e0ea); border-radius: 8px; padding: 0 10px; }
+@media (max-width: 760px) {
+  .admin-signals-summary dl > div, .admin-signal-fields > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .admin-signal-photo { grid-template-columns: 80px minmax(0, 1fr); }
+  .admin-signal-photo img { width: 80px; height: 80px; }
+}
+/* At 375 a long pill ("Shared with …") held the block at its own width. */
+.admin-registry > * { min-width: 0; max-width: 100%; }
+.admin-signals-summary .project-status, .admin-registry-flags .project-status, .admin-registry-note .project-status { white-space: normal !important; max-width: 100%; height: auto; overflow-wrap: anywhere; }
+.admin-registry .project-status { display: inline-block; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; }

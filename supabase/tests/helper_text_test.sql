@@ -81,12 +81,37 @@ select is((select description from public.order_milestones where order_id = (sel
 select is((select sum(amount_cents) from public.order_milestones where order_id = (select order_id from helper_order)), (select order_total_cents::numeric from public.production_orders where id = (select order_id from helper_order)), 'guidance does not change schedule amounts');
 select ok(not has_function_privilege('authenticated', 'public.create_order_from_award(uuid)', 'execute'), 'the internal order generator remains inaccessible to authenticated callers');
 
--- Exercise the actual migration a second time against legacy blank rows.
+-- The backfill of 20261108200527_restore_production_step_guidance.sql, run a
+-- second time against legacy blank rows. Copied here because `supabase test db`
+-- doesn't mount supabase/migrations, so \ir stopped this file after 8 of 13.
+-- Keep it the same as that migration's last statement.
 update public.order_milestones set description = null where order_id = (select order_id from helper_order) and title in ('Fit sample', 'Bulk deposit');
 update public.order_milestones set description = 'Brand-authored production instructions' where order_id = (select order_id from helper_order) and title = 'Bulk production';
 update public.order_milestones set title = 'Custom QC', description = null where order_id = (select order_id from helper_order) and title = 'QC photos';
 update public.order_milestones set description = '' where order_id = (select order_id from helper_order) and title = 'Final balance';
-\ir ../migrations/20261108200527_restore_production_step_guidance.sql
+update public.order_milestones m
+   set description = case
+     when m.source_sample_line_id is not null and m.kind = 'approval_and_payment'
+       then 'Factory prepares this sample and posts photos for approval.'
+     when m.sort = 1000 and m.kind = 'payment_only' and m.title = 'Bulk deposit'
+       then format('%s%% of the production total, paid before bulk materials are bought.', o.deposit_pct)
+     when m.sort = 1100 and m.kind = 'progress_only' and m.title = 'Bulk production'
+       then case when o.bulk_lead_time_days is null then 'Cutting and sewing. Confirm the production lead time with the factory.'
+                 else format('Cutting and sewing. The factory quoted %s days from approval.', o.bulk_lead_time_days) end
+     when m.sort = 1200 and m.kind = 'approval_only' and m.title = 'QC photos'
+       then 'The brand approves finished-goods photos before the balance falls due.'
+     when m.sort = 1300 and m.kind = 'payment_only' and m.title = 'Final balance'
+       then 'The remainder of the production total, once QC photos are approved.'
+   end
+  from public.production_orders o
+ where o.id = m.order_id and m.description is null
+   and (
+     (m.source_sample_line_id is not null and m.kind = 'approval_and_payment')
+     or (m.sort = 1000 and m.kind = 'payment_only' and m.title = 'Bulk deposit')
+     or (m.sort = 1100 and m.kind = 'progress_only' and m.title = 'Bulk production')
+     or (m.sort = 1200 and m.kind = 'approval_only' and m.title = 'QC photos')
+     or (m.sort = 1300 and m.kind = 'payment_only' and m.title = 'Final balance')
+   );
 select is((select description from public.order_milestones where order_id = (select order_id from helper_order) and title = 'Fit sample'), 'Factory prepares this sample and posts photos for approval.', 'legacy blank generated sample is restored');
 select matches((select description from public.order_milestones where order_id = (select order_id from helper_order) and title = 'Bulk deposit'), 'paid before bulk materials are bought[.]$', 'legacy blank generated deposit is restored');
 select is((select description from public.order_milestones where order_id = (select order_id from helper_order) and title = 'Bulk production'), 'Brand-authored production instructions', 'backfill never overwrites brand instructions');

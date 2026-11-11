@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(66);
+select plan(67);
 
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'p15-brand@example.com'),
@@ -117,11 +117,6 @@ insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body,
 
 reset role;
 
--- The ordinary message passes the screen, as the server records it.
-do $$ begin
-  perform public.record_message_screening('b5000000-0000-0000-0000-000000000002', 'delivered', 'pattern_only');
-end $$;
-
 -- Attachments: one on the ordinary message, one on the message to be held.
 insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, message_id) values
   ('b6000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-00000000000b', 'message_attachment',
@@ -130,6 +125,11 @@ insert into public.documents (id, org_id, kind, bucket, storage_path, file_name,
   ('b6000000-0000-0000-0000-000000000001', 'b2000000-0000-0000-0000-00000000000b', 'message_attachment',
    'org-private', 'b2000000-0000-0000-0000-00000000000b/message_attachment/b4000000-0000-0000-0000-000000000002/card.pdf',
    'card.pdf', 'b5000000-0000-0000-0000-000000000001');
+
+-- The ordinary message passes the screen, as the server records it.
+do $$ begin
+  perform public.record_message_screening('b5000000-0000-0000-0000-000000000002', 'delivered', 'pattern_only');
+end $$;
 
 insert into storage.objects (bucket_id, name) values
   ('org-private', 'b2000000-0000-0000-0000-00000000000b/message_attachment/b4000000-0000-0000-0000-000000000001/plain.pdf'),
@@ -213,6 +213,23 @@ select throws_ok(
 );
 
 reset role;
+
+-- Since 20261108100000 a flagged message on a thread with no contract is
+-- blocked, never held (message_block_test.sql). Staff's release, reject and
+-- queue stay deployed for the site that is live while that migration runs,
+-- so this file puts its two messages back into `held` by hand and goes on
+-- testing that those functions still refuse everyone but staff.
+select is(
+  (select string_agg(delivery, ',' order by id) from public.messages
+    where id in ('b5000000-0000-0000-0000-000000000001', 'b5000000-0000-0000-0000-000000000003')),
+  'blocked,blocked',
+  'a flagged message with no contract behind it is blocked, not held'
+);
+
+update public.messages set delivery = 'held', held_for = 'contact_details'
+ where id = 'b5000000-0000-0000-0000-000000000001';
+update public.messages set delivery = 'held', held_for = 'outside_platform'
+ where id = 'b5000000-0000-0000-0000-000000000003';
 
 select is(
   (select delivery from public.messages where id = 'b5000000-0000-0000-0000-000000000001'),
@@ -348,9 +365,9 @@ select is(
 );
 
 select is(
-  (select last_body from public.message_thread_summary where id = 'b4000000-0000-0000-0000-000000000002'),
-  'Easier by email: buyer@p15-brand.example',
-  'and as its own last message in the thread'
+  (select coalesce(last_body, '(none)') from public.message_thread_summary where id = 'b4000000-0000-0000-0000-000000000002'),
+  '(none)',
+  'but a message that was not sent is not the conversation''s preview'
 );
 
 select throws_ok(

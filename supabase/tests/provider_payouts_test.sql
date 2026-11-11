@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(51);
+select plan(57);
 
 set local session_replication_role = replica;
 
@@ -179,6 +179,17 @@ select is((select count(*)::int from public.provider_payouts where status = 'can
 -- --- The brand reads none of it ------------------------------------------------
 reset role; select pg_temp.act_as(3); set local role authenticated;
 select is((select count(*)::int from public.provider_payouts where factory_org_id = '78b00000-0000-0000-0000-0000000000f1'), 0, 'the brand reads no attempt');
+
+-- Webhooks (20261108500000): a delivery is handled once, and only the server claims one.
+reset role;
+select ok(not has_function_privilege('authenticated', 'public.claim_provider_event(text, text)', 'execute'), 'a signed-in account cannot claim a webhook event');
+select ok(not has_table_privilege('authenticated', 'public.provider_events', 'select'), 'a signed-in account cannot read webhook events');
+select is(public.claim_provider_event('wise:pgtap-delivery-1', 'transfers#state-change'), true, 'a new delivery is claimed');
+select is(public.claim_provider_event('wise:pgtap-delivery-1', 'transfers#state-change'), false, 'the same delivery again is not');
+update public.provider_events set claimed_at = now() - interval '6 minutes' where id = 'wise:pgtap-delivery-1';
+select is(public.claim_provider_event('wise:pgtap-delivery-1', 'transfers#state-change'), true, 'a claim whose handler died is run again after 5 minutes');
+update public.provider_events set processed_at = now(), claimed_at = now() - interval '6 minutes' where id = 'wise:pgtap-delivery-1';
+select is(public.claim_provider_event('wise:pgtap-delivery-1', 'transfers#state-change'), false, 'a handled delivery is never run again');
 
 select * from finish();
 rollback;
