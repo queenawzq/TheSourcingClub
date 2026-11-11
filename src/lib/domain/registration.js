@@ -4,11 +4,11 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { normaliseAccessCode, normaliseRegistrationLetter, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
+import { normaliseAccessCode, normaliseRegistrationLetter, normaliseRegistrationNumber, numberFromDocument, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, number_source, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
@@ -26,6 +26,13 @@ export async function saveRegistration(orgId, { country, number, second = "", co
     // A sole proprietor's tax number is the owner's national ID: never asked.
     return unwrap(
       await supabase.rpc("save_company_registration", { target_org: orgId, country: country ?? null, number: null, no_number: true }),
+      "save the registration",
+    );
+  }
+  if (numberFromDocument(country) && !normaliseRegistrationNumber(country, number ?? "")) {
+    // China: the number is read off the licence; only the country is saved.
+    return unwrap(
+      await supabase.rpc("save_company_registration", { target_org: orgId, country, number: null }),
       "save the registration",
     );
   }

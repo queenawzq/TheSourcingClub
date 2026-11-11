@@ -26,6 +26,9 @@ const ORG_WEIGHTS = [3, 7, 9, 10, 5, 8, 4, 2];
  */
 export const REGISTRATION_COUNTRIES = {
   CN: {
+    // Not typed (Nov 11): the number is the one the AI reads off the licence
+    // (migration 20261111100000).
+    fromDocument: true,
     label: { en: "Unified Social Credit Code", zh: "统一社会信用代码" },
     hint: { en: "18 characters, on your business licence", zh: "18 位，见营业执照" },
     upload: { en: "Business licence", zh: "营业执照" },
@@ -89,6 +92,11 @@ export function registrationCountryFrom(location, matched = null) {
 /** Full-width digits, letters and punctuation (a Chinese keyboard's) as plain ones. */
 function halfWidth(value) {
   return String(value ?? "").replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, " ");
+}
+
+/** Does this country's number come from the document rather than the form? */
+export function numberFromDocument(country) {
+  return Boolean(REGISTRATION_COUNTRIES[country]?.fromDocument);
 }
 
 /** Spaces, dots and dashes removed; letters upper-case; "PT" prefix dropped. */

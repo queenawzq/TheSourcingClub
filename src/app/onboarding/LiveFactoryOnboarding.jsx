@@ -38,7 +38,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseRegistrationLetter, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -325,6 +325,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
   const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
   const registrationField = useMemo(() => {
+    // China types no number: it is read off the licence.
+    if (numberFromDocument(registrationCountry)) return null;
     const copy = registrationCopy(registrationCountry);
     const lang = language === "zh" ? "zh" : "en";
     return {
@@ -485,7 +487,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
-    if (submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
+    const fromDocument = numberFromDocument(registrationCountry) && "business-registration" in submitted;
+    if (fromDocument || submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
       // The registration file is required as drawn ("Business registration
       // certificate *"): one already stored, or one chosen now.
       const stored = documents["business-registration"] ?? [];
@@ -496,7 +499,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
       await saveRegistration(org.id, {
         country: registrationCountry,
-        number: submitted["registration-number"] ?? "",
+        number: fromDocument ? "" : submitted["registration-number"] ?? "",
         second: submitted["registration-second"] ?? "",
         confirmed: submitted["registration-confirmed"] === true,
         noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
