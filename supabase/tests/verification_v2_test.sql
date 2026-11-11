@@ -39,8 +39,9 @@ select ok(not public.company_names_match('', ''), 'two blanks are not a match');
 -- Turkey's letter number ------------------------------------------------------
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000004","role":"authenticated"}';
 set local role authenticated;
-select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596')$$,
-  '22023', 'registration letter number: missing', 'a Turkish VKN needs the letter number');
+-- v3.1: the letter number is optional (the tax plate, vergi levhası, has none).
+select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596')$$,
+  'a Turkish VKN saves without a letter number');
 select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ABC123')$$,
   '22023', 'registration letter number: format', 'and it is 14 characters');
 select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ab12 cd34 ef56 78')$$,
