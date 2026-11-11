@@ -1,0 +1,25 @@
+{
+  "about": "A phone photo: rotated 7°, slightly blurred, darker, edges cropped. Still readable; fields should come out.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "苏州吴中丝韵制衣有限公司",
+    "location": "江苏省苏州市吴中区木渎镇金枫南路888号"
+  },
+  "fields": {
+    "registrationNumber": "91320506MA1Y6R2L0A",
+    "legalName": "苏州吴中丝韵制衣有限公司",
+    "legalRepresentative": "沈佳怡",
+    "address": "江苏省苏州市吴中区木渎镇金枫南路888号3幢",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

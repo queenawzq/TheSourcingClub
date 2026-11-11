@@ -1,0 +1,25 @@
+{
+  "about": "The typed address is in another city (Hangzhou) from the licence's 住所 (Shaoxing).",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "绍兴柯桥华纺服装有限公司",
+    "location": "浙江省杭州市萧山区宁围街道市心北路857号"
+  },
+  "fields": {
+    "registrationNumber": "91330621MA2BQ4D6Y0",
+    "legalName": "绍兴柯桥华纺服装有限公司",
+    "legalRepresentative": "周建平",
+    "address": "浙江省绍兴市柯桥区齐贤街道工业园区兴齐路22号",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": true,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

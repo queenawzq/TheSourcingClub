@@ -1,0 +1,26 @@
+{
+  "about": "The last six characters of the code are pasted in another font, size and baseline, and fail the check digit. Edit must be noticed.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "上海浦东嘉禾服装制造有限公司",
+    "location": "上海市浦东新区康桥镇秀浦路2555号5幢"
+  },
+  "fields": {
+    "registrationNumber": "91310115MA1K583917",
+    "legalName": "上海浦东嘉禾服装制造有限公司",
+    "legalRepresentative": "黄志强",
+    "address": "上海市浦东新区康桥镇秀浦路2555号5幢",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  },
+  "edited": true
+}

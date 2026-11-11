@@ -1,0 +1,25 @@
+{
+  "about": "A real factory's scope (生产、加工、制造), typed details match. Nothing should fire except the specimen stamp.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "宁波明纬服饰制造有限公司",
+    "location": "浙江省宁波市海曙区望春工业园区科创路118号"
+  },
+  "fields": {
+    "registrationNumber": "91330203MA2AH7K5X4",
+    "legalName": "宁波明纬服饰制造有限公司",
+    "legalRepresentative": "陈立华",
+    "address": "浙江省宁波市海曙区望春工业园区科创路118号",
+    "businessScopeIncludes": "生产"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}
