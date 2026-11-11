@@ -68,6 +68,7 @@ const COLUMN_FOR_LABEL = {
   "Year Founded": "founded_year",
   "Website URL": "website_url",
   "Factory Location": "location",
+  "Production Address": "production_address",
   "Nearest Port": "nearest_port",
   "Total Employees": "employee_count",
   "About the factory": "intro",
@@ -132,6 +133,20 @@ const KIND_FOR_LABEL = {
  * The booking calendar is marked up against short month names on screen and
  * stored against the first of each month. This is the one translation.
  */
+/**
+ * The automatic verification checks, run after an upload or a submit. Fire and
+ * forget: a factory never waits for them or sees them fail. Looked up lazily so
+ * this screen builds whether or not the runner is present.
+ */
+const verificationRunners = import.meta.glob("../../lib/domain/verification-run.js");
+function startVerification(orgId) {
+  const load = Object.values(verificationRunners)[0];
+  if (!load || !orgId) return;
+  load()
+    .then((module) => module.runVerification?.(orgId))
+    .catch(() => {});
+}
+
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
@@ -198,7 +213,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos, authorisations] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -208,6 +223,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "logo"),
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
+          listDocuments(org.id, "factory_photo"),
+          listDocuments(org.id, "authorisation"),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
         if (savedRegistration?.number) {
@@ -230,6 +247,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           "factory-logo": logos ?? [],
           "factory-samples": samples ?? [],
           "factory-walkthrough": walkthroughs ?? [],
+          "factory-photos": photos ?? [],
+          authorisation: authorisations ?? [],
         });
 
         const profile = existing.data ?? {};
@@ -241,6 +260,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
+        }
+        // The company typed its name at signup: start from it.
+        if (!profile.legal_name && org.name) {
+          restored[factoryFieldName("Factory Name")] = org.name;
+          restored[factoryFieldName("Company Name")] = org.name;
         }
         for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
           const ids = selected?.[kind] ?? [];
@@ -394,6 +418,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     logo: "factory-logo",
     product_image: "factory-samples",
     walkthrough: "factory-walkthrough",
+    factory_photo: "factory-photos",
+    authorisation: "authorisation",
   };
 
   /**
@@ -454,6 +480,18 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const stored = await listDocuments(org.id, "business_registration");
       setRegistrationFileName(stored.length > 1 ? `${stored.length} files uploaded` : stored[0]?.file_name ?? "");
       setDocuments((current) => ({ ...current, "business-registration": stored }));
+    }
+
+    // Verification evidence, private by kind. Each upload starts the checks.
+    let evidenceUploaded = registrationFiles.length > 0;
+    for (const [field, kind] of [["factory-photos", "factory_photo"], ["authorisation", "authorisation"]]) {
+      const chosen = submitted[field];
+      const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
+      if (!files.length) continue;
+      for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
+      evidenceUploaded = true;
+      const fresh = await listDocuments(org.id, kind);
+      setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
     // Logo and samples are what a brand looks at, so they are public by kind.
@@ -521,6 +559,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     }
 
     await saveFactoryProfile(org.id, patch);
+    // After the profile save, so the checks read the address just typed.
+    if (evidenceUploaded) startVerification(org.id);
 
     for (const { kind, termIds } of links) {
       await setLinks({ subjectType: "factory_profile", subjectId: org.id, orgId: org.id, kind, termIds });
@@ -578,7 +618,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     try {
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
-      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, ...answers } = submitted;
+      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, authorisation: _authorisation, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature && !termsAcceptance) {
@@ -607,6 +647,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // Terms already signed: confirming the summary sends it back to staff
         // and stays on the summary, with no page after it.
         await resubmitForReview(org.id);
+        startVerification(org.id);
         setResubmitting(false);
         onComplete();
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -616,6 +657,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
         await resubmitForReview(org.id);
+        startVerification(org.id);
         setResubmitting(false);
         onComplete();
       } else if (step === LAST_STEP - 1) {
@@ -624,6 +666,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // visibility, an admin review controls quoting.
         await saveFactoryProfile(org.id, { published_at: new Date().toISOString() });
         await completeOnboarding(org.id, "factory");
+        startVerification(org.id);
       }
       if (step >= LAST_STEP) {
         onComplete();
