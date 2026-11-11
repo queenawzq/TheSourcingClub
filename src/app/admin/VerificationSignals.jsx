@@ -309,6 +309,13 @@ function Certificate({ orgId, cert, check, title, onChange }) {
 }
 
 /** The row's grey line: when it was checked. */
+/** The row's two lines: the first reason, and a staff reason whenever there is one (it explains the level). */
+function rowReasons(reasons = []) {
+  const staff = reasons.find((reason) => reason.startsWith("Staff reason:"));
+  const first = reasons.filter((reason) => reason !== staff);
+  return staff ? [...first.slice(0, 1), staff] : first.slice(0, 2);
+}
+
 function rowMeta(item) {
   return item.checkedAt ? when(item.checkedAt) : "";
 }
@@ -498,7 +505,7 @@ export function ScoreRows({ results, overall, onOpen, running = new Set() }) {
             >
               <div className="admin-check-copy">
                 <strong>{label}</strong>
-                {running.has(item.key) ? <p>Running…</p> : item.reasons.slice(0, 2).map((reason) => <p key={reason}>{reason}</p>)}
+                {running.has(item.key) ? <p>Running…</p> : rowReasons(item.reasons).map((reason) => <p key={reason}>{reason}</p>)}
                 {meta && <span>{meta}</span>}
               </div>
               <div className="admin-check-result">
