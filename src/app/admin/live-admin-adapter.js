@@ -22,7 +22,9 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
-import { adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
+import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
   claimReview,
@@ -184,6 +186,21 @@ export function withRegistry(profile, state) {
   return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };
 }
 
+/**
+ * v3.1 (A9): a vendor's queue row shows its overall level, from the same
+ * rules as the review page, instead of a "% complete". A company whose
+ * inputs can't be read shows no level rather than a wrong one.
+ */
+export async function withLevel(profile) {
+  if (profile.entityType === "Brand") return profile;
+  try {
+    const { overall } = computeLevels({ ...(await adminLevelInputs(profile.id)), sourceLabel: registrySourceLabel });
+    return { ...profile, level: LEVEL_WORDS[overall.level], levelTone: overall.level };
+  } catch {
+    return profile;
+  }
+}
+
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
@@ -236,9 +253,8 @@ export function toReviewProfile(row) {
     productionTypesInferred: inferredProductionTypes.length > 0,
     productionTags: productionCategories(row),
     makes: row.makes ?? [],
-    confidence: row.verificationScore ?? null,
-    // The queue row's name for that figure; the design's is "Confidence".
-    confidenceLabel: "Complete",
+    // v3.1 (A9): no completeness percentage beside the levels; the level replaces it.
+    confidence: null,
     // Not the queue's own figure: completeness is the company's, read with
     // the submission (profile-completion.js), so both sides see one number.
     completion: null,
@@ -361,7 +377,7 @@ export function createAdminAdapter({ user, signOut }) {
     viewer: { isAdmin: true, org: null, user },
 
     verificationQueue: () => Promise.all([verificationQueue(), adminRegistryStates()])
-      .then(([rows, states]) => rows.map((row) => withRegistry(toReviewProfile(row), states.get(row.orgId)))),
+      .then(([rows, states]) => Promise.all(rows.map((row) => withLevel(withRegistry(toReviewProfile(row), states.get(row.orgId)))))),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     adminMetrics: async () => {

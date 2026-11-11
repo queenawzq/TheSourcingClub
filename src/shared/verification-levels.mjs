@@ -22,6 +22,36 @@ export const LEVEL_WORDS = { high: "High", medium: "Medium", low: "Low", unknown
 export const LEVEL_TONE = { high: "success", medium: "warning", low: "danger", unknown: "neutral" };
 const RANK = { low: 0, medium: 1, high: 2 };
 
+/**
+ * v3.1 principles (fix round, Nov 11):
+ *   - a check that can't tell says Can't tell, never Low;
+ *   - Low is only for real evidence of a trader or fraud;
+ *   - anything the company writes about itself is Medium at most;
+ *   - every Low or Medium row says what would settle it;
+ *   - a staff reason on a row lifts Low to Medium and is shown.
+ *
+ * Field names other sessions own and had not fixed when this was written,
+ * in one place so the coordinator can rename them here.
+ */
+export const FIELD_NAMES = {
+  // admin_verification_rules(): staff reasons per check, { [checkKey]: { note, reviewedAt, reviewedBy } }
+  explanations: "explanations",
+  // admin_verification_rules(): staff-recorded facts, { insuredStaff, foundedOn, recordedAt }
+  companyFacts: "companyFacts",
+  // document_reading details.tradingScope: activity codes printed on the document (PT CAE, TR NACE)
+  activityCodes: ["activityCodes", "codes"],
+  // document_reading details.extracted: the founding date read off the licence
+  foundedOn: ["foundedOn", "establishedOn", "foundedDate", "establishmentDate"],
+  // address signal details: the placement is a road / came from the shortened query / the typed address / office words on the licence
+  placementRoad: ["roadPlacement", "placedOnRoad"],
+  shortenedQuery: ["shortened", "fromShortQuery"],
+  officeText: ["officeText", "officeAddress"],
+};
+const pick = (object, names) => {
+  for (const name of [].concat(names)) if (object?.[name] != null) return object[name];
+  return undefined;
+};
+
 export const CHECKS = [
   { key: "license_read", label: "License read" },
   { key: "registry", label: "Registry" },
@@ -29,6 +59,7 @@ export const CHECKS = [
   { key: "address_owner", label: "Address belongs to this factory" },
   { key: "address_site", label: "Address is a factory site" },
   { key: "photos", label: "Photos" },
+  { key: "company_facts", label: "Company size and age" },
   { key: "video", label: "Video" },
 ];
 export const CHECK_KEYS = CHECKS.map((check) => check.key);
@@ -65,14 +96,17 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   const reasons = [];
   let level = "high";
   if (x.specimen || d.specimen || x.markedAsSample) { level = "low"; reasons.push("Looks like a specimen or sample"); }
-  if (x.edited || d.edited || x.looksEdited) { level = "low"; reasons.push("Looks edited"); }
+  // Edited is the AI's impression, not evidence: Medium until staff compare it with the registry.
+  if (x.edited || d.edited || x.looksEdited) { level = lowerOf(level, "medium"); reasons.push("Looks edited: compare it with the registry"); }
+  if (x.verificationWatermark || d.verificationWatermark) reasons.push("Marked for verification use only (normal)");
   for (const line of d.differences ?? []) {
     level = "low";
     reasons.push(`${line.field === "number" ? "Number" : "Name"} differs: document "${line.document || "none"}", typed "${line.typed ?? ""}"`);
   }
   const missing = [["registrationNumber", "number"], ["legalName", "legal name"]].filter(([field]) => !x[field]).map(([, words]) => words);
   if (missing.length) { level = lowerOf(level, "medium"); reasons.push(`Not read: ${missing.join(", ")}`); }
-  if (!reasons.length) reasons.push("Number and name match what the factory typed");
+  if (d.numberCheckDigitFails || x.numberCheckDigitFails) { level = lowerOf(level, "medium"); reasons.push("Number read, check digit fails: type it from the image"); }
+  if (!reasons.length || reasons.every((line) => line.endsWith("(normal)"))) reasons.unshift("Number and name read from the document");
   return result("license_read", level, reasons, base, at);
 }
 
@@ -129,62 +163,40 @@ export function tradingScope({ reading, tradingReason }) {
   if (!reading) return result("trading_scope", "unknown", ["License not read"]);
   if (!scope?.read) return result("trading_scope", "unknown", ["No business scope on the document"], {}, at);
   if (scope.recognised === false) return result("trading_scope", "unknown", ["No trading or making words recognised"], { quote: scope.quote ?? null }, at);
-  if (scope.trading) {
+  const codes = activityCodesOf(scope);
+  const making = codes.filter((code) => /^1[345]/.test(code));
+  const wholesale = codes.filter((code) => /^46/.test(code));
+  const details = { quote: scope.quote ?? null, ...(codes.length ? { codes: codes.join(", ") } : {}) };
+  if (scope.trading || (wholesale.length && !making.length)) {
+    const what = scope.trading ? `Trading only: ${scope.quote}` : `Wholesale activity code ${wholesale.join(", ")}`;
     // Session 2: staff record why a trading-only licence may still pass.
-    if (tradingReason) return result("trading_scope", "medium", [`Trading only: ${scope.quote}`, `Staff reason: ${tradingReason}`], { quote: scope.quote }, at);
-    return result("trading_scope", "low", [`Trading only: ${scope.quote}`], { quote: scope.quote }, at);
+    if (tradingReason) return result("trading_scope", "medium", [what, `Staff reason: ${tradingReason}`], details, at);
+    return result("trading_scope", "low", [what, "Record why it may pass as a factory, or ask for proof of production"], details, at);
   }
-  return result("trading_scope", "high", [`Includes making: ${scope.quote}`], { quote: scope.quote }, at);
+  // A making code printed on the document is a registry fact; words in the scope are the company's own.
+  if (making.length) return result("trading_scope", "high", [`Making activity code ${making.join(", ")}`, ...(scope.quote ? [`Scope: ${scope.quote}`] : [])], details, at);
+  return result("trading_scope", "medium", [`Includes making: ${scope.quote}`, "From the scope text only: confirm on photos, video or a visit"], details, at);
+}
+
+function activityCodesOf(scope) {
+  const raw = pick(scope, FIELD_NAMES.activityCodes) ?? [];
+  return (Array.isArray(raw) ? raw : String(raw).split(/[,;\s]+/))
+    .map((code) => String(typeof code === "object" ? code?.code ?? "" : code).replace(/\D/g, ""))
+    .filter(Boolean);
 }
 
 // --- address belongs to this factory ----------------------------------------
 
-/** Lowercase, drop punctuation and the words every address has. */
-export function addressTokens(text) {
-  const plain = String(text ?? "")
-    .normalize("NFKC")
-    .replace(/[​-‍⁠﻿]/g, "")
-    .toLowerCase();
-  const cjk = plain.match(/[一-鿿]/g) ?? [];
-  const words = plain
-    .replace(/[一-鿿]/g, " ")
-    .split(/[^a-z0-9À-ɏ]+/)
-    .filter((word) => word.length > 1 && !ADDRESS_FILLER.has(word));
-  return new Set([...words, ...cjk.filter((ch) => !CJK_FILLER.has(ch))]);
-}
-const ADDRESS_FILLER = new Set(["no", "the", "of", "road", "rd", "street", "st", "ave", "avenue", "district", "city", "province", "china", "prc", "floor", "room", "building", "bldg", "rua", "de", "da", "do", "mah", "cad", "sok", "sk", "cd", "turkey", "türkiye", "portugal"]);
-const CJK_FILLER = new Set(["省", "市", "区", "县", "镇", "路", "号", "街", "道", "中", "国", "楼", "室", "层"]);
-
-/** Share of the smaller address's tokens found in the larger one (0..1). */
-export function addressOverlap(a, b) {
-  const ta = addressTokens(a);
-  const tb = addressTokens(b);
-  if (!ta.size || !tb.size) return null;
-  const [small, large] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
-  let shared = 0;
-  for (const token of small) if (large.has(token)) shared += 1;
-  return shared / small.size;
-}
-
-export function addressOwner({ typed, license, registry: registryAddress, checkedAt = null }) {
-  const sources = [["typed", "Typed", typed], ["license", "License", license], ["registry", "Registry", registryAddress]].filter(([, , text]) => String(text ?? "").trim());
-  const details = Object.fromEntries(sources.map(([key, , text]) => [key, text]));
-  if (sources.length < 2) return result("address_owner", "unknown", [sources.length ? `Only the ${sources[0][1].toLowerCase()} address to compare` : "No address to compare"], details, checkedAt);
-  let level = "high";
-  const reasons = [];
-  for (let i = 0; i < sources.length; i += 1) {
-    for (let j = i + 1; j < sources.length; j += 1) {
-      const overlap = addressOverlap(sources[i][2], sources[j][2]);
-      if (overlap == null) continue;
-      const pair = `${sources[i][1]} vs ${sources[j][1].toLowerCase()}`;
-      const smaller = Math.min(addressTokens(sources[i][2]).size, addressTokens(sources[j][2]).size);
-      if (overlap >= 0.7 && smaller < 3) { level = lowerOf(level, "medium"); reasons.push(`${pair}: same town only`); }
-      else if (overlap >= 0.7) reasons.push(`${pair}: match`);
-      else if (overlap >= 0.4) { level = lowerOf(level, "medium"); reasons.push(`${pair}: partly match`); }
-      else { level = lowerOf(level, "low"); reasons.push(`${pair}: differ`); }
-    }
-  }
-  return result("address_owner", level, reasons, details, checkedAt);
+/**
+ * The comparison itself is the address check's (api/_address.js,
+ * addressOwnerCheck: parsed part by part), which arrives as a contract
+ * result and replaces this one. Until it has run, the row only lists the
+ * addresses: no comparison here, so a crude one can never win.
+ */
+export function addressOwner({ typed, license, registry: registryAddress }) {
+  const addresses = { typed: typed || "", license: license || "", registry: registryAddress || "" };
+  const given = Object.values(addresses).filter((text) => String(text).trim()).length;
+  return result("address_owner", "unknown", [given < 2 ? "Fewer than two addresses to compare" : "Not compared yet"], { addresses });
 }
 
 // --- address is a factory site ----------------------------------------------
@@ -194,13 +206,17 @@ export function addressSite(signal) {
   const d = signal.details ?? {};
   const at = signal.checkedAt ?? null;
   const reasons = [...(d.reasons ?? [])].slice(0, 3);
-  let level = { industrial: "high", office: "low", residential: "low" }[signal.result] ?? "unknown";
+  // Residential or office is not proof of a trader: Medium, a video or a visit settles it.
+  let level = { industrial: "high", office: "medium", residential: "medium" }[signal.result] ?? "unknown";
   if (signal.result === "unknown") reasons.unshift("Can't tell from the map");
-  if (signal.result === "office") reasons.unshift("Office or commercial building");
-  if (signal.result === "residential") reasons.unshift("Residential area");
+  if (signal.result === "office") reasons.unshift("Office or commercial building: needs a video or a visit");
+  if (signal.result === "residential") reasons.unshift("Residential area: needs a video or a visit");
   if (signal.result === "industrial") reasons.unshift("Industrial area");
   if (d.found === false) { level = "unknown"; reasons.unshift("Address not found on the map"); }
   else if (d.precise === false) { level = capAt(level, "medium"); reasons.push("Placed by town or district only"); }
+  else if (pick(d, FIELD_NAMES.placementRoad)) { level = capAt(level, "medium"); reasons.push("Placed on a road, not a building"); }
+  if (pick(d, FIELD_NAMES.shortenedQuery)) { level = capAt(level, "medium"); reasons.push("Found only with a shortened address"); }
+  if (d.from === "typed") { level = capAt(level, "medium"); reasons.push("From the address the factory typed, not the licence"); }
   return result("address_site", level, reasons, d, at);
 }
 
@@ -216,8 +232,50 @@ export function photos({ photos: list, signals }) {
   const details = { total: all.length, searched: checks.length, elsewhere: elsewhere.length };
   if (elsewhere.length) return result("photos", "low", [`${elsewhere.length} of ${all.length} found elsewhere`], details, checkedAt);
   if (!checks.length) return result("photos", "unknown", [`${all.length} not searched`], details, null);
-  if (own.length === all.length) return result("photos", "high", [`All ${all.length} searched, own photos`], details, checkedAt);
+  if (own.length === all.length) return result("photos", "high", [`All ${all.length} searched by staff, own photos`], { ...details, staffOwnAll: true }, checkedAt);
   return result("photos", "medium", [`${checks.length} of ${all.length} searched`], details, checkedAt);
+}
+
+// --- company size and age (B3) ---------------------------------------------
+
+const yearOf = (value) => {
+  const match = String(value ?? "").match(/(1[89]|20)\d{2}/);
+  return match ? Number(match[0]) : null;
+};
+
+/**
+ * Staff record the insured staff (参保人数, from the free annual report) and
+ * the founding date (成立日期, or read off the licence); the factory claimed
+ * its workers and the year it started. The claims alone decide nothing.
+ */
+export function companyFacts({ facts, claims, licenseFounded, now = new Date() }) {
+  const insured = facts?.insuredStaff ?? null;
+  const foundedYear = yearOf(facts?.foundedOn) ?? yearOf(licenseFounded);
+  const foundedFrom = yearOf(facts?.foundedOn) ? "recorded by staff" : foundedYear ? "read off the licence" : null;
+  const workers = Number(claims?.workers) || null;
+  const claimedYear = Number(claims?.foundedYear) || null;
+  const details = {
+    ...(workers ? { claimedWorkers: String(workers) } : {}),
+    ...(insured != null ? { insuredStaff: String(insured) } : {}),
+    ...(claimedYear ? { claimedFounded: String(claimedYear) } : {}),
+    ...(foundedYear ? { founded: `${foundedYear} (${foundedFrom})` } : {}),
+  };
+  const at = facts?.recordedAt ?? null;
+  if (insured == null && !foundedYear) return result("company_facts", "unknown", ["Insured staff and founding date not recorded: see the annual report"], details, at);
+  let level = "high";
+  const reasons = [];
+  if (insured != null && workers) {
+    if (Number(insured) < workers * 0.1) { level = "low"; reasons.push(`${insured} insured staff against ${workers} workers claimed`); }
+    else reasons.push(`${insured} insured staff, ${workers} workers claimed`);
+  } else if (insured != null) { level = lowerOf(level, "medium"); reasons.push(`${insured} insured staff; no worker count claimed`); }
+  else { level = lowerOf(level, "medium"); reasons.push("Insured staff not recorded: see the annual report"); }
+  if (foundedYear && claimedYear) {
+    const actual = now.getFullYear() - foundedYear;
+    const claimed = now.getFullYear() - claimedYear;
+    if (claimed - actual >= 5 || (claimed >= 4 && actual < claimed / 2)) { level = lowerOf(level, "medium"); reasons.push(`Founded ${foundedYear}, claims ${claimedYear}: ask about the earlier years`); }
+    else reasons.push(`Founded ${foundedYear}, claims ${claimedYear}`);
+  } else if (!foundedYear) { level = lowerOf(level, "medium"); reasons.push("Founding date not recorded"); }
+  return result("company_facts", level, reasons, details, at);
 }
 
 // --- video --------------------------------------------------------------
@@ -250,13 +308,17 @@ export function deriveLevels({ detail, extra, states = {} }) {
     registry(detail ? { ...detail, reopenings: states.reopenings ?? [] } : detail),
     tradingScope({ reading, tradingReason: states.tradingReason ?? detail?.tradingReason ?? null }),
     addressOwner({
-      typed: detail?.address ?? detail?.typedAddress ?? detail?.location ?? null,
+      typed: detail?.productionAddress ?? detail?.address ?? detail?.typedAddress ?? detail?.location ?? null,
       license: reading?.details?.extracted?.address ?? null,
       registry: registryAddressOf(detail),
-      checkedAt: reading?.checkedAt ?? null,
     }),
     addressSite(addressSignal),
     photos({ photos: extra?.photos, signals }),
+    companyFacts({
+      facts: states.companyFacts ?? null,
+      claims: states.claims ?? null,
+      licenseFounded: pick(reading?.details?.extracted, FIELD_NAMES.foundedOn) ?? null,
+    }),
     video(),
   ];
 }
@@ -289,6 +351,34 @@ export function mergeArrived(derived, arrived = []) {
   });
 }
 
+/**
+ * The rules that need more than one row, and staff reasons, applied after
+ * the arrived results are merged (so they bind those too).
+ */
+export function applyRules(results, { explanations = {} } = {}) {
+  const byKey = Object.fromEntries(results.map((item) => [item.key, item]));
+  const owner = byKey.address_owner?.level;
+  return results.map((item) => {
+    let next = item;
+    const set = (level, reason) => { next = { ...next, level, reasons: [...next.reasons, ...(reason ? [reason] : [])] }; };
+    if (item.key === "address_site") {
+      const office = item.details?.result === "office" || pick(item.details, FIELD_NAMES.officeText);
+      // Industrial is High only when the address is also the factory's own.
+      if (item.level === "high" && owner !== "high") set("medium", "High needs the address check to match too");
+      // Low only with the owner mismatch on an office address.
+      if (item.level === "low" && !(office && owner === "low")) set("medium");
+    }
+    if (item.key === "photos" && item.level === "high" && !item.details?.staffOwnAll) {
+      set("medium", "Staff to record \"own\" from the reverse-search links");
+    }
+    const why = explanations?.[item.key];
+    if (why?.note && !next.reasons.includes(`Staff reason: ${why.note}`)) {
+      next = { ...next, level: next.level === "low" ? "medium" : next.level, reasons: [...next.reasons, `Staff reason: ${why.note}`], details: { ...next.details, explanation: why } };
+    }
+    return next;
+  });
+}
+
 const CORE = ["license_read", "registry"];
 
 /** Lowest level among decisive checks; video never decides; High needs the core checks decided. */
@@ -308,4 +398,38 @@ export function overallLevel(results) {
   }
   if (undecided) reasons.push(`${undecided} can't tell`);
   return { level, reasons, low };
+}
+
+/**
+ * Results that arrived in the contract's shape, wherever the server put them:
+ * the page's own fields, a signal's details.levelResult, and the automatic
+ * address check's details.checks.
+ */
+export function arrivedResults(detail, extra) {
+  const signals = extra?.signals ?? [];
+  const signalResults = signals.map((signal) => signal.details?.levelResult).filter(Boolean);
+  const address = signals.find((signal) => signal.kind === "address" && signal.automatic);
+  const addressResults = Array.isArray(address?.details?.checks) ? address.details.checks : [];
+  return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults, ...addressResults];
+}
+
+/** The staff states the rules read, from admin_verification_rules and the claims. */
+export function stateFlags(detail, extra) {
+  const rules = extra?.rules ?? null;
+  return {
+    tradingReason: rules?.tradingOnly?.explanation?.note ?? detail?.tradingReason ?? detail?.tradingOverride?.reason ?? null,
+    reopenings: rules?.reopenings ?? [],
+    explanations: rules?.[FIELD_NAMES.explanations] ?? {},
+    companyFacts: rules?.[FIELD_NAMES.companyFacts] ?? null,
+    claims: extra?.claims ?? null,
+  };
+}
+
+/** Every row and the overall, as the review page and the queue show them. */
+export function computeLevels({ detail, extra, sourceLabel = (country, source) => source }) {
+  const country = detail?.registration?.country ?? detail?.countryCode ?? null;
+  const named = detail ? { ...detail, checks: (detail.checks ?? []).map((check) => ({ ...check, sourceLabel: sourceLabel(country, check.source) })) } : detail;
+  const states = stateFlags(detail, extra);
+  const results = applyRules(mergeArrived(deriveLevels({ detail: named, extra, states }), arrivedResults(detail, extra)), states);
+  return { results, overall: overallLevel(results) };
 }

@@ -223,3 +223,61 @@ export async function adminRegistryStates() {
   if (error) return new Map();
   return new Map((data ?? []).map((row) => [row.org_id, row]));
 }
+
+/*
+ * Verification v3.1 staff writes (migration 202611111200*, session "sql").
+ * The RPC names are the brief's; their argument names are in this one block
+ * so they can be matched to the migration in one place.
+ */
+export const V31_RPC = {
+  setNumber: { name: "admin_set_registration_number", args: (orgId, number) => ({ target_org: orgId, number }) },
+  explainCheck: { name: "admin_explain_check", args: (orgId, checkKey, note) => ({ target_org: orgId, check_key: checkKey, note }) },
+  companyFacts: { name: "admin_record_company_facts", args: (orgId, { insuredStaff, foundedOn }) => ({ target_org: orgId, insured_staff: insuredStaff, founded_on: foundedOn }) },
+};
+
+/** Staff type the number off the license image (number_source = 'staff'). */
+export async function adminSetRegistrationNumber(orgId, number) {
+  const rpc = V31_RPC.setNumber;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, number)), "save the number");
+}
+
+/** Staff record why a row's level may stand: lifts Low to Medium, shown on the row. */
+export async function explainCheck(orgId, checkKey, note) {
+  const rpc = V31_RPC.explainCheck;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, checkKey, note)), "save the reason");
+}
+
+/** Staff record the insured staff (参保人数) and the founding date (成立日期). */
+export async function recordCompanyFacts(orgId, facts) {
+  const rpc = V31_RPC.companyFacts;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, facts)), "save the company facts");
+}
+
+/** What the factory claimed about its size and age (factory_profiles), for the company facts row. */
+export async function adminCompanyClaims(orgId) {
+  const { data, error } = await supabase.from("factory_profiles").select("employee_count, founded_year").eq("org_id", orgId).maybeSingle();
+  if (error || !data) return null;
+  return { workers: data.employee_count ?? null, foundedYear: data.founded_year ?? null };
+}
+
+/**
+ * Everything the review page reads to draw the levels, in one call, so the
+ * queue can show each company's overall level too.
+ */
+export async function adminLevelInputs(orgId) {
+  const [detail, signals, photoResult, rules, claims] = await Promise.all([
+    adminRegistryDetail(orgId),
+    adminVerificationSignals(orgId).catch(() => ({ signals: [], photos: [], registrationFiles: [], certificates: [] })),
+    latestPhotoCheck(orgId),
+    adminVerificationRules(orgId),
+    adminCompanyClaims(orgId),
+  ]);
+  return { detail, extra: { ...signals, rules, claims, checkResults: photoResult ? [photoResult] : [] } };
+}
+
+/** Who signed the terms for the company (B2: shown beside the license's legal representative). */
+export async function adminTermsSigner(orgId) {
+  const { data, error } = await supabase.rpc("admin_verification_detail", { target_org: orgId });
+  if (error || !data?.terms) return null;
+  return { signature: data.terms.signature ?? null, signedBy: data.terms.signedBy ?? null, acceptedAt: data.terms.acceptedAt ?? null };
+}

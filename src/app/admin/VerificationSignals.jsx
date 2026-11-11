@@ -16,13 +16,15 @@
  * in one block. Words for a person, never a score or a decision.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { explainTradingScope, recordSignal, requestRegistryAssist, runPhotoCheck } from "../../lib/domain/registration.js";
+import {
+  adminSetRegistrationNumber, explainCheck, explainTradingScope, recordCompanyFacts, recordSignal, requestRegistryAssist, runPhotoCheck,
+} from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { dateFrom } from "../../lib/dates.js";
 import { certificateLookup, mapLinks, reverseImageLinks } from "../../shared/certificate-lookups.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import { FilePreview, Pill, when } from "./RegistryPanel.jsx";
-import { CHECKS, LEVEL_TONE, LEVEL_WORDS, deriveLevels, mergeArrived, overallLevel } from "../../shared/verification-levels.mjs";
+import { CHECKS, LEVEL_TONE, LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
 import "./verification-levels.css";
 
 const ADDRESS_WORDS = { industrial: "Industrial area", office: "Office or commercial building", residential: "Residential area", unknown: "Can't tell" };
@@ -77,7 +79,31 @@ export function TradingSignals({ detail, extra }) {
   );
 }
 
-function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, onChange }) {
+/** A3: staff type the number off the image when the AI's reading fails its check digit or is missing. */
+function StaffNumberForm({ orgId, currentNumber, onChange }) {
+  const [number, setNumber] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState(null);
+  const save = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setFailure(null);
+    try { await adminSetRegistrationNumber(orgId, number.replace(/\s+/g, "").toUpperCase()); setNumber(""); onChange(); } catch (error) { setFailure(error.message); }
+    setBusy(false);
+  };
+  return (
+    <form className="admin-signal-form" onSubmit={save}>
+      <label className="factory-onboarding-field">
+        <span>{currentNumber ? "Correct the number from the image" : "Type the number from the image"}</span>
+        <input name="staff-registration-number" value={number} onChange={(event) => setNumber(event.target.value)} autoComplete="off" spellCheck={false} />
+      </label>
+      <button className="secondary-btn compact-btn" type="submit" disabled={busy || !number.trim()}>{busy ? "Saving…" : "Save number"}</button>
+      {failure && <p className="factory-onboarding-save-error" role="alert">{failure}</p>}
+    </form>
+  );
+}
+
+function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId, signer, country, onChange }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const read = async () => {
@@ -88,14 +114,14 @@ function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId,
     if (!answer.available) setProblem(answer.reason);
     else onChange();
   };
-  // The panel reads the latest file once by itself (useAutoRead).
+  // The page runs the read by itself when it has none (useAutoRun).
   const details = reading?.details;
   const extracted = details?.extracted ?? {};
   return (
     <section className="admin-signal-block">
       <div className="admin-signal-head">
         <h3>Registration read by AI</h3>
-        <button className="secondary-btn compact-btn" type="button" disabled={busy || !hasFile} onClick={read}>{busy ? "Reading…" : reading ? "Read again" : "Read with AI"}</button>
+        <button className="secondary-btn compact-btn" type="button" disabled={busy || !hasFile} onClick={read}>{busy ? "Running…" : "Run again"}</button>
       </div>
       {problem && <p className="factory-onboarding-save-error" role="alert">{problem}</p>}
       {reading ? (
@@ -113,10 +139,12 @@ function DocumentReading({ orgId, reading, hasFile, currentNumber, latestFileId,
             {Object.entries(FIELD_LABELS).filter(([key]) => extracted[key]).map(([key, label]) => (
               <div key={key}><dt>{label}</dt><dd>{extracted[key]}</dd></div>
             ))}
+            {signer && (signer.signature || signer.signedBy) && <div><dt>Signed the terms</dt><dd>{signer.signature || signer.signedBy}{signer.signature && signer.signedBy && signer.signature !== signer.signedBy ? ` (account: ${signer.signedBy})` : ""}</dd></div>}
           </dl>
           <span className="admin-signal-meta">Copied by AI from {details.fileName ?? "the document"} · {when(reading.checkedAt)}{reading.checkedBy ? ` · asked by ${reading.checkedBy}` : ""}</span>
         </>
       ) : !hasFile ? <p>No registration document uploaded.</p> : null}
+      {hasFile && (country === "CN" || !currentNumber) && <StaffNumberForm orgId={orgId} currentNumber={currentNumber} onChange={onChange} />}
     </section>
   );
 }
@@ -137,7 +165,7 @@ function AddressCheck({ orgId, check, onChange }) {
     <section className="admin-signal-block">
       <div className="admin-signal-head">
         <h3>Address</h3>
-        <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={run}>{busy ? "Checking…" : check ? "Check again" : "Check address"}</button>
+        <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={run}>{busy ? "Running…" : "Run again"}</button>
       </div>
       {problem && <p className="factory-onboarding-save-error" role="alert">{problem}</p>}
       {details && (
@@ -266,12 +294,94 @@ function rowMeta(item) {
   return item.checkedAt ? when(item.checkedAt) : "";
 }
 
+const ADDRESS_SOURCES = [["typed", "Typed by the factory"], ["license", "On the license"], ["registry", "On the registry"]];
+const ADDRESS_PART_WORDS = { province: "Province", city: "City", district: "District", town: "Town or neighbourhood", road: "Street", number: "Street number", postcode: "Postcode" };
+
+/** A4: the addresses compared, and the parts that differ (the address check's parsed result). */
 function AddressCompare({ item }) {
-  const rows = [["typed", "Typed by the factory"], ["license", "On the license"], ["registry", "On the registry"]];
+  const addresses = item.details?.addresses ?? {};
+  const comparisons = Array.isArray(item.details?.comparisons) ? item.details.comparisons : [];
+  const sourceLabel = (key) => ADDRESS_SOURCES.find(([source]) => source === key)?.[1] ?? key;
   return (
-    <dl className="admin-signal-fields">
-      {rows.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{item.details?.[key] || "Not given"}</dd></div>)}
-    </dl>
+    <>
+      <dl className="admin-signal-fields">
+        {ADDRESS_SOURCES.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{addresses[key] || "Not given"}</dd></div>)}
+      </dl>
+      {comparisons.map((comparison) => (
+        <div className="admin-address-compare" key={comparison.between.join("-")}>
+          <h4>{sourceLabel(comparison.between[0])} · {sourceLabel(comparison.between[1]).toLowerCase()}</h4>
+          {comparison.differs?.length > 0 ? (
+            <table className="admin-address-parts">
+              <thead><tr><th>Part</th><th>{sourceLabel(comparison.between[0])}</th><th>{sourceLabel(comparison.between[1])}</th></tr></thead>
+              <tbody>
+                {comparison.differs.map((part) => (
+                  <tr key={part.part}><th>{ADDRESS_PART_WORDS[part.part] ?? part.part}</th><td>{part.a}</td><td>{part.b}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          {comparison.same?.length > 0 && <p className="admin-signal-meta">Same: {comparison.same.map((part) => (ADDRESS_PART_WORDS[part] ?? part).toLowerCase()).join(", ")}</p>}
+          {!comparison.differs?.length && !comparison.same?.length && <p className="admin-signal-meta">Could not be compared</p>}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** A10: staff record why a row's level may stand; a reason lifts Low to Medium. */
+function ExplainForm({ orgId, checkKey, explanation, onChange }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState(null);
+  const save = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setFailure(null);
+    try { await explainCheck(orgId, checkKey, note.trim()); setNote(""); onChange(); } catch (error) { setFailure(error.message); }
+    setBusy(false);
+  };
+  return (
+    <form className="admin-signal-form admin-explain-form" onSubmit={save}>
+      {explanation?.note && <p className="admin-signal-note">Staff reason: {explanation.note}{explanation.reviewedBy ? ` · ${explanation.reviewedBy}` : ""}{explanation.reviewedAt ? ` · ${when(explanation.reviewedAt)}` : ""}</p>}
+      <label className="factory-onboarding-field">
+        <span>{explanation?.note ? "Change the reason" : "Reason"}</span>
+        <textarea name={`reason-${checkKey}`} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
+      </label>
+      <button type="submit" className="secondary-btn compact-btn" disabled={busy || !note.trim()}>{busy ? "Saving…" : "Save reason"}</button>
+      {failure && <p className="factory-onboarding-save-error" role="alert">{failure}</p>}
+    </form>
+  );
+}
+
+/** B3: insured staff (参保人数) and founding date (成立日期), from the annual report. */
+function CompanyFactsForm({ orgId, facts, onChange }) {
+  const [insured, setInsured] = useState(facts?.insuredStaff != null ? String(facts.insuredStaff) : "");
+  const [founded, setFounded] = useState(facts?.foundedOn ?? "");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState(null);
+  const save = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setFailure(null);
+    try {
+      await recordCompanyFacts(orgId, { insuredStaff: insured.trim() === "" ? null : Number(insured), foundedOn: founded || null });
+      onChange();
+    } catch (error) { setFailure(error.message); }
+    setBusy(false);
+  };
+  return (
+    <form className="admin-signal-form" onSubmit={save}>
+      <label className="factory-onboarding-field">
+        <span>Insured staff</span>
+        <input name="insured-staff" type="number" min="0" step="1" value={insured} onChange={(event) => setInsured(event.target.value)} />
+      </label>
+      <label className="factory-onboarding-field">
+        <span>Founded</span>
+        <input name="founded-on" type="date" value={founded} onChange={(event) => setFounded(event.target.value)} />
+      </label>
+      <button type="submit" className="secondary-btn compact-btn" disabled={busy || (insured.trim() === "" && !founded)}>{busy ? "Saving…" : "Save"}</button>
+      {failure && <p className="factory-onboarding-save-error" role="alert">{failure}</p>}
+    </form>
   );
 }
 
@@ -288,13 +398,15 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
   const reading = latest(signals, "document_reading");
   let body = null;
   if (item.key === "license_read" || item.key === "trading_scope") {
-    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} onChange={onChange} /></>;
+    body = <>{item.key === "trading_scope" && <TradingReasonForm orgId={orgId} rules={extra.rules} onChange={onChange} />}<DocumentReading orgId={orgId} reading={reading} hasFile={(extra.registrationFiles ?? []).length > 0} currentNumber={detail?.registration?.number ?? null} latestFileId={extra.registrationFiles?.[0]?.id ?? null} signer={item.key === "license_read" ? extra.signer : null} country={detail?.registration?.country ?? detail?.countryCode ?? null} onChange={onChange} /></>;
   } else if (item.key === "registry") {
     body = registryBody?.();
   } else if (item.key === "address_owner") {
     body = <AddressCompare item={item} />;
   } else if (item.key === "address_site") {
     body = <AddressCheck orgId={orgId} check={signals.find((signal) => signal.kind === "address" && signal.automatic)} onChange={onChange} />;
+  } else if (item.key === "company_facts") {
+    body = <CompanyFactsForm orgId={orgId} facts={extra.rules?.companyFacts ?? null} onChange={onChange} key={JSON.stringify(extra.rules?.companyFacts ?? null)} />;
   } else if (item.key === "photos") {
     body = (
       <>
@@ -305,7 +417,8 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
       </>
     );
   }
-  const extraLines = Object.entries(item.details ?? {}).filter(([key, value]) => typeof value === "string" && value && !["typed", "license", "registry", "source", "fileName", "address", "from", "displayName", "how", "number", "result", "quote"].includes(key));
+  const DETAIL_WORDS = { codes: "Activity codes", claimedWorkers: "Workers claimed", insuredStaff: "Insured staff", claimedFounded: "Founded (claimed)", founded: "Founded" };
+  const extraLines = Object.entries(item.details ?? {}).filter(([key, value]) => typeof value === "string" && value && DETAIL_WORDS[key]);
   return (
     <div className="approve-fund-modal-layer admin-evidence-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="approve-fund-modal admin-review-modal admin-evidence-modal admin-level-modal" role="dialog" aria-modal="true" aria-labelledby="level-detail-title">
@@ -319,12 +432,13 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
             <ul className="admin-signal-reasons">{item.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
             {extraLines.length > 0 && (
               <dl className="admin-signal-fields">
-                {extraLines.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}
+                {extraLines.map(([key, value]) => <div key={key}><dt>{DETAIL_WORDS[key]}</dt><dd>{value}</dd></div>)}
               </dl>
             )}
             {item.checkedAt && <span className="admin-signal-meta">{when(item.checkedAt)}</span>}
           </div>
           {body && <div className="admin-level-evidence">{body}</div>}
+          {item.key !== "video" && <ExplainForm orgId={orgId} checkKey={item.key} explanation={item.details?.explanation ?? null} onChange={onChange} />}
         </div>
       </section>
     </div>
@@ -335,7 +449,7 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
  * Queena, Nov 9: one row per check, the level on the right, click for the
  * details. Levels come from src/shared/verification-levels.mjs (fixed rules).
  */
-export function ScoreRows({ results, overall, onOpen }) {
+export function ScoreRows({ results, overall, onOpen, running = new Set() }) {
   return (
     <section className="admin-levels" aria-label="Verification levels">
       <div className={`admin-levels-overall level-${overall.level}`}>
@@ -365,12 +479,12 @@ export function ScoreRows({ results, overall, onOpen }) {
             >
               <div className="admin-check-copy">
                 <strong>{label}</strong>
-                {item.reasons.slice(0, 2).map((reason) => <p key={reason}>{reason}</p>)}
+                {running.has(item.key) ? <p>Running…</p> : item.reasons.slice(0, 2).map((reason) => <p key={reason}>{reason}</p>)}
                 {meta && <span>{meta}</span>}
               </div>
               <div className="admin-check-result">
-                <div className="admin-check-confidence"><strong>{LEVEL_WORDS[item.level]}</strong><span>level</span></div>
-                {item.level === "low" && <Pill tone="danger">Flagged</Pill>}
+                <div className="admin-check-confidence"><strong>{running.has(item.key) ? "Running…" : LEVEL_WORDS[item.level]}</strong><span>level</span></div>
+                {item.level === "low" && !running.has(item.key) && <Pill tone="danger">Flagged</Pill>}
               </div>
             </article>
           );
@@ -380,11 +494,6 @@ export function ScoreRows({ results, overall, onOpen }) {
   );
 }
 
-/**
- * Results that arrived in the shared contract's shape (`{ key, level,
- * reasons, details, checkedAt }`), wherever the server puts them. The
- * coordinator wires the final field names.
- */
 function PhotoCheckButton({ orgId, hasPhotos, onChange }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState(null);
@@ -399,31 +508,10 @@ function PhotoCheckButton({ orgId, hasPhotos, onChange }) {
   };
   return (
     <div className="admin-signal-actions">
-      <button type="button" className="secondary-btn" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check photos"}</button>
+      <button type="button" className="secondary-btn" disabled={busy} onClick={run}>{busy ? "Running…" : "Run again"}</button>
       {failure && <p className="admin-error" role="alert">{failure}</p>}
     </div>
   );
-}
-
-function arrivedResults(detail, extra) {
-  const signals = extra?.signals ?? [];
-  const signalResults = signals.map((signal) => signal.details?.levelResult).filter(Boolean);
-  // The automatic address check saves address_owner and address_site in its details.checks.
-  const address = signals.find((signal) => signal.kind === "address" && signal.automatic);
-  const addressResults = Array.isArray(address?.details?.checks) ? address.details.checks : [];
-  return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults, ...addressResults];
-}
-
-/**
- * Session 2's states land here: the trader-block reason, back to review
- * after a rename, the AI-read China number. Names are the coordinator's.
- */
-function stateFlags(detail, extra) {
-  const rules = extra?.rules ?? null;
-  return {
-    tradingReason: rules?.tradingOnly?.explanation?.note ?? detail?.tradingReason ?? detail?.tradingOverride?.reason ?? null,
-    reopenings: rules?.reopenings ?? [],
-  };
 }
 
 /** A trading-only license blocks approval until staff say why it may pass. */
@@ -454,33 +542,54 @@ function TradingReasonForm({ orgId, rules, onChange }) {
   );
 }
 
-/** Read the latest registration once, when the panel opens without a current reading. */
-function useAutoRead(orgId, extra, detail, onChange) {
+/**
+ * AUTO: the checks run by themselves when the factory uploads or submits
+ * (api/verification-run.js). Opening the page runs, once, whatever has no
+ * result yet: the license read, then the address, then the photos. Each row
+ * says "Running…" meanwhile.
+ */
+function useAutoRun(orgId, extra, detail, onChange) {
   const tried = useRef(false);
+  const [running, setRunning] = useState(() => new Set());
   const signals = extra?.signals ?? [];
   const reading = latest(signals, "document_reading");
   const latestFileId = extra?.registrationFiles?.[0]?.id ?? null;
   const currentNumber = detail?.registration?.number ?? null;
-  const current = reading && reading.subjectId === latestFileId && reading.details?.numberAtReading === currentNumber;
+  const readCurrent = Boolean(reading && reading.subjectId === latestFileId && (reading.details?.numberAtReading === undefined || reading.details.numberAtReading === currentNumber));
+  const addressDone = signals.some((signal) => signal.kind === "address" && signal.automatic);
+  const photosDone = (extra?.checkResults ?? []).some((item) => item?.key === "photos");
+  const hasPhotos = (extra?.photos ?? []).length > 0;
   useEffect(() => {
-    if (tried.current || !extra || !latestFileId || current) return;
+    if (tried.current || !extra || !detail) return;
     tried.current = true;
-    requestRegistryAssist(orgId, "read_document").then((answer) => { if (answer.available) onChange(); });
-  }, [extra, latestFileId, current]); // eslint-disable-line react-hooks/exhaustive-deps
+    const steps = [
+      !readCurrent && latestFileId && { keys: ["license_read", "trading_scope"], run: () => requestRegistryAssist(orgId, "read_document") },
+      !addressDone && { keys: ["address_owner", "address_site"], run: () => requestRegistryAssist(orgId, "address") },
+      !photosDone && hasPhotos && { keys: ["photos"], run: () => runPhotoCheck(orgId) },
+    ].filter(Boolean);
+    if (!steps.length) return;
+    setRunning(new Set(steps.flatMap((step) => step.keys)));
+    (async () => {
+      for (const step of steps) {
+        // The address check reads the license's address, so the read goes first.
+        const answer = await step.run().catch(() => null);
+        setRunning((current) => new Set([...current].filter((key) => !step.keys.includes(key))));
+        if (answer?.available !== false) onChange();
+      }
+    })();
+  }, [extra, detail]); // eslint-disable-line react-hooks/exhaustive-deps
+  return running;
 }
 
 export default function VerificationSignals({ orgId, detail, extra, registryBody, onChange }) {
   const [open, setOpen] = useState(null);
-  useAutoRead(orgId, extra, detail, onChange);
+  const running = useAutoRun(orgId, extra, detail, onChange);
   if (!extra) return <p>Loading…</p>;
-  const country = detail?.registration?.country ?? detail?.countryCode ?? null;
-  const named = detail ? { ...detail, checks: (detail.checks ?? []).map((check) => ({ ...check, sourceLabel: registrySourceLabel(country, check.source) })) } : detail;
-  const results = mergeArrived(deriveLevels({ detail: named, extra, states: stateFlags(detail, extra) }), arrivedResults(detail, extra));
-  const overall = overallLevel(results);
+  const { results, overall } = computeLevels({ detail, extra, sourceLabel: registrySourceLabel });
   const openItem = results.find((item) => item.key === open);
   return (
     <div className="admin-signals">
-      <ScoreRows results={results} overall={overall} onOpen={setOpen} />
+      <ScoreRows results={results} overall={overall} onOpen={setOpen} running={running} />
       {openItem && (
         <LevelDetail
           item={openItem}
