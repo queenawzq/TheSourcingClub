@@ -136,7 +136,9 @@ function flagsFrom(body) {
   out.number_differs = diffs.some((d) => d.field === "number");
   // Address and specimen: whatever shape the extended reading gives them.
   const addressKnown = diffs.some((d) => d.field === "address") || "addressDiffers" in body || "address" in (body.comparison ?? {}) || body.addressCheck !== undefined;
-  if (addressKnown) out.address_differs = diffs.some((d) => d.field === "address") || Boolean(body.addressDiffers || body.comparison?.address?.differs || body.addressCheck?.differs);
+  if (body.addressOwner?.details?.comparisons) {
+    out.address_differs = body.addressOwner.details.comparisons.some((c) => c.verdict === "differs");
+  } else if (addressKnown) out.address_differs = diffs.some((d) => d.field === "address") || Boolean(body.addressDiffers || body.comparison?.address?.differs || body.addressCheck?.differs);
   const specimenKeys = ["specimen", "looksEdited", "edited", "specimenOrEdited", "isSpecimen", "looksLikeSpecimen", "tampered"];
   const sources = [extracted, body, body.documentWarnings ?? {}, body.authenticity ?? {}];
   const found = sources.flatMap((s) => specimenKeys.filter((k) => k in s).map((k) => s[k]));
