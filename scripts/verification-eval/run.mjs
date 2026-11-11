@@ -26,6 +26,9 @@
  *
  * A flag the code under test does not produce yet is "n/a", never a miss:
  * read_document is being extended in parallel (specimen flag, address).
+ * EVAL_DOCS_DIR=<folder> reads the cases from another folder instead of
+ * docs/ (e.g. real public documents kept out of the repo); the report is
+ * then written to <folder>/last-run.md, not into the repo.
  * Writes scripts/verification-eval/last-run.md.
  */
 import fs from "node:fs";
@@ -33,7 +36,12 @@ import path from "node:path";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(HERE, "../..");
-const DOCS = path.join(HERE, "docs");
+// EVAL_DOCS_DIR points the run at another folder of cases (same layout),
+// e.g. real public documents kept outside the repo. Default: docs/ here.
+const DOCS = process.env.EVAL_DOCS_DIR ? path.resolve(process.env.EVAL_DOCS_DIR) : path.join(HERE, "docs");
+// The report quotes what was read (real people's names on real documents),
+// so a run over another folder writes its report there, not into the repo.
+const REPORT = process.env.EVAL_DOCS_DIR ? path.join(DOCS, "last-run.md") : path.join(HERE, "last-run.md");
 
 // --- the key, never printed ------------------------------------------------
 function keyFromEnvFiles() {
@@ -262,5 +270,5 @@ if (unknown.length) lines.push(``, `## Database reads answered empty`, ``, `The 
 lines.push(``, `Made-up documents carry a SPECIMEN / 测试样本 stamp, so "specimen" should fire on them, except cn-watermark: it carries only a "仅供The Sourcing Club认证使用 他用无效" watermark, which must NOT read as a specimen (its false alarm is the one measured here).`);
 
 const report = `${lines.join("\n")}\n`;
-fs.writeFileSync(path.join(HERE, "last-run.md"), report);
+fs.writeFileSync(REPORT, report);
 console.log(`\n${report}`);
