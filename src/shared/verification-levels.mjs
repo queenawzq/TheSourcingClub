@@ -64,8 +64,8 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   if (d.numberAtReading !== undefined && (d.numberAtReading ?? null) !== (currentNumber ?? null)) return result("license_read", "unknown", ["Read before the number changed"], base, at);
   const reasons = [];
   let level = "high";
-  if (x.specimen || d.specimen) { level = "low"; reasons.push("Looks like a specimen or sample"); }
-  if (x.edited || d.edited) { level = "low"; reasons.push("Looks edited"); }
+  if (x.specimen || d.specimen || x.markedAsSample) { level = "low"; reasons.push("Looks like a specimen or sample"); }
+  if (x.edited || d.edited || x.looksEdited) { level = "low"; reasons.push("Looks edited"); }
   for (const line of d.differences ?? []) {
     level = "low";
     reasons.push(`${line.field === "number" ? "Number" : "Name"} differs: document "${line.document || "none"}", typed "${line.typed ?? ""}"`);

@@ -16,7 +16,7 @@
  * in one block. Words for a person, never a score or a decision.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { recordSignal, requestRegistryAssist } from "../../lib/domain/registration.js";
+import { recordSignal, requestRegistryAssist, runPhotoCheck } from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { dateFrom } from "../../lib/dates.js";
 import { certificateLookup, mapLinks, reverseImageLinks } from "../../shared/certificate-lookups.mjs";
@@ -296,9 +296,14 @@ function LevelDetail({ item, label, orgId, detail, extra, registryBody, onChange
   } else if (item.key === "address_site") {
     body = <AddressCheck orgId={orgId} check={signals.find((signal) => signal.kind === "address" && signal.automatic)} onChange={onChange} />;
   } else if (item.key === "photos") {
-    body = (extra.photos ?? []).length ? extra.photos.map((photo) => (
-      <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} onChange={onChange} key={photo.id} />
-    )) : null;
+    body = (
+      <>
+        <PhotoCheckButton orgId={orgId} hasPhotos={(extra.photos ?? []).length > 0} onChange={onChange} />
+        {(extra.photos ?? []).map((photo) => (
+          <Photo orgId={orgId} photo={photo} check={latest(signals, "photo", photo.id)} onChange={onChange} key={photo.id} />
+        ))}
+      </>
+    );
   }
   const extraLines = Object.entries(item.details ?? {}).filter(([key, value]) => typeof value === "string" && value && !["typed", "license", "registry", "source", "fileName", "address", "from", "displayName", "how", "number", "result", "quote"].includes(key));
   return (
@@ -380,9 +385,33 @@ export function ScoreRows({ results, overall, onOpen }) {
  * reasons, details, checkedAt }`), wherever the server puts them. The
  * coordinator wires the final field names.
  */
+function PhotoCheckButton({ orgId, hasPhotos, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState(null);
+  if (!hasPhotos) return null;
+  const run = async () => {
+    setBusy(true);
+    setFailure(null);
+    const answer = await runPhotoCheck(orgId);
+    setBusy(false);
+    if (answer.available === false) setFailure(answer.reason);
+    else onChange();
+  };
+  return (
+    <div className="admin-signal-actions">
+      <button type="button" className="secondary-btn" disabled={busy} onClick={run}>{busy ? "Checking…" : "Check photos"}</button>
+      {failure && <p className="admin-error" role="alert">{failure}</p>}
+    </div>
+  );
+}
+
 function arrivedResults(detail, extra) {
-  const signalResults = (extra?.signals ?? []).map((signal) => signal.details?.levelResult).filter(Boolean);
-  return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults];
+  const signals = extra?.signals ?? [];
+  const signalResults = signals.map((signal) => signal.details?.levelResult).filter(Boolean);
+  // The automatic address check saves address_owner and address_site in its details.checks.
+  const address = signals.find((signal) => signal.kind === "address" && signal.automatic);
+  const addressResults = Array.isArray(address?.details?.checks) ? address.details.checks : [];
+  return [...(detail?.checkResults ?? []), ...(extra?.checkResults ?? []), ...signalResults, ...addressResults];
 }
 
 /**

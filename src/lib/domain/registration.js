@@ -160,6 +160,30 @@ export async function requestRegistryAssist(orgId, action, extra = {}) {
   return result;
 }
 
+/** Runs the automatic photo check (staff only). Same answer shape as requestRegistryAssist. */
+export async function runPhotoCheck(orgId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  let response;
+  try {
+    response = await fetch("/api/photo-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: JSON.stringify({ orgId }),
+    });
+  } catch {
+    return { available: false, reason: "The server couldn't be reached." };
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) return { available: false, reason: result.error || "The server couldn't do it." };
+  return result;
+}
+
+/** The last photo check's result for a company, or null. */
+export async function latestPhotoCheck(orgId) {
+  const { data, error } = await supabase.rpc("admin_photo_check_latest", { target_org: orgId });
+  return error ? null : data ?? null;
+}
+
 /** Which of a vendor's certificates staff found on the issuer's lookup, by certification id. */
 export async function certificateChecks(orgId) {
   const { data, error } = await supabase.rpc("factory_certificate_checks", { target_org: orgId });

@@ -29,7 +29,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ProfileDetailPair } from "../../shared/ProfileShell.jsx";
 import {
-  adminRegistryDetail, adminVerificationSignals, explainDuplicate, recordRegistryCheck, requestViesCheck,
+  adminRegistryDetail, adminVerificationSignals, explainDuplicate, latestPhotoCheck, recordRegistryCheck, requestViesCheck,
 } from "../../lib/domain/registration.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import {
@@ -103,7 +103,10 @@ export default function RegistryPanel({ orgId, onChange }) {
 
   const load = useCallback(() => {
     adminRegistryDetail(orgId).then(setDetail, setError);
-    adminVerificationSignals(orgId).then(setExtra, () => setExtra({ signals: [], photos: [], registrationFiles: [], certificates: [] }));
+    Promise.all([
+      adminVerificationSignals(orgId).catch(() => ({ signals: [], photos: [], registrationFiles: [], certificates: [] })),
+      latestPhotoCheck(orgId),
+    ]).then(([signals, photoResult]) => setExtra({ ...signals, checkResults: photoResult ? [photoResult] : [] }));
   }, [orgId]);
   useEffect(() => { setDetail(null); setExtra(null); setError(null); load(); }, [load]);
 
