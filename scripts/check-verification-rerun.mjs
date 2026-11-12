@@ -96,6 +96,13 @@ await check("fields are checked against their group", () => {
 
 await check("only real changes are edits", () => {
   assert.deepEqual(editsFrom({ legalName: "Têxteis Douro, Lda", number: "513284976 " }, { legalName: "Têxteis Douro, Lda", number: "513284976" }), []);
+  // HK marked from the number format (PICKS C), only between China and Hong Kong.
+  assert.equal(rules.numberCountry("12345678", "CN"), "HK");
+  assert.equal(rules.numberCountry("1234567", "CN"), "HK");
+  assert.equal(rules.numberCountry("91330212MA2H4K8L3X", "HK"), "CN");
+  assert.equal(rules.numberCountry("91330212MA2H4K8L3X", "CN"), null);
+  assert.equal(rules.numberCountry("12345678", "HK"), null);
+  assert.equal(rules.numberCountry("513284976", "PT"), null);
   assert.deepEqual(editsFrom({ legalName: "Têxteis Douro – Confecções, Lda" }, { legalName: "Têxteis Douro, Lda" }), [{ field: "legalName", from: "Têxteis Douro, Lda", to: "Têxteis Douro – Confecções, Lda" }]);
   assert.deepEqual(editsFrom({ siteAddress: "Rua da Igreja 214, 4750-142" }, {}), [{ field: "siteAddress", from: null, to: "Rua da Igreja 214, 4750-142" }]);
 });

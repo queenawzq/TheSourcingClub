@@ -5,41 +5,79 @@
  * `verificationScore(orgId)` and writes through the actions below; after each
  * write it reads the score again, so what staff see is always the database's.
  *
- * Builders A (scoring) and C (Run again) add the domain modules this calls in
- * parallel with this screen. They are found with `import.meta.glob`, so the
- * page builds before they land: without A's read the card says the score
- * could not load, and each write falls back to today's domain functions,
- * which are what the approval guard reads (`registry_approval_problem`):
+ * This is the thin layer between the card's calls and the domain modules:
  *
- *   Found / Name differs  → recordRegistryCheck, result "found", confirmed,
- *                            the name seen, and "the names differ, checked"
- *   a reason on a check   → explainCheck (and explainTradingScope for the
- *                            "Factory or trader" row: a trading-only licence)
- *   Explain shared number → explainDuplicate
- *   a photo's search      → recordSignal kind "photo"
- *   a certificate check   → recordSignal kind "certificate"
- *   an edited number      → adminSetRegistrationNumber, before Run again
+ *   the score                 → verificationScore (verification-score.js),
+ *                               with Run again's field edits drawn as "Edited by"
+ *   Found / Name differs / …  → recordRegistryResult; on a certificate,
+ *                               recordCertificateResult
+ *   a reason on a check       → saveCheckReason
+ *   a photo's search          → recordPhoto
+ *   Explain shared number     → explainSharedNumber
+ *   Run again                 → rerunVerificationGroup (verification-rerun.js),
+ *                               sending only the fields staff edited
  */
 import { urlFor } from "../../lib/domain/documents.js";
 import {
-  adminSetRegistrationNumber, explainCheck, explainDuplicate, explainTradingScope, recordRegistryCheck, recordSignal,
-} from "../../lib/domain/registration.js";
+  explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, saveCheckReason, verificationScore,
+} from "../../lib/domain/verification-score.js";
+import { rerunVerificationGroup, verificationFieldEdits } from "../../lib/domain/verification-rerun.js";
 
-const scoringModule = import.meta.glob("../../lib/domain/verification-score.js");
-const rerunModule = import.meta.glob("../../lib/domain/verification-rerun.js");
+export const scoreAvailable = true;
 
-async function load(modules) {
-  const [loader] = Object.values(modules);
-  return loader ? loader() : {};
+const DAY = { month: "short", day: "numeric" };
+const editedWords = (edit) => {
+  const when = edit.at ? new Date(edit.at).toLocaleDateString("en-US", DAY) : "";
+  return `Edited${edit.by ? ` by ${edit.by}` : ""}${when ? `, ${when}` : ""}`;
+};
+
+/** Run again's last edit of each field, as the field's "Edited by …" line. */
+function withEdits(verification, edits) {
+  if (!edits || !Object.keys(edits).length) return verification;
+  return {
+    ...verification,
+    groups: verification.groups.map((group) => {
+      const byField = edits[group.key];
+      if (!byField) return group;
+      return {
+        ...group,
+        fields: (group.fields ?? []).map((field) => {
+          const edit = byField[field.key];
+          // Only while the field still shows the edited value: a later reading replaces it.
+          return edit && String(edit.value ?? "") === String(field.value ?? "") ? { ...field, by: editedWords(edit) } : field;
+        }),
+      };
+    }),
+  };
 }
 
-export const scoreAvailable = Object.keys(scoringModule).length > 0;
+/** The photo tile's "Search image" link, from the first reverse-image search. */
+function withSearchLinks(verification) {
+  return {
+    ...verification,
+    groups: verification.groups.map((group) => (group.evidence?.kind !== "photos" ? group : {
+      ...group,
+      evidence: {
+        ...group.evidence,
+        photos: group.evidence.photos.map((photo) => ({ ...photo, searchHref: photo.searchHref ?? photo.searchLinks?.[0]?.href ?? null })),
+      },
+    })),
+  };
+}
 
-/** `{ facts, groups }` in the shape of verification-mock.js, or throws. */
-export async function loadVerificationScore(orgId) {
-  const { verificationScore } = await load(scoringModule);
-  if (typeof verificationScore !== "function") throw new Error("The score isn't available");
-  return verificationScore(orgId);
+// The score last read per company: Run again's "before", and the certificate it re-reads.
+const lastRead = new Map();
+
+/** `{ facts, groups, … }` in the shape of verification-mock.js, or throws. */
+export async function loadVerificationScore(orgId, { urls = true } = {}) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const [score, edits] = await Promise.all([
+    verificationScore(orgId, { urls, timeZone }),
+    urls ? verificationFieldEdits(orgId).catch(() => null) : null,
+  ]);
+  const verification = withSearchLinks(withEdits(score, edits));
+  if (urls) lastRead.set(orgId, verification);
+  return verification;
 }
 
 /** A signed link for a stored file (licence, certificate, photo). */
@@ -49,47 +87,24 @@ export function verificationFileUrl(file) {
 }
 
 const DB_PHOTO = { own: "own", elsewhere: "found_elsewhere", could_not: "could_not_check" };
-const noteOf = (...parts) => parts.map((part) => (part ?? "").trim()).filter(Boolean).join("\n") || null;
-
-/** Today's writes, for a check A's module does not yet write itself. */
-const fallback = {
-  async recordCheck(orgId, check, { result, reference, name, reason, source }) {
-    if (check.kind === "certificate") {
-      return recordSignal(orgId, {
-        kind: "certificate", subjectId: check.subjectId ?? null, result, note: noteOf(reason, reference) ?? "", details: { link: reference ?? "" },
-      });
-    }
-    const found = result === "found" || result === "name_differs";
-    return recordRegistryCheck(orgId, {
-      source: source ?? check.registry?.sourceKey ?? String(check.registry?.source ?? "").toLowerCase(),
-      result: found ? "found" : result,
-      note: noteOf(reason, reference),
-      // Choosing Found (or Name differs with a reason) is the confirmation; the two checkboxes are gone.
-      confirmed: found,
-      seen: found && name ? { name } : {},
-      nameDiffersConfirmed: result === "name_differs",
-    });
-  },
-  async saveReason(orgId, check, text) {
-    if (check.key === "scope") await explainTradingScope(orgId, text);
-    return explainCheck(orgId, check.reasonKey ?? check.key, text);
-  },
-  recordPhoto(orgId, photo, { result, whereUrl }) {
-    return recordSignal(orgId, { kind: "photo", subjectId: photo.id, result: DB_PHOTO[result] ?? result, note: "", details: { link: whereUrl ?? "" } });
-  },
-  explainSharedNumber: (orgId, text) => explainDuplicate(orgId, text),
-};
 
 // A refusal the database words for a person (a guard's 22023, an RPC's P0001) is shown; anything else is not.
-const PERSON_WORDED = new Set(["22023", "P0001", "23514", "42501"]);
+const PERSON_WORDED = new Set(["22023", "P0001", "P0002", "23514", "42501"]);
 
 function staffWords(error) {
-  if (error?.noAnswer) return error.message;
   const code = error?.code ?? error?.cause?.code;
   if (!PERSON_WORDED.has(code)) return "Couldn't save. Try again.";
   // `unwrap` prefixes its context ("record the check: …"); the database's own words are in `cause`.
   const text = String(error.cause?.message ?? error.message ?? "");
   return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : "Couldn't save. Try again.";
+}
+
+/** The certificate whose fields the certification modal shows (the one with a file, else the first). */
+function shownCertificate(verification) {
+  const evidence = verification?.groups?.find((group) => group.key === "certification")?.evidence;
+  if (evidence?.kind !== "certificate") return null;
+  const list = evidence.certificates ?? [];
+  return (list.find((c) => c.file && c.file.id === evidence.file?.id) ?? list[0])?.id ?? null;
 }
 
 /**
@@ -108,43 +123,28 @@ export function verificationActions(orgId, { reload, changed }) {
     changed?.();
   };
   return {
-    recordCheck: (groupKey, check, record) => after(async () => {
-      const { recordVerificationCheck } = await load(scoringModule);
-      return recordVerificationCheck
-        ? recordVerificationCheck(orgId, { checkKey: check.key, groupKey, ...record })
-        : fallback.recordCheck(orgId, check, record);
-    }),
-    saveReason: (groupKey, check, text) => after(async () => {
-      const { saveCheckReason } = await load(scoringModule);
-      return saveCheckReason ? saveCheckReason(orgId, check.key, text) : fallback.saveReason(orgId, check, text);
-    }),
-    recordPhoto: (groupKey, index, record, photo) => after(async () => {
-      const { recordPhotoCheck } = await load(scoringModule);
-      return recordPhotoCheck
-        ? recordPhotoCheck(orgId, { photoId: photo?.id, result: record.result, where: record.whereUrl })
-        : fallback.recordPhoto(orgId, photo, record);
-    }),
-    explainField: (groupKey, field, text) => after(async () => {
-      const { explainSharedNumber } = await load(scoringModule);
-      return explainSharedNumber ? explainSharedNumber(orgId, text) : fallback.explainSharedNumber(orgId, text);
-    }),
+    recordCheck: (groupKey, check, { result, reference, name, reason, source }) => after(() => (
+      check.kind === "certificate"
+        ? recordCertificateResult(orgId, check.subjectId, { result, reference, note: reason })
+        : recordRegistryResult(orgId, { source: source ?? check.registry?.sourceKey, result, reference, name, reason })
+    )),
+    saveReason: (groupKey, check, text) => after(() => saveCheckReason(orgId, check.reasonKey ?? check.key, text, check.subjectId ?? null)),
+    recordPhoto: (groupKey, index, record, photo) => after(() => recordPhoto(orgId, photo?.id, {
+      result: DB_PHOTO[record.result] ?? record.result, link: record.whereUrl ?? "",
+    })),
+    explainField: (groupKey, field, text) => after(() => explainSharedNumber(orgId, text)),
     /** Never throws for an expected failure: `{ error }` in short words, shown in the modal's footer. */
     runAgain: async (groupKey, values, edited) => {
-      const { runAgain } = await load(rerunModule);
-      let outcome;
-      if (runAgain) {
-        outcome = await runAgain(orgId, groupKey, { values, edited });
-      } else if (groupKey === "business_registration" && edited.includes("number")) {
-        // Until C's re-read lands: an edited number is still saved as staff's, which approval needs.
-        await adminSetRegistrationNumber(orgId, String(values.number ?? "").replace(/\s+/g, "").toUpperCase(), "Edited on the review page");
-        outcome = {};
-      } else {
-        return { error: "Run again isn't available yet" };
+      const before = lastRead.get(orgId) ?? null;
+      const fields = Object.fromEntries(edited.map((key) => [key, values[key] ?? ""]));
+      const subjectId = groupKey === "certification" ? shownCertificate(before) : null;
+      const outcome = await rerunVerificationGroup({ orgId, group: groupKey, fields, before, subjectId });
+      // A run that failed part-way may still have moved the score: read it either way, unless nothing ran.
+      if (outcome.ok || outcome.verification) {
+        await reload();
+        changed?.();
       }
-      if (outcome?.error) return { error: outcome.error };
-      await reload();
-      changed?.();
-      return {};
+      return outcome.ok ? {} : { error: outcome.error || "Couldn't run again" };
     },
   };
 }

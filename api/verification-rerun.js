@@ -318,8 +318,11 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
     // An edited number is the staff number, saved as the staff member.
     const numberEdit = group === "business_registration" ? edits.find((edit) => edit.field === "number") : null;
     if (numberEdit) {
+      // A Hong Kong CR typed over a mainland reading (or back) moves the country with it.
+      const { data: registration } = await asServer.from("company_registrations").select("country_code").eq("org_id", orgId).maybeSingle();
+      const country = rules.numberCountry ? rules.numberCountry(numberEdit.to, registration?.country_code) : null;
       const { error } = await asCaller.rpc("admin_set_registration_number", {
-        target_org: orgId, number: numberEdit.to, note: "Edited under What the AI read, then Run again", country: null,
+        target_org: orgId, number: numberEdit.to, note: "Edited under What the AI read, then Run again", country,
       });
       if (error) return fail(response, 200, error.code === "22023" ? "bad_number" : error.code === "42501" ? "not_staff" : "save_failed", rules);
     }

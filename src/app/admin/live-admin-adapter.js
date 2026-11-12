@@ -198,7 +198,7 @@ export async function withLevel(profile) {
   // Nov 12: the row shows the same overall score as the review page.
   if (scoreAvailable) {
     try {
-      const overall = scoreOverall((await loadVerificationScore(profile.id))?.groups ?? []);
+      const overall = scoreOverall((await loadVerificationScore(profile.id, { urls: false }))?.groups ?? []);
       return overall == null ? profile : { ...profile, confidence: overall, confidenceLabel: "Score" };
     } catch {
       return profile;

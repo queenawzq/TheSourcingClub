@@ -156,6 +156,22 @@ export function checkFields(group, fields = {}) {
   return { fields: out };
 }
 
+/**
+ * The country an edited number belongs to, when its format says so (PICKS C:
+ * "HK marked automatically from the number format"). A Hong Kong company
+ * registration (CR) is 7 or 8 digits; a mainland code is 18 characters, or
+ * an old 15-digit one. Only between China and Hong Kong, and only when the
+ * format is unambiguous: anything else keeps the current country (null).
+ */
+export function numberCountry(number, current) {
+  const v = String(number ?? "").replace(/[\s.\/-]/g, "").toUpperCase();
+  const country = String(current ?? "").toUpperCase();
+  if (country !== "CN" && country !== "HK") return null;
+  if (/^\d{7,8}$/.test(v)) return country === "HK" ? null : "HK";
+  if (/^[0-9A-Z]{18}$/.test(v) || /^\d{15}$/.test(v)) return country === "CN" ? null : "CN";
+  return null;
+}
+
 /** The before/after line: "Score updated: 75% to 95%". Null when either is missing. */
 export function scoreChangeWords(before, after) {
   if (before == null || after == null) return null;
