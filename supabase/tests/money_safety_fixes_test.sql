@@ -384,5 +384,58 @@ select ok((select stripe_release_started and not factory_stripe_ready from publi
   'the board knows a payout is pinned even when Stripe is no longer ready');
 reset role;
 
+-- A known transfer keeps its destination while another payment follows a new default.
+select pg_temp.reset(true);
+insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary)
+values ('97a10000-0000-0000-0000-000000000009', '97b00000-0000-0000-0000-0000000000f1', 'paypal', 'p97-new@example.com', false);
+insert into public.provider_payouts (id,payment_id,factory_org_id,account_id,provider,paid_to,amount_cents,currency,provider_ref)
+values ('97a20000-0000-0000-0000-000000000009','97f00000-0000-0000-0000-000000000001',
+'97b00000-0000-0000-0000-0000000000f1','97a10000-0000-0000-0000-000000000001','wise','P97 Bank ending 1234',100000,'USD','p97-wise-transfer');
+select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-0000000000f1','97a10000-0000-0000-0000-000000000009')$$,
+  'a known Wise transfer does not block choosing PayPal for future payouts');
+select throws_ok($$update public.factory_payout_accounts set bank_name='Changed' where id='97a10000-0000-0000-0000-000000000001'$$,
+  '22023', null, 'the former default cannot be edited while its transfer runs');
+select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001',null)$$,
+  '22023', null, 'the former default cannot be deleted while its transfer runs');
+select throws_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-0000000000f1',null)$$,
+  '22023', null, 'switching to Stripe remains blocked while a manual payment is owed');
+reset role;
+select throws_ok($$insert into public.payout_account_numbers(account_id,vault_secret_id)
+ values ('97a10000-0000-0000-0000-000000000001','97a30000-0000-0000-0000-000000000009')$$,
+ '22023', null, 'even a privileged write cannot replace the active destination number');
+select is((select account_id from public.provider_payouts where id='97a20000-0000-0000-0000-000000000009'),
+ '97a10000-0000-0000-0000-000000000001'::uuid,'the active transfer retains the original bank account');
+select is((select paid_to from public.provider_payouts where id='97a20000-0000-0000-0000-000000000009'),
+ 'P97 Bank ending 1234','its displayed recipient stays pinned');
+select ok((select is_primary from public.factory_payout_accounts where id='97a10000-0000-0000-0000-000000000009'),
+ 'new payments use the chosen PayPal destination');
+set local session_replication_role = replica;
+insert into public.order_milestones (id,order_id,kind,title,amount_cents)
+values ('97e00000-0000-0000-0000-000000000009','97d00000-0000-0000-0000-000000000001','payment_only','P97 next payout',60);
+insert into public.order_payments (id,order_id,milestone_id,amount_cents,currency,state,confirmed_at,release_requested_at)
+values ('97f00000-0000-0000-0000-000000000009','97d00000-0000-0000-0000-000000000001',
+'97e00000-0000-0000-0000-000000000009',60,'USD','confirmed',now(),now());
+set local session_replication_role = origin;
+select pg_temp.act_as(5); set local role authenticated;
+select lives_ok($$select public.claim_provider_payout('97f00000-0000-0000-0000-000000000009','paypal',
+ (select details_changed_at from public.factory_payout_accounts where id='97a10000-0000-0000-0000-000000000009'),false)$$,
+ 'staff can claim a different payment with PayPal while Wise is processing');
+reset role;
+select is((select account_id from public.provider_payouts where payment_id='97f00000-0000-0000-0000-000000000009'),
+ '97a10000-0000-0000-0000-000000000009'::uuid,'the second payout uses the new destination');
+-- End this fixture before checking the original request's uncertain outcome.
+update public.provider_payouts set status='failed',failure_code='other' where payment_id='97f00000-0000-0000-0000-000000000009';
+update public.provider_payouts set provider_ref=null where id='97a20000-0000-0000-0000-000000000009';
+select pg_temp.act_as(1); set local role authenticated;
+select throws_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-0000000000f1','97a10000-0000-0000-0000-000000000001')$$,
+ '22023', null, 'an uncertain provider request still locks the default');
+reset role;
+update public.provider_payouts set status='failed',failure_code='other' where id='97a20000-0000-0000-0000-000000000009';
+select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$update public.factory_payout_accounts set bank_name='P97 Updated Bank' where id='97a10000-0000-0000-0000-000000000001'$$,
+ 'the account can be edited after the transfer ends');
+reset role;
+
 select * from finish();
 rollback;
