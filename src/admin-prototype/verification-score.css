@@ -633,6 +633,7 @@
 }
 
 .vr-field input,
+.vr-field select,
 .vr-field textarea {
   width: 100%;
   min-height: 42px;
@@ -654,6 +655,7 @@
 }
 
 .vr-field input:focus,
+.vr-field select:focus,
 .vr-field textarea:focus {
   border-color: var(--vr-blue);
   outline: none;
@@ -1268,4 +1270,94 @@ a.vr-text-action {
    "Guangzhou Yuexiu Apparel"; Atelier Minho was short enough to hide it). */
 @media (max-width: 760px) {
   .admin-review-header { flex-wrap: wrap; row-gap: 12px; }
+}
+
+/* ------------------------------------------------- live states (port) */
+
+.vr-card-head { gap: 12px; flex-wrap: wrap; }
+
+.vr-card-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--vr-low-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.vr-card-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 24px;
+  color: var(--vr-muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.vr-card-state p { margin: 0; }
+.vr-card-state[role="alert"] p { color: var(--vr-low-text); font-weight: 700; }
+
+.vr-skel {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--vr-line-soft) 0%, #f3f6fa 50%, var(--vr-line-soft) 100%);
+  background-size: 200% 100%;
+  animation: vr-skel 1.2s ease-in-out infinite;
+}
+.vr-skel-hero { width: 104px; height: 44px; }
+.vr-skel-line { width: min(320px, 70%); height: 14px; }
+.vr-skel-title { width: 168px; height: 16px; }
+.vr-skel-verdict { width: min(260px, 80%); height: 14px; margin-top: 6px; }
+.vr-skel-score { width: 56px; height: 24px; }
+.vr-row.is-loading { cursor: default; }
+.vr-row.is-loading:hover { background: none; }
+@keyframes vr-skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .vr-skel { animation: none; } }
+
+.vr-save-error {
+  margin: 0;
+  color: var(--vr-low-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.vr-field-by {
+  color: var(--vr-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.vr-section-empty {
+  margin: 0;
+  color: var(--vr-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/* A stored file (live): the image or PDF itself, in the paper's frame. */
+.vr-file {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  background: #fff;
+}
+.vr-file img { display: block; width: 100%; max-height: 520px; object-fit: contain; }
+.vr-file.is-pdf iframe { display: block; width: 100%; height: 520px; border: 0; }
+.vr-file.is-empty { color: var(--vr-muted); font-size: 13px; font-weight: 500; }
+.vr-file.is-empty p { margin: 0; padding: 0 16px; text-align: center; overflow-wrap: anywhere; }
+
+.vr-photo-wait { display: grid; place-items: center; width: 100%; height: 100%; }
+.vr-evidence-file button.vr-text-action:disabled { color: var(--vr-muted); cursor: default; }
+
+@media (max-width: 760px) {
+  .vr-card-state { padding: 16px; flex-wrap: wrap; }
+  .vr-file { min-height: 260px; }
+  .vr-file.is-pdf iframe { height: 420px; }
 }
