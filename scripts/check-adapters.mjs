@@ -43,6 +43,9 @@ const ALLOWED_ABSENT = {
   "admin:approvalBlock:mock": "live only; without it Approve is never greyed for a missing registry check",
   "admin:reviewEmailStatus:mock": "live only; the prototype has no email outbox, so the review page draws no email card without it",
   "admin:resendReviewEmails:mock": "live only; only called from the email card, which needs reviewEmailStatus",
+  "admin:verificationScore:mock": "live only; the prototype's profiles carry their own verification, so its card never reads one",
+  "admin:verificationActions:mock": "live only; the prototype's card keeps its edits in its own state",
+  "admin:verificationFileUrl:mock": "live only; the prototype's evidence is drawn, not stored",
   "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",

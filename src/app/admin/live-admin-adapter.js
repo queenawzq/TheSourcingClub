@@ -24,6 +24,8 @@
  */
 import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
 import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
+import { loadVerificationScore, scoreAvailable, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
@@ -193,6 +195,15 @@ export function withRegistry(profile, state) {
  */
 export async function withLevel(profile) {
   if (profile.entityType === "Brand") return profile;
+  // Nov 12: the row shows the same overall score as the review page.
+  if (scoreAvailable) {
+    try {
+      const overall = scoreOverall((await loadVerificationScore(profile.id))?.groups ?? []);
+      return overall == null ? profile : { ...profile, confidence: overall, confidenceLabel: "Score" };
+    } catch {
+      return profile;
+    }
+  }
   try {
     const { overall } = computeLevels({ ...(await adminLevelInputs(profile.id)), sourceLabel: registrySourceLabel });
     return { ...profile, level: LEVEL_WORDS[overall.level], levelTone: overall.level };
@@ -459,6 +470,16 @@ export function createAdminAdapter({ user, signOut }) {
        * database refuses it otherwise). Live only.
        */
       approvalBlock: registryApprovalBlock,
+
+      /**
+       * The verification score card (Nov 12 design): the score in the shape
+       * of verification-mock.js, the writes behind each row's modal, and a
+       * signed link for each file. Live only; the prototype's card keeps its
+       * edits in its own state.
+       */
+      verificationScore: loadVerificationScore,
+      verificationActions,
+      verificationFileUrl,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.
