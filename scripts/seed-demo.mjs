@@ -697,9 +697,9 @@ console.log("verification score cases");
     }).select("id, created_at").single(), `record ${name}`);
   };
   const image = (file) => ({ bytes: readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url)), mime: file.endsWith(".png") ? "image/png" : "image/jpeg" });
-  // The cases' documents: readable images of invented companies (scripts/make-demo-verification-docs.mjs),
+  // The cases' documents: readable images of invented companies (scripts/make-demo-verification-docs.mjs → scripts/demo-verification-docs/),
   // so the preview shows a document and Run again with nothing edited reads back what the seed records.
-  const doc = (file) => image(`demo-verification/${file}`);
+  const doc = (file) => ({ bytes: readFileSync(new globalThis.URL(`./demo-verification-docs/${file}`, import.meta.url)), mime: "image/png" });
   const reading = async ({ org }, file, extracted, extras = {}) => must(await admin.from("verification_signals").insert({
     org_id: org.id, kind: "document_reading", subject_id: file.id, automatic: true, checked_at: extras.checkedAt ?? day(-1),
     result: (extras.differences ?? []).length ? "differs" : "agrees",

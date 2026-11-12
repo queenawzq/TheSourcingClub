@@ -18,7 +18,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const OUT = path.join(ROOT, "assets", "demo-verification");
+const OUT = path.join(ROOT, "scripts", "demo-verification-docs");
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), "tsc-demo-docs-"));
 const CHROME = process.env.CHROME_PATH
   ?? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => fs.existsSync(p));
@@ -156,7 +156,7 @@ function certificate(d) {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
-console.log("demo verification documents → assets/demo-verification/");
+console.log("demo verification documents → scripts/demo-verification-docs/");
 
 // A: China, the original licence (the seed's reading is what it shows).
 render("cn-original-licence.png", chinaLicence({
