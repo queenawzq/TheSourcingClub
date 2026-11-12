@@ -259,7 +259,9 @@ async function certificateStep({ orgId, asServer, requestedBy, fields, edits, su
   const staffNumber = (Array.isArray(marks) ? marks : []).map((m) => given(m.details?.number)).find(Boolean) ?? "";
   const certNumber = value("certNumber", staffNumber);
   const validUntil = value("validUntil", cert.expires_at ?? "");
-  const holder = value("holder");
+  // The holder read off the certificate before, else the newest staff record of it: a run never blanks it.
+  const staffHolder = (Array.isArray(marks) ? marks : []).map((m) => given(m.details?.holder)).find(Boolean) ?? "";
+  const holder = value("holder", staffHolder);
   const today = new Date().toISOString().slice(0, 10);
   const expired = validUntil ? validUntil < today : null;
   let holderMatches = null;

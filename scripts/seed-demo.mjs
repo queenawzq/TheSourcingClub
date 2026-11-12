@@ -740,6 +740,11 @@ console.log("verification score cases");
     const term = await termId("certification", slug);
     return must(await admin.from("factory_certifications").insert({ org_id: org.id, term_id: term, expires_at: expiresAt, document_id: file?.id ?? null }).select("id").single(), `certificate ${slug}`);
   };
+  // What reading the certificate gives (the number, date and holder printed on the demo image), as Run again records it.
+  const certReading = async ({ org }, cert, details) => must(await admin.from("verification_signals").insert({
+    org_id: org.id, kind: "certificate", subject_id: cert.id, automatic: true, result: "read", checked_at: day(-1),
+    details: { expired: false, holderMatches: true, staffEdits: [], ...details },
+  }).select("id").single(), "certificate reading");
 
   // A: China, original licence, found on QCC.
   {
@@ -762,6 +767,7 @@ console.log("verification score cases");
     for (const doc of photos.slice(0, 3)) await mark(a, doc, "own");
     const cert = await certificate(a, "oeko-tex-standard-100", "2027-03-31", await upload(a, "certificate", "OEKO-TEX Standard 100.png", doc("cn-certificate-oeko-tex.png")));
     must(await staff.rpc("admin_record_signal", { target_org: a.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "SH025 187429" } }), "A's certificate check");
+    await certReading(a, cert, { certNumber: "SH025 187429", validUntil: "2027-03-31", holder: "杭州钱江服装有限公司 · Hangzhou Qianjiang Garment Co., Ltd." });
   }
 
   // B: China, a watermarked copy, and a number typed one character off what the licence says.
@@ -851,6 +857,7 @@ console.log("verification score cases");
     await mark(d, photos[0], "own");
     const cert = await certificate(d, "gots", "2027-08-31", await upload(d, "certificate", "GOTS certificate.png", doc("pt-certificate-gots.png")));
     must(await staff.rpc("admin_record_signal", { target_org: d.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "CU 1048211" } }), "D's certificate check");
+    await certReading(d, cert, { certNumber: "CU 1048211", validUntil: "2027-08-31", holder: "Têxteis Douro – Confecções, Lda" });
     must(await staff.rpc("admin_check_reason", { target_org: d.org.id, check_key: "certificate", note: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", subject: cert.id }), "D's certificate reason");
   }
 }

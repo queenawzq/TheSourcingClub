@@ -315,6 +315,25 @@ await check("certification: an edited date in the past is read as expired", asyn
   assert.ok(calls.includes("rpc:record_verification_signal"));
 });
 
+await check("certification: Run again never blanks the holder (read before, else staff's record)", async () => {
+  const holderSaved = async (signals) => {
+    const db = fakeDb({ factory_certifications: [{ id: "c1", org_id: ORG, expires_at: "2027-08-31", created_at: "2026-11-01" }], verification_signals: signals });
+    let saved = null;
+    const rpc = db.rpc;
+    db.rpc = async (name, args) => { if (name === "record_verification_signal") saved = args.details; return rpc(name, args); };
+    const result = await runGroup({ orgId: ORG, group: "certification", fields: { certNumber: "", validUntil: "", holder: "" }, edits: [], asServer: db, requestedBy: "staff", steps: stubSteps([]), rules });
+    assert.equal(result.ok, true);
+    return saved;
+  };
+  const sig = (automatic, details) => ({ org_id: ORG, kind: "certificate", subject_id: "c1", automatic, details });
+  const read = await holderSaved([sig(true, { certNumber: "CU 1048211", holder: "Têxteis Douro – Confecções, Lda" })]);
+  assert.equal(read.holder, "Têxteis Douro – Confecções, Lda");
+  assert.equal(read.holderMatches, true);
+  const staff = await holderSaved([sig(false, { number: "CU 1048211", holder: "Têxteis Douro, Lda" })]);
+  assert.equal(staff.holder, "Têxteis Douro, Lda");
+  assert.equal(staff.certNumber, "CU 1048211");
+});
+
 // ------------------------------------------------------------ the route
 
 function fakeResponse() {

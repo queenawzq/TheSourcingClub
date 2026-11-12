@@ -549,10 +549,21 @@ export function certificateNumber(certId, signals) {
 }
 
 /** The certificate's fields: what Run again read off it (or staff typed), each editable for the next run. */
+/**
+ * The certificate's holder as far as we know it: what Run again (or the seed) read off the
+ * certificate, else the newest staff record that carries one. Never the company's own name:
+ * the holder is what the check compares with it.
+ */
+export function certificateHolder(certId, signals) {
+  const mine = (signals ?? []).filter((x) => x.kind === "certificate" && x.subjectId === certId);
+  const read = mine.find((x) => x.automatic)?.details ?? {};
+  return filled(read.holder) ?? mine.filter((x) => !x.automatic).map((x) => filled(x.details?.holder)).find(Boolean) ?? "";
+}
+
 function certFields(cert, signals, title) {
   const mine = (signals ?? []).filter((x) => x.kind === "certificate" && x.subjectId === cert.id);
   const read = mine.find((x) => x.automatic)?.details ?? {};
-  const holder = filled(read.holder) ?? mine.filter((x) => !x.automatic).map((x) => filled(x.details?.holder)).find(Boolean) ?? "";
+  const holder = certificateHolder(cert.id, signals);
   return [
     { key: "certNumber", label: "Certificate number", value: certificateNumber(cert.id, signals), copy: true, editable: true },
     { key: "validUntil", label: "Valid until", value: String(filled(read.validUntil) ?? cert.expiresAt ?? "").slice(0, 10), editable: true },
@@ -761,7 +772,7 @@ export function scoreVerification(input, { timeZone } = {}) {
       why: certChecks.length > 1 ? certChecks.filter((c) => c !== certWeak).map((c) => `${c.label}: ${c.verdict}`).join(". ").concat(".") : "",
       checking: false,
       evidence: {
-        kind: "certificate", name: certWithFile.label, number: "", valid: certWithFile.expiresAt ? dayWords(`${String(certWithFile.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: title,
+        kind: "certificate", name: certWithFile.label, number: certificateNumber(certWithFile.id, signals), valid: certWithFile.expiresAt ? dayWords(`${String(certWithFile.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(certWithFile.id, signals),
         file: certWithFile.document ? { id: certWithFile.document.id, name: certWithFile.document.name, bucket: certWithFile.document.bucket, path: certWithFile.document.path, mimeType: certWithFile.document.mimeType ?? null } : null,
         certificates: certs.map((c) => ({ id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null })),
       },

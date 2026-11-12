@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
+  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, certificateHolder, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
@@ -75,6 +75,8 @@ console.log("fix round 2");
     { kind: "certificate", subjectId: "c", automatic: false, result: "found", details: { number: "CU 1048211" } },
   ];
   check(certificateNumber("c", signals) === "CU 1048211", "an empty reading and a record without a number keep the stored number");
+  check(certificateHolder("c", [...signals, { kind: "certificate", subjectId: "c", automatic: false, details: { holder: "Têxteis Douro, Lda" } }]) === "Têxteis Douro, Lda", "an empty reading falls back to staff's recorded holder");
+  check(certificateHolder("c", [{ kind: "certificate", subjectId: "c", automatic: true, details: { holder: "Read Holder Ltd" } }, { kind: "certificate", subjectId: "c", automatic: false, details: { holder: "Staff" } }]) === "Read Holder Ltd", "the holder read off the certificate comes first");
   // 4. Couldn't check counts as Not found, never below it.
   const reg = (result) => registryCheck({ detail: { registration: { country: "CN", number: "91330109MA2B3K7Q4L" }, current: { id: "x", source: "qcc", result, details: {} }, checks: [{ id: "x" }] }, country: "CN", title: "A" });
   const couldnt = reg("could_not_check");
@@ -165,6 +167,12 @@ if (process.argv.includes("--seeded")) {
     check(v.overall >= low && v.overall <= high && v.standing.word === word, `${key} ${v.overall}% within ${low}–${high}, ${word}`);
     check((v.approvalProblem ?? null) === problem, `${key} approval: ${problem ?? "open"}`);
     if (v.standing.word === "Strong") check(!v.groups.some((g) => ["business_registration", "company_information"].includes(g.key) && g.checks.some((c) => c.weight && c.score != null && c.score < 60)), `${key}: Strong with no red check`);
+    if (key === "verifyCn" || key === "verifyPt") {
+      const cert = v.groups.find((g) => g.key === "certification");
+      const want = key === "verifyCn" ? "杭州钱江服装有限公司 · Hangzhou Qianjiang Garment Co., Ltd." : "Têxteis Douro – Confecções, Lda";
+      const field = cert.fields.find((f) => f.key === "holder")?.value;
+      check(field === want && cert.evidence.holder === want, `${key} certificate holder: field "${field}", card "${cert.evidence.holder}"`);
+    }
     if (key === "verifyCn") {
       const as = (result) => { const i = structuredClone(input); i.detail.current = { ...i.detail.current, result, details: { ...i.detail.current.details, outcome: result } }; return scoreVerification(i, { timeZone: "UTC" }); };
       const nf = as("not_found");
