@@ -125,6 +125,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
+      <p className="payout-modal-intro">Use a bank account in your company’s name. Your bank details go directly to our payment partner; TSC keeps only the last four digits.</p>
       <div className="payout-manual-fields">
         <label className="payout-country-field">
           <span>Bank account country</span>
