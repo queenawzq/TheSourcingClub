@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
 import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue, useViewer } from "../lib/data/DataProvider.jsx";
@@ -6,10 +6,14 @@ import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
+import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
+import { verificationMockProfiles } from "./verification-mock.js";
 
 import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
 export const initialProfiles = [
+  // Nov 12 review design (mock): one score card, details in each row's modal.
+  ...verificationMockProfiles,
   {
     id: "vendor-atelier",
     initials: "AM",
@@ -201,7 +205,7 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 function VerificationRow({ profile, onReview }) {
   const productionTags = profile.productionTags ?? [];
   return (
-    <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
+    <article className={`admin-verification-row${profile.confidence != null || profile.scoreWord || profile.level ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
         <span>{profile.initials}</span>
         <div>
@@ -221,8 +225,12 @@ function VerificationRow({ profile, onReview }) {
           )}
         </div>
       </div>
-      {profile.confidence != null
+      {profile.level
+        ? <div className={`admin-row-stat admin-row-level level-${profile.levelTone ?? "unknown"}`}><span>Level</span><strong>{profile.level}</strong></div>
+        : profile.confidence != null
         ? <div className="admin-row-stat"><span>{profile.confidenceLabel ?? "Confidence"}</span><strong>{profile.confidence}%</strong></div>
+        : profile.scoreWord
+        ? <div className="admin-row-stat is-none"><span>{profile.confidenceLabel ?? "Score"}</span><strong>{profile.scoreWord}</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -871,7 +879,6 @@ function AiSuggestionsPanel({ orgId }) {
   return (
     <Panel
       title="AI suggestions"
-      subtitle="From an AI model that read the profile, not the files. The decision is yours."
       className="admin-assist-panel"
     >
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
@@ -1116,6 +1123,50 @@ function reviewEmailSentence(result, { subject = null, company = "the company" }
   }
 }
 
+/**
+ * Live only: the verification score card's data, read through the seam
+ * (`actions.verificationScore`), with the writes behind its modals. Every
+ * write reads the score again; `changed` re-checks the approval block and the
+ * queue. While a check is still running on the server, it reads again every
+ * few seconds. The prototype's profiles carry their own `verification`.
+ */
+const CHECKING_POLL_MS = 5000;
+
+function useLiveVerification(orgId, enabled, changed) {
+  const actions = useActions();
+  const [state, setState] = useState({ data: null, loading: false, error: null });
+  const latest = useRef(0);
+  const changedRef = useRef(changed);
+  changedRef.current = changed;
+  const reload = useCallback(async () => {
+    const request = ++latest.current;
+    setState((current) => ({ ...current, loading: true, error: null }));
+    try {
+      const data = await actions.verificationScore(orgId);
+      if (request === latest.current) setState({ data, loading: false, error: null });
+    } catch (error) {
+      if (request === latest.current) setState((current) => ({ ...current, loading: false, error }));
+    }
+  }, [actions, orgId]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    setState({ data: null, loading: true, error: null });
+    reload();
+    return () => { latest.current += 1; };
+  }, [enabled, reload]);
+  const checking = Boolean(state.data?.groups?.some((group) => group.checking));
+  useEffect(() => {
+    if (!enabled || !checking || state.loading) return undefined;
+    const timer = window.setTimeout(reload, CHECKING_POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [enabled, checking, state.loading, state.data, reload]);
+  const writes = useMemo(
+    () => (enabled ? actions.verificationActions(orgId, { reload, changed: () => changedRef.current?.() }) : null),
+    [enabled, actions, orgId, reload],
+  );
+  return enabled ? { ...state, reload, actions: writes, fileUrl: actions.verificationFileUrl } : null;
+}
+
 function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0, registryPanel = null, onRegistryChange = null }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
@@ -1143,6 +1194,12 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // found it), re-read whenever the registry panel records a check.
   const [registryChanged, setRegistryChanged] = useState(0);
   const [approveBlock, setApproveBlock] = useState(null);
+  const live = useLiveVerification(profile?.id, Boolean(isVendor && !profile?.verification && actions.verificationScore && profile?.id), () => {
+    setRegistryChanged((n) => n + 1);
+    onRegistryChange?.();
+  });
+  const verification = profile?.verification ?? live?.data ?? null;
+  const showsScore = Boolean(profile?.verification || live);
   useEffect(() => {
     if (!actions.approvalBlock || !isVendor || !profile?.id) return undefined;
     let cancelled = false;
@@ -1161,9 +1218,14 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     setApprovalTier(suggestedTier);
   }, [profile?.id, suggestedTier]);
   if (!profile) return null;
-  const requestGaps = (profile.checks ?? [])
-    .filter(([, result]) => !["Verified", "Clear"].includes(result))
-    .map(([label, result, , detail]) => ({ label, result, detail }));
+  // With the score card, "Suggest with AI" is fed the weak sub-checks; the removed rows are not read.
+  const requestGaps = showsScore
+    ? (verification?.groups ?? []).flatMap((group) => (group.checks ?? [])
+      .filter((check) => check.score == null || check.score < 75)
+      .map((check) => ({ label: check.label, result: check.verdict, detail: group.label })))
+    : (profile.checks ?? [])
+      .filter(([, result]) => !["Verified", "Clear"].includes(result))
+      .map(([label, result, , detail]) => ({ label, result, detail }));
   const suggestRequest = async () => {
     setRequestSuggestionLoading(true);
     setRequestSuggestionError("");
@@ -1200,6 +1262,18 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} />}
+            {live && (
+              <VerificationScoreCard
+                key={profile.id}
+                verification={live.data}
+                loading={live.loading}
+                error={live.error}
+                onRetry={live.reload}
+                actions={live.actions}
+                fileUrl={live.fileUrl}
+              />
+            )}
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               {profile.capabilityGroups?.length ? (
@@ -1229,7 +1303,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 </div>
               ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
-            {profile.checks?.length ? (
+            {profile.checks?.length && !showsScore ? (
             <Panel title="Verification checks" subtitle={registryPanel ? undefined : "No check contacts an outside registry or certifier."}>
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
@@ -1261,23 +1335,24 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </Panel>
             ) : null}
             {/* Live only: the official-registry checks for a vendor. */}
-            {registryPanel && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile, { onChange: () => { setRegistryChanged((n) => n + 1); onRegistryChange?.(); } })}</Panel>}
+            {registryPanel && !showsScore && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile, { onChange: () => { setRegistryChanged((n) => n + 1); onRegistryChange?.(); } })}</Panel>}
             {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
-            {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
+            {profile.confidence != null && !showsScore && <ConfidenceCard score={profile.confidence} />}
             <section className="factory-profile-card admin-review-meta">
               <h2>Review details</h2>
+              {verification?.facts ? <VerificationFacts facts={verification.facts} /> : (<>
               {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
               {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
               {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
+              </>)}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>Complete this review</h2>
-              <p>Review the evidence and confidence signals before making a marketplace decision.</p>
               {isVendor && (
                 <fieldset className="admin-tier-picker">
                   <legend>Assign marketplace badge</legend>
@@ -1937,7 +2012,8 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const users = userRows ?? [];
   const currentAdmin = users.find((user) => user.protected) ?? null;
   const metrics = metricRow ?? {};
-  const loading = queueLoading || rfqsLoading || quotesLoading || usersLoading;
+  // Only the first read blanks the workspace: a refresh after a record keeps the review page (and its open modal) on screen.
+  const loading = (queueLoading && !queue) || rfqsLoading || quotesLoading || usersLoading;
   const loadError = queueError || rfqsError || quotesError || usersError;
 
   const query = new URLSearchParams(window.location.search);
@@ -2186,7 +2262,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel ? reloadQueue : null} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel || actions.verificationScore ? reloadQueue : null} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}

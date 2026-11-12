@@ -1,0 +1,20 @@
+{
+  "about": "Heavily blurred, low-resolution and cropped to the top half: the text cannot be read. Must be called unreadable, with no invented fields.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "CN",
+    "number": "",
+    "title": "宁波明纬服饰制造有限公司",
+    "location": "浙江省宁波市海曙区望春工业园区科创路118号"
+  },
+  "fields": {},
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": true
+  },
+  "mustNotInvent": true
+}

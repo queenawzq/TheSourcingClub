@@ -39,8 +39,9 @@ select ok(not public.company_names_match('', ''), 'two blanks are not a match');
 -- Turkey's letter number ------------------------------------------------------
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000004","role":"authenticated"}';
 set local role authenticated;
-select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596')$$,
-  '22023', 'registration letter number: missing', 'a Turkish VKN needs the letter number');
+-- v3.1: the letter number is optional (the tax plate, vergi levhası, has none).
+select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596')$$,
+  'a Turkish VKN saves without a letter number');
 select throws_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ABC123')$$,
   '22023', 'registration letter number: format', 'and it is 14 characters');
 select lives_ok($$select public.save_company_registration('d8700000-0000-0000-0000-0000000000f2', 'TR', '4827361596', null, 'ab12 cd34 ef56 78')$$,
@@ -156,6 +157,8 @@ select lives_ok($$select public.admin_explain_duplicate('d8700000-0000-0000-0000
 select lives_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f2', 'approved')$$, 'approved');
 reset role;
 update public.orgs set name = 'Bosphorus Premium Knit' where id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3.1: any rename of a verified factory sends it back to review; these cases test the registry-fact logic, so keep it verified.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000003","role":"authenticated"}';
 set local role authenticated;
 select is(public.factory_registry_fact('d8700000-0000-0000-0000-0000000000f2'), null, 'a rename after approval takes the brand''s fact away');
@@ -165,7 +168,11 @@ set local role authenticated;
 select is((select state from public.admin_registry_states() where org_id = 'd8700000-0000-0000-0000-0000000000f2'), 'lost', 'and staff see the check lost');
 reset role;
 update public.company_registrations set number = null, no_company_number = true where org_id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3: clearing a verified factory's number sends it to review; this case is about the sole-proprietor fact, so put it back.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 update public.orgs set name = 'Örme Tekstil' where id = 'd8700000-0000-0000-0000-0000000000f2';
+-- v3.1: any rename of a verified factory sends it back to review; these cases test the registry-fact logic, so keep it verified.
+update public.factory_profiles set verification_status = 'verified' where org_id = 'd8700000-0000-0000-0000-0000000000f2';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select lives_ok($$select public.admin_record_registry_check('d8700000-0000-0000-0000-0000000000f2', 'gib', 'found', 'Sole proprietor, letter seen')$$, 'a sole proprietor checked');

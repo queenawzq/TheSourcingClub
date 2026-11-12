@@ -22,7 +22,11 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
-import { adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
+import { loadVerificationScore, scoreAvailable, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
+import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
   claimReview,
@@ -184,6 +188,32 @@ export function withRegistry(profile, state) {
   return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };
 }
 
+/**
+ * v3.1 (A9): a vendor's queue row shows its overall level, from the same
+ * rules as the review page, instead of a "% complete". A company whose
+ * inputs can't be read shows no level rather than a wrong one.
+ */
+export async function withLevel(profile) {
+  if (profile.entityType === "Brand") return profile;
+  // Nov 12: the row shows the same overall score as the review page.
+  if (scoreAvailable) {
+    try {
+      const overall = scoreOverall((await loadVerificationScore(profile.id, { urls: false }))?.groups ?? []);
+      return overall == null
+        ? { ...profile, confidence: null, confidenceLabel: "Score", scoreWord: "Not checked" }
+        : { ...profile, confidence: overall, confidenceLabel: "Score" };
+    } catch {
+      return profile;
+    }
+  }
+  try {
+    const { overall } = computeLevels({ ...(await adminLevelInputs(profile.id)), sourceLabel: registrySourceLabel });
+    return { ...profile, level: LEVEL_WORDS[overall.level], levelTone: overall.level };
+  } catch {
+    return profile;
+  }
+}
+
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
@@ -236,16 +266,18 @@ export function toReviewProfile(row) {
     productionTypesInferred: inferredProductionTypes.length > 0,
     productionTags: productionCategories(row),
     makes: row.makes ?? [],
-    confidence: row.verificationScore ?? null,
-    // The queue row's name for that figure; the design's is "Confidence".
-    confidenceLabel: "Complete",
+    // v3.1 (A9): no completeness percentage beside the levels; the level replaces it.
+    confidence: null,
     // Not the queue's own figure: completeness is the company's, read with
     // the submission (profile-completion.js), so both sides see one number.
     completion: null,
     // The designed panel renders [label, result, value, detail] tuples.
-    checks: (row.verificationChecks ?? []).map(
-      (check) => [check.label, check.result, check.value, check.detail],
-    ),
+    // v3.1: a factory's photos are judged by the Photos row (workshop photos,
+    // automatic); the old "Production evidence" card counted only public
+    // product images and contradicted it, so factories don't get it.
+    checks: (row.verificationChecks ?? [])
+      .filter((check) => check.label !== "Production evidence")
+      .map((check) => [check.label, check.result, check.value, check.detail]),
   };
 }
 
@@ -361,7 +393,7 @@ export function createAdminAdapter({ user, signOut }) {
     viewer: { isAdmin: true, org: null, user },
 
     verificationQueue: () => Promise.all([verificationQueue(), adminRegistryStates()])
-      .then(([rows, states]) => rows.map((row) => withRegistry(toReviewProfile(row), states.get(row.orgId)))),
+      .then(([rows, states]) => Promise.all(rows.map((row) => withLevel(withRegistry(toReviewProfile(row), states.get(row.orgId)))))),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     adminMetrics: async () => {
@@ -440,6 +472,16 @@ export function createAdminAdapter({ user, signOut }) {
        * database refuses it otherwise). Live only.
        */
       approvalBlock: registryApprovalBlock,
+
+      /**
+       * The verification score card (Nov 12 design): the score in the shape
+       * of verification-mock.js, the writes behind each row's modal, and a
+       * signed link for each file. Live only; the prototype's card keeps its
+       * edits in its own state.
+       */
+      verificationScore: loadVerificationScore,
+      verificationActions,
+      verificationFileUrl,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.

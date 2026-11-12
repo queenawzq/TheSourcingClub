@@ -41,6 +41,7 @@ import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 import { checkCallText } from "../api/screen-call-text.js";
+import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 
 // A demo document that shows something when it is opened: its own name.
 function demoPdf(name) {
@@ -155,7 +156,10 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const callUsers = {};
+for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
+for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -618,6 +622,245 @@ const RETURNED_NOTE = [
 must(await adminUser.client.rpc("admin_review_decision_with_tier", {
   target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
 }), "ask the returned factory for more information");
+
+// The Nov 11 verification demo (notes/demo-call-2026-11-11): each factory as
+// the real licence it will upload prints it, finished onboarding, nothing
+// uploaded, and asked by staff for its licence and workshop photos, so it
+// signs in straight to its profile summary. Uploading and confirming runs
+// every check by itself.
+const CALL_SETUP = {
+  callA: { country: "CN", address: "南通市海门市余东镇启凤街文峰路22号", employees: 120 },
+  callB: { country: "CN", address: "四川省广元市利州区万缘街道胤国路国投大厦20-1号", employees: 8 },
+  callC: { country: "CN", address: "合肥市新站区瑶海工业园区纬二路北合肥雷神数控科技有限公司科研楼4楼", employees: 60 },
+  callD1: { country: "CN", address: "南通市海门市余东镇启凤街文峰路22号", employees: 120 },
+  callD2: { country: "CN", address: "广东省东莞市大朗镇盈丰七街76号101室", employees: 45 },
+  callE1: { country: "TR", address: "Yenimahalle, Ankara", number: "8010693555", employees: 25 },
+  callE2: { country: "PT", address: "Marrazes, Leiria", number: "501395970", employees: 15 },
+  callE3: { country: "PT", address: "Rua do Parque Industrial 88, Barcelos", number: "515920487", employees: 90 },
+};
+const CALL_NOTE = "Please upload your business licence and two or three photos of your production floor, then confirm your profile.";
+for (const [key, setup] of Object.entries(CALL_SETUP)) {
+  const user = callUsers[key];
+  const org = must(await user.client.rpc("create_org", { org_name: LOGINS[key].name, org_kind: "factory" }), `create ${key}`);
+  must(await admin.from("factory_profiles").upsert({
+    org_id: org.id,
+    legal_name: LOGINS[key].name,
+    country_code: setup.country,
+    location: setup.address,
+    employee_count: setup.employees,
+    onboarding_completed_at: new Date().toISOString(),
+    verification_status: "pending",
+    published_at: new Date().toISOString(),
+  }), `${key} profile`);
+  // Written by the member, as onboarding does: a trigger moves it to the staff-only table.
+  must(await user.client.from("factory_profiles").update({ production_address: setup.address }).eq("org_id", org.id), `${key} production address`);
+  must(await user.client.rpc("save_company_registration", {
+    target_org: org.id, country: setup.country, number: setup.number ?? null,
+  }), `${key} registration`);
+  must(await adminUser.client.rpc("admin_review_decision_with_tier", {
+    target_org: org.id, decision: "needs_information", note: CALL_NOTE, risk: null, tier: null,
+  }), `${key} asked for its documents`);
+}
+
+// The Nov 12 verification score (src/lib/domain/verification-score.contract.md):
+// the approved mock's four cases, with every record the score reads already in
+// place, written the way the server and staff write them: the AI reading and
+// the address check by the server key (as api/registry-assist.js does), the
+// photo check by record_photo_check (as api/photo-check.js does), registry,
+// photo and certificate records through staff's own RPCs. Expected on the
+// review page: A ≈93 Strong, B ≈72 Needs a look, C ≈28 Flagged, D ≈73 Needs
+// a look (≈84 once Run again reads its current upload).
+console.log("verification score cases");
+{
+  const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString();
+  const nowIso = new Date().toISOString();
+  const verifyOrg = async (key, { signer, ...profile }, { address, registration }) => {
+    const user = callUsers[key];
+    const org = must(await user.client.rpc("create_org", { org_name: LOGINS[key].name, org_kind: "factory" }), `create ${key}`);
+    must(await admin.from("factory_profiles").upsert({
+      org_id: org.id, onboarding_completed_at: nowIso, verification_status: "pending", published_at: nowIso, ...profile,
+    }), `${key} profile`);
+    if (address) must(await user.client.from("factory_profiles").update({ production_address: address }).eq("org_id", org.id), `${key} production address`);
+    if (registration) must(await user.client.rpc("save_company_registration", { target_org: org.id, ...registration }), `${key} registration`);
+    must(await admin.from("terms_acceptances").insert({
+      org_id: org.id, terms_version: "1", signature: signer ?? LOGINS[key].name, accepted_by: user.id, accepted_at: day(-2),
+    }), `${key} terms`);
+    return { org, user };
+  };
+  const upload = async ({ user, org }, kind, name, { bytes, mime, createdAt } = {}) => {
+    const body = bytes ?? demoPdf(name);
+    const bucket = kind === "product_image" ? "org-public" : "org-private";
+    const path = `${org.id}/${kind}/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+    must(await user.client.storage.from(bucket).upload(path, body, { contentType: mime ?? "application/pdf" }), `upload ${name}`);
+    return must(await admin.from("documents").insert({
+      org_id: org.id, kind, bucket, storage_path: path, file_name: name, mime_type: mime ?? "application/pdf", size_bytes: body.length,
+      status: "pending", ...(createdAt ? { created_at: createdAt } : {}),
+    }).select("id, created_at").single(), `record ${name}`);
+  };
+  const image = (file) => ({ bytes: readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url)), mime: file.endsWith(".png") ? "image/png" : "image/jpeg" });
+  // The cases' documents: readable images of invented companies (scripts/make-demo-verification-docs.mjs → scripts/demo-verification-docs/),
+  // so the preview shows a document and Run again with nothing edited reads back what the seed records.
+  const doc = (file) => ({ bytes: readFileSync(new globalThis.URL(`./demo-verification-docs/${file}`, import.meta.url)), mime: "image/png" });
+  // Factory-floor photos the real photo check takes for a factory (sources: demo-verification-docs/photos/SOURCES.md).
+  const floor = (file) => ({ bytes: readFileSync(new globalThis.URL(`./demo-verification-docs/photos/${file}`, import.meta.url)), mime: "image/jpeg" });
+  const reading = async ({ org }, file, extracted, extras = {}) => must(await admin.from("verification_signals").insert({
+    org_id: org.id, kind: "document_reading", subject_id: file.id, automatic: true, checked_at: extras.checkedAt ?? day(-1),
+    result: (extras.differences ?? []).length ? "differs" : "agrees",
+    details: {
+      extracted: { readable: true, activityCodes: [], ...extracted },
+      differences: extras.differences ?? [], unsure: [], warnings: extras.warnings ?? [],
+      tradingScope: extras.tradingScope, foundedOn: extracted.foundingDate ?? null,
+      fileId: file.id, fileName: extras.fileName, numberAtReading: extras.numberAtReading ?? null, titleAtReading: extras.title ?? null,
+      model: "seed",
+    },
+  }), "record the reading");
+  // The address check as the real one answers it (fix round 2): the owner comparison is the real rule
+  // (addressOwnerCheck, no network), and the site is what the map answered for these addresses
+  // (Nominatim, Nov 12), so Run again with nothing edited gives the same story; a less specific
+  // answer on a re-run keeps this one (keepEarlierAddress).
+  const addressCheck = async ({ org }, sources, site) => {
+    const owner = addressOwnerCheck(sources, new Date(day(-1)));
+    const details = { address: sources.license || sources.typed, from: sources.license ? "the licence" : "the factory's production address", countryCode: sources.country, ...site };
+    const siteResult = addressSiteCheck(details, { owner, now: new Date(day(-1)) });
+    must(await admin.from("verification_signals").insert({
+      org_id: org.id, kind: "address", automatic: true, result: site.judgement ?? "unknown", checked_at: day(-1),
+      details: { ...details, checks: [owner, siteResult] },
+    }), "record the address check");
+  };
+  const photoCheck = async ({ org }, entries) => must(await admin.rpc("record_photo_check", {
+    target_org: org.id, checker: null,
+    check_result: { key: "photos", level: "medium", reasons: [], details: { perPhoto: entries, duplicates: [], workshopCount: entries.length }, checkedAt: day(-1) },
+  }), "record the photo check");
+  const entry = (doc, ai = { kind: "factory_floor", mark: "none" }, duplicateOf = []) => ({ documentId: doc.id, workshop: true, ai, duplicateOf });
+  const staff = adminUser.client;
+  const mark = async ({ org }, doc, result, link) => must(await staff.rpc("admin_record_signal", {
+    target_org: org.id, kind: "photo", subject: doc.id, result, note: "Demo: reverse image search", details: link ? { link } : {},
+  }), "mark a photo");
+  const certificate = async ({ org, user }, slug, expiresAt, file) => {
+    const term = await termId("certification", slug);
+    return must(await admin.from("factory_certifications").insert({ org_id: org.id, term_id: term, expires_at: expiresAt, document_id: file?.id ?? null }).select("id").single(), `certificate ${slug}`);
+  };
+  // What reading the certificate gives (the number, date and holder printed on the demo image), as Run again records it.
+  const certReading = async ({ org }, cert, details) => must(await admin.from("verification_signals").insert({
+    org_id: org.id, kind: "certificate", subject_id: cert.id, automatic: true, result: "read", checked_at: day(-1),
+    details: { expired: false, holderMatches: true, staffEdits: [], ...details },
+  }).select("id").single(), "certificate reading");
+
+  // A: China, original licence, found on QCC.
+  {
+    const a = await verifyOrg("verifyCn", {
+      legal_name: "杭州钱江服装有限公司", country_code: "CN", location: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", founded_year: 2015, employee_count: 140,
+      website_url: "https://qjgarment.cn", intro: "Woven shirt and outerwear factory with 4 sewing lines, exporting to the EU and US.", moq: 300, typical_lead_days: 32, signer: "Zhang Wei",
+    }, { address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", registration: { country: "CN", number: null } });
+    const licence = await upload(a, "business_registration", "business-licence.png", { ...doc("cn-original-licence.png"), createdAt: day(-2) });
+    await reading(a, licence, {
+      documentType: "营业执照", registrationNumber: "91330109MA2B3K7Q4L", legalName: "杭州钱江服装有限公司",
+      legalRepresentative: "张伟", address: "杭州市萧山区江东三路18号", businessScope: "服装制造；服装服饰批发；货物进出口", foundingDate: "2015-04-16",
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "服装制造", makingFrom: "words" }, fileName: "business-licence.png", title: "杭州钱江服装有限公司" });
+    must(await staff.rpc("admin_record_registry_result", { target_org: a.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/7a1c", name_on_registry: "杭州钱江服装有限公司" }), "A's QCC check");
+    // The map does not place this street: "not found", as the real check answers.
+    await addressCheck(a, { typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", typedFrom: "production", license: "杭州市萧山区江东三路18号", registry: "", country: "CN" },
+      { found: false, judgement: "unknown", tags: [], how: "rule", reasons: ["OpenStreetMap found no place for this address"] });
+    const photos = [];
+    for (const file of ["factory-floor-1.jpg", "factory-floor-2.jpg", "factory-floor-3.jpg", "factory-floor-1-detail.jpg"]) photos.push(await upload(a, "factory_photo", file, floor(file)));
+    await photoCheck(a, photos.map((doc) => entry(doc)));
+    for (const doc of photos.slice(0, 3)) await mark(a, doc, "own");
+    const cert = await certificate(a, "oeko-tex-standard-100", "2027-03-31", await upload(a, "certificate", "OEKO-TEX Standard 100.png", doc("cn-certificate-oeko-tex.png")));
+    must(await staff.rpc("admin_record_signal", { target_org: a.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "SH025 187429" } }), "A's certificate check");
+    await certReading(a, cert, { certNumber: "SH025 187429", validUntil: "2027-03-31", holder: "杭州钱江服装有限公司 · Hangzhou Qianjiang Garment Co., Ltd." });
+  }
+
+  // B: China, a watermarked copy, and a number typed one character off what the licence says.
+  {
+    const b = await verifyOrg("verifyCnCopy", {
+      legal_name: "广州越秀服饰有限公司", country_code: "CN", location: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", founded_year: 2018, employee_count: 65,
+      website_url: "https://yxapparel.com", intro: "Knit tops and jersey dresses, 2 lines, mainly private label for EU brands.", moq: 500, typical_lead_days: 28, signer: "Li Na",
+    }, { address: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", registration: { country: "CN", number: "91440111MA59C2RY8C" } });
+    const licence = await upload(b, "business_registration", "licence-copy.png", { ...doc("cn-copy-licence.png"), createdAt: day(-1) });
+    // Staff checked QCC before the licence was read: the check holds, the reading's difference still blocks approval.
+    must(await staff.rpc("admin_record_registry_result", { target_org: b.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/c93e", name_on_registry: "广州越秀服饰有限公司" }), "B's QCC check");
+    await reading(b, licence, {
+      documentType: "营业执照", registrationNumber: "91440111MA59C2RX8B", legalName: "广州越秀服饰有限公司",
+      legalRepresentative: "李娜", address: "广州市白云区黄浦路112号3栋", businessScope: "针织服装制造；服装服饰零售", foundingDate: "2018-06-02",
+      verificationWatermark: true, watermarkText: "仅供认证使用",
+    }, {
+      tradingScope: { trading: false, read: true, recognised: true, quote: "针织服装制造", makingFrom: "words" }, fileName: "licence-copy.png", title: "广州越秀服饰有限公司",
+      differences: [{ field: "number", document: "91440111MA59C2RX8B", typed: "91440111MA59C2RY8C" }], numberAtReading: "91440111MA59C2RY8C",
+      warnings: [{ kind: "verificationWatermark" }],
+    });
+    await addressCheck(b, { typed: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", typedFrom: "production", license: "广州市白云区黄浦路112号3栋", registry: "", country: "CN" },
+      { found: true, precise: true, road: true, placedAs: "primary", displayName: "九太路, 九佛街道, 黄埔区, 广州市, 广东省, 中国", judgement: "unknown", tags: [], how: "rule", reasons: [] });
+    const photos = [];
+    for (const file of ["factory-floor-2-detail.jpg", "factory-floor-3.jpg", "factory-floor-1.jpg"]) photos.push(await upload(b, "factory_photo", file, floor(file)));
+    await photoCheck(b, photos.map((doc) => entry(doc)));
+    for (const doc of photos.slice(0, 2)) await mark(b, doc, "own");
+  }
+
+  // C: Türkiye, a wholesaler: renamed since GİB was checked, its tax number shared with Merter Denim, borrowed photos.
+  {
+    const twin = await verifyOrg("verifyTrTwin", { legal_name: "Merter Denim Konfeksiyon Ltd. Şti.", country_code: "TR", location: "Merter, Güngören, Istanbul" },
+      { registration: { country: "TR", number: "6230418796" } });
+    const c = await verifyOrg("verifyTr", {
+      legal_name: "Merter Tekstil Ltd. Şti.", country_code: "TR", location: "Merter, Güngören, Istanbul", employee_count: 300, website_url: "https://mertertekstil.com", signer: "Emre Yılmaz",
+    }, { address: "Merter, Güngören, Istanbul", registration: { country: "TR", number: "6230418796", registration_letter_number: "2026GIB0451887" } });
+    const plate = await upload(c, "business_registration", "vergi-levhasi.png", { ...doc("tr-vergi-levhasi.png"), createdAt: day(-1) });
+    must(await staff.rpc("admin_record_registry_result", { target_org: c.org.id, source: "gib", result: "found", name_on_registry: "Merter Tekstil Ltd. Şti." }), "C's GİB check");
+    // Renamed afterwards: the check no longer covers the name.
+    must(await admin.from("factory_profiles").update({ legal_name: "Merter Tekstil Toptan Ticaret Ltd. Şti." }).eq("org_id", c.org.id), "C renamed");
+    await reading(c, plate, {
+      documentType: "Vergi Levhası", registrationNumber: "6230418796", legalName: "Merter Tekstil Toptan Ticaret Ltd. Şti.", taxOffice: "Merter",
+      address: "Merter Mah., Güngören, İstanbul", businessScope: "Toptan giyim ticareti", activityCodes: ["46.42"],
+    }, { tradingScope: { trading: true, read: true, recognised: true, quote: "Toptan giyim ticareti" }, fileName: "vergi-levhasi.png", title: "Merter Tekstil Toptan Ticaret Ltd. Şti.", numberAtReading: "6230418796" });
+    await addressCheck(c, { typed: "Merter, Güngören, Istanbul", typedFrom: "production", license: "Merter Mah., Güngören, İstanbul", registry: "", country: "TR" },
+      { found: true, precise: true, placedAs: "building", displayName: "İstanbul Büyükşehir Belediyesi Ek Hizmet Binası, Haldun Taner Sokağı, Merter, Güngören, İstanbul, 34173, Türkiye",
+        judgement: "office", how: "rule", reasons: ["building=commercial within 0 m"],
+        tags: [{ tag: "building=commercial", count: 1, nearest: 0 }, { tag: "landuse=industrial", count: 1, nearest: 0, name: "Merter Tekstil Merkezi" }] });
+    const photos = [];
+    for (const file of ["dashboard-rfq-denim.jpg", "dashboard-rfq-shirt.jpg", "factory-header.png", "dashboard-rfq-knit.jpg"]) photos.push(await upload(c, "factory_photo", file, image(file)));
+    const cnCopyOrg = must(await admin.from("orgs").select("id").eq("name", LOGINS.verifyCnCopy.name).limit(1).single(), "B's id");
+    await photoCheck(c, [
+      entry(photos[0]),
+      entry(photos[1], { kind: "stock_or_marketing", mark: "watermark_or_other_company" }),
+      entry(photos[2], { kind: "factory_floor", mark: "none" }, [
+        { documentId: photos[2].id, otherOrgId: twin.org.id, match: "exact", mineLater: true },
+        { documentId: photos[2].id, otherOrgId: cnCopyOrg.id, match: "similar", mineLater: true },
+      ]),
+      entry(photos[3], { kind: "office_or_showroom", mark: "none" }),
+    ]);
+    await mark(c, photos[0], "found_elsewhere", "https://www.alibaba.com/product-detail/denim-trousers");
+    await mark(c, photos[3], "own");
+  }
+
+  // D: Portugal, EU VIES; the certidão read is an earlier upload with the old, shorter name.
+  {
+    const d = await verifyOrg("verifyPt", {
+      legal_name: "Têxteis Douro – Confecções, Lda", country_code: "PT", location: "Rua da Igreja 214, Arcozelo, Barcelos", founded_year: 2012, employee_count: 38,
+      website_url: "https://texteisdouro.pt", intro: "Cut-and-sew jackets and overshirts in small batches, family run since 2012.", moq: 100, typical_lead_days: 30, signer: "Rui Ferreira",
+    }, { address: "Rua da Igreja 214, Arcozelo, Barcelos", registration: { country: "PT", number: "513284974", access_code: "4821-7730-9145" } });
+    const older = await upload(d, "business_registration", "certidao-2023.png", { ...doc("pt-certidao-2023.png"), createdAt: day(-3) });
+    await upload(d, "business_registration", "certidao-permanente.png", { ...doc("pt-certidao-permanente.png"), createdAt: day(-1) });
+    await reading(d, older, {
+      documentType: "Certidão Permanente", registrationNumber: "513284974", legalName: "Têxteis Douro, Lda", address: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos",
+      businessScope: "", activityCodes: ["14130"], foundingDate: "2012-03-08",
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "14130", makingFrom: "codes", activityCodes: ["14130"] }, fileName: "certidao-2023.png", title: "Têxteis Douro – Confecções, Lda", numberAtReading: "513284974", checkedAt: day(-3) });
+    must(await admin.from("registry_checks").insert({
+      org_id: d.org.id, country_code: "PT", number_checked: "513284974", source: "vies", result: "registered", automatic: true, checked_at: day(-1),
+      details: { name: "Têxteis Douro – Confecções, Lda", address: "Rua da Igreja 214, 4750-142 Arcozelo" },
+    }), "D's VIES answer");
+    // Placed on Rua da Igreja (Nominatim, Nov 12); the homes around it are the map's residential land use.
+    await addressCheck(d, { typed: "Rua da Igreja 214, Arcozelo, Barcelos", typedFrom: "production", license: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", registry: "Rua da Igreja 214, 4750-142 Arcozelo", registryFrom: "VIES", country: "PT" },
+      { found: true, precise: true, road: true, placedAs: "tertiary", displayName: "Rua da Igreja, Arcozelo, Barcelos, Braga, 4750-177, Portugal",
+        judgement: "residential", how: "rule", reasons: ["landuse=residential within 0 m"], tags: [{ tag: "landuse=residential", count: 1, nearest: 0 }] });
+    const photos = [];
+    for (const file of ["factory-floor-3-detail.jpg", "factory-floor-1.jpg", "factory-floor-2.jpg"]) photos.push(await upload(d, "factory_photo", file, floor(file)));
+    await photoCheck(d, photos.map((doc) => entry(doc)));
+    await mark(d, photos[0], "own");
+    const cert = await certificate(d, "gots", "2027-08-31", await upload(d, "certificate", "GOTS certificate.png", doc("pt-certificate-gots.png")));
+    must(await staff.rpc("admin_record_signal", { target_org: d.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "CU 1048211" } }), "D's certificate check");
+    await certReading(d, cert, { certNumber: "CU 1048211", validUntil: "2027-08-31", holder: "Têxteis Douro – Confecções, Lda" });
+    must(await staff.rpc("admin_check_reason", { target_org: d.org.id, check_key: "certificate", note: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", subject: cert.id }), "D's certificate reason");
+  }
+}
 
 // A company staff can review but nobody can be emailed about: no members, so
 // a decision on it shows "nobody at … has an email address we can send to".

@@ -2176,6 +2176,34 @@ console.log("\nphase 6 — admin operations");
   queueLeak ? ok("a brand CANNOT read the verification queue")
             : fail("LEAK: the verification queue is readable by a party");
 
+  // Verification score (20261112100000): the exact signatures the domain module calls.
+  {
+    const { data: anyFactory } = await admin.from("orgs").select("id").eq("type", "factory").limit(1).maybeSingle();
+    if (anyFactory) {
+      const { data: input, error: inputError } = await staff.client.rpc("admin_verification_score_input", { target_org: anyFactory.id });
+      if (inputError) fail("staff read the verification score input", inputError);
+      else {
+        const { scoreVerification } = await import("../src/shared/verification-score.mjs");
+        const v = scoreVerification(input);
+        // Any factory: one with nothing checked yet is "Not checked" (null), never 0%.
+        v.groups?.length === 3 && (Number.isInteger(v.overall) || (v.overall === null && v.standing?.word === "Not checked"))
+          ? ok(`the verification score reads and scores (${v.overall}%, ${v.standing.word})`)
+          : fail("the verification score's shape", v);
+      }
+      const { error: scoreLeak } = await brand.client.rpc("admin_verification_score_input", { target_org: anyFactory.id });
+      scoreLeak?.code === "42501" ? ok("a brand CANNOT read a factory's verification score input")
+                                  : fail("LEAK: the verification score input is readable by a party", scoreLeak);
+      const { error: badResult } = await staff.client.rpc("admin_record_registry_result", {
+        target_org: anyFactory.id, source: "qcc", result: "maybe", reference: null, name_on_registry: null, reason: null,
+      });
+      badResult?.code === "22023" ? ok("admin_record_registry_result takes (target_org, source, result, reference, name_on_registry, reason)")
+                                  : fail("admin_record_registry_result's signature or refusal", badResult);
+      const { error: badKey } = await staff.client.rpc("admin_check_reason", { target_org: anyFactory.id, check_key: "nope", note: "x", subject: null });
+      badKey?.code === "22023" ? ok("admin_check_reason takes (target_org, check_key, note, subject)")
+                               : fail("admin_check_reason's signature or refusal", badKey);
+    }
+  }
+
   const { error: rfqLeak } = await factory.client.rpc("admin_rfq_queue");
   rfqLeak ? ok("a factory CANNOT read every brand's requests")
           : fail("LEAK: marketplace-wide requests are readable by a factory");
@@ -2498,6 +2526,83 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
     : fail("the cleanup", purged);
 
   await admin.from("orgs").delete().in("id", [fresh.id, mill.id]);
+}
+
+console.log("\nRun again — staff edit what the AI read (20261112300000)");
+{
+  const staff = await signedInUser(`rerun-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+  const { data: mill } = await admin.from("orgs")
+    .insert({ type: "factory", name: `Rerun Mill ${stamp}`, slug: `rerun-mill-${stamp}` })
+    .select("id").single();
+  await admin.from("factory_profiles").insert({ org_id: mill.id, legal_name: "Rerun Mill Garment Co., Ltd.", country_code: "CN", moq: 300, location: "Hangzhou" });
+  await admin.from("company_registrations").upsert({ org_id: mill.id, country_code: "CN", number: "91350100M000100Y43" });
+  // A one-pixel PNG as the licence: the model is faked, only the file must open.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const path = `${mill.id}/business_registration/rerun-${stamp}.png`;
+  const { error: uploadError } = await admin.storage.from("org-private").upload(path, png, { contentType: "image/png" });
+  if (uploadError) fail("upload the licence for Run again", uploadError);
+  await admin.from("documents").insert({
+    org_id: mill.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: "licence.png", mime_type: "image/png", status: "pending",
+  });
+  const licence = {
+    readable: true, documentType: "营业执照", registrationNumber: "91350100M000100Y43", legalName: "Rerun Mill Garment Co Ltd",
+    legalNameEnglish: "", legalRepresentative: "张伟", address: "杭州市萧山区江东三路18号", businessScope: "服装制造", activityCodes: [],
+    taxOffice: "", issueDate: "", foundingDate: "2015-04-16", markedAsSample: false, sampleReason: "", verificationWatermark: false,
+    watermarkText: "", looksEdited: false, editedReason: "",
+  };
+  const latestReading = async () => (await admin.from("verification_signals").select("details, checked_by")
+    .eq("org_id", mill.id).eq("kind", "document_reading").order("checked_at", { ascending: false }).limit(1).maybeSingle()).data;
+
+  const stranger = await staffRouteAs("verification-rerun", brand.client, { body: { orgId: mill.id, group: "business_registration", fields: { legalName: "x" } } });
+  stranger.status === 403 && stranger.error === "Only TSC staff can do this."
+    ? ok("a company CANNOT run another's checks again") : fail("Run again as a brand", stranger);
+  const { count: strangerEdits } = await admin.from("verification_field_edits").select("id", { count: "exact", head: true }).eq("org_id", mill.id);
+  strangerEdits === 0 ? ok("and nothing was recorded for it") : fail(`a refused Run again recorded ${strangerEdits} edit(s)`);
+
+  const noKey = await staffRouteAs("verification-rerun", staff.client, { body: { orgId: mill.id, group: "business_registration", fields: {} } });
+  noKey.ok === false && noKey.error === "AI reading isn't set up."
+    ? ok("without a model key Run again says so in words") : fail("Run again without a key", noKey);
+
+  const first = await staffRouteAs("verification-rerun", staff.client, {
+    body: { orgId: mill.id, group: "business_registration", fields: { legalName: "Rerun Mill Garment Co., Ltd." } },
+    env: { OPENROUTER_API_KEY: "smoke-not-a-key" }, model: licence,
+  });
+  const read = await latestReading();
+  first.ok && read?.details?.rerunFrom === "file" && read.details.extracted?.legalName === "Rerun Mill Garment Co., Ltd."
+    && read.details.staffEdits?.[0]?.field === "legalName" && read.checked_by === staff.id
+    ? ok("Run again reads the upload, lays the staff's edit over it, and names who ran it")
+    : fail("Run again's reading", { first, details: read?.details });
+
+  const { data: edits, error: editsError } = await staff.client.rpc("admin_verification_field_edits", { target_org: mill.id });
+  const edit = edits?.business_registration?.legalName;
+  !editsError && edit?.value === "Rerun Mill Garment Co., Ltd." && edit.before === null && edit.by && edit.at
+    ? ok("who edited which field, and when, is on record") : fail("the field edits", { edits, editsError });
+
+  // An edit on a current reading needs no model: no key, and it still runs.
+  const second = await staffRouteAs("verification-rerun", staff.client, {
+    body: { orgId: mill.id, group: "business_registration", fields: { representative: "张伟 (Zhang Wei)", number: "91440300MA5F00001A" } },
+  });
+  const reread = await latestReading();
+  const { data: registration } = await admin.from("company_registrations").select("number, number_source").eq("org_id", mill.id).single();
+  second.ok && reread?.details?.rerunFrom === "reading" && reread.details.extracted?.legalRepresentative === "张伟 (Zhang Wei)"
+    && reread.details.extracted?.legalName === "Rerun Mill Garment Co., Ltd."
+    ? ok("an edit on a current reading is laid over it, earlier edits kept, with no model call") : fail("Run again on a current reading", { second, details: reread?.details });
+  registration?.number === "91440300MA5F00001A" && registration.number_source === "staff" && reread?.details?.numberAtReading === "91440300MA5F00001A"
+    ? ok("an edited number is saved as the staff number, and the reading is for it") : fail("the staff number", registration);
+
+  const badNumber = await staffRouteAs("verification-rerun", staff.client, { body: { orgId: mill.id, group: "business_registration", fields: { number: "91440300MA5F00001B" } } });
+  badNumber.ok === false && badNumber.error === "That number isn't valid. Check it."
+    ? ok("a number failing its check digit is refused in words") : fail("a bad number", badNumber);
+
+  const { error: brandRecord } = await brand.client.rpc("record_verification_field_edits", { target_org: mill.id, group_key: "business_registration", edits: [{ field: "legalName", to: "x" }] });
+  const { error: brandRead } = await brand.client.rpc("admin_verification_field_edits", { target_org: mill.id });
+  const { error: tableRead } = await brand.client.from("verification_field_edits").select("id").limit(1);
+  brandRecord?.code === "42501" && brandRead?.code === "42501" && tableRead
+    ? ok("a company CANNOT record or read field edits") : fail("LEAK: field edits", { brandRecord, brandRead, tableRead });
+
+  await admin.storage.from("org-private").remove([path]);
 }
 
 console.log("\ncredits — granted on verification, invites, staff adjustments");

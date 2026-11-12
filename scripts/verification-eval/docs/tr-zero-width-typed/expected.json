@@ -1,0 +1,23 @@
+{
+  "about": "Same letter; the typed VKN was pasted with a zero-width space inside. Must not read as a different number.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "TR",
+    "number": "06841​27392",
+    "title": "Anadolu Tekstil Konfeksiyon Sanayi ve Ticaret Ltd. Şti.",
+    "location": "Organize Sanayi Bölgesi 4. Cadde No:17 Yeşilyurt, Denizli"
+  },
+  "fields": {
+    "registrationNumber": "0684127392",
+    "legalName": "ANADOLU TEKSTİL KONFEKSİYON SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+    "taxOffice": "PAMUKKALE VERGİ DAİRESİ"
+  },
+  "flags": {
+    "trading_scope": false,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

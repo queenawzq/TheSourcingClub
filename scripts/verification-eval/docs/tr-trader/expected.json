@@ -1,0 +1,24 @@
+{
+  "about": "A Turkish wholesaler (toptan ticareti), no imalat. Trading scope must fire.",
+  "source": "made up (scripts/verification-eval/make-docs.mjs); carries a SPECIMEN / 测试样本 stamp",
+  "typed": {
+    "country": "TR",
+    "number": "1833059278",
+    "title": "Boğaziçi Tekstil Dış Ticaret Ltd. Şti.",
+    "location": "Zeytinburnu, İstanbul"
+  },
+  "fields": {
+    "registrationNumber": "1833059278",
+    "legalName": "BOĞAZİÇİ TEKSTİL DIŞ TİCARET LİMİTED ŞİRKETİ",
+    "taxOffice": "ZEYTİNBURNU VERGİ DAİRESİ",
+    "businessScopeIncludes": "toptan"
+  },
+  "flags": {
+    "trading_scope": true,
+    "name_differs": false,
+    "number_differs": false,
+    "address_differs": false,
+    "specimen_or_edited": true,
+    "unreadable": false
+  }
+}

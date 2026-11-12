@@ -40,6 +40,9 @@ const missingFields = (gap) =>
 export function requestItem(gap, entityType, alsoMissing = []) {
   const place = SECTIONS[kindOf(entityType)];
   const { label, result, detail } = gap;
+  // Nov 12 review page: its weak sub-checks arrive as { label: check, result: verdict, detail: group }.
+  const scoreItem = scoreCheckItem(gap, place);
+  if (scoreItem !== undefined) return scoreItem;
   switch (label) {
     case "Business registration":
       if (result === "Missing") return `Upload your business registration certificate (${place.verify}).`;
@@ -77,6 +80,35 @@ export function requestItem(gap, entityType, alsoMissing = []) {
     default:
       return null;
   }
+}
+
+/**
+ * A weak sub-check from the verification score card: the one thing the company
+ * can do about it from its onboarding steps, null when it can do nothing (the
+ * registry is staff's to check), or undefined when the gap is not one of these.
+ */
+function scoreCheckItem({ label, result, detail }, place) {
+  const verdict = String(result ?? "");
+  if (detail === "Business registration") {
+    if (label === "Official registry") return null;
+    if (/not uploaded|can't be read|unreadable|sample|copy|cut short|not read/i.test(verdict)) {
+      return `Upload a clear scan or photo of your original business registration certificate (${place.verify}).`;
+    }
+    return null;
+  }
+  if (detail === "Company information") {
+    if (label === "Photos") return `Add photos of your own facility and products, taken by you (${place.evidence}).`;
+    if (label === "Address" && /district only|not checked|not found|home|office/i.test(verdict)) {
+      return `Add your factory's full street address, with building number and postcode (${place.details}).`;
+    }
+    return null;
+  }
+  if (detail === "Certification evidence") {
+    if (/expired/i.test(verdict)) return `Upload the current certificate for ${label}: the one we have has expired (${place.verify}).`;
+    if (/not found|not on/i.test(verdict)) return `Upload the certificate for ${label} as issued, with its number (${place.verify}).`;
+    return null;
+  }
+  return undefined;
 }
 
 /**

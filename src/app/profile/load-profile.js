@@ -87,6 +87,7 @@ export async function loadOwnProfile(org) {
     registrationNumber,
     registryCheckedAt: registryCheck?.checkedAt ?? null,
     registryCheckKind: registryCheck?.kind ?? null,
+    registryTradingScope: Boolean(registryCheck?.tradingScope),
     profile,
     terms,
     selected,
@@ -155,6 +156,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     publicMetrics,
     registryCheckedAt: registryCheck?.checkedAt ?? null,
     registryCheckKind: registryCheck?.kind ?? null,
+    registryTradingScope: Boolean(registryCheck?.tradingScope),
     ...media,
     orders: [],
   };

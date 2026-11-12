@@ -26,22 +26,26 @@ const ORG_WEIGHTS = [3, 7, 9, 10, 5, 8, 4, 2];
  */
 export const REGISTRATION_COUNTRIES = {
   CN: {
+    // Not typed (Nov 11): the number is the one the AI reads off the licence
+    // (migration 20261111100000).
+    fromDocument: true,
     label: { en: "Unified Social Credit Code", zh: "统一社会信用代码" },
     hint: { en: "18 characters, on your business licence", zh: "18 位，见营业执照" },
     upload: { en: "Business licence", zh: "营业执照" },
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
-    hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı)", zh: "10 位数字，见纳税登记证明" },
+    hint: { en: "10 digits, on your tax plate (vergi levhası) or tax registration letter", zh: "10 位数字，见税牌或纳税登记证明" },
     second: {
       column: "registration_letter_number",
       label: { en: "Letter number (Dilekçe No.)", zh: "证明编号（Dilekçe No.）" },
-      hint: { en: "14 characters, on the same letter", zh: "14 位，见同一份证明" },
-      required: true,
+      hint: { en: "14 characters, only if you upload the tax registration letter", zh: "14 位，仅在上传纳税登记证明时填写" },
+      // Most factories hold the tax plate (vergi levhası), which has no letter number.
+      required: false,
     },
     // What the registration upload is, named as on the document.
-    upload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
-    soleUpload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
+    upload: { en: "Tax plate (vergi levhası) or tax registration letter (mükellefiyet yazısı)", zh: "税牌（vergi levhası）或纳税登记证明（mükellefiyet yazısı）" },
+    soleUpload: { en: "Tax plate (vergi levhası) or tax registration letter (mükellefiyet yazısı)", zh: "税牌（vergi levhası）或纳税登记证明（mükellefiyet yazısı）" },
     // A sole proprietor's tax number is the owner's national ID: never asked.
     soleProprietor: true,
   },
@@ -89,6 +93,11 @@ export function registrationCountryFrom(location, matched = null) {
 /** Full-width digits, letters and punctuation (a Chinese keyboard's) as plain ones. */
 function halfWidth(value) {
   return String(value ?? "").replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, " ");
+}
+
+/** Does this country's number come from the document rather than the form? */
+export function numberFromDocument(country) {
+  return Boolean(REGISTRATION_COUNTRIES[country]?.fromDocument);
 }
 
 /** Spaces, dots and dashes removed; letters upper-case; "PT" prefix dropped. */

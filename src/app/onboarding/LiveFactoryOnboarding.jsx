@@ -21,7 +21,7 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
-import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
+import { saveEmailLanguage } from "../../lib/email-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import {
@@ -38,7 +38,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseRegistrationLetter, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -68,6 +68,7 @@ const COLUMN_FOR_LABEL = {
   "Year Founded": "founded_year",
   "Website URL": "website_url",
   "Factory Location": "location",
+  "Production Address": "production_address",
   "Nearest Port": "nearest_port",
   "Total Employees": "employee_count",
   "About the factory": "intro",
@@ -132,12 +133,35 @@ const KIND_FOR_LABEL = {
  * The booking calendar is marked up against short month names on screen and
  * stored against the first of each month. This is the one translation.
  */
+/**
+ * The automatic verification checks, run after an upload or a submit. Fire and
+ * forget: a factory never waits for them or sees them fail. Looked up lazily so
+ * this screen builds whether or not the runner is present.
+ */
+const verificationRunners = import.meta.glob("../../lib/domain/verification-run.js");
+function startVerification(orgId) {
+  const load = Object.values(verificationRunners)[0];
+  if (!load || !orgId) return;
+  load()
+    .then((module) => module.runVerification?.(orgId))
+    .catch(() => {});
+}
+
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
-  const [step, setStep] = useState(initialStep);
-  // True from "Update my profile" until the profile is sent back to staff.
-  const [resubmitting, setResubmitting] = useState(false);
+  // Asked for more information, the factory lands on its profile summary
+  // (Queena, Nov 9): no card in between.
+  const askedForMore = review?.state === "needs_information";
+  const [step, setStep] = useState(askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep);
+  // True while answering staff's request, until the profile is sent back.
+  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
+  // A request that arrives while the finish card is open opens the summary too.
+  useEffect(() => {
+    if (!askedForMore || step < LAST_STEP) return;
+    setResubmitting(true);
+    setStep(REVIEW_STEP);
+  }, [askedForMore, step]);
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
@@ -189,7 +213,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos, authorisations] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -199,6 +223,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "logo"),
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
+          listDocuments(org.id, "factory_photo"),
+          listDocuments(org.id, "authorisation"),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
         if (savedRegistration?.number) {
@@ -221,6 +247,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           "factory-logo": logos ?? [],
           "factory-samples": samples ?? [],
           "factory-walkthrough": walkthroughs ?? [],
+          "factory-photos": photos ?? [],
+          authorisation: authorisations ?? [],
         });
 
         const profile = existing.data ?? {};
@@ -232,6 +260,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
+        }
+        // The company typed its name at signup: start from it.
+        if (!profile.legal_name && org.name) {
+          restored[factoryFieldName("Factory Name")] = org.name;
+          restored[factoryFieldName("Company Name")] = org.name;
         }
         for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
           const ids = selected?.[kind] ?? [];
@@ -316,6 +349,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
   const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
   const registrationField = useMemo(() => {
+    // China types no number: it is read off the licence.
+    if (numberFromDocument(registrationCountry)) return null;
     const copy = registrationCopy(registrationCountry);
     const lang = language === "zh" ? "zh" : "en";
     return {
@@ -340,7 +375,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       },
       checkSecond: (value) => {
         if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
-        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === "") return lang === "zh" ? "请填写证明编号" : "Enter the letter number";
+        // Turkey's letter number is optional: the tax plate (vergi levhası) has none.
         if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "14 位字母或数字" : "14 letters and digits";
         return "";
       },
@@ -383,6 +418,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     logo: "factory-logo",
     product_image: "factory-samples",
     walkthrough: "factory-walkthrough",
+    factory_photo: "factory-photos",
+    authorisation: "authorisation",
   };
 
   /**
@@ -445,6 +482,18 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, "business-registration": stored }));
     }
 
+    // Verification evidence, private by kind. Each upload starts the checks.
+    let evidenceUploaded = registrationFiles.length > 0;
+    for (const [field, kind] of [["factory-photos", "factory_photo"], ["authorisation", "authorisation"]]) {
+      const chosen = submitted[field];
+      const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
+      if (!files.length) continue;
+      for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
+      evidenceUploaded = true;
+      const fresh = await listDocuments(org.id, kind);
+      setDocuments((current) => ({ ...current, [field]: fresh }));
+    }
+
     // Logo and samples are what a brand looks at, so they are public by kind.
     const uploads = {};
     const refresh = [];
@@ -476,7 +525,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
-    if (submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
+    const fromDocument = numberFromDocument(registrationCountry) && "business-registration" in submitted;
+    if (fromDocument || submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
       // The registration file is required as drawn ("Business registration
       // certificate *"): one already stored, or one chosen now.
       const stored = documents["business-registration"] ?? [];
@@ -487,7 +537,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
       await saveRegistration(org.id, {
         country: registrationCountry,
-        number: submitted["registration-number"] ?? "",
+        number: fromDocument ? "" : submitted["registration-number"] ?? "",
         second: submitted["registration-second"] ?? "",
         confirmed: submitted["registration-confirmed"] === true,
         noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
@@ -509,6 +559,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     }
 
     await saveFactoryProfile(org.id, patch);
+    // After the profile save, so the checks read the address just typed.
+    if (evidenceUploaded) startVerification(org.id);
 
     for (const { kind, termIds } of links) {
       await setLinks({ subjectType: "factory_profile", subjectId: org.id, orgId: org.id, kind, termIds });
@@ -566,7 +618,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     try {
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
-      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, ...answers } = submitted;
+      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, authorisation: _authorisation, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature && !termsAcceptance) {
@@ -589,12 +641,23 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
 
       // Staff asked for more information: finishing answers them, whether the
-      // factory came in by "Update my profile" or went back through the steps.
+      // factory came in from the email or went back through the steps.
       const answering = resubmitting || review?.state === "needs_information";
+      if (step === REVIEW_STEP && answering && termsAcceptance) {
+        // Terms already signed: confirming the summary sends it back to staff
+        // and stays on the summary, with no page after it.
+        await resubmitForReview(org.id);
+        startVerification(org.id);
+        setResubmitting(false);
+        onComplete();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       if (step === LAST_STEP - 1 && answering) {
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
         await resubmitForReview(org.id);
+        startVerification(org.id);
         setResubmitting(false);
         onComplete();
       } else if (step === LAST_STEP - 1) {
@@ -603,6 +666,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // visibility, an admin review controls quoting.
         await saveFactoryProfile(org.id, { published_at: new Date().toISOString() });
         await completeOnboarding(org.id, "factory");
+        startVerification(org.id);
       }
       if (step >= LAST_STEP) {
         onComplete();
@@ -642,7 +706,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       language={language}
       step={step}
       isReviewEdit={reviewEditStep !== null}
-      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); }}
+      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); saveEmailLanguage(user?.id); }}
       onCompanyTypeChange={setCompanyType}
       onBack={() => {
         if (reviewEditStep !== null) {
@@ -685,7 +749,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
-      notice={(resubmitting || (review?.state === "needs_information" && step < LAST_STEP)) && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       completion={reviewCompletion(review, {
         language: language,
         onUpdate: () => {

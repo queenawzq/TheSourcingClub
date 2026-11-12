@@ -171,6 +171,26 @@ Things that will bite here:
 - **"Due in N days" is the reader's day, not the server's.** The daily job runs at 07:00 UTC (23:00 the day before in Los Angeles in winter) and writes its reminder title on the UTC day; `notificationTitle()` (`src/shared/notification-text.mjs`, copied in `scripts/generate-notification-email.mjs`) recounts it from `data.due_on` in the bell's and the email's zone. Relative words never go into stored text without the raw value in `data`. `check:dates` runs it in four zones; `TZ=Asia/Shanghai npm run e2e` runs the browser there too.
 - **Design System v2 sizing lives in `src/app/shell.css`'s `:root`**, copied verbatim from the prototype's. Copied rather than imported to avoid the `!important` blocks above. Keep it in step when v2 moves. Buttons are 34px; **inputs stay 42px**.
 
+## How we work (lessons, Nov 6–12, 2026)
+
+Read before planning, building or testing anything a person will see.
+
+**Reading Queena's requests.** Queena designs; she is not technical.
+- She names an example, not a spec. "Check Google Maps" meant "help staff know the address is a real factory". Build the decision she wants, show her the answer it gives, and say which literal items gave no value and what replaced them.
+- She judges what she sees on the preview, with demo accounts. Anything to be judged goes there, never local-only.
+- Design is hers, function is ours. Ask her about layout, customer-facing wording and what counts as enough evidence; decide ourselves how a check works, its sources and thresholds, then show her the results. Batch questions into one list.
+- On-screen text is the minimum to act: figure, label, action, error, next step. No explanatory sentences, no tech words (Stripe, OCR, hash, OpenStreetMap). Staff screens get short plain verdicts. Exception: payout explanations and tooltips stay (John, Nov 11).
+- Scores only where a score means something, and a score must fall when evidence is weaker. Facts that are yes/no are check marks, not scores. Details go in a modal; a card shows the score and a one-line verdict.
+
+**Polish, not wireframes.** Screens we hand her are finished-looking, on the design system. Every UI change gets a mock by a UI/UX agent, approved before the build; the build ports the mock and does not redesign it. Things a mock drops are provisional: at build time keep a drop only if it really simplifies the screen AND loses no function or value; otherwise bring it back in her style.
+
+**Multi-part features.**
+- Write an outcomes file first: what each item decides, and its expected result on a realistic test set.
+- Parallel builders by file area, each in its own worktree with its own migration timestamp range; one combine worktree merges them and runs the full suites once.
+- An independent tester on the preview gets the code and the outcomes, never our findings, and tests the job ("decide if this factory is real in under 2 minutes"), doing every action on every row, not only reading the screen.
+- When a rule changes, change every layer in one go: form, client, database.
+- A browser check that cannot reach the page usually means no dev server is running, not a slow machine.
+
 ## Design system
 
 `TSC_DESIGN_SYSTEM.md` is the enforceable spec for **product screens** (the React prototypes): tokens, a role-based type scale, and fixed component dimensions (42px buttons, 28px pills, 8px cards, 76px bottom bar). Read it before changing prototype UI, and follow its rule that conflicts are fixed by updating the screen rather than adding a local exception.
@@ -714,7 +734,7 @@ The payout page’s explainer text and help tooltips are required product conten
 
 ### Design copy the live app leaves out
 
-Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step has no description (`20261107400000`); a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet, so the dashboard's Savings card (and with it Invite brand) and the Payments tab are hidden; put them back when they can.
+Queena's rule (Nov 6, refined Nov 9): a screen keeps a figure, a label, an action, an error or what this person must do next, and **her own design copy stays**, because it tells people what to do next (the verification page's next steps, the brand's guidance on writing a request and setting production steps). `src/app/live-quiet.css` no longer hides her sentences; it holds live layout fixes, and `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's explanatory and permission sentences that #103 added are back (main, Nov 11: the revert of `0e8f429`), and payout explanations stay by John's rule above; provider names stay removed where they are written. A finished onboarding with nothing to act on shows the designed explanation with its Verification pending button disabled (`review-completion.js` returns `null`). **Emails are in the language the person chose** (`src/lib/email-language.js` saves `?lang=`/`factoryLang` to `user_profiles.locale`, which every email builder reads). A generated step carries the short description `20261108200527` gave it, on production and waiting on Queena's decision; a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet. The dashboard's Savings card and the Payments page's Discounts tab show anyway (#103, waiting on Queena's decision), each saying so in one line.
 
 ### Mock data leaking into the live app
 

@@ -9110,7 +9110,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
         <header>
           <p>{closing ? "Mark done" : "Approve step"}</p>
           <h2 id="approve-step-title">{closing ? `Mark ${milestone.title} done` : `Approve ${live ? milestone.title : milestone.title.toLowerCase()}`}</h2>
-          {!live && <span>This marks the production step as approved and lets {other} continue to the next step.</span>}
+          <span>This marks the production step as approved and lets {other} continue to the next step.</span>
         </header>
         <div className="approve-fund-summary single">
           <div>
@@ -9945,19 +9945,19 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
         <span className="success-mark">✓</span>
         <div className="success-copy">
           <h2>Your quote request is live</h2>
-          {liveLine ? <p>{liveLine}</p> : <p>
+          {liveLine ? <p>{liveLine} Vendors can review the request, ask questions, and submit quotes before the deadline.</p> : <p>
             {sentTo ?? <>We sent the brief to {vendorCount} selected {vendorCount === 1 ? "vendor" : "vendors"}.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>}
         </div>
-        {liveLine ? null : <section className="success-next-panel">
+        <section className="success-next-panel">
           <h3>What happens next</h3>
           <ul className="success-next-list">
             <li>Vendors review your brief, attachments, and sourcing responsibilities.</li>
             <li>You will see responses, questions, and quote status updates on the quotes page.</li>
             <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
           </ul>
-        </section>}
+        </section>
         <div className="success-actions">
           {liveLine ? null : <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
             Review quotes

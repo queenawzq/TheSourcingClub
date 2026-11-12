@@ -115,6 +115,35 @@ async function inviteThrough(person, body) {
 }
 
 /** Polls the page until `test` holds; returns how long it took, or null. */
+/**
+ * Nov 12 review page: record "Found" on the Official registry sub-check, in the
+ * Business registration row's modal (the record form replaced the old Registry
+ * row's details window). Returns the sub-check's text after saving.
+ */
+async function recordRegistryFound(page, reference) {
+  await page.locator("article.vr-row").first().click();
+  await waitFor(page, ".vr-modal .vr-sub", 15000);
+  const opened = await page.evaluate(() => {
+    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
+    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
+    button?.click();
+    return Boolean(button);
+  });
+  if (!opened) return null;
+  await waitFor(page, ".vr-modal .vr-record", 10000);
+  // "Found" is the form's first answer and already chosen.
+  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  await clickButton(page, "save check");
+  const text = await within(page, () => page.evaluate(() => {
+    if (document.querySelector(".vr-modal .vr-record")) return null;
+    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
+    return sub?.innerText ?? null;
+  }), 20000);
+  await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-modal-foot button")].find((b) => b.textContent.trim() === "Close")?.click());
+  await page.waitForTimeout(800);
+  return text;
+}
+
 async function within(page, test, timeout = 15000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -702,9 +731,12 @@ async function main() {
 
     await waitForHeading(page, "all set", 30000);
     await record(page, "Factory complete", "the designed finish card, not a hand-built one");
-    // Waiting on staff, there is nothing to press: the card has no button.
-    check((await page.locator(".factory-onboarding-actions .primary-btn").count()) === 0,
-      "a factory waiting for review is shown no button on the finish card");
+    // Waiting on staff, there is nothing to press: main keeps the design's "Verification pending"
+    // button, disabled (John's revert of Nov 11, 3e77236), so no button on the card can be pressed.
+    const finishButtons = await page.evaluate(() => [...document.querySelectorAll(".factory-onboarding-actions button")]
+      .map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })));
+    check(finishButtons.every((button) => button.disabled),
+      `a factory waiting for review has no button it can press on the finish card (${finishButtons.map((b) => `${b.text}${b.disabled ? ", disabled" : ""}`).join("; ") || "none"})`);
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
@@ -969,32 +1001,13 @@ async function main() {
     await factoryPage.locator('input[name="email"]').first().fill(`e2e-factory-${stamp}@example.com`);
     await factoryPage.locator('input[name="password"]').first().fill(PASSWORD);
     await clickButton(factoryPage, "log in");
-    await waitForHeading(factoryPage, "we need a little more information", 40000);
+    // v3 (Queena, Nov 9): no "we need a little more information" card and no
+    // repeated note: the factory lands straight on its profile summary, whose
+    // own warnings say what to edit. Staff's words reach it by email.
+    await waitForHeading(factoryPage, "review your profile", 40000);
     const askedText = await factoryPage.locator("body").innerText();
-    check(askedText.includes(askFor.split("\n")[0]) && askedText.includes(askFor.split("\n").at(-1)), "the factory reads the request staff wrote, on its own screen");
-    // The note ran out of the card and over the step dots. Measured, not
-    // looked at: every box inside the card, and the card above the dots.
-    const finishCardFits = () => factoryPage.evaluate(() => {
-      const card = document.querySelector(".factory-onboarding-card, .brand-onboarding-card");
-      const dots = document.querySelector(".factory-onboarding-progress, .brand-onboarding-progress");
-      if (!card) return "no card";
-      const box = card.getBoundingClientRect();
-      const out = [...card.querySelectorAll("*")].filter((el) => {
-        const r = el.getBoundingClientRect();
-        return r.height > 0 && (r.bottom > box.bottom + 1 || r.right > box.right + 1 || r.left < box.left - 1);
-      });
-      if (out.length) return `${out.length} boxes outside the card, first ${out[0].tagName.toLowerCase()}.${out[0].className}`;
-      if (card.scrollHeight > card.clientHeight + 1) return `card scrolls (${card.scrollHeight} > ${card.clientHeight})`;
-      if (dots && dots.getBoundingClientRect().top < box.bottom - 1) return "the card runs over the step dots";
-      return "fits";
-    });
-    const fitsWide = await finishCardFits();
-    check(fitsWide === "fits", `the long request fits its card at desktop width (${fitsWide})`);
-    await factoryPage.setViewportSize(375, 812);
-    await factoryPage.waitForTimeout(500);
-    const fitsNarrow = await finishCardFits();
-    check(fitsNarrow === "fits", `and at 375px wide (${fitsNarrow})`);
-    await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
+    check(!/we need a little more information/i.test(askedText), "the factory lands on its profile summary, with no extra page first");
+    await record(factoryPage, "Factory asked for more information", "straight to the profile summary");
 
     const answering = createClient(
       process.env.SUPABASE_URL ?? stack.API_URL,
@@ -1024,17 +1037,19 @@ async function main() {
     // (20261108600000): "Approve" is greyed until one is recorded.
     const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
     check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
-    await page.locator(".admin-registry-form select").first().selectOption("certidao");
-    await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: certificate shows this NIPC and the company's name");
-    await clickButton(page, "record check");
-    check(await within(page, () => page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows") || null), 20000) !== null,
-      "the registry check is recorded on the review page");
+    // Nov 12: the record form sits under Official registry in the Business registration modal.
+    await recordRegistryFound(page, "E2E: certificate shows this NIPC and the company's name");
+    const { data: staffCheck } = await db.from("registry_checks").select("result, automatic")
+      .eq("org_id", factoryOrg.id).eq("automatic", false).order("checked_at", { ascending: false }).limit(1).maybeSingle();
+    check(staffCheck?.result === "found", `the registry check is recorded from the review page's form (a person's "${staffCheck?.result ?? "nothing"}")`);
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
     // Profile completeness used to vanish once a decision was made.
-    const completenessShown = await detailValue("Profile completeness");
-    check(/^\d+%$/.test(completenessShown ?? ""), `Profile completeness is still shown after approval (${completenessShown})`);
+    // Nov 12: Review details says whether the company details are complete (it replaced the percentage).
+    const completenessShown = await page.evaluate(() => [...document.querySelectorAll(".vr-fact-copy")]
+      .find((fact) => fact.querySelector("span")?.textContent.trim() === "Company details")?.querySelector("strong")?.textContent.trim() ?? null);
+    check(Boolean(completenessShown), `Company details are still shown after approval (${completenessShown})`);
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
@@ -1957,9 +1972,10 @@ async function main() {
     // The brand's builder is the designed "Production steps" stage, and its
     // buttons are the design's own: Save changes, and Continue to funding,
     // which confirms the steps. Only the brand sets them (design review).
-    // The hint speaks only once there are unsaved changes; none yet.
-    check((await page.locator('[data-testid="schedule-hint"]').innerText()).trim() === "",
-      "with no unsaved changes the builder's hint says nothing");
+    // With nothing unsaved, the hint says what Continue does (main restored the sentence: 3e77236).
+    const scheduleHint = (await page.locator('[data-testid="schedule-hint"]').innerText()).trim();
+    check(!/^Unsaved changes/.test(scheduleHint) && scheduleHint.includes("Continue to confirm them and start the order"),
+      `with no unsaved changes the builder's hint says what Continue does ("${scheduleHint}")`);
     check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
       "there is no \"Agree to this schedule\" any more");
     await clickButton(page, "continue to funding");
@@ -3609,10 +3625,8 @@ async function main() {
       }
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
-      // Approving needs a registry check that found it.
-      await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: the registration document shows this number and name");
-      await clickButton(page, "record check");
-      await page.waitForTimeout(2500);
+      // Approving needs a registry check that found it (v3: in the Registry row's details).
+      await recordRegistryFound(page, "E2E: the registration document shows this number and name");
       await clickButton(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });

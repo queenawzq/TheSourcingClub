@@ -4,11 +4,12 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { normaliseAccessCode, normaliseRegistrationLetter, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
+import { approvalBlockWords } from "../../shared/verification-score.mjs";
+import { normaliseAccessCode, normaliseRegistrationLetter, normaliseRegistrationNumber, numberFromDocument, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, number_source, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
@@ -29,6 +30,13 @@ export async function saveRegistration(orgId, { country, number, second = "", co
       "save the registration",
     );
   }
+  if (numberFromDocument(country) && !normaliseRegistrationNumber(country, number ?? "")) {
+    // China: the number is read off the licence; only the country is saved.
+    return unwrap(
+      await supabase.rpc("save_company_registration", { target_org: orgId, country, number: null }),
+      "save the registration",
+    );
+  }
   const problem = registrationNumberProblem(country, number);
   if (problem && !(problem === "check_digit" && confirmed)) throw new Error(registrationProblemText(country, problem, language));
   let accessCode = null;
@@ -37,9 +45,10 @@ export async function saveRegistration(orgId, { country, number, second = "", co
     accessCode = normaliseAccessCode(second);
     if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
   } else if (country === "TR") {
+    // Optional: the tax plate (vergi levhası) has no letter number.
     registrationLetterNumber = normaliseRegistrationLetter(second);
-    if (registrationLetterNumber === "") throw new Error(zh ? "请填写证明编号（Dilekçe No.）" : "Enter the letter number (Dilekçe No.)");
-    if (registrationLetterNumber === null) throw new Error(zh ? "证明编号为 14 位字母或数字" : "The letter number is 14 letters and digits");
+    if (registrationLetterNumber === "") registrationLetterNumber = null;
+    else if (registrationLetterNumber === null) throw new Error(zh ? "证明编号为 14 位字母或数字" : "The letter number is 14 letters and digits");
   }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
@@ -90,17 +99,8 @@ export async function adminRegistryDetail(orgId) {
  */
 export function approvalBlockText(detail) {
   if (!detail?.registration) return "Needs the company's registration number first";
-  const problem = detail.approvalProblem;
-  if (problem === "no_check") {
-    return detail.current && detail.current.result !== "found"
-      ? "The latest registry check did not find a match"
-      : "Record a registry check that found the company first";
-  }
-  if (problem === "renamed") return "The company was renamed after its registry check: check it again";
-  if (problem === "name_differs") return `The registry names another company (${detail.nameDiffers}): record a check confirming why`;
-  if (problem === "document_differs") return "The AI reading of the document shows another number or name: record a check confirming why";
-  if (problem === "duplicate") return "Another company uses this registration number: explain it first";
-  return null;
+  // Worded by where each block is cleared on the Nov 12 review page (verification-score.mjs).
+  return approvalBlockWords(detail.approvalProblem, detail);
 }
 
 export async function registryApprovalBlock(orgId) {
@@ -133,10 +133,13 @@ export async function adminVerificationSignals(orgId) {
 
 /** Staff: a photo's reverse search, or a certificate's check. */
 export async function recordSignal(orgId, { kind, subjectId, result, note, details = {} }) {
-  return unwrap(
+  const saved = unwrap(
     await supabase.rpc("admin_record_signal", { target_org: orgId, kind, subject: subjectId, result, note, details }),
     "record the check",
   );
+  // A photo mark ("Own photos", "Found elsewhere") changes the photos level now, not at "Run again".
+  if (kind === "photo") await runPhotoCheck(orgId, { marksOnly: true });
+  return saved;
 }
 
 /**
@@ -160,6 +163,42 @@ export async function requestRegistryAssist(orgId, action, extra = {}) {
   return result;
 }
 
+/** Verification v3 states for a company: approval problem, number source, trader reason, reopenings. Staff only. */
+export async function adminVerificationRules(orgId) {
+  const { data, error } = await supabase.rpc("admin_verification_rules", { target_org: orgId });
+  return error ? null : data ?? null;
+}
+
+/** Staff record why a trading-only license may still be approved. */
+export async function explainTradingScope(orgId, note) {
+  const { error } = await supabase.rpc("admin_explain_trading_scope", { target_org: orgId, note });
+  if (error) throw error;
+}
+
+/** Runs the automatic photo check (staff only). Same answer shape as requestRegistryAssist. */
+export async function runPhotoCheck(orgId, { marksOnly = false } = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  let response;
+  try {
+    response = await fetch("/api/photo-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: JSON.stringify(marksOnly ? { orgId, marksOnly: true } : { orgId }),
+    });
+  } catch {
+    return { available: false, reason: "The server couldn't be reached." };
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) return { available: false, reason: result.error || "The server couldn't do it." };
+  return result;
+}
+
+/** The last photo check's result for a company, or null. */
+export async function latestPhotoCheck(orgId) {
+  const { data, error } = await supabase.rpc("admin_photo_check_latest", { target_org: orgId });
+  return error ? null : data ?? null;
+}
+
 /** Which of a vendor's certificates staff found on the issuer's lookup, by certification id. */
 export async function certificateChecks(orgId) {
   const { data, error } = await supabase.rpc("factory_certificate_checks", { target_org: orgId });
@@ -179,4 +218,62 @@ export async function adminRegistryStates() {
   const { data, error } = await supabase.rpc("admin_registry_states");
   if (error) return new Map();
   return new Map((data ?? []).map((row) => [row.org_id, row]));
+}
+
+/*
+ * Verification v3.1 staff writes (migration 202611111200*, session "sql").
+ * The RPC names are the brief's; their argument names are in this one block
+ * so they can be matched to the migration in one place.
+ */
+export const V31_RPC = {
+  setNumber: { name: "admin_set_registration_number", args: (orgId, number, note, country) => ({ target_org: orgId, number, note, country: country ?? null }) },
+  explainCheck: { name: "admin_explain_check", args: (orgId, checkKey, note) => ({ target_org: orgId, check_key: checkKey, note }) },
+  companyFacts: { name: "admin_record_company_facts", args: (orgId, { insuredStaff, foundedOn }) => ({ target_org: orgId, insured_staff: insuredStaff, founded_on: foundedOn }) },
+};
+
+/** Staff type the number off the license image (number_source = 'staff'). */
+export async function adminSetRegistrationNumber(orgId, number, note, country = null) {
+  const rpc = V31_RPC.setNumber;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, number, note, country)), "save the number");
+}
+
+/** Staff record why a row's level may stand: lifts Low to Medium, shown on the row. */
+export async function explainCheck(orgId, checkKey, note) {
+  const rpc = V31_RPC.explainCheck;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, checkKey, note)), "save the reason");
+}
+
+/** Staff record the insured staff (参保人数) and the founding date (成立日期). */
+export async function recordCompanyFacts(orgId, facts) {
+  const rpc = V31_RPC.companyFacts;
+  return unwrap(await supabase.rpc(rpc.name, rpc.args(orgId, facts)), "save the company facts");
+}
+
+/** What the factory claimed about its size and age (factory_profiles), for the company facts row. */
+export async function adminCompanyClaims(orgId) {
+  const { data, error } = await supabase.from("factory_profiles").select("employee_count, founded_year").eq("org_id", orgId).maybeSingle();
+  if (error || !data) return null;
+  return { workers: data.employee_count ?? null, foundedYear: data.founded_year ?? null };
+}
+
+/**
+ * Everything the review page reads to draw the levels, in one call, so the
+ * queue can show each company's overall level too.
+ */
+export async function adminLevelInputs(orgId) {
+  const [detail, signals, photoResult, rules, claims] = await Promise.all([
+    adminRegistryDetail(orgId),
+    adminVerificationSignals(orgId).catch(() => ({ signals: [], photos: [], registrationFiles: [], certificates: [] })),
+    latestPhotoCheck(orgId),
+    adminVerificationRules(orgId),
+    adminCompanyClaims(orgId),
+  ]);
+  return { detail, extra: { ...signals, rules, claims, checkResults: photoResult ? [photoResult] : [] } };
+}
+
+/** Who signed the terms for the company (B2: shown beside the license's legal representative). */
+export async function adminTermsSigner(orgId) {
+  const { data, error } = await supabase.rpc("admin_verification_detail", { target_org: orgId });
+  if (error || !data?.terms) return null;
+  return { signature: data.terms.signature ?? null, signedBy: data.terms.signedBy ?? null, acceptedAt: data.terms.acceptedAt ?? null };
 }

@@ -10,7 +10,7 @@
 import { supabase, unwrap } from "../supabase.js";
 
 export async function listNotifications(orgId, { limit = 20 } = {}) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("notifications")
       .select("id, kind, subject_type, subject_id, order_id, title, body, data, read_at, created_at")
@@ -19,6 +19,22 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
       .limit(limit),
     "load your notifications",
   );
+  const shown = withoutMatchBesideInvite(rows ?? []);
+  // Hidden ones are marked read too, so the bell's count matches the list.
+  const hidden = (rows ?? []).filter((row) => !shown.includes(row) && !row.read_at).map((row) => row.id);
+  if (hidden.length) supabase.from("notifications").update({ read_at: new Date().toISOString() }).in("id", hidden).then(() => {}, () => {});
+  return shown;
+}
+
+/**
+ * A factory invited to a request was also told "New request that matches
+ * you" for it (the request is published a moment before the invitations go
+ * out). The invitation says more, so the match notice is not shown beside it.
+ * The row stays: the email outbox records "invited to quote instead" from it.
+ */
+export function withoutMatchBesideInvite(rows) {
+  const invited = new Set(rows.filter((row) => row.kind === "rfq_invited").map((row) => row.subject_id));
+  return rows.filter((row) => !(row.kind === "rfq_matched" && invited.has(row.subject_id)));
 }
 
 /**
@@ -32,7 +48,26 @@ export async function countUnreadNotifications(orgId) {
     .eq("org_id", orgId)
     .is("read_at", null);
   unwrap(result, "count your notifications");
-  return result.count ?? 0;
+  // Not counted: a "matches you" notice the list hides beside its invitation.
+  const { data: matched } = await supabase
+    .from("notifications")
+    .select("subject_id")
+    .eq("org_id", orgId)
+    .eq("kind", "rfq_matched")
+    .is("read_at", null)
+    .limit(50);
+  let hidden = 0;
+  if (matched?.length) {
+    const { data: invited } = await supabase
+      .from("notifications")
+      .select("subject_id")
+      .eq("org_id", orgId)
+      .eq("kind", "rfq_invited")
+      .in("subject_id", matched.map((row) => row.subject_id));
+    const invitedIds = new Set((invited ?? []).map((row) => row.subject_id));
+    hidden = matched.filter((row) => invitedIds.has(row.subject_id)).length;
+  }
+  return Math.max(0, (result.count ?? 0) - hidden);
 }
 
 export async function markRead(notificationId) {

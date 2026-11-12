@@ -211,8 +211,8 @@ set local role authenticated;
 
 select is(public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') #>> '{profile,legal_name}',
   'Realmill Textiles Co., Ltd.', 'the AI reads the company''s own details');
-select ok(public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') -> 'member_email_domains' ? 'p22-realmill.cn',
-  'and its members'' email domains');
+select ok(not (public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') ? 'member_email_domains'),
+  'but not its members'' email domains: the contact domain check left the review page (Nov 12)');
 select ok(position('owner@' in public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e')::text) = 0,
   'but never a member''s address');
 select ok(not (public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e')::text ~ '"(value|weight)"'),
@@ -225,9 +225,9 @@ select is((select c ->> 'detail' from jsonb_array_elements(public.admin_review_a
   'the terms check still says when, and which version');
 select ok(position('P22 Unstamped' in public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e')::text) = 0,
   'nor the other company the duplicate check found');
-select is((select c ->> 'result' from jsonb_array_elements(public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') -> 'existing_checks') c
-            where c ->> 'check' = 'Duplicate company signal'),
-  'Review', 'though the check still says there is one');
+select ok(not exists(select 1 from jsonb_array_elements(public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') -> 'existing_checks') c
+            where c ->> 'check' in ('Duplicate company signal', 'Contact domain')),
+  'nor the duplicate or contact domain checks the review page removed (Nov 12)');
 -- Run as the owner: nothing signed in may call this directly (20261104002000).
 reset role;
 select ok(position('P22 Unstamped' in public.org_verification_checks('d2200000-0000-0000-0000-00000000000e')::text) > 0,
