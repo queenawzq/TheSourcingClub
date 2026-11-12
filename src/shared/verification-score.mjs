@@ -179,7 +179,7 @@ export function licenceCheck({ reading, files, registration, country, title, lic
   const label = licenceLabel(country, reading);
   const base = { key: "licence", label, weight: 30, reasonKey: "licence" };
   if (!files.length) return { ...base, score: null, verdict: "No licence uploaded", canReason: false };
-  if (!reading) return { ...base, score: null, verdict: "Not read yet", canReason: true };
+  if (!reading) return { ...base, score: null, verdict: "Not checked yet", canReason: true };
   const d = reading.details ?? {};
   const x = d.extracted ?? {};
   if (x.readable === false) return { ...base, score: SCORES.licence.unreadable, verdict: "Can't be read", canReason: true };

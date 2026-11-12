@@ -700,6 +700,8 @@ console.log("verification score cases");
   // The cases' documents: readable images of invented companies (scripts/make-demo-verification-docs.mjs → scripts/demo-verification-docs/),
   // so the preview shows a document and Run again with nothing edited reads back what the seed records.
   const doc = (file) => ({ bytes: readFileSync(new globalThis.URL(`./demo-verification-docs/${file}`, import.meta.url)), mime: "image/png" });
+  // Factory-floor photos the real photo check takes for a factory (sources: demo-verification-docs/photos/SOURCES.md).
+  const floor = (file) => ({ bytes: readFileSync(new globalThis.URL(`./demo-verification-docs/photos/${file}`, import.meta.url)), mime: "image/jpeg" });
   const reading = async ({ org }, file, extracted, extras = {}) => must(await admin.from("verification_signals").insert({
     org_id: org.id, kind: "document_reading", subject_id: file.id, automatic: true, checked_at: extras.checkedAt ?? day(-1),
     result: (extras.differences ?? []).length ? "differs" : "agrees",
@@ -744,7 +746,7 @@ console.log("verification score cases");
     must(await staff.rpc("admin_record_registry_result", { target_org: a.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/7a1c", name_on_registry: "杭州钱江服装有限公司" }), "A's QCC check");
     await addressCheck(a, "industrial", ownerResult("high", [{ between: ["license", "typed"], verdict: "match", same: ["road", "number"], differs: [] }]));
     const photos = [];
-    for (const file of ["factory-header.png", "dashboard-rfq-shirt.jpg", "dashboard-rfq-knit.jpg", "dashboard-rfq-denim.jpg"]) photos.push(await upload(a, "factory_photo", file, image(file)));
+    for (const file of ["factory-floor-1.jpg", "factory-floor-2.jpg", "factory-floor-3.jpg", "factory-floor-1-detail.jpg"]) photos.push(await upload(a, "factory_photo", file, floor(file)));
     await photoCheck(a, photos.map((doc) => entry(doc)));
     for (const doc of photos.slice(0, 3)) await mark(a, doc, "own");
     const cert = await certificate(a, "oeko-tex-standard-100", "2027-03-31", await upload(a, "certificate", "OEKO-TEX Standard 100.png", doc("cn-certificate-oeko-tex.png")));
@@ -771,7 +773,7 @@ console.log("verification score cases");
     });
     await addressCheck(b, "industrial", ownerResult("medium", [{ between: ["license", "typed"], verdict: "differs", same: ["city", "district", "road"], differs: [{ part: "number", a: "3栋", b: "Building 5" }] }]));
     const photos = [];
-    for (const file of ["dashboard-rfq-knit.jpg", "factory-header.png", "dashboard-rfq-shirt.jpg"]) photos.push(await upload(b, "factory_photo", file, image(file)));
+    for (const file of ["factory-floor-2-detail.jpg", "factory-floor-3.jpg", "factory-floor-1.jpg"]) photos.push(await upload(b, "factory_photo", file, floor(file)));
     await photoCheck(b, photos.map((doc) => entry(doc)));
     for (const doc of photos.slice(0, 2)) await mark(b, doc, "own");
   }
@@ -826,7 +828,7 @@ console.log("verification score cases");
     }), "D's VIES answer");
     await addressCheck(d, "residential", ownerResult("high", [{ between: ["license", "typed"], verdict: "match", same: ["road", "number"], differs: [] }]));
     const photos = [];
-    for (const file of ["dashboard-rfq-shirt.jpg", "factory-header.png", "dashboard-rfq-denim.jpg"]) photos.push(await upload(d, "factory_photo", file, image(file)));
+    for (const file of ["factory-floor-3-detail.jpg", "factory-floor-1.jpg", "factory-floor-2.jpg"]) photos.push(await upload(d, "factory_photo", file, floor(file)));
     await photoCheck(d, photos.map((doc) => entry(doc)));
     await mark(d, photos[0], "own");
     const cert = await certificate(d, "gots", "2027-08-31", await upload(d, "certificate", "GOTS certificate.png", doc("pt-certificate-gots.png")));

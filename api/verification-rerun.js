@@ -145,14 +145,17 @@ async function readingStep({ orgId, asServer, requestedBy, edits, mustRead, step
 async function viesStep({ orgId, asServer, requestedBy, steps }) {
   const { data: registration } = await asServer.from("company_registrations").select("country_code, number").eq("org_id", orgId).maybeSingle();
   if (!registration || registration.country_code !== "PT" || !registration.number) return { ran: false, skipped: "no automatic registry" };
+  // The last real VIES answer: kept unless the number changed since it was asked (a staff edit or a new reading).
+  const { data: lastRows } = await asServer.from("registry_checks").select("result, number_checked").eq("org_id", orgId).eq("source", "vies")
+    .eq("automatic", true).neq("result", "could_not_check").order("checked_at", { ascending: false }).limit(1);
+  const last = Array.isArray(lastRows) ? lastRows[0] ?? null : null;
+  const reading = await latestReading(asServer, orgId);
+  const readNumber = reading?.details?.extracted?.registrationNumber ?? null;
+  if (!viesNeedsAsking({ number: registration.number, readNumber, last })) return { ran: true, kept: true, result: last.result };
   const { askVies } = await steps.vies();
   const outcome = await askVies(registration.number);
   // A re-query that errors keeps the last answer: only a real answer is recorded over one.
-  if (outcome.result === "could_not_check") {
-    const { data: last } = await asServer.from("registry_checks").select("result").eq("org_id", orgId).eq("source", "vies")
-      .eq("automatic", true).neq("result", "could_not_check").order("checked_at", { ascending: false }).limit(1);
-    if (Array.isArray(last) && last.length) return { ran: true, code: "registry_unreachable", source: "EU VIES", kept: true };
-  }
+  if (outcome.result === "could_not_check" && last) return { ran: true, code: "registry_unreachable", source: "EU VIES", kept: true };
   const { error } = await asServer.rpc("record_registry_check", {
     target_org: orgId, number_checked: registration.number, source: "vies",
     result: outcome.result, details: outcome.details ?? {}, requested_by: requestedBy,
@@ -160,6 +163,20 @@ async function viesStep({ orgId, asServer, requestedBy, steps }) {
   if (error) return { ran: false, code: "save_failed" };
   if (outcome.result === "could_not_check") return { ran: true, code: "registry_unreachable", source: "EU VIES" };
   return { ran: true, result: outcome.result };
+}
+
+const plainNumber = (value) => String(value ?? "").replace(/[^0-9A-Za-z]/g, "").replace(/^PT/i, "");
+
+/**
+ * Whether Run again asks EU VIES again: only when there is no earlier answer,
+ * or the number changed since it was asked (staff edited it, or a new reading
+ * read another one). Otherwise the last answer stands.
+ */
+export function viesNeedsAsking({ number, readNumber = null, last = null }) {
+  if (!last) return true;
+  const asked = plainNumber(last.number_checked);
+  if (plainNumber(number) !== asked) return true;
+  return Boolean(readNumber) && plainNumber(readNumber) !== asked;
 }
 
 /** The address checks; the words when the map could not place it. */
@@ -204,7 +221,7 @@ export async function runGroup({ orgId, group, fields, edits, asServer, requeste
     const assist = await steps.registryAssist();
     const { runPhotoCheck } = await steps.photoCheck();
     await Promise.all([
-      timed("address", assist.runAddressCheck({ orgId, asServer, requestedBy, siteAddress, extraDetails: { rerunBy: requestedBy, rerunAt: new Date().toISOString() } }).then(addressOutcome), "map_unreachable"),
+      timed("address", assist.runAddressCheck({ orgId, asServer, requestedBy, siteAddress, keepIfFailed: true, extraDetails: { rerunBy: requestedBy, rerunAt: new Date().toISOString() } }).then(addressOutcome), "map_unreachable"),
       timed("photos", runPhotoCheck({ orgId, asServer, requestedBy }).then((answer) => (answer?.available === false ? { ran: false, code: "photos_failed" } : { ran: true })), "photos_failed"),
     ]);
   } else if (group === "certification") {

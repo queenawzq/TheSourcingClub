@@ -610,7 +610,8 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle", from: null });
   const score = group.checking || group.error ? null : scoreGroup(group);
-  const canRun = fields.length > 0 && group.rerunnable !== false;
+  // Run again reads what was uploaded: a file with no reading yet has no fields, and is exactly what it is for.
+  const canRun = group.rerunnable !== false && (fields.length > 0 || (group.evidence?.kind ?? "none") !== "none");
   const canReason = group.evidence?.kind !== "none";
   // A new reading (Run again, or a teammate's) replaces the fields; staff's own unsaved edits are only replaced by it.
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
@@ -637,8 +638,23 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
     setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done", from });
   };
 
+  // The chip compares with the score just before the latest change (Run again or a record), not the run's start.
+  const [change, setChange] = useState(null);
+  const previous = useRef(score);
+  const running = run.state === "running";
+  useEffect(() => {
+    // While a group is checking its score reads as nothing; the last real score is what the next one is compared with.
+    if (score == null) return;
+    const from = previous.current;
+    previous.current = score;
+    if (from == null || from === score) return;
+    setChange({ from, to: score });
+    // A record after a run: the footer's "Score updated" line belonged to the run, so it goes back to the reading's date.
+    if (!running) setRun((current) => (current.state === "done" && current.from !== from ? { state: "idle", from: null } : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [score]);
   const to = score;
-  const delta = run.state === "done" && run.from != null && to != null ? to - run.from : 0;
+  const delta = change && change.to === score ? change.to - change.from : 0;
   const status = run.state === "running" ? { text: "Checking again…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
       : run.state === "done" ? { text: to == null ? "Read again" : to === run.from ? `Same result: ${to}%` : `Score updated: ${run.from ?? 0}% to ${to}%`, tone: "done" }

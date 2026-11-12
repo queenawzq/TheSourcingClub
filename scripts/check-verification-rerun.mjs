@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   RERUN_WORDS, checkFields, editsFrom, failureCode, outOfDateWords, readingOutOfDate, rerunFailureWords, scoreChangeWords,
 } from "../src/shared/verification-rerun.mjs";
-import { addressOutcome, handle, runGroup, standingEdits } from "../api/verification-rerun.js";
+import { addressOutcome, handle, runGroup, standingEdits, viesNeedsAsking } from "../api/verification-rerun.js";
 import { overlayEdits } from "../api/registry-assist.js";
 import { modelFailure } from "../api/admin-review-assist.js";
 import { createRerun, groupScore } from "../src/lib/domain/verification-rerun.js";
@@ -237,9 +237,37 @@ await check("the reading step asks the reader to keep a better stored reading", 
   assert.equal(asked.previous.details.fileId, "old");
 });
 
+await check("the map not answering keeps the last address check: Run again asks for that", async () => {
+  let asked = null;
+  const steps = stubSteps([]);
+  const assist = await steps.registryAssist();
+  steps.registryAssist = async () => ({ ...assist, runAddressCheck: async (args) => { asked = args.keepIfFailed; return { available: true, kept: true, address: "x", found: false, lookupFailed: true }; } });
+  const result = await runGroup({ orgId: ORG, group: "company_information", fields: {}, edits: [], asServer: fakeDb(ptTables("new")), requestedBy: "staff", steps, rules });
+  assert.equal(asked, true);
+  assert.equal(result.code, "map_unreachable");
+});
+
+await check("VIES is asked again only when the number changed or nothing was asked", async () => {
+  assert.equal(viesNeedsAsking({ number: "513284974", last: null }), true, "no earlier answer");
+  assert.equal(viesNeedsAsking({ number: "513284974", last: { number_checked: "513284974" } }), false, "same number: keep");
+  assert.equal(viesNeedsAsking({ number: "PT 513 284 974", last: { number_checked: "513284974" } }), false, "same number, written differently");
+  assert.equal(viesNeedsAsking({ number: "513284982", last: { number_checked: "513284974" } }), true, "staff edited the number");
+  assert.equal(viesNeedsAsking({ number: "513284974", readNumber: "513284982", last: { number_checked: "513284974" } }), true, "a new reading read another number");
+});
+
+await check("Run again keeps the last VIES answer for an unchanged number, without asking", async () => {
+  const log = [];
+  const calls = [];
+  const tables = { ...ptTables("new"), registry_checks: [{ org_id: ORG, source: "vies", automatic: true, result: "registered", number_checked: "513284976" }] };
+  const result = await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(tables, calls), requestedBy: "staff", steps: stubSteps(log), rules });
+  assert.equal(result.ok, true);
+  assert.ok(!log.some(([step]) => step === "vies"), "VIES not asked");
+  assert.ok(!calls.includes("rpc:record_registry_check"), "nothing recorded over the last answer");
+});
+
 await check("VIES erroring keeps its last answer: nothing is recorded over it", async () => {
   const calls = [];
-  const tables = { ...ptTables("new"), registry_checks: [{ org_id: ORG, source: "vies", automatic: true, result: "registered" }] };
+  const tables = { ...ptTables("new"), registry_checks: [{ org_id: ORG, source: "vies", automatic: true, result: "registered", number_checked: "513284974" }] };
   const result = await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(tables, calls), requestedBy: "staff", steps: stubSteps([], { vies: { result: "could_not_check", details: {} } }), rules });
   assert.equal(result.code, "registry_unreachable");
   assert.ok(!calls.includes("rpc:record_registry_check"), "no could_not_check recorded over the last answer");

@@ -542,11 +542,13 @@ async function addressInputs(asServer, orgId) {
  * staff button, the factory's upload and the daily job. Never throws.
  * Returns `{ available: true, ...details }` or `{ available: false, reason }`.
  */
-export async function runAddressCheck({ orgId, asServer, requestedBy = null, fetchImpl, callModelImpl, siteAddress = "", extraDetails = null } = {}) {
+export async function runAddressCheck({ orgId, asServer, requestedBy = null, fetchImpl, callModelImpl, siteAddress = "", extraDetails = null, keepIfFailed = false } = {}) {
   try {
     if (!orgId || !asServer) return { available: false, reason: "No company to check." };
     const { detail, signals } = await addressInputs(asServer, orgId);
     const details = { ...(await addressAnswer({ detail, signals, fetchImpl, callModelImpl, siteAddress })), ...(extraDetails ?? {}) };
+    // Run again: the map not answering is no new answer, so the last address check stands.
+    if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address")) return { available: true, kept: true, ...details };
     // Recorded as one "address" signal; result is the site's judgement, as before.
     const { error: saveError } = await asServer.rpc("record_verification_signal", {
       target_org: orgId, kind: "address", subject: null, result: details.judgement || "unknown", details, requested_by: requestedBy,
