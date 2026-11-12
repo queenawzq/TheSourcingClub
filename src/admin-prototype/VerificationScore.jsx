@@ -503,7 +503,8 @@ function RecordForm({ check, legalName, onSave, onDone }) {
 function SubCheck({ check, groupKey, legalName, canReason, actions }) {
   const [mode, setMode] = useState(null);
   const registry = check.registry;
-  const canRecord = Boolean(registry) && registry.by !== "Checked automatically" && registry.recordable !== false;
+  // An automatic check has no form unless the data says a person's record is still needed (live: approval).
+  const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
   const close = () => setMode(null);
   return (
     <li className={`vr-sub${mode ? " is-open" : ""}`}>
@@ -525,7 +526,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
         <div className="vr-sub-actions">
           {canRecord && (
             <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
-              {registry.result ? "Update check" : `Record ${registry.source} check`}
+              {registry.result && registry.by !== "Checked automatically" ? "Update check" : `Record ${registry.source} check`}
             </button>
           )}
           {check.lookup && <LookupAction lookup={check.lookup} />}

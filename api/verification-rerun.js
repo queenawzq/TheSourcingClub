@@ -257,8 +257,11 @@ async function currentValues({ group, orgId, asServer, rules, subjectId }) {
   const reading = await latestReading(asServer, orgId);
   const values = readingValues(reading, rules.READING_KEYS);
   if (group === "business_registration") {
+    // The number the screen shows: the reading's when it has one, else the one on record
+    // (verification-score.mjs: `x.registrationNumber || reg.number`). Comparing with the
+    // record alone dropped an edit back to the typed number as "no change".
     const { data } = await asServer.from("company_registrations").select("number").eq("org_id", orgId).maybeSingle();
-    if (data?.number) values.number = data.number;
+    if (data?.number && !values.number) values.number = data.number;
     return values;
   }
   return { scope: values.scope, siteAddress: (await LATEST_SITE_ADDRESS(asServer, orgId).catch(() => "")) || null };

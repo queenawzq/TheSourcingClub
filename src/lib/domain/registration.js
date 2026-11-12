@@ -4,6 +4,7 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { approvalBlockWords } from "../../shared/verification-score.mjs";
 import { normaliseAccessCode, normaliseRegistrationLetter, normaliseRegistrationNumber, numberFromDocument, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
@@ -98,20 +99,8 @@ export async function adminRegistryDetail(orgId) {
  */
 export function approvalBlockText(detail) {
   if (!detail?.registration) return "Needs the company's registration number first";
-  const problem = detail.approvalProblem;
-  if (problem === "no_check") {
-    return detail.current && detail.current.result !== "found"
-      ? "The latest registry check did not find a match"
-      : "Record a registry check that found the company first";
-  }
-  if (problem === "renamed") return "The company was renamed after its registry check: check it again";
-  if (problem === "name_differs") return `The registry names another company (${detail.nameDiffers}): record a check confirming why`;
-  if (problem === "document_differs") return "The AI reading of the document shows another number or name: record a check confirming why";
-  if (problem === "duplicate") return "Another company uses this registration number: explain it first";
-  if (problem === "number_check_digit_fails") return "The number read off the license fails its check digit: type it from the image";
-  if (problem === "number_needs_staff") return "This license needs its number typed by staff (old 15-digit or Hong Kong)";
-  if (problem === "trading_only") return "The license's business scope is trading only: record a reason in the Trading scope row first";
-  return null;
+  // Worded by where each block is cleared on the Nov 12 review page (verification-score.mjs).
+  return approvalBlockWords(detail.approvalProblem, detail);
 }
 
 export async function registryApprovalBlock(orgId) {

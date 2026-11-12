@@ -251,7 +251,10 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     const auto = checks.find((c) => c.automatic);
     if (auto) {
       const src = sourceWords(auto.source);
-      const registry = record({ source: src, sourceKey: auto.source, by: "Checked automatically", result: auto.result === "registered" ? "found" : auto.result, reference: auto.numberChecked ? `${country ?? ""}${auto.numberChecked}` : "" });
+      const registry = record({ source: src, sourceKey: auto.source, by: "Checked automatically",
+        // Approve still needs a person's record (registry_approval_problem: no_check), so the row keeps its form.
+        recordable: true,
+        result: auto.result === "registered" ? "found" : auto.result, reference: auto.numberChecked ? `${country ?? ""}${auto.numberChecked}` : "" });
       const name = String(auto.details?.name ?? "").trim();
       if (auto.result === "registered") {
         const named = name && !/^-+$/.test(name);
