@@ -184,6 +184,21 @@ export function reasonsByKey(input, timeZone) {
 
 /* ------------------------------------------------------------ business registration */
 
+// The usual verification stamps on a licence copy, hand-translated (never machine-translated on read).
+const WATERMARKS = {
+  仅供认证使用: "for verification use only", 仅供认证用: "for verification use only", 仅供验证使用: "for verification use only",
+  仅供审核使用: "for review use only", 仅供备案使用: "for filing use only", 仅供办理业务使用: "for business use only",
+  仅供投标使用: "for tender use only", 再次复印无效: "invalid if copied again", 复印无效: "invalid if copied",
+};
+
+/** "仅供认证使用 (for verification use only)": the stamp as printed, with its meaning when known. */
+export function watermarkWords(text) {
+  const printed = String(text ?? "").trim();
+  const key = printed.replace(/[\s，,。.、]/g, "");
+  const meaning = WATERMARKS[key] ?? Object.entries(WATERMARKS).filter(([zh]) => key.includes(zh)).map(([, en]) => en).filter((en, i, all) => all.indexOf(en) === i).join("; ");
+  return meaning ? `${printed} (${meaning})` : printed;
+}
+
 function licenceLabel(country, reading) {
   const type = String(reading?.details?.extracted?.documentType ?? "");
   if (country === "TR") return /levha/i.test(type) ? "Tax plate" : "Tax registration letter";
@@ -192,7 +207,17 @@ function licenceLabel(country, reading) {
   return "Registration document";
 }
 
-export function licenceCheck({ reading, files, registration, country, title, licenseCopyLow }) {
+// Portugal: the online certidão opens with its access code, copied on the way.
+const CERTIDAO_URL = "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente";
+
+export function licenceCheck(args) {
+  const check = licenceCheckOnly(args);
+  const code = String(args.registration?.accessCode ?? "").trim();
+  if (args.country === "PT" && code && args.files?.length) return { ...check, lookup: { label: "Open online certificate", href: CERTIDAO_URL, copy: code } };
+  return check;
+}
+
+function licenceCheckOnly({ reading, files, registration, country, title, licenseCopyLow }) {
   const label = licenceLabel(country, reading);
   const base = { key: "licence", label, weight: 30, reasonKey: "licence" };
   if (!files.length) return { ...base, score: null, verdict: "No licence uploaded", canReason: false };
@@ -259,6 +284,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     const registry = record({
       source: src.replace(/^the /, ""), sourceKey: current.source, by, result: outcome === "mismatch" ? "not_found" : outcome,
       reference: cd.reference ?? "", name: (detail.renamedSinceCheck ? title : cd.name ?? title) ?? "",
+      ...(cd.reason ? { reason: String(cd.reason) } : {}),
     });
     if (detail.renamedSinceCheck) {
       out = { score: null, verdict: "Renamed since the check", registry: { ...registry, for: cd.titleAtCheck ?? cd.nameAtCheck ?? null } };
@@ -310,7 +336,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   if ((detail.duplicates ?? []).length && !detail.duplicateExplained && out.score != null && out.score > SCORES.registry.nameDiffers) {
     out = { ...out, score: SCORES.registry.nameDiffers, verdict: `${out.verdict}; number also used by ${detail.duplicates.map((o) => o.name).join(", ")}`, short: null };
   }
-  return { ...base, ...out, canReason: true, ...(lookup ? { lookup } : {}) };
+  // The reason typed with "Name differs" stays on the row afterwards (grey, who and when).
+  const recorded = out.registry?.reason && current ? { text: out.registry.reason, by: out.registry.by, at: current.checked_at ?? null, recorded: true } : null;
+  return { ...base, ...out, canReason: true, ...(recorded ? { reason: recorded } : {}), ...(lookup ? { lookup } : {}) };
 }
 
 const NUMBER_LABEL = { CN: "Registration number", TR: "Tax number (VKN)", PT: "NIPC (company number)" };
@@ -654,7 +682,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     key: "business_registration",
     label: "Business registration",
     verdict: brVerdict.verdict,
-    why: [brVerdict.explain, whyFrom(brChecks, brVerdict.lead), reading?.details?.extracted?.watermarkText ? `Stamped “${reading.details.extracted.watermarkText}”.` : ""].filter(Boolean).join(" "),
+    why: [brVerdict.explain, whyFrom(brChecks, brVerdict.lead), reading?.details?.extracted?.watermarkText ? `Stamped “${watermarkWords(reading.details.extracted.watermarkText)}”.` : ""].filter(Boolean).join(" "),
     checking: Boolean(input?.pending?.registration),
     evidence: files.length
       ? { kind: "licence", files: files.map((f) => ({ id: f.id, name: f.name, bucket: f.bucket, path: f.path, mimeType: f.mimeType ?? null, when: dayWords(f.createdAt, timeZone) })) }
@@ -693,7 +721,12 @@ export function scoreVerification(input, { timeZone } = {}) {
       ...(scopeText ? [{ key: "scope", label: country === "TR" ? "Activity on the tax plate" : country === "PT" ? "Activity on the certificate" : "Business scope on the licence", value: scopeText, wide: true, multiline: true, editable: true }] : []),
       ...(typedAddress ? [{
         key: "siteAddress", label: "Factory address", value: typedAddress, wide: true, editable: true,
-        ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? { licence: licenceAddress } : {}),
+        ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? {
+          licence: licenceAddress,
+          // The parts the address check found differing, on the licence's side: only those are boxed ("3栋", not the whole line).
+          licenceParts: (level.address_owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
+            .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)),
+        } : {}),
       }] : []),
     ],
     checks: ciChecks.map(clean),

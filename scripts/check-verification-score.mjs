@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, scoreGroup as groupScore, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
+  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 
@@ -83,6 +83,13 @@ console.log("fix round 2");
   const row = approvalBlockRow("document_differs", {}, reading);
   check(row?.check === "registry" && /number difference/.test(row.words), `the number difference is named on the registry row (${row?.words})`);
   check(/number on the licence/.test(approvalBlockWords("document_differs", {}, reading)), "the side panel names the number too");
+}
+{
+  check(watermarkWords("仅供认证使用") === "仅供认证使用 (for verification use only)", "the watermark is translated");
+  const pt = licenceCheck({ reading: null, files: [{ id: "f" }], registration: { accessCode: "4821-7730-9145" }, country: "PT", title: "X" });
+  check(pt.lookup?.label === "Open online certificate" && pt.lookup.copy === "4821-7730-9145", "Portugal: Open online certificate copies the access code");
+  const nd = registryCheck({ detail: { registration: { country: "CN", number: "1" }, current: { id: "x", source: "qcc", result: "found", checked_at: "2026-11-12T10:00:00Z", details: { outcome: "name_differs", name: "A", reason: "old name on QCC" } }, checks: [{ id: "x", checkedBy: "Staff" }] }, country: "CN", title: "A", timeZone: "UTC" });
+  check(nd.reason?.text === "old name on QCC" && /Staff/.test(nd.reason.by), "the reason typed with Name differs stays on the row");
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");

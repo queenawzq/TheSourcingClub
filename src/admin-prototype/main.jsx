@@ -879,7 +879,6 @@ function AiSuggestionsPanel({ orgId }) {
   return (
     <Panel
       title="AI suggestions"
-      subtitle="From an AI model that read the profile, not the files. The decision is yours."
       className="admin-assist-panel"
     >
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
@@ -1354,7 +1353,6 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>Complete this review</h2>
-              <p>Review the evidence and confidence signals before making a marketplace decision.</p>
               {isVendor && (
                 <fieldset className="admin-tier-picker">
                   <legend>Assign marketplace badge</legend>

@@ -181,11 +181,27 @@ function SearchImageAction({ onSearch }) {
 }
 
 /** `shown` with the parts that differ from `other` marked: characters for a number, words for a name or address. */
-function marked(shown, other) {
+/** A word as compared: no accents, no case, Turkish dotted İ as i, trailing dots dropped ("Mah." = "Mah"). */
+const foldWord = (word) => String(word ?? "").replace(/İ/g, "I").replace(/ı/g, "i").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\.+$/, "");
+
+/**
+ * `shown` with the parts that differ from `other` marked: characters for a number, words for a name or address.
+ * `parts`: when the address check already named the differing parts ("3栋"), only those are marked.
+ */
+function marked(shown, other, parts = null) {
+  if (parts?.length) {
+    const pieces = parts.filter((part) => part && shown.includes(part));
+    if (pieces.length) {
+      const pattern = new RegExp(`(${pieces.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+      return shown.split(pattern).map((piece, index) => (pieces.includes(piece) ? <mark key={index}>{piece}</mark> : piece));
+    }
+  }
   const isCode = !/\s/.test(shown) && !/\s/.test(other) && shown.length === other.length;
   if (isCode) return [...shown].map((char, index) => (char === other[index] ? char : <mark key={index}>{char}</mark>));
-  const words = new Set(other.toLowerCase().split(/[\s,]+/).filter(Boolean));
-  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(part.toLowerCase()) ? part : <mark key={index}>{part}</mark>));
+  // Text in another script than what it is compared with: nothing to compare word for word, so nothing is marked.
+  if (parts && /[\p{Script=Han}]/u.test(shown) !== /[\p{Script=Han}]/u.test(other)) return shown;
+  const words = new Set(other.split(/[\s,]+/).filter(Boolean).map(foldWord));
+  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(foldWord(part)) ? part : <mark key={index}>{part}</mark>));
 }
 
 /* ------------------------------------------------------------------ card */
@@ -455,7 +471,7 @@ function RecordForm({ check, legalName, onSave, onDone }) {
   const [result, setResult] = useState(registry.result && !registry.for && registry.by !== "Checked automatically" ? registry.result : "found");
   const [name, setName] = useState(isCert ? "" : (registry.result === "name_differs" ? registry.name : legalName) ?? "");
   const [reference, setReference] = useState(registry.reference ?? "");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(registry.reason ?? "");
   const [save, run] = useSave();
   const showsName = !isCert && (result === "found" || result === "name_differs");
   const needsReason = result === "name_differs";
@@ -595,7 +611,7 @@ function ReadField({ field, value, onChange, onExplain }) {
         <p className="vr-compare is-typed"><span>Typed:</span> {marked(field.typed, value ?? "")}</p>
       )}
       {field.licence && (value ?? "") !== field.licence && (
-        <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "")}</p>
+        <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "", field.licenceParts ?? [])}</p>
       )}
       {dup && !dup.explained && !explaining && (
         <p className="vr-compare is-dup">
@@ -663,6 +679,7 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
   // The chip compares with the score just before the latest change (Run again or a record), not the run's start.
   const [change, setChange] = useState(null);
   const previous = useRef(score);
+  const changedWith = useRef(null);
   const running = run.state === "running";
   useEffect(() => {
     // While a group is checking its score reads as nothing; the last real score is what the next one is compared with.
@@ -671,10 +688,16 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
     previous.current = score;
     if (from == null || from === score) return;
     setChange({ from, to: score });
+    changedWith.current = group;
     // A record after a run: the footer's "Score updated" line belonged to the run, so it goes back to the reading's date.
     if (!running) setRun((current) => (current.state === "done" && current.from !== from ? { state: "idle", from: null } : current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [score]);
+  // The chip belongs to the action that moved the score: the next action that leaves it unchanged clears it.
+  useEffect(() => {
+    if (changedWith.current !== group) setChange(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group]);
   const to = score;
   const delta = change && change.to === score ? change.to - change.from : 0;
   const status = run.state === "running" ? { text: "Checking again…" }
