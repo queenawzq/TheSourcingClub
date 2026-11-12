@@ -52,8 +52,8 @@ export async function verificationScore(orgId, { urls = true, timeZone } = {}) {
     }
     if (evidence.kind === "photos") {
       const photos = await Promise.all(evidence.photos.map(async (p) => {
-        const src = await signed(p, seconds);
-        return { ...p, src, searchLinks: src ? reverseImageLinks(src) : [] };
+        // No search link here: one is minted per click, short-lived (photoSearchLink).
+        return { ...p, src: await signed(p, seconds) };
       }));
       return { ...group, evidence: { ...evidence, photos } };
     }
@@ -65,6 +65,18 @@ export async function verificationScore(orgId, { urls = true, timeZone } = {}) {
     return group;
   }));
   return { ...verification, groups };
+}
+
+/**
+ * "Search image" (fix round 2): a reverse image search needs a link the
+ * search service can open, so a signed link to the private photo is minted
+ * only when staff click, and lives 10 minutes. The page is staff-only, and
+ * storage signs a private photo only for staff or the company itself.
+ */
+export const SEARCH_LINK_SECONDS = 10 * 60;
+export async function photoSearchLink(photo) {
+  const url = await signed(photo, SEARCH_LINK_SECONDS);
+  return url ? reverseImageLinks(url)[0]?.href ?? null : null;
 }
 
 /**
@@ -81,11 +93,13 @@ export async function recordRegistryResult(orgId, { source, result, reference = 
 const CERT_WORDS = { found: "Found on the issuer's list", expired: "Expired on the issuer's list", not_found: "Not on the issuer's list", could_not_check: "Could not check the issuer's list" };
 
 /** Certificate record form: found | expired | not_found | could_not_check. */
-export async function recordCertificateResult(orgId, certificationId, { result, reference = "", note = "" }) {
+export async function recordCertificateResult(orgId, certificationId, { result, reference = "", note = "", number = "" }) {
+  // The number on screen goes with the record, so the record never leaves it blank.
+  const details = { ...(reference ? { link: reference } : {}), ...(String(number || "").trim() ? { number: String(number).trim() } : {}) };
   return plain(await supabase.rpc("admin_record_signal", {
     target_org: orgId, kind: "certificate", subject: certificationId, result,
     note: String(note || "").trim() || CERT_WORDS[result] || result,
-    details: reference ? { link: reference } : {},
+    details,
   }), "record the check");
 }
 
@@ -104,9 +118,10 @@ export async function recordPhoto(orgId, documentId, { result, link = "", note =
 }
 
 /** "Add reason" on a sub-check: licence | registry | scope | address | photos | certificate (with its id). */
-export async function saveCheckReason(orgId, checkKey, text, subjectId = null) {
-  return plain(await supabase.rpc("admin_check_reason", {
-    target_org: orgId, check_key: checkKey, note: text, subject: subjectId,
+export async function saveCheckReason(orgId, checkKey, text, subjectId = null, writtenFor = null) {
+  // `writtenFor`: the verdict the reason explains; it stops lifting the check once the verdict changes.
+  return plain(await supabase.rpc("admin_check_reason_for", {
+    target_org: orgId, check_key: checkKey, note: text, subject: subjectId, written_for: writtenFor || null,
   }), "save the reason");
 }
 

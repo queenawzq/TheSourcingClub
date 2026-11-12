@@ -41,6 +41,7 @@ import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 import { checkCallText } from "../api/screen-call-text.js";
+import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 
 // A demo document that shows something when it is opened: its own name.
 function demoPdf(name) {
@@ -713,11 +714,19 @@ console.log("verification score cases");
       model: "seed",
     },
   }), "record the reading");
-  const ownerResult = (level, comparisons = []) => ({ key: "address_owner", level, reasons: [], details: { comparisons }, checkedAt: day(-1) });
-  const addressCheck = async ({ org }, result, owner, site = {}) => must(await admin.from("verification_signals").insert({
-    org_id: org.id, kind: "address", automatic: true, result, checked_at: day(-1),
-    details: { found: true, precise: true, ...site, checks: [owner, { key: "address_site", level: result === "industrial" ? "high" : "medium", reasons: [], details: {}, checkedAt: day(-1) }] },
-  }), "record the address check");
+  // The address check as the real one answers it (fix round 2): the owner comparison is the real rule
+  // (addressOwnerCheck, no network), and the site is what the map answered for these addresses
+  // (Nominatim, Nov 12), so Run again with nothing edited gives the same story; a less specific
+  // answer on a re-run keeps this one (keepEarlierAddress).
+  const addressCheck = async ({ org }, sources, site) => {
+    const owner = addressOwnerCheck(sources, new Date(day(-1)));
+    const details = { address: sources.license || sources.typed, from: sources.license ? "the licence" : "the factory's production address", countryCode: sources.country, ...site };
+    const siteResult = addressSiteCheck(details, { owner, now: new Date(day(-1)) });
+    must(await admin.from("verification_signals").insert({
+      org_id: org.id, kind: "address", automatic: true, result: site.judgement ?? "unknown", checked_at: day(-1),
+      details: { ...details, checks: [owner, siteResult] },
+    }), "record the address check");
+  };
   const photoCheck = async ({ org }, entries) => must(await admin.rpc("record_photo_check", {
     target_org: org.id, checker: null,
     check_result: { key: "photos", level: "medium", reasons: [], details: { perPhoto: entries, duplicates: [], workshopCount: entries.length }, checkedAt: day(-1) },
@@ -744,7 +753,9 @@ console.log("verification score cases");
       legalRepresentative: "张伟", address: "杭州市萧山区江东三路18号", businessScope: "服装制造；服装服饰批发；货物进出口", foundingDate: "2015-04-16",
     }, { tradingScope: { trading: false, read: true, recognised: true, quote: "服装制造", makingFrom: "words" }, fileName: "business-licence.png", title: "杭州钱江服装有限公司" });
     must(await staff.rpc("admin_record_registry_result", { target_org: a.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/7a1c", name_on_registry: "杭州钱江服装有限公司" }), "A's QCC check");
-    await addressCheck(a, "industrial", ownerResult("high", [{ between: ["license", "typed"], verdict: "match", same: ["road", "number"], differs: [] }]));
+    // The map does not place this street: "not found", as the real check answers.
+    await addressCheck(a, { typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", typedFrom: "production", license: "杭州市萧山区江东三路18号", registry: "", country: "CN" },
+      { found: false, judgement: "unknown", tags: [], how: "rule", reasons: ["OpenStreetMap found no place for this address"] });
     const photos = [];
     for (const file of ["factory-floor-1.jpg", "factory-floor-2.jpg", "factory-floor-3.jpg", "factory-floor-1-detail.jpg"]) photos.push(await upload(a, "factory_photo", file, floor(file)));
     await photoCheck(a, photos.map((doc) => entry(doc)));
@@ -771,7 +782,8 @@ console.log("verification score cases");
       differences: [{ field: "number", document: "91440111MA59C2RX8B", typed: "91440111MA59C2RY8C" }], numberAtReading: "91440111MA59C2RY8C",
       warnings: [{ kind: "verificationWatermark" }],
     });
-    await addressCheck(b, "industrial", ownerResult("medium", [{ between: ["license", "typed"], verdict: "differs", same: ["city", "district", "road"], differs: [{ part: "number", a: "3栋", b: "Building 5" }] }]));
+    await addressCheck(b, { typed: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", typedFrom: "production", license: "广州市白云区黄浦路112号3栋", registry: "", country: "CN" },
+      { found: true, precise: true, road: true, placedAs: "primary", displayName: "九太路, 九佛街道, 黄埔区, 广州市, 广东省, 中国", judgement: "unknown", tags: [], how: "rule", reasons: [] });
     const photos = [];
     for (const file of ["factory-floor-2-detail.jpg", "factory-floor-3.jpg", "factory-floor-1.jpg"]) photos.push(await upload(b, "factory_photo", file, floor(file)));
     await photoCheck(b, photos.map((doc) => entry(doc)));
@@ -793,7 +805,10 @@ console.log("verification score cases");
       documentType: "Vergi Levhası", registrationNumber: "6230418796", legalName: "Merter Tekstil Toptan Ticaret Ltd. Şti.", taxOffice: "Merter",
       address: "Merter Mah., Güngören, İstanbul", businessScope: "Toptan giyim ticareti", activityCodes: ["46.42"],
     }, { tradingScope: { trading: true, read: true, recognised: true, quote: "Toptan giyim ticareti" }, fileName: "vergi-levhasi.png", title: "Merter Tekstil Toptan Ticaret Ltd. Şti.", numberAtReading: "6230418796" });
-    await addressCheck(c, "unknown", ownerResult("medium", [{ between: ["license", "typed"], verdict: "partial", same: ["district"], differs: [] }]), { precise: false });
+    await addressCheck(c, { typed: "Merter, Güngören, Istanbul", typedFrom: "production", license: "Merter Mah., Güngören, İstanbul", registry: "", country: "TR" },
+      { found: true, precise: true, placedAs: "building", displayName: "İstanbul Büyükşehir Belediyesi Ek Hizmet Binası, Haldun Taner Sokağı, Merter, Güngören, İstanbul, 34173, Türkiye",
+        judgement: "office", how: "rule", reasons: ["building=commercial within 0 m"],
+        tags: [{ tag: "building=commercial", count: 1, nearest: 0 }, { tag: "landuse=industrial", count: 1, nearest: 0, name: "Merter Tekstil Merkezi" }] });
     const photos = [];
     for (const file of ["dashboard-rfq-denim.jpg", "dashboard-rfq-shirt.jpg", "factory-header.png", "dashboard-rfq-knit.jpg"]) photos.push(await upload(c, "factory_photo", file, image(file)));
     const cnCopyOrg = must(await admin.from("orgs").select("id").eq("name", LOGINS.verifyCnCopy.name).limit(1).single(), "B's id");
@@ -826,7 +841,10 @@ console.log("verification score cases");
       org_id: d.org.id, country_code: "PT", number_checked: "513284974", source: "vies", result: "registered", automatic: true, checked_at: day(-1),
       details: { name: "Têxteis Douro – Confecções, Lda", address: "Rua da Igreja 214, 4750-142 Arcozelo" },
     }), "D's VIES answer");
-    await addressCheck(d, "residential", ownerResult("high", [{ between: ["license", "typed"], verdict: "match", same: ["road", "number"], differs: [] }]));
+    // Placed on Rua da Igreja (Nominatim, Nov 12); the homes around it are the map's residential land use.
+    await addressCheck(d, { typed: "Rua da Igreja 214, Arcozelo, Barcelos", typedFrom: "production", license: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", registry: "Rua da Igreja 214, 4750-142 Arcozelo", registryFrom: "VIES", country: "PT" },
+      { found: true, precise: true, road: true, placedAs: "tertiary", displayName: "Rua da Igreja, Arcozelo, Barcelos, Braga, 4750-177, Portugal",
+        judgement: "residential", how: "rule", reasons: ["landuse=residential within 0 m"], tags: [{ tag: "landuse=residential", count: 1, nearest: 0 }] });
     const photos = [];
     for (const file of ["factory-floor-3-detail.jpg", "factory-floor-1.jpg", "factory-floor-2.jpg"]) photos.push(await upload(d, "factory_photo", file, floor(file)));
     await photoCheck(d, photos.map((doc) => entry(doc)));

@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCORES, lifted, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
+  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, scoreGroup as groupScore, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 
@@ -48,6 +48,41 @@ check(empty.overall === null && empty.standing.word === "Not checked" && empty.t
   const longer = licenceCheck({ reading: { details: { extracted: { legalName: "Têxteis Douro – Confecções, Lda", registrationNumber: "513284974" } } }, files: [{ id: "f" }], registration: {}, country: "PT", title: "Têxteis Douro" });
   check(longer.score === SCORES.licence.clean, `the full legal name against a short title is not cut short (${longer.verdict})`);
   check(renamedWhy({ source: "GİB", for: "Merter Tekstil Ltd. Şti." }, "Merter Tekstil Toptan Ticaret Ltd. Şti.") === "GİB was checked for “Merter Tekstil Ltd. Şti.”; the name is now longer.", "a rename's why says what was checked and what changed");
+}
+console.log("fix round 2");
+{
+  // 1. A reason belongs to the verdict it was written for.
+  const reason = { text: "seen on the map", writtenFor: "Same as the licence" };
+  check(!reasonIsEarlier(reason, "Same as the licence"), "a reason for the current verdict is current");
+  check(reasonIsEarlier(reason, "City differs from the licence"), "a reason for an earlier verdict is earlier");
+  check(!reasonIsEarlier({ text: "old" }, "anything"), "a reason saved before writtenFor keeps lifting");
+  const base = { detail: { title: "杭州钱江服装有限公司", productionAddress: "55 Renmin Road, Haidian, Beijing", registration: { country: "CN", number: "91330109MA2B3K7Q4L" } }, extra: { registrationFiles: [{ id: "f" }], signals: [
+    { kind: "document_reading", subjectId: "f", automatic: true, details: { fileId: "f", extracted: { legalName: "杭州钱江服装有限公司", registrationNumber: "91330109MA2B3K7Q4L", address: "杭州市萧山区江东三路18号" }, differences: [{ field: "name", document: "杭州钱江服装有限公司", typed: "Other" }] } },
+  ] }, rules: {} };
+  const stale = scoreVerification({ ...base, reasons: [{ checkKey: "license_read", note: "licence matches QCC", at: "2026-11-12T10:00:00Z", by: "Staff", writtenFor: "Original, every field readable" }] }, { timeZone: "UTC" });
+  const lic = stale.groups[0].checks.find((c) => c.key === "licence");
+  check(lic.score === SCORES.licence.differs && lic.reason?.earlier && lic.reason.for === "Original, every field readable", `an earlier reason does not lift a new problem (${lic.score}, ${lic.reason?.for})`);
+  const fresh = scoreVerification({ ...base, reasons: [{ checkKey: "license_read", note: "typo", at: "2026-11-12T10:00:00Z", by: "Staff", writtenFor: lic.verdict }] }, { timeZone: "UTC" });
+  check(fresh.groups[0].checks.find((c) => c.key === "licence").score === 60, "a reason for this very verdict lifts it to 60");
+  // 3. The certificate number is never wiped.
+  const signals = [
+    { kind: "certificate", subjectId: "c", automatic: true, details: { certNumber: "", holder: "" } },
+    { kind: "certificate", subjectId: "c", automatic: false, result: "found", details: {} },
+    { kind: "certificate", subjectId: "c", automatic: false, result: "found", details: { number: "CU 1048211" } },
+  ];
+  check(certificateNumber("c", signals) === "CU 1048211", "an empty reading and a record without a number keep the stored number");
+  // 4. Couldn't check counts as Not found, never below it.
+  const reg = (result) => registryCheck({ detail: { registration: { country: "CN", number: "91330109MA2B3K7Q4L" }, current: { id: "x", source: "qcc", result, details: {} }, checks: [{ id: "x" }] }, country: "CN", title: "A" });
+  const couldnt = reg("could_not_check");
+  const notFound = reg("not_found");
+  const grp = (c) => groupScore({ key: "business_registration", checks: [{ key: "licence", weight: 30, score: 95 }, { ...c, weight: 30 }] });
+  check(couldnt.score === null && grp(couldnt) >= grp(notFound), `Couldn't check (${grp(couldnt)}) is never below Not found (${grp(notFound)})`);
+  check(couldnt.verdict === "Couldn't check QCC", `the source keeps its capitals (${couldnt.verdict})`);
+  // 5. The block shows on the row where it is cleared, naming number or name.
+  const reading = { details: { differences: [{ field: "number", document: "1", typed: "2" }] } };
+  const row = approvalBlockRow("document_differs", {}, reading);
+  check(row?.check === "registry" && /number difference/.test(row.words), `the number difference is named on the registry row (${row?.words})`);
+  check(/number on the licence/.test(approvalBlockWords("document_differs", {}, reading)), "the side panel names the number too");
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");

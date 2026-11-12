@@ -43,7 +43,8 @@ export function scoreGroup(group) {
   // Nothing in the group checked yet: "Not checked", not 0%.
   if (!counted.some((check) => check.score != null)) return null;
   const total = counted.reduce((sum, check) => sum + check.weight, 0);
-  return Math.round(counted.reduce((sum, check) => sum + (check.score ?? 0) * check.weight, 0) / total);
+  // `counts`: an unscored check that still counts as something ("Couldn't check" counts as Not found, never below it).
+  return Math.round(counted.reduce((sum, check) => sum + (check.score ?? check.counts ?? 0) * check.weight, 0) / total);
 }
 
 export function scoreOverall(groups) {
@@ -87,7 +88,21 @@ export function standingFor(score) {
 
 /** A staff reason lifts a scored check under 60 to 60; an unscored one stays unscored. */
 export function lifted(score, reason) {
-  return reason && score != null && score < SCORES.reasonFloor ? SCORES.reasonFloor : score;
+  return reason && !reasonIsEarlier(reason, null) && score != null && score < SCORES.reasonFloor ? SCORES.reasonFloor : score;
+}
+
+/**
+ * A reason belongs to the problem it was written for (fix round 2): once the
+ * check's verdict is another one, the reason no longer lifts it and is shown
+ * as an earlier reason. A reason saved before `writtenFor` existed has none
+ * and keeps lifting. `verdict` null: only the reason's own flag is read.
+ */
+export function reasonIsEarlier(reason, verdict) {
+  if (!reason) return false;
+  if (reason.earlier) return true;
+  if (verdict == null || !reason.writtenFor) return false;
+  const plain = (text) => String(text ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+  return plain(reason.writtenFor) !== plain(verdict);
 }
 
 /* ------------------------------------------------------------ words */
@@ -143,6 +158,8 @@ export function namesPartlyMatch(a, b) {
 }
 
 const latest = (signals, kind, subjectId) => (signals ?? []).find((s) => s.kind === kind && (subjectId === undefined || s.subjectId === subjectId));
+// Only the first letter: "Couldn't check QCC" → "couldn't check QCC", never "qcc".
+const lowerFirst = (text) => (text ? text[0].toLowerCase() + text.slice(1) : text);
 const capital = (text) => (text ? text[0].toUpperCase() + text.slice(1) : text);
 
 /* ------------------------------------------------------------ reasons */
@@ -155,7 +172,7 @@ export function reasonsByKey(input, timeZone) {
   for (const row of input.reasons ?? []) {
     const key = row.checkKey === "certificate" ? `certificate:${row.subjectId}` : REASON_KEYS[row.checkKey];
     if (!key || out[key]) continue;
-    out[key] = { text: row.note, by: byWords(row.by, row.at, timeZone), at: row.at };
+    out[key] = { text: row.note, by: byWords(row.by, row.at, timeZone), at: row.at, writtenFor: row.writtenFor ?? null };
   }
   // A reason recorded on the old page for a trading licence counts too.
   const trading = input.rules?.tradingOnly?.explanation;
@@ -261,7 +278,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     } else if (current.result === "not_found") {
       out = { score: SCORES.registry.notFound, verdict: `Not found on ${src}`, registry };
     } else {
-      out = { score: null, verdict: `Couldn't check ${src}`, registry };
+      out = { score: null, counts: SCORES.registry.notFound, verdict: `Couldn't check ${src}`, registry };
     }
   } else {
     const auto = checks.find((c) => c.automatic);
@@ -283,7 +300,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       } else if (auto.result === "not_found") {
         out = { score: SCORES.registry.notFound, verdict: `${src}: not registered for VAT`, registry };
       } else {
-        out = { score: null, verdict: `Couldn't check ${src}`, registry };
+        out = { score: null, counts: SCORES.registry.notFound, verdict: `Couldn't check ${src}`, registry };
       }
     } else {
       out = { score: null, verdict: "Not checked yet", registry: record({}) };
@@ -397,14 +414,15 @@ export function photoTiles({ photos, signals, photoCheck, timeZone }) {
     if (mark) {
       tile.result = { own: "own", found_elsewhere: "elsewhere", could_not_check: "could_not" }[mark.result] ?? "unchecked";
       tile.by = byWords(mark.checkedBy, mark.checkedAt, timeZone);
-      if (mark.details?.link) { tile.link = mark.details.link; tile.where = hostOf(mark.details.link); }
+      if (mark.details?.link) { tile.link = mark.details.link; tile.whereUrl = mark.details.link; tile.where = hostOf(mark.details.link); }
     }
     const later = (entry?.duplicateOf ?? []).filter((copy) => copy.mineLater);
     if (later.length) { tile.flag = "tsc"; tile.others = new Set(later.map((copy) => copy.otherOrgId)).size; }
     // "Stock" is the AI's impression: staff recording the photo as their own overrules it.
-    // An office photo stays an office however it is recorded, and a later copy stays a copy.
-    else if (entry?.ai?.kind === "stock_or_marketing" && tile.result !== "own") tile.flag = "stock";
-    else if (entry?.ai?.kind === "office_or_showroom") tile.flag = "office";
+    // An office photo stays an office when recorded as their own, and a later copy stays a copy.
+    // Staff's own record (own, couldn't check) overrules the AI's stock or office impression (fix round 2).
+    else if (entry?.ai?.kind === "stock_or_marketing" && !["own", "could_not"].includes(tile.result)) tile.flag = "stock";
+    else if (entry?.ai?.kind === "office_or_showroom" && tile.result !== "could_not") tile.flag = "office";
     if (entry?.reverseSearch) tile.reverseSearch = entry.reverseSearch;
     return tile;
   });
@@ -425,15 +443,17 @@ export function photosCheck(tiles) {
   const elsewhere = count((t) => t.flag === "tsc" || t.result === "elsewhere");
   const stock = count((t) => t.flag === "stock" && t.result !== "elsewhere");
   const office = count((t) => t.flag === "office" && t.result !== "elsewhere");
-  const open = count((t) => !t.flag && (t.result === "unchecked" || t.result === "could_not"));
+  const open = count((t) => !t.flag && t.result === "unchecked");
+  const couldNot = count((t) => !t.flag && t.result === "could_not");
   let verdict;
   if (own === n) verdict = `All ${n} are their own`;
-  else if (own === 0 && open === 0) verdict = `None of the ${n} is their own`;
+  else if (own === 0 && open === 0 && couldNot === 0) verdict = `None of the ${n} is their own`;
   else {
     const parts = [`${own} of ${n} their own`];
     if (elsewhere) parts.push(`${elsewhere} found elsewhere`);
     if (stock) parts.push(`${stock} stock`);
     if (office) parts.push(`${office} office`);
+    if (couldNot) parts.push(`${couldNot} couldn't check`);
     if (open) parts.push(`${open} not checked yet`);
     verdict = parts.join(", ");
   }
@@ -453,7 +473,7 @@ export function certificateChecks({ certificates, signals, now, timeZone }) {
     const read = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && x.automatic);
     const expiresAt = cert.expiresAt ?? read?.details?.validUntil ?? null;
     const lookupDef = certificateLookup(cert.slug);
-    const number = mark?.details?.number ?? "";
+    const number = certificateNumber(cert.id, signals);
     const href = typeof lookupDef.url === "function" ? lookupDef.url(number, null) : null;
     const expiredByDate = expiresAt && String(expiresAt).slice(0, 10) < today;
     const result = mark?.result ?? null;
@@ -475,34 +495,83 @@ export function certificateChecks({ certificates, signals, now, timeZone }) {
   });
 }
 
+/** A value, or null when it is missing or blank: an empty reading never hides a stored one. */
+const filled = (value) => (value == null || String(value).trim() === "" ? null : String(value).trim());
+
+/**
+ * The certificate's number as far as we know it: what Run again read (or staff
+ * typed there), else the newest staff record that carries one. Never blank
+ * while any record has a number (fix round 2: recording a check wiped it).
+ */
+export function certificateNumber(certId, signals) {
+  const mine = (signals ?? []).filter((x) => x.kind === "certificate" && x.subjectId === certId);
+  const read = mine.find((x) => x.automatic)?.details ?? {};
+  return filled(read.certNumber) ?? mine.filter((x) => !x.automatic).map((x) => filled(x.details?.number)).find(Boolean) ?? "";
+}
+
 /** The certificate's fields: what Run again read off it (or staff typed), each editable for the next run. */
 function certFields(cert, signals, title) {
-  const read = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && x.automatic)?.details ?? {};
-  const staffNumber = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && !x.automatic)?.details?.number ?? "";
+  const mine = (signals ?? []).filter((x) => x.kind === "certificate" && x.subjectId === cert.id);
+  const read = mine.find((x) => x.automatic)?.details ?? {};
+  const holder = filled(read.holder) ?? mine.filter((x) => !x.automatic).map((x) => filled(x.details?.holder)).find(Boolean) ?? "";
   return [
-    { key: "certNumber", label: "Certificate number", value: String(read.certNumber ?? staffNumber ?? ""), copy: true, editable: true },
-    { key: "validUntil", label: "Valid until", value: String(read.validUntil ?? cert.expiresAt ?? "").slice(0, 10), editable: true },
-    { key: "holder", label: "Holder", value: String(read.holder ?? ""), wide: true, editable: true, ...(read.holder ? {} : { placeholder: title }) },
+    { key: "certNumber", label: "Certificate number", value: certificateNumber(cert.id, signals), copy: true, editable: true },
+    { key: "validUntil", label: "Valid until", value: String(filled(read.validUntil) ?? cert.expiresAt ?? "").slice(0, 10), editable: true },
+    { key: "holder", label: "Holder", value: holder, wide: true, editable: true, ...(holder ? {} : { placeholder: title }) },
   ];
 }
 
 /* ------------------------------------------------------------ approval */
 
+/** Which field the licence differs on: "number" or "name" (the number first: it is what a registry looks up). */
+function differingField(detail, reading) {
+  const lines = (reading?.details?.differences ?? []).filter((line) => !line.nearly);
+  if (lines.some((line) => line.field === "number")) return "number";
+  if (lines.length) return "name";
+  return detail?.documentDiffers?.field ?? null;
+}
+
 /** What Approve waits for, named by where it is done on the new screen. */
-export function approvalBlockWords(problem, detail) {
+export function approvalBlockWords(problem, detail, reading = null) {
   if (!problem) return null;
   const src = sourceWords(detail?.current?.source ?? defaultSource(detail?.registration?.country ?? detail?.countryCode));
+  const field = differingField(detail, reading);
   return {
     no_check: detail?.current && detail.current.result !== "found" ? `Registry: the last check on ${src} found no match` : "Registry: record a check first",
     renamed: "Registry: renamed since the check, check it again",
     name_differs: "Registry: name differs, record Name differs with a reason",
-    document_differs: "Registry: the licence differs from what they typed, record Name differs with a reason",
+    document_differs: field === "number"
+      ? "Registry: the number on the licence differs from what they typed, record the difference with a reason"
+      : "Registry: the name on the licence differs from what they typed, record Name differs with a reason",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
     number_unread: "Number not read: ask for a clearer licence",
     trading_only: "Factory or trader: add a reason first",
   }[problem] ?? "Not ready to approve";
+}
+
+/**
+ * The same block, short, on the modal row where it is cleared (fix round 2):
+ * `{ group, check, words }`.
+ */
+export function approvalBlockRow(problem, detail, reading = null) {
+  if (!problem) return null;
+  const field = differingField(detail, reading);
+  const row = {
+    no_check: ["business_registration", "registry", detail?.current && detail.current.result !== "found" ? "Approve needs: a registry record that finds them" : "Approve needs: record a registry check"],
+    renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
+    name_differs: ["business_registration", "registry", "Approve needs: record Name differs with a reason"],
+    document_differs: ["business_registration", "registry", field === "number"
+      ? "Approve needs: record the number difference (Update check, Name differs, with a reason)"
+      : "Approve needs: record the name difference (Update check, Name differs, with a reason)"],
+    duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
+    number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
+    number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
+    number_unread: ["business_registration", "licence", "Approve needs: a clearer licence"],
+    trading_only: ["company_information", "scope", "Approve needs: a reason here"],
+  }[problem];
+  return row ? { group: row[0], check: row[1], words: row[2] } : null;
 }
 
 /* ------------------------------------------------------------ all together */
@@ -528,7 +597,7 @@ function groupVerdict(checks, good, { title } = {}) {
   const weak = counted.filter((c) => c.score != null && c.score < 75).sort((a, b) => a.score - b.score)[0];
   if (weak) return { verdict: weak.verdict, lead: weak };
   const open = counted.find((c) => c.score == null);
-  if (open) return { verdict: `${open.label}: ${open.verdict.toLowerCase()}`, lead: open };
+  if (open) return { verdict: `${open.label}: ${lowerFirst(open.verdict)}`, lead: open };
   return { verdict: good(), lead: null };
 }
 
@@ -558,7 +627,11 @@ export function scoreVerification(input, { timeZone } = {}) {
   const withReason = (check) => {
     const reason = reasons[check.key];
     if (!reason || check.canReason === false) return check;
-    return { ...check, score: lifted(check.score, reason), reason: { text: reason.text, by: reason.by, at: reason.at } };
+    if (reasonIsEarlier(reason, check.verdict)) {
+      // Written for another verdict: shown grey with what it was for, lifts nothing.
+      return { ...check, reason: { text: reason.text, by: reason.by, at: reason.at, earlier: true, for: reason.writtenFor } };
+    }
+    return { ...check, score: lifted(check.score, reason), reason: { text: reason.text, by: reason.by, at: reason.at, ...(reason.writtenFor ? { for: reason.writtenFor } : {}) } };
   };
   const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt"].includes(k)));
 
@@ -566,7 +639,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
   const registry = withReason(registryCheck({ detail, country, title, readName: reading?.details?.extracted?.legalName ?? null, timeZone }));
   const brChecks = [licence, registry];
-  const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? registry.verdict.toLowerCase()}`, { title });
+  const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? lowerFirst(registry.verdict)}`, { title });
   const staleWords = (() => {
     if (!reading) return null;
     if (files[0] && reading.subjectId && reading.subjectId !== files[0].id) {
@@ -601,7 +674,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const tiles = photoTiles({ photos: extra.photos, signals, photoCheck, timeZone });
   const photos = withReason(photosCheck(tiles));
   const ciChecks = [scope, address, photos];
-  const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? scope.verdict.toLowerCase()}`);
+  const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
   const x = reading?.details?.extracted ?? {};
   const scopeText = String(x.businessScope ?? "").trim() || (x.activityCodes ?? []).join(" · ");
@@ -657,13 +730,19 @@ export function scoreVerification(input, { timeZone } = {}) {
       checks: [{ key: "certificate", label: "Certificates", score: null, verdict: "None uploaded", reasonKey: "certificate", canReason: false }],
     };
 
+  // A trading licence explained for another verdict: Approve waits for a new reason again.
+  const approvalProblem = input?.rules?.approvalProblem ?? detail.approvalProblem
+    ?? (scope.trading && scope.reason?.earlier ? "trading_only" : null);
+  const blockRow = approvalBlockRow(approvalProblem, detail, reading);
   const groups = [business, company, certification].map((group) => {
     const score = scoreGroup(group);
-    return { ...group, score, tier: tierFor(score) };
+    const checks = blockRow && blockRow.group === group.key
+      ? group.checks.map((check) => (check.key === blockRow.check ? { ...check, blocks: blockRow.words } : check))
+      : group.checks;
+    return { ...group, checks, score, tier: tierFor(score) };
   });
   const overall = scoreOverall(groups);
   const weakest = weakestCheck(groups);
-  const approvalProblem = input?.rules?.approvalProblem ?? detail.approvalProblem ?? null;
 
   return {
     overall,
@@ -671,7 +750,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     tier: tierFor(overall),
     weakest: weakest ? { key: weakest.key, label: weakest.label, group: weakest.group, score: weakest.score, verdict: weakest.verdict } : null,
     approvalProblem,
-    approvalBlock: approvalBlockWords(approvalProblem, detail),
+    approvalBlock: approvalBlockWords(approvalProblem, detail, reading),
     facts: factsFrom({ input, reading, files, typedAddress, timeZone, country, licenceLabel: licence.label }),
     groups,
   };

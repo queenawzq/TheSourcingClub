@@ -426,6 +426,17 @@ await check("the caller: refused or unreachable is words only, never thrown", as
   assert.equal((await signedOut({ orgId: ORG, group: "business_registration" })).error, "Sign in again, then retry.");
 });
 
+await check("fix round 2: an unchanged address answering less specifically keeps the earlier answer", async () => {
+  const { keepEarlierAddress } = await import("../src/shared/verification-rerun.mjs");
+  const home = { address: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", found: true, precise: true, judgement: "residential" };
+  assert.equal(keepEarlierAddress({ ...home, judgement: "unknown", tagsUnavailable: true }, home), true);
+  assert.equal(keepEarlierAddress({ ...home, precise: false, judgement: "unknown" }, { ...home, judgement: "industrial" }), true);
+  assert.equal(keepEarlierAddress({ ...home, found: false }, home), true);
+  assert.equal(keepEarlierAddress({ ...home, judgement: "industrial" }, home), false, "an equally specific answer is taken");
+  assert.equal(keepEarlierAddress({ address: "55 Renmin Road, Beijing", found: false }, home, { staffAddress: "55 Renmin Road, Beijing" }), false, "an edited address takes the new answer");
+  assert.equal(keepEarlierAddress({ ...home, found: false }, null), false);
+});
+
 if (failures) {
   console.error(`\ncheck:rerun: ${failures} failed`);
   process.exit(1);

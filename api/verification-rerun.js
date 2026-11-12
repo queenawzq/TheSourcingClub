@@ -248,8 +248,14 @@ async function certificateStep({ orgId, asServer, requestedBy, fields, edits, su
     .eq("org_id", orgId).eq("kind", "certificate").eq("subject_id", cert.id).eq("automatic", true)
     .order("checked_at", { ascending: false }).limit(1);
   const before = (Array.isArray(prior) && prior[0]?.details) || {};
-  const value = (key, fallback = "") => fields[key] ?? before[key] ?? fallback;
-  const certNumber = value("certNumber");
+  // Blank is missing: an empty field or reading never replaces a number we have (fix round 2).
+  const given = (v) => (v == null || String(v).trim() === "" ? null : String(v).trim());
+  const value = (key, fallback = "") => given(fields[key]) ?? given(before[key]) ?? fallback;
+  const { data: marks } = await asServer.from("verification_signals").select("details")
+    .eq("org_id", orgId).eq("kind", "certificate").eq("subject_id", cert.id).eq("automatic", false)
+    .order("checked_at", { ascending: false }).limit(20);
+  const staffNumber = (Array.isArray(marks) ? marks : []).map((m) => given(m.details?.number)).find(Boolean) ?? "";
+  const certNumber = value("certNumber", staffNumber);
   const validUntil = value("validUntil", cert.expires_at ?? "");
   const holder = value("holder");
   const today = new Date().toISOString().slice(0, 10);

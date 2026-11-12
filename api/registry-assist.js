@@ -549,6 +549,13 @@ export async function runAddressCheck({ orgId, asServer, requestedBy = null, fet
     const details = { ...(await addressAnswer({ detail, signals, fetchImpl, callModelImpl, siteAddress })), ...(extraDetails ?? {}) };
     // Run again: the map not answering is no new answer, so the last address check stands.
     if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address")) return { available: true, kept: true, ...details };
+    // Run again on an unchanged address that answers less specifically keeps the earlier answer (fix round 2).
+    if (keepIfFailed) {
+      const previous = (signals ?? []).find((s) => s.kind === "address" && s.automatic)?.details ?? null;
+      const { keepEarlierAddress } = await import("../src/shared/verification-rerun.mjs");
+      if (keepEarlierAddress(details, previous, { staffAddress: siteAddress })) return { available: true, kept: true, ...previous };
+    }
+    if (String(siteAddress ?? "").trim()) details.staffAddress = String(siteAddress).trim();
     // Recorded as one "address" signal; result is the site's judgement, as before.
     const { error: saveError } = await asServer.rpc("record_verification_signal", {
       target_org: orgId, kind: "address", subject: null, result: details.judgement || "unknown", details, requested_by: requestedBy,

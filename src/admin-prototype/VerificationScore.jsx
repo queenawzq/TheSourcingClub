@@ -162,6 +162,24 @@ function LookupAction({ lookup }) {
   );
 }
 
+/** Live "Search image": the window opens in the click, the short-lived link is minted, then loaded. */
+function SearchImageAction({ onSearch }) {
+  const [failed, setFailed] = useState(false);
+  const open = async (event) => {
+    event.preventDefault();
+    const tab = window.open("about:blank", "_blank");
+    const href = await Promise.resolve(onSearch()).catch(() => null);
+    if (href && tab) { tab.opener = null; tab.location.href = href; }
+    else { tab?.close(); setFailed(true); }
+  };
+  return (
+    <a className="vr-text-action" href="https://lens.google.com/" target="_blank" rel="noreferrer" onClick={open}>
+      {failed ? "Couldn't open the search" : "Search image"}
+      <svg className="vr-out" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.3 2.7 3 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </a>
+  );
+}
+
 /** `shown` with the parts that differ from `other` marked: characters for a number, words for a name or address. */
 function marked(shown, other) {
   const isCode = !/\s/.test(shown) && !/\s/.test(other) && shown.length === other.length;
@@ -514,6 +532,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           <strong>{check.label}</strong>
           <span>{check.verdict}</span>
           {registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
         </div>
         <div className="vr-sub-score">
           <Score value={check.score} size="sub" />
@@ -521,7 +540,10 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
         </div>
       </div>
       {check.reason && mode !== "reason" && (
-        <p className="vr-sub-note"><span>{check.reason.text}</span><small>{check.reason.by}</small></p>
+        <p className={`vr-sub-note${check.reason.earlier ? " is-earlier" : ""}`}>
+          <span>{check.reason.text}</span>
+          <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
+        </p>
       )}
       {!mode && (canRecord || check.lookup || canReason) && (
         <div className="vr-sub-actions">
@@ -533,14 +555,14 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           {check.lookup && <LookupAction lookup={check.lookup} />}
           {canReason && (
             <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
-              {check.reason ? "Edit reason" : "Add reason"}
+              {check.reason && !check.reason.earlier ? "Edit reason" : "Add reason"}
             </button>
           )}
         </div>
       )}
       {mode === "record" && <RecordForm check={check} legalName={legalName} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
       {mode === "reason" && (
-        <ReasonForm initial={check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
+        <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
       )}
     </li>
   );
@@ -770,9 +792,10 @@ function useFileHref(file, fileUrl) {
 }
 
 function PhotoRecord({ photo, index, onSave, onDone }) {
-  const start = photo.flag ? "elsewhere" : photo.result === "unchecked" ? "own" : photo.result;
+  // Opens on what is recorded; only a copy across TSC starts on "Found elsewhere" (a stock or office tile is not).
+  const start = photo.result && photo.result !== "unchecked" ? photo.result : photo.flag === "tsc" ? "elsewhere" : "own";
   const [result, setResult] = useState(start);
-  const [where, setWhere] = useState(photo.whereUrl ?? photo.where ?? "");
+  const [where, setWhere] = useState(photo.whereUrl ?? photo.link ?? photo.where ?? "");
   const [save, run] = useSave();
   const whereId = useId();
   const submit = async (event) => {
@@ -786,7 +809,9 @@ function PhotoRecord({ photo, index, onSave, onDone }) {
     <form className={`vr-photo-pop ${index % 2 ? "is-right" : "is-left"}`} onSubmit={submit}>
       <div className="vr-photo-pop-head">
         <strong>Photo {index + 1}</strong>
-        <LookupAction lookup={photo.searchHref ? { label: "Search image", href: photo.searchHref } : { label: "Search image", href: "https://lens.google.com/" }} />
+        {photo.onSearch
+          ? <SearchImageAction onSearch={photo.onSearch} />
+          : <LookupAction lookup={photo.searchHref ? { label: "Search image", href: photo.searchHref } : { label: "Search image", href: "https://lens.google.com/" }} />}
       </div>
       <Segmented options={PHOTO_RESULTS} value={result} onChange={setResult} name={`photo-${index}`} label={`What a search showed for photo ${index + 1}`} />
       {result === "elsewhere" && (

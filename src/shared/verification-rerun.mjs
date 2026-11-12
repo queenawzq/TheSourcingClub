@@ -197,3 +197,32 @@ export function scoreChangeWords(before, after) {
   if (before == null || after == null) return null;
   return before === after ? `Score unchanged: ${after}%` : `Score updated: ${before}% to ${after}%`;
 }
+
+/**
+ * How specific an address answer is: not placed 0, placed only at district
+ * or town 1, placed but the map could not say what is there 2, a judgement
+ * (industrial, office, residential) 3.
+ */
+export function addressSpecificity(details) {
+  if (!details || details.found === false) return 0;
+  if (details.precise === false || details.mismatch) return 1;
+  if (!details.judgement || details.judgement === "unknown") return details.mixed ? 3 : 2;
+  return 3;
+}
+
+/**
+ * Whether a re-check of an UNCHANGED address should keep the earlier result
+ * (fix round 2): the map and its building data answer differently from one
+ * day to the next, and a warning staff saw must not vanish, nor a good
+ * answer turn into "District only", because a server was slow. Kept when the
+ * new answer is less specific than the stored one for the same address.
+ * Staff editing the address always takes the new answer.
+ */
+export function keepEarlierAddress(next, previous, { staffAddress = "" } = {}) {
+  if (!previous) return false;
+  const plain = (text) => String(text ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+  const typed = plain(staffAddress);
+  if (typed && typed !== plain(previous.address) && typed !== plain(previous.staffAddress)) return false;
+  if (previous.address && next?.address && plain(previous.address) !== plain(next.address)) return false;
+  return addressSpecificity(next) < addressSpecificity(previous);
+}

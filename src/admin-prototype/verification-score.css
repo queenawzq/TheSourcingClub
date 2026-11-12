@@ -1361,3 +1361,16 @@ a.vr-text-action {
   .vr-file { min-height: 260px; }
   .vr-file.is-pdf iframe { height: 420px; }
 }
+
+/* A reason written for an earlier verdict: kept for the record, lifts nothing. */
+.vr-sub-note.is-earlier > span {
+  text-decoration: line-through;
+  text-decoration-color: var(--vr-line);
+  opacity: 0.75;
+}
+
+/* What Approve waits for, on the row where it is cleared. */
+.vr-sub-copy > .vr-sub-blocks {
+  color: var(--vr-low-text);
+  font-weight: 600;
+}

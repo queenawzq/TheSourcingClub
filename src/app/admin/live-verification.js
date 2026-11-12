@@ -19,7 +19,7 @@
  */
 import { urlFor } from "../../lib/domain/documents.js";
 import {
-  explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, saveCheckReason, verificationScore,
+  explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, saveCheckReason, verificationScore, photoSearchLink,
 } from "../../lib/domain/verification-score.js";
 import { rerunVerificationGroup, verificationFieldEdits } from "../../lib/domain/verification-rerun.js";
 
@@ -63,7 +63,8 @@ function withSearchLinks(verification) {
       ...group,
       evidence: {
         ...group.evidence,
-        photos: group.evidence.photos.map((photo) => ({ ...photo, searchHref: photo.searchHref ?? photo.searchLinks?.[0]?.href ?? null })),
+        // Minted on click, 10 minutes, never on page load (fix round 2).
+        photos: group.evidence.photos.map((photo) => ({ ...photo, searchHref: null, onSearch: () => photoSearchLink(photo) })),
       },
     })),
   };
@@ -129,10 +130,10 @@ export function verificationActions(orgId, { reload, changed }) {
   return {
     recordCheck: (groupKey, check, { result, reference, name, reason, source }) => after(() => (
       check.kind === "certificate"
-        ? recordCertificateResult(orgId, check.subjectId, { result, reference, note: reason })
+        ? recordCertificateResult(orgId, check.subjectId, { result, reference, note: reason, number: check.lookup?.copy ?? "" })
         : recordRegistryResult(orgId, { source: source ?? check.registry?.sourceKey, result, reference, name, reason })
     )),
-    saveReason: (groupKey, check, text) => after(() => saveCheckReason(orgId, check.reasonKey ?? check.key, text, check.subjectId ?? null)),
+    saveReason: (groupKey, check, text) => after(() => saveCheckReason(orgId, check.reasonKey ?? check.key, text, check.subjectId ?? null, check.verdict ?? null)),
     recordPhoto: (groupKey, index, record, photo) => after(() => recordPhoto(orgId, photo?.id, {
       result: DB_PHOTO[record.result] ?? record.result, link: record.whereUrl ?? "",
     })),
