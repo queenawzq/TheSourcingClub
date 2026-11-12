@@ -171,6 +171,26 @@ Things that will bite here:
 - **"Due in N days" is the reader's day, not the server's.** The daily job runs at 07:00 UTC (23:00 the day before in Los Angeles in winter) and writes its reminder title on the UTC day; `notificationTitle()` (`src/shared/notification-text.mjs`, copied in `scripts/generate-notification-email.mjs`) recounts it from `data.due_on` in the bell's and the email's zone. Relative words never go into stored text without the raw value in `data`. `check:dates` runs it in four zones; `TZ=Asia/Shanghai npm run e2e` runs the browser there too.
 - **Design System v2 sizing lives in `src/app/shell.css`'s `:root`**, copied verbatim from the prototype's. Copied rather than imported to avoid the `!important` blocks above. Keep it in step when v2 moves. Buttons are 34px; **inputs stay 42px**.
 
+## How we work (lessons, Nov 6–12, 2026)
+
+Read before planning, building or testing anything a person will see.
+
+**Reading Queena's requests.** Queena designs; she is not technical.
+- She names an example, not a spec. "Check Google Maps" meant "help staff know the address is a real factory". Build the decision she wants, show her the answer it gives, and say which literal items gave no value and what replaced them.
+- She judges what she sees on the preview, with demo accounts. Anything to be judged goes there, never local-only.
+- Design is hers, function is ours. Ask her about layout, customer-facing wording and what counts as enough evidence; decide ourselves how a check works, its sources and thresholds, then show her the results. Batch questions into one list.
+- On-screen text is the minimum to act: figure, label, action, error, next step. No explanatory sentences, no tech words (Stripe, OCR, hash, OpenStreetMap). Staff screens get short plain verdicts. Exception: payout explanations and tooltips stay (John, Nov 11).
+- Scores only where a score means something, and a score must fall when evidence is weaker. Facts that are yes/no are check marks, not scores. Details go in a modal; a card shows the score and a one-line verdict.
+
+**Polish, not wireframes.** Screens we hand her are finished-looking, on the design system. Every UI change gets a mock by a UI/UX agent, approved before the build; the build ports the mock and does not redesign it. Things a mock drops are provisional: at build time keep a drop only if it really simplifies the screen AND loses no function or value; otherwise bring it back in her style.
+
+**Multi-part features.**
+- Write an outcomes file first: what each item decides, and its expected result on a realistic test set.
+- Parallel builders by file area, each in its own worktree with its own migration timestamp range; one combine worktree merges them and runs the full suites once.
+- An independent tester on the preview gets the code and the outcomes, never our findings, and tests the job ("decide if this factory is real in under 2 minutes"), doing every action on every row, not only reading the screen.
+- When a rule changes, change every layer in one go: form, client, database.
+- A browser check that cannot reach the page usually means no dev server is running, not a slow machine.
+
 ## Design system
 
 `TSC_DESIGN_SYSTEM.md` is the enforceable spec for **product screens** (the React prototypes): tokens, a role-based type scale, and fixed component dimensions (42px buttons, 28px pills, 8px cards, 76px bottom bar). Read it before changing prototype UI, and follow its rule that conflicts are fixed by updating the screen rather than adding a local exception.
