@@ -97,7 +97,7 @@ export default function LiveBrandPayments({ org }) {
           hideDiscounts: !DISCOUNTS_USABLE,
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
-          codesNote: "Codes can't be applied to a payment yet.",
+          codesNote: "Codes can't be applied to a payment yet. Used codes stay here so finance can track order discounts.",
           onCopy: copy,
           copied,
         }}

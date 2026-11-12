@@ -55,10 +55,10 @@ function counterparty(order, isFactory) {
 function statusDetail(order, isFactory) {
   // Only the brand sets the production steps; its confirmation starts the order.
   if (order.status === "pending_schedule") {
-    return isFactory ? "The brand is setting the production steps" : "Set the production steps";
+    return isFactory ? "The brand is setting the production steps" : "Set the production steps to begin";
   }
   if (order.status === "cancelled") return order.cancel_reason ?? "Cancelled";
-  if (order.status === "completed") return null;
+  if (order.status === "completed") return "Every step is done";
   // An open proposal to cancel outranks whatever the steps are waiting for:
   // until it is accepted, kept or withdrawn, it is the thing to answer.
   const proposal = cancelProposal(order, isFactory);
@@ -80,8 +80,9 @@ function statusDetail(order, isFactory) {
       return `${formatMoney(chargedCents(payment), order.currency)} due for ${due.title}`;
     }
   }
-  // Nothing due and nothing to answer: the card's Current step already says it.
-  return null;
+  return order.current_milestone_title
+    ? `Now: ${order.current_milestone_title}`
+    : "In production";
 }
 
 /**

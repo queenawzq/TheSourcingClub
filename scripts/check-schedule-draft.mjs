@@ -154,13 +154,13 @@ const amounts = (draft) => draft.rows.map((row) => row.amount);
 // ---- Typing, across 40 s of polling, with nothing changing underneath ----
 {
   const { root, poll } = page();
-  check(!root.draft.dirty && root.draft.hint === "", "fresh from the database: nothing unsaved");
+  check(!root.draft.dirty && root.draft.hint.includes("Continue to confirm them and start the order"), "fresh from the database: nothing unsaved");
   root.act((d) => d.onChange(0, { amount: "1000" }));
   for (let second = 15; second <= 45; second += 15) {
     poll();
     check(root.draft.rows[0].amount === "1000", `a typed amount survives the read at ${second} s`);
   }
-  check(root.draft.dirty && root.draft.hint === "Unsaved changes", "and still reads as unsaved");
+  check(root.draft.dirty && root.draft.hint.startsWith("Unsaved changes."), "and still reads as unsaved");
   check(!root.draft.changedElsewhere, "nobody else changed anything");
 }
 // ---- A step with no name: said at once, and gone once it has one ----
@@ -240,9 +240,9 @@ const amounts = (draft) => draft.rows.map((row) => row.amount);
   check(state.database[0].amount_cents === 100000, "the save sent what was typed");
   check(amounts(root.draft)[0] === "$1,000" && !root.draft.dirty, "the saved steps replace the draft");
   check(!root.draft.changedElsewhere, "my own save is not somebody else's change");
-  check(root.draft.hint === "Saved", "and the page says Saved");
+  check(root.draft.hint.startsWith("Saved."), "and the page says Saved");
   root.act((d) => d.onChange(0, { amount: "2000" }));
-  check(root.draft.hint === "Unsaved changes", "the next edit is unsaved again");
+  check(root.draft.hint.startsWith("Unsaved changes."), "the next edit is unsaved again");
 }
 // ---- A database that tidies what it was sent is still my own save ----
 {

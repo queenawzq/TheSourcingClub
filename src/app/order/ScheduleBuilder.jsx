@@ -40,7 +40,7 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFun
       {/* Live only: an open proposal to cancel sits above the steps. */}
       {banner}
       <MilestonesScreen live={draft} />
-      <p className="muted schedule-draft-hint" data-testid="schedule-hint" hidden={Boolean(locked) || !draft.hint}>{locked ? "" : draft.hint}</p>
+      <p className="muted schedule-draft-hint" data-testid="schedule-hint">{locked ? `${locked}. Ask an owner for this permission to save or confirm production steps.` : draft.hint}</p>
       {draft.changedElsewhere && (
         <p className="composer-note" role="status" data-testid="schedule-changed">
           Someone else changed these steps. Saving replaces their changes.{" "}

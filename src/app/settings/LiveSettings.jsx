@@ -52,8 +52,20 @@ import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
-// The email switches' labels say enough: the design's line under each is left out.
-const EMAIL_NOTES = { rfq: "", payments: "", messages: "" };
+// These are company-wide switches, not per-person subscriptions.
+const EVERY_MEMBER = "Emails every member of your company.";
+const SHARED_EMAIL_NOTES = {
+  payments: `Payments, steps to approve, steps due soon and changes to your orders. ${EVERY_MEMBER}`,
+  messages: `New messages (at most one email per conversation every 6 hours) and call invites. ${EVERY_MEMBER}`,
+};
+const BRAND_EMAIL_NOTES = {
+  rfq: `Quotes sent or withdrawn on your requests. ${EVERY_MEMBER}`,
+  ...SHARED_EMAIL_NOTES,
+};
+const FACTORY_EMAIL_NOTES = {
+  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders. ${EVERY_MEMBER}`,
+  ...SHARED_EMAIL_NOTES,
+};
 
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
@@ -423,7 +435,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
-        permissionsNote={isOwner ? null : ""}
+        permissionsNote={isOwner
+          ? "Owners hold every permission and can change each member’s access below."
+          : isFactory
+            ? "An owner sets each member’s permissions. RFQ flow writes and sends quotes; Add update posts production updates; Settings access manages company settings, billing and invitations. Only owners manage payouts."
+            : "An owner sets each member’s permissions. Quote flow creates requests, chooses quotes and sets production steps; Approve samples approves steps; Release funds funds steps and approves paid releases."}
         onSaveAccount={canSettings ? async (details) => {
           // A non-owner's save never carries the name: their copy goes stale
           // when an owner renames the company, and null means "leave it".
@@ -447,6 +463,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onAddPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("manage") : undefined}
         onAddBillingMethod={canSettings ? addBillingMethod : undefined}
         onRemoveBillingMethod={canSettings ? removeCard : undefined}
+        billingMethodNote={`${isFactory ? "Save a card to use when you buy credits." : "Save a card to use when funding production steps. Cards are saved securely to your company for future payments."}${canSettings ? "" : " Only someone with Settings access can add or remove payment methods. Ask an owner for this permission."}`}
         billingLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
         paymentLocked={isFactory && !isOwner ? "Only an owner can set up or change payouts" : ""}
         inviteLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
@@ -469,7 +486,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         nameLocked={!isOwner}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
-        notificationEmailNotes={EMAIL_NOTES}
+        notificationEmailNotes={isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES}
         notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}

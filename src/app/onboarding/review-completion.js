@@ -11,9 +11,8 @@
  *                       designed review card; finishing the flow again sends
  *                       the profile back to staff (resubmit_for_review)
  *   declined          → the reason and who to write to; no button
- *   anything else     → the designed "You're all set" card with its own
- *                       next-steps paragraph (Queena, Nov 9: it says what
- *                       happens next); no button: there is nothing to press
+ *   anything else     → the designed full verification explanation; the live
+ *                       flow keeps its Verification pending button disabled
  */
 import { createElement } from "react";
 import ReviewNote from "../../shared/ReviewNote.jsx";
@@ -62,5 +61,5 @@ export function reviewCompletion(review, { language = "en", onUpdate } = {}) {
       reward: false,
     };
   }
-  return {};
+  return null;
 }

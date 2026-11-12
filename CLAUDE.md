@@ -702,16 +702,19 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   security has its own "Change password", open to every member whatever their
   permissions: the current password is checked by signing in again, because
   `secure_password_change` is off.
-- **A missing permission greys the action out, with the permission in its hover
-  text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
-  accepted). Whole flows a person may not use (the composer, the quote form) say
-  "Not available to you" instead of drawing a form full of disabled inputs, and a
-  read-only form that looks editable keeps its sentence (Settings → Basic
-  information).
+- **A missing permission greys the action out and explains what is needed.**
+  Keep the permission in hover text and in visible helper text where a person
+  must understand why they cannot continue, including on a phone. Whole flows
+  a person may not use still gate access rather than drawing an editable form.
+
+
+### Preserve payout explanations and tooltips (John, Nov 11, 2026)
+
+The payout page’s explainer text and help tooltips are required product content. Keep the balance, available balance, pending balance and four earnings-summary helpers, transaction guidance, billing guidance, and withdrawal/setup/security explanations visible. Preserve mouse, keyboard and tap access through PaymentHelp. Do not delete, hide in CSS, or shorten these away during design parity, copy cleanup, provider-name cleanup or merges. The earlier Nov 6 “no more explanation on screen” rule does not apply to payout explanations or tooltips. Update inaccurate copy to match current payment behavior rather than removing it. Removal requires an explicit new user instruction. Run npm run check:payout-help and npm run build after payout UI changes.
 
 ### Design copy the live app leaves out
 
-Queena's rule (Nov 6, refined Nov 9): a screen keeps a figure, a label, an action, an error or what this person must do next, and **her own design copy stays**, because it tells people what to do next (the verification page's next steps, the brand's guidance on writing a request and setting production steps). `src/app/live-quiet.css` no longer hides her sentences; it holds live layout fixes, and `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own explanatory sentences, permission lines and provider names stay removed where they are written. **Emails are in the language the person chose** (`src/lib/email-language.js` saves `?lang=`/`factoryLang` to `user_profiles.locale`, which every email builder reads). A generated step carries the short description `20261108200527` gave it, on production and waiting on Queena's decision; a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet. The dashboard's Savings card and the Payments page's Discounts tab show anyway (#103, waiting on Queena's decision), each saying so in one line.
+Queena's rule (Nov 6, refined Nov 9): a screen keeps a figure, a label, an action, an error or what this person must do next, and **her own design copy stays**, because it tells people what to do next (the verification page's next steps, the brand's guidance on writing a request and setting production steps). `src/app/live-quiet.css` no longer hides her sentences; it holds live layout fixes, and `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's explanatory and permission sentences that #103 added are back (main, Nov 11: the revert of `0e8f429`), and payout explanations stay by John's rule above; provider names stay removed where they are written. A finished onboarding with nothing to act on shows the designed explanation with its Verification pending button disabled (`review-completion.js` returns `null`). **Emails are in the language the person chose** (`src/lib/email-language.js` saves `?lang=`/`factoryLang` to `user_profiles.locale`, which every email builder reads). A generated step carries the short description `20261108200527` gave it, on production and waiting on Queena's decision; a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet. The dashboard's Savings card and the Payments page's Discounts tab show anyway (#103, waiting on Queena's decision), each saying so in one line.
 
 ### Mock data leaking into the live app
 
