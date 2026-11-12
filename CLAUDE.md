@@ -708,6 +708,10 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   a person may not use still gate access rather than drawing an editable form.
 
 
+### Preserve payout explanations and tooltips (John, Nov 11, 2026)
+
+The payout page’s explainer text and help tooltips are required product content. Keep the balance, available balance, pending balance and four earnings-summary helpers, transaction guidance, billing guidance, and withdrawal/setup/security explanations visible. Preserve mouse, keyboard and tap access through PaymentHelp. Do not delete, hide in CSS, or shorten these away during design parity, copy cleanup, provider-name cleanup or merges. The earlier Nov 6 “no more explanation on screen” rule does not apply to payout explanations or tooltips. Update inaccurate copy to match current payment behavior rather than removing it. Removal requires an explicit new user instruction. Run npm run check:payout-help and npm run build after payout UI changes.
+
 ### Design copy the live app leaves out
 
 Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step has no description (`20261107400000`); a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet, so the dashboard's Savings card (and with it Invite brand) and the Payments tab are hidden; put them back when they can.
