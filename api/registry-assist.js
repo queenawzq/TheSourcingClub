@@ -401,8 +401,11 @@ export function bestAddress(detail, signals) {
  */
 export async function siteDetails(sources, { fetchImpl, callModelImpl = callModel } = {}) {
   const deadline = Date.now() + ADDRESS_BUDGET_MS;
-  const typedFrom = sources.typedFrom === "production" ? "the factory's production address" : "the factory's location";
+  const typedFrom = sources.typedFrom === "production" ? "the factory's production address"
+    : sources.typedFrom === "staff" ? "the address staff entered" : "the factory's location";
   const candidates = [
+    // Run again with an address staff corrected: that one is placed first.
+    sources.typedFrom === "staff" && sources.typed && { address: sources.typed, from: typedFrom, fromTyped: true },
     sources.license && { address: sources.license, from: "the licence" },
     sources.registry && { address: sources.registry, from: sources.registryFrom || "the registry check" },
     sources.typed && { address: sources.typed, from: typedFrom, fromTyped: true },
@@ -485,8 +488,9 @@ const OVERPASS_FIRST = [process.env.OVERPASS_URL || "https://overpass-api.de/api
  * `checks` = [address_owner, address_site]. Each check gets its own copy of
  * what it describes, so nothing contains itself (the Nov 11 preview 500).
  */
-export async function addressAnswer({ detail, signals, fetchImpl, callModelImpl, now = new Date() }) {
-  const sources = addressSources(detail, signals);
+export async function addressAnswer({ detail, signals, fetchImpl, callModelImpl, now = new Date(), siteAddress = "" }) {
+  const staffAddress = String(siteAddress ?? "").trim();
+  const sources = { ...addressSources(detail, signals), ...(staffAddress ? { typed: staffAddress, typedFrom: "staff" } : {}) };
   const owner = addressOwnerCheck(sources, now);
   const site = await siteDetails(sources, { fetchImpl, callModelImpl });
   const details = { ...site, checks: [owner, addressSiteCheck({ ...site }, { owner, now })] };
@@ -538,11 +542,11 @@ async function addressInputs(asServer, orgId) {
  * staff button, the factory's upload and the daily job. Never throws.
  * Returns `{ available: true, ...details }` or `{ available: false, reason }`.
  */
-export async function runAddressCheck({ orgId, asServer, requestedBy = null, fetchImpl, callModelImpl } = {}) {
+export async function runAddressCheck({ orgId, asServer, requestedBy = null, fetchImpl, callModelImpl, siteAddress = "", extraDetails = null } = {}) {
   try {
     if (!orgId || !asServer) return { available: false, reason: "No company to check." };
     const { detail, signals } = await addressInputs(asServer, orgId);
-    const details = await addressAnswer({ detail, signals, fetchImpl, callModelImpl });
+    const details = { ...(await addressAnswer({ detail, signals, fetchImpl, callModelImpl, siteAddress })), ...(extraDetails ?? {}) };
     // Recorded as one "address" signal; result is the site's judgement, as before.
     const { error: saveError } = await asServer.rpc("record_verification_signal", {
       target_org: orgId, kind: "address", subject: null, result: details.judgement || "unknown", details, requested_by: requestedBy,
@@ -693,7 +697,7 @@ function authorisationFrom({ file, fields, failure }, { names, legalRepresentati
  * since signals have no kind of their own for it. Returns what the
  * read_document action returns.
  */
-async function readDocument({ orgId, detail, files, signals, storage, asServer, requestedBy }) {
+async function readDocument({ orgId, detail, files, signals, storage, asServer, requestedBy, edits = [], extraDetails = null }) {
   if (!aiReadsDocuments()) return { available: false, reason: "Reading documents with AI is off on this site." };
   const file = (files ?? [])[0];
   if (!file) return { available: false, reason: "No registration document is uploaded." };
@@ -706,8 +710,40 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
     { role: "user", content: [{ type: "text", text: "Copy the fields from this document." }, part] },
   ], READ_SCHEMA, "copy_registration_fields", 2200);
   if (failure) return { available: false, reason: failure };
+  return finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits, extraDetails });
+}
+
+/**
+ * The model's fields with staff's edits laid over them (Run again, Nov 12):
+ * `edits` is [{ key, value }] in the reading's own keys (registrationNumber,
+ * legalName, …). An edit wins over what the model read.
+ */
+export function overlayEdits(fields, edits = []) {
+  const out = { ...(fields ?? {}) };
+  for (const { key, value } of edits ?? []) {
+    if (!key) continue;
+    if (key === "activityCodes") out.activityCodes = String(value ?? "").split(/\s*[\n;]\s*/).map((code) => code.trim()).filter(Boolean);
+    else out[key] = String(value ?? "");
+  }
+  // Staff typed it, so the document is not "unreadable" for these fields any more.
+  if ((edits ?? []).length && out.readable === false) out.readable = true;
+  return out;
+}
+
+/**
+ * Records a reading again from an earlier one, with staff's edits laid over
+ * it: no model call. The authorisation check is carried over as it was.
+ */
+export async function rereadWithEdits({ orgId, detail, signals, reading, asServer, requestedBy, edits = [], extraDetails = null }) {
+  const previous = reading?.details ?? {};
+  const file = { id: previous.fileId ?? reading?.subjectId ?? null, name: previous.fileName ?? null };
+  const authorisationRead = Promise.resolve({ carried: previous.authorisation ?? null });
+  return finishReading({ orgId, detail, signals, file, fields: previous.extracted ?? {}, model: previous.model ?? null, authorisationRead, asServer, requestedBy, edits, extraDetails });
+}
+
+async function finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits = [], extraDetails = null }) {
   // A model sometimes writes the empty value as the two characters "" .
-  const extracted = Object.fromEntries(Object.entries(fields ?? {}).map(([key, value]) => [key, typeof value === "string" ? (/^\s*(""|'')\s*$/.test(value) ? "" : value.slice(0, 800)) : value]));
+  let extracted = Object.fromEntries(Object.entries(fields ?? {}).map(([key, value]) => [key, typeof value === "string" ? (/^\s*(""|'')\s*$/.test(value) ? "" : value.slice(0, 800)) : value]));
   if (!Array.isArray(extracted.activityCodes)) extracted.activityCodes = [];
   // An unreadable document keeps no copied text: what a model reads off a blur is a guess.
   if (extracted.readable === false) {
@@ -715,6 +751,7 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
     extracted.verificationWatermark = false;
     extracted.activityCodes = [];
   }
+  extracted = overlayEdits(extracted, edits);
   extracted.activityCodes = extracted.activityCodes.map((code) => String(code ?? "").slice(0, 200)).filter(Boolean).slice(0, 12);
   const registration = detail?.registration ?? {};
   const helpers = await loadRegistrationNumber();
@@ -736,14 +773,18 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
     : compareDocument(extracted, { country: registration.country, number: registration.number, title: detail?.title }, helpers);
   const scope = tradingScope(extracted.businessScope, extracted.activityCodes);
   const foundedOn = isoDateFrom(extracted.foundingDate);
-  const authorisation = authorisationFrom(await authorisationRead, {
-    legalRepresentative: extracted.legalRepresentative, names: [extracted.legalName, extracted.legalNameEnglish, detail?.title],
-  }, helpers);
+  const authorisationAnswer = await authorisationRead;
+  const authorisation = authorisationAnswer && "carried" in authorisationAnswer
+    ? authorisationAnswer.carried
+    : authorisationFrom(authorisationAnswer, {
+      legalRepresentative: extracted.legalRepresentative, names: [extracted.legalName, extracted.legalNameEnglish, detail?.title],
+    }, helpers);
   // A reading holds for the number and name it was compared with: the
   // database ignores it once either changes (registry_reading_differs).
   const details = {
     extracted, differences, unsure, tradingScope: scope, warnings: look.warnings, overruled: look.overruled, numberCheck, foundedOn, authorisation,
     model, fileId: file.id, fileName: file.name, numberAtReading: registration.number ?? null, titleAtReading: detail?.title ?? null,
+    ...(extraDetails ?? {}),
   };
   // A4: the address owner as judged at this reading, for the score row.
   let ownerResult = null;
@@ -761,7 +802,7 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
   // The licence's address against the typed and registry ones, straight away.
   const sources = addressSources(detail, signals);
   const addressOwner = ownerResult ?? (extracted.readable === false ? null : addressOwnerCheck({ ...sources, license: String(extracted.address ?? "").trim() }));
-  return { available: true, ...details, addressOwner };
+  return { available: true, saved: !saveError, ...details, addressOwner };
 }
 
 /**
@@ -769,34 +810,48 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
  * with the server key, records it, and returns what read_document returns.
  * Never throws: any failure is `{ available: false, reason }`.
  */
-export async function runReadDocument({ orgId, asServer, requestedBy = null }) {
+export async function runReadDocument({ orgId, asServer, requestedBy = null, edits = [], extraDetails = null }) {
   try {
     if (!orgId || !asServer) return { available: false, reason: "Nothing to read." };
-    const [registration, title, profile, files, signals] = await Promise.all([
-      asServer.from("company_registrations").select("country_code, number").eq("org_id", orgId).maybeSingle(),
-      asServer.rpc("company_title", { target_org: orgId }),
-      asServer.from("factory_profiles").select("location").eq("org_id", orgId).maybeSingle(),
-      asServer.from("documents").select("id, bucket, storage_path, file_name, mime_type, created_at")
-        .eq("org_id", orgId).eq("kind", "business_registration").order("created_at", { ascending: false }).limit(1),
-      asServer.from("verification_signals").select("kind, details, automatic, checked_at")
-        .eq("org_id", orgId).order("checked_at", { ascending: false }).limit(20),
-    ]);
-    if (files.error) return { available: false, reason: "The company's documents could not be read." };
-    // B4: the production address, once its column exists; a missing column is no address.
-    const production = await asServer.from("factory_profiles").select("production_address").eq("org_id", orgId).maybeSingle();
-    const detail = {
-      registration: { country: registration.data?.country_code ?? null, number: registration.data?.number ?? null },
-      title: title.data ?? null,
-      location: profile.data?.location ?? null,
-      productionAddress: production.error ? null : production.data?.production_address ?? null,
-    };
-    const fileRows = (files.data ?? []).map((row) => ({ id: row.id, bucket: row.bucket, path: row.storage_path, name: row.file_name, mimeType: row.mime_type, createdAt: row.created_at }));
-    const signalRows = (signals.data ?? []).map((row) => ({ kind: row.kind, details: row.details, automatic: row.automatic, checkedAt: row.checked_at }));
-    return await readDocument({ orgId, detail, files: fileRows, signals: signalRows, storage: asServer, asServer, requestedBy });
+    const context = await readingContext(asServer, orgId);
+    if (!context) return { available: false, reason: "The company's documents could not be read." };
+    const { detail, files, signals } = context;
+    return await readDocument({ orgId, detail, files, signals, storage: asServer, asServer, requestedBy, edits, extraDetails });
   } catch (error) {
     console.error("registry-assist runReadDocument", error?.message);
     return { available: false, reason: "The document could not be read." };
   }
+}
+
+/**
+ * What a reading is compared with, read with the server key: the
+ * registration, the company's title and location, the newest registration
+ * upload first, and the latest signals. Null when the files can't be read.
+ */
+export async function readingContext(asServer, orgId) {
+  const [registration, title, profile, files, signals] = await Promise.all([
+    asServer.from("company_registrations").select("country_code, number").eq("org_id", orgId).maybeSingle(),
+    asServer.rpc("company_title", { target_org: orgId }),
+    asServer.from("factory_profiles").select("location").eq("org_id", orgId).maybeSingle(),
+    asServer.from("documents").select("id, bucket, storage_path, file_name, mime_type, created_at")
+      .eq("org_id", orgId).eq("kind", "business_registration").order("created_at", { ascending: false }).limit(1),
+    asServer.from("verification_signals").select("kind, subject_id, details, automatic, checked_at")
+      .eq("org_id", orgId).order("checked_at", { ascending: false }).limit(20),
+  ]);
+  if (files.error) return null;
+  // B4: the production address, once its column exists; a missing column is no address.
+  const production = await asServer.from("factory_profiles").select("production_address").eq("org_id", orgId).maybeSingle();
+  const detail = {
+    registration: { country: registration.data?.country_code ?? null, number: registration.data?.number ?? null },
+    title: title.data ?? null,
+    location: profile.data?.location ?? null,
+    productionAddress: production.error ? null : production.data?.production_address ?? null,
+  };
+  return {
+    detail,
+    files: (files.data ?? []).map((row) => ({ id: row.id, bucket: row.bucket, path: row.storage_path, name: row.file_name, mimeType: row.mime_type, createdAt: row.created_at })),
+    signals: (signals.data ?? []).map((row) => ({ kind: row.kind, subjectId: row.subject_id, details: row.details, automatic: row.automatic, checkedAt: row.checked_at })),
+  };
 }
 
 export default async function handler(request, response) {

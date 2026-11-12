@@ -292,7 +292,7 @@ const PLACE_PARTS = new Set(["province", "city"]);
 export function addressOwnerCheck({ typed, license, registry, typedFrom = "location" }, now = new Date()) {
   const pairs = [["license", "typed"], ["license", "registry"], ["registry", "typed"]];
   const addresses = { typed, license, registry };
-  const words = { ...SOURCE_WORDS, typed: typedFrom === "production" ? "the production address the factory typed" : SOURCE_WORDS.typed };
+  const words = { ...SOURCE_WORDS, typed: typedFrom === "production" ? "the production address the factory typed" : typedFrom === "staff" ? "the address staff entered" : SOURCE_WORDS.typed };
   const comparisons = [];
   for (const [x, y] of pairs) {
     if (!addresses[x] || !addresses[y]) continue;
