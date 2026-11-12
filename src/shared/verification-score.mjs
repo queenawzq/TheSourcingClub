@@ -298,7 +298,7 @@ function registrationFields({ reading, detail, country, timeZone }) {
     } } : {}),
   });
   if (country === "PT") push({ key: "accessCode", label: "Access code", value: reg.accessCode ?? "", copy: true });
-  if (country === "TR") push({ key: "letter", label: "Letter number", value: reg.registrationLetterNumber ?? "", copy: true });
+  if (country === "TR") push({ key: "letterNumber", label: "Letter number", value: reg.registrationLetterNumber ?? "", copy: true });
   if (country === "TR") push({ key: "taxOffice", label: "Tax office", value: x.taxOffice ?? "" });
   push({ key: "established", label: country === "PT" ? "Registered" : "Established", value: reading?.details?.foundedOn ?? x.foundingDate ?? x.issueDate ?? "" });
   push({ key: "legalName", label: "Legal name", value: x.legalName ?? "", editable: true, always: Boolean(reading), ...(typedOf("name") ? { typed: String(typedOf("name")) } : {}), ...(country === "TR" ? { wide: true } : {}) });
@@ -373,7 +373,7 @@ export function photoTiles({ photos, signals, photoCheck, timeZone }) {
   const perPhoto = new Map((photoCheck?.details?.perPhoto ?? []).map((entry) => [entry.documentId, entry]));
   return (photos ?? []).map((photo) => {
     const entry = perPhoto.get(photo.id) ?? null;
-    const mark = latest(signals, "photo", photo.id);
+    const mark = (signals ?? []).find((x) => x.kind === "photo" && x.subjectId === photo.id && !x.automatic);
     const tile = { id: photo.id, name: photo.name, bucket: photo.bucket, path: photo.path, result: "unchecked" };
     if (mark) {
       tile.result = { own: "own", found_elsewhere: "elsewhere", could_not_check: "could_not" }[mark.result] ?? "unchecked";
@@ -428,27 +428,43 @@ const monthYear = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00
 export function certificateChecks({ certificates, signals, now, timeZone }) {
   const today = String(now ?? new Date().toISOString()).slice(0, 10);
   return (certificates ?? []).map((cert) => {
-    const mark = latest(signals, "certificate", cert.id);
+    // Staff's record on the issuer's list decides; Run again's automatic reading (result "read") only
+    // supplies the date and holder it read off the certificate.
+    const mark = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && !x.automatic);
+    const read = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && x.automatic);
+    const expiresAt = cert.expiresAt ?? read?.details?.validUntil ?? null;
     const lookupDef = certificateLookup(cert.slug);
     const number = mark?.details?.number ?? "";
     const href = typeof lookupDef.url === "function" ? lookupDef.url(number, null) : null;
-    const expiredByDate = cert.expiresAt && String(cert.expiresAt).slice(0, 10) < today;
+    const expiredByDate = expiresAt && String(expiresAt).slice(0, 10) < today;
     const result = mark?.result ?? null;
     let score = null;
     let verdict = "Not checked yet";
-    if (result === "found") { score = SCORES.certificate.found; verdict = `Found on the issuer's list${cert.expiresAt && !expiredByDate ? `, valid to ${monthYear(cert.expiresAt)}` : ""}`; }
+    if (result === "found") { score = SCORES.certificate.found; verdict = `Found on the issuer's list${expiresAt && !expiredByDate ? `, valid to ${monthYear(expiresAt)}` : ""}`; }
     else if (result === "expired") { score = SCORES.certificate.expired; verdict = "Expired on the issuer's list"; }
     else if (result === "not_found") { score = SCORES.certificate.not_found; verdict = "Not on the issuer's list"; }
     else if (result === "could_not_check") verdict = "Couldn't check the issuer's list";
-    if (expiredByDate && (score == null || score > SCORES.certificate.expired)) { score = SCORES.certificate.expired; verdict = `Expired ${monthYear(cert.expiresAt)}`; }
+    if (score == null && read?.details?.holderMatches === false) verdict = "Holder differs from the company";
+    if (expiredByDate && (score == null || score > SCORES.certificate.expired)) { score = SCORES.certificate.expired; verdict = `Expired ${monthYear(expiresAt)}`; }
     return {
       key: `certificate:${cert.id}`, label: cert.label, kind: "certificate", subjectId: cert.id, reasonKey: "certificate", canReason: true,
       score, verdict,
       registry: { source: "Issuer's list", sourceKey: "issuer", by: mark ? byWords(mark.checkedBy, mark.checkedAt, timeZone) : "", result, reference: mark?.details?.link ?? "" },
       ...(href ? { lookup: { label: "Open issuer's list", href, ...(number ? { copy: number } : {}) } } : {}),
-      checkedAt: mark?.checkedAt ?? null,
+      checkedAt: mark?.checkedAt ?? read?.checkedAt ?? null,
     };
   });
+}
+
+/** The certificate's fields: what Run again read off it (or staff typed), each editable for the next run. */
+function certFields(cert, signals, title) {
+  const read = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && x.automatic)?.details ?? {};
+  const staffNumber = (signals ?? []).find((x) => x.kind === "certificate" && x.subjectId === cert.id && !x.automatic)?.details?.number ?? "";
+  return [
+    { key: "certNumber", label: "Certificate number", value: String(read.certNumber ?? staffNumber ?? ""), copy: true, editable: true },
+    { key: "validUntil", label: "Valid until", value: String(read.validUntil ?? cert.expiresAt ?? "").slice(0, 10), editable: true },
+    { key: "holder", label: "Holder", value: String(read.holder ?? ""), wide: true, editable: true, ...(read.holder ? {} : { placeholder: title }) },
+  ];
 }
 
 /* ------------------------------------------------------------ approval */
@@ -599,7 +615,7 @@ export function scoreVerification(input, { timeZone } = {}) {
       readAt: certStamp ? `Checked ${stampWords(certStamp, timeZone)}` : "",
       readAtIso: certStamp,
       stale: null,
-      fields: certWithFile.expiresAt ? [{ key: "validUntil", label: "Valid until", value: String(certWithFile.expiresAt).slice(0, 10) }] : [],
+      fields: certFields(certWithFile, signals, title),
       checks: certChecks.map(clean),
     }
     : {
