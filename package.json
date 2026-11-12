@@ -29,6 +29,7 @@
     "check:payout-help": "node scripts/check-payout-help.mjs",
     "check:earnings": "node scripts/check-earnings.mjs",
     "check:stripe-errors": "node scripts/check-stripe-errors.mjs",
+    "check:verification-score": "node scripts/check-verification-score.mjs",
     "check:payout-routing": "node scripts/check-payout-routing.mjs",
     "check:provider-payouts": "node scripts/check-provider-payouts.mjs",
     "check:payout-webhooks": "node scripts/check-payout-webhooks.mjs",

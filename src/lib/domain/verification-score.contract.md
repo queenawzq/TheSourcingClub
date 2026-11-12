@@ -170,7 +170,9 @@ number_needs_staff). Run again (C) owns re-reading.
   licence and registry disagree 15; residential or office site caps at 55; placed by
   district only caps at 30; only the map to go on: industrial 60, home/office 40.
 - Photos per tile: own 100, not checked / couldn't check 50, found elsewhere or on other
-  TSC companies 0, stock 10, office 40; the check is the average.
+  TSC companies 0, stock 10, office 40; the check is the average. A flag decides the tile,
+  except that staff recording "Own" overrules the AI's "stock" (an office stays an office,
+  a later copy stays a copy).
 - Certificate (not counted): Found 90, Expired 15 (also when the date has passed and no
   one checked), Not found 5, Couldn't check no score.
 - A staff reason lifts a scored check under 60 to 60.
