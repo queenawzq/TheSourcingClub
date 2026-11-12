@@ -138,6 +138,7 @@ function fakeDb(tables, calls = []) {
       const q = {
         select: () => q,
         eq: (col, value) => { rows = rows.filter((row) => row[col] === value); return q; },
+        neq: (col, value) => { rows = rows.filter((row) => row[col] !== value); return q; },
         order: () => q,
         limit: (n) => { rows = rows.slice(0, n); return q; },
         maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
@@ -206,6 +207,48 @@ await check("VIES down: the reading is kept and the footer says EU VIES didn't a
   assert.equal(result.code, "registry_unreachable");
   assert.equal(rerunFailureWords(result.code, { source: result.source }), "EU VIES didn't answer. Try again later.");
   assert.equal(result.ran.reading.ran, true);
+});
+
+await check("a worse reading never replaces a readable one", async () => {
+  const stored = { details: { fileId: "f1", extracted: { readable: true, legalName: "Têxteis Douro, Lda", registrationNumber: "513284974", address: "Rua da Igreja 214" } } };
+  assert.equal(rules.worseReading({ readable: false }, stored, "f2"), true, "an unreadable reading of any file");
+  assert.equal(rules.worseReading({ readable: true, legalName: "Têxteis Douro, Lda" }, stored, "f1"), true, "fewer fields from the same file");
+  assert.equal(rules.worseReading({ readable: true, legalName: "x", registrationNumber: "1", address: "y" }, stored, "f1"), false, "as many fields");
+  assert.equal(rules.worseReading({ readable: true, legalName: "x" }, stored, "f2"), false, "another file may have fewer");
+  assert.equal(rules.worseReading({ readable: false }, { details: { extracted: { readable: false } } }, "f1"), false, "nothing readable to keep");
+  assert.equal(rules.worseReading({ readable: false }, null, "f1"), false, "nothing stored");
+});
+
+await check("Run again that reads worse keeps the stored reading, in the footer's words", async () => {
+  const calls = [];
+  const result = await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(ptTables("old"), calls), requestedBy: "staff", steps: stubSteps([], { readAnswer: { available: true, saved: false, kept: true } }), rules });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "kept_reading");
+  assert.equal(rerunFailureWords(result.code), "Couldn't read the file. Kept the earlier reading.");
+});
+
+await check("the reading step asks the reader to keep a better stored reading", async () => {
+  let asked = null;
+  const steps = stubSteps([]);
+  const assist = await steps.registryAssist();
+  steps.registryAssist = async () => ({ ...assist, runReadDocument: async (args) => { asked = args.keepIfWorse; return { available: true, saved: true }; } });
+  await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(ptTables("old")), requestedBy: "staff", steps, rules });
+  assert.equal(typeof asked?.worse, "function");
+  assert.equal(asked.previous.details.fileId, "old");
+});
+
+await check("VIES erroring keeps its last answer: nothing is recorded over it", async () => {
+  const calls = [];
+  const tables = { ...ptTables("new"), registry_checks: [{ org_id: ORG, source: "vies", automatic: true, result: "registered" }] };
+  const result = await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(tables, calls), requestedBy: "staff", steps: stubSteps([], { vies: { result: "could_not_check", details: {} } }), rules });
+  assert.equal(result.code, "registry_unreachable");
+  assert.ok(!calls.includes("rpc:record_registry_check"), "no could_not_check recorded over the last answer");
+});
+
+await check("VIES erroring with no earlier answer still records that it couldn't check", async () => {
+  const calls = [];
+  await runGroup({ orgId: ORG, group: "business_registration", fields: {}, edits: [], asServer: fakeDb(ptTables("new"), calls), requestedBy: "staff", steps: stubSteps([], { vies: { result: "could_not_check", details: {} } }), rules });
+  assert.ok(calls.includes("rpc:record_registry_check"));
 });
 
 await check("AI not set up: said in words, nothing else pretends to have run", async () => {

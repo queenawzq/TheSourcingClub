@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCORES, lifted, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch,
+  SCORES, lifted, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 
@@ -38,7 +38,17 @@ check(!namesPartlyMatch("EDP, S.A.", "Fiação do Vale, Lda"), "another company'
 check(SCORES.registry.found === 90 && SCORES.registry.nameDiffers === 60 && SCORES.registry.notFound === 5 && SCORES.certificate.expired === 15, "approved registry and certificate points");
 
 const empty = scoreVerification({ detail: {}, extra: {}, rules: {} });
-check(empty.overall === 0 && empty.standing.word === "Flagged" && empty.weakest === null, "nothing recorded: 0, Flagged, no weakest");
+check(empty.overall === null && empty.standing.word === "Not checked" && empty.tier === "none" && empty.weakest === null, "nothing recorded: Not checked (never 0%), no weakest");
+{
+  const pt = (details) => licenceCheck({ reading: { details }, files: [{ id: "f" }], registration: {}, country: "PT", title: "Têxteis Douro – Confecções, Lda" });
+  const noNumber = pt({ fileId: "f", extracted: { legalName: "Têxteis Douro – Confecções, Lda", registrationNumber: "" }, unsure: [{ field: "number", document: "" }] });
+  check(noNumber.verdict === "Number not read" && noNumber.score === 70, `a number not read is named as such (${noNumber.verdict})`);
+  const cut = pt({ fileId: "f", extracted: { legalName: "Têxteis Douro, Lda", registrationNumber: "513284974" } });
+  check(cut.verdict === "Read; legal name looks cut short", `a shorter name read is cut short (${cut.verdict})`);
+  const longer = licenceCheck({ reading: { details: { extracted: { legalName: "Têxteis Douro – Confecções, Lda", registrationNumber: "513284974" } } }, files: [{ id: "f" }], registration: {}, country: "PT", title: "Têxteis Douro" });
+  check(longer.score === SCORES.licence.clean, `the full legal name against a short title is not cut short (${longer.verdict})`);
+  check(renamedWhy({ source: "GİB", for: "Merter Tekstil Ltd. Şti." }, "Merter Tekstil Toptan Ticaret Ltd. Şti.") === "GİB was checked for “Merter Tekstil Ltd. Şti.”; the name is now longer.", "a rename's why says what was checked and what changed");
+}
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");
 

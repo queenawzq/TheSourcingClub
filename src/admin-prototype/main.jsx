@@ -205,7 +205,7 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 function VerificationRow({ profile, onReview }) {
   const productionTags = profile.productionTags ?? [];
   return (
-    <article className={`admin-verification-row${profile.confidence != null || profile.level ? " has-confidence" : ""}`}>
+    <article className={`admin-verification-row${profile.confidence != null || profile.scoreWord || profile.level ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
         <span>{profile.initials}</span>
         <div>
@@ -229,6 +229,8 @@ function VerificationRow({ profile, onReview }) {
         ? <div className={`admin-row-stat admin-row-level level-${profile.levelTone ?? "unknown"}`}><span>Level</span><strong>{profile.level}</strong></div>
         : profile.confidence != null
         ? <div className="admin-row-stat"><span>{profile.confidenceLabel ?? "Confidence"}</span><strong>{profile.confidence}%</strong></div>
+        : profile.scoreWord
+        ? <div className="admin-row-stat is-none"><span>{profile.confidenceLabel ?? "Score"}</span><strong>{profile.scoreWord}</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>

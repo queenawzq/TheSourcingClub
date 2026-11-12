@@ -731,9 +731,12 @@ async function main() {
 
     await waitForHeading(page, "all set", 30000);
     await record(page, "Factory complete", "the designed finish card, not a hand-built one");
-    // Waiting on staff, there is nothing to press: the card has no button.
-    check((await page.locator(".factory-onboarding-actions .primary-btn").count()) === 0,
-      "a factory waiting for review is shown no button on the finish card");
+    // Waiting on staff, there is nothing to press: main keeps the design's "Verification pending"
+    // button, disabled (John's revert of Nov 11, 3e77236), so no button on the card can be pressed.
+    const finishButtons = await page.evaluate(() => [...document.querySelectorAll(".factory-onboarding-actions button")]
+      .map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })));
+    check(finishButtons.every((button) => button.disabled),
+      `a factory waiting for review has no button it can press on the finish card (${finishButtons.map((b) => `${b.text}${b.disabled ? ", disabled" : ""}`).join("; ") || "none"})`);
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
@@ -1969,9 +1972,10 @@ async function main() {
     // The brand's builder is the designed "Production steps" stage, and its
     // buttons are the design's own: Save changes, and Continue to funding,
     // which confirms the steps. Only the brand sets them (design review).
-    // The hint speaks only once there are unsaved changes; none yet.
-    check((await page.locator('[data-testid="schedule-hint"]').innerText()).trim() === "",
-      "with no unsaved changes the builder's hint says nothing");
+    // With nothing unsaved, the hint says what Continue does (main restored the sentence: 3e77236).
+    const scheduleHint = (await page.locator('[data-testid="schedule-hint"]').innerText()).trim();
+    check(!/^Unsaved changes/.test(scheduleHint) && scheduleHint.includes("Continue to confirm them and start the order"),
+      `with no unsaved changes the builder's hint says what Continue does ("${scheduleHint}")`);
     check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
       "there is no \"Agree to this schedule\" any more");
     await clickButton(page, "continue to funding");

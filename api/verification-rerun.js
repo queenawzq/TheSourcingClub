@@ -131,8 +131,11 @@ async function readingStep({ orgId, asServer, requestedBy, edits, mustRead, step
   const extraDetails = { staffEdits, rerunBy: requestedBy, rerunAt: new Date().toISOString(), rerunFrom: fromFile ? "file" : "reading" };
   if (fromFile && !newest) return { ran: false, code: "no_file" };
   const answer = fromFile
-    ? await assist.runReadDocument({ orgId, asServer, requestedBy, edits: overlay, extraDetails })
+    ? await assist.runReadDocument({ orgId, asServer, requestedBy, edits: overlay, extraDetails, keepIfWorse: previous ? { previous, worse: rules.worseReading } : null })
     : await assist.rereadWithEdits({ orgId, detail: context.detail, signals: context.signals, reading: previous, asServer, requestedBy, edits: overlay, extraDetails });
+  // A worse reading was not saved: the stored one, its fields and the score stay as they were.
+  if (answer?.kept) return { ran: false, code: "kept_reading" };
+  // The model failing to read at all also keeps the stored reading (nothing was saved).
   if (answer?.available === false) return { ran: false, code: rules.failureCode(answer.reason) };
   if (answer?.saved === false) return { ran: false, code: "save_failed" };
   return { ran: true, from: extraDetails.rerunFrom, outOfDateBefore: outOfDate };
@@ -144,6 +147,12 @@ async function viesStep({ orgId, asServer, requestedBy, steps }) {
   if (!registration || registration.country_code !== "PT" || !registration.number) return { ran: false, skipped: "no automatic registry" };
   const { askVies } = await steps.vies();
   const outcome = await askVies(registration.number);
+  // A re-query that errors keeps the last answer: only a real answer is recorded over one.
+  if (outcome.result === "could_not_check") {
+    const { data: last } = await asServer.from("registry_checks").select("result").eq("org_id", orgId).eq("source", "vies")
+      .eq("automatic", true).neq("result", "could_not_check").order("checked_at", { ascending: false }).limit(1);
+    if (Array.isArray(last) && last.length) return { ran: true, code: "registry_unreachable", source: "EU VIES", kept: true };
+  }
   const { error } = await asServer.rpc("record_registry_check", {
     target_org: orgId, number_checked: registration.number, source: "vies",
     result: outcome.result, details: outcome.details ?? {}, requested_by: requestedBy,

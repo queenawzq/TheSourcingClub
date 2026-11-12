@@ -13,6 +13,8 @@ export function scoreGroup(group) {
   if (!group?.checks?.length) return null;
   const counted = group.checks.filter((check) => check.weight);
   if (!counted.length) return group.checks[0]?.score ?? null;
+  // Nothing in the group checked yet: "Not checked", not 0%.
+  if (!counted.some((check) => check.score != null)) return null;
   const total = counted.reduce((sum, check) => sum + check.weight, 0);
   return Math.round(counted.reduce((sum, check) => sum + (check.score ?? 0) * check.weight, 0) / total);
 }
@@ -20,13 +22,16 @@ export function scoreGroup(group) {
 export function scoreOverall(groups) {
   let sum = 0;
   let weight = 0;
+  let scored = false;
   for (const group of groups) {
     const w = GROUP_WEIGHTS[group.key];
     if (!w) continue;
+    if ((group.checks ?? []).some((check) => check.weight && check.score != null)) scored = true;
     sum += (scoreGroup(group) ?? 0) * w;
     weight += w;
   }
-  return weight ? Math.round(sum / weight) : null;
+  // Nothing counted has been checked yet: "Not checked", never a 0% that reads as a failure.
+  return weight && scored ? Math.round(sum / weight) : null;
 }
 
 /** The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence. */
@@ -47,7 +52,7 @@ export function tierFor(score) {
 }
 
 export function standingFor(score) {
-  if (score == null) return { word: "Not scored", tone: "none" };
+  if (score == null) return { word: "Not checked", tone: "none" };
   if (score >= 85) return { word: "Strong", tone: "strong" };
   if (score >= 60) return { word: "Needs a look", tone: "potential" };
   return { word: "Flagged", tone: "low" };

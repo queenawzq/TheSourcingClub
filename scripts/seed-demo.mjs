@@ -697,6 +697,9 @@ console.log("verification score cases");
     }).select("id, created_at").single(), `record ${name}`);
   };
   const image = (file) => ({ bytes: readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url)), mime: file.endsWith(".png") ? "image/png" : "image/jpeg" });
+  // The cases' documents: readable images of invented companies (scripts/make-demo-verification-docs.mjs),
+  // so the preview shows a document and Run again with nothing edited reads back what the seed records.
+  const doc = (file) => image(`demo-verification/${file}`);
   const reading = async ({ org }, file, extracted, extras = {}) => must(await admin.from("verification_signals").insert({
     org_id: org.id, kind: "document_reading", subject_id: file.id, automatic: true, checked_at: extras.checkedAt ?? day(-1),
     result: (extras.differences ?? []).length ? "differs" : "agrees",
@@ -733,18 +736,18 @@ console.log("verification score cases");
       legal_name: "杭州钱江服装有限公司", country_code: "CN", location: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", founded_year: 2015, employee_count: 140,
       website_url: "https://qjgarment.cn", intro: "Woven shirt and outerwear factory with 4 sewing lines, exporting to the EU and US.", moq: 300, typical_lead_days: 32, signer: "Zhang Wei",
     }, { address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", registration: { country: "CN", number: null } });
-    const licence = await upload(a, "business_registration", "business-licence.pdf", { createdAt: day(-2) });
+    const licence = await upload(a, "business_registration", "business-licence.png", { ...doc("cn-original-licence.png"), createdAt: day(-2) });
     await reading(a, licence, {
-      documentType: "营业执照", registrationNumber: "91330109MA2B3K7Q4L", legalName: "杭州钱江服装有限公司", legalNameEnglish: "Hangzhou Qianjiang Garment Co., Ltd.",
-      legalRepresentative: "张伟 (Zhang Wei)", address: "杭州市萧山区江东三路18号", businessScope: "服装制造；服装服饰批发；货物进出口", foundingDate: "2015-04-16",
-    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "服装制造", makingFrom: "words" }, fileName: "business-licence.pdf", title: "杭州钱江服装有限公司" });
+      documentType: "营业执照", registrationNumber: "91330109MA2B3K7Q4L", legalName: "杭州钱江服装有限公司",
+      legalRepresentative: "张伟", address: "杭州市萧山区江东三路18号", businessScope: "服装制造；服装服饰批发；货物进出口", foundingDate: "2015-04-16",
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "服装制造", makingFrom: "words" }, fileName: "business-licence.png", title: "杭州钱江服装有限公司" });
     must(await staff.rpc("admin_record_registry_result", { target_org: a.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/7a1c", name_on_registry: "杭州钱江服装有限公司" }), "A's QCC check");
     await addressCheck(a, "industrial", ownerResult("high", [{ between: ["license", "typed"], verdict: "match", same: ["road", "number"], differs: [] }]));
     const photos = [];
     for (const file of ["factory-header.png", "dashboard-rfq-shirt.jpg", "dashboard-rfq-knit.jpg", "dashboard-rfq-denim.jpg"]) photos.push(await upload(a, "factory_photo", file, image(file)));
     await photoCheck(a, photos.map((doc) => entry(doc)));
     for (const doc of photos.slice(0, 3)) await mark(a, doc, "own");
-    const cert = await certificate(a, "oeko-tex-standard-100", "2027-03-31", await upload(a, "certificate", "OEKO-TEX Standard 100.pdf"));
+    const cert = await certificate(a, "oeko-tex-standard-100", "2027-03-31", await upload(a, "certificate", "OEKO-TEX Standard 100.png", doc("cn-certificate-oeko-tex.png")));
     must(await staff.rpc("admin_record_signal", { target_org: a.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "SH025 187429" } }), "A's certificate check");
   }
 
@@ -754,15 +757,15 @@ console.log("verification score cases");
       legal_name: "广州越秀服饰有限公司", country_code: "CN", location: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", founded_year: 2018, employee_count: 65,
       website_url: "https://yxapparel.com", intro: "Knit tops and jersey dresses, 2 lines, mainly private label for EU brands.", moq: 500, typical_lead_days: 28, signer: "Li Na",
     }, { address: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", registration: { country: "CN", number: "91440111MA59C2RY8C" } });
-    const licence = await upload(b, "business_registration", "licence-copy.pdf", { createdAt: day(-1) });
+    const licence = await upload(b, "business_registration", "licence-copy.png", { ...doc("cn-copy-licence.png"), createdAt: day(-1) });
     // Staff checked QCC before the licence was read: the check holds, the reading's difference still blocks approval.
     must(await staff.rpc("admin_record_registry_result", { target_org: b.org.id, source: "qcc", result: "found", reference: "qcc.com/firm/c93e", name_on_registry: "广州越秀服饰有限公司" }), "B's QCC check");
     await reading(b, licence, {
-      documentType: "营业执照", registrationNumber: "91440111MA59C2RX8B", legalName: "广州越秀服饰有限公司", legalNameEnglish: "Guangzhou Yuexiu Apparel Co., Ltd.",
-      legalRepresentative: "李娜 (Li Na)", address: "广州市白云区黄浦路112号3栋", businessScope: "针织服装制造；服装服饰零售", foundingDate: "2018-06-02",
+      documentType: "营业执照", registrationNumber: "91440111MA59C2RX8B", legalName: "广州越秀服饰有限公司",
+      legalRepresentative: "李娜", address: "广州市白云区黄浦路112号3栋", businessScope: "针织服装制造；服装服饰零售", foundingDate: "2018-06-02",
       verificationWatermark: true, watermarkText: "仅供认证使用",
     }, {
-      tradingScope: { trading: false, read: true, recognised: true, quote: "针织服装制造", makingFrom: "words" }, fileName: "licence-copy.pdf", title: "广州越秀服饰有限公司",
+      tradingScope: { trading: false, read: true, recognised: true, quote: "针织服装制造", makingFrom: "words" }, fileName: "licence-copy.png", title: "广州越秀服饰有限公司",
       differences: [{ field: "number", document: "91440111MA59C2RX8B", typed: "91440111MA59C2RY8C" }], numberAtReading: "91440111MA59C2RY8C",
       warnings: [{ kind: "verificationWatermark" }],
     });
@@ -780,14 +783,14 @@ console.log("verification score cases");
     const c = await verifyOrg("verifyTr", {
       legal_name: "Merter Tekstil Ltd. Şti.", country_code: "TR", location: "Merter, Güngören, Istanbul", employee_count: 300, website_url: "https://mertertekstil.com", signer: "Emre Yılmaz",
     }, { address: "Merter, Güngören, Istanbul", registration: { country: "TR", number: "6230418796", registration_letter_number: "2026GIB0451887" } });
-    const plate = await upload(c, "business_registration", "vergi-levhasi.pdf", { createdAt: day(-1) });
+    const plate = await upload(c, "business_registration", "vergi-levhasi.png", { ...doc("tr-vergi-levhasi.png"), createdAt: day(-1) });
     must(await staff.rpc("admin_record_registry_result", { target_org: c.org.id, source: "gib", result: "found", name_on_registry: "Merter Tekstil Ltd. Şti." }), "C's GİB check");
     // Renamed afterwards: the check no longer covers the name.
     must(await admin.from("factory_profiles").update({ legal_name: "Merter Tekstil Toptan Ticaret Ltd. Şti." }).eq("org_id", c.org.id), "C renamed");
     await reading(c, plate, {
       documentType: "Vergi Levhası", registrationNumber: "6230418796", legalName: "Merter Tekstil Toptan Ticaret Ltd. Şti.", taxOffice: "Merter",
       address: "Merter Mah., Güngören, İstanbul", businessScope: "Toptan giyim ticareti", activityCodes: ["46.42"],
-    }, { tradingScope: { trading: true, read: true, recognised: true, quote: "Toptan giyim ticareti" }, fileName: "vergi-levhasi.pdf", title: "Merter Tekstil Toptan Ticaret Ltd. Şti.", numberAtReading: "6230418796" });
+    }, { tradingScope: { trading: true, read: true, recognised: true, quote: "Toptan giyim ticareti" }, fileName: "vergi-levhasi.png", title: "Merter Tekstil Toptan Ticaret Ltd. Şti.", numberAtReading: "6230418796" });
     await addressCheck(c, "unknown", ownerResult("medium", [{ between: ["license", "typed"], verdict: "partial", same: ["district"], differs: [] }]), { precise: false });
     const photos = [];
     for (const file of ["dashboard-rfq-denim.jpg", "dashboard-rfq-shirt.jpg", "factory-header.png", "dashboard-rfq-knit.jpg"]) photos.push(await upload(c, "factory_photo", file, image(file)));
@@ -811,12 +814,12 @@ console.log("verification score cases");
       legal_name: "Têxteis Douro – Confecções, Lda", country_code: "PT", location: "Rua da Igreja 214, Arcozelo, Barcelos", founded_year: 2012, employee_count: 38,
       website_url: "https://texteisdouro.pt", intro: "Cut-and-sew jackets and overshirts in small batches, family run since 2012.", moq: 100, typical_lead_days: 30, signer: "Rui Ferreira",
     }, { address: "Rua da Igreja 214, Arcozelo, Barcelos", registration: { country: "PT", number: "513284974", access_code: "4821-7730-9145" } });
-    const older = await upload(d, "business_registration", "certidao-2023.pdf", { createdAt: day(-3) });
-    await upload(d, "business_registration", "certidao-permanente.pdf", { createdAt: day(-1) });
+    const older = await upload(d, "business_registration", "certidao-2023.png", { ...doc("pt-certidao-2023.png"), createdAt: day(-3) });
+    await upload(d, "business_registration", "certidao-permanente.png", { ...doc("pt-certidao-permanente.png"), createdAt: day(-1) });
     await reading(d, older, {
       documentType: "Certidão Permanente", registrationNumber: "513284974", legalName: "Têxteis Douro, Lda", address: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos",
       businessScope: "", activityCodes: ["14130"], foundingDate: "2012-03-08",
-    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "14130", makingFrom: "codes", activityCodes: ["14130"] }, fileName: "certidao-2023.pdf", title: "Têxteis Douro – Confecções, Lda", numberAtReading: "513284974", checkedAt: day(-3) });
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: "14130", makingFrom: "codes", activityCodes: ["14130"] }, fileName: "certidao-2023.png", title: "Têxteis Douro – Confecções, Lda", numberAtReading: "513284974", checkedAt: day(-3) });
     must(await admin.from("registry_checks").insert({
       org_id: d.org.id, country_code: "PT", number_checked: "513284974", source: "vies", result: "registered", automatic: true, checked_at: day(-1),
       details: { name: "Têxteis Douro – Confecções, Lda", address: "Rua da Igreja 214, 4750-142 Arcozelo" },
@@ -826,7 +829,7 @@ console.log("verification score cases");
     for (const file of ["dashboard-rfq-shirt.jpg", "factory-header.png", "dashboard-rfq-denim.jpg"]) photos.push(await upload(d, "factory_photo", file, image(file)));
     await photoCheck(d, photos.map((doc) => entry(doc)));
     await mark(d, photos[0], "own");
-    const cert = await certificate(d, "gots", "2027-08-31", await upload(d, "certificate", "GOTS certificate.pdf"));
+    const cert = await certificate(d, "gots", "2027-08-31", await upload(d, "certificate", "GOTS certificate.png", doc("pt-certificate-gots.png")));
     must(await staff.rpc("admin_record_signal", { target_org: d.org.id, kind: "certificate", subject: cert.id, result: "found", note: "Demo: on the issuer's list", details: { number: "CU 1048211" } }), "D's certificate check");
     must(await staff.rpc("admin_check_reason", { target_org: d.org.id, check_key: "certificate", note: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", subject: cert.id }), "D's certificate reason");
   }

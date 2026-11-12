@@ -199,7 +199,9 @@ export async function withLevel(profile) {
   if (scoreAvailable) {
     try {
       const overall = scoreOverall((await loadVerificationScore(profile.id, { urls: false }))?.groups ?? []);
-      return overall == null ? profile : { ...profile, confidence: overall, confidenceLabel: "Score" };
+      return overall == null
+        ? { ...profile, confidence: null, confidenceLabel: "Score", scoreWord: "Not checked" }
+        : { ...profile, confidence: overall, confidenceLabel: "Score" };
     } catch {
       return profile;
     }

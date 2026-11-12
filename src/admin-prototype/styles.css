@@ -307,6 +307,11 @@
   line-height: 18px;
 }
 
+.admin-row-stat.is-none strong {
+  color: #71809a;
+  font-weight: 600;
+}
+
 .admin-table-wrap {
   overflow-x: auto;
   border: 1px solid #d9dfe9;

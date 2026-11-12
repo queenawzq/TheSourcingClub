@@ -697,7 +697,7 @@ function authorisationFrom({ file, fields, failure }, { names, legalRepresentati
  * since signals have no kind of their own for it. Returns what the
  * read_document action returns.
  */
-async function readDocument({ orgId, detail, files, signals, storage, asServer, requestedBy, edits = [], extraDetails = null }) {
+async function readDocument({ orgId, detail, files, signals, storage, asServer, requestedBy, edits = [], extraDetails = null, keepIfWorse = null }) {
   if (!aiReadsDocuments()) return { available: false, reason: "Reading documents with AI is off on this site." };
   const file = (files ?? [])[0];
   if (!file) return { available: false, reason: "No registration document is uploaded." };
@@ -710,7 +710,7 @@ async function readDocument({ orgId, detail, files, signals, storage, asServer, 
     { role: "user", content: [{ type: "text", text: "Copy the fields from this document." }, part] },
   ], READ_SCHEMA, "copy_registration_fields", 2200);
   if (failure) return { available: false, reason: failure };
-  return finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits, extraDetails });
+  return finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits, extraDetails, keepIfWorse });
 }
 
 /**
@@ -741,7 +741,7 @@ export async function rereadWithEdits({ orgId, detail, signals, reading, asServe
   return finishReading({ orgId, detail, signals, file, fields: previous.extracted ?? {}, model: previous.model ?? null, authorisationRead, asServer, requestedBy, edits, extraDetails });
 }
 
-async function finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits = [], extraDetails = null }) {
+async function finishReading({ orgId, detail, signals, file, fields, model, authorisationRead, asServer, requestedBy, edits = [], extraDetails = null, keepIfWorse = null }) {
   // A model sometimes writes the empty value as the two characters "" .
   let extracted = Object.fromEntries(Object.entries(fields ?? {}).map(([key, value]) => [key, typeof value === "string" ? (/^\s*(""|'')\s*$/.test(value) ? "" : value.slice(0, 800)) : value]));
   if (!Array.isArray(extracted.activityCodes)) extracted.activityCodes = [];
@@ -752,6 +752,10 @@ async function finishReading({ orgId, detail, signals, file, fields, model, auth
     extracted.activityCodes = [];
   }
   extracted = overlayEdits(extracted, edits);
+  // Run again: a worse reading never replaces the stored one (keepIfWorse = { previous, worse }).
+  if (keepIfWorse?.worse && keepIfWorse.worse(extracted, keepIfWorse.previous, file.id)) {
+    return { available: true, saved: false, kept: true, readable: extracted.readable !== false };
+  }
   extracted.activityCodes = extracted.activityCodes.map((code) => String(code ?? "").slice(0, 200)).filter(Boolean).slice(0, 12);
   const registration = detail?.registration ?? {};
   const helpers = await loadRegistrationNumber();
@@ -810,13 +814,13 @@ async function finishReading({ orgId, detail, signals, file, fields, model, auth
  * with the server key, records it, and returns what read_document returns.
  * Never throws: any failure is `{ available: false, reason }`.
  */
-export async function runReadDocument({ orgId, asServer, requestedBy = null, edits = [], extraDetails = null }) {
+export async function runReadDocument({ orgId, asServer, requestedBy = null, edits = [], extraDetails = null, keepIfWorse = null }) {
   try {
     if (!orgId || !asServer) return { available: false, reason: "Nothing to read." };
     const context = await readingContext(asServer, orgId);
     if (!context) return { available: false, reason: "The company's documents could not be read." };
     const { detail, files, signals } = context;
-    return await readDocument({ orgId, detail, files, signals, storage: asServer, asServer, requestedBy, edits, extraDetails });
+    return await readDocument({ orgId, detail, files, signals, storage: asServer, asServer, requestedBy, edits, extraDetails, keepIfWorse });
   } catch (error) {
     console.error("registry-assist runReadDocument", error?.message);
     return { available: false, reason: "The document could not be read." };

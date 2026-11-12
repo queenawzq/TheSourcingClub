@@ -40,6 +40,8 @@ export function scoreGroup(group) {
     const scored = group.checks.filter((check) => check.score != null);
     return scored.length ? Math.round(scored.reduce((sum, check) => sum + check.score, 0) / scored.length) : null;
   }
+  // Nothing in the group checked yet: "Not checked", not 0%.
+  if (!counted.some((check) => check.score != null)) return null;
   const total = counted.reduce((sum, check) => sum + check.weight, 0);
   return Math.round(counted.reduce((sum, check) => sum + (check.score ?? 0) * check.weight, 0) / total);
 }
@@ -47,13 +49,17 @@ export function scoreGroup(group) {
 export function scoreOverall(groups) {
   let sum = 0;
   let weight = 0;
+  let scored = false;
   for (const group of groups) {
     const w = GROUP_WEIGHTS[group.key];
     if (!w) continue;
+    if ((group.checks ?? []).some((check) => check.weight && check.score != null)) scored = true;
     sum += (scoreGroup(group) ?? 0) * w;
     weight += w;
   }
-  return weight ? Math.round(sum / weight) : 0;
+  // Nothing counted has been checked yet: "Not checked", never a 0% that reads as a failure.
+  if (!scored) return null;
+  return weight ? Math.round(sum / weight) : null;
 }
 
 /** The lowest counted check that has a score: a check not done yet is a to-do, not evidence. */
@@ -73,6 +79,7 @@ export function tierFor(score) {
 }
 
 export function standingFor(score) {
+  if (score == null) return { word: "Not checked", tone: "none" };
   if (score >= 85) return { word: "Strong", tone: "strong" };
   if (score >= 60) return { word: "Needs a look", tone: "potential" };
   return { word: "Flagged", tone: "low" };
@@ -177,7 +184,8 @@ export function licenceCheck({ reading, files, registration, country, title, lic
   const x = d.extracted ?? {};
   if (x.readable === false) return { ...base, score: SCORES.licence.unreadable, verdict: "Can't be read", canReason: true };
   const found = [];
-  const add = (score, verdict) => found.push({ score, verdict });
+  // `first`: among equal scores, the cause staff must act on is named (a number not read before a name).
+  const add = (score, verdict, first = false) => found.push({ score, verdict, first });
   if (licenseCopyLow) add(SCORES.licence.otherCompanyFirst, "Same licence uploaded by another company first");
   if (x.specimen || d.specimen || x.markedAsSample) add(SCORES.licence.sample, "Marked as a sample");
   const warned = (kind) => (d.warnings ?? []).some((w) => w?.kind === kind);
@@ -189,20 +197,28 @@ export function licenceCheck({ reading, files, registration, country, title, lic
     else if (line.field !== "number" && namesPartlyMatch(line.document, line.typed ?? title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
     else add(SCORES.licence.differs, `${what} differs from what they typed`);
   }
-  for (const line of d.unsure ?? []) add(SCORES.licence.partial, `Read; ${line.field === "number" ? "number" : "name"} unsure`);
-  if (!x.registrationNumber) add(SCORES.licence.partial, "Read; no number found on it");
+  const numberNotRead = !String(x.registrationNumber ?? "").trim()
+    || (d.unsure ?? []).some((line) => line.field === "number" && !String(line.document ?? "").trim());
+  for (const line of d.unsure ?? []) {
+    if (line.field === "number" && numberNotRead) continue;
+    add(SCORES.licence.partial, `Read; ${line.field === "number" ? "number" : "name"} unsure`, line.field === "number");
+  }
+  if (numberNotRead) add(SCORES.licence.partial, "Number not read", true);
   else if (!x.legalName) add(SCORES.licence.partial, "Read; no legal name found on it");
   const problem = d.numberCheck?.problem;
   if (problem === "check_digit" || d.numberCheckDigitFails || x.numberCheckDigitFails) add(SCORES.licence.partial, "Read; number fails its check digit");
   else if (problem === "old_number" || problem === "format") add(SCORES.licence.partial, "Read; not a mainland credit code");
   if (label === "Tax plate") add(SCORES.licence.taxPlate, "Read, tax number valid");
   // A name the reading cut short, against the registry's longer one.
-  if (!(d.differences ?? []).length && x.legalName && namesPartlyMatch(x.legalName, title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
+  // Only when the name read is the shorter one: a full legal name against a short trading title is not cut short.
+  const plainLength = (name) => String(name ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().length;
+  if (!(d.differences ?? []).length && x.legalName && plainLength(x.legalName) < plainLength(title) && namesPartlyMatch(x.legalName, title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
   if (!found.length) {
     return { ...base, score: SCORES.licence.clean, verdict: country === "CN" ? "Original, every field readable" : "Every field read", short: country === "CN" ? "Original licence" : `${label} read`, canReason: true };
   }
-  found.sort((a, b) => a.score - b.score);
-  return { ...base, ...found[0], short: found[0].verdict, canReason: true };
+  found.sort((a, b) => a.score - b.score || Number(b.first) - Number(a.first));
+  const { first, ...worst } = found[0];
+  return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
 export function registryCheck({ detail, country, title, readName = null, timeZone }) {
@@ -491,10 +507,24 @@ export function approvalBlockWords(problem, detail) {
 
 /* ------------------------------------------------------------ all together */
 
-function groupVerdict(checks, good) {
+/** The header's "why" for a rename: what was checked, and what changed since. */
+export function renamedWhy(registry, title) {
+  const was = String(registry?.for ?? "").trim();
+  const now = String(title ?? "").trim();
+  const source = registry?.source ?? "The registry";
+  if (!was) return `${source} was checked before the company changed its name.`;
+  const plain = (name) => name.normalize("NFKC").replace(/\s+/g, " ").toLowerCase();
+  const change = !now ? "the name has changed since"
+    : plain(now).length > plain(was).length && namesPartlyMatch(was, now) ? "the name is now longer"
+      : plain(now).length < plain(was).length && namesPartlyMatch(was, now) ? "the name is now shorter"
+        : `the name is now “${now}”`;
+  return `${source} was checked for “${was}”; ${change}.`;
+}
+
+function groupVerdict(checks, good, { title } = {}) {
   const counted = checks.filter((c) => c.weight);
   const renamed = counted.find((c) => c.verdict === "Renamed since the check");
-  if (renamed) return { verdict: "Renamed since the registry check", lead: renamed };
+  if (renamed) return { verdict: "Renamed since the registry check", lead: renamed, explain: renamedWhy(renamed.registry, title) };
   const weak = counted.filter((c) => c.score != null && c.score < 75).sort((a, b) => a.score - b.score)[0];
   if (weak) return { verdict: weak.verdict, lead: weak };
   const open = counted.find((c) => c.score == null);
@@ -536,7 +566,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
   const registry = withReason(registryCheck({ detail, country, title, readName: reading?.details?.extracted?.legalName ?? null, timeZone }));
   const brChecks = [licence, registry];
-  const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? registry.verdict.toLowerCase()}`);
+  const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? registry.verdict.toLowerCase()}`, { title });
   const staleWords = (() => {
     if (!reading) return null;
     if (files[0] && reading.subjectId && reading.subjectId !== files[0].id) {
@@ -551,7 +581,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     key: "business_registration",
     label: "Business registration",
     verdict: brVerdict.verdict,
-    why: [whyFrom(brChecks, brVerdict.lead), reading?.details?.extracted?.watermarkText ? `Stamped “${reading.details.extracted.watermarkText}”.` : ""].filter(Boolean).join(" "),
+    why: [brVerdict.explain, whyFrom(brChecks, brVerdict.lead), reading?.details?.extracted?.watermarkText ? `Stamped “${reading.details.extracted.watermarkText}”.` : ""].filter(Boolean).join(" "),
     checking: Boolean(input?.pending?.registration),
     evidence: files.length
       ? { kind: "licence", files: files.map((f) => ({ id: f.id, name: f.name, bucket: f.bucket, path: f.path, mimeType: f.mimeType ?? null, when: dayWords(f.createdAt, timeZone) })) }

@@ -60,6 +60,7 @@ export const RERUN_WORDS = {
   no_certificate: "No certificate to check.",
   bad_date: "Write the date as YYYY-MM-DD.",
   save_failed: "Couldn't save the result. Try again.",
+  kept_reading: "Couldn't read the file. Kept the earlier reading.",
   failed: "Couldn't run the checks. Try again.",
 };
 
@@ -154,6 +155,25 @@ export function checkFields(group, fields = {}) {
   }
   if (group === "certification" && out.validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(out.validUntil)) return { code: "bad_date", field: "validUntil" };
   return { fields: out };
+}
+
+const READING_FIELD_KEYS = ["documentType", "registrationNumber", "legalName", "legalNameEnglish", "legalRepresentative", "address", "businessScope", "taxOffice", "issueDate", "foundingDate"];
+const filledFields = (extracted) => READING_FIELD_KEYS.filter((key) => String(extracted?.[key] ?? "").trim()).length
+  + (Array.isArray(extracted?.activityCodes) && extracted.activityCodes.length ? 1 : 0);
+
+/**
+ * Whether a new reading would replace a better one (Run again, Nov 12): a
+ * reading that could not read the file never replaces one that could, and a
+ * reading of the same file with fewer fields filled never replaces the fuller
+ * one. `previous` is the stored document_reading signal ({ details }), `next`
+ * the new reading's `extracted`, `fileId` the file it was read from.
+ */
+export function worseReading(next, previous, fileId) {
+  const before = previous?.details?.extracted;
+  if (!before || before.readable === false) return false;
+  if (next?.readable === false) return true;
+  const sameFile = Boolean(fileId) && previous.details.fileId === fileId;
+  return sameFile && filledFields(next) < filledFields(before);
 }
 
 /**

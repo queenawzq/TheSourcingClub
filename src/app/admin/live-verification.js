@@ -43,8 +43,12 @@ function withEdits(verification, edits) {
         ...group,
         fields: (group.fields ?? []).map((field) => {
           const edit = byField[field.key];
-          // Only while the field still shows the edited value: a later reading replaces it.
-          return edit && String(edit.value ?? "") === String(field.value ?? "") ? { ...field, by: editedWords(edit) } : field;
+          if (!edit) return field;
+          // The factory address staff entered is what the address check ran on (Run again keeps it, not
+          // the profile's): show it, so "Edited" clears once Run again has used it.
+          if (field.key === "siteAddress") return { ...field, value: String(edit.value ?? ""), by: editedWords(edit) };
+          // A reading field: only while it still shows the edited value; a later reading replaces it.
+          return String(edit.value ?? "") === String(field.value ?? "") ? { ...field, by: editedWords(edit) } : field;
         }),
       };
     }),

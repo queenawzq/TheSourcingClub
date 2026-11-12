@@ -53,6 +53,7 @@ export function groupScore(verification, key) {
   if (typeof group.score === "number") return group.score;
   const counted = (group.checks ?? []).filter((check) => check.weight);
   if (!counted.length) return group.checks?.[0]?.score ?? null;
+  if (!counted.some((check) => check.score != null)) return null;
   const total = counted.reduce((sum, check) => sum + check.weight, 0);
   return Math.round(counted.reduce((sum, check) => sum + (check.score ?? 0) * check.weight, 0) / total);
 }
