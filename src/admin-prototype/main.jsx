@@ -6,10 +6,14 @@ import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
+import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
+import { verificationMockProfiles } from "./verification-mock.js";
 
 import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
 export const initialProfiles = [
+  // Nov 12 review design (mock): one score card, details in each row's modal.
+  ...verificationMockProfiles,
   {
     id: "vendor-atelier",
     initials: "AM",
@@ -1202,6 +1206,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} />}
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               {profile.capabilityGroups?.length ? (
@@ -1267,13 +1272,15 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
-            {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
+            {profile.confidence != null && !profile.verification && <ConfidenceCard score={profile.confidence} />}
             <section className="factory-profile-card admin-review-meta">
               <h2>Review details</h2>
+              {profile.verification ? <VerificationFacts facts={profile.verification.facts} /> : (<>
               {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
               {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
               {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
+              </>)}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
             <section className="factory-profile-card admin-decision-card">
