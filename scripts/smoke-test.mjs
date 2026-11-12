@@ -2176,6 +2176,33 @@ console.log("\nphase 6 — admin operations");
   queueLeak ? ok("a brand CANNOT read the verification queue")
             : fail("LEAK: the verification queue is readable by a party");
 
+  // Verification score (20261112100000): the exact signatures the domain module calls.
+  {
+    const { data: anyFactory } = await admin.from("orgs").select("id").eq("type", "factory").limit(1).maybeSingle();
+    if (anyFactory) {
+      const { data: input, error: inputError } = await staff.client.rpc("admin_verification_score_input", { target_org: anyFactory.id });
+      if (inputError) fail("staff read the verification score input", inputError);
+      else {
+        const { scoreVerification } = await import("../src/shared/verification-score.mjs");
+        const v = scoreVerification(input);
+        v.groups?.length === 3 && Number.isInteger(v.overall)
+          ? ok(`the verification score reads and scores (${v.overall}%, ${v.standing.word})`)
+          : fail("the verification score's shape", v);
+      }
+      const { error: scoreLeak } = await brand.client.rpc("admin_verification_score_input", { target_org: anyFactory.id });
+      scoreLeak?.code === "42501" ? ok("a brand CANNOT read a factory's verification score input")
+                                  : fail("LEAK: the verification score input is readable by a party", scoreLeak);
+      const { error: badResult } = await staff.client.rpc("admin_record_registry_result", {
+        target_org: anyFactory.id, source: "qcc", result: "maybe", reference: null, name_on_registry: null, reason: null,
+      });
+      badResult?.code === "22023" ? ok("admin_record_registry_result takes (target_org, source, result, reference, name_on_registry, reason)")
+                                  : fail("admin_record_registry_result's signature or refusal", badResult);
+      const { error: badKey } = await staff.client.rpc("admin_check_reason", { target_org: anyFactory.id, check_key: "nope", note: "x", subject: null });
+      badKey?.code === "22023" ? ok("admin_check_reason takes (target_org, check_key, note, subject)")
+                               : fail("admin_check_reason's signature or refusal", badKey);
+    }
+  }
+
   const { error: rfqLeak } = await factory.client.rpc("admin_rfq_queue");
   rfqLeak ? ok("a factory CANNOT read every brand's requests")
           : fail("LEAK: marketplace-wide requests are readable by a factory");

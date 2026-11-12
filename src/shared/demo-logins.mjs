@@ -60,5 +60,14 @@ export const DEMO_LOGINS = {
   callE1: { role: "Demo E1: wholesaler, Türkiye", name: "Şehriistanbul Tekstil İç ve Dış Ticaret Ltd. Şti.", email: "demo-call-e1@example.com" },
   callE2: { role: "Demo E2: certidão, Portugal", name: "Sport Clube Leiria e Marrazes", email: "demo-call-e2@example.com" },
   callE3: { role: "Demo E3: making code, Portugal", name: "Malhas e Confecções do Cávado, Lda", email: "demo-call-e3@example.com" },
+  // The Nov 12 verification score: the approved mock's four cases, each with
+  // its records already in place (licence read, registry, address, photos), so
+  // the staff review page shows its score with nothing to run. Merter Denim
+  // only shares Merter Tekstil's tax number.
+  verifyCn: { role: "Score A: China, original licence", name: "Hangzhou Qianjiang Garment", email: "demo-verify-cn@example.com" },
+  verifyCnCopy: { role: "Score B: China, watermarked copy", name: "Guangzhou Yuexiu Apparel", email: "demo-verify-cn-copy@example.com" },
+  verifyTr: { role: "Score C: wholesaler, Türkiye", name: "Merter Tekstil", email: "demo-verify-tr@example.com" },
+  verifyTrTwin: { role: "Score C2: shares C's tax number", name: "Merter Denim", email: "demo-verify-tr-twin@example.com" },
+  verifyPt: { role: "Score D: Portugal, EU VIES", name: "Têxteis Douro", email: "demo-verify-pt@example.com" },
   admin: { role: "Admin", name: "Demo Admin", email: "demo-admin@example.com", admin: true },
 };
