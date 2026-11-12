@@ -63,8 +63,8 @@ function Meter({ value }) {
   );
 }
 
-function StandingPill({ score }) {
-  const standing = standingFor(score);
+function StandingPill({ score, groups = null }) {
+  const standing = standingFor(score, groups);
   return <span className={`vr-standing vr-tier-${standing.tone}`}>{standing.word}</span>;
 }
 
@@ -201,7 +201,9 @@ function marked(shown, other, parts = null) {
   // Text in another script than what it is compared with: nothing to compare word for word, so nothing is marked.
   if (parts && /[\p{Script=Han}]/u.test(shown) !== /[\p{Script=Han}]/u.test(other)) return shown;
   const words = new Set(other.split(/[\s,]+/).filter(Boolean).map(foldWord));
-  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(foldWord(part)) ? part : <mark key={index}>{part}</mark>));
+  // A street-type abbreviation ("Mah." for Mahallesi, "Cad.", "No.") is how an address is written, not a difference.
+  const isAbbreviation = (part) => /^(mah|mh|cad|cd|sok|sk|blv|bulv|no|apt|rd|st|ave|bldg|av|r|tv|est)\.$/i.test(part);
+  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(foldWord(part)) || isAbbreviation(part) ? part : <mark key={index}>{part}</mark>));
 }
 
 /* ------------------------------------------------------------------ card */
@@ -343,7 +345,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
       <div className="vr-overall">
         <div className="vr-overall-figure">
           <Score value={anyPending && overall != null ? null : overall} size="hero" />
-          {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => GROUP_WEIGHTS[group.key] && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} />}
+          {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => GROUP_WEIGHTS[group.key] && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} groups={groups} />}
         </div>
         <p className="vr-overall-line">
           {weakest ? <><span>Weakest:</span> {weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</> : null}
@@ -586,9 +588,10 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
 
 /* ---------------------------------------------------------------- fields */
 
-function ReadField({ field, value, onChange, onExplain }) {
+function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
   const id = useId();
   const [explaining, setExplaining] = useState(false);
+  const [explainingTyped, setExplainingTyped] = useState(false);
   const isEdited = (value ?? "") !== (field.value ?? "");
   const Control = field.multiline ? "textarea" : "input";
   const dup = field.duplicate;
@@ -608,7 +611,15 @@ function ReadField({ field, value, onChange, onExplain }) {
       </div>
       {field.by && !isEdited && <small className="vr-field-by">{field.by}</small>}
       {field.typed && (value ?? "") !== field.typed && (
-        <p className="vr-compare is-typed"><span>Typed:</span> {marked(field.typed, value ?? "")}</p>
+        <p className="vr-compare is-typed">
+          <span>Typed:</span> {marked(field.typed, value ?? "")}
+          {field.explainTyped && onExplainTyped && !explainingTyped && (
+            <button className="vr-text-action" type="button" onClick={() => setExplainingTyped(true)}>Explain</button>
+          )}
+        </p>
+      )}
+      {field.explainTyped && onExplainTyped && explainingTyped && (
+        <ReasonForm label={field.explainTyped} saveLabel="Save" onSave={onExplainTyped} onDone={() => setExplainingTyped(false)} />
       )}
       {field.licence && (value ?? "") !== field.licence && (
         <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "", field.licenceParts ?? [])}</p>
@@ -754,6 +765,7 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
                       value={values[field.key]}
                       onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
                       onExplain={(text) => actions.explainField(group.key, field, text)}
+                      onExplainTyped={actions.explainTyped ? (text) => actions.explainTyped(group.key, field, text, group.checks.find((check) => check.key === "registry")) : null}
                       key={field.key}
                     />
                   ))}
@@ -815,15 +827,17 @@ function useFileHref(file, fileUrl) {
 }
 
 function PhotoRecord({ photo, index, onSave, onDone }) {
-  // Opens on what is recorded; only a copy across TSC starts on "Found elsewhere" (a stock or office tile is not).
-  const start = photo.result && photo.result !== "unchecked" ? photo.result : photo.flag === "tsc" ? "elsewhere" : "own";
+  // Opens on what is recorded; only a copy across TSC starts on "Found elsewhere". A stock or office tile
+  // starts on nothing (fix round 4): Save without looking must not mark it their own.
+  const start = photo.flag === "stock" || photo.flag === "office" ? null
+    : photo.result && photo.result !== "unchecked" ? photo.result : photo.flag === "tsc" ? "elsewhere" : "own";
   const [result, setResult] = useState(start);
   const [where, setWhere] = useState(photo.whereUrl ?? photo.link ?? photo.where ?? "");
   const [save, run] = useSave();
   const whereId = useId();
   const submit = async (event) => {
     event.preventDefault();
-    if (save.busy) return;
+    if (save.busy || !result) return;
     const link = result === "elsewhere" ? where.trim() : "";
     const { ok } = await run(() => onSave({ result, where: link.replace(/^https?:\/\/(www\.)?/, "").split("/")[0], whereUrl: link }));
     if (ok) onDone();
@@ -846,7 +860,7 @@ function PhotoRecord({ photo, index, onSave, onDone }) {
       <SaveError text={save.error} />
       <div className="vr-record-actions">
         <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
-        <button className="primary-btn compact-btn" type="submit" disabled={save.busy}>{save.busy ? "Saving…" : "Save"}</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={save.busy || !result}>{save.busy ? "Saving…" : "Save"}</button>
       </div>
     </form>
   );

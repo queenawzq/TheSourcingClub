@@ -183,6 +183,8 @@ export function viesNeedsAsking({ number, readNumber = null, last = null }) {
 export function addressOutcome(answer) {
   if (!answer || answer.timedOut) return { ran: false, code: "map_unreachable" };
   if (answer.available === false) return { ran: false, code: /saved/.test(String(answer.reason)) ? "save_failed" : "map_unreachable" };
+  // An unchanged address the map answered no better than before: the earlier result stands, nothing red.
+  if (answer.kept && !answer.lookupFailed) return { ran: true, judgement: answer.judgement ?? "unknown" };
   if (!answer.address) return { ran: true, code: "no_address" };
   if (answer.found === false) return { ran: true, code: answer.lookupFailed ? "map_unreachable" : "address_not_found" };
   return { ran: true, judgement: answer.judgement ?? "unknown" };

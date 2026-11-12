@@ -61,6 +61,49 @@ const PINYIN = {
 };
 
 const pinyinOf = (core) => PINYIN[core] ?? null;
+
+// Characters common in road names, read one by one (fix round 4), so "江东三路18号"
+// can be compared with "18 Jiangdong 3rd Road". A road with a character not
+// here is simply not compared, never guessed.
+const CHAR_PINYIN = Object.fromEntries(`
+江jiang 东dong 西xi 南nan 北bei 中zhong 黄huang 浦pu 埔pu 新xin 华hua 人ren 民min 解jie 放fang 建jian 设she 工gong 业ye
+兴xing 发fa 展zhan 长chang 安an 宁ning 平ping 和he 光guang 明ming 文wen 化hua 学xue 园yuan 区qu 大da 小xiao 上shang 下xia
+前qian 后hou 金jin 银yin 山shan 水shui 湖hu 海hai 河he 桥qiao 港gang 湾wan 城cheng 村cun 镇zhen 环huan 滨bin 沙sha 石shi
+龙long 凤feng 白bai 云yun 天tian 鹤he 花hua 都du 宝bao 庆qing 康kang 泰tai 福fu 富fu 贵gui 盛sheng 昌chang 隆long 广guang
+州zhou 杭hang 萧xiao 钱qian 塘tang 嘉jia 禾he 秀xiu 阳yang 春chun 景jing 星xing 友you 谊yi 交jiao 通tong 车che 站zhan
+高gao 科ke 技ji 创chuang 振zhen 永yong 先xian 锋feng 胜sheng 利li 红hong 旗qi 朝chao 望wang 鸿hong 运yun 通tong 万wan
+一yi 二er 三san 四si 五wu 六liu 七qi 八ba 九jiu 十shi 纺fang 织zhi 服fu 装zhuang 鞋xie 塘tang 坑keng 岭ling 田tian 林lin
+`.trim().split(/\s+/).map((pair) => [pair[0], pair.slice(1)]));
+const CN_DIGITS = { 一: "1", 二: "2", 三: "3", 四: "4", 五: "5", 六: "6", 七: "7", 八: "8", 九: "9", 十: "10" };
+
+/** "江东三" → ["jiangdong3", "jiangdongsan"]; null when a character is not known. */
+function roadKeys(han) {
+  const chars = [...String(han ?? "")];
+  if (!chars.length || chars.some((c) => !CHAR_PINYIN[c] && !/\d/.test(c))) return null;
+  const spelled = chars.map((c) => CHAR_PINYIN[c] ?? c).join("");
+  const numbered = chars.map((c, i) => (CN_DIGITS[c] && i > 0 ? CN_DIGITS[c] : CHAR_PINYIN[c] ?? c)).join("");
+  return [...new Set([numbered, spelled])];
+}
+
+const LATIN_ROAD = /\b(road|rd|street|st|avenue|ave|boulevard|blvd|lane|ln|lu|jie|dadao|dao|way)\b\.?/;
+
+/** The road and number of an address typed in English for a Chinese one: "18 Jiangdong 3rd Road" → { road: "jiangdong3", number: "18" }. */
+function latinRoadOf(raw) {
+  const segments = clean(raw).toLowerCase().split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
+  const segment = segments.find((s) => LATIN_ROAD.test(s));
+  if (!segment) return {};
+  const number = segment.match(/^(?:no\.?\s*)?(\d+)[a-z]?\b/)?.[1] ?? segment.match(/\bno\.?\s*(\d+)\b/)?.[1] ?? null;
+  const name = segment.replace(/^(?:no\.?\s*)?\d+[a-z]?\s+/, "").replace(/\bno\.?\s*\d+\b/, "").split(LATIN_ROAD)[0]
+    .replace(/(\d+)(st|nd|rd|th)\b/g, "$1").replace(/[^a-z0-9]+/g, "");
+  return { road: name || null, number };
+}
+
+/** "Building 5" / "Block 5" / "5栋" / "5号楼". */
+function buildingOf(raw, han) {
+  const text = clean(raw);
+  const hit = han ? text.match(/(\d+)\s*(栋|幢|座|号楼|號樓)/) : text.match(/\b(?:building|bldg\.?|block|blk\.?)\s*(?:no\.?\s*)?(\d+)\b/i);
+  return hit ? { value: hit[1], shown: han ? hit[0] : hit[0] } : null;
+}
 const KNOWN_PINYIN = new Set(Object.values(PINYIN));
 
 // ---------------------------------------------------------------------------
@@ -224,9 +267,28 @@ export function compareAddresses(rawA, rawB) {
       if (latinText.includes(py)) same.push(part);
       else if (latin.parts[part] && KNOWN_PINYIN.has(fold(latin.parts[part]))) differs.push({ part, a: han.parts[part], b: latin.parts[part] });
     }
-    // A Chinese road and number cannot be read against English words.
-    if (han.parts.number && latin.parts.number && fold(han.parts.number) !== fold(latin.parts.number)) differs.push({ part: "number", a: han.parts.number, b: latin.parts.number });
+    const hanRaw = a.script === "han" ? rawA : rawB;
+    const latinRaw = a.script === "han" ? rawB : rawA;
+    // The road read character by character, the number and the building as digits (fix round 4).
+    const typedRoad = latinRoadOf(latinRaw);
+    const keys = roadKeys(han.parts.road);
+    if (keys && typedRoad.road) {
+      if (keys.includes(typedRoad.road)) same.push("road");
+      else differs.push({ part: "road", a: han.parts.road, b: typedRoad.road });
+    }
+    const latinNumber = latin.parts.number ?? typedRoad.number ?? null;
+    if (han.parts.number && latinNumber) {
+      if (fold(han.parts.number) === fold(latinNumber)) same.push("number");
+      else differs.push({ part: "number", a: `${han.parts.number}号`, b: latinNumber });
+    }
+    const hanBuilding = buildingOf(hanRaw, true);
+    const latinBuilding = buildingOf(latinRaw, false);
+    if (hanBuilding && latinBuilding) {
+      if (hanBuilding.value === latinBuilding.value) same.push("building");
+      else differs.push({ part: "building", a: hanBuilding.shown, b: latinBuilding.shown });
+    }
     if (differs.length) return { verdict: "differs", same, differs, note: "scripts" };
+    if (same.includes("road") && same.includes("number")) return { verdict: "match", same, differs, note: "scripts" };
     return { verdict: same.length ? "partial" : "unknown", same, differs, note: "scripts" };
   }
   const near = [];
@@ -252,7 +314,7 @@ export function compareAddresses(rawA, rawB) {
   return { verdict: "unknown", same, differs };
 }
 
-const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", postcode: "postcode" };
+const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", building: "building", postcode: "postcode" };
 const SOURCE_WORDS = { typed: "the address the factory typed", license: "the licence", registry: "the registry" };
 
 /**

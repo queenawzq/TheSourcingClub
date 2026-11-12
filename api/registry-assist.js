@@ -553,7 +553,18 @@ export async function runAddressCheck({ orgId, asServer, requestedBy = null, fet
     if (keepIfFailed) {
       const previous = (signals ?? []).find((s) => s.kind === "address" && s.automatic)?.details ?? null;
       const { keepEarlierAddress } = await import("../src/shared/verification-rerun.mjs");
-      if (keepEarlierAddress(details, previous, { staffAddress: siteAddress })) return { available: true, kept: true, ...previous };
+      if (keepEarlierAddress(details, previous, { staffAddress: siteAddress })) {
+        // The map's answer stays the earlier one; the comparison with the licence is our own code and is always the latest (fix round 4).
+        const owner = (details.checks ?? []).find((check) => check.key === "address_owner");
+        const kept = owner ? { ...previous, checks: [owner, ...(previous.checks ?? []).filter((check) => check.key !== "address_owner")], ...(extraDetails ?? {}) } : null;
+        if (kept) {
+          const { error: keptError } = await asServer.rpc("record_verification_signal", {
+            target_org: orgId, kind: "address", subject: null, result: kept.judgement || "unknown", details: kept, requested_by: requestedBy,
+          });
+          if (keptError) console.error("registry-assist save kept address", keptError.message);
+        }
+        return { available: true, kept: true, ...(kept ?? previous) };
+      }
     }
     if (String(siteAddress ?? "").trim()) details.staffAddress = String(siteAddress).trim();
     // Recorded as one "address" signal; result is the site's judgement, as before.

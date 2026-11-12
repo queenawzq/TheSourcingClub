@@ -16,7 +16,8 @@ export function scoreGroup(group) {
   // Nothing in the group checked yet: "Not checked", not 0%.
   if (!counted.some((check) => check.score != null)) return null;
   const total = counted.reduce((sum, check) => sum + check.weight, 0);
-  return Math.round(counted.reduce((sum, check) => sum + (check.score ?? 0) * check.weight, 0) / total);
+  // `counts`: an unscored check that still counts as something ("Couldn't check" counts as Not found, never below it).
+  return Math.round(counted.reduce((sum, check) => sum + (check.score ?? check.counts ?? 0) * check.weight, 0) / total);
 }
 
 export function scoreOverall(groups) {
@@ -51,9 +52,15 @@ export function tierFor(score) {
   return "low";
 }
 
-export function standingFor(score) {
+/** A counted check in the red (under 60), with its number kept: the standing is at most "Needs a look". */
+export function redCheck(groups) {
+  return (groups ?? []).filter((group) => GROUP_WEIGHTS[group.key])
+    .flatMap((group) => group.checks ?? []).find((check) => check.weight && check.score != null && check.score < 60) ?? null;
+}
+
+export function standingFor(score, groups = null) {
   if (score == null) return { word: "Not checked", tone: "none" };
-  if (score >= 85) return { word: "Strong", tone: "strong" };
+  if (score >= 85 && !redCheck(groups)) return { word: "Strong", tone: "strong" };
   if (score >= 60) return { word: "Needs a look", tone: "potential" };
   return { word: "Flagged", tone: "low" };
 }
@@ -129,9 +136,9 @@ export function recordedCheck(check, { result, reference, name, reason }) {
       found: { score: 90, verdict: `Found on ${source}, name and number match` },
       name_differs: { score: 60, verdict: `Found on ${source}, name differs` },
       not_found: { score: 5, verdict: `Not found on ${source}` },
-      could_not_check: { score: null, verdict: `Couldn't check ${source}` },
+      could_not_check: { score: null, counts: 5, verdict: `Couldn't check ${source}` },
     }[result];
-  const next = { ...check, ...outcome, registry: { ...check.registry, result, reference, name, by: "You, just now", for: null } };
+  const next = { ...check, counts: undefined, ...outcome, registry: { ...check.registry, result, reference, name, by: "You, just now", for: null } };
   return reason ? withReason(next, reason) : next;
 }
 

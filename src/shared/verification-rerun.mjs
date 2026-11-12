@@ -224,5 +224,7 @@ export function keepEarlierAddress(next, previous, { staffAddress = "" } = {}) {
   const typed = plain(staffAddress);
   if (typed && typed !== plain(previous.address) && typed !== plain(previous.staffAddress)) return false;
   if (previous.address && next?.address && plain(previous.address) !== plain(next.address)) return false;
+  // The map not finding an address it did not find before either is no new answer (fix round 4): keep it, say nothing red.
+  if (next?.found === false && addressSpecificity(previous) === 0) return true;
   return addressSpecificity(next) < addressSpecificity(previous);
 }

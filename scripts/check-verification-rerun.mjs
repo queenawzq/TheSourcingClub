@@ -437,6 +437,14 @@ await check("fix round 2: an unchanged address answering less specifically keeps
   assert.equal(keepEarlierAddress({ ...home, found: false }, null), false);
 });
 
+await check("fix round 4: an unchanged address the map did not find before either keeps the earlier result, nothing red", async () => {
+  const { keepEarlierAddress } = await import("../src/shared/verification-rerun.mjs");
+  const hangzhou = { address: "杭州市萧山区江东三路18号", found: false, judgement: "unknown" };
+  assert.equal(keepEarlierAddress({ ...hangzhou }, hangzhou), true);
+  assert.equal(addressOutcome({ available: true, kept: true, ...hangzhou }).code, undefined, "no red footer");
+  assert.equal(keepEarlierAddress({ address: "Other 1", found: false }, hangzhou, { staffAddress: "Other 1" }), false, "an edited address takes the new answer");
+});
+
 if (failures) {
   console.error(`\ncheck:rerun: ${failures} failed`);
   process.exit(1);

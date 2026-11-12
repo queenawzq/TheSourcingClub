@@ -138,6 +138,10 @@ export function verificationActions(orgId, { reload, changed }) {
       result: DB_PHOTO[record.result] ?? record.result, link: record.whereUrl ?? "",
     })),
     explainField: (groupKey, field, text) => after(() => explainSharedNumber(orgId, text)),
+    /** A typed number that differs from the licence's, explained: the registry record whose reason the approval rule reads. */
+    explainTyped: (groupKey, field, text, registryRow) => after(() => recordRegistryResult(orgId, {
+      source: registryRow?.registry?.sourceKey, result: "name_differs", name: registryRow?.registry?.name ?? "", reason: text,
+    })),
     /** Never throws for an expected failure: `{ error }` in short words, shown in the modal's footer. */
     runAgain: async (groupKey, values, edited) => {
       const before = lastRead.get(orgId) ?? null;

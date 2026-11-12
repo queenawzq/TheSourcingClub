@@ -6,7 +6,7 @@
 -- Fixtures prefixed pgtap12-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(50);
+select plan(56);
 
 insert into auth.users (id, email) values
   ('c1200000-0000-0000-0000-000000000001', 'p12-admin@example.com'),
@@ -184,6 +184,43 @@ select lives_ok($$select public.admin_record_registry_result('d1200000-0000-0000
 select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f4') ->> 'approvalProblem'), 'trading_only', 'a trading-only licence blocks approval');
 select lives_ok($$select public.admin_check_reason('d1200000-0000-0000-0000-0000000000f4', 'scope', 'Owns a sewing unit next door, seen on the video call')$$, 'a reason on Factory or trader');
 select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f4') ->> 'approvalProblem'), null, 'opens approval');
+reset role;
+
+-- Fix round 4: a plain Run again re-reads the licence with the same difference; the record still clears it.
+insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic, checked_at)
+values ('d1200000-0000-0000-0000-0000000000f1', 'document_reading', 'a1200000-0000-0000-0000-000000000001', 'differs',
+        '{"numberAtReading":"9123456712","differences":[{"field":"name","document":"P12 Dokuma","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
+        true, now() + interval '3 seconds');
+set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f1') ->> 'approvalProblem'), null,
+  'a re-read with the same difference does not re-block approval');
+reset role;
+insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic, checked_at)
+values ('d1200000-0000-0000-0000-0000000000f1', 'document_reading', 'a1200000-0000-0000-0000-000000000001', 'differs',
+        '{"numberAtReading":"9123456712","differences":[{"field":"name","document":"P12 Başka","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
+        true, now() + interval '4 seconds');
+set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f1') ->> 'approvalProblem'), 'document_differs',
+  'a re-read with another difference needs a new record');
+
+-- Add reason saves what it was written for (the 42702 of Nov 12 must not come back).
+select is((public.admin_check_reason_for('d1200000-0000-0000-0000-0000000000f1', 'address', 'Seen on the video call', null, 'Only the area matches the licence')).written_for,
+  'Only the area matches the licence', 'admin_check_reason_for saves and returns written_for');
+reset role;
+select is((select count(*)::int from public.verification_check_reasons
+            where org_id = 'd1200000-0000-0000-0000-0000000000f1' and check_key = 'address_owner' and written_for = 'Only the area matches the licence'),
+  1, 'and it is stored on the reason');
+set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_check_reason_for('d1200000-0000-0000-0000-0000000000f1', 'address', 'ours', null, 'x')$$, '42501', null,
+  'the company cannot write a reason for itself');
+reset role;
+set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000004","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_check_reason_for('d1200000-0000-0000-0000-0000000000f1', 'address', 'x', null, 'x')$$, '42501', null,
+  'nor a brand');
 reset role;
 
 select * from finish();

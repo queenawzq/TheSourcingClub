@@ -2185,7 +2185,8 @@ console.log("\nphase 6 — admin operations");
       else {
         const { scoreVerification } = await import("../src/shared/verification-score.mjs");
         const v = scoreVerification(input);
-        v.groups?.length === 3 && Number.isInteger(v.overall)
+        // Any factory: one with nothing checked yet is "Not checked" (null), never 0%.
+        v.groups?.length === 3 && (Number.isInteger(v.overall) || (v.overall === null && v.standing?.word === "Not checked"))
           ? ok(`the verification score reads and scores (${v.overall}%, ${v.standing.word})`)
           : fail("the verification score's shape", v);
       }

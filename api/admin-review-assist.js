@@ -278,6 +278,24 @@ export async function currentChecks(scoreInput) {
   return lines;
 }
 
+/**
+ * Staff recorded the photos as the company's own (fix round 4): a finding that
+ * calls them generic, stock, reused or found elsewhere contradicts the card
+ * and is dropped, whatever the file names suggested to the model.
+ */
+export function dropContradictedPhotoFindings(findings, current) {
+  const photoLines = (current ?? []).filter((line) => /^Photo \d+:/.test(line));
+  const allOwn = photoLines.length > 0 && photoLines.every((line) => /recorded by staff as their own/.test(line) && !/flagged/.test(line));
+  const list = Array.isArray(findings) ? findings : [];
+  if (!allOwn) return { findings: list, dropped: 0 };
+  const contradicts = (f) => {
+    const text = `${f?.topic ?? ""} ${f?.observation ?? ""} ${f?.evidence ?? ""}`.toLowerCase();
+    return /photo|image|picture|file name/.test(text) && /generic|stock|reused|re-used|copied|elsewhere|not (their|its) own|duplicate/.test(text);
+  };
+  const kept = list.filter((f) => !contradicts(f));
+  return { findings: kept, dropped: list.length - kept.length };
+}
+
 /** The input with the card's facts first, and the older status fields the card has replaced left out. */
 export function withCurrentChecks(input, current) {
   if (!current?.length) return input;
@@ -343,6 +361,9 @@ export default async function handler(request, response) {
     const ai = await askModel(CHECK_INSTRUCTIONS, CHECK_SCHEMA, "submit_review_notes", payload, CHECK_MAX_TOKENS);
     if (!ai.fields) return json(response, 200, { available: false, reason: ai.failure });
     const grounded = keepGroundedFindings(ai.fields?.findings, payload);
+    const photoSafe = dropContradictedPhotoFindings(grounded.findings, current);
+    grounded.findings = photoSafe.findings;
+    grounded.dropped = (grounded.dropped ?? 0) + photoSafe.dropped;
     const findings = grounded.findings.map((finding) => ({ ...finding, evidence: plainEvidence(finding.evidence) }));
     const { dropped } = grounded;
     const checked = (Array.isArray(ai.fields?.checked) ? ai.fields.checked : []).map((item) => String(item).slice(0, 80)).slice(0, 8);

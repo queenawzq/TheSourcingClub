@@ -13,6 +13,10 @@ import {
   SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
+import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
+import { compareAddresses, addressOwnerCheck } from "../api/_address.js";
+import { addressCheck } from "../src/shared/verification-score.mjs";
+import { dropContradictedPhotoFindings } from "../api/admin-review-assist.js";
 
 let failed = 0;
 const check = (ok, what) => {
@@ -81,8 +85,8 @@ console.log("fix round 2");
   // 5. The block shows on the row where it is cleared, naming number or name.
   const reading = { details: { differences: [{ field: "number", document: "1", typed: "2" }] } };
   const row = approvalBlockRow("document_differs", {}, reading);
-  check(row?.check === "registry" && /number difference/.test(row.words), `the number difference is named on the registry row (${row?.words})`);
-  check(/number on the licence/.test(approvalBlockWords("document_differs", {}, reading)), "the side panel names the number too");
+  check(row?.check === "registry" && /number differs/.test(row.words), `the number difference is named on the registry row (${row?.words})`);
+  check(/number differs/.test(approvalBlockWords("document_differs", {}, reading)), "the side panel names the number too");
 }
 {
   check(watermarkWords("仅供认证使用") === "仅供认证使用 (for verification use only)", "the watermark is translated");
@@ -90,6 +94,49 @@ console.log("fix round 2");
   check(pt.lookup?.label === "Open online certificate" && pt.lookup.copy === "4821-7730-9145", "Portugal: Open online certificate copies the access code");
   const nd = registryCheck({ detail: { registration: { country: "CN", number: "1" }, current: { id: "x", source: "qcc", result: "found", checked_at: "2026-11-12T10:00:00Z", details: { outcome: "name_differs", name: "A", reason: "old name on QCC" } }, checks: [{ id: "x", checkedBy: "Staff" }] }, country: "CN", title: "A", timeZone: "UTC" });
   check(nd.reason?.text === "old name on QCC" && /Staff/.test(nd.reason.by), "the reason typed with Name differs stays on the row");
+}
+console.log("fix round 4");
+{
+  // 1. Couldn't check never below Not found, in the page's arithmetic too (the prototype module draws the live card).
+  const reg = (result) => registryCheck({ detail: { registration: { country: "CN", number: "91330109MA2B3K7Q4L" }, current: { id: "x", source: "qcc", result, details: {} }, checks: [{ id: "x" }] }, country: "CN", title: "A" });
+  const hz = (c) => ({ key: "business_registration", checks: [{ key: "licence", weight: 30, score: 95 }, { ...c, weight: 30 }] });
+  const p = prototypeScoring.scoreGroup;
+  check(p(hz(reg("could_not_check"))) === 50 && p(hz(reg("not_found"))) === 50, `Hangzhou on the card: Couldn't check ${p(hz(reg("could_not_check")))} = Not found ${p(hz(reg("not_found")))} (was 48 / 50)`);
+  const recorded = prototypeScoring.recordedCheck({ key: "registry", weight: 30, registry: { source: "QCC" } }, { result: "could_not_check" });
+  check(p(hz(recorded)) === 50, `a Couldn't check recorded on the card counts as Not found (${p(hz(recorded))})`);
+  // 4. Strong needs no counted check in the red; the number stays.
+  const red = [{ key: "business_registration", checks: [{ weight: 30, score: 95 }] }, { key: "company_information", checks: [{ weight: 15, score: 55 }] }];
+  check(standingFor(89, red).word === "Needs a look" && prototypeScoring.standingFor(89, red).word === "Needs a look", "89 with a red address (55) is at most Needs a look, page and prototype");
+  check(standingFor(89, [{ key: "business_registration", checks: [{ weight: 30, score: 60 }] }]).word === "Strong", "60 is not red: Strong");
+  check(standingFor(89, [{ key: "certification", checks: [{ score: 15 }] }]).word === "Strong", "an uncounted certificate does not cap");
+  // 3. The watermark is translated once.
+  check(watermarkWords("仅供认证使用 | for verification use only") === "仅供认证使用 | for verification use only", "a stamp already in English is not translated again");
+  // 5. Romanised address against the Chinese licence.
+  const hzOwner = addressOwnerCheck({ typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", license: "杭州市萧山区江东三路18号", registry: "", typedFrom: "production" });
+  const hzAddress = addressCheck({ owner: hzOwner, siteSignal: null, typedAddress: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou" });
+  check(hzAddress.verdict === "Same as the licence" && hzAddress.score === SCORES.address.same, `Hangzhou: ${hzAddress.verdict} (${hzAddress.score})`);
+  const gzOwner = addressOwnerCheck({ typed: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", license: "广州市白云区黄浦路112号3栋", registry: "", typedFrom: "production" });
+  const gzAddress = addressCheck({ owner: gzOwner, siteSignal: null, typedAddress: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" });
+  const gzParts = gzOwner.details.comparisons.flatMap((c) => c.differs.map((d) => d.a));
+  check(gzAddress.verdict === "Building differs from the licence" && gzParts.join() === "3栋", `Guangzhou: ${gzAddress.verdict}, boxed ${gzParts.join()}`);
+  check(compareAddresses("广州市白云区黄浦路112号", "113 Huangpu Road, Guangzhou").differs.some((d) => d.part === "number"), "a different street number still differs");
+  // 6. A number difference is named as a number, with a way to clear it that fits a number.
+  const numberReading = { details: { differences: [{ field: "number", document: "91440111MA59C2RX8B", typed: "91440111MA59C2RY8C" }] } };
+  const found = registryCheck({ detail: { registration: { country: "CN", number: "91440111MA59C2RY8C" }, current: { id: "x", source: "qcc", result: "found", details: {} }, checks: [{ id: "x" }] }, country: "CN", title: "A", documentDiffers: "number" });
+  check(!/match/.test(found.verdict) && /another number/.test(found.verdict), `the row does not say "match" (${found.verdict})`);
+  const rowWords = approvalBlockRow("document_differs", {}, numberReading).words;
+  const panelWords = approvalBlockWords("document_differs", {}, numberReading);
+  check(/number/.test(rowWords) && /Typed:/.test(rowWords) && !/Name differs/.test(rowWords), `row: ${rowWords}`);
+  check(/number/.test(panelWords) && !/name on the licence/.test(panelWords), `side panel: ${panelWords}`);
+  // 7. AI suggestions never call photos staff recorded as their own generic or reused.
+  const ownLines = ["Photo 1: recorded by staff as their own", "Photo 2: recorded by staff as their own"];
+  const ai = [{ topic: "Factory photos", observation: "Factory photo file names look like generic or reused images", evidence: "IMG_001.jpg" }, { topic: "Address", observation: "Looks like a home", evidence: "55%" }];
+  const kept = dropContradictedPhotoFindings(ai, ownLines);
+  check(kept.findings.length === 1 && kept.findings[0].topic === "Address" && kept.dropped === 1, "a 'generic or reused photos' finding is dropped once staff recorded them their own");
+  check(dropContradictedPhotoFindings(ai, ["Photo 1: not checked yet"]).findings.length === 2, "kept while a photo is not checked");
+  // 9. After Couldn't check the side panel does not say "found no match".
+  const could = approvalBlockWords("no_check", { current: { result: "could_not_check", source: "qcc" } });
+  check(!/found no match/.test(could) && /couldn't check/i.test(could), `Couldn't check: ${could}`);
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");
@@ -117,6 +164,24 @@ if (process.argv.includes("--seeded")) {
     console.log(`        ${DEMO_LOGINS[key].name}: ${v.overall}% ${v.standing.word}; weakest ${v.weakest?.label ?? "none"}; block ${v.approvalProblem ?? "none"}\n          ${rows}`);
     check(v.overall >= low && v.overall <= high && v.standing.word === word, `${key} ${v.overall}% within ${low}–${high}, ${word}`);
     check((v.approvalProblem ?? null) === problem, `${key} approval: ${problem ?? "open"}`);
+    if (v.standing.word === "Strong") check(!v.groups.some((g) => ["business_registration", "company_information"].includes(g.key) && g.checks.some((c) => c.weight && c.score != null && c.score < 60)), `${key}: Strong with no red check`);
+    if (key === "verifyCn") {
+      const as = (result) => { const i = structuredClone(input); i.detail.current = { ...i.detail.current, result, details: { ...i.detail.current.details, outcome: result } }; return scoreVerification(i, { timeZone: "UTC" }); };
+      const nf = as("not_found");
+      const cc = as("could_not_check");
+      const g = (x) => prototypeScoring.scoreGroup(x.groups[0]);
+      check(g(cc) >= g(nf) && prototypeScoring.scoreOverall(cc.groups) >= prototypeScoring.scoreOverall(nf.groups),
+        `Hangzhou, as the card draws it: Couldn't check ${g(cc)}/${prototypeScoring.scoreOverall(cc.groups)} vs Not found ${g(nf)}/${prototypeScoring.scoreOverall(nf.groups)}`);
+      const addr = v.groups[1].checks.find((c) => c.key === "address");
+      check(addr.verdict.startsWith("Same as the licence") && v.weakest?.key !== "address", `Hangzhou address: ${addr.verdict} ${addr.score}; weakest ${v.weakest?.label}`);
+    }
+    if (key === "verifyCnCopy") {
+      const addr = v.groups[1].checks.find((c) => c.key === "address");
+      const site = v.groups[1].fields.find((f) => f.key === "siteAddress");
+      check(addr.verdict === "Building differs from the licence" && (site?.licenceParts ?? []).join() === "3栋", `Guangzhou address: ${addr.verdict}; boxed ${(site?.licenceParts ?? []).join()}`);
+      const registry = v.groups[0].checks.find((c) => c.key === "registry");
+      check(!/match/.test(registry.verdict), `Guangzhou registry row: ${registry.verdict}`);
+    }
   }
 }
 

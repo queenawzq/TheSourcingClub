@@ -79,9 +79,15 @@ export function tierFor(score) {
   return "low";
 }
 
-export function standingFor(score) {
+/** A counted check in the red (under 60), with its number kept: the standing is at most "Needs a look" (fix round 4). */
+export function redCheck(groups) {
+  return (groups ?? []).filter((group) => GROUP_WEIGHTS[group.key])
+    .flatMap((group) => group.checks ?? []).find((check) => check.weight && check.score != null && check.score < 60) ?? null;
+}
+
+export function standingFor(score, groups = null) {
   if (score == null) return { word: "Not checked", tone: "none" };
-  if (score >= 85) return { word: "Strong", tone: "strong" };
+  if (score >= 85 && !redCheck(groups)) return { word: "Strong", tone: "strong" };
   if (score >= 60) return { word: "Needs a look", tone: "potential" };
   return { word: "Flagged", tone: "low" };
 }
@@ -196,7 +202,9 @@ export function watermarkWords(text) {
   const printed = String(text ?? "").trim();
   const key = printed.replace(/[\s，,。.、]/g, "");
   const meaning = WATERMARKS[key] ?? Object.entries(WATERMARKS).filter(([zh]) => key.includes(zh)).map(([, en]) => en).filter((en, i, all) => all.indexOf(en) === i).join("; ");
-  return meaning ? `${printed} (${meaning})` : printed;
+  // Already in English beside the stamp (a re-read that copied both): translated once, never twice.
+  if (!meaning || meaning.split("; ").every((en) => printed.toLowerCase().includes(en))) return printed;
+  return `${printed} (${meaning})`;
 }
 
 function licenceLabel(country, reading) {
@@ -263,7 +271,7 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
-export function registryCheck({ detail, country, title, readName = null, timeZone }) {
+export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null }) {
   const reg = detail?.registration ?? null;
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
@@ -295,6 +303,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       out = { score: SCORES.registry.found, verdict: `Found on ${src}, difference explained`, short: `found on ${src}`, registry };
     } else if (outcome === "name_differs") {
       out = { score: SCORES.registry.nameDiffers, verdict: `Found on ${src}, name differs`, short: `found on ${src}, name differs`, registry };
+    } else if (current.result === "found" && documentDiffers) {
+      // Found for what they typed, while the licence prints another number or name (fix round 4): never "match".
+      out = { score: SCORES.registry.found, verdict: `Found on ${src}; the licence shows another ${documentDiffers === "number" ? "number" : "name"}`, short: `found on ${src}`, registry };
     } else if (current.result === "found") {
       out = detail.nameDiffers
         ? { score: SCORES.registry.nameDiffers, verdict: `Found on ${src}; another source names ${detail.nameDiffers}`, registry }
@@ -343,7 +354,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
 
 const NUMBER_LABEL = { CN: "Registration number", TR: "Tax number (VKN)", PT: "NIPC (company number)" };
 
-function registrationFields({ reading, detail, country, timeZone }) {
+function registrationFields({ reading, detail, country, timeZone, documentDiffers = null }) {
   const x = reading?.details?.extracted ?? {};
   const reg = detail?.registration ?? {};
   const differences = reading?.details?.differences ?? [];
@@ -355,7 +366,7 @@ function registrationFields({ reading, detail, country, timeZone }) {
   push({
     key: "number", label: NUMBER_LABEL[country] ?? "Registration number", value: String(x.registrationNumber || reg.number || ""), copy: true, editable: true, always: true,
     ...(country === "TR" ? { wide: true } : {}),
-    ...(typedOf("number") ? { typed: String(typedOf("number")) } : {}),
+    ...(typedOf("number") ? { typed: String(typedOf("number")), ...(documentDiffers === "number" ? { explainTyped: "Why the typed number differs from the licence" } : {}) } : {}),
     ...(duplicates.length ? { duplicate: {
       with: duplicates.map((o) => o.name).join(", "), orgIds: duplicates.map((o) => o.orgId),
       explained: explained ? { text: explained.note, by: byWords(explained.reviewedBy, explained.reviewedAt, timeZone), at: explained.reviewedAt } : null,
@@ -388,7 +399,7 @@ export function scopeCheck({ reading, level, country }) {
   return { ...base, score: SCORES.scope.making, verdict: scope.makingFrom === "codes" ? `Making activity code${quote}` : `Licence includes making${quote}`, short: "licence includes making", canReason: true };
 }
 
-const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Building or street number", postcode: "Postcode" };
+const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", postcode: "Postcode" };
 
 export function addressCheck({ owner, siteSignal, typedAddress }) {
   const base = { key: "address", label: "Address", weight: 15, reasonKey: "address" };
@@ -565,11 +576,13 @@ export function approvalBlockWords(problem, detail, reading = null) {
   const src = sourceWords(detail?.current?.source ?? defaultSource(detail?.registration?.country ?? detail?.countryCode));
   const field = differingField(detail, reading);
   return {
-    no_check: detail?.current && detail.current.result !== "found" ? `Registry: the last check on ${src} found no match` : "Registry: record a check first",
+    no_check: !detail?.current ? "Registry: record a check first"
+      : detail.current.result === "could_not_check" ? `Registry: couldn't check ${src}, record a check that finds them`
+        : detail.current.result !== "found" ? `Registry: the last check on ${src} found no match` : "Registry: record a check first",
     renamed: "Registry: renamed since the check, check it again",
     name_differs: "Registry: name differs, record Name differs with a reason",
     document_differs: field === "number"
-      ? "Registry: the number on the licence differs from what they typed, record the difference with a reason"
+      ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and Run again"
       : "Registry: the name on the licence differs from what they typed, record Name differs with a reason",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
@@ -591,7 +604,7 @@ export function approvalBlockRow(problem, detail, reading = null) {
     renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
     name_differs: ["business_registration", "registry", "Approve needs: record Name differs with a reason"],
     document_differs: ["business_registration", "registry", field === "number"
-      ? "Approve needs: record the number difference (Update check, Name differs, with a reason)"
+      ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and Run again"
       : "Approve needs: record the name difference (Update check, Name differs, with a reason)"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
     number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
@@ -665,7 +678,8 @@ export function scoreVerification(input, { timeZone } = {}) {
 
   // Business registration
   const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
-  const registry = withReason(registryCheck({ detail, country, title, readName: reading?.details?.extracted?.legalName ?? null, timeZone }));
+  const documentDiffers = (input?.rules?.approvalProblem ?? detail.approvalProblem) === "document_differs" ? differingField(detail, reading) : null;
+  const registry = withReason(registryCheck({ detail, country, title, readName: reading?.details?.extracted?.legalName ?? null, timeZone, documentDiffers }));
   const brChecks = [licence, registry];
   const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? lowerFirst(registry.verdict)}`, { title });
   const staleWords = (() => {
@@ -690,7 +704,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAt: reading ? `Read ${stampWords(reading.checkedAt, timeZone)}` : "",
     readAtIso: reading?.checkedAt ?? null,
     stale: staleWords,
-    fields: registrationFields({ reading, detail, country, timeZone }),
+    fields: registrationFields({ reading, detail, country, timeZone, documentDiffers }),
     checks: brChecks.map(clean),
   };
 
@@ -779,7 +793,7 @@ export function scoreVerification(input, { timeZone } = {}) {
 
   return {
     overall,
-    standing: standingFor(overall),
+    standing: standingFor(overall, groups),
     tier: tierFor(overall),
     weakest: weakest ? { key: weakest.key, label: weakest.label, group: weakest.group, score: weakest.score, verdict: weakest.verdict } : null,
     approvalProblem,
