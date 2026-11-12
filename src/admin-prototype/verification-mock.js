@@ -58,6 +58,93 @@ export function standingFor(score) {
   return { word: "Flagged", tone: "low" };
 }
 
+/* ------------------------------------------------------------ photos */
+
+const PHOTO_POINTS = { own: 100, unchecked: 50, could_not: 50, elsewhere: 0 };
+const FLAG_POINTS = { stock: 10, office: 40, tsc: 0 };
+
+export function photoCaption(photo) {
+  if (photo.flag === "stock") return "Stock photo";
+  if (photo.flag === "office") return "Office, not a factory";
+  if (photo.flag === "tsc") return `On ${photo.others} other TSC companies`;
+  if (photo.result === "elsewhere") return photo.where ? `On ${photo.where}` : "Found elsewhere";
+  if (photo.result === "unchecked") return "Not checked";
+  if (photo.result === "could_not") return "Couldn't check";
+  return null; // their own: no caption, only a mark
+}
+
+/** The Photos check, from the tiles: what staff record on a tile moves it. */
+export function photoCheck(photos) {
+  const n = photos.length;
+  const points = photos.map((photo) => (photo.flag ? FLAG_POINTS[photo.flag] : PHOTO_POINTS[photo.result]));
+  const score = n ? Math.round(points.reduce((sum, value) => sum + value, 0) / n) : null;
+  const count = (test) => photos.filter(test).length;
+  const own = count((photo) => photo.result === "own" && !photo.flag);
+  const elsewhere = count((photo) => photo.flag === "tsc" || (!photo.flag && photo.result === "elsewhere"));
+  const stock = count((photo) => photo.flag === "stock");
+  const office = count((photo) => photo.flag === "office");
+  const open = count((photo) => !photo.flag && (photo.result === "unchecked" || photo.result === "could_not"));
+  let verdict;
+  if (own === n) verdict = `All ${n} are their own`;
+  else if (own === 0 && open === 0) verdict = `None of the ${n} is their own`;
+  else {
+    const parts = [`${own} of ${n} their own`];
+    if (elsewhere) parts.push(`${elsewhere} found elsewhere`);
+    if (stock) parts.push(`${stock} stock`);
+    if (office) parts.push(`${office} office`);
+    if (open) parts.push(`${open} not checked yet`);
+    verdict = parts.join(", ");
+  }
+  return { score, verdict };
+}
+
+/* ---------------------------------------------------- staff records */
+
+export const RECORD_RESULTS = {
+  registry: [
+    { key: "found", label: "Found" },
+    { key: "name_differs", label: "Name differs" },
+    { key: "not_found", label: "Not found" },
+    { key: "could_not_check", label: "Couldn't check" },
+  ],
+  certificate: [
+    { key: "found", label: "Found" },
+    { key: "expired", label: "Expired" },
+    { key: "not_found", label: "Not found" },
+    { key: "could_not_check", label: "Couldn't check" },
+  ],
+};
+
+/** What a staff record does to a registry or certificate check. */
+export function recordedCheck(check, { result, reference, name, reason }) {
+  const source = check.registry.source;
+  const outcome = check.kind === "certificate"
+    ? {
+      found: { score: 92, verdict: "Found on the issuer's list" },
+      expired: { score: 15, verdict: "Expired on the issuer's list" },
+      not_found: { score: 5, verdict: "Not on the issuer's list" },
+      could_not_check: { score: null, verdict: "Couldn't check the issuer's list" },
+    }[result]
+    : {
+      found: { score: 90, verdict: `Found on ${source}, name and number match` },
+      name_differs: { score: 60, verdict: `Found on ${source}, name differs` },
+      not_found: { score: 5, verdict: `Not found on ${source}` },
+      could_not_check: { score: null, verdict: `Couldn't check ${source}` },
+    }[result];
+  const next = { ...check, ...outcome, registry: { ...check.registry, result, reference, name, by: "You, just now", for: null } };
+  return reason ? withReason(next, reason) : next;
+}
+
+/**
+ * A staff reason is on record, and lifts a low check to 60 ("needs a look"),
+ * as a reason lifts Low to Medium on today's page. A check with no evidence
+ * yet (no score) stays unscored: a reason is not a check.
+ */
+export function withReason(check, text) {
+  const lifted = check.score != null && check.score < 60 ? 60 : check.score;
+  return { ...check, score: lifted, reason: { text, by: "You, just now" } };
+}
+
 export const GROUP_TIPS = {
   business_registration: "The licence and the official registry: is this a registered company? Counts for 60% of the score.",
   company_information: "Factory or trader, and whether the address and photos are its own. Counts for 40% of the score.",
@@ -106,7 +193,7 @@ const chinaOriginal = {
         evidence: { kind: "licence", variant: "cn", file: "business-licence.jpg" },
         readAt: "Read Nov 11, 10:42",
         fields: [
-          { key: "number", label: "Registration number", value: "91330109MA2B3K7Q4X" },
+          { key: "number", label: "Registration number", value: "91330109MA2B3K7Q4X", copy: true },
           { key: "established", label: "Established", value: "2015-04-16" },
           { key: "legalName", label: "Legal name", value: "杭州钱江服装有限公司" },
           { key: "representative", label: "Legal representative", value: "张伟 (Zhang Wei)" },
@@ -115,7 +202,7 @@ const chinaOriginal = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
-          { key: "registry", label: "Official registry", weight: 30, score: 98, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 10", result: "found", reference: "qcc.com/firm/7a1c…" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 98, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 10", result: "found", reference: "qcc.com/firm/7a1c…", name: "杭州钱江服装有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
         ],
       },
       {
@@ -133,8 +220,8 @@ const chinaOriginal = {
         ],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes garments (服装制造)" },
-          { key: "address", label: "Address", weight: 15, score: 90, verdict: "Same as the licence, in an industrial area" },
-          { key: "photos", label: "Photos", weight: 15, score: 85, verdict: "3 of 4 are their own, 1 not checked yet" },
+          { key: "address", label: "Address", weight: 15, score: 90, verdict: "Same as the licence, in an industrial area", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=18%20Jiangdong%203rd%20Road%2C%20Xiaoshan%2C%20Hangzhou" } },
+          { key: "photos", label: "Photos", weight: 15 },
         ],
       },
       {
@@ -145,12 +232,12 @@ const chinaOriginal = {
         evidence: { kind: "certificate", name: "OEKO-TEX Standard 100", holder: "Hangzhou Qianjiang Garment Co., Ltd.", number: "SH025 187429", valid: "Mar 31, 2027" },
         readAt: "Checked Nov 11, 10:45",
         fields: [
-          { key: "certNumber", label: "Certificate number", value: "SH025 187429" },
+          { key: "certNumber", label: "Certificate number", value: "SH025 187429", copy: true },
           { key: "validUntil", label: "Valid until", value: "2027-03-31" },
           { key: "holder", label: "Holder", value: "Hangzhou Qianjiang Garment Co., Ltd.", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "OEKO-TEX Standard 100", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "" } },
+          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
         ],
       },
     ],
@@ -179,7 +266,7 @@ const chinaCopy = {
       { label: "Terms signed", value: "Li Na, Nov 10", ok: true },
       { label: "Registration uploaded", value: "licence-copy.jpg", ok: true },
       { label: "Company details", value: "Complete", ok: true },
-      { label: "Address", value: "Building 3, 112 Huangpu Road, Baiyun, Guangzhou" },
+      { label: "Address", value: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" },
       { label: "Company age", value: "8 years (licence: Jun 2018)" },
       { label: "Submitted by", value: "Li Na · lina@yxapparel.com" },
     ],
@@ -192,7 +279,7 @@ const chinaCopy = {
         evidence: { kind: "licence", variant: "cn-copy", file: "licence-copy.jpg" },
         readAt: "Read Nov 12, 08:15",
         fields: [
-          { key: "number", label: "Registration number", value: "91440111MA59C2RX8L" },
+          { key: "number", label: "Registration number", value: "91440111MA59C2RX8L", copy: true, typed: "91440111MA59C2RX8J" },
           { key: "established", label: "Established", value: "2018-06-02" },
           { key: "legalName", label: "Legal name", value: "广州越秀服饰有限公司" },
           { key: "representative", label: "Legal representative", value: "李娜 (Li Na)" },
@@ -201,26 +288,26 @@ const chinaCopy = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 40, verdict: "Copy, not the original licence" },
-          { key: "registry", label: "Official registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
         ],
       },
       {
         key: "company_information",
         label: "Company information",
-        verdict: "Factory: licence includes knitwear making",
-        why: "The licence lists knitwear manufacturing; the address matches it.",
+        verdict: "Factory, at a different building from the licence",
+        why: "The licence lists knitwear manufacturing; the factory address is Building 5, the licence says Building 3.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.knit, result: "own" }, { src: PHOTO.floor, result: "own" }, { src: PHOTO.line, result: "unchecked" },
         ] },
         readAt: "Checked Nov 12, 08:16",
         fields: [
           { key: "scope", label: "Business scope on the licence", value: "针织服装制造；服装服饰零售", wide: true, multiline: true },
-          { key: "siteAddress", label: "Factory address", value: "Building 3, 112 Huangpu Road, Baiyun, Guangzhou", wide: true },
+          { key: "siteAddress", label: "Factory address", value: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", wide: true, licence: "Building 3, 112 Huangpu Road, Baiyun, Guangzhou" },
         ],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes knitwear (针织服装制造)" },
-          { key: "address", label: "Address", weight: 15, score: 85, verdict: "Same as the licence, in an industrial park" },
-          { key: "photos", label: "Photos", weight: 15, score: 80, verdict: "2 of 3 are their own, 1 not checked yet" },
+          { key: "address", label: "Address", weight: 15, score: 70, verdict: "Building differs from the licence", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=112%20Huangpu%20Road%2C%20Baiyun%2C%20Guangzhou" } },
+          { key: "photos", label: "Photos", weight: 15 },
         ],
       },
       {
@@ -267,29 +354,33 @@ const turkeyTrader = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Tax plate read, registry not checked yet",
-        why: "The tax number is valid. Look the company up in the Trade Registry Gazette and record what you find.",
+        verdict: "Renamed since the registry check",
+        why: "GİB was checked for “Merter Tekstil Ltd. Şti.”; the name is now longer, and Merter Denim uses the same tax number.",
         evidence: { kind: "licence", variant: "tr", file: "vergi-levhasi.pdf" },
         readAt: "Read Nov 11, 16:02",
         fields: [
-          { key: "number", label: "Tax number (VKN)", value: "6230418795" },
-          { key: "legalName", label: "Legal name", value: "Merter Tekstil Toptan Ticaret Ltd. Şti." },
+          { key: "number", label: "Tax number (VKN)", value: "6230418795", copy: true, wide: true, duplicate: { with: "Merter Denim", explained: null } },
+          { key: "letter", label: "Letter number", value: "2026-GIB-0451887", copy: true },
           { key: "taxOffice", label: "Tax office", value: "Merter" },
+          { key: "legalName", label: "Legal name", value: "Merter Tekstil Toptan Ticaret Ltd. Şti.", wide: true },
           { key: "activity", label: "Main activity", value: "Toptan giyim ticareti" },
-          { key: "address", label: "Address", value: "Merter Mah., Güngören, İstanbul", wide: true },
+          { key: "address", label: "Address", value: "Merter Mah., Güngören, İstanbul" },
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
-          { key: "registry", label: "Official registry", weight: 30, score: null, verdict: "Not checked yet", registry: { source: "Trade Registry Gazette", by: null, result: null, reference: "" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti." }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
         ],
       },
       {
         key: "company_information",
         label: "Company information",
         verdict: "Wholesale trade only, no manufacturing",
-        why: "The tax plate says “Toptan giyim ticareti” (wholesale of clothing). Two photos appear on other websites.",
+        why: "The tax plate says “Toptan giyim ticareti” (wholesale of clothing), and no photo shows their own factory.",
         evidence: { kind: "photos", photos: [
-          { src: PHOTO.denim, result: "elsewhere", where: "alibaba.com" }, { src: PHOTO.line, result: "elsewhere", where: "pinterest.com" }, { src: PHOTO.floor, result: "own" }, { src: PHOTO.knit, result: "unchecked" },
+          { src: PHOTO.denim, result: "elsewhere", where: "alibaba.com" },
+          { src: PHOTO.line, result: "unchecked", flag: "stock" },
+          { src: PHOTO.floor, result: "unchecked", flag: "tsc", others: 2 },
+          { src: PHOTO.knit, result: "own", flag: "office" },
         ] },
         readAt: "Checked Nov 11, 16:03",
         fields: [
@@ -298,8 +389,8 @@ const turkeyTrader = {
         ],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 10, verdict: "Wholesale trade only, no manufacturing" },
-          { key: "address", label: "Address", weight: 15, score: 30, verdict: "District only, no street or building" },
-          { key: "photos", label: "Photos", weight: 15, score: 40, verdict: "2 of 4 found on other websites" },
+          { key: "address", label: "Address", weight: 15, score: 30, verdict: "District only, no street or building", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Merter%2C%20G%C3%BCng%C3%B6ren%2C%20Istanbul" } },
+          { key: "photos", label: "Photos", weight: 15 },
         ],
       },
       {
@@ -317,12 +408,13 @@ const turkeyTrader = {
 };
 
 /* ---------- (d) Portugal, EU VIES ---------- */
+const PT_FULL_NAME = "Têxteis Douro – Confecções, Lda";
 const PT_IMPROVED = {
   verdict: "Registered: name and VAT number match EU VIES",
-  why: "With the full legal name, the certificate and EU VIES agree.",
+  why: "The current certificate and EU VIES agree on the full legal name.",
   checks: [
-    { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read, matches the registry" },
-    { key: "registry", label: "Official registry", weight: 30, score: 95, verdict: "EU VIES: VAT number valid, name matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" } },
+    { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read, matches the registry", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
+    { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "EU VIES: VAT number valid, name matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
   ],
 };
 
@@ -357,21 +449,28 @@ const portugalFactory = {
         label: "Business registration",
         verdict: "Registered, but the name only partly matches",
         why: "EU VIES has “Têxteis Douro – Confecções, Lda”; the name read from the certificate is shorter.",
-        evidence: { kind: "licence", variant: "pt", file: "certidao-permanente.pdf" },
-        readAt: "Read Nov 11, 14:20",
+        evidence: { kind: "licence", files: [
+          { variant: "pt", file: "certidao-permanente.pdf", when: "Nov 11" },
+          { variant: "pt-old", file: "certidao-2023.pdf", when: "Nov 9" },
+        ] },
+        readAt: "Read Nov 9, 18:05",
+        stale: "Read from an earlier upload, Nov 9",
         fields: [
-          { key: "number", label: "NIPC (company number)", value: "513284976" },
+          { key: "number", label: "NIPC (company number)", value: "513284976", copy: true },
+          { key: "accessCode", label: "Access code", value: "4821-7730-9145", copy: true },
           { key: "legalName", label: "Legal name", value: "Têxteis Douro, Lda" },
           { key: "established", label: "Registered", value: "2012-03-08" },
-          { key: "activity", label: "Activity code (CAE)", value: "14130 · Other outerwear" },
+          { key: "activity", label: "Activity code (CAE)", value: "14130 · Other outerwear", wide: true },
           { key: "address", label: "Registered address", value: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", wide: true },
         ],
         checks: [
-          { key: "licence", label: "Registration certificate", weight: 30, score: 70, verdict: "Read; legal name looks cut short" },
-          { key: "registry", label: "Official registry", weight: 30, score: 80, verdict: "EU VIES: VAT number valid, name partly matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" } },
+          { key: "licence", label: "Registration certificate", weight: 30, score: 70, verdict: "Read; legal name looks cut short", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 80, verdict: "EU VIES: VAT number valid, name partly matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
         ],
-        // What "Run again" gives once the legal name has been corrected.
-        rerun: (fields) => (/confec/i.test(fields.legalName ?? "") ? PT_IMPROVED : null),
+        // Run again reads the current upload (or takes the corrected name) and asks EU VIES again.
+        rerun: (values, group) => (group.stale || /confec/i.test(values.legalName ?? "")
+          ? { ...PT_IMPROVED, values: { legalName: /confec/i.test(values.legalName ?? "") ? values.legalName : PT_FULL_NAME } }
+          : null),
       },
       {
         key: "company_information",
@@ -388,9 +487,11 @@ const portugalFactory = {
         ],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes outerwear (CAE 14130)" },
-          { key: "address", label: "Address", weight: 15, score: 55, verdict: "Looks like a home, not a factory site" },
-          { key: "photos", label: "Photos", weight: 15, score: 60, verdict: "1 of 3 checked: their own" },
+          { key: "address", label: "Address", weight: 15, score: 55, verdict: "Looks like a home, not a factory site", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Rua%20da%20Igreja%20214%2C%20Arcozelo%2C%20Barcelos" } },
+          { key: "photos", label: "Photos", weight: 15 },
         ],
+        // The map finds the street only with its postcode: a failed run says so.
+        rerun: (values) => (/\d{4}-\d{3}/.test(values.siteAddress ?? "") ? null : { error: "Address not found on the map. Add the postcode." }),
       },
       {
         key: "certification",
@@ -399,22 +500,31 @@ const portugalFactory = {
         why: "Found on the issuer's list; the scope covers dyeing, not cut-and-sew.",
         evidence: { kind: "certificate", name: "GOTS", holder: "Têxteis Douro – Confecções, Lda", number: "CU 1048211", valid: "Aug 31, 2027" },
         readAt: "Checked Nov 11, 14:22",
+        checkingMs: 3500,
         fields: [
-          { key: "certNumber", label: "Certificate number", value: "CU 1048211" },
+          { key: "certNumber", label: "Certificate number", value: "CU 1048211", copy: true },
           { key: "validUntil", label: "Valid until", value: "2027-08-31" },
           { key: "holder", label: "Holder", value: "Têxteis Douro – Confecções, Lda", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "GOTS", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "" } },
+          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
         ],
       },
     ],
   },
 };
 
+/** The Photos check is worked out from the tiles, so the mock and a staff record agree. */
+export function withPhotoCheck(group) {
+  if (group.evidence?.kind !== "photos") return group;
+  const derived = photoCheck(group.evidence.photos);
+  return { ...group, checks: group.checks.map((check) => (check.key === "photos" ? { ...check, ...derived, reason: check.reason } : check)) };
+}
+
 function withScore(profile) {
-  const overall = scoreOverall(profile.verification.groups);
-  return { ...profile, confidence: overall, confidenceLabel: "Score" };
+  const groups = profile.verification.groups.map(withPhotoCheck);
+  const overall = scoreOverall(groups);
+  return { ...profile, verification: { ...profile.verification, groups }, confidence: overall, confidenceLabel: "Score" };
 }
 
 export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory].map(withScore);

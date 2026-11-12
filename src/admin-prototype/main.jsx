@@ -1206,7 +1206,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
-            {profile.verification && <VerificationScoreCard profile={profile} />}
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} />}
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               {profile.capabilityGroups?.length ? (

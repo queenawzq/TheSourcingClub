@@ -12,14 +12,10 @@
  * verification-mock.js), so the live page is unchanged until it is ported.
  */
 import React, { useEffect, useId, useRef, useState } from "react";
-import { GROUP_TIPS, GROUP_WEIGHTS, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck } from "./verification-mock.js";
+import {
+  GROUP_TIPS, GROUP_WEIGHTS, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
+} from "./verification-mock.js";
 import "./verification-score.css";
-
-const REGISTRY_RESULTS = [
-  { key: "found", label: "Found" },
-  { key: "not_found", label: "Not found" },
-  { key: "could_not_check", label: "Couldn't check" },
-];
 
 function useCountUp(value, duration = 700) {
   const [shown, setShown] = useState(value);
@@ -86,14 +82,80 @@ function Chevron() {
   return <svg className="vr-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
+/* ---------------------------------------------------------------- small */
+
+function Spinner({ ink = false }) {
+  return <span className={`vr-spinner${ink ? " vr-spinner-ink" : ""}`} aria-hidden="true" />;
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard?.writeText(text); return true; } catch { return false; }
+}
+
+function CopyButton({ text, label }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 1400);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      className={`vr-copy${copied ? " is-done" : ""}`}
+      aria-label={copied ? `${label} copied` : `Copy ${label.toLowerCase()}`}
+      title={copied ? "Copied" : "Copy"}
+      onClick={async () => { await copyText(text); setCopied(true); }}
+    >
+      {copied
+        ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.4 6.6 11.4 12.5 4.8" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        : <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" /><path d="M10.8 3.4V3a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.6A1.2 1.2 0 0 0 4 9.8h.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>}
+    </button>
+  );
+}
+
+/** A quiet text action that opens a source; a number it needs is copied on the way, as today's "Look up on QCC" does. */
+function LookupAction({ lookup }) {
+  return (
+    <a
+      className="vr-text-action"
+      href={lookup.href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() => { if (lookup.copy) copyText(lookup.copy); }}
+    >
+      {lookup.label}
+      <svg className="vr-out" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.3 2.7 3 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </a>
+  );
+}
+
+/** `shown` with the parts that differ from `other` marked: characters for a number, words for a name or address. */
+function marked(shown, other) {
+  const isCode = !/\s/.test(shown) && !/\s/.test(other) && shown.length === other.length;
+  if (isCode) return [...shown].map((char, index) => (char === other[index] ? char : <mark key={index}>{char}</mark>));
+  const words = new Set(other.toLowerCase().split(/[\s,]+/).filter(Boolean));
+  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(part.toLowerCase()) ? part : <mark key={index}>{part}</mark>));
+}
+
 /* ------------------------------------------------------------------ card */
 
 export function VerificationScoreCard({ profile }) {
   const [groups, setGroups] = useState(profile.verification.groups);
   const [openKey, setOpenKey] = useState(() => new URLSearchParams(window.location.search).get("check"));
+  // Automatic checks still running when the page opens; Run again adds its group while it runs.
+  const [checking, setChecking] = useState(() => new Set(profile.verification.groups.filter((group) => group.checkingMs).map((group) => group.key)));
+  const setGroupChecking = (key, on) => setChecking((current) => {
+    const next = new Set(current);
+    if (on) next.add(key); else next.delete(key);
+    return next;
+  });
   useEffect(() => {
-    setGroups(profile.verification.groups);
-  }, [profile.id]);
+    const timers = profile.verification.groups
+      .filter((group) => group.checkingMs)
+      .map((group) => window.setTimeout(() => setGroupChecking(group.key, false), group.checkingMs));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [profile.verification.groups]);
 
   const overall = scoreOverall(groups);
   const weakest = weakestCheck(groups);
@@ -130,14 +192,16 @@ export function VerificationScoreCard({ profile }) {
 
       <div className="vr-rows">
         {groups.map((group) => {
-          const score = scoreGroup(group);
+          const isChecking = checking.has(group.key);
+          const score = isChecking ? null : scoreGroup(group);
           const counts = Boolean(GROUP_WEIGHTS[group.key]);
           return (
             <article
-              className={`vr-row${counts ? "" : " vr-row-uncounted"}`}
+              className={`vr-row${counts ? "" : " vr-row-uncounted"}${isChecking ? " is-checking" : ""}`}
               role="button"
               tabIndex={0}
-              aria-label={`${group.label}, ${score == null ? "no score" : `${score}%`}: open details`}
+              aria-busy={isChecking || undefined}
+              aria-label={`${group.label}, ${isChecking ? "checking" : score == null ? "no score" : `${score}%`}: open details`}
               onClick={() => setOpenKey(group.key)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenKey(group.key); }
@@ -146,11 +210,13 @@ export function VerificationScoreCard({ profile }) {
             >
               <div className="vr-row-copy">
                 <span className="vr-row-title">{group.label}<InfoTip text={GROUP_TIPS[group.key]} label={group.label} /></span>
-                <span className={`vr-row-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" />{group.verdict}</span>
+                {isChecking
+                  ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />Checking…</span>
+                  : <span className={`vr-row-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" />{group.verdict}</span>}
               </div>
               <div className="vr-row-score">
                 <Score value={score} />
-                <Meter value={score} />
+                {!isChecking && <Meter value={score} />}
               </div>
               <Chevron />
             </article>
@@ -158,82 +224,216 @@ export function VerificationScoreCard({ profile }) {
         })}
       </div>
 
-      {open && <VerificationModal group={open} onUpdate={updateGroup} onClose={() => setOpenKey(null)} />}
+      {open && (
+        <VerificationModal
+          group={open}
+          onUpdate={updateGroup}
+          onRunning={(on) => setGroupChecking(open.key, on)}
+          onClose={() => setOpenKey(null)}
+        />
+      )}
     </section>
   );
 }
 
-/* ----------------------------------------------------------------- modal */
+/* ------------------------------------------------------------ sub-checks */
 
-function recordedCheck(check, result, reference) {
-  const source = check.registry.source;
-  const outcome = {
-    found: { score: 90, verdict: `Found on ${source}` },
-    not_found: { score: 5, verdict: `Not found on ${source}` },
-    could_not_check: { score: null, verdict: `Couldn't check ${source}` },
-  }[result];
-  return { ...check, ...outcome, registry: { ...check.registry, result, reference, by: "You, just now" } };
+const sameName = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+function ReasonForm({ initial = "", label = "Reason", saveLabel = "Save reason", onSave, onCancel }) {
+  const [text, setText] = useState(initial);
+  const id = useId();
+  return (
+    <form className="vr-record" onSubmit={(event) => { event.preventDefault(); if (text.trim()) onSave(text.trim()); }}>
+      <div className="vr-field">
+        <label htmlFor={id}>{label}</label>
+        <textarea id={id} rows={2} value={text} autoFocus onChange={(event) => setText(event.target.value)} />
+      </div>
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!text.trim()}>{saveLabel}</button>
+      </div>
+    </form>
+  );
 }
 
-function SubCheck({ check, onRecord }) {
-  const [editing, setEditing] = useState(false);
-  const [result, setResult] = useState(check.registry?.result ?? "found");
-  const [reference, setReference] = useState(check.registry?.reference ?? "");
+function Segmented({ options, value, onChange, name, label }) {
+  return (
+    <div className={`vr-segmented is-${options.length}`} role="radiogroup" aria-label={label}>
+      {options.map((option) => (
+        <label className={value === option.key ? "is-on" : ""} key={option.key}>
+          <input type="radio" name={name} value={option.key} checked={value === option.key} onChange={() => onChange(option.key)} />
+          {option.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function RecordForm({ check, legalName, onSave, onCancel }) {
   const registry = check.registry;
+  const isCert = check.kind === "certificate";
+  const ids = { name: useId(), reason: useId(), reference: useId() };
+  const [result, setResult] = useState(registry.result && !registry.for ? registry.result : "found");
+  const [name, setName] = useState(isCert ? "" : (registry.result === "name_differs" ? registry.name : legalName) ?? "");
+  const [reference, setReference] = useState(registry.reference ?? "");
+  const [reason, setReason] = useState("");
+  const showsName = !isCert && (result === "found" || result === "name_differs");
+  const needsReason = result === "name_differs";
+
+  // Typing a name the registry shows differently is "Name differs"; typing it back is "Found".
+  const changeName = (value) => {
+    setName(value);
+    if (!legalName) return;
+    if (!sameName(value, legalName) && result === "found") setResult("name_differs");
+    if (sameName(value, legalName) && result === "name_differs") setResult("found");
+  };
+
   const save = (event) => {
     event.preventDefault();
-    onRecord(recordedCheck(check, result, reference.trim()));
-    setEditing(false);
+    if (needsReason && !reason.trim()) return;
+    onSave(recordedCheck(check, { result, reference: reference.trim(), name: showsName ? name.trim() : "", reason: needsReason ? reason.trim() : "" }));
   };
+
   return (
-    <li className="vr-sub">
+    <form className="vr-record" onSubmit={save}>
+      <Segmented
+        options={RECORD_RESULTS[isCert ? "certificate" : "registry"]}
+        value={result}
+        onChange={setResult}
+        name={`record-${check.key}`}
+        label={`What ${isCert ? "the issuer's list" : registry.source} showed`}
+      />
+      {showsName && (
+        <div className={`vr-field${needsReason ? " is-differs" : ""}`}>
+          <label htmlFor={ids.name}>Name on {registry.source}</label>
+          <input id={ids.name} value={name} spellCheck={false} onChange={(event) => changeName(event.target.value)} />
+        </div>
+      )}
+      {needsReason && (
+        <div className="vr-field">
+          <label htmlFor={ids.reason}>Reason</label>
+          <textarea id={ids.reason} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
+        </div>
+      )}
+      <div className="vr-field">
+        <label htmlFor={ids.reference}>Link or reference</label>
+        <input id={ids.reference} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={`${isCert ? "Issuer's list" : registry.source} page link`} />
+      </div>
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={needsReason && !reason.trim()}>Save check</button>
+      </div>
+    </form>
+  );
+}
+
+function SubCheck({ check, legalName, canReason, onChange }) {
+  const [mode, setMode] = useState(null);
+  const registry = check.registry;
+  const canRecord = Boolean(registry) && registry.by !== "Checked automatically";
+  const done = (next) => { onChange(next); setMode(null); };
+  return (
+    <li className={`vr-sub${mode ? " is-open" : ""}`}>
       <div className="vr-sub-line">
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
           <span>{check.verdict}</span>
-          {registry?.by && <small>{registry.source} · {registry.by}</small>}
+          {registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
         </div>
         <div className="vr-sub-score">
           <Score value={check.score} size="sub" />
           <Meter value={check.score} />
         </div>
       </div>
-      {registry && registry.by !== "Checked automatically" && !editing && (
-        <button className="vr-text-action" type="button" onClick={() => setEditing(true)}>
-          {registry.result ? "Update check" : `Record ${registry.source} check`}
-        </button>
+      {check.reason && mode !== "reason" && (
+        <p className="vr-sub-note"><span>{check.reason.text}</span><small>{check.reason.by}</small></p>
       )}
-      {editing && (
-        <form className="vr-record" onSubmit={save}>
-          <div className="vr-segmented" role="radiogroup" aria-label={`What ${registry.source} showed`}>
-            {REGISTRY_RESULTS.map((option) => (
-              <label className={result === option.key ? "is-on" : ""} key={option.key}>
-                <input type="radio" name={`registry-${check.key}`} value={option.key} checked={result === option.key} onChange={() => setResult(option.key)} />
-                {option.label}
-              </label>
-            ))}
-          </div>
-          <label className="vr-field">
-            <span>Link or reference</span>
-            <input value={reference} onChange={(event) => setReference(event.target.value)} placeholder={`${registry.source} page link`} />
-          </label>
-          <div className="vr-record-actions">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setEditing(false)}>Cancel</button>
-            <button className="primary-btn compact-btn" type="submit">Save check</button>
-          </div>
-        </form>
+      {!mode && (canRecord || check.lookup || canReason) && (
+        <div className="vr-sub-actions">
+          {canRecord && (
+            <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
+              {registry.result ? "Update check" : `Record ${registry.source} check`}
+            </button>
+          )}
+          {check.lookup && <LookupAction lookup={check.lookup} />}
+          {canReason && (
+            <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
+              {check.reason ? "Edit reason" : "Add reason"}
+            </button>
+          )}
+        </div>
+      )}
+      {mode === "record" && <RecordForm check={check} legalName={legalName} onSave={done} onCancel={() => setMode(null)} />}
+      {mode === "reason" && (
+        <ReasonForm initial={check.reason?.text} onSave={(text) => done(withReason(check, text))} onCancel={() => setMode(null)} />
       )}
     </li>
   );
 }
 
-function VerificationModal({ group, onUpdate, onClose }) {
+/* ---------------------------------------------------------------- fields */
+
+function ReadField({ field, value, onChange, onExplain }) {
+  const id = useId();
+  const [explaining, setExplaining] = useState(false);
+  const isEdited = value !== field.value;
+  const Control = field.multiline ? "textarea" : "input";
+  const dup = field.duplicate;
+  return (
+    <div className={`vr-field${field.wide ? " is-wide" : ""}${isEdited ? " is-edited" : ""}`}>
+      <label htmlFor={id}>{field.label}{isEdited && <em>Edited</em>}</label>
+      <div className={`vr-input${field.copy ? " has-copy" : ""}`}>
+        <Control
+          id={id}
+          name={field.key}
+          value={value ?? ""}
+          rows={field.multiline ? 2 : undefined}
+          spellCheck={false}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {field.copy && <CopyButton text={value ?? ""} label={field.label} />}
+      </div>
+      {field.typed && value !== field.typed && (
+        <p className="vr-compare is-typed"><span>Typed:</span> {marked(field.typed, value ?? "")}</p>
+      )}
+      {field.licence && value !== field.licence && (
+        <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "")}</p>
+      )}
+      {dup && !dup.explained && !explaining && (
+        <p className="vr-compare is-dup">
+          <span>Same number as</span> <strong>{dup.with}</strong>
+          <button className="vr-text-action" type="button" onClick={() => setExplaining(true)}>Explain</button>
+        </p>
+      )}
+      {dup && explaining && (
+        <ReasonForm
+          label={`Why ${dup.with} has the same number`}
+          saveLabel="Save"
+          initial={dup.explained?.text}
+          onSave={(text) => { onExplain({ text, by: "You, just now" }); setExplaining(false); }}
+          onCancel={() => setExplaining(false)}
+        />
+      )}
+      {dup?.explained && !explaining && (
+        <p className="vr-sub-note">
+          <span>Same number as {dup.with}: {dup.explained.text}</span>
+          <small>{dup.explained.by} · <button className="vr-text-action is-quiet is-inline" type="button" onClick={() => setExplaining(true)}>Edit</button></small>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- modal */
+
+function VerificationModal({ group, onUpdate, onRunning, onClose }) {
   const titleId = useId();
   const [values, setValues] = useState(() => Object.fromEntries(group.fields.map((field) => [field.key, field.value])));
   const [run, setRun] = useState({ state: "idle", from: null, to: null });
   const score = scoreGroup(group);
-  const edited = group.fields.filter((field) => values[field.key] !== field.value).map((field) => field.key);
   const canRun = group.fields.length > 0;
+  const canReason = group.evidence?.kind !== "none";
 
   useEffect(() => {
     const onKey = (event) => { if (event.key === "Escape") onClose(); };
@@ -243,21 +443,42 @@ function VerificationModal({ group, onUpdate, onClose }) {
 
   const runAgain = () => {
     setRun({ state: "running", from: score, to: null });
+    onRunning(true);
     window.setTimeout(() => {
-      const improved = group.rerun?.(values) ?? null;
-      const fields = group.fields.map((field) => ({ ...field, value: values[field.key] }));
-      const next = improved ? { ...group, ...improved, fields, rerun: null, readAt: "Read just now" } : { ...group, fields, readAt: "Read just now" };
+      onRunning(false);
+      const outcome = group.rerun?.(values, group) ?? null;
+      if (outcome?.error) {
+        setRun({ state: "error", message: outcome.error });
+        return;
+      }
+      const { values: read = {}, error, ...patch } = outcome ?? {};
+      const nextValues = { ...values, ...read };
+      setValues(nextValues);
+      const fields = group.fields.map((field) => ({ ...field, value: nextValues[field.key] }));
+      const next = withPhotoCheck({ ...group, ...patch, fields, stale: null, readAt: "Read just now", rerun: outcome ? null : group.rerun });
       onUpdate(next);
       setRun({ state: "done", from: score, to: scoreGroup(next) });
     }, 1200);
   };
 
-  const recordCheck = (check) => {
-    const next = { ...group, checks: group.checks.map((item) => (item.key === check.key ? check : item)) };
-    onUpdate(next);
-  };
+  // A registry check staff record becomes the group's verdict: the header must not keep saying "not checked" or "renamed".
+  const changeCheck = (check) => onUpdate({
+    ...group,
+    ...(check.key === "registry" && check.registry?.by === "You, just now" ? { verdict: check.verdict, why: "" } : {}),
+    checks: group.checks.map((item) => (item.key === check.key ? check : item)),
+  });
+  const changePhotos = (photos) => onUpdate(withPhotoCheck({ ...group, evidence: { ...group.evidence, photos } }));
+  const explainField = (key, explained) => onUpdate({
+    ...group,
+    fields: group.fields.map((field) => (field.key === key ? { ...field, duplicate: { ...field.duplicate, explained } } : field)),
+  });
 
   const delta = run.state === "done" ? run.to - run.from : 0;
+  const status = run.state === "running" ? { text: "Checking again…" }
+    : run.state === "error" ? { text: run.message, tone: "error" }
+      : run.state === "done" ? { text: run.to === run.from ? `Same result: ${run.to}%` : `Score updated: ${run.from}% to ${run.to}%`, tone: "done" }
+        : group.stale ? { text: group.stale, tone: "stale" }
+          : { text: group.readAt };
 
   return (
     <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -265,7 +486,7 @@ function VerificationModal({ group, onUpdate, onClose }) {
         <header className="vr-modal-head">
           <div className="vr-modal-title">
             <h2 id={titleId}>{group.label}</h2>
-            <p className={`vr-modal-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" /><span><strong>{group.verdict}.</strong> {group.why}</span></p>
+            <p className={`vr-modal-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" /><span><strong>{group.verdict}.</strong>{group.why ? ` ${group.why}` : ""}</span></p>
           </div>
           <div className="vr-modal-score">
             <Score value={score} size="modal" />
@@ -281,7 +502,15 @@ function VerificationModal({ group, onUpdate, onClose }) {
             <section className="vr-section" aria-label="Checks">
               <h3>Checks</h3>
               <ul className="vr-subs">
-                {group.checks.map((check) => <SubCheck check={check} onRecord={recordCheck} key={`${check.key}-${check.registry?.by ?? ""}`} />)}
+                {group.checks.map((check) => (
+                  <SubCheck
+                    check={check}
+                    legalName={values.legalName}
+                    canReason={canReason}
+                    onChange={changeCheck}
+                    key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}
+                  />
+                ))}
               </ul>
             </section>
 
@@ -289,40 +518,32 @@ function VerificationModal({ group, onUpdate, onClose }) {
               <section className="vr-section">
                 <h3>What the AI read</h3>
                 <div className="vr-fields">
-                  {group.fields.map((field) => {
-                    const isEdited = edited.includes(field.key);
-                    const Control = field.multiline ? "textarea" : "input";
-                    return (
-                      <label className={`vr-field${field.wide ? " is-wide" : ""}${isEdited ? " is-edited" : ""}`} key={field.key}>
-                        <span>{field.label}{isEdited && <em>Edited</em>}</span>
-                        <Control
-                          name={field.key}
-                          value={values[field.key] ?? ""}
-                          rows={field.multiline ? 2 : undefined}
-                          spellCheck={false}
-                          onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
-                        />
-                      </label>
-                    );
-                  })}
+                  {group.fields.map((field) => (
+                    <ReadField
+                      field={field}
+                      value={values[field.key]}
+                      onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+                      onExplain={(explained) => explainField(field.key, explained)}
+                      key={field.key}
+                    />
+                  ))}
                 </div>
               </section>
             )}
           </div>
 
-          <EvidencePane evidence={group.evidence} />
+          <EvidencePane evidence={group.evidence} onPhotos={changePhotos} key={group.readAt} />
         </div>
 
         <footer className="vr-modal-foot">
-          <p className="vr-run-status" role="status">
-            {run.state === "running" ? "Checking again…"
-              : run.state === "done" ? (run.to === run.from ? `Same result: ${run.to}%` : `Score updated: ${run.from}% to ${run.to}%`)
-              : group.readAt}
+          <p className={`vr-run-status${status.tone ? ` is-${status.tone}` : ""}`} role="status">
+            {(status.tone === "error" || status.tone === "stale") && <i aria-hidden="true" />}
+            {status.text}
           </p>
           <button className="secondary-btn" type="button" onClick={onClose}>Close</button>
           {canRun && (
             <button className="primary-btn vr-run" type="button" disabled={run.state === "running"} onClick={runAgain}>
-              {run.state === "running" && <span className="vr-spinner" aria-hidden="true" />}
+              {run.state === "running" && <Spinner />}
               {run.state === "running" ? "Running" : "Run again"}
             </button>
           )}
@@ -334,22 +555,96 @@ function VerificationModal({ group, onUpdate, onClose }) {
 
 /* -------------------------------------------------------------- evidence */
 
-function EvidencePane({ evidence }) {
+const PHOTO_RESULTS = [
+  { key: "own", label: "Own" },
+  { key: "elsewhere", label: "Found elsewhere" },
+  { key: "could_not", label: "Couldn't check" },
+];
+
+function PhotoRecord({ photo, index, onSave, onCancel }) {
+  const start = photo.flag ? "elsewhere" : photo.result === "unchecked" ? "own" : photo.result;
+  const [result, setResult] = useState(start);
+  const [where, setWhere] = useState(photo.where ?? "");
+  const whereId = useId();
+  return (
+    <form
+      className={`vr-photo-pop ${index % 2 ? "is-right" : "is-left"}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave({ ...photo, result, where: result === "elsewhere" ? where.trim().replace(/^https?:\/\/(www\.)?/, "").split("/")[0] : "", flag: null, by: "You, just now" });
+      }}
+    >
+      <div className="vr-photo-pop-head">
+        <strong>Photo {index + 1}</strong>
+        <LookupAction lookup={{ label: "Search image", href: "https://lens.google.com/" }} />
+      </div>
+      <Segmented options={PHOTO_RESULTS} value={result} onChange={setResult} name={`photo-${index}`} label={`What a search showed for photo ${index + 1}`} />
+      {result === "elsewhere" && (
+        <div className="vr-field">
+          <label htmlFor={whereId}>Where</label>
+          <input id={whereId} value={where} placeholder="Page link" onChange={(event) => setWhere(event.target.value)} />
+        </div>
+      )}
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit">Save</button>
+      </div>
+    </form>
+  );
+}
+
+function PhotoGrid({ photos, onPhotos }) {
+  const [selected, setSelected] = useState(null);
+  const rows = [];
+  for (let index = 0; index < photos.length; index += 2) rows.push(index);
+  return (
+    <div className="vr-photos">
+      {rows.map((first) => (
+        <React.Fragment key={first}>
+          {photos.slice(first, first + 2).map((photo, offset) => {
+            const index = first + offset;
+            const caption = photoCaption(photo);
+            const tone = photo.flag ? "problem" : photo.result;
+            return (
+              <button
+                type="button"
+                className={`vr-photo is-${tone}${selected === index ? " is-selected" : ""}`}
+                aria-expanded={selected === index}
+                aria-label={`Photo ${index + 1}: ${caption ?? "their own"}. Record what a search showed`}
+                onClick={() => setSelected(selected === index ? null : index)}
+                key={`${photo.src}-${index}`}
+              >
+                <img src={photo.src} alt="" />
+                {caption
+                  ? <span className="vr-photo-cap">{caption}</span>
+                  : <span className="vr-photo-own" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.4 6.6 11.4 12.5 4.8" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg></span>}
+              </button>
+            );
+          })}
+          {selected != null && selected >= first && selected < first + 2 && (
+            <PhotoRecord
+              photo={photos[selected]}
+              index={selected}
+              key={`pop-${selected}`}
+              onCancel={() => setSelected(null)}
+              onSave={(photo) => { onPhotos(photos.map((item, index) => (index === selected ? photo : item))); setSelected(null); }}
+            />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function EvidencePane({ evidence, onPhotos }) {
+  const [index, setIndex] = useState(0);
   if (!evidence || evidence.kind === "none") {
     return <aside className="vr-evidence vr-evidence-empty"><p>No file uploaded</p></aside>;
   }
   if (evidence.kind === "photos") {
-    const words = { own: "Their own", elsewhere: "Found elsewhere", unchecked: "Not checked" };
     return (
       <aside className="vr-evidence" aria-label="Photos">
-        <div className="vr-photos">
-          {evidence.photos.map((photo, index) => (
-            <figure className={`vr-photo is-${photo.result}`} key={`${photo.src}-${index}`}>
-              <img src={photo.src} alt={`Factory photo ${index + 1}`} />
-              <figcaption>{photo.result === "elsewhere" && photo.where ? `On ${photo.where}` : words[photo.result]}</figcaption>
-            </figure>
-          ))}
-        </div>
+        <PhotoGrid photos={evidence.photos} onPhotos={onPhotos} />
         <div className="vr-evidence-file"><span>{evidence.photos.length} photos</span></div>
       </aside>
     );
@@ -371,10 +666,26 @@ function EvidencePane({ evidence }) {
       </aside>
     );
   }
+  const files = evidence.files ?? [{ variant: evidence.variant, file: evidence.file }];
+  const file = files[Math.min(index, files.length - 1)];
   return (
     <aside className="vr-evidence" aria-label="Registration document">
-      <LicencePaper variant={evidence.variant} />
-      <div className="vr-evidence-file"><span>{evidence.file}</span><button className="vr-text-action" type="button">Open</button></div>
+      <LicencePaper variant={file.variant} key={file.variant} />
+      {files.length > 1 && (
+        <div className="vr-switcher">
+          <button type="button" aria-label="Newer file" disabled={index === 0} onClick={() => setIndex(index - 1)}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          <span aria-live="polite">{index + 1} of {files.length}</span>
+          <button type="button" aria-label="Earlier file" disabled={index === files.length - 1} onClick={() => setIndex(index + 1)}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        </div>
+      )}
+      <div className="vr-evidence-file">
+        <span>{file.file}{file.when ? `, ${file.when}` : ""}</span>
+        <button className="vr-text-action" type="button">Open</button>
+      </div>
     </aside>
   );
 }
@@ -402,7 +713,7 @@ const PAPERS = {
     title: "Vergi Levhası",
     rows: [
       ["Ticaret unvanı", "Merter Tekstil Toptan Ticaret Ltd. Şti."], ["Vergi kimlik no", "6230418795"], ["Vergi dairesi", "Merter"],
-      ["Ana faaliyet", "464201 · Toptan giyim ticareti"], ["İş yeri adresi", "Merter Mah., Güngören, İstanbul"],
+      ["Ana faaliyet", "464201 · Toptan giyim ticareti"], ["İş yeri adresi", "Merter Mah., Güngören, İstanbul"], ["Onay kodu", "2026-GIB-0451887"],
     ],
   },
   pt: {
@@ -410,8 +721,17 @@ const PAPERS = {
     title: "Certidão Permanente",
     rows: [
       ["NIPC", "513284976"], ["Firma", "TÊXTEIS DOURO –\nCONFECÇÕES, LDA"], ["Natureza jurídica", "Sociedade por quotas"],
-      ["CAE principal", "14130"], ["Sede", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"], ["Data do registo", "2012-03-08"],
+      ["CAE principal", "14130"], ["Sede", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"], ["Data do registo", "2012-03-08"], ["Código de acesso", "4821-7730-9145"],
     ],
+  },
+  "pt-old": {
+    kicker: "Conservatória do Registo Comercial",
+    title: "Certidão Permanente",
+    rows: [
+      ["NIPC", "513284976"], ["Firma", "TÊXTEIS DOURO, LDA"], ["Natureza jurídica", "Sociedade por quotas"],
+      ["CAE principal", "14130"], ["Sede", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"], ["Data do registo", "2012-03-08"], ["Válida até", "2023-11-02"],
+    ],
+    stamp: "Expirada",
   },
 };
 
@@ -425,6 +745,7 @@ function LicencePaper({ variant }) {
         {paper.rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>
       {paper.seal && <span className="vr-seal" aria-hidden="true">★</span>}
+      {paper.stamp && <span className="vr-stamp">{paper.stamp}</span>}
       {paper.watermark && (
         <span className="vr-watermark" aria-label={`Watermark: ${paper.watermark}`}>
           {Array.from({ length: 14 }, (_, index) => <span key={index}>{`${paper.watermark}   ${paper.watermark}`}</span>)}
