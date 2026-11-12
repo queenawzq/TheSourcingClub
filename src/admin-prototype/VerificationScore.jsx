@@ -433,7 +433,8 @@ function RecordForm({ check, legalName, onSave, onDone }) {
   const sources = !isCert && registry.sources?.length > 1 ? registry.sources : null;
   const [sourceKey, setSourceKey] = useState(registry.sourceKey ?? sources?.[0]?.key ?? null);
   const sourceLabel = sources?.find((item) => item.key === sourceKey)?.label ?? registry.source;
-  const [result, setResult] = useState(registry.result && !registry.for ? registry.result : "found");
+  // Staff's own earlier answer is the starting point; an automatic check's is not theirs to repeat.
+  const [result, setResult] = useState(registry.result && !registry.for && registry.by !== "Checked automatically" ? registry.result : "found");
   const [name, setName] = useState(isCert ? "" : (registry.result === "name_differs" ? registry.name : legalName) ?? "");
   const [reference, setReference] = useState(registry.reference ?? "");
   const [reason, setReason] = useState("");

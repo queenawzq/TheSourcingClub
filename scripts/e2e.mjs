@@ -115,6 +115,35 @@ async function inviteThrough(person, body) {
 }
 
 /** Polls the page until `test` holds; returns how long it took, or null. */
+/**
+ * Nov 12 review page: record "Found" on the Official registry sub-check, in the
+ * Business registration row's modal (the record form replaced the old Registry
+ * row's details window). Returns the sub-check's text after saving.
+ */
+async function recordRegistryFound(page, reference) {
+  await page.locator("article.vr-row").first().click();
+  await waitFor(page, ".vr-modal .vr-sub", 15000);
+  const opened = await page.evaluate(() => {
+    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
+    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
+    button?.click();
+    return Boolean(button);
+  });
+  if (!opened) return null;
+  await waitFor(page, ".vr-modal .vr-record", 10000);
+  // "Found" is the form's first answer and already chosen.
+  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  await clickButton(page, "save check");
+  const text = await within(page, () => page.evaluate(() => {
+    if (document.querySelector(".vr-modal .vr-record")) return null;
+    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
+    return sub?.innerText ?? null;
+  }), 20000);
+  await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-modal-foot button")].find((b) => b.textContent.trim() === "Close")?.click());
+  await page.waitForTimeout(800);
+  return text;
+}
+
 async function within(page, test, timeout = 15000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -1005,20 +1034,19 @@ async function main() {
     // (20261108600000): "Approve" is greyed until one is recorded.
     const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
     check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
-    // v3: the registry form sits in the Registry row's details window.
-    await page.locator('.admin-level-row[data-check="registry"]').first().click();
-    await waitFor(page, ".admin-registry-form select", 15000);
-    await page.locator(".admin-registry-form select").first().selectOption("certidao");
-    await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: certificate shows this NIPC and the company's name");
-    await clickButton(page, "record check");
-    check(await within(page, () => page.evaluate(() => /found/i.test(document.querySelector('.admin-level-row[data-check="registry"]')?.innerText ?? "") || null), 20000) !== null,
-      "the registry check is recorded on the review page (the Registry row says found)");
+    // Nov 12: the record form sits under Official registry in the Business registration modal.
+    await recordRegistryFound(page, "E2E: certificate shows this NIPC and the company's name");
+    const { data: staffCheck } = await db.from("registry_checks").select("result, automatic")
+      .eq("org_id", factoryOrg.id).eq("automatic", false).order("checked_at", { ascending: false }).limit(1).maybeSingle();
+    check(staffCheck?.result === "found", `the registry check is recorded from the review page's form (a person's "${staffCheck?.result ?? "nothing"}")`);
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
     // Profile completeness used to vanish once a decision was made.
-    const completenessShown = await detailValue("Profile completeness");
-    check(/^\d+%$/.test(completenessShown ?? ""), `Profile completeness is still shown after approval (${completenessShown})`);
+    // Nov 12: Review details says whether the company details are complete (it replaced the percentage).
+    const completenessShown = await page.evaluate(() => [...document.querySelectorAll(".vr-fact-copy")]
+      .find((fact) => fact.querySelector("span")?.textContent.trim() === "Company details")?.querySelector("strong")?.textContent.trim() ?? null);
+    check(Boolean(completenessShown), `Company details are still shown after approval (${completenessShown})`);
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
@@ -3594,11 +3622,7 @@ async function main() {
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it (v3: in the Registry row's details).
-      await page.locator('.admin-level-row[data-check="registry"]').first().click();
-      await waitFor(page, ".admin-registry-form", 15000);
-      await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: the registration document shows this number and name");
-      await clickButton(page, "record check");
-      await page.waitForTimeout(2500);
+      await recordRegistryFound(page, "E2E: the registration document shows this number and name");
       await clickButton(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
