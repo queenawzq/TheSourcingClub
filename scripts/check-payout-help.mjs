@@ -57,7 +57,7 @@ assert.ok(liveFund.includes("once it is funded, and it takes a few business days
 // Nov 13: a deposit or balance is released once funded, so the live Fund
 // subtitle and success text must not borrow the design's "after you approve"
 // words for it. Approval steps keep the design's; the prototype's text stays.
-assert.ok(liveFund.includes("Released to ${factory} once funded."), "the payment-only Fund subtitle says it is released once funded");
+assert.ok(liveFund.includes("The step amount, without fees, is released to ${factory} once funded."), "the payment-only Fund subtitle says it is released once funded");
 assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
 assert.ok(liveFund.includes("Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only success text says TSC releases it");
 assert.ok(liveFund.includes("Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only processing text says TSC releases it");

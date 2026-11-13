@@ -419,7 +419,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
  * scripts/check-payout-help.mjs.
  */
 function paymentOnlyFundNote(amount, title, factory) {
-  return `Add ${amount} to project funds for ${title.toLowerCase()}. Released to ${factory} once funded.`;
+  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is released to ${factory} once funded.`;
 }
 
 function paymentOnlySuccess(factory, funded) {
