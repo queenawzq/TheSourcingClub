@@ -143,10 +143,11 @@ export function verificationActions(orgId, { reload, changed }) {
       source: registryRow?.registry?.sourceKey, result: "name_differs", name: registryRow?.registry?.name ?? "", reason: text,
     })),
     /** Never throws for an expected failure: `{ error }` in short words, shown in the modal's footer. */
-    runAgain: async (groupKey, values, edited) => {
+    runAgain: async (groupKey, values, edited, certificateId = null) => {
       const before = lastRead.get(orgId) ?? null;
       const fields = Object.fromEntries(edited.map((key) => [key, values[key] ?? ""]));
-      const subjectId = groupKey === "certification" ? shownCertificate(before) : null;
+      // The certificate on the open tab (Nov 13), else the one the modal shows alone.
+      const subjectId = groupKey === "certification" ? certificateId ?? shownCertificate(before) : null;
       const outcome = await rerunVerificationGroup({ orgId, group: groupKey, fields, before, subjectId });
       // A run that failed part-way may still have moved the score: read it either way, unless nothing ran.
       if (outcome.ok || outcome.verification) {

@@ -20,7 +20,7 @@
  */
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  GROUP_TIPS, GROUP_WEIGHTS, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
+  groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
 import "./verification-score.css";
 
@@ -307,10 +307,10 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
   const isChecking = (group) => checking.has(group.key) || Boolean(group.checking);
   const ready = groups.filter((group) => !isChecking(group) && !group.error);
   // Only a counted group holds the overall back: certification is shown, not counted.
-  const anyPending = groups.some((group) => GROUP_WEIGHTS[group.key] && (isChecking(group) || group.error));
+  const anyPending = groups.some((group) => groupWeight(group) && (isChecking(group) || group.error));
   const overall = groups.length ? scoreOverall(groups) : null;
   const weakest = weakestCheck(ready);
-  const counted = groups.filter((group) => GROUP_WEIGHTS[group.key]);
+  const counted = groups.filter((group) => groupWeight(group));
   const open = groups.find((group) => group.key === openKey) ?? null;
   const closeModal = useCallback(() => setOpenKey(null), []);
   const runningChange = useCallback((on) => openKey && setGroupChecking(openKey, on), [openKey, setGroupChecking]);
@@ -345,7 +345,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
       <div className="vr-overall">
         <div className="vr-overall-figure">
           <Score value={anyPending && overall != null ? null : overall} size="hero" />
-          {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => GROUP_WEIGHTS[group.key] && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} groups={groups} />}
+          {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => groupWeight(group) && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} groups={groups} />}
         </div>
         <p className="vr-overall-line">
           {weakest ? <><span>Weakest:</span> {weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</> : null}
@@ -355,7 +355,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
             {counted.map((group) => {
               const score = isChecking(group) || group.error ? null : scoreGroup(group);
               return (
-                <div className="vr-weightbar-part" style={{ flexGrow: GROUP_WEIGHTS[group.key] }} key={group.key}>
+                <div className="vr-weightbar-part" style={{ flexGrow: groupWeight(group) }} key={group.key}>
                   <span className={`vr-weightbar-track vr-tier-${tierFor(score)}`}><span style={{ width: `${score ?? 0}%` }} /></span>
                   <span className="vr-weightbar-label">{group.label}</span>
                 </div>
@@ -373,7 +373,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
             const busy = isChecking(group);
             const failed = !busy && group.error;
             const score = busy || failed ? null : scoreGroup(group);
-            const counts = Boolean(GROUP_WEIGHTS[group.key]);
+            const counts = Boolean(groupWeight(group));
             return (
               <article
                 className={`vr-row${counts ? "" : " vr-row-uncounted"}${busy ? " is-checking" : ""}`}
@@ -388,7 +388,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 key={group.key}
               >
                 <div className="vr-row-copy">
-                  <span className="vr-row-title">{group.label}{GROUP_TIPS[group.key] && <InfoTip text={GROUP_TIPS[group.key]} label={group.label} />}</span>
+                  <span className="vr-row-title">{group.label}{groupTip(group) && <InfoTip text={groupTip(group)} label={group.label} />}</span>
                   {busy
                     ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />Checking…</span>
                     : failed
@@ -655,13 +655,21 @@ const fieldValues = (fields) => Object.fromEntries((fields ?? []).map((field) =>
 
 function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
   const titleId = useId();
-  const fields = group.fields ?? [];
+  // Several certificates: one tab each, showing that certificate's check, fields and file (Nov 13).
+  const certs = group.evidence?.kind === "certificate" ? (group.evidence.certificates ?? []) : [];
+  const tabbed = certs.length > 1;
+  const [certId, setCertId] = useState(() => (certs.find((c) => c.file && c.file.id === group.evidence?.file?.id) ?? certs[0])?.id ?? null);
+  const cert = tabbed ? certs.find((c) => c.id === certId) ?? certs[0] : null;
+  const fields = (cert ? cert.fields : group.fields) ?? [];
+  const checks = cert ? (group.checks ?? []).filter((check) => check.subjectId === cert.id) : group.checks;
+  const evidence = cert ? { kind: "certificate", name: cert.label, number: cert.number, valid: cert.valid, holder: cert.holder, file: cert.file } : group.evidence;
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle", from: null });
   const score = group.checking || group.error ? null : scoreGroup(group);
   // Run again reads what was uploaded: a file with no reading yet has no fields, and is exactly what it is for.
   const canRun = group.rerunnable !== false && (fields.length > 0 || (group.evidence?.kind ?? "none") !== "none");
-  const canReason = group.evidence?.kind !== "none";
+  // A brand's groups have nowhere to keep a reason (`reasons: false`).
+  const canReason = group.reasons !== false && group.evidence?.kind !== "none";
   // A new reading (Run again, or a teammate's) replaces the fields; staff's own unsaved edits are only replaced by it.
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
@@ -679,7 +687,7 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
     onRunning(true);
     let outcome;
     try {
-      outcome = await actions.runAgain(group.key, values, edited);
+      outcome = await actions.runAgain(group.key, values, edited, cert?.id ?? null);
     } catch (error) {
       outcome = { error: error?.message || "Couldn't run again" };
     }
@@ -737,11 +745,16 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
 
         <div className="vr-modal-body">
           <div className="vr-modal-main">
+            {tabbed && (
+              <div className="vr-cert-tabs">
+                <Segmented options={certs.map((c) => ({ key: c.id, label: c.label }))} value={cert.id} onChange={setCertId} name={`cert-${titleId}`} label="Certificates" />
+              </div>
+            )}
             <section className="vr-section" aria-label="Checks">
               <h3>Checks</h3>
-              {group.checks?.length ? (
+              {checks?.length ? (
                 <ul className="vr-subs">
-                  {group.checks.map((check) => (
+                  {checks.map((check) => (
                     <SubCheck
                       check={check}
                       groupKey={group.key}
@@ -775,10 +788,10 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
           </div>
 
           <EvidencePane
-            evidence={group.evidence}
+            evidence={evidence}
             fileUrl={fileUrl}
             onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
-            key={group.readAt ?? ""}
+            key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
           />
         </div>
 
@@ -918,15 +931,76 @@ function PhotoGrid({ photos, onPhoto, fileUrl }) {
 const isImage = (file) => /^image\//.test(file?.mimeType ?? "") || /\.(png|jpe?g|webp|gif)$/i.test(file?.name ?? "");
 const isPdf = (file) => file?.mimeType === "application/pdf" || /\.pdf$/i.test(file?.name ?? "");
 
+/** What the first bytes say a file is: "pdf", an image's type, or "other". */
+function sniffBytes(bytes) {
+  const head = Array.from(bytes.slice(0, 1024), (b) => String.fromCharCode(b)).join("");
+  if (head.includes("%PDF-")) return "pdf";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes[0] === 0x89 && head.slice(1, 4) === "PNG") return "image/png";
+  if (head.slice(0, 4) === "RIFF" && head.slice(8, 12) === "WEBP") return "image/webp";
+  if (head.slice(0, 3) === "GIF") return "image/gif";
+  return "other";
+}
+
+/**
+ * Whether the browser's PDF viewer can be given this file (Nov 13): a file named .pdf that is not
+ * one (a photo saved as .pdf), is empty, or stops before its end shows the viewer's "Failed to load
+ * PDF document" box. Reads the first 2 KB and the last 8 KB; if that read itself fails, the file is
+ * shown as before. `{ kind: "pdf" | "image" | "none" (nothing the page can draw), src? }`, or null
+ * while reading. A photo stored as a PDF is served as one, so it is drawn from its own bytes.
+ */
+function usePdfPreview(href, enabled) {
+  const [kind, setKind] = useState(null);
+  useEffect(() => {
+    if (!enabled || !href) { setKind(null); return undefined; }
+    let cancelled = false;
+    let objectUrl = null;
+    setKind(null);
+    const range = async (value) => {
+      const response = await fetch(href, { headers: { Range: value } });
+      // An empty file has no bytes to range over.
+      if (response.status === 416) return { whole: true, bytes: new Uint8Array(0) };
+      if (!response.ok) throw new Error(String(response.status));
+      return { whole: response.status === 200, bytes: new Uint8Array(await response.arrayBuffer()) };
+    };
+    (async () => {
+      const head = await range("bytes=0-2047");
+      if (!head.bytes.length) return { kind: "none" };
+      const what = sniffBytes(head.bytes);
+      if (what.startsWith("image/")) {
+        const whole = head.whole ? head.bytes : new Uint8Array(await (await fetch(href)).arrayBuffer());
+        objectUrl = URL.createObjectURL(new Blob([whole], { type: what }));
+        return { kind: "image", src: objectUrl };
+      }
+      if (what !== "pdf") return { kind: "none" };
+      const tail = head.whole ? head : await range("bytes=-8192");
+      const end = Array.from(tail.bytes.slice(-8192), (b) => String.fromCharCode(b)).join("");
+      return { kind: end.includes("%%EOF") ? "pdf" : "none" };
+    })().then(
+      (found) => { if (!cancelled) setKind(found); },
+      () => { if (!cancelled) setKind({ kind: "pdf" }); },
+    );
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [href, enabled]);
+  return kind;
+}
+
 /** One file behind a check: the prototype's drawn paper, or the stored file itself. */
 function EvidenceFile({ file, fileUrl, label, children }) {
   const { href, failed } = useFileHref(file.variant ? null : file, fileUrl);
+  const pdf = usePdfPreview(href, !file.variant && !children && !isImage(file) && isPdf(file));
   const preview = file.variant ? <LicencePaper variant={file.variant} key={file.variant} />
     : children ?? (failed ? <div className="vr-paper vr-file is-empty"><p>Couldn't open the file</p></div>
       : !href ? <div className="vr-paper vr-file is-empty"><Spinner ink /></div>
         : isImage(file) ? <div className="vr-paper vr-file"><img src={href} alt={label} /></div>
-          : isPdf(file) ? <div className="vr-paper vr-file is-pdf"><iframe src={href} title={label} /></div>
-            : <div className="vr-paper vr-file is-empty"><p>{file.name}</p></div>);
+          : isPdf(file) && pdf == null ? <div className="vr-paper vr-file is-empty"><Spinner ink /></div>
+            : pdf?.kind === "image" ? <div className="vr-paper vr-file"><img src={pdf.src} alt={label} /></div>
+              : isPdf(file) && pdf.kind === "pdf" ? <div className="vr-paper vr-file is-pdf"><iframe src={href} title={label} /></div>
+              : isPdf(file) ? <div className="vr-paper vr-file is-empty"><p>Can't preview this file</p></div>
+                : <div className="vr-paper vr-file is-empty"><p>{file.name}</p></div>);
   return (
     <>
       {preview}
@@ -1009,7 +1083,7 @@ function EvidencePane({ evidence, onPhoto, fileUrl }) {
   }
   const at = Math.min(index, files.length - 1);
   const file = files[at];
-  const label = isCert ? "Certificate" : "Registration document";
+  const label = evidence.label ?? (isCert ? "Certificate" : "Registration document");
   return (
     <aside className="vr-evidence" aria-label={label}>
       <EvidenceFile file={file} fileUrl={fileUrl} label={label} key={`${file.path ?? file.variant}-${at}`} />

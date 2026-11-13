@@ -1374,3 +1374,7 @@ a.vr-text-action {
   color: var(--vr-low-text);
   font-weight: 600;
 }
+
+/* Several certificates: one tab each, above the checks (Nov 13; minimal, for Queena to restyle). */
+.vr-cert-tabs { margin-bottom: 16px; }
+.vr-cert-tabs .vr-segmented { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
