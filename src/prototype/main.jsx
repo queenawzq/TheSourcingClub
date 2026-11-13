@@ -4128,6 +4128,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
             <Metric label={live ? "Step" : fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
             <Metric label="Subtotal" value={fundingSummary.subtotal} />
             <Metric label={live ? live.feeLabel : "TSC service fee"} value={fundingSummary.fee} />
+            {live?.processingFee ? <Metric label={live.processingFeeLabel} value={live.processingFee} /> : null}
             {live ? null : <Metric label="Estimated taxes" value={fundingSummary.taxes} />}
           </div>
           <div className="fund-total-row">

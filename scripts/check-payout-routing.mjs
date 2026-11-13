@@ -45,4 +45,21 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
   assert.deepEqual(await releasePayment({ db, stripe, paymentId: payment.id }), { released: true, reason: 'tr_past_the_first_page' });
   assert.deepEqual(rpcs.at(-1), ['record_payment_released', { target_payment: payment.id, transfer: 'tr_past_the_first_page' }]);
 }
+// The brand paid the step, the service fee and the card processing fee; the
+// factory is sent the step amount only (card processing fee, Nov 13).
+{
+  const charged = { ...payment, amount_cents: 50000, charged_cents: 55129, fee_bps: 700, processing_fee_bps: 290, processing_fee_fixed_cents: 30 };
+  const sent = [];
+  const db = {
+    from(table) { const q = { select() { return q; }, eq() { return q; },
+      async maybeSingle() { return { data: table === 'order_payments' ? charged : { stripe_account_id: 'acct_route_fake', transfers_active: true } }; },
+      async single() { return { data: { stripe_account_id: 'acct_route_fake', transfers_active: true } }; } }; return q; },
+    async rpc(name) { return { data: name === 'uses_stripe_payout' ? true : name === 'claim_payment_release' ? '2026-11-08T00:00:00Z' : null }; },
+  };
+  const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } }, accounts: { async update() {} },
+    transfers: { list: async function* () {}, async create(args) { sent.push(args); return { id: 'tr_step_only' }; } } };
+  assert.deepEqual(await releasePayment({ db, stripe, paymentId: charged.id }), { released: true, reason: 'tr_step_only' });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].amount, 50000, 'the factory is sent the $500.00 step, not the $551.29 the brand was charged');
+}
 console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read');

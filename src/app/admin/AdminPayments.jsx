@@ -594,8 +594,8 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           <strong>{formatMoney(row.amount_cents, row.currency)}</strong>
           <span className="admin-sub">
             {row.charged_cents
-              ? `charged ${formatMoney(row.charged_cents, row.currency)} incl. fee`
-              : `fee ${formatMoney(row.fee_cents, row.currency)}`}
+              ? `charged ${formatMoney(row.charged_cents, row.currency)} incl. fees`
+              : `fee ${formatMoney(row.fee_cents, row.currency)}${Number(row.processing_fee_cents) ? ` · card fee ${formatMoney(row.processing_fee_cents, row.currency)}` : ""}`}
           </span>
         </td>
         <td>

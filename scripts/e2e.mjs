@@ -1989,6 +1989,8 @@ async function main() {
     if (STRIPE.publishable) {
       await waitFor(page, '[data-testid="payment-element"] iframe', 30000);
       check(true, "the Fund screen draws Stripe's Payment Element inside the design's billing card");
+      check(/Card processing fee/.test(await page.locator(".fund-summary-rows").innerText().catch(() => "")),
+        "the Fund rail shows the card processing fee beside the service fee");
       await record(page, "Fund first payment", "Stripe's card form in the designed screen, fee and total beside it");
     } else {
       console.log("  (no pk_test_ key here: the Fund screen says payments are not set up, and the Payment Element is not checked)");
@@ -2163,7 +2165,7 @@ async function main() {
     // step opened, and the brand funds it before the factory is told to go.
     console.log("\nTHE BRAND FUNDS THE STEP");
     const { data: dueNow } = await db.from("order_payments")
-      .select("id, state, amount_cents, fee_bps").eq("milestone_id", firstStep.id).single();
+      .select("id, state, amount_cents, fee_bps, charge_cents, processing_fee_cents").eq("milestone_id", firstStep.id).single();
     check(dueNow.state === "due", "the open step's payment is due before any work is approved");
 
     // The factory has posted, but the money is not held yet: the screen
@@ -2289,8 +2291,9 @@ async function main() {
       const checkout = await apiAs(page, "stripe-checkout", { paymentId: dueNow.id });
       check(checkout.status === 200 && Boolean(checkout.body.clientSecret),
         `checkout gives the Payment Element its client secret (${checkout.status})`);
-      check(Number(checkout.body.chargedCents) === Number(dueNow.amount_cents) + Math.floor(Number(dueNow.amount_cents) * Number(dueNow.fee_bps) / 10000),
-        `the charge is the step plus the service fee (${checkout.body.feeBps / 100}%)`);
+      check(Number(checkout.body.chargedCents) === Number(dueNow.charge_cents)
+        && Number(checkout.body.chargedCents) === Number(dueNow.amount_cents) + Number(checkout.body.feeCents) + Number(checkout.body.processingFeeCents),
+        `the charge is the step, the service fee (${checkout.body.feeBps / 100}%) and the card processing fee, as the database works it out`);
       const intentId = checkout.body.clientSecret.split("_secret_")[0];
       await STRIPE.stripe.paymentIntents.confirm(intentId, { payment_method: "pm_card_visa", return_url: APP });
       const synced = await apiAs(page, "stripe-sync", { paymentId: dueNow.id });
@@ -2298,8 +2301,8 @@ async function main() {
       check(/visa/i.test(synced.body.payment_method_label ?? ""), `with the card it was paid by (${synced.body.payment_method_label})`);
     } else {
       console.log("  (no sk_test_ key here: the payment is recorded through record_payment_funded, as the webhook would)");
-      const fee = Math.floor(Number(dueNow.amount_cents) * Number(dueNow.fee_bps) / 10000);
-      const charged = Number(dueNow.amount_cents) + fee;
+      // What checkout charges: the step and both fees, from the database.
+      const charged = Number(dueNow.charge_cents);
       await db.rpc("attach_payment_intent", { target_payment: dueNow.id, payment_intent: null, charged });
       const { error: fundError } = await db.rpc("record_payment_funded", {
         target_payment: dueNow.id, charge: null, method_type: "card", method_label: "Visa ···4242", received: charged,
@@ -4035,15 +4038,15 @@ async function main() {
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
-      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).not("state", "in", "(not_due,due)");
-    // Each row is what the brand is charged: the step plus the service fee.
-    const chargedOf = (payment) => Number(payment.charged_cents ?? Number(payment.amount_cents) + Math.floor(Number(payment.amount_cents) * Number(payment.fee_bps) / 10000));
+      .select("id, state, amount_cents, fee_bps, charged_cents, charge_cents, order_id").eq("order_id", bornOrder.id).not("state", "in", "(not_due,due)");
+    // Each row is what the brand is charged: the step and both fees, as the database works it out.
+    const chargedOf = (payment) => Number(payment.charge_cents);
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
       `every payment on the brand's order that money has moved for is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     // Money owed is listed too, first, at what it will charge.
     const { data: duePayments } = await db.from("order_payments")
-      .select("id, amount_cents, fee_bps, charged_cents").eq("order_id", bornOrder.id).eq("state", "due");
+      .select("id, amount_cents, fee_bps, charged_cents, charge_cents").eq("order_id", bornOrder.id).eq("state", "due");
     const moneyWords = (cents) => `$${(cents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`;
     const paymentRows = await page.evaluate(() => [...document.querySelectorAll(".brand-payment-transactions .payout-transaction-row")].map((row) => row.innerText));
     check(duePayments.every((payment) => paymentRows.some((row) => /\bdue\b/i.test(row) && row.includes(moneyWords(chargedOf(payment)))))
@@ -4053,7 +4056,7 @@ async function main() {
     // all its orders: Paid has reached the factory, Held is with TSC.
     const { data: everyBrandOrder } = await db.from("production_orders").select("id").eq("brand_org_id", brandOrg.id);
     const { data: everyBrandPayment } = await db.from("order_payments")
-      .select("state, amount_cents, fee_bps, charged_cents").in("order_id", everyBrandOrder.map((order) => order.id));
+      .select("state, amount_cents, fee_bps, charged_cents, charge_cents").in("order_id", everyBrandOrder.map((order) => order.id));
     const figure = (state) => moneyWords(everyBrandPayment.filter((payment) => payment.state === state).reduce((total, payment) => total + chargedOf(payment), 0));
     const paymentFigures = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".billing-payment-strip .metric")]
       .map((metric) => [metric.querySelector("span")?.innerText.trim().toLowerCase(), metric.querySelector("strong")?.innerText.trim()])));

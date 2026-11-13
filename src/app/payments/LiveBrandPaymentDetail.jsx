@@ -2,7 +2,7 @@ import { plainCardReason } from "../../shared/card-words.mjs";
 import React, { useEffect, useMemo, useState } from "react";
 import { getOrder } from "../../lib/domain/order.js";
 import { can, permissionHint } from "../../lib/domain/org.js";
-import { chargedCents, getPayment } from "../../lib/domain/payment.js";
+import { chargedCents, feeCents, getPayment, processingFeeCents } from "../../lib/domain/payment.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { dateFrom } from "../../lib/dates.js";
 import { formatMoney } from "../../lib/money.js";
@@ -62,7 +62,10 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
     if (!state.payment || !state.order) return null;
     const { payment, order } = state;
     const total = chargedCents(payment);
-    const fee = Math.max(0, total - Number(payment.amount_cents));
+    // Each fee as the database computed it, so the card fee is never shown
+    // under the service fee's name.
+    const fee = feeCents(payment);
+    const processingFee = processingFeeCents(payment);
     return {
       title: payment.order_milestones?.title ?? "Payment",
       orderTitle: order.rfqs?.title ?? order.order_number,
@@ -77,6 +80,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       method: methodLabel(payment),
       milestone: formatMoney(payment.amount_cents, payment.currency),
       fee: formatMoney(fee, payment.currency),
+      processingFee: processingFee ? formatMoney(processingFee, payment.currency) : null,
       total: formatMoney(total, payment.currency),
     };
   }, [state]);
@@ -149,6 +153,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
         <dl className="brand-payment-breakdown">
           <div><dt>Step amount</dt><dd data-testid="pay-amount">{content.milestone}</dd></div>
           <div><dt>TSC service fee</dt><dd>{content.fee}</dd></div>
+          {content.processingFee ? <div><dt>Card processing fee</dt><dd>{content.processingFee}</dd></div> : null}
           <div className="total"><dt>Total charged</dt><dd data-testid="pay-total">{content.total}</dd></div>
         </dl>
       </section>

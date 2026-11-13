@@ -1432,10 +1432,9 @@ const dueNow = async (order, title) => must(await admin.from("order_payments").s
   .eq("order_id", order.id).in("state", ["due", "failed"]).single(), `the payment due: ${title}`);
 const CARD = ["card", "Visa ···4242"];
 const BANK = ["us_bank_account", "STRIPE TEST BANK ···6789"];
-/** What the brand is charged: the step plus the fee, as checkout charges it. */
+/** What the brand is charged: the step and both fees, as checkout charges it (the database works it out). */
 async function charged(payment) {
-  const fee = must(await admin.rpc("payment_fee_cents", { target_payment: payment.id }), "the fee");
-  const total = Number(payment.amount_cents) + Number(fee);
+  const total = Number(must(await admin.rpc("payment_charge_cents", { target_payment: payment.id }), "the charge"));
   must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: null, charged: total }), "the charge");
   return total;
 }

@@ -3,7 +3,7 @@
  *
  * Pure. The brand funds each paid step through Stripe by card and TSC holds
  * the money until the brand approves the step, then pays the factory. Every
- * figure is what the brand pays, the service fee included (chargedCents), the
+ * figure is what the brand pays, the fees included (chargedCents), the
  * same as each row and the Fund screen:
  *   Paid         paid out to the factory
  *   Held         held by TSC now, not yet paid out
@@ -12,14 +12,15 @@
  * The figures follow the vendor filter, as the factory's earnings figures
  * follow its client filter. "remaining" and "next payment" read the same
  * payments production_order_summary does (outstanding_cents, the next
- * payment), with the fee added. An order whose steps are not agreed has no
- * payments yet, so its paying steps count at the fee its payments will get.
+ * payment), with the fees added. An order whose steps are not agreed has no
+ * payments yet, so its paying steps count at what order_step_charges says
+ * they will charge (the database knows the rates; JavaScript does not).
  * The list shows what has happened or is owed now: what is owed comes first,
  * soonest due first, then the rest newest first. A step not reached yet counts
  * only in "Remaining".
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { chargedCents, orderFeeBps } from "../../lib/domain/payment.js";
+import { chargedCents } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import { refundPendingWord } from "../order/payment-summary.mjs";
@@ -67,9 +68,10 @@ const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payme
 
 /**
  * orders: the brand's production_order_summary rows (listOrders), payments:
- * listPaymentsForOrders() for those orders, vendor: the filter's choice.
+ * listPaymentsForOrders() for those orders, stepCharges: listStepCharges()
+ * for them, vendor: the filter's choice.
  */
-export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
+export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS }) {
   const byOrder = new Map(orders.map((order) => [order.id, order]));
   const vendorOf = (order) => order.factory?.name ?? "Factory";
   const listed = payments.filter((payment) => byOrder.has(payment.order_id));
@@ -108,11 +110,10 @@ export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
 
   const unscheduled = open.filter((order) => !scheduled.has(order.id));
   // Each paying step of an unscheduled order becomes one payment, charged
-  // like any other at the rate its first payment will get.
-  const remaining = sum(unpaid, chargedCents) + sum(unscheduled, (order) => sum(
-    (order.order_milestones ?? []).filter((step) => Number(step.amount_cents) > 0),
-    (step) => chargedCents({ amount_cents: Number(step.amount_cents), fee_bps: orderFeeBps(order) }),
-  ));
+  // like any other at the rates its first payment will get.
+  const unscheduledIds = new Set(unscheduled.map((order) => order.id));
+  const remaining = sum(unpaid, chargedCents)
+    + sum(stepCharges.filter((step) => unscheduledIds.has(step.order_id)), (step) => step.charged_cents);
 
   return {
     metrics: [

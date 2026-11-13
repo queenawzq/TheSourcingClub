@@ -18,7 +18,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
 import { listOrders } from "../../lib/domain/order.js";
 import { can } from "../../lib/domain/org.js";
-import { listPaymentsForOrders } from "../../lib/domain/payment.js";
+import { listPaymentsForOrders, listStepCharges } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
@@ -43,12 +43,13 @@ export default function LiveBrandPayments({ org }) {
       // Only the orders this brand placed: a person in both a brand and a
       // factory org gets the active org's side.
       const orders = (await listOrders(org.id)).filter((order) => order.brand_org_id === org.id);
-      const [payments, codes, savings] = await Promise.all([
+      const [payments, stepCharges, codes, savings] = await Promise.all([
         listPaymentsForOrders(orders.map((order) => order.id)),
+        listStepCharges(orders.map((order) => order.id)),
         DISCOUNTS_USABLE ? listDiscountCodes(org.id) : [],
         DISCOUNTS_USABLE ? savingsFor(org.id) : null,
       ]);
-      return { loaded: { orders, payments }, codes, savings };
+      return { loaded: { orders, payments, stepCharges }, codes, savings };
     })().then(
       (loaded) => !cancelled && setState({ ...loaded, error: null }),
       (error) => !cancelled && setState({ loaded: null, codes: [], savings: null, error }),
