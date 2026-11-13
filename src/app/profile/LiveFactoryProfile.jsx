@@ -38,6 +38,7 @@ import {
   withdrawCertification,
 } from "./factory-profile-files.js";
 import { loadOwnProfile as loadParts } from "./load-profile.js";
+import { profileSources } from "../../shared/profile-translation.mjs";
 import "./profile.css";
 
 /** The page's data, and a reload that keeps the page up while it fetches. */
@@ -187,6 +188,12 @@ function Completion({ view, verified, editors, isTrading, org }) {
  * opens that dialog on arrival (the completion page's buttons link to
  * /profile/edit/<editor>).
  */
+/** What the company typed: its name, profile text, file titles and its own "Add your own" chips. */
+function ownWords(parts) {
+  const custom = Object.values(parts.terms ?? {}).flat().filter((term) => term?.org_id).map((term) => term.label_en);
+  return new Set([...profileSources(parts), parts.orgName, parts.profile?.legal_name, ...custom].filter(Boolean).map((text) => String(text).trim()));
+}
+
 export default function LiveFactoryProfile({ org, page = "profile", editor = null }) {
   const { refreshOrgs } = useAuth();
   const { navigate } = useRouter();
@@ -247,6 +254,8 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
         form: factoryProfileEditForm(parts),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
+        // The company's own words: ?lang=zh translates the page's labels, never these (B10).
+        ownWords: ownWords(parts),
       }}
     />
   );

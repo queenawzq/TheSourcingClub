@@ -8,6 +8,7 @@
  * plainly, never filled with an example.
  */
 import { termLabel } from "../../lib/domain/taxonomy.js";
+import { equipmentList, titleFromFileName } from "../../shared/profile-translation.mjs";
 import {
   CAPACITY_LEVELS,
   availableRange,
@@ -46,19 +47,8 @@ export function initialsOf(name) {
     .join("") || "TS";
 }
 
-/** "Flatlock, linking\nWashing" → ["Flatlock", "linking", "Washing"]. */
-export function equipmentList(notes) {
-  return String(notes ?? "")
-    .split(/[,\n;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-/** A file name as a title: "Organic poplin shirt.jpg" → "Organic poplin shirt". */
-export function titleFromFileName(name) {
-  const base = String(name ?? "").replace(/\.[a-z0-9]+$/i, "").replace(/_+/g, " ").trim();
-  return base ? base[0].toUpperCase() + base.slice(1) : "Sample";
-}
+/** Split on , ; new lines and the Chinese 、，； (shared with the translation, B12). */
+export { equipmentList, titleFromFileName };
 
 /**
  * One word for the business registration, wherever it is drawn (Nov 8):

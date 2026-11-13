@@ -8,6 +8,7 @@ import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
 import { verificationMockProfiles } from "./verification-mock.js";
+import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
 
 import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
@@ -1132,6 +1133,9 @@ function reviewEmailSentence(result, { subject = null, company = "the company" }
  */
 const CHECKING_POLL_MS = 5000;
 
+/** A brand's card has nothing to write: no record forms, reasons or Run again (its groups say so). */
+const NO_SCORE_ACTIONS = {};
+
 function useLiveVerification(orgId, enabled, changed) {
   const actions = useActions();
   const [state, setState] = useState({ data: null, loading: false, error: null });
@@ -1198,8 +1202,14 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     setRegistryChanged((n) => n + 1);
     onRegistryChange?.();
   });
-  const verification = profile?.verification ?? live?.data ?? null;
-  const showsScore = Boolean(profile?.verification || live);
+  // Live only: a brand's score in the factory's layout (Nov 13), from the checks and files already read.
+  const brandScore = useMemo(() => {
+    if (isVendor || profile?.verification || !actions.verificationScore || !profile?.checks) return null;
+    const owner = (submission?.members ?? []).find((member) => member.role === "owner") ?? submission?.members?.[0] ?? null;
+    return brandVerification({ checks: profile.checks, documents: documents ?? [], submittedBy: owner, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  }, [isVendor, profile, actions.verificationScore, submission, documents]);
+  const verification = profile?.verification ?? live?.data ?? brandScore;
+  const showsScore = Boolean(profile?.verification || live || brandScore);
   useEffect(() => {
     if (!actions.approvalBlock || !isVendor || !profile?.id) return undefined;
     let cancelled = false;
@@ -1219,7 +1229,9 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   }, [profile?.id, suggestedTier]);
   if (!profile) return null;
   // With the score card, "Suggest with AI" is fed the weak sub-checks; the removed rows are not read.
-  const requestGaps = showsScore
+  // A brand is asked from its checks as before (details, terms, images), never for its optional registration.
+  const requestGaps = brandScore ? brandRequestGaps(profile.checks, documents ?? [])
+    : showsScore
     ? (verification?.groups ?? []).flatMap((group) => (group.checks ?? [])
       .filter((check) => check.score == null || check.score < 75)
       .map((check) => ({ label: check.label, result: check.verdict, detail: group.label })))
@@ -1274,6 +1286,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 fileUrl={live.fileUrl}
               />
             )}
+            {brandScore && <VerificationScoreCard key={profile.id} verification={brandScore} actions={NO_SCORE_ACTIONS} fileUrl={actions.verificationFileUrl} />}
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               {profile.capabilityGroups?.length ? (

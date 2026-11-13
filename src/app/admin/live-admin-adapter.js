@@ -26,6 +26,7 @@ import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "..
 import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
 import { loadVerificationScore, scoreAvailable, verificationActions, verificationFileUrl } from "./live-verification.js";
 import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
+import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
@@ -194,7 +195,15 @@ export function withRegistry(profile, state) {
  * inputs can't be read shows no level rather than a wrong one.
  */
 export async function withLevel(profile) {
-  if (profile.entityType === "Brand") return profile;
+  // Nov 13: a brand's row shows its score too, from the same checks as its review page.
+  if (profile.entityType === "Brand") {
+    // Its files too, so a photo stored twice counts once here as on the page.
+    const documents = await orgDocuments(profile.id).catch(() => []);
+    const overall = scoreOverall(brandVerification({ checks: profile.checks, documents }).groups);
+    return overall == null
+      ? { ...profile, confidence: null, confidenceLabel: "Score", scoreWord: "Not checked" }
+      : { ...profile, confidence: overall, confidenceLabel: "Score" };
+  }
   // Nov 12: the row shows the same overall score as the review page.
   if (scoreAvailable) {
     try {

@@ -74,7 +74,7 @@ export default async function handler(request, response) {
   if (!currency) return reply(response, 200, { unavailable: true });
   try {
     const id = await quoteId(env, currency);
-    const type = chooseRecipientType(await wise(`/v1/quotes/${id}/account-requirements`, { language: "en" }, env));
+    const type = chooseRecipientType(await wise(`/v1/quotes/${id}/account-requirements`, { language: "en" }, env), knownCountry);
     if (!type) return reply(response, 200, { unavailable: true });
     // Wise adds and drops fields once the country is known, so ask again with
     // what is already settled (legal type, country, and any select that said so).

@@ -124,6 +124,31 @@ check("the duplicate check names both when both are filled in", /legal company n
 const notTheirs = suggest.requestItems([{ label: "Contact domain", result: "Review", detail: "No member address uses acme.com." }], "Factory");
 check("what the company cannot do is still reported as not asked", notTheirs.notAsked.join() === "Contact domain" && !notTheirs.items.length, notTheirs);
 
+// Nov 13: a brand in the factory layout is still asked for details, terms and images, never its optional registration.
+{
+  const { brandRequestGaps } = await import("../src/shared/brand-verification.mjs");
+  const willow = [
+    ["Business registration", "Missing", 0, "No business registration document has been uploaded."],
+    ["Company details", "Missing", 13, "Not filled in: business email, website, year founded."],
+    ["Terms accepted", "Missing", 0, "No signed terms acceptance is recorded for this company."],
+    ["Contact domain", "Missing", 0, "No website was given, so member addresses cannot be compared against one."],
+    ["Duplicate company signal", "Clear", 100, "No other company on the platform shares this legal name or website domain."],
+    ["Brand evidence", "Review", 50, "2 image or walkthrough file(s) uploaded."],
+  ];
+  const brand = suggest.requestItems(brandRequestGaps(willow), "Brand");
+  check("a brand is asked to fill in its missing details", brand.items.some((item) => /Fill in your business email, website, year founded/.test(item)), brand.items);
+  check("a brand is asked to sign the terms", brand.items.some((item) => /Sign the terms/.test(item)), brand.items);
+  check("a brand is asked for images of its products", brand.items.some((item) => /images or a video showing your own products/.test(item)), brand.items);
+  check("a brand is never asked for its optional registration", !brand.items.some((item) => /registration/i.test(item)) && !brand.notAsked.length, brand);
+  const done = suggest.requestItems(brandRequestGaps([["Business registration", "Missing", 0, ""], ["Company details", "Clear", 100, "Every profile field asked for is filled in."], ["Terms accepted", "Clear", 100, "Signed"], ["Brand evidence", "Clear", 100, "4 files"]]), "Brand");
+  check("a complete brand has nothing to ask", done.items.length === 0 && done.notAsked.length === 0, done);
+  const rejected = suggest.requestItems(brandRequestGaps([["Business registration", "Rejected", 0, "The most recent registration was rejected."]]), "Brand");
+  check("a rejected registration is still asked for again", /new business registration certificate.*Trust/.test(rejected.items[0] ?? ""), rejected.items);
+  check("the score card's optional registration row asks nothing", asked("Registration document", "Not uploaded (optional for brands)", "Business registration", "Brand") === null);
+  const note = suggest.fromChecks(brand.items, "AI suggestions aren't set up on this site.");
+  check("without an OpenRouter key the note lists the brand's asks and says why", /- Fill in your/.test(note.message) && /- Sign the terms/.test(note.message) && !/registration/i.test(note.message) && /built from the checks/.test(note.notice), note);
+}
+
 const invented = await suggest.shapeSuggestion("We also need a team member email address on the acme.com domain.\n\nWe look forward to it.", ITEMS);
 check("a sentence asking for what the company cannot do goes", !/team member/.test(invented), invented);
 

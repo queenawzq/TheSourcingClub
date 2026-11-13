@@ -45,6 +45,11 @@ export const DEMO_LOGINS = {
   // Mainland China, where Stripe cannot pay out, with money waiting and no
   // withdrawal method yet, to set one up.
   chinaNewFactory: { role: "Factory in China, nothing set up", name: "Hangzhou Test Knit", email: "demo-factory-china@example.com" },
+  // Verified and published in China, its whole profile written in Chinese, so
+  // a brand reads it translated into English (with "See original"). Quoted on
+  // Brand two's "Organic baby rompers", saved by Brand two, and messaging it
+  // there. scripts/seed-demo-zh-factory.mjs adds it alone to a test database.
+  zhFactory: { role: "Factory in China, profile in Chinese", name: "宁波晨织服饰有限公司", email: "demo-factory-zh@example.com" },
   // One person in three companies, each a different dashboard: switching in the
   // sidebar goes from orders to nothing yet to a factory's.
   switcher: { role: "Three companies, to switch between", name: "Demo Switcher", email: "demo-switcher@example.com" },

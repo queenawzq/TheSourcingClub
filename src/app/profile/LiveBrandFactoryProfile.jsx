@@ -15,8 +15,8 @@ import React, { useEffect, useState } from "react";
 import { BrandFactoryProfileScreen } from "../../prototype/main.jsx";
 import { FactoryManufacturingProfilePage } from "../../factory-prototype/main.jsx";
 import { factoryProfileView } from "./factory-profile-view.js";
-import { supabase } from "../../lib/supabase.js";
-import { englishProfileParts } from "./profile-translation.mjs";
+import { englishProfileParts, needsEnglish, profileSources } from "./profile-translation.mjs";
+import { requestProfileTranslation } from "./profile-translation-client.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -48,30 +48,21 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   const { navigate } = useRouter();
   const { saveFor, error: saveError } = useSavedVendors(org, user);
   const [preview, setPreview] = useState(null);
-  const [translation, setTranslation] = useState({ loading: true, texts: {}, error: false });
+  const [translation, setTranslation] = useState({ loading: true, texts: {}, incomplete: false });
   const [showOriginal, setShowOriginal] = useState(false);
+  // "Try again" asks once more (B1); answers already made come from the cache.
+  const [translationAttempt, setTranslationAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     setShowOriginal(false);
-    setTranslation({ loading: true, texts: {}, error: false });
-    (async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const response = await fetch("/api/profile-translation", {
-          method: "POST", signal: controller.signal,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
-          body: JSON.stringify({ orgId: vendorOrgId }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        if (!cancelled) setTranslation({ loading: false, texts: data.translations ?? {}, error: Boolean(data.incomplete) });
-      } catch {
-        if (!cancelled) setTranslation({ loading: false, texts: {}, error: true });
-      }
-    })();
+    setTranslation({ loading: true, texts: {}, incomplete: false });
+    requestProfileTranslation(vendorOrgId, controller.signal).then(
+      (data) => !cancelled && setTranslation({ loading: false, texts: data.translations ?? {}, incomplete: Boolean(data.incomplete) }),
+      () => !cancelled && setTranslation({ loading: false, texts: {}, incomplete: true }),
+    );
     return () => { cancelled = true; controller.abort(); };
-  }, [vendorOrgId, org.id]);
+  }, [vendorOrgId, org.id, translationAttempt]);
   const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
@@ -117,6 +108,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   }
 
   const translated = Object.keys(translation.texts).length > 0;
+  // A failure is said only where something is waiting for English (B1).
+  const untranslated = profileSources(state.parts).some(needsEnglish);
   const displayedParts = showOriginal ? state.parts : englishProfileParts(state.parts, translation.texts);
   const isTrading = state.parts.profile?.vendor_kind === "trading_company";
   const ProfileComponent = isTrading ? BrandFactoryProfileScreen : FactoryManufacturingProfilePage;
@@ -144,7 +137,9 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
           publicView: true,
           translationControls: (<div className="profile-translation-controls" aria-live="polite">
         {translation.loading ? <span>Preparing English version…</span> : <>
-          {translated && <><span className="profile-translation-label">{showOriginal ? "Original text" : "Automatically translated to English"}</span><button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button></>}
+          {translated && <><span className="profile-translation-label">{showOriginal ? "Original text" : translation.incomplete ? "Partly translated to English" : "Automatically translated to English"}</span><button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button></>}
+          {!translated && translation.incomplete && untranslated && <span>Couldn't translate.</span>}
+          {translation.incomplete && (translated || untranslated) && <button type="button" onClick={() => setTranslationAttempt((current) => current + 1)}>Try again</button>}
         </>}
       </div>),
           onPreviewDocument: async (document) => {

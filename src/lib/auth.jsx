@@ -24,6 +24,10 @@ import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 import { takeRecoveryToken } from "./recovery-link.mjs";
+import { createActiveOrgStorage, pickActiveOrg } from "./active-org-storage.mjs";
+
+// The company each tab works in belongs to that tab. See active-org-storage.mjs.
+const activeOrgStore = createActiveOrgStorage(window);
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -144,7 +148,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined);
   const [orgs, setOrgs] = useState([]);
   const [activeOrgId, setActiveOrgId] = useState(
-    () => window.localStorage.getItem("tscActiveOrg") || null,
+    () => activeOrgStore.read(),
   );
   const [status, setStatus] = useState(isConfigured ? "loading" : "unconfigured");
   const [error, setError] = useState(null);
@@ -317,7 +321,7 @@ export function AuthProvider({ children }) {
     const stillAMember = orgs.some((org) => org.id === activeOrgId);
     if (!stillAMember) {
       setActiveOrgId(orgs[0].id);
-      window.localStorage.setItem("tscActiveOrg", orgs[0].id);
+      activeOrgStore.fallBack(orgs[0].id);
     }
   }, [orgs, activeOrgId]);
 
@@ -372,7 +376,7 @@ export function AuthProvider({ children }) {
   }, [session?.user?.id, reloadOrgs]);
 
   const value = useMemo(() => {
-    const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0] ?? null;
+    const activeOrg = pickActiveOrg(orgs, activeOrgId);
 
     return {
       status: creatingOrg && status === "no-org" ? "loading" : status,
@@ -390,7 +394,7 @@ export function AuthProvider({ children }) {
       // this page opens on it, and the next visit opens where the person left off.
       selectOrg(orgId, { remember = true } = {}) {
         setActiveOrgId(orgId);
-        if (remember) window.localStorage.setItem("tscActiveOrg", orgId);
+        if (remember) activeOrgStore.choose(orgId);
       },
 
       /**
@@ -657,7 +661,7 @@ export function AuthProvider({ children }) {
         setStatus("signed-out");
         setOrgs([]);
         setActiveOrgId(null);
-        window.localStorage.removeItem("tscActiveOrg");
+        activeOrgStore.clear();
         closeCallWindowsForSignOut();
         logoutStripeConnect();
         // supabase-js owns the stored token, and nothing else may clear it.

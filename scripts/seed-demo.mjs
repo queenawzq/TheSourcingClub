@@ -35,79 +35,17 @@
  * It refuses the production project outright.
  */
 import Stripe from "stripe";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 import { checkCallText } from "../api/screen-call-text.js";
 import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
+import { demoPdf, demoTarget } from "./demo-target.mjs";
+import { seedZhFactory } from "./demo-zh-factory.mjs";
 
-// A demo document that shows something when it is opened: its own name.
-function demoPdf(name) {
-  const title = name.replace(/\.pdf$/, "").replace(/[()\\]/g, "");
-  const stream = `BT /F1 18 Tf 40 700 Td (${title}) Tj 0 -28 Td /F1 11 Tf (Demo document. Not a real record.) Tj ET`;
-  const objects = [
-    "<</Type/Catalog/Pages 2 0 R>>",
-    "<</Type/Pages/Count 1/Kids[3 0 R]>>",
-    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
-    `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`,
-    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
-  ];
-  let body = "%PDF-1.4\n";
-  const offsets = objects.map((object, index) => {
-    const at = body.length;
-    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
-    return at;
-  });
-  const xref = body.length;
-  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
-    + offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("")
-    + `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
-  return new TextEncoder().encode(body);
-}
-
-const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
-
-function localStack() {
-  try {
-    return JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }));
-  } catch {
-    return {};
-  }
-}
-
-const fromEnv = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_KEY;
-const stack = fromEnv ? {} : localStack();
-const URL = process.env.SUPABASE_URL ?? stack.API_URL;
-const ANON = process.env.SUPABASE_ANON_KEY ?? stack.PUBLISHABLE_KEY ?? stack.ANON_KEY;
-const SERVICE = process.env.SUPABASE_SERVICE_KEY ?? stack.SECRET_KEY ?? stack.SERVICE_ROLE_KEY;
-if (!URL || !ANON || !SERVICE) {
-  console.error("No Supabase to seed. Run `supabase start` first, or set SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_KEY.");
-  process.exit(1);
-}
-
-// A JWT-style key names its project in the payload; the newer sb_secret_ keys
-// don't, so the URL check is the one that always applies.
-function keyRef(key) {
-  try {
-    return JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString()).ref ?? null;
-  } catch {
-    return null;
-  }
-}
-if (URL.includes(PRODUCTION_REF) || keyRef(SERVICE) === PRODUCTION_REF) {
-  console.error("Refusing to seed: that is the production database.");
-  process.exit(1);
-}
-const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/.test(URL);
-if (!isLocal && !process.argv.includes("--remote")) {
-  console.error(`Refusing to seed ${new globalThis.URL(URL).host} without --remote. Pass it only for a test database.`);
-  process.exit(1);
-}
+// The local stack, or a test database named with --remote; never production.
+const { URL, ANON, SERVICE, isLocal } = demoTarget();
 
 const admin = createClient(URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -156,10 +94,11 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
+const zhFactory = await demoUser(LOGINS.zhFactory);
 const callUsers = {};
 for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
 for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
-const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -1333,6 +1272,18 @@ for (const request of openRequests) {
   });
 }
 
+// A factory whose profile is in Chinese, invited to and quoting on Brand
+// two's rompers request, saved by Brand two, with a message there
+// (scripts/demo-zh-factory.mjs).
+console.log("a factory with its profile in Chinese");
+await seedZhFactory({
+  admin,
+  factory: zhFactory,
+  name: LOGINS.zhFactory.name,
+  brand: { client: secondBrand.client, id: secondBrand.id, org: secondBrandOrg },
+  staff: adminUser.client,
+});
+
 // Two running orders with a cancellation waiting on an answer, so both
 // sides' cancel banners can be seen without clicking one into being: on the
 // first the factory proposed (the brand sees Accept / Keep order), on the
@@ -1704,6 +1655,7 @@ done. Every login uses the password "${PASSWORD}".
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   other domain    ${LOGINS.otherDomainFactory.email}   (China, PayPal; invite it from another demo company: "already has an account")
   China, new      ${LOGINS.chinaNewFactory.email}   (money waiting, no withdrawal method yet)
+  Chinese profile ${LOGINS.zhFactory.email}   (profile in Chinese; quoted on Brand two's "Organic baby rompers")
   three companies ${LOGINS.switcher.email}   (${LOGINS.brand.name}, ${LOGINS.newBrand.name}, ${LOGINS.factory.name}: the sidebar switches)
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
