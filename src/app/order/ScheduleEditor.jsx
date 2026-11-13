@@ -59,7 +59,18 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
   if (!rows || !order) return <div className="rfq-page"><div className="spinner" aria-hidden="true" /></div>;
 
   const activeEdit = order.status === "active" && !isFactory;
-  const locked = isFactory || !["pending_schedule", "active"].includes(order.status);
+  const closed = !["pending_schedule", "active"].includes(order.status);
+  const locked = isFactory || closed;
+  // Why the steps can't be changed here, said for the case it is: a finished
+  // order is finished for both sides (the database refuses any change), and
+  // on an open order only the brand sets the steps (migration 067).
+  const lockedWhy = order.status === "completed"
+    ? ["This order is complete.", "Its production steps can no longer be changed."]
+    : order.status === "cancelled"
+      ? ["This order is cancelled.", "Its production steps can no longer be changed."]
+      : closed
+        ? ["This schedule is settled.", "Its production steps can no longer be changed."]
+        : ["Only the brand sets the production steps.", "If a step doesn't work for you, message the brand."];
   const total = rows.reduce((sum, row) => sum + (PAYS.has(row.kind) ? toCents(row.amount) ?? 0 : 0), 0);
   const balances = total === order.order_total_cents;
   // What the database would refuse, said before Save, as on the builder.
@@ -134,8 +145,8 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
 
       {locked ? (
         <div className="browse-gate">
-          <strong>This schedule is settled.</strong>
-          <span>Only the brand can manage steps on an active order.</span>
+          <strong>{lockedWhy[0]}</strong>
+          <span>{lockedWhy[1]}</span>
         </div>
       ) : activeEdit ? null : (
         <>
