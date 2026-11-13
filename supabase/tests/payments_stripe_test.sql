@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(113);
+select plan(161);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -187,7 +187,7 @@ select ok(has_function_privilege('service_role', 'public.record_payment_funded(u
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select throws_ok(
-  $$select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_x', 'card', 'Visa ···4242', 53500)$$,
+  $$select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_x', 'card', 'Visa ···4242', 55129)$$,
   '42501', NULL, 'the brand that pays cannot say its own payment arrived');
 reset role;
 
@@ -223,7 +223,7 @@ set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select is(
   (public.begin_payment_checkout(pg_temp.p18_pay('order_a', 'Fit sample')) ->> 'charged_cents')::bigint,
-  53500::bigint, 'the owner starts paying $535: the $500 step plus the $35 fee');
+  55129::bigint, 'the owner starts paying $551.29: the $500 step, the $35 service fee and the $16.29 card processing fee');
 select throws_ok(
   $$select public.begin_payment_checkout(pg_temp.p18_pay('order_a', 'Balance'))$$,
   '22023', 'that payment is not_due, so there is nothing to pay', 'a step not open yet cannot be paid');
@@ -250,7 +250,7 @@ reset role;
 -- A bank payment: clearing, then it comes back, then a card works
 -- ---------------------------------------------------------------------------
 
-select public.attach_payment_intent(pg_temp.p18_pay('order_a', 'Fit sample'), 'pi_p18_a', 53500);
+select public.attach_payment_intent(pg_temp.p18_pay('order_a', 'Fit sample'), 'pi_p18_a', 55129);
 select public.record_payment_processing(pg_temp.p18_pay('order_a', 'Fit sample'), 'us_bank_account', 'STRIPE TEST BANK ···6789');
 
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'processing', 'a bank payment is clearing');
@@ -269,7 +269,7 @@ select throws_ok(
 reset role;
 
 select throws_ok(
-  $$select public.attach_payment_intent(pg_temp.p18_pay('order_a', 'Fit sample'), 'pi_other', 53500)$$,
+  $$select public.attach_payment_intent(pg_temp.p18_pay('order_a', 'Fit sample'), 'pi_other', 55129)$$,
   '22023', NULL, 'a payment keeps one PaymentIntent');
 
 select public.record_payment_failed(pg_temp.p18_pay('order_a', 'Fit sample'), 'The bank account is closed.');
@@ -291,7 +291,7 @@ select lives_ok(
   'a failed payment can be paid again');
 reset role;
 
-select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 53500);
+select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 55129);
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'confirmed', 'the card payment arrived: TSC holds it');
 select ok(
   (select n.body like '%received on %' || o.order_number || '%TSC holds it%' from public.notifications n
@@ -310,7 +310,7 @@ select is(
   (select awaiting_factory from public.production_order_summary where id = (select id from p18 where name = 'order_a')),
   true, 'once funded, the work is the factory''s turn');
 
-select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 53500);
+select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 55129);
 select is(
   (select count(*) from public.payment_events
     where payment_id = pg_temp.p18_pay('order_a', 'Fit sample') and to_state = 'confirmed'),
@@ -352,7 +352,7 @@ select is(pg_temp.p18_notes('18b00000-0000-0000-0000-0000000000f1', 'funds_relea
   'the factory is told it was paid');
 
 -- A payment-only step has nothing to approve: funding it pays it out.
-select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Balance'), 'ch_p18_a2', 'card', 'Visa ···4242', 160500);
+select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Balance'), 'ch_p18_a2', 'card', 'Visa ···4242', 165325);
 select is((select state::text from public.order_milestones where id = pg_temp.p18_step('order_a', 'Balance')),
   'complete', 'funding the balance completes it');
 select ok(
@@ -402,7 +402,7 @@ select is(pg_temp.p18_state('order_b', 'Fit sample, round 1'), 'processing',
   'a bank payment already on its way is left alone');
 select is(pg_temp.p18_state('order_b', 'Balance'), 'cancelled', 'and the step never reached is cancelled');
 
-select public.record_payment_funded(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'ch_p18_b', 'us_bank_account', 'STRIPE TEST BANK ···6789', 157500);
+select public.record_payment_funded(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'ch_p18_b', 'us_bank_account', 'STRIPE TEST BANK ···6789', 162235);
 select is(pg_temp.p18_state('order_b', 'Fit sample, round 1'), 'confirmed',
   'when it lands on a cancelled order, it is recorded as held');
 select ok(
@@ -554,9 +554,9 @@ select ok(has_function_privilege('service_role', 'public.record_payment_succeede
       and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
   'server code with the service key can do both');
 
--- Order D: the brand opens the Fund page at $535, then raises the step to
+-- Order D: the brand opens the Fund page at $551.29, then raises the step to
 -- $600 while that intent is still payable, and pays the old intent.
-select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 53500);
+select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 55129);
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select public.update_order_milestone_details((select id from p18 where name = 'order_d'),
@@ -568,11 +568,11 @@ select public.update_order_milestone_details((select id from p18 where name = 'o
 reset role;
 
 select is(
-  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 'ch_p18_d1', 'card', 'Visa ···4242', 53500) ->> 'problem',
+  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 'ch_p18_d1', 'card', 'Visa ···4242', 55129) ->> 'problem',
   'amount_changed', 'the old figure arriving after the amount changed is not recorded');
 select is(pg_temp.p18_state('order_d', 'Fit sample'), 'due', 'the payment is still due');
 select is(
-  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_dx', 'ch_p18_dx', 'card', 'Visa ···4242', 64200) ->> 'problem',
+  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_dx', 'ch_p18_dx', 'card', 'Visa ···4242', 66149) ->> 'problem',
   'other_intent', 'nor money from an intent that is not the payment''s own');
 
 select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1',
@@ -596,11 +596,11 @@ select is(
   1::bigint, 'the same refund reported again writes nothing');
 
 select lives_ok(
-  $$select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 64200)$$,
+  $$select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 66149)$$,
   'the next checkout attaches a new intent');
 select is(
-  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 'ch_p18_d2', 'card', 'Visa ···4242', 64200) ->> 'funded')::boolean,
-  true, 'and the new amount plus its fee ($642) is recorded as held');
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 'ch_p18_d2', 'card', 'Visa ···4242', 66149) ->> 'funded')::boolean,
+  true, 'and the new amount plus its fees ($661.49) is recorded as held');
 
 -- Staff cannot pay out Stripe money the brand has not approved.
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
@@ -645,9 +645,9 @@ select is(
   1::bigint, 'and the same answer again adds none');
 
 -- Paid again, approved, paid out; then refunded after the payout.
-select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 64200);
+select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 66149);
 select is(
-  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'ch_p18_d3', 'card', 'Visa ···4242', 64200) ->> 'funded')::boolean,
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'ch_p18_d3', 'card', 'Visa ···4242', 66149) ->> 'funded')::boolean,
   true, 'the brand pays again');
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
@@ -695,11 +695,11 @@ select lives_ok(
 reset role;
 
 -- Cancelled orders: money that arrives late is refunded, and stays cancelled.
-select public.attach_payment_intent(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 160500);
+select public.attach_payment_intent(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 165325);
 select is(
-  public.record_payment_succeeded(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 'ch_p18_c', 'card', 'Visa ···4242', 160500) ->> 'problem',
+  public.record_payment_succeeded(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 'ch_p18_c', 'card', 'Visa ···4242', 165325) ->> 'problem',
   'order_cancelled', 'an intent paid after the order was cancelled is not recorded');
-select public.attach_payment_intent(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'pi_p18_b', 157500);
+select public.attach_payment_intent(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'pi_p18_b', 162235);
 select public.record_payment_refunded(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'pi_p18_b', 'The payment was refunded.');
 select is(
   (select row(state::text, stripe_payment_intent_id is null)::text
@@ -714,9 +714,9 @@ select is(
     join public.order_payments p on p.id = n.subject_id
    where n.kind = 'payment_due'
      and p.id in (pg_temp.p18_pay('order_a', 'Fit sample'), pg_temp.p18_pay('order_a', 'Balance'))
-     and n.title like public.format_money(p.amount_cents + public.payment_fee_cents(p.id), p.currency) || ' is due on %'),
+     and n.title like public.format_money(public.payment_charge_cents(p.id), p.currency) || ' is due on %'),
   2::bigint,
-  'a due notice names the amount with the fee');
+  'a due notice names the amount with both fees');
 
 -- The note is said with the amount, not instead of it, and a factory TSC had no
 -- way to pay at the time is told what to do first.
@@ -725,6 +725,288 @@ select is(
     where n.kind = 'milestone_approved' and n.subject_id = pg_temp.p18_step('order_a', 'Fit sample')),
   'The brand approved this step. TSC will send you $500.00 once you add a withdrawal method. Their note: Lovely fit.',
   'an approval says the amount, what to do and the note');
+
+-- ===========================================================================
+-- The card processing fee, on top of the brand's payment (20261113900000)
+-- ---------------------------------------------------------------------------
+-- The negatives first: nobody signed in writes the rate or a payment's
+-- snapshot of it, whichever company they are in, both included.
+-- ===========================================================================
+
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('18a00000-0000-0000-0000-000000000006', 'p18-both@example.com', '{"name":"Both Companies"}');
+insert into public.org_members (org_id, user_id, role) values
+  ('18b00000-0000-0000-0000-00000000000b', '18a00000-0000-0000-0000-000000000006', 'owner'),
+  ('18b00000-0000-0000-0000-0000000000f1', '18a00000-0000-0000-0000-000000000006', 'owner');
+
+-- One person at a time: the brand owner, the factory owner, someone in both.
+create function pg_temp.p18_as(who text) returns void
+language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims',
+    format('{"sub":"18a00000-0000-0000-0000-00000000000%s","role":"authenticated"}', who), true);
+  perform set_config('role', 'authenticated', true);
+end;
+$$;
+
+select pg_temp.p18_as('1');
+select throws_ok($$insert into public.payment_processing_rates (processor, currency, percent_bps, fixed_cents) values ('stripe_card', 'EUR', 0, 0)$$,
+  '42501', NULL, 'a brand owner cannot add a card rate');
+select throws_ok($$update public.payment_processing_rates set percent_bps = 0, fixed_cents = 0$$,
+  '42501', NULL, 'nor change one');
+select throws_ok($$delete from public.payment_processing_rates$$,
+  '42501', NULL, 'nor delete one');
+select throws_ok($$update public.order_payments set processing_fee_bps = 0, processing_fee_fixed_cents = 0 where id = pg_temp.p18_pay('order_a', 'Balance')$$,
+  '42501', NULL, 'nor take the card fee off its own payment');
+select is((select percent_bps from public.payment_processing_rates where processor = 'stripe_card' and currency = 'USD'),
+  290, 'but it can read the rate: it is not secret, and the order page''s figures need it');
+reset role;
+
+select pg_temp.p18_as('3');
+select throws_ok($$insert into public.payment_processing_rates (processor, currency, percent_bps, fixed_cents) values ('stripe_card', 'EUR', 0, 0)$$,
+  '42501', NULL, 'a factory owner cannot add a card rate');
+select throws_ok($$update public.payment_processing_rates set percent_bps = 2000$$,
+  '42501', NULL, 'nor change one');
+select throws_ok($$delete from public.payment_processing_rates$$,
+  '42501', NULL, 'nor delete one');
+select throws_ok($$update public.order_payments set processing_fee_bps = 2000 where id = pg_temp.p18_pay('order_a', 'Balance')$$,
+  '42501', NULL, 'nor change the card fee on a payment of its order');
+reset role;
+
+select pg_temp.p18_as('6');
+select throws_ok($$insert into public.payment_processing_rates (processor, currency, percent_bps, fixed_cents) values ('stripe_card', 'EUR', 0, 0)$$,
+  '42501', NULL, 'someone in both the brand and the factory cannot add a card rate');
+select throws_ok($$update public.payment_processing_rates set percent_bps = 0$$,
+  '42501', NULL, 'nor change one');
+select throws_ok($$truncate public.payment_processing_rates$$,
+  '42501', NULL, 'nor empty the table');
+select throws_ok($$update public.order_payments set processing_fee_bps = 0, processing_fee_fixed_cents = 0 where id = pg_temp.p18_pay('order_a', 'Balance')$$,
+  '42501', NULL, 'nor take the card fee off a payment');
+select throws_ok($$insert into public.order_payments (order_id, milestone_id, amount_cents) values ((select id from p18 where name = 'order_a'), pg_temp.p18_step('order_a', 'Balance'), 100)$$,
+  '42501', NULL, 'nor insert a payment of its own');
+reset role;
+
+set local role anon;
+select throws_ok($$select * from public.payment_processing_rates$$,
+  '42501', NULL, 'a signed-out visitor cannot read the rate');
+reset role;
+
+select ok(not has_function_privilege('authenticated', 'public.order_payment_processing_fee()', 'execute'),
+  'the trigger that sets the rate is not callable by a signed-in user');
+select is((select row(percent_bps, fixed_cents)::text from public.payment_processing_rates
+            where processor = 'stripe_card' and currency = 'USD'),
+  row(290, 30::bigint)::text, 'after all that, the rate is still Stripe US standard: 2.9% + 30c');
+
+-- ---------------------------------------------------------------------------
+-- The money path
+-- ---------------------------------------------------------------------------
+
+select is(
+  (select count(*) from public.order_payments
+    where order_id in (select id from p18 where name in ('order_a', 'order_b', 'order_c', 'order_d'))
+      and (processing_fee_bps, processing_fee_fixed_cents) is distinct from (290, 30::bigint)),
+  0::bigint, 'every payment on an order started now is priced at 2.9% + 30c');
+
+-- The gross-up at the amounts the plan names.
+select is(public.processing_fee_for(107, 290, 30), 35::bigint,
+  '$1 step at 7%: a $0.35 card fee, $1.42 in all');
+select is(public.processing_fee_for(534998, 290, 30), 16010::bigint,
+  '$4,999.99 step at 7%: a $160.10 card fee, $5,510.08 in all');
+select is(public.processing_fee_for(525000, 290, 30), 15711::bigint,
+  '$5,000 step at 5%: a $157.11 card fee, $5,407.11 in all');
+select is(public.processing_fee_for(53500, 290, 30), 1629::bigint,
+  '$500 step at 7%: a $16.29 card fee, $551.29 in all');
+select is(public.processing_fee_for(787500000, 290, 30), 23519599::bigint,
+  'a $7.5M deposit at 5%: a $235,195.99 card fee, $8,110,195.99 in all, exact in bigint');
+select is(public.processing_fee_for(53500, 0, 0), 0::bigint, 'a 0 rate adds nothing');
+
+-- Rounding: TSC never nets under the step plus the service fee, and a cent
+-- less would. Stripe's percentage taken as ceil, the side that costs TSC.
+select is(
+  (select count(*) from (
+     select b, b + public.processing_fee_for(b, 290, 30) as t
+     from (select generate_series(1, 300000, 37)::bigint as b
+           union all select generate_series(99999000, 100001000)::bigint) amounts
+   ) x
+   where not (x.t - ceil((x.t * 290)::numeric / 10000)::bigint - 30 >= x.b
+              and (x.t - 1) - ceil(((x.t - 1) * 290)::numeric / 10000)::bigint - 30 < x.b)),
+  0::bigint, 'over 10,000 amounts, Stripe''s fee taken, TSC keeps the base or a cent over, and the total is the least that does');
+
+-- The figures every screen reads, for the $500 step: one source.
+select is(
+  (select row(public.service_fee_cents(p), public.processing_fee_cents(p), public.charge_cents(p))::text
+     from public.order_payments p where p.id = pg_temp.p18_pay('order_a', 'Fit sample')),
+  row(3500::bigint, 1629::bigint, 55129::bigint)::text,
+  'the $500 step''s fields: $35 service fee, $16.29 card fee, $551.29 charged');
+select is(
+  (select row(c.service_fee_cents, c.processing_fee_cents, c.fee_cents, c.charged_cents)::text
+     from public.order_step_charges c where c.payment_id = pg_temp.p18_pay('order_a', 'Fit sample')),
+  row(3500::bigint, 1629::bigint, 5129::bigint, 55129::bigint)::text,
+  'and the order page''s view says the same, fee_cents being everything on top');
+select is(public.payment_charge_cents(pg_temp.p18_pay('order_a', 'Fit sample')), 55129::bigint,
+  'and so does payment_charge_cents');
+select ok(
+  (select bool_and(c.charged_cents = public.charge_cents(p))
+     from public.order_step_charges c join public.order_payments p on p.id = c.payment_id
+    where c.order_id in (select id from p18 where name in ('order_a', 'order_b', 'order_c', 'order_d'))),
+  'every step''s charge on the order page is its payment''s charge_cents');
+select is(
+  (select string_agg(n.title, ' | ') from public.notifications n
+    where n.kind = 'payment_due' and n.subject_id = pg_temp.p18_pay('order_a', 'Fit sample')),
+  '$551.29 is due on P18 A (' || (select order_number from public.production_orders where id = (select id from p18 where name = 'order_a')) || ')',
+  'the bell and email say "$551.29 is due", the Fund screen''s total');
+
+-- The factory's figures carry neither fee.
+select is(
+  (select total_cents from public.production_order_summary where id = (select id from p18 where name = 'order_a')),
+  200000::bigint,
+  'the factory''s order summary counts step amounts only');
+
+-- Four new orders at the plan's amounts, each paid in one step but the last.
+insert into public.rfqs (id, brand_org_id, title, brief, status, visibility, quantity_total) values
+  ('18c00000-0000-0000-0000-0000000000e1', '18b00000-0000-0000-0000-00000000000b', 'P18 E1', 'One dollar.',    'open', 'open_to_all', 100),
+  ('18c00000-0000-0000-0000-0000000000e2', '18b00000-0000-0000-0000-00000000000b', 'P18 E2', 'Just under.',    'open', 'open_to_all', 100),
+  ('18c00000-0000-0000-0000-0000000000e3', '18b00000-0000-0000-0000-00000000000b', 'P18 E3', 'Five thousand.', 'open', 'open_to_all', 100),
+  ('18c00000-0000-0000-0000-0000000000e4', '18b00000-0000-0000-0000-00000000000b', 'P18 E4', 'A big order.',   'open', 'open_to_all', 100000),
+  ('18c00000-0000-0000-0000-0000000000f6', '18b00000-0000-0000-0000-00000000000b', 'P18 F',  'An older order.', 'open', 'open_to_all', 100);
+insert into public.quotes
+  (id, rfq_id, factory_org_id, status, unit_price_cents, production_quantity,
+   bulk_lead_time_days, deposit_pct, balance_pct, valid_until, submitted_at)
+values
+  ('18d00000-0000-0000-0000-0000000000e1', '18c00000-0000-0000-0000-0000000000e1',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 1, 100, 28, 30, 70, current_date + 30, now()),
+  ('18d00000-0000-0000-0000-0000000000e2', '18c00000-0000-0000-0000-0000000000e2',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 499999, 1, 28, 30, 70, current_date + 30, now()),
+  ('18d00000-0000-0000-0000-0000000000e3', '18c00000-0000-0000-0000-0000000000e3',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 5000, 100, 28, 30, 70, current_date + 30, now()),
+  ('18d00000-0000-0000-0000-0000000000e4', '18c00000-0000-0000-0000-0000000000e4',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 25000, 100000, 28, 30, 70, current_date + 30, now()),
+  ('18d00000-0000-0000-0000-0000000000f6', '18c00000-0000-0000-0000-0000000000f6',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 2000, 100, 28, 30, 70, current_date + 30, now());
+
+select pg_temp.p18_as('1');
+select public.award_quote(q) from unnest(array[
+  '18d00000-0000-0000-0000-0000000000e1', '18d00000-0000-0000-0000-0000000000e2',
+  '18d00000-0000-0000-0000-0000000000e3', '18d00000-0000-0000-0000-0000000000e4',
+  '18d00000-0000-0000-0000-0000000000f6']::uuid[]) q;
+reset role;
+
+insert into p18
+select case right(quote_id::text, 2) when 'f6' then 'order_f' else 'order_' || right(quote_id::text, 2) end, id
+from public.production_orders
+where quote_id in ('18d00000-0000-0000-0000-0000000000e1', '18d00000-0000-0000-0000-0000000000e2',
+                   '18d00000-0000-0000-0000-0000000000e3', '18d00000-0000-0000-0000-0000000000e4',
+                   '18d00000-0000-0000-0000-0000000000f6');
+
+select pg_temp.p18_as('1');
+select public.set_order_schedule((select id from p18 where name = 'order_e1'),
+  '[{"kind":"payment_only","title":"Full payment","amount_cents":100,"sort":10}]'::jsonb);
+select public.set_order_schedule((select id from p18 where name = 'order_e2'),
+  '[{"kind":"payment_only","title":"Full payment","amount_cents":499999,"sort":10}]'::jsonb);
+select public.set_order_schedule((select id from p18 where name = 'order_e3'),
+  '[{"kind":"payment_only","title":"Full payment","amount_cents":500000,"sort":10}]'::jsonb);
+select public.set_order_schedule((select id from p18 where name = 'order_e4'),
+  '[{"kind":"payment_only","title":"Deposit","amount_cents":750000000,"sort":10},
+    {"kind":"payment_only","title":"Balance","amount_cents":1750000000,"sort":20}]'::jsonb);
+select public.set_order_schedule((select id from p18 where name = 'order_f'),
+  '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":50000,"sort":10},
+    {"kind":"payment_only","title":"Balance","amount_cents":150000,"sort":20}]'::jsonb);
+select public.agree_schedule(id, (select schedule_revision from public.production_orders where id = p18.id))
+from p18 where name in ('order_e1', 'order_e2', 'order_e3', 'order_e4', 'order_f');
+reset role;
+
+-- What the brand is asked for at checkout: step, service fee, card fee, total.
+create function pg_temp.p18_checkout(order_name text, step text) returns text
+language sql as $$
+  select row(j ->> 'amount_cents', j ->> 'fee_cents', j ->> 'processing_fee_cents', j ->> 'charged_cents')::text
+  from (select public.begin_payment_checkout(pg_temp.p18_pay(order_name, step)) as j) x
+$$;
+
+select pg_temp.p18_as('1');
+select is(pg_temp.p18_checkout('order_e1', 'Full payment'), row('100', '7', '35', '142')::text,
+  'a $1 order: $1.00 + $0.07 + $0.35 card fee = $1.42 charged');
+select is(pg_temp.p18_checkout('order_e2', 'Full payment'), row('499999', '34999', '16010', '551008')::text,
+  'a $4,999.99 order (7%): $4,999.99 + $349.99 + $160.10 = $5,510.08 charged');
+select is(pg_temp.p18_checkout('order_e3', 'Full payment'), row('500000', '25000', '15711', '540711')::text,
+  'a $5,000 order (5%): $5,000.00 + $250.00 + $157.11 = $5,407.11 charged');
+-- Decision 8: Stripe takes at most $999,999.99 in one card payment.
+select throws_ok($$select public.begin_payment_checkout(pg_temp.p18_pay('order_e4', 'Deposit'))$$,
+  '22003',
+  'This payment is $8,110,195.99, more than a card can be charged at once ($999,999.99). Split this step into smaller steps, or contact TSC.',
+  'a $7.5M deposit is refused at checkout in words, not "try again in a few minutes"');
+reset role;
+
+select is(
+  (select row(service_fee_cents, processing_fee_cents, charged_cents)::text from public.order_step_charges
+    where payment_id = pg_temp.p18_pay('order_e4', 'Deposit')),
+  row(37500000::bigint, 23519599::bigint, 811019599::bigint)::text,
+  'the $25M order''s deposit is exact in bigint: $375,000 service fee, $235,195.99 card fee, $8,110,195.99');
+select is(
+  (select total_charged_cents = (select sum(public.charge_cents(p)) from public.order_payments p where p.order_id = c.order_id)
+     from public.production_order_charges c where c.order_id = (select id from p18 where name = 'order_e4')),
+  true, 'and the order header''s total is the sum of its payments'' charges');
+select is((select total_cents from public.production_order_summary where id = (select id from p18 where name = 'order_e4')),
+  2500000000::bigint, 'while the factory''s total stays $25,000,000.00');
+
+-- The riskiest line: what Stripe received is checked against the full charge.
+select public.attach_payment_intent(pg_temp.p18_pay('order_e3', 'Full payment'), 'pi_p18_e3', 540711);
+select is(
+  public.record_payment_succeeded(pg_temp.p18_pay('order_e3', 'Full payment'), 'pi_p18_e3', 'ch_p18_e3', 'card', 'Visa ···4242', 525000) ->> 'problem',
+  'amount_changed', 'the step plus the service fee alone ($5,250) is not the charge: refused as amount_changed');
+select is(pg_temp.p18_state('order_e3', 'Full payment'), 'due', 'and the payment stays due');
+select is(
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_e3', 'Full payment'), 'pi_p18_e3', 'ch_p18_e3', 'card', 'Visa ···4242', 540711) ->> 'funded')::boolean,
+  true, 'the full $5,407.11 is recorded as funded');
+select is(
+  (select row(p.charged_cents, public.processing_fee_cents(p))::text
+     from public.order_payments p where p.id = pg_temp.p18_pay('order_e3', 'Full payment')),
+  row(540711::bigint, 15711::bigint)::text, 'charged $5,407.11, of which $157.11 is the card fee');
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select row(amount_cents, fee_cents, processing_fee_cents)::text from public.admin_payment_board()
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  row(60000::bigint, 4200::bigint, 1949::bigint)::text,
+  'staff see the step, the service fee and the card fee: what to send the factory is still the step');
+reset role;
+
+-- A payment inserted with a rate of its own gets the database's instead.
+insert into public.order_milestones (order_id, sort, kind, title, amount_cents)
+values ((select id from p18 where name = 'order_e3'), 30, 'payment_only', 'Extra', 10000);
+insert into public.order_payments (order_id, milestone_id, amount_cents, processing_fee_bps, processing_fee_fixed_cents)
+values ((select id from p18 where name = 'order_e3'), pg_temp.p18_step('order_e3', 'Extra'), 10000, 0, 0);
+select is(
+  (select row(processing_fee_bps, processing_fee_fixed_cents)::text from public.order_payments
+    where id = pg_temp.p18_pay('order_e3', 'Extra')),
+  row(290, 30::bigint)::text, 'a payment inserted with a 0 rate is given its order''s rate anyway');
+
+-- An order whose payments were made before the card fee (simulated): its
+-- figures, and an intent opened at them, do not change.
+update public.order_payments set processing_fee_bps = 0, processing_fee_fixed_cents = 0
+ where order_id = (select id from p18 where name = 'order_f');
+select pg_temp.p18_as('1');
+select is(pg_temp.p18_checkout('order_f', 'Fit sample'), row('50000', '3500', '0', '53500')::text,
+  'an older order''s step is still charged $535.00: no card fee');
+reset role;
+select public.attach_payment_intent(pg_temp.p18_pay('order_f', 'Fit sample'), 'pi_p18_f', 53500);
+select is(
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_f', 'Fit sample'), 'pi_p18_f', 'ch_p18_f', 'card', 'Visa ···4242', 53500) ->> 'funded')::boolean,
+  true, 'and its intent opened before the change pays at $535.00, with no "amount changed" refund');
+insert into public.order_milestones (order_id, sort, kind, title, amount_cents)
+values ((select id from p18 where name = 'order_f'), 30, 'payment_only', 'Extra', 10000);
+insert into public.order_payments (order_id, milestone_id, amount_cents, processing_fee_bps, processing_fee_fixed_cents)
+values ((select id from p18 where name = 'order_f'), pg_temp.p18_step('order_f', 'Extra'), 10000, 290, 30);
+select is(
+  (select row(processing_fee_bps, processing_fee_fixed_cents)::text from public.order_payments
+    where id = pg_temp.p18_pay('order_f', 'Extra')),
+  row(0, 0::bigint)::text, 'a step added to an older order is priced like its siblings, with no card fee');
+
+-- The old bank wire records the step and service fee, with no card fee.
+select is(
+  (select row(p.charged_cents, public.processing_fee_cents(p))::text
+     from public.order_payments p where p.id = pg_temp.p18_pay('order_d', 'Balance')),
+  row(149800::bigint, 0::bigint)::text,
+  'a bank wire confirmed by staff is charged the $1,400 step and its $98 service fee, card fee 0');
 
 select * from finish();
 rollback;

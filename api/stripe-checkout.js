@@ -33,7 +33,9 @@ export default async function handler(request, response) {
   if (tokenRefused(started)) return reply(response, 401, { error: "sign in is required" });
   const { data: checkout, error } = started;
   if (error) {
-    return reply(response, error.code === "42501" ? 403 : error.code === "P0002" ? 404 : 409, { error: error.message });
+    // 22003: more than one card payment can carry (begin_payment_checkout
+    // says so in words). Not 409, which the Fund page reads as "under way".
+    return reply(response, error.code === "42501" ? 403 : error.code === "P0002" ? 404 : error.code === "22003" ? 422 : 409, { error: error.message });
   }
 
   try {
@@ -54,6 +56,7 @@ export default async function handler(request, response) {
       amountCents: checkout.amount_cents,
       feeCents: checkout.fee_cents,
       feeBps: checkout.fee_bps,
+      processingFeeCents: checkout.processing_fee_cents,
       chargedCents: checkout.charged_cents,
       currency: checkout.currency,
       savedCards,
@@ -112,7 +115,14 @@ export default async function handler(request, response) {
           transfer_group: checkout.order_id,
           description: `${checkout.order_number}: ${checkout.milestone_title}`,
           statement_descriptor_suffix: checkout.order_number.replace(/[^A-Za-z0-9 ]/g, "").slice(0, 22) || undefined,
-          metadata: { payment_id: checkout.payment_id, order_id: checkout.order_id, brand_org_id: checkout.brand_org_id },
+          // The split, so the charge reconciles in Stripe: nothing a person sees.
+          metadata: {
+            payment_id: checkout.payment_id,
+            order_id: checkout.order_id,
+            brand_org_id: checkout.brand_org_id,
+            service_fee_cents: String(checkout.fee_cents),
+            processing_fee_cents: String(checkout.processing_fee_cents ?? 0),
+          },
         },
         // No idempotency key: Stripe would replay a failed first attempt for
         // 24 hours. attach_payment_intent keeps one intent per payment; a

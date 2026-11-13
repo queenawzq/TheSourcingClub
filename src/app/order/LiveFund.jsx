@@ -5,8 +5,9 @@
  * The brand pays by card in Stripe's Payment Element, drawn inside the
  * design's card-details section. TSC holds the money
  * until the brand approves the step; the service fee (5% on orders of $5,000
- * and over, 7% under) is added on top, and the right rail shows step, fee and
- * total as the database computed them (begin_payment_checkout).
+ * and over, 7% under) and the card processing fee are added on top, and the
+ * right rail shows step, fees and total as the database computed them
+ * (begin_payment_checkout).
  *
  * Only an owner may pay (begin_payment_checkout). A member who opens a due
  * payment is told who can, before anything is started at Stripe.
@@ -194,6 +195,7 @@ function amounts(checkout, currency) {
   return {
     subtotal: formatMoney(checkout.amountCents, currency),
     fee: formatMoney(checkout.feeCents, currency),
+    processingFee: Number(checkout.processingFeeCents) ? formatMoney(checkout.processingFeeCents, currency) : null,
     total: formatMoney(checkout.chargedCents, currency),
     feeLabel: `TSC service fee (${Number(checkout.feeBps) / 100}%)`,
   };
@@ -306,6 +308,8 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           subtotal: figures.subtotal,
           fee: figures.fee,
           feeLabel: figures.feeLabel,
+          processingFee: figures.processingFee,
+          processingFeeLabel: "Card processing fee",
           total: figures.total,
           totalLabel: "Total charged",
         },
@@ -435,6 +439,9 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
+  // Each fee as checkout or the database computed it: the total less the
+  // step would put the card fee under the service fee's name.
+  const processingFeeCents = Number(checkout?.processingFeeCents ?? payment.processing_fee_cents ?? 0);
   const step = checkout?.title ?? payment.order_milestones?.title ?? "this step";
   // A payment-only step is paid on to the factory as soon as it is funded,
   // so it comes back released, not confirmed: it was charged all the same.
@@ -478,10 +485,12 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
           ...rail,
           paymentLabel: step,
           subtotal: formatMoney(checkout?.amountCents ?? payment.amount_cents, currency),
-          // The fee as checkout computed it; a payment read back without a
-          // checkout (still clearing) has only what was charged to go on.
-          fee: formatMoney(checkout?.feeCents ?? (payment.charged_cents ?? payment.amount_cents) - payment.amount_cents, currency),
+          // The fees as checkout computed them; a payment read back without a
+          // checkout (still clearing) reads them from the database.
+          fee: formatMoney(checkout?.feeCents ?? payment.service_fee_cents ?? 0, currency),
           feeLabel: "TSC service fee",
+          processingFee: processingFeeCents ? formatMoney(processingFeeCents, currency) : null,
+          processingFeeLabel: "Card processing fee",
           total,
           totalLabel: paid ? "Paid today" : "Clearing",
         },

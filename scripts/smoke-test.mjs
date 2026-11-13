@@ -881,6 +881,7 @@ console.log("\nphase 3 — the order runs");
     embedError ? fail("milestone → payment embed parses", embedError)
                : ok("the embed src/lib/domain/milestone.js uses parses");
 
+
     // The order list and detail embed through the summary VIEW, which only
     // works while PostgREST can see the base table's foreign keys through it.
     const { data: listed, error: listEmbedError } = await brand.client
@@ -970,6 +971,59 @@ console.log("\nphase 3 — the order runs");
     payments.every((p) => [500, 700].includes(p.fee_bps) && p.fee_bps === payments[0].fee_bps && p.currency === "USD")
       ? ok(`every payment stores the order's fee rate (${payments[0]?.fee_bps / 100}%) and currency, rather than inheriting a default`)
       : fail("a payment is missing its fee rate or currency, or the rates differ within one order");
+
+    // The card processing fee's rate is snapshotted on each payment of an
+    // order started now (20261113900000): Stripe US standard, 2.9% + 30c.
+    payments.every((p) => p.processing_fee_bps === 290 && Number(p.processing_fee_fixed_cents) === 30)
+      ? ok("every payment of a new order stores the card processing rate it was priced at (2.9% + 30c)")
+      : fail(`a payment's card rate is ${payments.map((p) => `${p.processing_fee_bps}/${p.processing_fee_fixed_cents}`).join(", ")}`);
+
+    // The card processing fee is read as computed fields, in embeds too: the
+    // exact strings milestone.js, order.js and payment.js select.
+    {
+      const milestoneEmbed = await brand.client.from("order_milestones")
+        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at)")
+        .eq("order_id", order.id);
+      const orderEmbed = await brand.client.from("production_order_summary")
+        .select("id, order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents))")
+        .eq("id", order.id).maybeSingle();
+      const paymentRows = await brand.client.from("order_payments")
+        .select("id, order_id, milestone_id, amount_cents, currency, fee_bps, state, due_at, brand_reference, sent_at, sent_note, confirmed_at, confirmed_note, amount_received_cents, released_at, released_note, created_at, charged_cents, payment_method_type, payment_method_label, failure_reason, processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at, service_fee_cents, processing_fee_cents, charge_cents, order_milestones (title, sort, due_on, kind)")
+        .eq("order_id", order.id);
+      const stepCharges = await brand.client.from("order_step_charges")
+        .select("order_id, milestone_id, payment_id, charged_cents").eq("order_id", order.id);
+      const failed = [milestoneEmbed, orderEmbed, paymentRows, stepCharges].find((r) => r.error);
+      if (failed) fail("the card-fee select strings parse", failed.error);
+      else {
+        const embedded = milestoneEmbed.data.map((m) => m.order_payments).filter(Boolean);
+        embedded.length && embedded.every((p) => Number.isFinite(Number(p.charge_cents)))
+          ? ok("milestone.js and order.js select charge_cents through their payment embeds")
+          : fail("charge_cents did not come back through the payment embed");
+        const rows = paymentRows.data;
+        const viewByPayment = new Map(stepCharges.data.map((c) => [c.payment_id, Number(c.charged_cents)]));
+        const sums = rows.every((p) => Number(p.charge_cents) === Number(p.amount_cents) + Number(p.service_fee_cents) + Number(p.processing_fee_cents)
+          && Number(p.processing_fee_cents) > 0 && viewByPayment.get(p.id) === Number(p.charge_cents));
+        sums ? ok("each payment's charge is its step, service fee and card fee, and the order page's view says the same")
+          : fail("a payment's fees do not add up, or the view disagrees", rows);
+
+        // chargedCents() itself, loaded as the browser loads it, against the database.
+        const { createServer } = await import("vite");
+        const server = await createServer({ logLevel: "silent", server: { middlewareMode: true, hmr: false }, appType: "custom" });
+        try {
+          const { chargedCents, feeCents, processingFeeCents } = await server.ssrLoadModule("/src/lib/domain/payment.js");
+          const mismatched = [];
+          for (const p of rows) {
+            const { data: db } = await admin.rpc("payment_charge_cents", { target_payment: p.id });
+            if (chargedCents(p) !== Number(db) || feeCents(p) + processingFeeCents(p) + Number(p.amount_cents) !== Number(db)) mismatched.push(p.id);
+          }
+          mismatched.length === 0
+            ? ok(`chargedCents() in payment.js equals payment_charge_cents for all ${rows.length} payments`)
+            : fail(`chargedCents() disagrees with the database for ${mismatched.length} payments`);
+        } finally {
+          await server.close();
+        }
+      }
+    }
 
     // ---- the gate ---------------------------------------------------------
     // The first sample is what actually opens: the deposit sits AFTER the
@@ -1266,10 +1320,26 @@ console.log("\nphase 3 — the order runs");
 
       const checkout = await brand.client.rpc("begin_payment_checkout", { target_payment: deposit.id });
       checkout.error ? fail("the brand owner starts paying", checkout.error)
-        : Number(checkout.data.charged_cents) === Number(deposit.amount_cents) + Number(checkout.data.fee_cents)
+        : Number(checkout.data.charged_cents) === Number(deposit.amount_cents) + Number(checkout.data.fee_cents) + Number(checkout.data.processing_fee_cents)
+            && Number(checkout.data.processing_fee_cents) > 0
             && [500, 700].includes(checkout.data.fee_bps)
-          ? ok(`the brand owner starts paying: the step plus a ${checkout.data.fee_bps / 100}% service fee`)
-          : fail(`checkout charges ${checkout.data.charged_cents} for a ${deposit.amount_cents} step`);
+            && ["payment_id", "order_id", "order_number", "brand_org_id", "factory_org_id", "milestone_title", "amount_cents", "fee_bps",
+                "fee_cents", "processing_fee_cents", "charged_cents", "currency", "state", "stripe_payment_intent_id"]
+              .every((key) => key in checkout.data)
+          ? ok(`the brand owner starts paying: the step, a ${checkout.data.fee_bps / 100}% service fee and a card processing fee`)
+          : fail(`checkout charges ${checkout.data.charged_cents} for a ${deposit.amount_cents} step`, checkout.data);
+
+      // What Stripe received is checked against the full charge: the step plus
+      // the service fee alone is refused as a changed amount, and nothing is recorded.
+      {
+        const short = await admin.rpc("record_payment_succeeded", {
+          target_payment: deposit.id, payment_intent: null, charge: null, method_type: "card", method_label: "Visa ···4242",
+          received: Number(deposit.amount_cents) + Number(checkout.data.fee_cents),
+        });
+        short.data?.problem === "amount_changed"
+          ? ok("Stripe receiving the step and service fee without the card fee is refused as amount_changed")
+          : fail("the webhook's received-amount check let a short charge through", short.error ?? short.data);
+      }
 
       const factoryCheckout = await factoryClient.rpc("begin_payment_checkout", { target_payment: deposit.id });
       factoryCheckout.error ? ok("the factory CANNOT start a payment to itself")
@@ -1307,6 +1377,13 @@ console.log("\nphase 3 — the order runs");
       else board.some((row) => row.payment_id === deposit.id && row.state === "processing")
         ? ok("the clearing payment is on the board staff watch")
         : fail("the clearing payment is not on the staff board");
+      if (!boardError) {
+        const row = board.find((r) => r.payment_id === deposit.id);
+        row && Number(row.fee_cents) === Number(checkout.data?.fee_cents) && Number(row.processing_fee_cents) === Number(checkout.data?.processing_fee_cents)
+          && Number(row.amount_cents) === Number(deposit.amount_cents)
+          ? ok("the board says the step (what the factory is sent), the service fee and the card fee apart")
+          : fail("the board's fee columns disagree with checkout", row);
+      }
 
       const { error: boardLeak } = await brand.client.rpc("admin_payment_board");
       boardLeak ? ok("a brand CANNOT read the platform-wide payments board")

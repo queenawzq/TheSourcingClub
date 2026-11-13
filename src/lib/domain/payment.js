@@ -7,9 +7,10 @@
  * wire claims (confirm / not received) and paying a factory by bank where
  * Stripe cannot pay out.
  *
- * The fee is read from fee_bps on the row rather than a constant here, so the
- * screen and the database cannot disagree about what a brand was shown, and
- * turning the fee on later changes no JavaScript at all.
+ * The fees are read from the database (the computed fields service_fee_cents,
+ * processing_fee_cents and charge_cents on order_payments) rather than worked
+ * out here, so the screen and the database cannot disagree about what a brand
+ * was shown, and a rate changed later changes no JavaScript at all.
  */
 import { supabase, unwrap } from "../supabase.js";
 
@@ -19,7 +20,8 @@ const PAYMENT_COLUMNS = `
   confirmed_at, confirmed_note, amount_received_cents,
   released_at, released_note, created_at,
   charged_cents, payment_method_type, payment_method_label, failure_reason,
-  processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at
+  processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at,
+  service_fee_cents, processing_fee_cents, charge_cents
 `;
 
 export async function listPayments(orderId) {
@@ -194,36 +196,52 @@ export async function payoutNumberRevealLog() {
   return unwrap(await supabase.rpc("payout_number_reveal_log"), "load who viewed account numbers");
 }
 
-/** Computed the same way the database computes it: floor, in minor units. */
+/**
+ * The TSC service fee on a payment, as the database computed it
+ * (service_fee_cents). The floor below is only for a row read without it.
+ */
 export function feeCents(payment) {
   if (!payment) return 0;
+  if (payment.service_fee_cents != null) return Number(payment.service_fee_cents);
   return Math.floor((payment.amount_cents * (payment.fee_bps ?? 0)) / 10000);
+}
+
+/** The card processing fee on a payment, as the database computed it. */
+export function processingFeeCents(payment) {
+  return Number(payment?.processing_fee_cents ?? 0);
 }
 
 /** States in which nothing has been charged yet: checkout works the price out afresh. */
 const NOT_CHARGED = new Set(["not_due", "due", "failed"]);
 
 /**
- * What the brand pays for a payment: the step plus the service fee. Once
- * Stripe has taken the money it is what checkout recorded (charged_cents);
- * before that it is what begin_payment_checkout would charge now,
- * amount_cents + payment_fee_cents (an amount changed since an earlier
- * attempt is charged at the new figure). The factory gets amount_cents.
+ * What the brand pays for a payment: the step, the service fee and the card
+ * processing fee, as the database works it out (charge_cents): what Stripe
+ * charged once it has, otherwise what begin_payment_checkout would charge
+ * now. The factory gets amount_cents. The old body below is only a fallback
+ * for a row read without charge_cents, and knows no card fee.
  */
 export function chargedCents(payment) {
   if (!payment) return 0;
+  if (payment.charge_cents != null) return Number(payment.charge_cents);
   if (payment.charged_cents != null && !NOT_CHARGED.has(payment.state)) return Number(payment.charged_cents);
   return Number(payment.amount_cents) + feeCents(payment);
 }
 
 /**
- * The service fee on an order with no payment rows yet (its steps are not
- * agreed): order_payment_fee_bps() gives a new order's first payment 500 bps
- * at $5,000 and over, 700 under, from the order's total. Once payments exist,
- * their own fee_bps is the answer, never this.
+ * What each paying step of these orders charges the brand, from
+ * order_step_charges: an order whose steps are not agreed has no payments
+ * yet, and only the database knows the rates its payments will get.
  */
-export function orderFeeBps(order) {
-  return Number(order?.order_total_cents ?? 0) >= 500000 ? 500 : 700;
+export async function listStepCharges(orderIds) {
+  if (!orderIds.length) return [];
+  return unwrap(
+    await supabase
+      .from("order_step_charges")
+      .select("order_id, milestone_id, payment_id, charged_cents")
+      .in("order_id", orderIds),
+    "load what each step charges",
+  );
 }
 
 /**
