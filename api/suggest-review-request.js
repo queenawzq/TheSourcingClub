@@ -91,6 +91,8 @@ function scoreCheckItem({ label, result, detail }, place) {
   const verdict = String(result ?? "");
   if (detail === "Business registration") {
     if (label === "Official registry") return null;
+    // A brand's registration is optional (Nov 13): never asked for as if required.
+    if (/optional/i.test(verdict)) return null;
     if (/not uploaded|can't be read|unreadable|sample|copy|cut short|not read/i.test(verdict)) {
       return `Upload a clear scan or photo of your original business registration certificate (${place.verify}).`;
     }
@@ -137,7 +139,7 @@ const DEFAULT_SUMMARY = "We need a few more details to finish reviewing your pro
 const DEFAULT_CLOSE = "We look forward to receiving these.";
 
 /** Without the model, the note is the same items, and says why. */
-const fromChecks = (items, why, leftOut = "") => ({
+export const fromChecks = (items, why, leftOut = "") => ({
   message: `${DEFAULT_SUMMARY}\n\n${items.map((item) => `- ${item}`).join("\n")}\n\n${DEFAULT_CLOSE}`,
   error: null,
   source: "template",

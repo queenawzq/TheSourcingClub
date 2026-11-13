@@ -385,6 +385,19 @@ function registrationFields({ reading, detail, country, timeZone, documentDiffer
   return reading ? fields : [];
 }
 
+/**
+ * "Business scope on the licence": shown with the licence it was read from (Nov 13, Queena), not
+ * under Company information. A Turkish "Main activity" field that already shows the same words is
+ * not repeated.
+ */
+function scopeField({ reading, country }) {
+  const x = reading?.details?.extracted ?? {};
+  const scopeText = String(x.businessScope ?? "").trim() || (x.activityCodes ?? []).join(" · ");
+  if (!reading || !scopeText) return [];
+  if (country === "TR" && ((x.activityCodes ?? []).join(" · ") || String(x.businessScope ?? "")) === scopeText) return [];
+  return [{ key: "scope", label: country === "TR" ? "Activity on the tax plate" : country === "PT" ? "Activity on the certificate" : "Business scope on the licence", value: scopeText, wide: true, multiline: true, editable: true }];
+}
+
 /* ------------------------------------------------------------ company information */
 
 export function scopeCheck({ reading, level, country }) {
@@ -393,10 +406,27 @@ export function scopeCheck({ reading, level, country }) {
   if (!reading) return { ...base, score: null, verdict: "Licence not read yet", canReason: false };
   if (!scope?.read || scope.recognised === false || level?.level === "unknown") return { ...base, score: null, verdict: "Can't tell from the licence", canReason: true };
   const quote = scope.quote ? ` (${scope.quote})` : "";
+  // Nov 13 (Queena): the verdict says plainly whether it is a factory, then the evidence.
+  // `formerVerdict`: the words before Nov 13, so a reason written for them keeps holding.
   if (level?.level === "low" || scope.trading) {
-    return { ...base, score: SCORES.scope.trading, verdict: country === "TR" || country === "PT" ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`, canReason: true, trading: true };
+    const coded = country === "TR" || country === "PT";
+    // "Wholesale" only when the licence says so: its words, or every activity code a wholesale one (46…).
+    // A sports club with one wholesale code among others is not a wholesaler, only not a factory.
+    const codes = (reading?.details?.extracted?.activityCodes ?? []).map((code) => String(code).replace(/\D/g, "")).filter(Boolean);
+    const words = `${scope.quote ?? ""} ${reading?.details?.extracted?.businessScope ?? ""}`;
+    const wholesale = /toptan|grosso|wholesale|批发/i.test(words) || (codes.length > 0 && codes.every((code) => code.startsWith("46")));
+    return {
+      ...base, score: SCORES.scope.trading, canReason: true, trading: true,
+      verdict: !coded ? `Not a factory: trading only${quote}` : wholesale ? "Not a factory: wholesale trade only" : "Not a factory: no manufacturing on the licence",
+      formerVerdict: coded ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`,
+    };
   }
-  return { ...base, score: SCORES.scope.making, verdict: scope.makingFrom === "codes" ? `Making activity code${quote}` : `Licence includes making${quote}`, short: "licence includes making", canReason: true };
+  const codes = scope.makingFrom === "codes";
+  return {
+    ...base, score: SCORES.scope.making, canReason: true, short: "licence includes manufacturing",
+    verdict: codes ? `Factory: manufacturing activity code${quote}` : `Factory: licence includes manufacturing${quote}`,
+    formerVerdict: codes ? `Making activity code${quote}` : `Licence includes making${quote}`,
+  };
 }
 
 const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", postcode: "Postcode" };
@@ -653,7 +683,8 @@ function groupVerdict(checks, good, { title } = {}) {
   return { verdict: good(), lead: null };
 }
 
-const whyFrom = (checks, lead) => checks.filter((c) => c !== lead).map((c) => `${c.label}: ${c.verdict}`).join(". ").concat(checks.length > 1 ? "." : "");
+// "Factory: …" / "Not a factory: …" already names the check (Nov 13).
+const whyFrom = (checks, lead) => checks.filter((c) => c !== lead).map((c) => (c.key === "scope" && /^(Not a )?[Ff]actory:/.test(c.verdict) ? c.verdict : `${c.label}: ${c.verdict}`)).join(". ").concat(checks.length > 1 ? "." : "");
 
 export function scoreVerification(input, { timeZone } = {}) {
   const detail = input?.detail ?? {};
@@ -679,13 +710,14 @@ export function scoreVerification(input, { timeZone } = {}) {
   const withReason = (check) => {
     const reason = reasons[check.key];
     if (!reason || check.canReason === false) return check;
-    if (reasonIsEarlier(reason, check.verdict)) {
+    // A reason written for the same verdict in its earlier words (`formerVerdict`) is still this verdict's.
+    if (reasonIsEarlier(reason, check.verdict) && !(check.formerVerdict && !reasonIsEarlier(reason, check.formerVerdict))) {
       // Written for another verdict: shown grey with what it was for, lifts nothing.
       return { ...check, reason: { text: reason.text, by: reason.by, at: reason.at, earlier: true, for: reason.writtenFor } };
     }
     return { ...check, score: lifted(check.score, reason), reason: { text: reason.text, by: reason.by, at: reason.at, ...(reason.writtenFor ? { for: reason.writtenFor } : {}) } };
   };
-  const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt"].includes(k)));
+  const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt", "formerVerdict"].includes(k)));
 
   // Business registration
   const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
@@ -715,7 +747,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAt: reading ? `Read ${stampWords(reading.checkedAt, timeZone)}` : "",
     readAtIso: reading?.checkedAt ?? null,
     stale: staleWords,
-    fields: registrationFields({ reading, detail, country, timeZone, documentDiffers }),
+    fields: [...registrationFields({ reading, detail, country, timeZone, documentDiffers }), ...scopeField({ reading, country })],
     checks: brChecks.map(clean),
   };
 
@@ -729,9 +761,8 @@ export function scoreVerification(input, { timeZone } = {}) {
   const ciChecks = [scope, address, photos];
   const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
-  const x = reading?.details?.extracted ?? {};
-  const scopeText = String(x.businessScope ?? "").trim() || (x.activityCodes ?? []).join(" · ");
-  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
+  // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
+  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
     key: "company_information",
     label: "Company information",
@@ -743,7 +774,6 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAtIso: ciStamp,
     stale: null,
     fields: [
-      ...(scopeText ? [{ key: "scope", label: country === "TR" ? "Activity on the tax plate" : country === "PT" ? "Activity on the certificate" : "Business scope on the licence", value: scopeText, wide: true, multiline: true, editable: true }] : []),
       ...(typedAddress ? [{
         key: "siteAddress", label: "Factory address", value: typedAddress, wide: true, editable: true,
         ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? {
@@ -774,7 +804,12 @@ export function scoreVerification(input, { timeZone } = {}) {
       evidence: {
         kind: "certificate", name: certWithFile.label, number: certificateNumber(certWithFile.id, signals), valid: certWithFile.expiresAt ? dayWords(`${String(certWithFile.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(certWithFile.id, signals),
         file: certWithFile.document ? { id: certWithFile.document.id, name: certWithFile.document.name, bucket: certWithFile.document.bucket, path: certWithFile.document.path, mimeType: certWithFile.document.mimeType ?? null } : null,
-        certificates: certs.map((c) => ({ id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null })),
+        // Each certificate's own card and fields: the modal shows one tab per certificate (Nov 13).
+        certificates: certs.map((c) => ({
+          id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null,
+          number: certificateNumber(c.id, signals), valid: c.expiresAt ? dayWords(`${String(c.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(c.id, signals),
+          fields: certFields(c, signals, title),
+        })),
       },
       readAt: certStamp ? `Checked ${stampWords(certStamp, timeZone)}` : "",
       readAtIso: certStamp,

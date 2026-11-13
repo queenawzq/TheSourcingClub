@@ -9,6 +9,15 @@
  */
 export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
 
+/**
+ * How much a group counts: its own `weight` when it carries one (a brand's groups, Nov 13), else the
+ * factory's split. 0 or none: shown, not counted.
+ */
+export const groupWeight = (group) => group?.weight ?? GROUP_WEIGHTS[group?.key] ?? 0;
+
+/** The row's info tip: the group's own `tip` when it carries one (a brand's), else the factory's. */
+export const groupTip = (group) => group?.tip ?? GROUP_TIPS[group?.key] ?? null;
+
 export function scoreGroup(group) {
   if (!group?.checks?.length) return null;
   const counted = group.checks.filter((check) => check.weight);
@@ -25,7 +34,7 @@ export function scoreOverall(groups) {
   let weight = 0;
   let scored = false;
   for (const group of groups) {
-    const w = GROUP_WEIGHTS[group.key];
+    const w = groupWeight(group);
     if (!w) continue;
     if ((group.checks ?? []).some((check) => check.weight && check.score != null)) scored = true;
     sum += (scoreGroup(group) ?? 0) * w;
@@ -38,7 +47,7 @@ export function scoreOverall(groups) {
 /** The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence. */
 export function weakestCheck(groups) {
   return groups
-    .filter((group) => GROUP_WEIGHTS[group.key])
+    .filter((group) => groupWeight(group))
     .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null).map((check) => ({ ...check, group: group.label })))
     .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
 }
@@ -54,7 +63,7 @@ export function tierFor(score) {
 
 /** A counted check in the red (under 60), with its number kept: the standing is at most "Needs a look". */
 export function redCheck(groups) {
-  return (groups ?? []).filter((group) => GROUP_WEIGHTS[group.key])
+  return (groups ?? []).filter((group) => groupWeight(group))
     .flatMap((group) => group.checks ?? []).find((check) => check.weight && check.score != null && check.score < 60) ?? null;
 }
 
