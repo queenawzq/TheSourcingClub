@@ -324,7 +324,7 @@
   }
 
   .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
-  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .shared-card-status,
   .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
   .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-status {
     grid-column: 1 / -1 !important;
