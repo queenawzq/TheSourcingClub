@@ -7407,7 +7407,7 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
           </div>
           )}
           {translated && <div className="vendor-card-translation">
-            <span>{showOriginal ? "Original text" : "Automatically translated to English"}</span>
+            <span>{showOriginal ? "Original text" : originalFactory.translationPartial ? "Partly translated to English" : "Automatically translated to English"}</span>
             <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
           </div>}
         </div>
