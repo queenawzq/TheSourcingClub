@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
+import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
 const KEY = "sb-test-auth-token";
 
@@ -200,6 +201,45 @@ check(takeRecoveryToken(keepOther) === "abc" && keepOther.location.hash === "#ta
 // notify() above stands in for AuthProvider; this is the line it stands in for.
 check(/event === "SIGNED_OUT"\) setKeepSignedIn\(false\)/.test(readFileSync("src/lib/auth.jsx", "utf8")),
   "AuthProvider parks a signed-out tab");
+
+// The company a tab works in belongs to the tab (src/lib/active-org-storage.mjs).
+// Recorded Nov 13: a brand tab reloaded into the factory workspace after another
+// tab switched company, or after another person's tab reloaded.
+{
+  const shared = new MemoryStorage();
+  const openOrgTab = (orgs) => {
+    const win = { localStorage: shared, sessionStorage: new MemoryStorage() };
+    const t = { win, orgs, ...createActiveOrgStorage(win) };
+    // What AuthProvider does: read on load, fall back if not a member.
+    t.load = () => {
+      const stored = t.read();
+      const org = pickActiveOrg(t.orgs, stored);
+      if (org && org.id !== stored) t.fallBack(org.id);
+      return org?.id ?? null;
+    };
+    t.load();
+    return t;
+  };
+  const switcher = [{ id: "brand" }, { id: "factory" }];
+  const brandTab = openOrgTab(switcher);
+  brandTab.choose("brand");
+  const factoryTab = openOrgTab(switcher);
+  check(factoryTab.load() === "brand", "a new tab opens on the company last chosen in this browser");
+  factoryTab.choose("factory");
+  check(brandTab.load() === "brand", "switching company in another tab does not move this tab on reload");
+  check(factoryTab.load() === "factory", "and the other tab keeps its own choice on reload");
+  const otherPerson = openOrgTab([{ id: "someone-else" }]);
+  check(otherPerson.load() === "someone-else", "a company the person is not in is never used, whatever is stored");
+  check(brandTab.load() === "brand" && shared.getItem(ACTIVE_ORG_KEY) === "factory",
+    "another person's tab falling back changes neither this tab nor the default for new tabs");
+  check(openOrgTab(switcher).load() === "factory", "a new tab after that still opens on the last company chosen");
+  brandTab.clear();
+  check(brandTab.load() === "brand" && factoryTab.load() === "factory",
+    "after signing out, a tab is shown only a company from the list it signs in with");
+  check(pickActiveOrg([], "brand") === null, "no companies, no workspace");
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(!/localStorage\.(get|set|remove)Item\("tscActiveOrg"/.test(auth), "AuthProvider keeps the company only through the per-tab store");
+}
 
 if (failures) {
   console.error(`\n${failures} check(s) failed: "Keep me logged in" does not hold across tabs.`);

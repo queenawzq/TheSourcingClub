@@ -10,7 +10,9 @@
  * implied is the composer-default bug rebuilt around a bank transfer.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
+import { getOrder } from "../../lib/domain/order.js";
+import { can, permissionHint } from "../../lib/domain/org.js";
+import { useAuth } from "../../lib/auth.jsx";
 import { listMilestones, saveSchedule, updateScheduleDetails } from "../../lib/domain/milestone.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -20,8 +22,9 @@ import "./order.css";
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
 
-export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
+export default function ScheduleEditor({ orderId, isFactory }) {
   const { navigate } = useRouter();
+  const { activeOrg, orgs } = useAuth();
   const [order, setOrder] = useState(null);
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
@@ -47,6 +50,14 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
 
   useEffect(() => { load().catch(setError); }, [load]);
 
+  // Before the order starts, the brand sets and confirms its steps on its
+  // designed "Production steps" screen, which is the order's own address
+  // (migration 067: only the brand confirms). This page is for a running order.
+  const brandSetsStepsOnOrder = order?.status === "pending_schedule" && !isFactory;
+  useEffect(() => {
+    if (brandSetsStepsOnOrder) navigate(`/orders/${orderId}`, { replace: true });
+  }, [brandSetsStepsOnOrder, navigate, orderId]);
+
   if (error && !rows) {
     return (
       <div className="rfq-page">
@@ -56,11 +67,14 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       </div>
     );
   }
-  if (!rows || !order) return <div className="rfq-page"><div className="spinner" aria-hidden="true" /></div>;
+  if (!rows || !order || brandSetsStepsOnOrder) return <div className="rfq-page"><div className="spinner" aria-hidden="true" /></div>;
 
-  const activeEdit = order.status === "active" && !isFactory;
+  const mayEdit = isFactory || can(activeOrg, "rfqFlow");
+  const activeEdit = order.status === "active" && !isFactory && mayEdit;
   const closed = !["pending_schedule", "active"].includes(order.status);
-  const locked = isFactory || closed;
+  const locked = isFactory || closed || !mayEdit;
+  // Someone in both companies, here as the factory: the brand side is theirs too.
+  const brandOrg = isFactory ? orgs.find((org) => org.id === order.brand_org_id) : null;
   // Why the steps can't be changed here, said for the case it is: a finished
   // order is finished for both sides (the database refuses any change), and
   // on an open order only the brand sets the steps (migration 067).
@@ -70,7 +84,11 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       ? ["This order is cancelled.", "Its production steps can no longer be changed."]
       : closed
         ? ["This schedule is settled.", "Its production steps can no longer be changed."]
-        : ["Only the brand sets the production steps.", "If a step doesn't work for you, message the brand."];
+        : isFactory
+          ? ["Only the brand sets the production steps.", brandOrg
+            ? `Switch to ${brandOrg.name} to change them.`
+            : "If a step doesn't work for you, message the brand."]
+          : [permissionHint(activeOrg, "rfqFlow"), "An owner can give it to you in Settings."];
   const total = rows.reduce((sum, row) => sum + (PAYS.has(row.kind) ? toCents(row.amount) ?? 0 : 0), 0);
   const balances = total === order.order_total_cents;
   // What the database would refuse, said before Save, as on the builder.
@@ -148,36 +166,7 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
           <strong>{lockedWhy[0]}</strong>
           <span>{lockedWhy[1]}</span>
         </div>
-      ) : activeEdit ? null : (
-        <>
-          <p className="ob-hint">
-            {order.schedule_brand_agreed_at || order.schedule_factory_agreed_at
-              ? "One side has already agreed. Saving a change withdraws both agreements, so you will each need to agree again."
-              : "Neither side has agreed yet."}
-          </p>
-          {/* Agreeing moved here from the order screen, because this is where
-              the schedule is. agree_schedule takes the revision: without it a
-              client that cached "I already agreed" re-stamps a side onto terms
-              it never read, and the order activates showing two green ticks. */}
-          <div className="order-actions">
-            <button
-              type="button"
-              className="primary-btn"
-              data-testid="agree-schedule"
-              disabled={Boolean(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)}
-              onClick={async () => {
-                await agreeSchedule(order.id, order.schedule_revision);
-                await load();
-                onAgreed?.();
-              }}
-            >
-              {(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)
-                ? "You have agreed"
-                : "Agree to this schedule"}
-            </button>
-          </div>
-        </>
-      )}
+      ) : null}
 
       <MilestonesScreen live={{
         rows: rows.map((row, index) => ({
