@@ -16,6 +16,7 @@
 
 
 import { scoreOverall, withPhotoCheck } from "./verification-scoring.js";
+import { brandVerification } from "../shared/brand-verification.mjs";
 
 export * from "./verification-scoring.js";
 
@@ -390,4 +391,40 @@ function withScore(profile) {
   return { ...profile, verification: { ...profile.verification, groups }, confidence: overall, confidenceLabel: "Score" };
 }
 
-export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory].map(withScore);
+/* ---------- (e) A new brand, not registered yet (Nov 13: brands in the factory layout) ---------- */
+const brandChecks = [
+  ["Business registration", "Missing", 0, "No business registration document has been uploaded."],
+  ["Company details", "Review", 83, "Not filled in: Year founded."],
+  ["Terms accepted", "Clear", 100, "Signed \"Ava Brooks\" on 11 Nov 2026 against terms version 1."],
+  ["Brand evidence", "Clear", 100, "4 image or walkthrough file(s) uploaded. Nobody has confirmed they show this company's own facility or product."],
+];
+const newBrand = {
+  id: "verify-brand-new",
+  initials: "NS",
+  name: "Northline Studio",
+  entityType: "Brand",
+  location: "Brooklyn, USA",
+  submitted: "3 hours ago",
+  status: "Ready for review",
+  tone: "info",
+  owner: "Unassigned",
+  risk: "Not set",
+  evidence: "4 of 5 received",
+  summary: "Young menswear label launching a first run of overshirts and knit polos.",
+  details: [["Year founded", "—"], ["Business type", "DTC brand"], ["Website", "northline.studio"], ["Headquarters", "Brooklyn, USA"], ["Annual volume", "1,000-5,000 units"], ["Target FOB", "$14-$22 / unit"]],
+  capabilities: ["Menswear", "Wovens", "Knit tops"],
+  checks: [],
+  verification: brandVerification({
+    checks: brandChecks,
+    documents: [
+      { id: "nl-logo", kind: "logo", file_name: "northline-logo.png", mime_type: "image/png", src: PHOTO.floor, created_at: "2026-11-11T15:00:00Z" },
+      { id: "nl-shirt", kind: "product_image", file_name: "overshirt.jpg", mime_type: "image/jpeg", src: PHOTO.line, created_at: "2026-11-11T15:01:00Z" },
+      { id: "nl-knit", kind: "product_image", file_name: "knit-polo.jpg", mime_type: "image/jpeg", src: PHOTO.knit, created_at: "2026-11-11T15:02:00Z" },
+      { id: "nl-denim", kind: "brand_direction", file_name: "moodboard.jpg", mime_type: "image/jpeg", src: PHOTO.denim, created_at: "2026-11-11T15:03:00Z" },
+    ],
+    submittedBy: { name: "Ava Brooks", email: "ava@northline.studio" },
+    timeZone: "UTC",
+  }),
+};
+
+export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory, newBrand].map(withScore);

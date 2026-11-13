@@ -678,7 +678,8 @@ function groupVerdict(checks, good, { title } = {}) {
   return { verdict: good(), lead: null };
 }
 
-const whyFrom = (checks, lead) => checks.filter((c) => c !== lead).map((c) => `${c.label}: ${c.verdict}`).join(". ").concat(checks.length > 1 ? "." : "");
+// "Factory: …" / "Not a factory: …" already names the check (Nov 13).
+const whyFrom = (checks, lead) => checks.filter((c) => c !== lead).map((c) => (c.key === "scope" && /^(Not a )?[Ff]actory:/.test(c.verdict) ? c.verdict : `${c.label}: ${c.verdict}`)).join(". ").concat(checks.length > 1 ? "." : "");
 
 export function scoreVerification(input, { timeZone } = {}) {
   const detail = input?.detail ?? {};
@@ -797,7 +798,12 @@ export function scoreVerification(input, { timeZone } = {}) {
       evidence: {
         kind: "certificate", name: certWithFile.label, number: certificateNumber(certWithFile.id, signals), valid: certWithFile.expiresAt ? dayWords(`${String(certWithFile.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(certWithFile.id, signals),
         file: certWithFile.document ? { id: certWithFile.document.id, name: certWithFile.document.name, bucket: certWithFile.document.bucket, path: certWithFile.document.path, mimeType: certWithFile.document.mimeType ?? null } : null,
-        certificates: certs.map((c) => ({ id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null })),
+        // Each certificate's own card and fields: the modal shows one tab per certificate (Nov 13).
+        certificates: certs.map((c) => ({
+          id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null,
+          number: certificateNumber(c.id, signals), valid: c.expiresAt ? dayWords(`${String(c.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(c.id, signals),
+          fields: certFields(c, signals, title),
+        })),
       },
       readAt: certStamp ? `Checked ${stampWords(certStamp, timeZone)}` : "",
       readAtIso: certStamp,

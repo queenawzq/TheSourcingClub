@@ -13,6 +13,7 @@ import {
   SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, certificateHolder, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy, scopeCheck,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
+import { brandVerification } from "../src/shared/brand-verification.mjs";
 import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
 import { compareAddresses, addressOwnerCheck } from "../api/_address.js";
 import { addressCheck } from "../src/shared/verification-score.mjs";
@@ -161,6 +162,28 @@ console.log("Nov 13");
   const other = scoreVerification(input("Can't tell from the licence"), { timeZone: "UTC" }).groups[1].checks.find((c) => c.key === "scope");
   check(other.reason?.earlier && other.score === 10, "a reason for another verdict still does not");
   check(old.groups[0].fields.some((f) => f.key === "scope" && f.label === "Business scope on the licence") && !old.groups[1].fields.some((f) => f.key === "scope"), "the business scope is under Business registration, not Company information");
+}
+console.log("brands (Nov 13)");
+{
+  const rows = {
+    unregistered: [["Business registration", "Missing", 0, "No business registration document has been uploaded."], ["Company details", "Review", 83, "Not filled in: Year founded."], ["Terms accepted", "Clear", 100, "Signed \"Ava Brooks\" on 11 Nov 2026 against terms version 1."], ["Contact domain", "Review", 50, "No member address uses x.com."], ["Duplicate company signal", "Review", 0, "Shares a legal name with: Other."], ["Brand evidence", "Clear", 100, "4 image or walkthrough file(s) uploaded. Nobody has confirmed."]],
+    registered: [["Business registration", "Review", 100, "Uploaded 12 Nov 2026."], ["Company details", "Clear", 100, "Every profile field asked for is filled in."], ["Terms accepted", "Clear", 100, "Signed \"Sam Lee\" on 2 Nov 2026 against terms version 1."], ["Brand evidence", "Review", 50, "2 image or walkthrough file(s) uploaded."]],
+    nothing: [["Business registration", "Missing", 0, ""], ["Company details", "Missing", 20, "Not filled in: Legal name, Website."], ["Terms accepted", "Missing", 0, ""], ["Brand evidence", "Missing", 0, "0 image or walkthrough file(s) uploaded."]],
+  };
+  const P = prototypeScoring;
+  const of = (key) => brandVerification({ checks: rows[key], timeZone: "UTC" });
+  const a = of("unregistered");
+  const br = a.groups.find((g) => g.key === "business_registration");
+  check(a.groups.map((g) => g.key).join() === "business_registration,company_information,brand_evidence", "brand groups: registration, company information, brand evidence");
+  check(!JSON.stringify(a).includes("Contact domain") && !JSON.stringify(a).includes("Shares a legal name"), "no contact domain, no duplicate company signal");
+  check(P.groupWeight(br) === 0 && P.scoreGroup(br) == null && P.tierFor(P.scoreGroup(br)) === "none" && !P.redCheck(a.groups) && br.verdict === "Not uploaded (optional for brands)", "an unregistered brand: registration shown, not counted, never red");
+  check(P.scoreOverall(a.groups) === Math.round(((Math.round(83 * 0.7 + 100 * 0.3)) * 50 + 100 * 30) / 80), `unregistered overall from company information 50 + evidence 30 (${P.scoreOverall(a.groups)})`);
+  check(!a.facts.find((f) => f.key === "registration").ok && a.facts.find((f) => f.key === "registration").ok !== false && a.facts.find((f) => f.key === "terms").value === "Ava Brooks, Nov 11", "facts: registration missing is information, not a gap; terms signer and day");
+  const b = of("registered");
+  check(P.groupWeight(b.groups[0]) === 20 && P.scoreGroup(b.groups[0]) === 80 && b.groups[2].verdict === "Only 2 files uploaded", `a registered brand: registration counts 20 (${P.scoreOverall(b.groups)})`);
+  const c = of("nothing");
+  check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Flagged" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Flagged (${c.groups[1].verdict})`);
+  check(a.groups.every((g) => g.reasons === false && g.rerunnable === false), "brand rows have no reasons and no Run again");
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");
