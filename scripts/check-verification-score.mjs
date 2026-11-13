@@ -148,8 +148,12 @@ console.log("Nov 13");
   check(making.verdict === "Factory: licence includes manufacturing (服装制造)", `making: ${making.verdict}`);
   const trading = scopeCheck({ reading: { details: { tradingScope: { read: true, trading: true, quote: "服装批发" } } }, level: { level: "low" }, country: "CN" });
   check(trading.verdict === "Not a factory: trading only (服装批发)", `trading: ${trading.verdict}`);
-  const wholesale = scopeCheck({ reading: { details: { tradingScope: { read: true, trading: true } } }, level: { level: "low" }, country: "TR" });
+  const wholesale = scopeCheck({ reading: { details: { tradingScope: { read: true, trading: true, quote: "Toptan giyim ticareti" } } }, level: { level: "low" }, country: "TR" });
   check(wholesale.verdict === "Not a factory: wholesale trade only", `Türkiye wholesale: ${wholesale.verdict}`);
+  const coded = scopeCheck({ reading: { details: { tradingScope: { read: true }, extracted: { activityCodes: ["46421", "46160"] } } }, level: { level: "low" }, country: "PT" });
+  check(coded.verdict === "Not a factory: wholesale trade only", `every code wholesale: ${coded.verdict}`);
+  const club = scopeCheck({ reading: { details: { tradingScope: { read: true }, extracted: { activityCodes: ["93120", "46421", "56301"], businessScope: "Clube desportivo" } } }, level: { level: "low" }, country: "PT" });
+  check(club.verdict === "Not a factory: no manufacturing on the licence" && club.formerVerdict === "Wholesale trade only, no manufacturing", `a sports club is not called a wholesaler: ${club.verdict}`);
   const input = (writtenFor) => ({
     detail: { title: "杭州钱江服装有限公司", registration: { country: "CN", number: "91330109MA2B3K7Q4L" } },
     extra: { registrationFiles: [{ id: "f" }], signals: [{ kind: "document_reading", subjectId: "f", automatic: true, details: { fileId: "f", extracted: { legalName: "杭州钱江服装有限公司", businessScope: "服装批发；货物进出口" }, tradingScope: { read: true, trading: true, quote: "服装批发" } } }] },
@@ -184,6 +188,11 @@ console.log("brands (Nov 13)");
   const c = of("nothing");
   check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Flagged" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Flagged (${c.groups[1].verdict})`);
   check(a.groups.every((g) => g.reasons === false && g.rerunnable === false), "brand rows have no reasons and no Run again");
+  check(a.groups.find((g) => g.key === "company_information").evidencePane === false, "a brand's Company information has no file pane");
+  const twice = [{ id: "1", kind: "product_image", file_name: "shirt.jpg", size_bytes: 2048, created_at: "2026-11-13T10:00:00Z" }, { id: "2", kind: "product_image", file_name: "shirt.jpg", size_bytes: 2048, created_at: "2026-11-13T10:01:00Z" }];
+  const dup = brandVerification({ checks: [["Brand evidence", "Review", 50, "2 image or walkthrough file(s) uploaded."]], documents: twice, timeZone: "UTC" });
+  const be = dup.groups.find((g) => g.key === "brand_evidence");
+  check(be.verdict === "Only 1 file uploaded" && be.evidence.files.length === 1, `the same photo stored twice counts once (${be.verdict})`);
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");

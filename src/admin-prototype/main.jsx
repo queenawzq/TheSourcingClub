@@ -8,7 +8,7 @@ import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
 import { verificationMockProfiles } from "./verification-mock.js";
-import { brandVerification } from "../shared/brand-verification.mjs";
+import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
 
 import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
@@ -1229,7 +1229,9 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   }, [profile?.id, suggestedTier]);
   if (!profile) return null;
   // With the score card, "Suggest with AI" is fed the weak sub-checks; the removed rows are not read.
-  const requestGaps = showsScore
+  // A brand is asked from its checks as before (details, terms, images), never for its optional registration.
+  const requestGaps = brandScore ? brandRequestGaps(profile.checks, documents ?? [])
+    : showsScore
     ? (verification?.groups ?? []).flatMap((group) => (group.checks ?? [])
       .filter((check) => check.score == null || check.score < 75)
       .map((check) => ({ label: check.label, result: check.verdict, detail: group.label })))

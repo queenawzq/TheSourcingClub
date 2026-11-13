@@ -197,7 +197,9 @@ export function withRegistry(profile, state) {
 export async function withLevel(profile) {
   // Nov 13: a brand's row shows its score too, from the same checks as its review page.
   if (profile.entityType === "Brand") {
-    const overall = scoreOverall(brandVerification({ checks: profile.checks }).groups);
+    // Its files too, so a photo stored twice counts once here as on the page.
+    const documents = await orgDocuments(profile.id).catch(() => []);
+    const overall = scoreOverall(brandVerification({ checks: profile.checks, documents }).groups);
     return overall == null
       ? { ...profile, confidence: null, confidenceLabel: "Score", scoreWord: "Not checked" }
       : { ...profile, confidence: overall, confidenceLabel: "Score" };

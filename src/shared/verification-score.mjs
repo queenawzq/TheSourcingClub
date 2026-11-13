@@ -409,11 +409,16 @@ export function scopeCheck({ reading, level, country }) {
   // Nov 13 (Queena): the verdict says plainly whether it is a factory, then the evidence.
   // `formerVerdict`: the words before Nov 13, so a reason written for them keeps holding.
   if (level?.level === "low" || scope.trading) {
-    const wholesale = country === "TR" || country === "PT";
+    const coded = country === "TR" || country === "PT";
+    // "Wholesale" only when the licence says so: its words, or every activity code a wholesale one (46…).
+    // A sports club with one wholesale code among others is not a wholesaler, only not a factory.
+    const codes = (reading?.details?.extracted?.activityCodes ?? []).map((code) => String(code).replace(/\D/g, "")).filter(Boolean);
+    const words = `${scope.quote ?? ""} ${reading?.details?.extracted?.businessScope ?? ""}`;
+    const wholesale = /toptan|grosso|wholesale|批发/i.test(words) || (codes.length > 0 && codes.every((code) => code.startsWith("46")));
     return {
       ...base, score: SCORES.scope.trading, canReason: true, trading: true,
-      verdict: wholesale ? "Not a factory: wholesale trade only" : `Not a factory: trading only${quote}`,
-      formerVerdict: wholesale ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`,
+      verdict: !coded ? `Not a factory: trading only${quote}` : wholesale ? "Not a factory: wholesale trade only" : "Not a factory: no manufacturing on the licence",
+      formerVerdict: coded ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`,
     };
   }
   const codes = scope.makingFrom === "codes";
@@ -756,7 +761,8 @@ export function scoreVerification(input, { timeZone } = {}) {
   const ciChecks = [scope, address, photos];
   const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
-  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
+  // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
+  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
     key: "company_information",
     label: "Company information",

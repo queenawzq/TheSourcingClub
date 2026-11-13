@@ -348,7 +348,8 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
           {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => groupWeight(group) && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} groups={groups} />}
         </div>
         <p className="vr-overall-line">
-          {weakest ? <><span>Weakest:</span> {weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</> : null}
+          {/* "Factory: …" / "Not a factory: …" names its check already, so it stands alone. */}
+          {weakest ? <><span>Weakest:</span> {/^(Not a )?[Ff]actory:/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
         </p>
         {counted.length > 0 && (
           <div className="vr-weightbar" role="img" aria-label={counted.map((group) => `${group.label} ${scoreGroup(group) ?? 0}%`).join(", ")}>
@@ -409,6 +410,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
       {open && (
         <VerificationModal
           group={open}
+          groups={groups}
           actions={actions}
           fileUrl={fileUrl}
           onRunning={runningChange}
@@ -653,8 +655,9 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
 
 const fieldValues = (fields) => Object.fromEntries((fields ?? []).map((field) => [field.key, field.value ?? ""]));
 
-function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
+function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, onClose }) {
   const titleId = useId();
+  const otherBefore = useRef({});
   // Several certificates: one tab each, showing that certificate's check, fields and file (Nov 13).
   const certs = group.evidence?.kind === "certificate" ? (group.evidence.certificates ?? []) : [];
   const tabbed = certs.length > 1;
@@ -680,9 +683,12 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // The other counted groups' scores before a run: a licence edit (the business scope) can move Company information.
+  const otherScores = () => Object.fromEntries((groups ?? []).filter((g) => g.key !== group.key && groupWeight(g)).map((g) => [g.key, scoreGroup(g)]));
   const runAgain = async () => {
     const from = score;
     const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
+    otherBefore.current = otherScores();
     setRun({ state: "running", from });
     onRunning(true);
     let outcome;
@@ -719,9 +725,14 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
   }, [group]);
   const to = score;
   const delta = change && change.to === score ? change.to - change.from : 0;
+  // "Company information 3% to 25%": another group this run moved.
+  const othersMoved = run.state === "done"
+    ? (groups ?? []).filter((g) => g.key in otherBefore.current && scoreGroup(g) != null && scoreGroup(g) !== otherBefore.current[g.key])
+      .map((g) => `${g.label} ${otherBefore.current[g.key] ?? 0}% to ${scoreGroup(g)}%`)
+    : [];
   const status = run.state === "running" ? { text: "Checking again…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
-      : run.state === "done" ? { text: to == null ? "Read again" : to === run.from ? `Same result: ${to}%` : `Score updated: ${run.from ?? 0}% to ${to}%`, tone: "done" }
+      : run.state === "done" ? { text: [to == null ? "Read again" : to === run.from ? `Same result: ${to}%` : `Score updated: ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
         : group.error ? { text: group.error, tone: "error" }
           : group.stale ? { text: group.stale, tone: "stale" }
             : { text: group.readAt ?? "" };
@@ -743,7 +754,7 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
           </button>
         </header>
 
-        <div className="vr-modal-body">
+        <div className={`vr-modal-body${group.evidencePane === false ? " is-single" : ""}`}>
           <div className="vr-modal-main">
             {tabbed && (
               <div className="vr-cert-tabs">
@@ -787,12 +798,15 @@ function VerificationModal({ group, actions, fileUrl, onRunning, onClose }) {
             )}
           </div>
 
-          <EvidencePane
-            evidence={evidence}
-            fileUrl={fileUrl}
-            onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
-            key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
-          />
+          {/* A group with no file behind it at all (a brand's Company information) has no file pane. */}
+          {group.evidencePane !== false && (
+            <EvidencePane
+              evidence={evidence}
+              fileUrl={fileUrl}
+              onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
+              key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
+            />
+          )}
         </div>
 
         <footer className="vr-modal-foot">
@@ -965,17 +979,17 @@ function usePdfPreview(href, enabled) {
     };
     (async () => {
       const head = await range("bytes=0-2047");
-      if (!head.bytes.length) return { kind: "none" };
+      if (!head.bytes.length) return { kind: "none", why: "the file is empty" };
       const what = sniffBytes(head.bytes);
       if (what.startsWith("image/")) {
         const whole = head.whole ? head.bytes : new Uint8Array(await (await fetch(href)).arrayBuffer());
         objectUrl = URL.createObjectURL(new Blob([whole], { type: what }));
         return { kind: "image", src: objectUrl };
       }
-      if (what !== "pdf") return { kind: "none" };
+      if (what !== "pdf") return { kind: "none", why: "not a PDF or a photo" };
       const tail = head.whole ? head : await range("bytes=-8192");
       const end = Array.from(tail.bytes.slice(-8192), (b) => String.fromCharCode(b)).join("");
-      return { kind: end.includes("%%EOF") ? "pdf" : "none" };
+      return end.includes("%%EOF") ? { kind: "pdf" } : { kind: "none", why: "the PDF is incomplete" };
     })().then(
       (found) => { if (!cancelled) setKind(found); },
       () => { if (!cancelled) setKind({ kind: "pdf" }); },
@@ -999,12 +1013,14 @@ function EvidenceFile({ file, fileUrl, label, children }) {
           : isPdf(file) && pdf == null ? <div className="vr-paper vr-file is-empty"><Spinner ink /></div>
             : pdf?.kind === "image" ? <div className="vr-paper vr-file"><img src={pdf.src} alt={label} /></div>
               : isPdf(file) && pdf.kind === "pdf" ? <div className="vr-paper vr-file is-pdf"><iframe src={href} title={label} /></div>
-              : isPdf(file) ? <div className="vr-paper vr-file is-empty"><p>Can't preview this file</p></div>
+              : isPdf(file) ? <div className="vr-paper vr-file is-empty"><p>Can't preview: {pdf.why}</p></div>
                 : <div className="vr-paper vr-file is-empty"><p>{file.name}</p></div>);
+  // Open shows what the window shows: a photo stored as .pdf opens as the photo; a file the viewer can't load doesn't open.
+  const openHref = pdf?.kind === "image" ? pdf.src : pdf?.kind === "none" ? null : href;
   return (
     <>
       {preview}
-      <EvidenceFoot file={file} href={href} />
+      <EvidenceFoot file={file} href={openHref} />
     </>
   );
 }

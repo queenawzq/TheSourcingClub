@@ -78,9 +78,21 @@ function termsCheck(row, timeZone) {
   return { ...base, score: BRAND_SCORES.terms.signed, verdict: words ? `Signed by ${words}` : "Signed", signedWords: words };
 }
 
-function evidenceCheck(row) {
+/** The same file stored twice (same name and size, e.g. onboarding's Next pressed twice) counts once. */
+const repeats = (documents) => {
+  const seen = new Set();
+  let extra = 0;
+  for (const d of documents) {
+    const key = `${d.file_name ?? d.name ?? ""}\u0001${d.size_bytes ?? d.size ?? ""}`;
+    if (seen.has(key)) extra += 1;
+    else seen.add(key);
+  }
+  return extra;
+};
+
+function evidenceCheck(row, documents = []) {
   const base = { key: "brand_files", label: "Logo and product images", weight: 1 };
-  const count = Number(/^(\d+)/.exec(row?.detail ?? "")?.[1] ?? 0);
+  const count = Math.max(0, Number(/^(\d+)/.exec(row?.detail ?? "")?.[1] ?? 0) - repeats(documents));
   if (!row || count === 0) return { ...base, score: BRAND_SCORES.evidence.none, verdict: "Nothing uploaded", count: 0 };
   const files = `${count} ${count === 1 ? "file" : "files"}`;
   return { ...base, score: count >= 3 ? BRAND_SCORES.evidence.three : BRAND_SCORES.evidence.some, verdict: count >= 3 ? `${files} uploaded` : `Only ${files} uploaded`, count };
@@ -88,6 +100,26 @@ function evidenceCheck(row) {
 
 const lower = (text) => (text ? text[0].toLowerCase() + text.slice(1) : text);
 const plain = (check) => Object.fromEntries(Object.entries(check).filter(([key]) => !["missing", "gaps", "signedWords", "count"].includes(key)));
+
+/**
+ * What "Suggest with AI" in Request more information asks a brand for: the
+ * `org_verification_checks()` rows it was asked from before Nov 13 (details,
+ * terms, brand images), in the words `api/suggest-review-request.js` maps. A
+ * registration that is simply missing is left out: it is optional for
+ * brands. One that was rejected or is empty is still asked for again.
+ */
+export function brandRequestGaps(checks, documents = []) {
+  const gaps = [];
+  for (const [label, result, value, detail] of checks ?? []) {
+    if (label === "Company details" && Number(value) < 100) gaps.push({ label, result, detail });
+    else if (label === "Terms accepted" && result !== "Clear") gaps.push({ label, result, detail });
+    // Fewer than 3 different files (a repeat counts once), as the card scores it.
+    else if (label === "Brand evidence" && evidenceCheck({ detail }, (documents ?? []).filter((d) => d && EVIDENCE_KINDS.has(d.kind))).score < 100) gaps.push({ label, result, detail });
+    // The database's words for an empty file say "empty (0 bytes)", which is what the request reads.
+    else if (label === "Business registration" && (result === "Rejected" || (result === "Review" && Number(value) === 0))) gaps.push({ label, result, detail });
+  }
+  return gaps;
+}
 
 /**
  * `{ facts, groups }` for `VerificationScoreCard` and `VerificationFacts`.
@@ -98,11 +130,13 @@ export function brandVerification({ checks, documents = [], submittedBy = null, 
   const registration = registrationCheck(tuple(checks, "Business registration"));
   const details = detailsCheck(tuple(checks, "Company details"));
   const terms = termsCheck(tuple(checks, "Terms accepted"), timeZone);
-  const evidence = evidenceCheck(tuple(checks, "Brand evidence"));
-
   const files = (documents ?? []).filter(Boolean);
+  const evidence = evidenceCheck(tuple(checks, "Brand evidence"), files.filter((d) => EVIDENCE_KINDS.has(d.kind)));
+
   const registrationFiles = files.filter((d) => d.kind === "business_registration").sort(newestFirst).map((d) => toFile(d, timeZone));
-  const brandFiles = files.filter((d) => EVIDENCE_KINDS.has(d.kind)).sort(newestFirst).map((d) => toFile(d, timeZone));
+  const brandFiles = files.filter((d) => EVIDENCE_KINDS.has(d.kind)).sort(newestFirst)
+    .filter((d, i, all) => all.findIndex((o) => (o.file_name ?? o.name) === (d.file_name ?? d.name) && (o.size_bytes ?? o.size) === (d.size_bytes ?? d.size)) === i)
+    .map((d) => toFile(d, timeZone));
   const evidenceOf = (list, label) => (list.length ? { kind: "licence", label, files: list } : { kind: "none" });
   const shared = { checking: false, readAt: "", readAtIso: null, stale: null, fields: [], reasons: false, rerunnable: false };
 
@@ -130,6 +164,7 @@ export function brandVerification({ checks, documents = [], submittedBy = null, 
     verdict: weak === details ? `Details ${lower(details.verdict)}` : weak === terms ? "Terms not signed" : details.score == null ? "Not checked yet" : "Details complete, terms signed",
     why: ciChecks.filter((c) => c !== weak).map((c) => `${c.label}: ${lower(c.verdict)}`).join(". ").concat("."),
     evidence: { kind: "none" },
+    evidencePane: false,
     checks: ciChecks.map(plain),
   };
 
