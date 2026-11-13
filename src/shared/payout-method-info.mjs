@@ -30,3 +30,17 @@ export const PAYOUT_METHOD_INFO = {
 };
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
+
+/**
+ * Which lines a chooser option draws: the route its Set up actually takes.
+ * "Bank account" in a Stripe country is Stripe's. Every other bank option opens
+ * Wise's form only when the server has a Wise currency for the country and Wise
+ * is set up on the deploy (api/wise-requirements.js); otherwise, Taiwan and
+ * Cambodia today, it falls back to staff's bank form (WiseBankStep's
+ * onUnavailable). The browser cannot know which, so those options draw the
+ * bank lines, true of both. `wise` waits for a route the browser can know.
+ */
+export function chooserMethod(option, { supported = false } = {}) {
+  if (option === "paypal") return "paypal";
+  return option === "bank" && supported ? "stripe" : "bank";
+}
