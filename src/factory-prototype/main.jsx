@@ -1195,7 +1195,9 @@ function translateFactoryMainText(value) {
   return `${leading}${translated}${trailing}`;
 }
 
-function translateFactoryMainDom(root) {
+// `keep`: the company's own words, never swapped for a dictionary entry.
+// `swapped`: each change made, so it can be undone.
+function translateFactoryMainDom(root, { keep = null, swapped = null } = {}) {
   if (!root) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -1206,28 +1208,38 @@ function translateFactoryMainDom(root) {
       if (parent.closest("[data-no-translate]")) {
         return NodeFilter.FILTER_REJECT;
       }
+      if (keep?.has(node.nodeValue.trim())) return NodeFilter.FILTER_REJECT;
       return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
     }
   });
   const textNodes = [];
   while (walker.nextNode()) textNodes.push(walker.currentNode);
+  const swap = (read, write, original) => {
+    const translated = translateFactoryMainText(original);
+    if (translated === original) return;
+    write(translated);
+    swapped?.push({ read, write, original, translated });
+  };
   textNodes.forEach((node) => {
-    node.nodeValue = translateFactoryMainText(node.nodeValue);
+    swap(() => node.nodeValue, (value) => { node.nodeValue = value; }, node.nodeValue);
   });
 
-  root.querySelectorAll("input[placeholder]").forEach((input) => {
-    input.placeholder = translateFactoryMainText(input.placeholder);
-  });
-  root.querySelectorAll("[aria-label]").forEach((element) => {
-    element.setAttribute("aria-label", translateFactoryMainText(element.getAttribute("aria-label") || ""));
-  });
-  root.querySelectorAll("[title]").forEach((element) => {
-    element.setAttribute("title", translateFactoryMainText(element.getAttribute("title") || ""));
-  });
+  const attribute = (element, name) => swap(() => element.getAttribute(name), (value) => element.setAttribute(name, value), element.getAttribute(name) || "");
+  root.querySelectorAll("input[placeholder]").forEach((input) => attribute(input, "placeholder"));
+  root.querySelectorAll("[aria-label]").forEach((element) => attribute(element, "aria-label"));
+  root.querySelectorAll("[title]").forEach((element) => attribute(element, "title"));
 }
 
-function FactoryMainLanguageLayer({ language }) {
+/**
+ * Without `scope`, the prototype's: the whole `.factory-flow` shell. With one
+ * (the live factory's /profile?lang=zh), only that element, leaving the
+ * company's own words (`keep`) alone, and every change and <html lang> undone
+ * when the language changes or the page is left (Nov 13, B10).
+ */
+function FactoryMainLanguageLayer({ language, scope = null, keep = null }) {
+  const swapped = useRef([]);
   useEffect(() => {
+    if (scope) return undefined;
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     if (language !== "zh") return;
     const frame = window.requestAnimationFrame(() => {
@@ -1235,6 +1247,25 @@ function FactoryMainLanguageLayer({ language }) {
     });
     return () => window.cancelAnimationFrame(frame);
   });
+  useEffect(() => {
+    if (!scope || language !== "zh") return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      translateFactoryMainDom(document.querySelector(scope), { keep, swapped: swapped.current });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  });
+  useEffect(() => {
+    if (!scope) return undefined;
+    const previous = document.documentElement.lang;
+    document.documentElement.lang = language === "zh" ? "zh-CN" : previous;
+    return () => {
+      document.documentElement.lang = previous;
+      swapped.current.reverse().forEach(({ read, write, original, translated }) => {
+        if (read() === translated) write(original);
+      });
+      swapped.current = [];
+    };
+  }, [scope, language]);
 
   return null;
 }
@@ -3239,7 +3270,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
 
   return (
     <main className={`factory-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
-      <FactoryMainLanguageLayer language={language} />
+      <FactoryMainLanguageLayer language={language} scope={live ? ".factory-profile-page" : null} keep={live?.ownWords} />
       <div className="factory-profile-shell">
         {live?.publicView ? <div className="factory-profile-owner-bar brand-vendor-profile-navigation"><button className="project-back-link" type="button" onClick={live.back.onClick}>‹ Back to {live.back.label}</button>{live.translationControls}</div> : <ProfileOwnerBar
           ariaLabel="Profile view mode"
