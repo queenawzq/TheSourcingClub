@@ -33,12 +33,21 @@ for (const [method, lines] of Object.entries(methodLines)) {
 const { PAYOUT_COUNTRIES } = await import("../src/shared/stripe-payout-countries.mjs");
 const { wiseCurrencyFor } = await import("../api/_wise-currencies.js");
 for (const country of ["TW", "KH"]) assert.equal(wiseCurrencyFor(country, "CNY"), null, `${country} has no Wise currency, so its bank option opens the staff form`);
+// Wise's HKD requirements offer only "hongkong" (a bank account) beside FPS; CNY
+// offers it as "To Hong Kong". Hong Kong gets Wise's form, China never that kind.
+const { chooseRecipientType } = await import("../api/_wise-requirements-shape.js");
+assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "HK")?.type, "hongkong", "Hong Kong opens Wise's form");
+assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "chinese_local_business" }, { type: "hongkong" }], "CN")?.type, "chinese_local_business");
+assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "CN"), null, "a factory outside Hong Kong never gets the Hong Kong form");
 for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "other"]) {
   const supported = PAYOUT_COUNTRIES.has(country);
   assert.equal(info.chooserMethod("bank", { supported }), supported ? "stripe" : "bank", `${country}: the recommended bank option's lines match its route`);
   assert.equal(info.chooserMethod("wise", { supported }), "bank", `${country}: International bank transfer may open the staff form`);
   assert.equal(info.chooserMethod("paypal", { supported }), "paypal");
 }
+// Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
+// withdraws, so the chooser's intro says so where that option is offered.
+assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
 for (const option of ["bank", "wise", "paypal"]) {
   assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported })} />`), `the ${option} option draws the lines of its route`);
 }
