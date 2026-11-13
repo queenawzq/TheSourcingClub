@@ -19,6 +19,10 @@
  *           ("Mark paid out by bank").
  *   paypal  PayPal Payouts: the sender (TSC) pays the payout fee
  *           (developer.paypal.com/docs/payouts/standard/reference/fees/).
+ *           Timing: staff send it from the payments board once released
+ *           (api/_provider-payouts.js), and it usually reaches the PayPal
+ *           balance within minutes; only withdrawing from PayPal to a bank
+ *           takes days. So no "few business days" here (Nov 13 tester, #3).
  */
 const SENT_AFTER_RELEASE = "Not instant: sent once released, then a few business days to arrive";
 
@@ -26,7 +30,7 @@ export const PAYOUT_METHOD_INFO = {
   stripe: ["No TSC fee per withdrawal", "Not instant: usually 1–4 business days after you withdraw"],
   wise: ["No fee: TSC pays the transfer fee", SENT_AFTER_RELEASE],
   bank: ["No TSC fee; your bank may charge to receive a transfer", SENT_AFTER_RELEASE],
-  paypal: ["No TSC fee; PayPal may charge to convert or withdraw", SENT_AFTER_RELEASE],
+  paypal: ["No TSC fee; PayPal may charge to convert or withdraw", "Not instant: sent once released"],
 };
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];

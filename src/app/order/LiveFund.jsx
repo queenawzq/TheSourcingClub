@@ -230,6 +230,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     title: checkout.title,
     amount: figures.total,
     railStep: checkout.title,
+    // The design's subtitle says funds wait for an approval. A deposit or
+    // balance does not wait (Nov 13 tester, #2); a paid step keeps the design's.
+    ...(paymentOnly ? { fundNote: paymentOnlyFundNote(figures.total, checkout.title, factory) } : {}),
   };
   const heading = { eyebrow: "FUND" };
 
@@ -408,6 +411,23 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
   );
 }
 
+/**
+ * A deposit or balance is released to the factory once funded, not after an
+ * approval, so the design's words for a paid step ("funds are only released
+ * after you approve the sample") are false for it (Nov 13 tester, #1 and #2).
+ * Live only: the prototype's own text is unchanged. Pinned in
+ * scripts/check-payout-help.mjs.
+ */
+function paymentOnlyFundNote(amount, title, factory) {
+  return `Add ${amount} to project funds for ${title.toLowerCase()}. Released to ${factory} once funded.`;
+}
+
+function paymentOnlySuccess(factory, funded) {
+  return funded
+    ? `Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive.`
+    : `Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive.`;
+}
+
 /** The design's success screen, in the words of what actually happened. */
 function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, factory, order, onBack, onMessage }) {
   // The card form is long, so paying leaves the page scrolled; the result
@@ -444,9 +464,11 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
+        ...(paymentOnly ? { description: paymentOnlySuccess(factory, false) } : {}),
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
+        ...(paymentOnly ? { description: paymentOnlySuccess(factory, true) } : {}),
       }}
       onBack={onBack}
       onNext={onBack}
