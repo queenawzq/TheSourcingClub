@@ -1824,7 +1824,7 @@ console.log("\nnotification emails");
   const callSender = async (token) => {
     const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL", "VERCEL"];
     const saved = { ...process.env };
-    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, MAILPIT_URL: "http://127.0.0.1:54324" });
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, MAILPIT_URL: MAIL });
     for (const key of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "VERCEL"]) delete process.env[key];
     let status = 0;
     let body = null;
@@ -1839,7 +1839,7 @@ console.log("\nnotification emails");
 
   (await callSender(null)).status === 401 ? ok("sending needs a sign-in") : fail("a signed-out caller ran the sender");
 
-  const mailpitUp = await fetch("http://127.0.0.1:54324/api/v1/info").then((r) => r.ok).catch(() => false);
+  const mailpitUp = MAIL && await fetch(`${MAIL}/api/v1/info`).then((r) => r.ok).catch(() => false);
   if (!mailpitUp) {
     ok("(skipped: no local Mailpit to send to)");
   } else {
@@ -1850,7 +1850,7 @@ console.log("\nnotification emails");
       ({ data: row } = await admin.from("notification_email_outbox").select("status, last_error").eq("notification_id", quoteNote?.id).single());
     }
     row?.status === "sent" ? ok("the sender delivers it") : fail(`the queued email is ${row?.status}`, row?.last_error);
-    const search = await fetch(`http://127.0.0.1:54324/api/v1/search?query=${encodeURIComponent(`to:notify-receiver-${stamp}@example.com`)}`).then((r) => r.json());
+    const search = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:notify-receiver-${stamp}@example.com`)}`).then((r) => r.json());
     const arrived = (search.messages ?? []).find((message) => message.Subject === quoteNote?.title);
     arrived ? ok("and it arrives, with the notification's title as its subject") : fail("no email arrived in Mailpit");
   }

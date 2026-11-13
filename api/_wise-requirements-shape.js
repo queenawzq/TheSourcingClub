@@ -10,12 +10,16 @@ const NEVER_ASKED = new Set(["isContractDenotedInCny"]);
 const NUMBER_KEYS = /^(accountNumber|iban|IBAN|cardNumber|clabe)$/;
 const WALLETS = /alipay|wechat|fps|email|card/i;
 
-/** The bank-to-a-company kind of recipient, whatever else Wise offers beside it. */
-export function chooseRecipientType(types) {
+/**
+ * The bank-to-a-company kind of recipient, whatever else Wise offers beside it.
+ * Wise's "hongkong" kind is a Hong Kong bank account: never right for a factory
+ * elsewhere (CNY offers it as "To Hong Kong"), and HKD's only bank kind.
+ */
+export function chooseRecipientType(types, country) {
   const banks = (Array.isArray(types) ? types : []).filter((type) => type?.type && !WALLETS.test(type.type));
   return banks.find((type) => /local_business/.test(type.type))
     ?? banks.find((type) => /business/.test(type.type))
-    ?? banks.find((type) => !/hong_?kong/i.test(type.type))
+    ?? banks.find((type) => country === "HK" || !/hong_?kong/i.test(type.type))
     ?? null;
 }
 
