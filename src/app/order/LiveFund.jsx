@@ -314,7 +314,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           // draws it; "Card details" promised a card form that was not there.
           title: addingCard ? "Card details" : "Select billing method",
           agreements: [paymentOnly
-            ? `I understand TSC pays this step to ${factory} once it is funded.`
+            ? `I understand TSC releases this step to ${factory} once it is funded, and it takes a few business days to arrive.`
             : "I understand funds are released after I approve this step."],
           agreed,
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),

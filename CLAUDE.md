@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## How we work
+
+John's rule (Nov 12): Queena owns the UI and UX, and her changes must not be overwritten by an agent.
+
+- **Change no existing UI unless the task explicitly asks for that exact change.** No adding back or removing explainer text, no restyling, no moving things. If new functionality needs UI, add the minimum in the existing style and say so in the PR, so Queena can restyle it.
+- **Queena merges her own UI PRs**, including the payments UI once Airwallex works.
+- **New functionality her UI needs goes to Youssef**, through the WhatsApp group.
+- **Rebase on the latest `main` before starting work.**
+- **Small PRs, one open at a time.**
+
 ## Commands
 
 ```bash
