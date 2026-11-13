@@ -26,9 +26,12 @@ export const READING_KEYS = {
   scope: "businessScope",
 };
 
-/** Which fields each group may edit. Anything else is refused by name. */
+/**
+ * Which fields each group may edit. Anything else is refused by name. The business scope is shown
+ * with the licence since Nov 13; Company information still takes it from a page opened before.
+ */
 export const GROUP_FIELDS = {
-  business_registration: ["number", "legalName", "legalNameEnglish", "representative", "established", "address", "activity", "accessCode", "letterNumber", "taxOffice"],
+  business_registration: ["number", "legalName", "legalNameEnglish", "representative", "established", "address", "activity", "accessCode", "letterNumber", "taxOffice", "scope"],
   company_information: ["scope", "siteAddress"],
   certification: ["certNumber", "validUntil", "holder"],
 };

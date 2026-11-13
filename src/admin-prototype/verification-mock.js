@@ -67,6 +67,7 @@ const chinaOriginal = {
           { key: "representative", label: "Legal representative", value: "张伟 (Zhang Wei)" },
           { key: "legalNameEnglish", label: "Name in English", value: "Hangzhou Qianjiang Garment Co., Ltd.", wide: true },
           { key: "address", label: "Address", value: "杭州市萧山区江东三路18号", wide: true },
+          { key: "scope", label: "Business scope on the licence", value: "服装制造；服装服饰批发；货物进出口", wide: true, multiline: true },
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
@@ -76,18 +77,17 @@ const chinaOriginal = {
       {
         key: "company_information",
         label: "Company information",
-        verdict: "Factory: licence includes garment making",
+        verdict: "Factory: licence includes manufacturing",
         why: "The licence lists garment manufacturing, the address is the licence's, and the photos are their own.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.floor, result: "own" }, { src: PHOTO.line, result: "own" }, { src: PHOTO.knit, result: "own" }, { src: PHOTO.denim, result: "unchecked" },
         ] },
         readAt: "Checked Nov 11, 10:44",
         fields: [
-          { key: "scope", label: "Business scope on the licence", value: "服装制造；服装服饰批发；货物进出口", wide: true, multiline: true },
           { key: "siteAddress", label: "Factory address", value: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", wide: true },
         ],
         checks: [
-          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes garments (服装制造)" },
+          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: licence includes manufacturing (服装制造)" },
           { key: "address", label: "Address", weight: 15, score: 90, verdict: "Same as the licence, in an industrial area", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=18%20Jiangdong%203rd%20Road%2C%20Xiaoshan%2C%20Hangzhou" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
@@ -153,6 +153,7 @@ const chinaCopy = {
           { key: "representative", label: "Legal representative", value: "李娜 (Li Na)" },
           { key: "legalNameEnglish", label: "Name in English", value: "Guangzhou Yuexiu Apparel Co., Ltd.", wide: true },
           { key: "address", label: "Address", value: "广州市白云区黄浦路112号3栋", wide: true },
+          { key: "scope", label: "Business scope on the licence", value: "针织服装制造；服装服饰零售", wide: true, multiline: true },
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 40, verdict: "Copy, not the original licence" },
@@ -169,11 +170,10 @@ const chinaCopy = {
         ] },
         readAt: "Checked Nov 12, 08:16",
         fields: [
-          { key: "scope", label: "Business scope on the licence", value: "针织服装制造；服装服饰零售", wide: true, multiline: true },
           { key: "siteAddress", label: "Factory address", value: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", wide: true, licence: "Building 3, 112 Huangpu Road, Baiyun, Guangzhou" },
         ],
         checks: [
-          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes knitwear (针织服装制造)" },
+          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: licence includes manufacturing (针织服装制造)" },
           { key: "address", label: "Address", weight: 15, score: 70, verdict: "Building differs from the licence", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=112%20Huangpu%20Road%2C%20Baiyun%2C%20Guangzhou" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
@@ -233,6 +233,7 @@ const turkeyTrader = {
           { key: "legalName", label: "Legal name", value: "Merter Tekstil Toptan Ticaret Ltd. Şti.", wide: true },
           { key: "activity", label: "Main activity", value: "Toptan giyim ticareti" },
           { key: "address", label: "Address", value: "Merter Mah., Güngören, İstanbul" },
+          { key: "scope", label: "Activity on the tax plate", value: "Toptan giyim ticareti (wholesale of clothing)", wide: true, multiline: true },
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
@@ -242,7 +243,7 @@ const turkeyTrader = {
       {
         key: "company_information",
         label: "Company information",
-        verdict: "Wholesale trade only, no manufacturing",
+        verdict: "Not a factory: wholesale trade only",
         why: "The tax plate says “Toptan giyim ticareti” (wholesale of clothing), and no photo shows their own factory.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.denim, result: "elsewhere", where: "alibaba.com" },
@@ -252,11 +253,10 @@ const turkeyTrader = {
         ] },
         readAt: "Checked Nov 11, 16:03",
         fields: [
-          { key: "scope", label: "Activity on the tax plate", value: "Toptan giyim ticareti (wholesale of clothing)", wide: true, multiline: true },
           { key: "siteAddress", label: "Factory address", value: "Merter, Güngören, Istanbul", wide: true },
         ],
         checks: [
-          { key: "scope", label: "Factory or trader", weight: 10, score: 10, verdict: "Wholesale trade only, no manufacturing" },
+          { key: "scope", label: "Factory or trader", weight: 10, score: 10, verdict: "Not a factory: wholesale trade only" },
           { key: "address", label: "Address", weight: 15, score: 30, verdict: "District only, no street or building", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Merter%2C%20G%C3%BCng%C3%B6ren%2C%20Istanbul" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
@@ -330,6 +330,7 @@ const portugalFactory = {
           { key: "established", label: "Registered", value: "2012-03-08" },
           { key: "activity", label: "Activity code (CAE)", value: "14130 · Other outerwear", wide: true },
           { key: "address", label: "Registered address", value: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", wide: true },
+          { key: "scope", label: "Activity on the certificate", value: "CAE 14130 · Manufacture of other outerwear", wide: true, multiline: true },
         ],
         checks: [
           { key: "licence", label: "Registration certificate", weight: 30, score: 70, verdict: "Read; legal name looks cut short", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
@@ -350,11 +351,10 @@ const portugalFactory = {
         ] },
         readAt: "Checked Nov 11, 14:21",
         fields: [
-          { key: "scope", label: "Activity on the certificate", value: "CAE 14130 · Manufacture of other outerwear", wide: true, multiline: true },
           { key: "siteAddress", label: "Factory address", value: "Rua da Igreja 214, Arcozelo, Barcelos", wide: true },
         ],
         checks: [
-          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Makes outerwear (CAE 14130)" },
+          { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: manufacturing activity code (CAE 14130)" },
           { key: "address", label: "Address", weight: 15, score: 55, verdict: "Looks like a home, not a factory site", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Rua%20da%20Igreja%20214%2C%20Arcozelo%2C%20Barcelos" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],

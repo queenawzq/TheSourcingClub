@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, certificateHolder, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy,
+  SCORES, lifted, reasonIsEarlier, registryCheck, approvalBlockRow, approvalBlockWords, certificateNumber, certificateHolder, scoreGroup as groupScore, watermarkWords, photosCheck, scoreGroup, scoreOverall, scoreVerification, standingFor, tierFor, weakestCheck, namesPartlyMatch, licenceCheck, renamedWhy, scopeCheck,
 } from "../src/shared/verification-score.mjs";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
@@ -139,6 +139,28 @@ console.log("fix round 4");
   // 9. After Couldn't check the side panel does not say "found no match".
   const could = approvalBlockWords("no_check", { current: { result: "could_not_check", source: "qcc" } });
   check(!/found no match/.test(could) && /couldn't check/i.test(could), `Couldn't check: ${could}`);
+}
+console.log("Nov 13");
+{
+  // Factory or trader says plainly whether it is a factory; the scope read sits with the licence.
+  const making = scopeCheck({ reading: { details: { tradingScope: { read: true, quote: "服装制造" } } }, level: { level: "high" }, country: "CN" });
+  check(making.verdict === "Factory: licence includes manufacturing (服装制造)", `making: ${making.verdict}`);
+  const trading = scopeCheck({ reading: { details: { tradingScope: { read: true, trading: true, quote: "服装批发" } } }, level: { level: "low" }, country: "CN" });
+  check(trading.verdict === "Not a factory: trading only (服装批发)", `trading: ${trading.verdict}`);
+  const wholesale = scopeCheck({ reading: { details: { tradingScope: { read: true, trading: true } } }, level: { level: "low" }, country: "TR" });
+  check(wholesale.verdict === "Not a factory: wholesale trade only", `Türkiye wholesale: ${wholesale.verdict}`);
+  const input = (writtenFor) => ({
+    detail: { title: "杭州钱江服装有限公司", registration: { country: "CN", number: "91330109MA2B3K7Q4L" } },
+    extra: { registrationFiles: [{ id: "f" }], signals: [{ kind: "document_reading", subjectId: "f", automatic: true, details: { fileId: "f", extracted: { legalName: "杭州钱江服装有限公司", businessScope: "服装批发；货物进出口" }, tradingScope: { read: true, trading: true, quote: "服装批发" } } }] },
+    rules: {},
+    reasons: [{ checkKey: "trading_scope", note: "sews in its own unit", at: "2026-11-12T10:00:00Z", by: "Staff", writtenFor }],
+  });
+  const old = scoreVerification(input("Trading only (服装批发)"), { timeZone: "UTC" });
+  const scope = old.groups[1].checks.find((c) => c.key === "scope");
+  check(scope.verdict.startsWith("Not a factory") && scope.score === 60 && !scope.reason?.earlier && !("formerVerdict" in scope), `a reason written for the old words still lifts (${scope.score}, ${scope.verdict})`);
+  const other = scoreVerification(input("Can't tell from the licence"), { timeZone: "UTC" }).groups[1].checks.find((c) => c.key === "scope");
+  check(other.reason?.earlier && other.score === 10, "a reason for another verdict still does not");
+  check(old.groups[0].fields.some((f) => f.key === "scope" && f.label === "Business scope on the licence") && !old.groups[1].fields.some((f) => f.key === "scope"), "the business scope is under Business registration, not Company information");
 }
 check(empty.groups.map((g) => g.key).join() === "business_registration,company_information,certification", "three groups, in order");
 check(!JSON.stringify(empty).includes("Maison") && !JSON.stringify(empty).includes("Qianjiang"), "no mock constants");

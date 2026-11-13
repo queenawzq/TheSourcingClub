@@ -385,6 +385,19 @@ function registrationFields({ reading, detail, country, timeZone, documentDiffer
   return reading ? fields : [];
 }
 
+/**
+ * "Business scope on the licence": shown with the licence it was read from (Nov 13, Queena), not
+ * under Company information. A Turkish "Main activity" field that already shows the same words is
+ * not repeated.
+ */
+function scopeField({ reading, country }) {
+  const x = reading?.details?.extracted ?? {};
+  const scopeText = String(x.businessScope ?? "").trim() || (x.activityCodes ?? []).join(" · ");
+  if (!reading || !scopeText) return [];
+  if (country === "TR" && ((x.activityCodes ?? []).join(" · ") || String(x.businessScope ?? "")) === scopeText) return [];
+  return [{ key: "scope", label: country === "TR" ? "Activity on the tax plate" : country === "PT" ? "Activity on the certificate" : "Business scope on the licence", value: scopeText, wide: true, multiline: true, editable: true }];
+}
+
 /* ------------------------------------------------------------ company information */
 
 export function scopeCheck({ reading, level, country }) {
@@ -393,10 +406,22 @@ export function scopeCheck({ reading, level, country }) {
   if (!reading) return { ...base, score: null, verdict: "Licence not read yet", canReason: false };
   if (!scope?.read || scope.recognised === false || level?.level === "unknown") return { ...base, score: null, verdict: "Can't tell from the licence", canReason: true };
   const quote = scope.quote ? ` (${scope.quote})` : "";
+  // Nov 13 (Queena): the verdict says plainly whether it is a factory, then the evidence.
+  // `formerVerdict`: the words before Nov 13, so a reason written for them keeps holding.
   if (level?.level === "low" || scope.trading) {
-    return { ...base, score: SCORES.scope.trading, verdict: country === "TR" || country === "PT" ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`, canReason: true, trading: true };
+    const wholesale = country === "TR" || country === "PT";
+    return {
+      ...base, score: SCORES.scope.trading, canReason: true, trading: true,
+      verdict: wholesale ? "Not a factory: wholesale trade only" : `Not a factory: trading only${quote}`,
+      formerVerdict: wholesale ? "Wholesale trade only, no manufacturing" : `Trading only${quote}`,
+    };
   }
-  return { ...base, score: SCORES.scope.making, verdict: scope.makingFrom === "codes" ? `Making activity code${quote}` : `Licence includes making${quote}`, short: "licence includes making", canReason: true };
+  const codes = scope.makingFrom === "codes";
+  return {
+    ...base, score: SCORES.scope.making, canReason: true, short: "licence includes manufacturing",
+    verdict: codes ? `Factory: manufacturing activity code${quote}` : `Factory: licence includes manufacturing${quote}`,
+    formerVerdict: codes ? `Making activity code${quote}` : `Licence includes making${quote}`,
+  };
 }
 
 const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", postcode: "Postcode" };
@@ -679,13 +704,14 @@ export function scoreVerification(input, { timeZone } = {}) {
   const withReason = (check) => {
     const reason = reasons[check.key];
     if (!reason || check.canReason === false) return check;
-    if (reasonIsEarlier(reason, check.verdict)) {
+    // A reason written for the same verdict in its earlier words (`formerVerdict`) is still this verdict's.
+    if (reasonIsEarlier(reason, check.verdict) && !(check.formerVerdict && !reasonIsEarlier(reason, check.formerVerdict))) {
       // Written for another verdict: shown grey with what it was for, lifts nothing.
       return { ...check, reason: { text: reason.text, by: reason.by, at: reason.at, earlier: true, for: reason.writtenFor } };
     }
     return { ...check, score: lifted(check.score, reason), reason: { text: reason.text, by: reason.by, at: reason.at, ...(reason.writtenFor ? { for: reason.writtenFor } : {}) } };
   };
-  const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt"].includes(k)));
+  const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt", "formerVerdict"].includes(k)));
 
   // Business registration
   const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
@@ -715,7 +741,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAt: reading ? `Read ${stampWords(reading.checkedAt, timeZone)}` : "",
     readAtIso: reading?.checkedAt ?? null,
     stale: staleWords,
-    fields: registrationFields({ reading, detail, country, timeZone, documentDiffers }),
+    fields: [...registrationFields({ reading, detail, country, timeZone, documentDiffers }), ...scopeField({ reading, country })],
     checks: brChecks.map(clean),
   };
 
@@ -729,8 +755,6 @@ export function scoreVerification(input, { timeZone } = {}) {
   const ciChecks = [scope, address, photos];
   const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
-  const x = reading?.details?.extracted ?? {};
-  const scopeText = String(x.businessScope ?? "").trim() || (x.activityCodes ?? []).join(" · ");
   const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
     key: "company_information",
@@ -743,7 +767,6 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAtIso: ciStamp,
     stale: null,
     fields: [
-      ...(scopeText ? [{ key: "scope", label: country === "TR" ? "Activity on the tax plate" : country === "PT" ? "Activity on the certificate" : "Business scope on the licence", value: scopeText, wide: true, multiline: true, editable: true }] : []),
       ...(typedAddress ? [{
         key: "siteAddress", label: "Factory address", value: typedAddress, wide: true, editable: true,
         ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? {
