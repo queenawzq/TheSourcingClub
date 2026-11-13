@@ -83,7 +83,7 @@ export const reEnter = (label) => `Re-enter ${/^[A-Z][a-z]/.test(label) ? label[
 function defaultRefusal(failure) {
   const refused = failure?.cause ?? failure;
   if (refused?.code !== "22023") return failure;
-  return new Error(/pending payout/i.test(refused.message ?? "") ? "You can change your default once the current payout finishes." : refused.message);
+  return new Error(/pending payout/i.test(refused.message ?? "") ? "A payout request is still being checked. Try changing your default once it is reconciled." : refused.message);
 }
 
 const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });

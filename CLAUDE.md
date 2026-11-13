@@ -864,3 +864,5 @@ hour. That now only affects password resets rather than every sign-in, but
 configuring custom SMTP (Resend, Postmark, SES) still fixes both at once.
 
 Push auth settings to the hosted project with `./scripts/push-config.sh --project-ref <ref>`, which strips the template block the free tier rejects. Once SMTP is configured, delete that stripping and use `supabase config push` directly.
+
+**Payout defaults during transfers (Nov 12).** A known Wise/PayPal transfer keeps its account_id, paid_to and provider_ref while a new bank/PayPal default applies to other payments. Do not reinstate a company-wide lock for a transfer with a known provider reference. Unknown provider outcomes and Stripe release claims still lock routing until reconciled; switching manual payouts to Stripe while money is owed remains refused. An active transfer’s account and stored number cannot be edited or removed, even after another account becomes default.
