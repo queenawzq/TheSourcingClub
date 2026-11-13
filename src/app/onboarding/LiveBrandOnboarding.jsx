@@ -27,6 +27,7 @@ import { BrandOnboarding, onboardingFieldName } from "../../prototype/main.jsx";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, getSelectedTerms, resubmitForReview, saveBrandProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import { useUploadOnce } from "./upload-once.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
@@ -38,7 +39,7 @@ import {
   NUMERIC_COLUMNS,
   parsePriceRange,
 } from "../../lib/domain/brand-profile-fields.js";
-import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
@@ -88,6 +89,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const signable = useSignableTerms("terms_brand");
+  const uploads = useUploadOnce(step);
 
   // Already signed? Looked up by the version on screen, once it has loaded, so
   // a returning company sees its read-only signature rather than a blank one.
@@ -196,6 +198,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
    */
   async function removeDocument(doc) {
     await deleteDocument(doc);
+    uploads.forget(doc);
     const field = FIELD_FOR_KIND[doc.kind] ?? Object.keys(UPLOAD_KINDS).find((key) => (documents[key] ?? []).some((row) => row.id === doc.id));
     const kind = UPLOAD_KINDS[field];
     if (!field || !kind) return;
@@ -240,10 +243,10 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
     for (const [field, kind] of Object.entries(UPLOAD_KINDS)) {
       const chosen = submitted[field];
       const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
-      for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
+      for (const file of files) await uploads.upload({ orgId: org.id, kind, file });
       if (files.length) {
-        flags[UPLOADED_FLAG[kind]] = String((Number(values[UPLOADED_FLAG[kind]]) || 0) + files.length);
         const fresh = await listDocuments(org.id, kind);
+        flags[UPLOADED_FLAG[kind]] = String(fresh.length);
         setDocuments((current) => ({ ...current, [field]: fresh }));
       }
     }

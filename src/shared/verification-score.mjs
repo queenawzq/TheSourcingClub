@@ -767,7 +767,8 @@ export function scoreVerification(input, { timeZone } = {}) {
     key: "company_information",
     label: "Company information",
     verdict: ciVerdict.verdict,
-    why: whyFrom(ciChecks, ciVerdict.lead),
+    // All good, the verdict already says "Factory: …": the scope is not said twice.
+    why: whyFrom(ciChecks, ciVerdict.lead ?? scope),
     checking: Boolean(input?.pending?.photos),
     evidence: tiles.length ? { kind: "photos", photos: tiles } : { kind: "none" },
     readAt: ciStamp ? `Checked ${stampWords(ciStamp, timeZone)}` : "",
