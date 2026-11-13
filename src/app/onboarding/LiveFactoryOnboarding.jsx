@@ -21,9 +21,11 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
+import { useUploadOnce } from "./upload-once.js";
 import { saveEmailLanguage } from "../../lib/email-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import {
   addCertification as claimCertification,
   attachCertificate,
@@ -174,6 +176,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     || window.localStorage.getItem("factoryLang") === "zh" ? "zh" : "en"));
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
+  const uploads = useUploadOnce(step);
 
   // Already signed? Looked up by the version on screen, once it has loaded, so
   // a returning company sees its read-only signature rather than a blank one.
@@ -429,6 +432,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
    */
   async function removeDocument(doc) {
     await deleteDocument(doc);
+    uploads.forget(doc);
     const field = FIELD_FOR_KIND[doc.kind];
     if (!field) return;
     const fresh = await listDocuments(org.id, doc.kind);
@@ -475,7 +479,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     const registrationFiles = Array.isArray(registration) ? registration : registration instanceof File ? [registration] : [];
     if (registrationFiles.length) {
       for (const file of registrationFiles) {
-        await uploadDocument({ orgId: org.id, kind: "business_registration", file });
+        await uploads.upload({ orgId: org.id, kind: "business_registration", file });
       }
       const stored = await listDocuments(org.id, "business_registration");
       setRegistrationFileName(stored.length > 1 ? `${stored.length} files uploaded` : stored[0]?.file_name ?? "");
@@ -488,19 +492,19 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const chosen = submitted[field];
       const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
       if (!files.length) continue;
-      for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
+      for (const file of files) await uploads.upload({ orgId: org.id, kind, file });
       evidenceUploaded = true;
       const fresh = await listDocuments(org.id, kind);
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
     // Logo and samples are what a brand looks at, so they are public by kind.
-    const uploads = {};
+    const flags = {};
     const refresh = [];
     const logo = submitted["factory-logo"];
     if (logo instanceof File) {
-      await uploadDocument({ orgId: org.id, kind: "logo", file: logo });
-      uploads["uploaded-logo"] = "1";
+      await uploads.upload({ orgId: org.id, kind: "logo", file: logo });
+      flags["uploaded-logo"] = "1";
       setDocuments((current) => ({ ...current, "factory-logo": [] }));
       refresh.push(["factory-logo", "logo"]);
     }
@@ -509,17 +513,17 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     // as the same File.
     const walkthrough = submitted["factory-walkthrough"];
     if (walkthrough instanceof File) {
-      await uploadDocument({ orgId: org.id, kind: "walkthrough", file: walkthrough });
+      await uploads.upload({ orgId: org.id, kind: "walkthrough", file: walkthrough });
       refresh.push(["factory-walkthrough", "walkthrough"]);
     }
 
     const samples = submitted["factory-samples"];
     if (Array.isArray(samples) && samples.length) {
-      for (const file of samples) await uploadDocument({ orgId: org.id, kind: "product_image", file });
-      uploads["uploaded-samples"] = String((Number(values["uploaded-samples"]) || 0) + samples.length);
+      for (const file of samples) await uploads.upload({ orgId: org.id, kind: "product_image", file });
+      flags["uploaded-samples"] = String((await listDocuments(org.id, "product_image")).length);
       refresh.push(["factory-samples", "product_image"]);
     }
-    if (Object.keys(uploads).length) setValues((current) => ({ ...current, ...uploads }));
+    if (Object.keys(flags).length) setValues((current) => ({ ...current, ...flags }));
     for (const [field, kind] of refresh) {
       const fresh = await listDocuments(org.id, kind);
       setDocuments((current) => ({ ...current, [field]: fresh }));
@@ -749,6 +753,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
+      // What staff asked for, on the summary the factory lands on. The email
+      // is not the only copy: an address that cannot receive it (Nov 13)
+      // otherwise left the factory with no sign of the request.
+      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       completion={reviewCompletion(review, {
         language: language,
         onUpdate: () => {

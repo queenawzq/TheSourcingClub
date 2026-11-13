@@ -3543,7 +3543,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
         <div className="brand-context-upload-grid">
           <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg" optional name="brand-logo" documents={documents["brand-logo"] ?? []} onDeleteDocument={onDeleteDocument} />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" optional name="brand-images" documents={documents["brand-images"] ?? []} onDeleteDocument={onDeleteDocument} />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG or JPG" fileAccept=".png,.jpg,.jpeg,image/png,image/jpeg" optional name="brand-images" documents={documents["brand-images"] ?? []} onDeleteDocument={onDeleteDocument} />
         </div>
       </div>
     );
