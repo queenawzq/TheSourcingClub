@@ -58,6 +58,7 @@ import {
 } from "./order-view.js";
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 /** Approval depends on step state and funding, never on posted updates. */
 const approvable = (milestone) =>
@@ -662,7 +663,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     return (
       <>
       <FactoryProjectProgressDetail
-        language="en"
+        language={getUiLanguage()}
         onBack={() => navigate("/orders")}
         order={header}
         milestones={shaped}

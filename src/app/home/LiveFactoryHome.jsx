@@ -33,6 +33,7 @@ import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -244,7 +245,7 @@ export default function LiveFactoryHome({ org, profile }) {
         <FactoryDashboardPage
           companyType={isTrading ? "trading" : "factory"}
           dashboardState={layout}
-          language="en"
+          language={getUiLanguage()}
           orgName={org.name}
           unreadCount={n(unreadNotifications)}
           onOpenActivity={openActivity}
@@ -349,7 +350,7 @@ export default function LiveFactoryHome({ org, profile }) {
     <>
     {drawer && (
       <FactoryCapacityDrawer
-        language="en"
+        language={getUiLanguage()}
         initial={drawer.initial}
         months={drawer.window.map(SHORT_MONTH)}
         onClose={() => setDrawer(null)}
@@ -360,7 +361,7 @@ export default function LiveFactoryHome({ org, profile }) {
       companyType={isTrading ? "trading" : "factory"}
       dashboardState={layout}
       notice={<HomeNotice text={notice} />}
-      language="en"
+      language={getUiLanguage()}
       orgName={org.name}
       creditBalance={credits ?? 0}
       unreadCount={n(unreadNotifications)}

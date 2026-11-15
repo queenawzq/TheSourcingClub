@@ -15,6 +15,8 @@ import { createRoot } from "react-dom/client";
 import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { keepEmailLanguage } from "../lib/email-language.js";
+import { syncUiLanguage, useUiLanguage } from "../lib/ui-language.js";
+import FactoryLanguageLayer from "./FactoryLanguageLayer.jsx";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
@@ -949,6 +951,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
   }, []);
 
   const paths = isFactory ? FACTORY_NAV_PATHS : BRAND_NAV_PATHS;
+  const language = useUiLanguage();
   const unread = useUnreadMessages(activeOrg.id);
   const items = (isFactory ? factoryNavItems : brandNavItems)
     .filter((item) => paths[item.label])
@@ -959,6 +962,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
 
   return (
     <div className={`app-shell${collapsed ? " nav-collapsed" : ""}${isFactory ? " factory-flow" : ""}`}>
+      {isFactory ? <FactoryLanguageLayer language={language} /> : null}
       <PrototypeSideNav
         account={{ initials: initialsOf(activeOrg.name), name: activeOrg.name, type: accountType }}
         active={activeNavFor(path, isFactory)}
@@ -1010,7 +1014,17 @@ function Shell() {
   // browser's zone is saved once per sign-in (a no-op when unchanged).
   useEffect(() => { saveMyTimeZone(); }, [user?.id]);
   // Emails are written in the language this person chose on the pages (中文 or English).
-  useEffect(() => keepEmailLanguage(user?.id), [user?.id]);
+  // A factory's person keeps one language for the screens and the emails
+  // (src/lib/ui-language.js), settled below once the company is read.
+  useEffect(() => (isFactory ? undefined : keepEmailLanguage(user?.id)), [user?.id, isFactory]);
+  const [languageSettled, setLanguageSettled] = useState(false);
+  const onboarding = profile === undefined ? null : !profile?.onboarding_completed_at;
+  useEffect(() => {
+    if (!isFactory || onboarding === null) return undefined;
+    let cancelled = false;
+    syncUiLanguage(user?.id, { fromSignUp: onboarding }).finally(() => { if (!cancelled) setLanguageSettled(true); });
+    return () => { cancelled = true; };
+  }, [isFactory, onboarding, user?.id]);
 
   const loadProfile = useCallback(() => {
     const load = isFactory ? getFactoryProfile : getBrandProfile;
@@ -1055,7 +1069,7 @@ function Shell() {
     );
   }
 
-  if (profile === undefined) return <Loading label={`Loading ${activeOrg.name}…`} />;
+  if (profile === undefined || (isFactory && !languageSettled)) return <Loading label={`Loading ${activeOrg.name}…`} />;
 
   if (!profile?.onboarding_completed_at) {
     const Onboarding = isFactory ? FactoryOnboarding : BrandOnboarding;

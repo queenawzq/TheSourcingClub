@@ -13,6 +13,7 @@ import { createLiveAdapter } from "../live-adapter.js";
 import { initials } from "./order-view.js";
 import useOrderCancel from "./useOrderCancel.jsx";
 import useOrderTabs from "./useOrderTabs.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 function Orders({ org, user, onViewOrder }) {
   const { data, loading, error, reload } = useOrders();
@@ -27,7 +28,7 @@ function Orders({ org, user, onViewOrder }) {
   return (
     <>
       <FactoryProjectsPage
-        language="en"
+        language={getUiLanguage()}
         live={{ projects, loading, error, reload, tabStore, cancelStore }}
         onViewProject={onViewOrder}
       />

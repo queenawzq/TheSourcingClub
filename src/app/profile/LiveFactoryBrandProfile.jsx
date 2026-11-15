@@ -15,6 +15,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { factoryBrandView } from "./brand-profile-view.js";
 import { loadBrandProfileForFactory } from "./load-profile.js";
 import "./profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 /** Where it was opened → the back link's words, and where it goes when there is no history. */
 const BACK = {
@@ -97,7 +98,7 @@ export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = 
     <>
       <FactoryBrandPublicProfilePage
         brandName={parts.data?.name}
-        language="en"
+        language={getUiLanguage()}
         onBack={back}
         live={{
           ...factoryBrandView(parts),

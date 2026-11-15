@@ -40,6 +40,7 @@ import { formatRange, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
@@ -362,7 +363,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   return (
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-      language="en"
+      language={getUiLanguage()}
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",

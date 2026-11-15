@@ -2518,6 +2518,10 @@ export function SettingsScreen({
   saveLocked = "",
   notificationEmailsLocked = "",
   onChangePassword,
+  // Live only, a factory's: the person's own language (English or 中文), the
+  // field the onboarding's Basics step draws. The prototype passes none.
+  language = "en",
+  onLanguageChange,
   // Live only: what each role may do is fixed (owners everything), so the
   // ticks are shown, not edited, and this line says why.
   permissionsNote = "",
@@ -2759,6 +2763,21 @@ export function SettingsScreen({
                   <span>Location</span>
                   <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
                 </label>
+                {onLanguageChange ? (
+                  <label className="tsc-settings-language">
+                    <span>Language</span>
+                    <select
+                      name="account-language"
+                      value={language}
+                      onChange={(event) => Promise.resolve(onLanguageChange(event.target.value))
+                        .then(() => setSaveNotice({ text: "Changes saved" }))
+                        .catch((failure) => setSaveNotice({ error: true, text: failure.message || "Changes could not be saved" }))}
+                    >
+                      <option value="en">English</option>
+                      <option value="zh">中文</option>
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </section>
 

@@ -33,6 +33,7 @@ import { STRIPE_PUBLISHABLE_KEY, withCardAdvice } from "../../lib/domain/stripe.
 import { formatMoney } from "../../lib/money.js";
 import "./fund.css";
 import "./credit-purchase.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 let stripePromise = null;
 const stripeClient = () => {
@@ -312,7 +313,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
   // tall as the page, and the dialog was centred below the fold.
   return createPortal((
     <CreditPurchaseModal
-      language="en"
+      language={getUiLanguage()}
       className="tsc-credit-buy-modal"
       layerClassName="factory-invite-modal-layer"
       packs={packs ?? []}

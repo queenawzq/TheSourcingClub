@@ -57,6 +57,7 @@ import { matchFit } from "./match-fit.js";
 import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -307,7 +308,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         {gate}
         <FactoryProjectDetail
           companyType={isTrading ? "trading" : "factory"}
-          language="en"
+          language={getUiLanguage()}
           project={project}
           brief={rfq.brief ?? ""}
           details={{
@@ -449,7 +450,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // first render, and they load after the quote: remount when they arrive.
         key={`materials-${materialLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={getUiLanguage()}
         project={project}
         // This vendor's own quote, read back: the terms it sent and the
         // sample plan it priced, not the design's example.

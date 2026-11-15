@@ -21,6 +21,7 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
 import useFactoryRfqOrganization from "./useFactoryRfqOrganization.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -155,7 +156,7 @@ export default function LiveFactoryRfqs({ org }) {
 
   return (
     <FactoryRfqsPage
-      language="en"
+      language={getUiLanguage()}
       rfqsByTab={tabs}
       organization={organization}
       onBrowseRfqs={() => navigate("/browse")}

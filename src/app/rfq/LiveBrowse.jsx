@@ -37,6 +37,7 @@ import {
   toggleFilter,
 } from "./rfq-browse-view.js";
 import "../browse/browse.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const FILTER_KINDS = ["product_category", "price_point", "quantity_band", "region", "client_trust_band", "timeline_band", "certification", "sourcing_region"];
 
@@ -207,7 +208,7 @@ export default function LiveBrowse({ org, profile }) {
       )}
       <FactoryBrowsePage
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={getUiLanguage()}
         projects={projects}
         emptyNote={rfqs.length ? "No open requests match these filters." : "No open requests right now."}
         live={{

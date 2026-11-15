@@ -38,6 +38,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 // The same day format as the quote-sent screen, so "Quote due" reads alike.
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -145,7 +146,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
     <>
     <FactoryReviewTotal
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-      language="en"
+      language={getUiLanguage()}
       creditBalance={balance}
       creditCost={cost}
       quoteType={null}
