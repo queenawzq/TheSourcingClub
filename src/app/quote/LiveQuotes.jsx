@@ -69,6 +69,7 @@ export default function LiveQuotes({ rfqId }) {
       onOpenProfile: () => navigate(`/factories/${raw.factory_org_id}?from=quotes`),
       initials: view.initials,
       name: view.name,
+      nameNode: view.nameNode,
       // As the vendor typed it on their profile ("Porto, Portugal").
       location: raw.orgs?.factory_profiles?.location ?? "",
       // The badge says TSC has checked this vendor, so only a verified one gets it.

@@ -12,6 +12,8 @@ import { listRfqDocuments } from "../../lib/domain/documents.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { describeQuote } from "./quote-view.js";
+import { useVendorNames } from "../vendor-names.jsx";
+import { initialsOf } from "../profile/factory-profile-view.js";
 import { dateFrom } from "../../lib/dates.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 
@@ -95,5 +97,18 @@ export function useQuoteReview(rfqId) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { state, error, reload: load };
+  // Each vendor's name in English where written in Chinese, the original
+  // under it (vendor-names.jsx): the same name as on Browse and the order.
+  const vendorNames = useVendorNames((state?.quotes ?? []).map((quote) => ({ id: quote.raw.factory_org_id, name: quote.view.name })));
+  const named = state && {
+    ...state,
+    quotes: state.quotes.map((quote) => {
+      const id = quote.raw.factory_org_id;
+      const english = vendorNames.text(id, quote.view.name);
+      if (english === quote.view.name) return quote;
+      return { ...quote, view: { ...quote.view, name: english, initials: initialsOf(english), nameNode: vendorNames.node(id, quote.view.name) } };
+    }),
+  };
+
+  return { state: named, error, reload: load };
 }

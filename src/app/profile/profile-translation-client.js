@@ -17,6 +17,11 @@ export function requestProfileTranslation(orgId, signal) {
   return post({ orgId }, signal);
 }
 
+/** Vendors' company names, in one request: `{ [orgId]: { source, english } }`. */
+export async function requestVendorNames(orgIds, signal) {
+  return (await post({ orgIds, scope: "names" }, signal)).byOrg ?? {};
+}
+
 /** Browse and dashboard cards, in one request (B7): `{ [orgId]: { translations, incomplete } }`. */
 export async function requestCardTranslations(orgIds, signal) {
   return (await post({ orgIds, scope: "card" }, signal)).byOrg ?? {};

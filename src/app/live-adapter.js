@@ -15,6 +15,8 @@ import { listRfqs } from "../lib/domain/rfq.js";
 import { listThreads } from "../lib/domain/message.js";
 import { formatMoney, formatRange } from "../lib/money.js";
 import { dateFrom } from "../lib/dates.js";
+import React from "react";
+import { LiveVendorName, vendorNameText } from "./vendor-names.jsx";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -44,7 +46,9 @@ function progressPosition(order) {
 
 /** What the other side is called, from the viewer's point of view. */
 function counterparty(order, isFactory) {
-  return (isFactory ? order.brand?.name : order.factory?.name) ?? "—";
+  if (isFactory) return order.brand?.name ?? "—";
+  // A brand reads a vendor's name in English where it has one (vendor-names.jsx).
+  return order.factory?.name ? vendorNameText(order.factory_org_id, order.factory.name) : "—";
 }
 
 /**
@@ -155,6 +159,7 @@ export function toProjectCard(order, isFactory) {
     title: order.rfqs?.title ?? order.order_number,
     rfqId: order.rfq_id ?? null,
     factory: counterparty(order, isFactory),
+    ...(!isFactory && order.factory?.name ? { factoryNode: React.createElement(LiveVendorName, { id: order.factory_org_id, name: order.factory.name, inline: true }) } : {}),
     location: order.order_number,
     started: order.activated_at
       ? `Started ${MONTH_DAY.format(new Date(order.activated_at))}`

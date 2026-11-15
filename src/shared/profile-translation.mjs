@@ -7,9 +7,10 @@
  * asks for exactly the strings the server translates. Pure: no network, no
  * database; the route passes in the translator and the cache.
  *
- * The company name is NOT translated (Nov 13, B5): the brand sees the name the
- * company gave on every screen (Saved, quotes, orders, conversations), so
- * it can recognise the same company everywhere.
+ * The company name is not part of a profile's strings: it is translated on
+ * its own, per company (`scope: "names"`, src/app/vendor-names.jsx), so a
+ * brand reads the same English name, with the name as written under it, on
+ * every screen (Browse, Saved, quotes, orders, conversations).
  */
 
 /** Text in a script a brand reading English cannot read: Chinese, Japanese, Korean. */

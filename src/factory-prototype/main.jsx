@@ -3516,7 +3516,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </div>
             <div>
               <div className="factory-profile-title-row">
-                <h1 data-no-translate>{data.name}</h1>
+                <h1 data-no-translate>{live?.nameNode ?? data.name}</h1>
                 {(!live || live.verifiedIcon) && (
                   <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
                     <img src={`/assets/prototype-icons/${live ? live.verifiedIcon : "basic"}.svg`} alt="" />

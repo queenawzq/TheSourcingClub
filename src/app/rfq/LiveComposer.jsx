@@ -32,6 +32,7 @@ import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "
 import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { useVendorNames } from "../vendor-names.jsx";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
@@ -189,6 +190,11 @@ export default function LiveComposer({ org, rfqId }) {
   // A vendor's profile, opened from the invite step: shown in place of it, so
   // the selection survives the visit.
   const [profileOf, setProfileOf] = useState(null);
+  // Vendors' names in English where written in Chinese (vendor-names.jsx).
+  const vendorNames = useVendorNames([
+    ...[...vendors, ...excludedVendors].map((vendor) => ({ id: vendor.org_id, name: vendor.orgs?.name })),
+    ...(reorder ? [{ id: reorder.factoryOrgId, name: reorder.factoryName }] : []),
+  ]);
 
   const kinds = useMemo(() => KINDS, []);
 
@@ -704,7 +710,7 @@ export default function LiveComposer({ org, rfqId }) {
         setProfileOf(vendor.org_id);
         window.scrollTo({ top: 0 });
       },
-    }));
+    })).map(vendorNames.card);
 
     return (
       <FlowShell
@@ -727,7 +733,7 @@ export default function LiveComposer({ org, rfqId }) {
             <section className="matching-panel" aria-label="Matching for this request">
               {startedFrom && (
                 <p className="matching-callout is-warning" role="status">
-                  {startedFrom.orgs?.name} can't be invited to this request: {startedFrom.matching?.failed?.map(plainReason).join("; ")}.
+                  {vendorNames.text(startedFrom.org_id, startedFrom.orgs?.name)} can't be invited to this request: {startedFrom.matching?.failed?.map(plainReason).join("; ")}.
                   {" "}Go back to change the request if you want to include it.
                 </p>
               )}
@@ -742,8 +748,8 @@ export default function LiveComposer({ org, rfqId }) {
                   <div className="matching-group-body">
                     {excludedVendors.map((v) => (
                       <div key={v.org_id}>
-                        <strong>{v.orgs?.name}</strong>
-                        <FactoryMatch match={v.matching} name={v.orgs?.name} />
+                        <strong>{vendorNames.node(v.org_id, v.orgs?.name)}</strong>
+                        <FactoryMatch match={v.matching} name={vendorNames.text(v.org_id, v.orgs?.name)} />
                       </div>
                     ))}
                   </div>
@@ -771,14 +777,14 @@ export default function LiveComposer({ org, rfqId }) {
                 onChange={(e) => { setMatchingAcknowledged(e.target.checked); setError(null); }}
               />
               {unresolved.length === 1
-                ? `${unresolved[0].orgs?.name} has details still to confirm. I'll confirm them with the factory before going ahead.`
+                ? `${vendorNames.text(unresolved[0].org_id, unresolved[0].orgs?.name)} has details still to confirm. I'll confirm them with the factory before going ahead.`
                 : `${unresolved.length} selected factories have details still to confirm. I'll confirm them with each factory before going ahead.`}
             </label>
           );
         })()}
         {reorder && !vendors.some((vendor) => vendor.org_id === reorder.factoryOrgId) && (
           <p className="composer-note" data-testid="reorder-unlisted">
-            {reorder.factoryName} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
+            {vendorNames.text(reorder.factoryOrgId, reorder.factoryName)} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
           </p>
         )}
         {error && <p className="composer-error" role="alert">{error.message}</p>}
@@ -802,7 +808,7 @@ export default function LiveComposer({ org, rfqId }) {
     >
       {reorder && (
         <p className="composer-note" data-testid="reorder-note">
-          Reordering {reorder.title} with {reorder.factoryName}.
+          Reordering {reorder.title} with {vendorNames.text(reorder.factoryOrgId, reorder.factoryName)}.
         </p>
       )}
       <ReviewScreen
