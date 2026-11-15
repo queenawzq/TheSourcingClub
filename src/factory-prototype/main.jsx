@@ -1393,6 +1393,8 @@ const factoryMainZhReplacements = [
   [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
   [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
   [/^Reference /, "参考号 "],
+  [/^Needs the (.+) permission$/, (_, label) => `需要「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限`],
+  [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (_, label, company) => `你需要 ${company} 的「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) roughly ([\d,.-]+) pieces$/, (_, month, pieces) => `${MONTH_NUMBER[month]} 月约 ${pieces} 件`],
   [/^Declined by (.+)$/, "$1 已拒绝"],
   [/^(.+) proposed another time$/, "$1 提议了其他时间"],

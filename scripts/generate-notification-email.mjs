@@ -153,7 +153,7 @@ const copy = {
     cta: "Open in The Sourcing Club",
     ctaFallback: "Open The Sourcing Club",
     why: (company, setting) =>
-      `You’re receiving this because ${company} has “${setting}” emails turned on. Any member can turn them off in Settings → Notifications.`,
+      `You’re receiving this because ${company} has “${setting}” emails turned on. Anyone with Settings access can turn them off in Settings → Notifications.`,
     whyAlways: (company) =>
       `Sent to everyone at ${company}.`,
     questions: "Questions? Reply to this email or contact",
@@ -172,7 +172,7 @@ const copy = {
     whyAlways: (company) =>
       `已发送给 ${company} 的所有成员。`,
     why: (company, setting) =>
-      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。任何成员都可以在 设置 → 通知 中关闭。`,
+      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。拥有设置权限的成员可以在 设置 → 通知 中关闭。`,
     questions: "有问题？直接回复此邮件，或联系",
   },
 };
