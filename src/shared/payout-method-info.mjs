@@ -18,7 +18,7 @@
  *           figure for converting a Connect transfer, so that line has no
  *           number. Timing: "Manual payouts typically take 1–4 business days"
  *           (https://docs.stripe.com/payouts).
- *   wise    "International bank transfer (Wise)", and "Bank transfer (Wise)"
+ *   wise    "International bank transfer (Wise)" (US: "Bank transfer (Wise)"), and "Bank transfer (Wise)"
  *           where Wise has a currency for the country (wiseCurrencyFor). TSC
  *           pays Wise's fee on top, so the whole step arrives, converted at
  *           Wise's mid-market rate (api/_wise.js, quote();

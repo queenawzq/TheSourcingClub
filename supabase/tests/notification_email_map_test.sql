@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(38);
 
 insert into auth.users (id, email) values
   ('b4110000-0000-0000-0000-000000000001', 'pb4-brand-owner@example.com'),
@@ -289,6 +289,15 @@ set local role authenticated;
 select public.set_notification_preference('b4120000-0000-0000-0000-00000000000b', 'payments', true);
 reset role;
 
+-- The factory's updates on the step, as post_milestone_update writes them
+-- before its notification. Times are set apart: a test runs in one instant.
+create or replace function pg_temp.pb4_post(ago interval, author uuid, what text default 'comment')
+returns void language sql as $$
+  insert into public.milestone_updates (milestone_id, author_org_id, kind, body, created_at)
+  select step, author, what, 'PB4 post', now() - ago from pb4_step
+$$;
+
+select pg_temp.pb4_post('5 hours', 'b4120000-0000-0000-0000-0000000000f1');
 insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
 select 'b4140000-0000-0000-0000-000000000023', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update 2'
   from pb4_step;
@@ -301,6 +310,7 @@ select results_eq(
 
 -- 20261115400100: a second update on the same step within 6 hours is not
 -- emailed again (the bell still has it); after 6 hours it is.
+select pg_temp.pb4_post('4 hours', 'b4120000-0000-0000-0000-0000000000f1');
 insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
 select 'b4140000-0000-0000-0000-000000000026', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update 2b'
   from pb4_step;
@@ -308,8 +318,30 @@ select is(
   (select count(*)::int from public.notification_email_outbox where notification_id = 'b4140000-0000-0000-0000-000000000026'),
   0, 'a second update on the same step within 6 hours sends no second email'
 );
+
+-- 20261115400200: the brand disputes the step; the factory's next update
+-- makes it ready again and is emailed within the 6 hours. The one after is not.
+select pg_temp.pb4_post('3 hours', 'b4120000-0000-0000-0000-00000000000b', 'dispute');
+select pg_temp.pb4_post('2 hours', 'b4120000-0000-0000-0000-0000000000f1');
+insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
+select 'b4140000-0000-0000-0000-000000000028', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update after dispute'
+  from pb4_step;
+select is(
+  (select count(*)::int from public.notification_email_outbox where notification_id = 'b4140000-0000-0000-0000-000000000028'),
+  3, 'the factory''s first update since the brand''s dispute makes the step ready, and is emailed despite the 6 hours'
+);
+select pg_temp.pb4_post('1 hour', 'b4120000-0000-0000-0000-0000000000f1');
+insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
+select 'b4140000-0000-0000-0000-000000000029', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update after dispute 2'
+  from pb4_step;
+select is(
+  (select count(*)::int from public.notification_email_outbox where notification_id = 'b4140000-0000-0000-0000-000000000029'),
+  0, 'a further update on the step already ready waits out the 6 hours'
+);
+
 update public.notification_email_outbox set created_at = now() - interval '7 hours'
- where notification_id = 'b4140000-0000-0000-0000-000000000023';
+ where notification_id in ('b4140000-0000-0000-0000-000000000023', 'b4140000-0000-0000-0000-000000000028');
+select pg_temp.pb4_post('0 hours', 'b4120000-0000-0000-0000-0000000000f1');
 insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
 select 'b4140000-0000-0000-0000-000000000027', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update 2c'
   from pb4_step;

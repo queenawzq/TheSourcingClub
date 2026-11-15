@@ -76,7 +76,8 @@ function listLabel(method) {
 }
 
 /** Where a country has two bank options, this one needs telling from "Bank account". */
-export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
+// A US bank is paid US$ to US$ at home: a bank transfer, not an international one.
+export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) && country !== "US" ? "International bank transfer" : LIST_WORDS.bank);
 
 /** "Re-enter IBAN", "Re-enter account number": the second field says what the first one is. */
 export const reEnter = (label) => `Re-enter ${/^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label}`;
@@ -853,8 +854,10 @@ export default function StripePayoutCard({
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : endingIn(transferName(row.bank_country), row.account_number_last4));
-  // In the list, a bank Wise pays says so, as in the chooser (the rows stepFor opens on Wise's form).
-  const manualListLabel = (row) => (stepFor(row) === "setup-wise" ? endingIn(`${transferName(row.bank_country)} (Wise)`, row.account_number_last4) : manualLabel(row));
+  // A bank Wise pays says so, as in the chooser. Wise pays a bank row only with a
+  // Wise recipient on it (the server's rule, 20261108163459); without one, staff
+  // pay it by bank, China included.
+  const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? endingIn(`${transferName(row.bank_country)} (Wise)`, row.account_number_last4) : manualLabel(row));
 
   const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
     ?? (manualSuccessor
@@ -896,7 +899,7 @@ export default function StripePayoutCard({
     // that is loading, and only a real failure says it failed.
     ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : ""
     : savedMethod
-      ? manualLabel(manualAccount)
+      ? manualListLabel(manualAccount)
       : verifying
         ? "Verification in progress"
         : account
