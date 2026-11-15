@@ -42,6 +42,8 @@ const { chooseRecipientType } = await import("../api/_wise-requirements-shape.js
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "HK")?.type, "hongkong", "Hong Kong opens Wise's form");
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "chinese_local_business" }, { type: "hongkong" }], "CN")?.type, "chinese_local_business");
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "CN"), null, "a factory outside Hong Kong never gets the Hong Kong form");
+const everyCountry = new Set([...PAYOUT_COUNTRIES, ...info.WISE_COUNTRIES, "TW", "KH", "other"]);
+for (const country of everyCountry) assert.equal(info.WISE_COUNTRIES.has(country), Boolean(wiseCurrencyFor(country, "CNY")), `${country}: the browser's Wise list matches api/_wise-currencies.js`);
 for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", "other"]) {
   const supported = PAYOUT_COUNTRIES.has(country);
   const wise = Boolean(wiseCurrencyFor(country, "CNY"));

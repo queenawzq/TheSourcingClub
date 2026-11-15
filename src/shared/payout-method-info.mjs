@@ -34,7 +34,6 @@
  *           released (api/_provider-payouts.js), and it usually reaches the
  *           PayPal balance within minutes, so no "few business days" here.
  */
-import { wiseCurrencyFor } from "../../api/_wise-currencies.js";
 
 const SENT_AFTER_RELEASE = "Not instant: sent once released, then a few business days to arrive";
 const STRIPE_TIMING = "Not instant: usually 1–4 business days after you withdraw";
@@ -50,11 +49,20 @@ export const PAYOUT_METHOD_INFO = {
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
 
 /**
- * Whether a bank option in this country opens Wise's form. Wise is set up on
- * a deploy only with its payout currency (api/wise-requirements.js), which is
- * China's, so China counts as one whenever Wise is there at all.
+ * The countries api/_wise-currencies.js has a Wise currency for: a bank option
+ * there opens Wise's form. Wise is set up on a deploy only with its payout
+ * currency (api/wise-requirements.js), which is China's, so China is one
+ * whenever Wise is there at all. A copy, because the browser cannot load
+ * api/ (the dev server answers /api/* as functions); check-payout-help.mjs
+ * fails if the two differ.
  */
-export const paidByWise = (country) => Boolean(country && wiseCurrencyFor(country, "CNY"));
+export const WISE_COUNTRIES = new Set([
+  "AT", "BE", "BG", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PT", "SK", "SI", "ES",
+  "US", "CA", "GB", "CH", "LI", "CZ", "DK", "HU", "PL", "RO", "SE", "IS", "NO",
+  "HK", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "LK", "KR", "JP", "MX", "BR", "MA", "EG", "CN",
+]);
+
+export const paidByWise = (country) => WISE_COUNTRIES.has(country);
 
 /**
  * Which lines a chooser option draws: the route its Set up actually takes.
