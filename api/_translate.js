@@ -57,7 +57,7 @@ export async function translateText(input, { timeoutMs = 8000, context = "messag
           {
             role: "user",
             content:
-`Translate this ${context === "factory profile" ? "factory profile text for a clothing brand" : "message between a clothing brand and a garment factory"}. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
+`Translate this ${context === "company name" ? "garment company's registered name into the English name a clothing brand would know it by: place names and the trade name in pinyin, every word that says what the company does in English (服饰 Apparel, 服装 Garment, 纺织品 Textiles, 针织 Knitting, 贸易 Trading, 国际 International, 有限公司 Co., Ltd.)" : context === "factory profile" ? "factory profile text for a clothing brand" : "message between a clothing brand and a garment factory"}. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
 
 Rules:
 - Translate what was written. Do not soften, expand, summarise or add pleasantries.

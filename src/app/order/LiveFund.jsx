@@ -41,6 +41,7 @@ import { can } from "../../lib/domain/org.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initials, locationLine } from "./order-view.js";
 import "./fund.css";
+import { useVendorNames } from "../vendor-names.jsx";
 
 let stripePromise = null;
 const stripeClient = () => {
@@ -75,6 +76,9 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   const isOwner = can(activeOrg, "releaseFunds");
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
+  const vendor = state?.order?.factory?.name ? { id: state.order.factory_org_id, name: state.order.factory.name } : null;
+  // The vendor's name in English where it has one, as on the order (vendor-names.jsx).
+  const vendorNames = useVendorNames(vendor ? [vendor] : []);
 
   const load = useCallback(async () => {
     const [order, payment, payments] = await Promise.all([
@@ -165,7 +169,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   // is still confirming keeps the success screen's "processing" form.
   if (!checkout && payment.state !== "processing") return fallback;
 
-  const factory = order.factory?.name ?? "the factory";
+  const factory = vendor ? vendorNames.text(vendor.id, vendor.name) : "the factory";
   const context = {
     order,
     payment,

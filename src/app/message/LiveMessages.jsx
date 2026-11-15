@@ -25,6 +25,7 @@ import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 import MessageGuidelinesDialog from "./MessageGuidelinesDialog.jsx";
 import { MESSAGE_GUIDELINES } from "../../shared/message-guidelines.mjs";
+import { useVendorNames } from "../vendor-names.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -114,6 +115,8 @@ function dayLabel(value) {
 
 export default function LiveMessages({ org, isFactory, user, threadId, orderId }) {
   const [threads, setThreads] = useState(null);
+  // The brand reads each vendor's name in English where it has one (vendor-names.jsx).
+  const vendorNames = useVendorNames((threads ?? []).map((thread) => ({ id: thread.factory_org_id, name: thread.factory_name })), { enabled: !isFactory });
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
   const [projectNames, setProjectNames] = useState(new Map());
   const [messagesByThread, setMessagesByThread] = useState({});
@@ -514,7 +517,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
    * design renders them only when present, so they simply do not appear.
    */
   const shaped = threads.map((thread) => {
-    const counterparty = isFactory ? thread.brand_name : thread.factory_name;
+    const counterparty = isFactory ? thread.brand_name : thread.factory_name && vendorNames.text(thread.factory_org_id, thread.factory_name);
     const outgoingRows = (outgoing[thread.id] ?? []).map((item) => ({
       id: item.tempId,
       sender_org_id: org.id,
@@ -530,6 +533,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     return {
       id: thread.id,
       name: counterparty ?? "—",
+      ...(!isFactory && counterparty && counterparty !== thread.factory_name ? { nameNode: vendorNames.node(thread.factory_org_id, thread.factory_name) } : {}),
       initials: initialsOf(counterparty),
       // The project's name, so two conversations with one company differ.
       project: projectNames.get(thread.id) ?? thread.subject_title ?? "",
@@ -578,7 +582,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     }));
   }
   const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
-  const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name) ?? "" : "";
+  const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name && vendorNames.text(dialogThread.factory_org_id, dialogThread.factory_name)) ?? "" : "";
 
   return (
     <>

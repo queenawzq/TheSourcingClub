@@ -58,6 +58,7 @@ import {
 } from "./order-view.js";
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
+import { useVendorNames } from "../vendor-names.jsx";
 
 /** Approval depends on step state and funding, never on posted updates. */
 const approvable = (milestone) =>
@@ -279,6 +280,8 @@ async function brandCharges(orderId) {
 export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = false, tab = "overview", step = null }) {
   const { navigate } = useRouter();
   const [order, setOrder] = useState(null);
+  // The brand reads the vendor's name in English where it has one (vendor-names.jsx).
+  const vendorNames = useVendorNames(order?.factory?.name ? [{ id: order.factory_org_id, name: order.factory.name }] : [], { enabled: !isFactory });
   const [milestones, setMilestones] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
@@ -436,10 +439,15 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   // The open step's history, shaped once per load: a fresh array on every
   // render would have the pop-up re-mint its photo URLs each time.
-  const openUpdates = useMemo(() => updates
+  const englishFactoryName = !isFactory && order?.factory?.name ? vendorNames.text(order.factory_org_id, order.factory.name) : null;
+  // The factory's updates signed with the name the brand reads everywhere else.
+  const namedUpdates = useMemo(() => (englishFactoryName
+    ? updates.map((update) => (update.author_org_id === order?.factory_org_id ? { ...update, orgs: { ...update.orgs, name: englishFactoryName } } : update))
+    : updates), [updates, englishFactoryName, order?.factory_org_id]);
+  const openUpdates = useMemo(() => namedUpdates
     .filter((update) => update.milestone_id === openStepId)
     .map((update) => ({ ...update, author: update.orgs?.name ?? "", when: updateTime(update.created_at) })),
-  [updates, openStepId]);
+  [namedUpdates, openStepId]);
 
   // The URL follows the pop-up without a navigation, so the page behind it
   // keeps its scroll position.
@@ -502,7 +510,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   }
 
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
-  const other = isFactory ? order.brand?.name : order.factory?.name;
+  const factoryName = order.factory?.name ? vendorNames.text(order.factory_org_id, order.factory.name) : order.factory?.name;
+  const other = isFactory ? order.brand?.name : factoryName;
+  // The activity lines name the vendor as the rest of the page does.
+  const namedOrder = isFactory || !order.factory ? order : { ...order, factory: { ...order.factory, name: factoryName } };
   const running = order.status === "active";
   // What this person may do here (has_org_permission); the database refuses
   // the rest, so the rows offer only these.
@@ -510,7 +521,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     isFactory,
     order,
     org,
-    factoryName: order.factory?.name,
+    factoryName,
     canFund: can(org, "releaseFunds"),
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),
@@ -579,7 +590,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...next,
       // Approval ends the work, not its history. Keep existing comments and
       // attachments visible on completed steps for both participants.
-      update: latestUpdateFor(milestone.id, updates, {
+      update: latestUpdateFor(milestone.id, namedUpdates, {
         urls: photoUrls,
         onViewAll: () => openStep(milestone),
         onOpenFile: (document) => openFile({ document }),
@@ -593,9 +604,13 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   const activeTab = TABS.has(tab) ? tab : "overview";
   const openMilestone = milestones.find((milestone) => milestone.id === openStepId) ?? null;
-  const factoryLine = [order.factory?.name, isFactory ? "" : location].filter(Boolean).join(" · ");
+  const factoryLine = [factoryName, isFactory ? "" : location].filter(Boolean).join(" · ");
   const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
-  const counterparty = { name: other ?? "", initials: initials(other), location };
+  const counterparty = {
+    name: !isFactory && order.factory?.name ? vendorNames.node(order.factory_org_id, order.factory.name) : other ?? "",
+    initials: initials(other),
+    location,
+  };
   const refundPendingCents = milestones.reduce((sum, { payment }) => sum + (refundPendingWord(payment ?? {}, order) ? Number(payment.amount_cents) : 0), 0);
   const header = {
     title: order.rfqs?.title || order.order_number,
@@ -676,8 +691,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order, viewerOrgId: org.id })}
-        files={orderFiles(requestFiles, updates, milestones)}
+        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id })}
+        files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
         // The design's only step action is "Add update". Posting is all the
@@ -703,7 +718,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   if (pending) {
     return (
       <BrandSchedule
-        order={order}
+        order={namedOrder}
         milestones={milestones}
         reload={load}
         onBack={() => navigate("/orders")}
@@ -737,8 +752,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order, viewerOrgId: org.id, chargedByStep })}
-        files={orderFiles(requestFiles, updates, milestones)}
+        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, chargedByStep })}
+        files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
         // Approving a funded step asks for its payout straight away. A payout
