@@ -70,6 +70,11 @@ function methodLabel(method) {
   return endingIn(method.type === "card" ? "Debit card" : "Bank account", method.last4);
 }
 
+/** The list's name for a saved method: the chooser's, provider included ("Bank account (Stripe) ····2345"). */
+function listLabel(method) {
+  return method.type === "card" ? methodLabel(method) : endingIn("Bank account (Stripe)", method.last4);
+}
+
 /** Where a country has two bank options, this one needs telling from "Bank account". */
 export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
 
@@ -848,6 +853,8 @@ export default function StripePayoutCard({
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : endingIn(transferName(row.bank_country), row.account_number_last4));
+  // In the list, a bank Wise pays says so, as in the chooser (the rows stepFor opens on Wise's form).
+  const manualListLabel = (row) => (stepFor(row) === "setup-wise" ? endingIn(`${transferName(row.bank_country)} (Wise)`, row.account_number_last4) : manualLabel(row));
 
   const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
     ?? (manualSuccessor
@@ -1001,7 +1008,7 @@ export default function StripePayoutCard({
             {account && !account.transfers_active ? (
               <article className="payout-method-row" data-testid="payout-unfinished-bank">
                 <div className="payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                <div className="payout-method-name"><strong>Bank account</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
+                <div className="payout-method-name"><strong>Bank account (Stripe)</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
                 {verifying ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
               </article>
             ) : null}
@@ -1011,7 +1018,7 @@ export default function StripePayoutCard({
                   {BANK_ICON}
                 </div>
                 <div className="payout-method-name">
-                  <strong>{methodLabel(method)}</strong>
+                  <strong>{listLabel(method)}</strong>
                   {method.name && !/stripe/i.test(method.name) ? <span>{method.name}</span> : null}
                 </div>
                 {method.default && payoutRoute === "stripe" ? <span className="payout-method-default">Default</span> : null}
@@ -1033,7 +1040,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">{isPaypal(row)
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
-                  : <><strong>{manualLabel(row)}</strong><span>{row.number_changed_at ? row.bank_name : "Add your full account number."}</span></>}</div>
+                  : <><strong>{manualListLabel(row)}</strong><span>{row.number_changed_at ? row.bank_name : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>

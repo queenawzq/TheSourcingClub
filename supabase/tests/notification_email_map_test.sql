@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(34);
+select plan(36);
 
 insert into auth.users (id, email) values
   ('b4110000-0000-0000-0000-000000000001', 'pb4-brand-owner@example.com'),
@@ -297,6 +297,25 @@ select results_eq(
      where notification_id = 'b4140000-0000-0000-0000-000000000023' group by category$$,
   $$values ('payments'::text, 3)$$,
   'switched back on, the approval request is emailed to every member'
+);
+
+-- 20261115400100: a second update on the same step within 6 hours is not
+-- emailed again (the bell still has it); after 6 hours it is.
+insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
+select 'b4140000-0000-0000-0000-000000000026', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update 2b'
+  from pb4_step;
+select is(
+  (select count(*)::int from public.notification_email_outbox where notification_id = 'b4140000-0000-0000-0000-000000000026'),
+  0, 'a second update on the same step within 6 hours sends no second email'
+);
+update public.notification_email_outbox set created_at = now() - interval '7 hours'
+ where notification_id = 'b4140000-0000-0000-0000-000000000023';
+insert into public.notifications (id, org_id, kind, subject_type, subject_id, order_id, title)
+select 'b4140000-0000-0000-0000-000000000027', 'b4120000-0000-0000-0000-00000000000b', 'milestone_update', 'milestone', step, order_id, 'PB4 update 2c'
+  from pb4_step;
+select is(
+  (select count(*)::int from public.notification_email_outbox where notification_id = 'b4140000-0000-0000-0000-000000000027'),
+  3, 'after 6 hours, the next update on that step is emailed to every member again'
 );
 
 update public.order_milestones set kind = 'payment_only' where id = (select step from pb4_step);

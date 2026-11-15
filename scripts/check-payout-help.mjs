@@ -22,10 +22,13 @@ const methodLines = {
   stripeUs: ["Fee: 0% (TSC pays Stripe's fee)", "Not instant: usually 1–4 business days after you withdraw"],
   stripe: ["Fee: 0% to withdraw; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
   wise: ["Fee: 0% (TSC pays Wise's fee), at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
-  bank: ["Paid by TSC by bank; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
+  wiseUs: ["Fee: 0% (TSC pays Wise's fee)", "Not instant: sent once released, then a few business days to arrive"],
+  bank: ["Fee: 0% from TSC; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
   // PayPal usually lands within minutes of staff sending it.
   paypal: ["Fee: 0% (TSC pays PayPal's fee); PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
+  paypalUs: ["Fee: 0% (TSC pays PayPal's fee)", "Not instant: sent once released"],
 };
+assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
   assert.deepEqual(info.payoutMethodLines(method), lines, `${method} keeps its fee and timing lines`);
 }
@@ -49,16 +52,19 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
   const wise = Boolean(wiseCurrencyFor(country, "CNY"));
   if (supported) assert.ok(wise, `${country}: International bank transfer (Wise) has a Wise currency`);
   assert.equal(info.paidByWise(country), wise, `${country}: named Wise only where Wise has a currency`);
-  assert.equal(info.chooserMethod("bank", { supported, country }), supported ? (country === "US" ? "stripeUs" : "stripe") : wise ? "wise" : "bank", `${country}: the recommended bank option's lines match its route`);
-  assert.equal(info.chooserMethod("wise", { supported, country }), wise ? "wise" : "bank", `${country}: International bank transfer draws Wise's lines`);
-  assert.equal(info.chooserMethod("paypal", { supported, country }), "paypal");
+  // A US factory is paid US$ to US$, so its lines say nothing about converting.
+  const us = country === "US";
+  assert.equal(info.chooserMethod("bank", { supported, country }), supported ? (us ? "stripeUs" : "stripe") : wise ? "wise" : "bank", `${country}: the recommended bank option's lines match its route`);
+  assert.equal(info.chooserMethod("wise", { supported, country }), wise ? (us ? "wiseUs" : "wise") : "bank", `${country}: International bank transfer draws Wise's lines`);
+  assert.equal(info.chooserMethod("paypal", { supported, country }), us ? "paypalUs" : "paypal", `${country}: PayPal's lines`);
 }
 for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), "bank", `${country}: staff's bank lines`);
 const factoryZh = read("src/factory-prototype/main.jsx");
 for (const text of [...new Set(Object.values(info.PAYOUT_METHOD_INFO).flat()), "Bank account (Stripe)", "International bank transfer (Wise)", "Bank transfer (Wise)"]) {
   assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`), `the factory dictionary has Chinese for: ${text}`);
 }
-assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferName(country)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");
+assert.ok(card.includes("<strong>{listLabel(method)}</strong>") && card.includes("<strong>{manualListLabel(row)}</strong>") && card.includes("(Wise)`, row.account_number_last4)"), "the saved methods list names the provider as the chooser does");
+assert.ok(card.includes('"Bank account (Stripe)"') &&card.includes("{transferName(country)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");

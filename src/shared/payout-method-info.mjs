@@ -24,7 +24,10 @@
  *           Wise's mid-market rate (api/_wise.js, quote();
  *           https://wise.com/pricing/business).
  *   bank    "Bank transfer" where Wise has no currency (Taiwan, Cambodia, a
- *           country not listed): staff pay it by bank ("Mark paid out by bank").
+ *           country not listed): staff pay it by bank ("Mark paid out by bank"),
+ *           and TSC charges nothing for it.
+ *   wiseUs / paypalUs  the same for a US factory, paid US$ to US$, so without
+ *           the conversion words.
  *   paypal  PayPal Payouts: the sender (TSC) pays the payout fee
  *           (https://developer.paypal.com/docs/payouts/standard/reference/fees/).
  *           PayPal charges the receiver to convert US$, about 3% above its base
@@ -42,8 +45,11 @@ export const PAYOUT_METHOD_INFO = {
   stripeUs: ["Fee: 0% (TSC pays Stripe's fee)", STRIPE_TIMING],
   stripe: ["Fee: 0% to withdraw; Stripe converts from US$ at its rate", STRIPE_TIMING],
   wise: ["Fee: 0% (TSC pays Wise's fee), at the mid-market rate", SENT_AFTER_RELEASE],
-  bank: ["Paid by TSC by bank; your bank may charge to receive it", SENT_AFTER_RELEASE],
+  // A US factory is paid US$ to US$: nothing is converted.
+  wiseUs: ["Fee: 0% (TSC pays Wise's fee)", SENT_AFTER_RELEASE],
+  bank: ["Fee: 0% from TSC; your bank may charge to receive it", SENT_AFTER_RELEASE],
   paypal: ["Fee: 0% (TSC pays PayPal's fee); PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
+  paypalUs: ["Fee: 0% (TSC pays PayPal's fee)", "Not instant: sent once released"],
 };
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
@@ -71,7 +77,8 @@ export const paidByWise = (country) => WISE_COUNTRIES.has(country);
  * bank form otherwise (WiseBankStep's onUnavailable).
  */
 export function chooserMethod(option, { supported = false, country = "" } = {}) {
-  if (option === "paypal") return "paypal";
-  if (option === "bank" && supported) return country === "US" ? "stripeUs" : "stripe";
-  return paidByWise(country) ? "wise" : "bank";
+  const us = country === "US";
+  if (option === "paypal") return us ? "paypalUs" : "paypal";
+  if (option === "bank" && supported) return us ? "stripeUs" : "stripe";
+  return paidByWise(country) ? (us ? "wiseUs" : "wise") : "bank";
 }

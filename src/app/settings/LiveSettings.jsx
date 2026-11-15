@@ -79,7 +79,7 @@ const FACTORY_EMAIL_NOTES_ZH = {
 function emailNotes({ isFactory, zh, locked }) {
   const notes = isFactory ? (zh ? FACTORY_EMAIL_NOTES_ZH : FACTORY_EMAIL_NOTES) : BRAND_EMAIL_NOTES;
   if (!locked) return notes;
-  const why = zh ? "需要“设置权限”权限才能更改。" : `${locked}.`;
+  const why = zh ? "需要“设置”权限才能更改。" : `${locked}.`;
   return Object.fromEntries(Object.entries(notes).map(([key, note]) => [key, `${note} ${why}`]));
 }
 
