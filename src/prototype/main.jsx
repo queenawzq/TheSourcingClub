@@ -1941,7 +1941,7 @@ export function MessagesScreen({
             >
               <span className="message-avatar">{thread.initials}</span>
               <span>
-                <strong>{thread.name}</strong>
+                <strong>{thread.nameNode ?? thread.name}</strong>
                 <small>{thread.project}</small>
                 <em>{thread.lastPreview}</em>
               </span>
@@ -1956,7 +1956,7 @@ export function MessagesScreen({
         <header className="message-room-header">
           <div className="message-room-identity">
             <div>
-              <h2>{activeThread.primaryContact || activeThread.name}</h2>
+              <h2>{activeThread.primaryContact || activeThread.nameNode || activeThread.name}</h2>
               <p>
                 {activeThread.primaryContactTitle && <>{activeThread.primaryContactTitle} · </>}
                 {/* Live, the heading already names the company (there is no
@@ -2518,6 +2518,10 @@ export function SettingsScreen({
   saveLocked = "",
   notificationEmailsLocked = "",
   onChangePassword,
+  // Live only, a factory's: the person's own language (English or 中文), the
+  // field the onboarding's Basics step draws. The prototype passes none.
+  language = "en",
+  onLanguageChange,
   // Live only: what each role may do is fixed (owners everything), so the
   // ticks are shown, not edited, and this line says why.
   permissionsNote = "",
@@ -2759,6 +2763,21 @@ export function SettingsScreen({
                   <span>Location</span>
                   <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
                 </label>
+                {onLanguageChange ? (
+                  <label className="tsc-settings-language">
+                    <span>Language</span>
+                    <select
+                      name="account-language"
+                      value={language}
+                      onChange={(event) => Promise.resolve(onLanguageChange(event.target.value))
+                        .then(() => setSaveNotice({ text: "Changes saved" }))
+                        .catch((failure) => setSaveNotice({ error: true, text: failure.message || "Changes could not be saved" }))}
+                    >
+                      <option value="en">English</option>
+                      <option value="zh">中文</option>
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </section>
 
@@ -4626,7 +4645,7 @@ function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
             <div className="factory-avatar">{factory.initials}</div>
             <div>
               <div className="factory-name-row">
-                <h3>{factory.name}</h3>
+                <h3>{factory.nameNode ?? factory.name}</h3>
                 {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
               </div>
               <p>{factory.location}</p>
@@ -4989,7 +5008,7 @@ function HomeProjectMiniCard({ project, goTo, onOpen }) {
         {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
         <div>
           <h3>{project.title}</h3>
-          <p>{project.factory} · {project.location} · {project.started}</p>
+          <p>{project.factoryNode ?? project.factory} · {project.location} · {project.started}</p>
         </div>
       </header>
       <div className="home-production-actions shared-card-actions">
@@ -5097,7 +5116,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
             </div>
             <div>
               <div className="factory-profile-title-row">
-                <h1>{view.name}</h1>
+                <h1>{live?.nameNode ?? view.name}</h1>
                 {view.verifiedIcon && (
                   <span className="factory-profile-verified" title={view.verifiedLabel}>
                     <img src={`/assets/prototype-icons/${view.verifiedIcon}.svg`} alt={view.verifiedLabel} />
@@ -6997,7 +7016,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
                     live.onOpen();
                   }}
                 >
-                  {factory.name}
+                  {factory.nameNode ?? factory.name}
                 </a>
               </h2>
               {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
@@ -7335,7 +7354,7 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
             <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
             <div>
               <div className="factory-name-row">
-                <h2>{factory.name}</h2>
+                <h2>{factory.nameNode ?? factory.name}</h2>
                 {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
               </div>
               <p>{factory.location}</p>
@@ -7573,7 +7592,7 @@ function SavedFactoryCard({ factory, goTo, live = null }) {
             <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
             <div>
               <div className="factory-name-row">
-                <h2>{factory.name}</h2>
+                <h2>{factory.nameNode ?? factory.name}</h2>
                 {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
               </div>
               <p>{factory.location}</p>
@@ -8417,7 +8436,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
       <header className="project-card-top shared-card-header">
         <div className="project-main shared-card-heading">
           <h2>{project.title}</h2>
-          <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
+          <p className="project-meta">{project.factoryNode ?? project.factory} · {project.location} · {project.started}</p>
         </div>
         <ProjectCardActions
           actionLabel={actionLabel}
@@ -9675,7 +9694,7 @@ export function InviteScreen({
   const isLive = Boolean(liveVendors);
   const searched = liveSearch.trim().toLowerCase();
   const inviteVendors = isLive
-    ? liveVendors.filter((vendor) => !searched || [vendor.name, vendor.location, vendor.note, ...(vendor.categories ?? []), ...(vendor.capabilities ?? [])]
+    ? liveVendors.filter((vendor) => !searched || [vendor.name, vendor.originalName, vendor.location, vendor.note, ...(vendor.categories ?? []), ...(vendor.capabilities ?? [])]
         .some((word) => String(word ?? "").toLowerCase().includes(searched)))
     : isTrading
       ? marketplaceTradingCompanies.map((company) => ({
@@ -9823,7 +9842,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             <div className="factory-avatar">{factory.initials}</div>
             <div>
               <div className="factory-name-row">
-                <h3>{factory.name}</h3>
+                <h3>{factory.nameNode ?? factory.name}</h3>
                 {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
               </div>
               <p>{factory.location}</p>
@@ -10124,7 +10143,7 @@ export function QuotesScreen({
                   <div className="factory-avatar">{factory.initials}</div>
                   <div>
                     <div className="factory-name-row">
-                      <h3>{factory.name}</h3>
+                      <h3>{factory.nameNode ?? factory.name}</h3>
                       {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
                     </div>
                     <p>{factory.location}</p>
@@ -10316,7 +10335,7 @@ export function QuoteDetailScreen({
   onChoose,
 }) {
   const factory = live
-    ? { name: live.name, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
+    ? { name: live.name, nameNode: live.nameNode, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
         price: live.price || "—", quoteQuantity: live.quantity || "—", lead: live.lead || "—",
         fitType: live.fitType ?? "", fitSummary: live.fitSummary ?? "", materialCosts: live.materialCosts ?? [] }
     : factories.find((item) => item.name === selectedQuote) || factories[0];
@@ -10407,7 +10426,7 @@ export function QuoteDetailScreen({
                 <div className="factory-avatar">{factory.initials}</div>
                 <div className="factory-main">
                   <div className="factory-name-row">
-                    <h3>{factory.name}</h3>
+                    <h3>{factory.nameNode ?? factory.name}</h3>
                     {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
                   </div>
                   {factory.location && <p>{factory.location}</p>}

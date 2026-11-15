@@ -302,7 +302,7 @@ export const nav = [
   { label: "Settings", icon: "settings" }
 ];
 
-const factoryMainZhText = {
+export const factoryMainZhText = {
   "Bank transfer (Tazapay)": "银行转账（Tazapay）",
   "Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate": "手续费 0%（TSC 承担 Tazapay 费用）；按 Tazapay 汇率以人民币到账",
   "Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate": "手续费 0%（TSC 承担 Tazapay 费用）；按 Tazapay 汇率以港币到账",
@@ -784,8 +784,8 @@ const factoryMainZhText = {
   "Review total": "审核报价",
   "Quote terms": "报价条款",
   "Enter exact commercial terms for this request.": "填写该需求的准确商务条款。",
-  "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，提交前会生成英文版本供你确认。",
-  "You can fill this page in Chinese. We'll create an English version for you to review before sending.": "本页可用中文填写，提交前会生成英文版本供你确认。",
+  "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，品牌会看到自动翻译的英文。",
+  "You can fill this page in Chinese. We'll create an English version for you to review before sending.": "本页可用中文填写，品牌会看到自动翻译的英文。",
   "Unit price": "单价",
   "Unit price *": "单价 *",
   "Exact production quantity *": "准确生产数量 *",
@@ -1109,8 +1109,210 @@ const factoryMainZhText = {
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
   "Completed": "已完成",
-  "In production": "生产中"
+  "In production": "生产中",
+  // Live screens (app.html): text the prototype never draws.
+  "Log out": "退出登录",
+  "Language": "语言",
+  "Change password": "修改密码",
+  "Changing…": "正在修改…",
+  "Password changed": "密码已修改",
+  "Changes saved": "更改已保存",
+  "Changes could not be saved": "更改未能保存",
+  "Saving…": "正在保存…",
+  "Team": "团队",
+  "Members": "成员",
+  "Invited": "已邀请",
+  "Payout methods": "收款方式",
+  "Withdrawal methods": "提现方式",
+  "Billing methods": "支付方式",
+  "Add a bank account to receive released earnings.": "添加银行账户以接收已放款的收入。",
+  "Save a card to use when you buy credits.": "保存一张银行卡，用于购买额度。",
+  "Owners hold every permission and can change each member’s access below.": "所有者拥有全部权限，可在下方修改每位成员的权限。",
+  "The company's contact email. It isn't changed here.": "公司的联系邮箱，此处不可修改。",
+  "Only an owner can change the company's name": "只有所有者可以修改公司名称",
+  "Close navigation": "关闭导航",
+  "Requests that match you or invite you, decisions on your quotes, and capacity reminders. Emails every member of your company.": "与你匹配或邀请你的询价、报价结果和产能提醒。会发邮件给公司每位成员。",
+  "Payments, steps to approve, steps due soon and changes to your orders. Emails every member of your company.": "付款、待审批步骤、即将到期的步骤和订单变更。会发邮件给公司每位成员。",
+  "New messages (at most one email per conversation every 6 hours) and call invites. Emails every member of your company.": "新消息（每个对话每 6 小时最多一封邮件）和通话邀请。会发邮件给公司每位成员。",
+  "Open to quote now": "现在可报价",
+  "Schedule": "排期",
+  "Reply": "回复",
+  "Brand is setting the steps": "品牌正在设置生产步骤",
+  "The brand is setting the production steps": "品牌正在设置生产步骤",
+  "Sample required": "需要样品",
+  "Not a fit": "不匹配",
+  "New": "新",
+  "Sort:": "排序：",
+  "Withdraw quote": "撤回报价",
+  "Message brand": "联系品牌",
+  "‹ Back to Browse RFQs": "‹ 返回浏览询价",
+  "Additional details": "补充说明",
+  "Brand additional details": "品牌补充说明",
+  "Sourcing responsibility": "采购责任",
+  "Requested material": "指定面料",
+  "Brand sourcing requirements": "品牌采购要求",
+  "Certifications needed": "所需认证",
+  "Payment terms *": "付款条款 *",
+  "Select date": "选择日期",
+  "No replies yet": "暂无回复",
+  "Paid through TSC": "通过 TSC 付款",
+  "Vendor should source some materials or components": "供应商需采购部分面辅料或部件",
+  "Vendor should source all materials and components": "供应商需采购全部面辅料和部件",
+  "Brand will supply all materials": "品牌提供全部面辅料",
+  "No production orders yet.": "暂无生产订单。",
+  "Bulk production": "大货生产",
+  "Final balance": "尾款",
+  "Deposit": "定金",
+  "Factory prepares this sample and posts photos for approval.": "工厂准备该样品并上传照片供审批。",
+  "30.00% of the production total, paid before bulk materials are bought.": "生产总额的 30.00%，在采购大货物料前支付。",
+  "Cutting and sewing. The factory quoted 30 days from approval.": "裁剪和车缝。工厂报价为审批后 30 天。",
+  "The brand approves finished-goods photos before the balance falls due.": "尾款到期前，品牌审批成品照片。",
+  "The remainder of the production total, once QC photos are approved.": "QC 照片审批后支付生产总额的剩余部分。",
+  "Production started": "生产已开始",
+  "Balance (USD)": "余额 (USD)",
+  "Add withdrawal method": "添加提现方式",
+  "Add a withdrawal method to receive earnings.": "添加提现方式以接收收入。",
+  "Total earnings": "总收入",
+  "Awaiting approval": "待审批",
+  "Paid out": "已付款",
+  "Transactions": "交易记录",
+  "Earnings added to your balance and withdrawals sent to your payout account.": "计入余额的收入，以及发送到你收款账户的提现。",
+  "Withdrawals": "提现",
+  "Withdrawal": "提现",
+  "Earning": "收入",
+  "Date": "日期",
+  "Type / details": "类型 / 详情",
+  "Amount": "金额",
+  "Bank transfer": "银行转账",
+  "Invite a factory": "邀请工厂",
+  "Referral bonus pending": "推荐奖励待发放",
+  "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings.": "这是你的步骤金额。TSC 服务费由品牌另行支付，不从你的收入中扣除。",
+  "No saved brands yet.": "暂无收藏的品牌。",
+  "No saved RFQs yet.": "暂无收藏的询价。",
+  "Messages": "消息",
+  "Unread": "未读",
+  "Schedule call": "预约通话",
+  "Attach file": "添加附件",
+  "Send": "发送",
+  "Search conversations...": "搜索对话...",
+  "No brand reviews yet": "暂无品牌评价",
+  "No walkthrough video yet.": "暂无工厂巡视视频。",
+  "All": "全部",
+  "No messages yet.": "暂无消息。",
+  "Translate to English": "翻译成英文",
+  "Show original": "查看原文",
+  "Call declined": "通话已拒绝",
+  "You declined": "你已拒绝",
+  "An owner sets each member’s permissions. RFQ flow writes and sends quotes; Add update posts production updates; Settings access manages company settings, billing and invitations. Only owners manage payouts.": "所有者为每位成员设置权限。询价流程：撰写并发送报价；添加更新：发布生产更新；设置权限：管理公司设置、支付方式和邀请。只有所有者可以管理收款。",
+  "Back to request": "返回询价",
+  "Producing now": "正在生产",
+  "Wholesale brand": "批发品牌",
+  "Request cancelled": "询价已取消",
+  "Not quoted": "未报价",
+  "Sample before bulk": "大货前需打样",
+  "Bulk only": "仅大货",
+  "Posted today": "今天发布",
+  "Posted yesterday": "昨天发布",
+  "Enter factory includes": "填写工厂报价包含的内容",
+  "Enter supplier network includes": "填写供应商网络报价包含的内容",
+  "Registration number": "注册号",
+  "None (sole proprietor)": "无（个体经营）",
+  "Certificate files": "证书文件",
+  "Add walkthrough": "添加巡视视频",
+  "Add a walkthrough video": "添加巡视视频",
+  "Add a short production-floor walkthrough so brands can see the factory before they contact you.": "添加一段简短的生产车间巡视视频，让品牌在联系你之前先了解工厂。",
+  "The walkthrough video is on your profile.": "巡视视频已在你的资料中。",
+  "Upload registration": "上传营业执照",
+  "Upload your business registration": "上传营业执照",
+  "Upload a new business registration": "上传新的营业执照",
+  "Upload your business registration. Quoting opens once TSC has verified it.": "上传营业执照。TSC 验证后即可报价。",
+  "Your business registration wasn't accepted. Upload a new one to open quoting.": "你的营业执照未通过审核。请上传新的营业执照以开通报价。",
+  "Your business registration is verified, so you can quote on matching RFQs.": "你的营业执照已验证，可以对匹配的询价报价。",
+  "Everything brands look for is filled in. Keep monthly capacity current.": "品牌关注的信息已全部填写。请保持每月产能为最新。",
+  "Accept": "接受",
+  "Add to calendar": "添加到日历",
+  "Call invite": "通话邀请",
+  "Cancel call": "取消通话",
+  "Cancelled": "已取消",
+  "Confirmed": "已确认",
+  "Decline": "拒绝",
+  "Ended": "已结束",
+  "Join call": "加入通话",
+  "No answer before the time": "到时未回复",
+  "On now": "进行中",
+  "Propose another time": "提议其他时间",
+  "Review invite": "查看邀请",
+  "Schedule another call": "预约另一次通话",
+  "Scheduled call": "已预约通话",
+  "Scheduled calls": "已预约通话",
+  "Send new time": "发送新时间",
+  "Starting soon": "即将开始",
+  "Withdraw invite": "撤回邀请",
+  "Withdrawn": "已撤回",
+  "You proposed another time": "你提议了其他时间",
+  "You're in the call in the Zoom app.": "你正在 Zoom 应用中通话。",
+  "You're in the call, in its own window.": "你正在单独窗口中通话。",
+  "Production order": "生产订单",
+  "Request for quote": "询价",
+  "Checking before it is sent": "发送前检查中",
+  "Not delivered": "未送达",
+  "Not sent": "未发送",
+  "It has not reached them yet. This page keeps trying.": "消息尚未送达对方，本页面会继续尝试。",
+  "Attach the files and send them again.": "请重新添加附件并发送。",
+  "Copy it and send it again.": "请复制后重新发送。",
+  "Activity": "动态",
+  "Passive updates from quotes, files, vendors, and production.": "来自报价、文件、合作方和生产的更新。",
+  "Mark all read": "全部标为已读",
+  "Close activity": "关闭动态",
+  "Open activity": "打开动态",
+  "No completed orders yet.": "暂无已完成订单。",
+  "No funded earnings yet. Payments appear here after a brand funds a production step.": "暂无已到账收入。品牌为生产步骤付款后，款项会显示在这里。",
+  "Update posted": "已发布更新",
+  "‹ Revise quote": "‹ 修改报价",
+  "Search conversations": "搜索对话",
+  "unit price": "单价",
+  "production quantity": "生产数量",
+  "bulk lead time": "大货交期",
+  "bulk lead time (write days or weeks, like “30-35 days”)": "大货交期（填写天数或周数，如“30-35 天”）",
+  "payment terms": "付款条款",
+  "payment terms (try “30/70”, “paid in full”, or “Net 30”)": "付款条款（可填“30/70”、“全款”或“Net 30”）",
+  "shipping terms (try EXW, FOB or DDP)": "运输条款（可填 EXW、FOB 或 DDP）",
+  "quote valid until": "报价有效期",
+  "Show Original": "查看原文",
+  "Translate to Chinese": "翻译成中文",
+  "Today": "今天",
+  "Yesterday": "昨天",
+  "Payment": "付款",
+  "Add a withdrawal method": "添加提现方式",
+  "Drafts": "草稿",
+  "Active orders": "进行中订单",
+  "Archived": "已归档",
+  "e.g. $12–$15 / unit": "例如 $12–$15 / 件",
+  "Enter exact production quantity": "填写准确的生产数量",
+  "e.g. 30–35 days": "例如 30–35 天",
+  "e.g. Jan 5 - Mar 1, 2027 · 300 units": "例如 2027 年 1 月 5 日 - 3 月 1 日 · 300 件",
+  "e.g. 30/70, paid in full, or Net 30": "例如 30/70、全款或 Net 30",
+  "Enter shipping / incoterms": "填写运输 / 贸易条款",
+  "Enter information": "填写信息",
+  "e.g. 7–10 days": "例如 7–10 天",
+  "e.g. 1 revision": "例如 1 次修改",
+  "Choose a quote validity date": "选择报价有效期",
+  "Your quote is a draft and has not been sent yet.": "你的报价是草稿，尚未发送。"
 };
+
+// The profile's completion note lists these ("Add your factory details and
+// capacity and terms to strengthen this profile."), longest first.
+const PROFILE_TODO_ZH = [
+  ["client references and sample images", "客户案例和样品图片"],
+  ["the missing certificate files", "缺少的证书文件"],
+  ["your business registration", "营业执照"],
+  ["your factory details", "工厂详情"],
+  ["your production fit", "生产匹配"],
+  ["capacity and terms", "产能与条款"],
+  ["a walkthrough video", "工厂巡视视频"]
+];
+
+const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 const factoryMainZhReplacements = [
   [/Current status:/g, "当前状态："],
@@ -1197,10 +1399,72 @@ const factoryMainZhReplacements = [
   [/Jul 30/g, "7 月 30 日"],
   [/(\d+) 月 (\d+) 日, 2026/g, "2026 年 $1 月 $2 日"],
   [/Wovens · ([A-Z][a-z]{2}) start · roughly ([\d,.-]+) pieces that month/g, "梭织 · $1 可开始 · 当月约 $2 件"],
-  [/([A-Z][a-z]{2}) mostly open; ([A-Z][a-z]{2}) partly booked/g, "$1 较空；$2 部分已订"]
+  [/([A-Z][a-z]{2}) mostly open; ([A-Z][a-z]{2}) partly booked/g, "$1 较空；$2 部分已订"],
+  // Live screens (app.html): counts, names and dates filled in at run time.
+  [/^(\d+) awaiting brand review$/, "$1 个待品牌审核"],
+  [/^(\d+) need updates?$/, "$1 个需要更新"],
+  [/^(\d+) orders? awaiting a schedule$/, "$1 个订单待排期"],
+  [/^(\d+) production steps? needs? an update$/, "$1 个生产步骤需要更新"],
+  [/^(\d+) unread messages?$/, "$1 条未读消息"],
+  [/^(\$[\d,.]+) awaiting brand funding$/, "$1 待品牌付款"],
+  [/^Waiting on (\$[\d,.]+) from the brand$/, "等待品牌支付 $1"],
+  [/^(\d+) open requests?$/, "$1 个开放询价"],
+  [/^Active RFQs \((\d+)\)$/, "进行中询价 ($1)"],
+  [/^Drafts \((\d+)\)$/, "草稿 ($1)"],
+  [/^Invited \((\d+)\)$/, "已邀请 ($1)"],
+  [/^Closed \((\d+)\)$/, "已关闭 ($1)"],
+  [/^Active orders \((\d+)\)$/, "进行中订单 ($1)"],
+  [/^Cancelled \((\d+)\)$/, "已取消 ($1)"],
+  [/^Archived \((\d+)\)$/, "已归档 ($1)"],
+  [/^Saved brands \((\d+)\)$/, "收藏品牌 ($1)"],
+  [/^Saved RFQs \((\d+)\)$/, "收藏询价 ($1)"],
+  [/^([\d,]+) credits = (\$[\d,.]+) value\.$/, "$1 额度 = $2 价值。"],
+  [/^([+-]?[\d,]+) credits$/, "$1 额度"],
+  [/^Your quote was submitted and is visible to (.+)\.$/, "你的报价已提交，$1 可以查看。"],
+  [/^Message (.+)\.\.\.$/, "给 $1 发消息..."],
+  [/^Now: (.+)$/, (_, step) => `当前：${factoryMainZhText[step] ?? step}`],
+  [/^(.+) proposed cancelling: /, "$1 提议取消："],
+  [/^You proposed cancelling: /, "你提议取消："],
+  [/^(.+) confirmed the production steps( · .+)?$/, "$1 已确认生产步骤$2"],
+  [/^(\$[\d,.]+) is due for (.+?)( · [^·]+)?$/, (_, amount, step, when = "") => `${factoryMainZhText[step] ?? step} 应付 ${amount}${when}`],
+  [/^Order (TSC-\d+) created( · .+)?$/, "订单 $1 已创建$2"],
+  [/^Production started( · .+)?$/, "生产已开始$1"],
+  [/^Awaiting funding from the brand$/, "等待品牌付款"],
+  [/Awaiting funding from the brand · /, "等待品牌付款 · "],
+  [/^Quotes close /, "报价截止 "],
+  [/^Quote due /, "报价截止 "],
+  [/^Started (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "开始于 $1 "],
+  [/^Awarded (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "授予于 $1 "],
+  [/^Posted (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "发布于 $1 "],
+  [/^due /, "截止 "],
+  [/ · due /, " · 截止 "],
+  [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
+  [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
+  [/^Reference /, "参考号 "],
+  [/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 较空；(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 部分已订/g, (_, open, booked) => `${MONTH_NUMBER[open]} 月较空；${MONTH_NUMBER[booked]} 月部分已订`],
+  [/^Needs the (.+) permission$/, (_, label) => `需要「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限`],
+  [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (_, label, company) => `你需要 ${company} 的「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
+  [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) roughly ([\d,.-]+) pieces$/, (_, month, pieces) => `${MONTH_NUMBER[month]} 月约 ${pieces} 件`],
+  [/^Declined by (.+)$/, "$1 已拒绝"],
+  [/^(.+) proposed another time$/, "$1 提议了其他时间"],
+  [/^(.+) invited you to a call$/, "$1 邀请你通话"],
+  [/^(.+) invited you$/, "$1 邀请了你"],
+  [/^Waiting for (.+) to answer$/, "等待 $1 回复"],
+  [/^With (.+)$/, "与 $1"],
+  [/^(Cancelled|Confirmed|Withdrawn|Ended) by (.+)$/, (_, word, who) => `${factoryMainZhText[word] ?? word}（${who}）`],
+  [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), /, (_, day) => `周${{ Mon: "一", Tue: "二", Wed: "三", Thu: "四", Fri: "五", Sat: "六", Sun: "日" }[day]}，`],
+  [/^Add (.+) to strengthen this profile\.$/, (_, list) => `补充${PROFILE_TODO_ZH.reduce((text, [en, zh]) => text.split(en).join(zh), list).replace(/ and more$/, "等").replace(/, /g, "、").replace(/ and /g, "和")}，让资料更完整。`],
+  [/^(\$[\d,.]+) - (\$[\d,.]+) per unit$/, (_, low, high) => `每件 ${low} - ${high}`],
+  [/^· Posted (\d+) days? ago$/, (_, days) => `· ${days} 天前发布`],
+  [/^Posted (\d+) days? ago$/, (_, days) => `${days} 天前发布`],
+  [/^(January|February|March|April|May|June|July|August|September|October|November|December) capacity$/, (_, month) => `${MONTH_NUMBER[month.slice(0, 3)]} 月产能`],
+  [/^(January|February|March|April|May|June|July|August|September|October|November|December)$/, (_, month) => `${MONTH_NUMBER[month.slice(0, 3)]} 月`],
+  [/^(January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})$/, (_, month, year) => `${year} 年 ${MONTH_NUMBER[month.slice(0, 3)]} 月`],
+  [/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}), (\d{4})\b/g, (_, month, day, year) => `${year} 年 ${MONTH_NUMBER[month]} 月 ${Number(day)} 日`],
+  [/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2})\b/g, (_, month, day) => `${MONTH_NUMBER[month]} 月 ${Number(day)} 日`]
 ];
 
-function translateFactoryMainText(value) {
+export function translateFactoryMainText(value) {
   const trimmed = value.trim();
   if (!trimmed) return value;
   const leading = value.match(/^\s*/)?.[0] || "";
@@ -3310,7 +3574,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </div>
             <div>
               <div className="factory-profile-title-row">
-                <h1 data-no-translate>{data.name}</h1>
+                <h1 data-no-translate>{live?.nameNode ?? data.name}</h1>
                 {(!live || live.verifiedIcon) && (
                   <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
                     <img src={`/assets/prototype-icons/${live ? live.verifiedIcon : "basic"}.svg`} alt="" />
@@ -7953,7 +8217,7 @@ function FactoryOnboardingStep({
         <label className="factory-onboarding-field">
           <span>{content.languageLabel}</span>
           <select value={language} onChange={(event) => onLanguageChange(event.target.value)}>
-            <option value="en">{language === "zh" ? "英文" : "English"}</option>
+            <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
           {content.languageHelp && <small>{content.languageHelp}</small>}
@@ -9453,7 +9717,7 @@ function getTranslatedListMeta(meta) {
 
   return meta.split(" · ").map((part, index) => {
     if (index === 0) return part;
-    return replacements[part] || part;
+    return replacements[part] || factoryMainZhText[part] || part;
   }).join(" · ");
 }
 
@@ -10467,7 +10731,7 @@ export function FactoryReviewTotal({
               against. A vendor reading "Maison Rue" on its own quote has been
               told the wrong counterparty. */}
           <p data-no-translate={project?.brand ? true : undefined}>
-            Totals are calculated after saving the quote. Review the breakdown before sending it to {project?.brand ?? "Maison Rue"}.
+            {`Totals are calculated after saving the quote. Review the breakdown before sending it to ${project?.brand ?? "Maison Rue"}.`}
           </p>
           {isZh && <small className="submit-page-language-hint">以下英文发送版本已自动翻译，可直接在原字段中编辑。</small>}
         </header>

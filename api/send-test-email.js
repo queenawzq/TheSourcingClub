@@ -45,8 +45,8 @@ export const SAMPLE_REQUEST = {
 
 const TEMPLATES = {
   "onboarding-brand": async () => (await loadOnboardingEmail())("brand", sampleOnboarding("Sample Brand Co.", "/app.html")),
-  "onboarding-factory": async () => (await loadOnboardingEmail())("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory")),
-  "onboarding-trading-company": async () => (await loadOnboardingEmail())("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory")),
+  "onboarding-factory": async (locale) => (await loadOnboardingEmail())("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory", locale)),
+  "onboarding-trading-company": async (locale) => (await loadOnboardingEmail())("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory", locale)),
   "review-approved": (locale, name) => review("approved", locale, name, ""),
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_REQUEST[locale === "zh" ? "zh" : "en"]),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
@@ -119,10 +119,12 @@ async function sampleNotification(locale, name) {
   });
 }
 
-function sampleOnboarding(companyName, path) {
+function sampleOnboarding(companyName, path, locale = "en") {
+  const zh = locale === "zh";
   return {
+    locale: zh ? "zh" : "en",
     companyName,
-    dashboardUrl: `${appUrl()}${path}`,
+    dashboardUrl: `${appUrl()}${path}${zh ? "&lang=zh" : ""}`,
     logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",

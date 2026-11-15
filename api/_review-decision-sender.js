@@ -72,6 +72,8 @@ function loginUrlFor(row, appUrl) {
   const params = new URLSearchParams();
   if (row.orgs?.type && row.orgs.type !== "brand") params.set("portal", "factory");
   if (row.org_id) params.set("review", row.org_id);
+  // A Chinese reader's email is in Chinese; the sign-in and the page it opens are too.
+  if (row.locale === "zh") params.set("lang", "zh");
   const query = params.toString();
   return `${appUrl}/app.html${query ? `?${query}` : ""}`;
 }

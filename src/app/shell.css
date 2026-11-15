@@ -802,3 +802,22 @@ body {
 /* The factory's registration number is already another company's on TSC
    (verification v2): one line under the field, never a refusal. */
 .factory-onboarding-field .factory-onboarding-warning { display: block; color: var(--danger); margin-top: 4px; }
+
+/* Settings → Basic information: a factory person's language (SettingsScreen's
+   live `onLanguageChange`), drawn like the fields beside it. */
+.settings-form-grid .tsc-settings-language select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1020;
+  font-size: 14px;
+  font-weight: 400;
+  outline: none;
+}
+.settings-form-grid .tsc-settings-language select:focus {
+  border-color: #8db7ff;
+  box-shadow: 0 0 0 3px rgba(26, 77, 242, 0.12);
+}

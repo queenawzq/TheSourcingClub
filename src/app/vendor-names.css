@@ -1,0 +1,9 @@
+/* The vendor's name as it wrote it, under the English name: the card subtitle's style. */
+.tsc-vendor-name-original {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--card-subtitle-size);
+  font-weight: var(--weight-body);
+  line-height: var(--card-subtitle-line);
+}

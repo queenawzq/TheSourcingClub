@@ -30,6 +30,7 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initialsOf } from "../profile/factory-profile-view.js";
 import { useVendorTranslations } from "../browse/useVendorTranslations.js";
+import { useVendorNames } from "../vendor-names.jsx";
 import { loadRecommendedVendors } from "../profile/load-profile.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
 import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
@@ -306,7 +307,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   };
 
   const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate, can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"))), [recommended, navigate, org]);
-  const translatedRecommended = useVendorTranslations(recommendedCards, org.id);
+  const vendorNames = useVendorNames(recommendedCards);
+  const translatedRecommended = useVendorTranslations(recommendedCards, org.id).map(vendorNames.card);
 
   return (
     <>

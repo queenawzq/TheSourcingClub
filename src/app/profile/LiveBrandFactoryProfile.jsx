@@ -17,6 +17,7 @@ import { FactoryManufacturingProfilePage } from "../../factory-prototype/main.js
 import { factoryProfileView } from "./factory-profile-view.js";
 import { englishProfileParts, needsEnglish, profileSources } from "./profile-translation.mjs";
 import { requestProfileTranslation } from "./profile-translation-client.js";
+import { englishName, useVendorNames } from "../vendor-names.jsx";
 import { urlFor } from "../../lib/domain/documents.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -65,6 +66,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   }, [vendorOrgId, org.id, translationAttempt]);
   const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
+  // The company's name in English, the same one every brand screen shows (vendor-names.jsx).
+  const vendorNames = useVendorNames(state.parts?.orgName ? [{ id: vendorOrgId, name: state.parts.orgName }] : []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,10 +110,14 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
     );
   }
 
-  const translated = Object.keys(translation.texts).length > 0;
+  const englishOrgName = state.parts.orgName ? englishName(vendorOrgId, state.parts.orgName) : null;
+  const translated = Object.keys(translation.texts).length > 0 || Boolean(englishOrgName);
   // A failure is said only where something is waiting for English (B1).
   const untranslated = profileSources(state.parts).some(needsEnglish);
-  const displayedParts = showOriginal ? state.parts : englishProfileParts(state.parts, translation.texts);
+  const displayedParts = showOriginal ? state.parts : {
+    ...englishProfileParts(state.parts, translation.texts),
+    ...(englishOrgName ? { orgName: englishOrgName } : {}),
+  };
   const isTrading = state.parts.profile?.vendor_kind === "trading_company";
   const ProfileComponent = isTrading ? BrandFactoryProfileScreen : FactoryManufacturingProfilePage;
   const publicView = factoryProfileView(displayedParts);
@@ -135,6 +142,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
         live={{
           ...(isTrading ? brandFactoryView(displayedParts) : publicView),
           publicView: true,
+          // English first, the name as written under it; "See original" shows it alone.
+          nameNode: showOriginal || !englishOrgName ? null : vendorNames.node(vendorOrgId, state.parts.orgName),
           translationControls: (<div className="profile-translation-controls" aria-live="polite">
         {translation.loading ? <span>Preparing English version…</span> : <>
           {translated && <><span className="profile-translation-label">{showOriginal ? "Original text" : translation.incomplete ? "Partly translated to English" : "Automatically translated to English"}</span><button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button></>}

@@ -25,24 +25,48 @@ const DRAWER_LIMIT = 100;
 // title can't: what someone wrote, a reason, or what went wrong.
 const WORDS_MATTER = /^(message|payment_failed|verification_|order_cancel|cancel|call_|milestone_update|payout_|referral_|credits_)/;
 
-/** A notification as a row of the designed Activity drawer. */
-function toActivityItem(notification) {
+/** A notification as a row of the designed Activity drawer, in the reader's language. */
+function toActivityItem(notification, locale = "en") {
   return {
     id: notification.id,
     notification,
-    type: activityType(notification.kind),
-    title: notificationTitle(notification),
-    meta: WORDS_MATTER.test(notification.kind) ? notificationBody(notification) : "",
-    time: timeAgo(notification.created_at),
+    type: activityType(notification.kind, locale),
+    title: notificationTitle(notification, { locale }),
+    meta: WORDS_MATTER.test(notification.kind) ? notificationBody(notification, { locale }) : "",
+    time: timeAgo(notification.created_at, locale),
     unread: !notification.read_at,
   };
 }
 
 /**
+ * The reader's language for the bell: the one the page passes (`language`),
+ * else this person's saved `user_profiles.locale` (what their emails use), else
+ * English. Read once per person; a failed read is English.
+ */
+function useReaderLocale(language) {
+  const [saved, setSaved] = useState(null);
+  useEffect(() => {
+    if (language) return undefined;
+    let cancelled = false;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      if (!userId) return;
+      const { data } = await supabase.from("user_profiles").select("locale").eq("id", userId).maybeSingle();
+      if (!cancelled) setSaved(data?.locale === "zh" ? "zh" : "en");
+    })().catch(() => {});
+    return () => { cancelled = true; };
+  }, [language]);
+  const chosen = language ?? saved;
+  return chosen === "zh" ? "zh" : "en";
+}
+
+/**
  * @returns {{ unreadCount: number, openActivity: () => void, activityDrawer: React.ReactNode }}
  */
-export function useActivity(orgId, { isFactory, description, onError }) {
+export function useActivity(orgId, { isFactory, description, onError, language }) {
   const { navigate } = useRouter();
+  const locale = useReaderLocale(language);
   const [unreadCount, setUnreadCount] = useState(0);
   // null while the drawer is shut; { items: null } while it loads.
   const [drawer, setDrawer] = useState(null);
@@ -60,11 +84,14 @@ export function useActivity(orgId, { isFactory, description, onError }) {
   const loadItems = useCallback(async () => {
     try {
       const rows = await listNotifications(orgId, { limit: DRAWER_LIMIT });
-      if (isOpen.current) setDrawer({ items: (rows ?? []).map(toActivityItem) });
+      if (isOpen.current) setDrawer({ items: (rows ?? []).map((row) => toActivityItem(row, locale)) });
     } catch (failure) {
       onErrorRef.current?.(failure);
     }
-  }, [orgId]);
+  }, [orgId, locale]);
+
+  // The language arrived (or changed) with the drawer open: say it again.
+  useEffect(() => { if (isOpen.current) loadItems(); }, [loadItems]);
 
   useEffect(() => { refreshCount(); }, [refreshCount]);
 
@@ -150,7 +177,7 @@ export function useActivity(orgId, { isFactory, description, onError }) {
     <ActivityDrawer
       items={drawer.items ?? []}
       description={description}
-      emptyText={drawer.items ? "No notifications yet." : "Loading…"}
+      emptyText={drawer.items ? (locale === "zh" ? "暂无通知。" : "No notifications yet.") : (locale === "zh" ? "加载中…" : "Loading…")}
       onMarkAllRead={markAllActivityRead}
       markAllDisabled={marking || unreadCount === 0}
       onOpenItem={openActivityItem}

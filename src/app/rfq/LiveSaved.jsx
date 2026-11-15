@@ -16,6 +16,7 @@ import { loadSavedBrands } from "../profile/load-profile.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import "../profile/profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -75,7 +76,7 @@ export default function LiveSaved({ org }) {
 
   return (
     <FactorySavedPage
-      language="en"
+      language={getUiLanguage()}
       rfqs={saved}
       brands={brands}
       // Saved brands first, as the design; a vendor with none opens on its requests.

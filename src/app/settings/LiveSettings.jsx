@@ -49,6 +49,7 @@ import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/no
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard, { payoutRemovalError } from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
+import { chooseUiLanguage, useUiLanguage } from "../../lib/ui-language.js";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
@@ -88,6 +89,7 @@ function sentLabel(createdAt) {
 
 export default function LiveSettings({ org, isFactory, onSignOut }) {
   const { user, refreshOrgs } = useAuth();
+  const language = useUiLanguage();
   const [savedAccount, setSavedAccount] = useState(null);
   const [members, setMembers] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -435,6 +437,16 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
+        // A factory person's own language: every screen follows it at once,
+        // and it is kept for their other tabs, devices and emails.
+        language={isFactory ? language : "en"}
+        onLanguageChange={isFactory ? async (next) => {
+          try {
+            await chooseUiLanguage(user?.id, next);
+          } catch {
+            throw new Error(next === "zh" ? "语言未能保存，请重试。" : "Your language could not be saved. Try again.");
+          }
+        } : undefined}
         permissionsNote={isOwner
           ? "Owners hold every permission and can change each member’s access below."
           : isFactory

@@ -349,12 +349,14 @@ export function readable(message, { preferred = "en" } = {}) {
 export const LANGUAGE_NAME = { en: "English", zh: "中文" };
 
 /**
- * The language a reader reads a conversation in. The live app is English
- * throughout, so there is no setting to ask: the language this company last
- * wrote in, in this conversation; before it has written, the browser's
- * (any `zh` means Chinese); otherwise English.
+ * The language a reader reads a conversation in: the person's own choice
+ * (`uiLanguage`, a factory person's English or 中文, src/lib/ui-language.js)
+ * when there is one; otherwise the language this company last wrote in, in
+ * this conversation; before it has written, the browser's (any `zh` means
+ * Chinese); otherwise English.
  */
-export function readerLanguage(messages = [], orgId, browserLanguages = navigatorLanguages()) {
+export function readerLanguage(messages = [], orgId, browserLanguages = navigatorLanguages(), uiLanguage = null) {
+  if (LANGUAGE_NAME[uiLanguage]) return uiLanguage;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.sender_org_id === orgId && LANGUAGE_NAME[message.body_lang]) return message.body_lang;

@@ -81,6 +81,14 @@ export default async function handler(request, response) {
     return;
   }
 
+  // Each recipient's language (what they chose on the sign-up page or in
+  // onboarding). Unread is English: the email still goes.
+  const { data: profiles } = await service
+    .from("user_profiles")
+    .select("id, locale")
+    .in("id", queued.map((row) => row.recipient_user_id).filter(Boolean));
+  const localeOf = new Map((profiles ?? []).map((profile) => [profile.id, profile.locale === "zh" ? "zh" : "en"]));
+
   let sent = 0;
   const failures = [];
   for (const row of queued) {
@@ -95,12 +103,15 @@ export default async function handler(request, response) {
       continue;
     }
 
+    // A vendor who chose Chinese lands on the Chinese sign-in and app.
+    const locale = row.profile_kind === "brand" ? "en" : localeOf.get(row.recipient_user_id) ?? "en";
     const dashboardUrl = row.profile_kind === "brand"
       ? `${appUrl()}/app.html`
-      : `${appUrl()}/app.html?portal=factory`;
+      : `${appUrl()}/app.html?portal=factory${locale === "zh" ? "&lang=zh" : ""}`;
     try {
       const onboardingEmail = await loadOnboardingEmail();
       const message = onboardingEmail(row.profile_kind, {
+        locale,
         companyName: row.company_name,
         dashboardUrl,
         logoUrl: EMAIL_LOGO_URL,

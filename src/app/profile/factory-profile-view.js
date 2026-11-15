@@ -356,7 +356,7 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
     heroLine: [
       profile?.location,
       profile?.nearest_port,
-      profile?.employee_count != null ? `${count(profile.employee_count)} employees` : null,
+      profile?.employee_count != null ? (language === "zh" ? `${count(profile.employee_count)} 名员工` : `${count(profile.employee_count)} employees`) : null,
     ].filter(Boolean).join(" · ") || "Location not given",
     initials: initialsOf(name),
     logoUrl: parts.logoUrl ?? null,
