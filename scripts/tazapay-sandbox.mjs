@@ -290,6 +290,62 @@ steps.unfunded = async (tz) => {
   }
 };
 
+/** Fees and FX before any money: a payout quote needs no balance. */
+const QUOTES = [
+  ["CN CNY cnaps 10,000.00", { payout_type: "local", local: { fund_transfer_network: "cnaps" }, payout_info: { currency: "CNY", amount: 1_000_000 }, destination_info: { currency: "CNY", country: "CN" } }],
+  ["CN CNY cnaps 100.00", { payout_type: "local", local: { fund_transfer_network: "cnaps" }, payout_info: { currency: "CNY", amount: 10_000 }, destination_info: { currency: "CNY", country: "CN" } }],
+  ["CN CNY cnaps 100,000.00", { payout_type: "local", local: { fund_transfer_network: "cnaps" }, payout_info: { currency: "CNY", amount: 10_000_000 }, destination_info: { currency: "CNY", country: "CN" } }],
+  ["CN CNY unionpay 10,000.00", { payout_type: "local", local: { fund_transfer_network: "unionpay" }, payout_info: { currency: "CNY", amount: 1_000_000 }, destination_info: { currency: "CNY", country: "CN" } }],
+  ["CN CNY swift 10,000.00", { payout_type: "swift", payout_info: { currency: "CNY", amount: 1_000_000 }, destination_info: { currency: "CNY", country: "CN" } }],
+  ["CN USD swift 1,000.00", { payout_type: "swift", payout_info: { currency: "USD", amount: 100_000 }, destination_info: { currency: "USD", country: "CN" } }],
+  ["HK HKD fps 10,000.00", { payout_type: "local", local: { fund_transfer_network: "fps" }, payout_info: { currency: "HKD", amount: 1_000_000 }, destination_info: { currency: "HKD", country: "HK" } }],
+  ["HK HKD chats 10,000.00", { payout_type: "local", local: { fund_transfer_network: "chats" }, payout_info: { currency: "HKD", amount: 1_000_000 }, destination_info: { currency: "HKD", country: "HK" } }],
+  ["HK HKD local (no network) 10,000.00", { payout_type: "local", payout_info: { currency: "HKD", amount: 1_000_000 }, destination_info: { currency: "HKD", country: "HK" } }],
+  ["HK USD swift cross_border_wire 1,000.00", { payout_type: "swift", swift: { fund_transfer_network: "cross_border_wire" }, payout_info: { currency: "USD", amount: 100_000 }, destination_info: { currency: "USD", country: "HK" } }],
+];
+
+steps.quotes = async (tz) => {
+  for (const [label, body] of QUOTES) {
+    const q = await attempt(`quote ${label}`, () => tz.payoutQuote({ ...body, holding_info: { currency: "USD" } }));
+    if (!q) continue;
+    show(`quote ${label}`, { id: q.id, status: q.status, created_at: q.created_at, valid_until: q.valid_until, holding_debited: q.holding_info, payout: q.payout_info, exchange_rates: q.exchange_rates, fee_info: q.fee_info });
+  }
+};
+
+/**
+ * Without a balance: does Tazapay validate a payout's fields before refusing it
+ * for funds, and does the outcome amount change anything?
+ */
+steps.validate = async (tz) => {
+  if (!state.cnBeneficiary) throw new Error("no CN beneficiary yet: run --step=beneficiaries");
+  for (const o of OUTCOMES) {
+    await attempt(`unfunded payout, ${o.name} (${o.amount})`, () => tz.createPayout(cnPayout(o.amount), `tsc-sbx-val-${run}-${o.amount}`));
+  }
+  await attempt("unfunded payout, PYR022 goods with tracking and items", () => tz.createPayout(cnPayout(12_345, "PYR022"), `tsc-sbx-val-${run}-goods`));
+  const noPurpose = cnPayout(12_345); delete noPurpose.purpose;
+  await attempt("payout with no purpose", () => tz.createPayout(noPurpose));
+  const noDescription = cnPayout(12_345); delete noDescription.transaction_description;
+  await attempt("payout with no transaction_description", () => tz.createPayout(noDescription));
+  await attempt("payout to an unknown beneficiary", () => tz.createPayout({ ...cnPayout(12_345), beneficiary: "bnf_doesnotexist000000000" }));
+  await attempt("payout above the CNAPS limit (CNY 600,001)", () => tz.createPayout(cnPayout(60_000_100)));
+  // A CN beneficiary missing every corridor-required field, then a payout to it.
+  const bare = await attempt("bare CN beneficiary", () => tz.createBeneficiary({
+    name: "Bare Test Co", type: "business", email: `tazapay-bare-${run}@example.com`,
+    address: { line1: "1 Road", country: "CN" },
+    destination_details: { type: "bank", bank: { bank_name: "Bank of China", country: "CN", currency: "CNY" } },
+  }));
+  if (bare) {
+    show("bare CN beneficiary accepted", { id: bare.id, status: bare.status });
+    await attempt("payout to the bare beneficiary", () => tz.createPayout({ ...cnPayout(12_345), beneficiary: bare.id }));
+  }
+  // Idempotency: the same key twice on a create that succeeds.
+  const key = `tsc-sbx-idem-${run}`;
+  const body = { ...CN_COMPANY, email: `tazapay-idem-${run}@example.com` };
+  const first = await attempt("idempotent beneficiary #1", () => tz.createBeneficiary(body, key));
+  const second = await attempt("idempotent beneficiary #2 (same key)", () => tz.createBeneficiary(body, key));
+  show("idempotency", { first: first?.id, second: second?.id, same: Boolean(first && first.id === second?.id) });
+};
+
 const ORDER = ["auth", "corridors", "beneficiaries", "balance", "payouts", "hk", "poll"];
 
 async function main() {

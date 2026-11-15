@@ -84,6 +84,9 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
 
     const reason = describeRefusal(parsed);
     const extra = { status, body: parsed, path };
+    // The gateway answers 403 {"message":"Forbidden"} (no "status") for a path
+    // that is not an API route, whatever the key: that is not a key problem.
+    if (status === 403 && parsed && !parsed.status) throw new TazapayFailure("not_found", `Tazapay's gateway refused ${method} ${path} (403, no such route for API keys).`, extra);
     if (status === 401 || status === 403) throw new TazapayFailure("key_refused", `Tazapay refused TSC's API key (${status}). Check TAZAPAY_API_KEY and TAZAPAY_API_SECRET.`, extra);
     if (status === 404) throw new TazapayFailure("not_found", `Tazapay has no ${path} (404): ${reason}.`, extra);
     if (status === 400 || status === 422) throw new TazapayFailure("invalid", `Tazapay refused ${method} ${path}: ${reason}.`, extra);
