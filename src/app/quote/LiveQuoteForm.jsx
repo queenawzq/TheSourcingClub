@@ -41,6 +41,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
@@ -160,6 +161,7 @@ function missingQuoteFields(values, terms, companyType) {
 }
 
 export default function LiveQuoteForm({ org, rfqId, profile }) {
+  useChineseContent({ rfqIds: [rfqId] });
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);

@@ -58,6 +58,7 @@ import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./req
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -110,6 +111,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [certificationTags, setCertificationTags] = useState([]);
   const [serviceTags, setServiceTags] = useState([]);
   const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], images: [], saved: false });
+  // The request and the brand card in Chinese for a person reading Chinese.
+  useChineseContent({ rfqIds: [rfqId], brandOrgIds: [rfq?.brand_org_id] });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   // "revise" or "withdraw" while the vendor is being asked; a sent quote is

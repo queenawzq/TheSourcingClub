@@ -302,7 +302,7 @@ export const nav = [
   { label: "Settings", icon: "settings" }
 ];
 
-const factoryMainZhText = {
+export const factoryMainZhText = {
   "Dashboard": "控制台",
   "Production orders": "生产订单",
   "Browse RFQs": "浏览询价",
@@ -1187,7 +1187,16 @@ const factoryMainZhText = {
   "Show original": "查看原文",
   "Call declined": "通话已拒绝",
   "You declined": "你已拒绝",
-  "An owner sets each member’s permissions. RFQ flow writes and sends quotes; Add update posts production updates; Settings access manages company settings, billing and invitations. Only owners manage payouts.": "所有者为每位成员设置权限。询价流程：撰写并发送报价；添加更新：发布生产更新；设置权限：管理公司设置、支付方式和邀请。只有所有者可以管理收款。"
+  "An owner sets each member’s permissions. RFQ flow writes and sends quotes; Add update posts production updates; Settings access manages company settings, billing and invitations. Only owners manage payouts.": "所有者为每位成员设置权限。询价流程：撰写并发送报价；添加更新：发布生产更新；设置权限：管理公司设置、支付方式和邀请。只有所有者可以管理收款。",
+  "Back to request": "返回询价",
+  "Producing now": "正在生产",
+  "Wholesale brand": "批发品牌",
+  "Request cancelled": "询价已取消",
+  "Not quoted": "未报价",
+  "Sample before bulk": "大货前需打样",
+  "Bulk only": "仅大货",
+  "Posted today": "今天发布",
+  "Posted yesterday": "昨天发布"
 };
 
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
@@ -1310,11 +1319,18 @@ const factoryMainZhReplacements = [
   [/^Awaiting funding from the brand$/, "等待品牌付款"],
   [/Awaiting funding from the brand · /, "等待品牌付款 · "],
   [/^Quotes close /, "报价截止 "],
+  [/^Quote due /, "报价截止 "],
+  [/^Started (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "开始于 $1 "],
+  [/^Awarded (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "授予于 $1 "],
+  [/^Posted (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) /, "发布于 $1 "],
   [/^due /, "截止 "],
   [/ · due /, " · 截止 "],
   [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
   [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
   [/^Reference /, "参考号 "],
+  [/^(\$[\d,.]+) - (\$[\d,.]+) per unit$/, (_, low, high) => `每件 ${low} - ${high}`],
+  [/^· Posted (\d+) days? ago$/, (_, days) => `· ${days} 天前发布`],
+  [/^Posted (\d+) days? ago$/, (_, days) => `${days} 天前发布`],
   [/^(January|February|March|April|May|June|July|August|September|October|November|December) capacity$/, (_, month) => `${MONTH_NUMBER[month.slice(0, 3)]} 月产能`],
   [/^(January|February|March|April|May|June|July|August|September|October|November|December)$/, (_, month) => `${MONTH_NUMBER[month.slice(0, 3)]} 月`],
   [/^(January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})$/, (_, month, year) => `${year} 年 ${MONTH_NUMBER[month.slice(0, 3)]} 月`],

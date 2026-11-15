@@ -153,6 +153,7 @@ export function toProjectCard(order, isFactory) {
     // without parsing the label it shows a human.
     state: order.status,
     title: order.rfqs?.title ?? order.order_number,
+    rfqId: order.rfq_id ?? null,
     factory: counterparty(order, isFactory),
     location: order.order_number,
     started: order.activated_at

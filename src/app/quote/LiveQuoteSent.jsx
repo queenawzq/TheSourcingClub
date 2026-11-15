@@ -24,10 +24,12 @@ import { useRouter } from "../../lib/router.jsx";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import QuoteActionDialog, { reviseCopy } from "./QuoteActionDialog.jsx";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveQuoteSent({ org, rfqId, profile }) {
+  useChineseContent({ rfqIds: [rfqId] });
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);

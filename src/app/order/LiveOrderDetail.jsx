@@ -59,6 +59,7 @@ import {
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 /** Approval depends on step state and funding, never on posted updates. */
 const approvable = (milestone) =>
@@ -280,6 +281,8 @@ async function brandCharges(orderId) {
 export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = false, tab = "overview", step = null }) {
   const { navigate } = useRouter();
   const [order, setOrder] = useState(null);
+  // The factory reads the request's words in Chinese when it reads Chinese.
+  useChineseContent(isFactory ? { rfqIds: [order?.rfq_id], brandOrgIds: [order?.brand_org_id] } : {});
   const [milestones, setMilestones] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);

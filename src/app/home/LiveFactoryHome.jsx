@@ -34,6 +34,7 @@ import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -119,6 +120,7 @@ const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZo
 export default function LiveFactoryHome({ org, profile }) {
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
+  useChineseContent({ rfqIds: (state?.rfqs ?? []).map((rfq) => rfq?.id) });
   // The first read failed: nothing is known, so no layout can be drawn.
   const [failed, setFailed] = useState(false);
   // Something later did not go through, on a dashboard that is still right.

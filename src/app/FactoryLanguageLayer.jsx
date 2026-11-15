@@ -9,23 +9,32 @@
  * that are not in the dictionary stay as they are: nothing is machine
  * translated here.
  *
- * Left alone: what people wrote (message bubbles, the company's own profile,
- * which has its own scoped layer), and anything marked `data-no-translate`.
- * Switching back to English puts every swapped text back.
+ * A brand's own words (requests, its profile) are not dictionary text: the
+ * design marks them `data-no-translate`. They get the Chinese the server
+ * translated for this person (src/app/content-translation.js), matched by
+ * their exact English, and the design's "查看英文原文" shows the English again.
+ *
+ * Left alone: what people wrote in messages and the company's own profile
+ * (which has its own scoped layer). Switching back to English puts every
+ * swapped text back.
  */
 import { useEffect, useState } from "react";
-import { translateFactoryMainText } from "../factory-prototype/main.jsx";
+import { factoryMainZhText, translateFactoryMainText } from "../factory-prototype/main.jsx";
 import { supabase } from "../lib/supabase.js";
+import { contentTranslations, toggleOriginal, useContentTranslations } from "./content-translation.js";
 
 const ATTRIBUTES = ["placeholder", "aria-label", "title"];
 const LEAVE_ALONE = [
-  "[data-no-translate]",
   "script", "style", "textarea", "code", "pre",
-  ".factory-profile-page",
+  // The company's own profile; a brand's profile is read like any other page.
+  ".factory-profile-page:not(.brand-profile-page)",
   ".message-bubble > p",
   ".message-attachment-row",
   ".tsc-content-original",
 ].join(",");
+const BRAND_WORDS = "[data-no-translate]";
+// The design's note beside a translated brief, and its "see the English" button.
+const TRANSLATION_NOTE = ".brand-brief-translation-meta";
 
 /**
  * Taxonomy terms by their English label, for the Chinese ones staff wrote
@@ -55,14 +64,25 @@ export function chineseFor(value, terms = new Map()) {
   if (term) return value.replace(trimmed, term);
   const translated = translateFactoryMainText(value);
   if (translated === value) return value;
-  const left = (translated.match(LATIN_WORD) ?? []).length;
-  const before = (value.match(LATIN_WORD) ?? []).length;
-  // Whole entries and dates come out without English words; a sentence that
-  // still carries two or more of its own words was only partly covered.
-  return left >= 2 && left >= before / 2 ? value : translated;
+  // A whole dictionary entry is the design's own Chinese, trade words included.
+  if (Object.hasOwn(factoryMainZhText, trimmed)) return translated;
+  // Whole entries and dates come out without English words, and a pattern
+  // keeps only the names it carries ("Message Demo Brand..."). A sentence that
+  // still has two or more of its ordinary words was only partly covered.
+  const ordinary = (translated.match(LATIN_WORD) ?? []).filter((word) => /^[a-z]/.test(word)).length;
+  return ordinary >= 2 ? value : translated;
+}
+
+/** The design's note and button, saying what is on screen now. */
+function noteText(original, { showOriginal, failed, translations }) {
+  if (original === "查看英文原文" || original === "查看中文翻译") return showOriginal ? "查看中文翻译" : "查看英文原文";
+  if (showOriginal) return "英文原文";
+  if (failed && translations.size === 0) return "暂时无法翻译，显示英文原文";
+  return "由英文自动翻译";
 }
 
 export default function FactoryLanguageLayer({ language }) {
+  const contentVersion = useContentTranslations();
   const [terms, setTerms] = useState(null);
   useEffect(() => {
     if (language !== "zh" || terms) return undefined;
@@ -81,12 +101,26 @@ export default function FactoryLanguageLayer({ language }) {
     const written = new WeakMap();
     const skip = (element) => !element || Boolean(element.closest(LEAVE_ALONE));
 
+    const content = contentTranslations();
+    const chineseHere = (value, element) => {
+      const trimmed = value.trim();
+      const translatedContent = !content.showOriginal && content.translations.get(trimmed);
+      if (translatedContent) return value.replace(trimmed, translatedContent);
+      if (element?.closest(TRANSLATION_NOTE)) return noteText(trimmed, content);
+      if (element?.closest(BRAND_WORDS)) return value;
+      const whole = chineseFor(value, terms ?? undefined);
+      if (whole !== value || !trimmed.includes(" · ")) return whole;
+      // "Maple Row Studio · Quote due Nov 24 · Sample before bulk": each part
+      // on its own; a name stays as written.
+      const parts = trimmed.split(" · ").map((part) => chineseHere(part, element));
+      return parts.join(" · ") !== trimmed ? value.replace(trimmed, parts.join(" · ")) : value;
+    };
     const swap = (node, attribute, read, write) => {
       const original = read();
       if (!original || !original.trim()) return;
       const mine = written.get(node);
       if (mine && mine[attribute ?? "#text"] === original) return;
-      const translated = chineseFor(original, terms ?? undefined);
+      const translated = chineseHere(original, node.nodeType === Node.TEXT_NODE ? node.parentElement : node);
       if (translated === original) return;
       write(translated);
       written.set(node, { ...(mine ?? {}), [attribute ?? "#text"]: translated });
@@ -153,8 +187,13 @@ export default function FactoryLanguageLayer({ language }) {
 
     walk(document.body);
     observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRIBUTES });
+    const onNoteClick = (event) => {
+      if (event.target.closest?.(`${TRANSLATION_NOTE} button`)) toggleOriginal();
+    };
+    document.addEventListener("click", onNoteClick);
 
     return () => {
+      document.removeEventListener("click", onNoteClick);
       observer.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
       // Back to English: every text this layer changed, unless the screen has
@@ -169,7 +208,7 @@ export default function FactoryLanguageLayer({ language }) {
       }
       root.lang = previousLang;
     };
-  }, [language, terms]);
+  }, [language, terms, contentVersion]);
 
   return null;
 }

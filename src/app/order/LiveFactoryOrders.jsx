@@ -14,9 +14,12 @@ import { initials } from "./order-view.js";
 import useOrderCancel from "./useOrderCancel.jsx";
 import useOrderTabs from "./useOrderTabs.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 function Orders({ org, user, onViewOrder }) {
   const { data, loading, error, reload } = useOrders();
+  // The requests' words in Chinese for a person reading Chinese.
+  useChineseContent({ rfqIds: (data ?? []).map((card) => card.rfqId) });
   const tabStore = useOrderTabs(org, user);
   const cancelStore = useOrderCancel({ onViewOrder });
   const projects = (data ?? []).map((card) => ({
