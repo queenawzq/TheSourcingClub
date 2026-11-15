@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
-import { translateIntoChinese } from "./_translate.js";
+import { translateIntoChinese, translateText } from "./_translate.js";
 
 /** The user id a token names, unverified: the database verifies it when it is used (as api/profile-translation.js). */
 function tokenSubject(token) {
@@ -31,9 +31,12 @@ export const config = { maxDuration: 60 };
 const DEADLINE_MS = 8000;
 const MAX_RFQS = 50;
 const MAX_BRANDS = 20;
+const MAX_MESSAGES = 100;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 const hashOf = (source) => createHash("sha256").update(`content-zh-v1:${source}`).digest("hex");
+// api/profile-translation.js's key, so a sentence reads the same English everywhere.
+const profileHashOf = (source) => createHash("sha256").update(`profile-en-v1:${source}`).digest("hex");
 
 /** Text worth translating: has English words and no Chinese already. */
 export function needsChinese(text) {
@@ -86,6 +89,41 @@ export async function translateAll(sources, { translate, cacheRead, cacheWrite, 
   return { translations, missing };
 }
 
+/** Cache reads and writes for one key prefix (`hash(source)`). */
+function cacheFor(service, hash) {
+  return {
+    cacheRead: async (texts) => {
+      const bySource = new Map(texts.map((source) => [hash(source), source]));
+      const hashes = [...bySource.keys()];
+      // 80 hashes a read keeps the address under the gateway's limit.
+      const reads = await Promise.all(Array.from({ length: Math.ceil(hashes.length / 80) }, (_, i) =>
+        service.from("profile_translation_cache").select("source_hash,english,translated").in("source_hash", hashes.slice(i * 80, i * 80 + 80))));
+      const failed = reads.find((read) => read.error);
+      if (failed) throw failed.error;
+      return new Map(reads.flatMap((read) => read.data).map((row) => [bySource.get(row.source_hash), row]));
+    },
+    cacheWrite: async (rows) => {
+      await service.from("profile_translation_cache")
+        .upsert(rows.map(({ source, english, translated }) => ({ source_hash: hash(source), english, translated })), { onConflict: "source_hash" });
+    },
+  };
+}
+
+const ids = (value, max) => (Array.isArray(value) ? [...new Set(value)] : []).slice(0, max + 1);
+
+/** What a factory wrote, for a brand: quotes, answers, step updates, its location and intro. */
+export function factoryWordsSources({ quotes = [], answers = [], sampleLines = [], materialLines = [], updates = [], profiles = [], sampleTitles = [] }, needsEnglish) {
+  return [...new Set([
+    ...quotes.flatMap((quote) => [quote.shipping_notes, quote.sourcing_includes, quote.factory_response, quote.factory_notes]),
+    ...answers.map((answer) => answer.answer_text),
+    ...sampleLines.flatMap((line) => [line.stage, line.includes]),
+    ...materialLines.map((line) => line.material),
+    ...updates.map((update) => update.body),
+    ...profiles.flatMap((profile) => [profile.location, profile.intro]),
+    ...sampleTitles,
+  ].filter((text) => typeof text === "string" && text.trim() && needsEnglish(text)).map((text) => text.trim()))];
+}
+
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "private, no-store");
   if (request.method !== "POST") return response.status(405).json({ error: "Method not allowed" });
@@ -102,19 +140,30 @@ export default async function handler(request, response) {
   let body;
   try { body = typeof request.body === "string" ? JSON.parse(request.body) : request.body; }
   catch { return response.status(400).json({ error: "Invalid request" }); }
-  const rfqIds = Array.isArray(body?.rfqIds) ? [...new Set(body.rfqIds)] : [];
-  const brandOrgIds = Array.isArray(body?.brandOrgIds) ? [...new Set(body.brandOrgIds)] : [];
-  if ((!rfqIds.length && !brandOrgIds.length) || rfqIds.length > MAX_RFQS || brandOrgIds.length > MAX_BRANDS
-    || [...rfqIds, ...brandOrgIds].some((id) => !UUID.test(id ?? ""))) {
+  const toEnglish = body?.to === "en";
+  const rfqIds = ids(body?.rfqIds, MAX_RFQS);
+  const brandOrgIds = ids(body?.brandOrgIds, MAX_BRANDS);
+  const messageIds = ids(body?.messageIds, MAX_MESSAGES);
+  const quoteIds = ids(body?.quoteIds, MAX_RFQS);
+  const orderIds = ids(body?.orderIds, MAX_RFQS);
+  const factoryOrgIds = ids(body?.factoryOrgIds, MAX_RFQS);
+  const all = toEnglish ? [...quoteIds, ...orderIds, ...factoryOrgIds] : [...rfqIds, ...brandOrgIds, ...messageIds];
+  if (!all.length || rfqIds.length > MAX_RFQS || brandOrgIds.length > MAX_BRANDS || messageIds.length > MAX_MESSAGES
+    || quoteIds.length > MAX_RFQS || orderIds.length > MAX_RFQS || factoryOrgIds.length > MAX_RFQS
+    || all.some((id) => !UUID.test(id ?? ""))) {
     return response.status(400).json({ error: "Invalid request" });
   }
 
-  // Only a factory's people read the factory's screens in Chinese.
+  // Chinese is for a factory's people; English for a brand's.
+  const side = toEnglish ? "brand" : "factory";
   const { data: memberships, error: membershipError } = await caller.from("org_members").select("orgs!inner(type)").eq("user_id", userId);
   if (membershipError) return response.status(/jwt|token/i.test(membershipError.message ?? "") || membershipError.code === "PGRST301" ? 401 : 503).json({ error: "Sign in required" });
-  if (!memberships?.some((row) => row.orgs?.type === "factory")) return response.status(403).json({ error: "Factory access required" });
+  if (!memberships?.some((row) => row.orgs?.type === side)) return response.status(403).json({ error: `${side === "brand" ? "Brand" : "Factory"} access required` });
 
-  const [rfqs, questions, colours, brands] = await Promise.all([
+  const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  if (toEnglish) return english(caller, service, { quoteIds, orderIds, factoryOrgIds }, response);
+
+  const [rfqs, questions, colours, brands, messages] = await Promise.all([
     rfqIds.length ? caller.from("rfqs").select("id,title,brief,material_notes,sample_notes,additional_details,sourcing_details").in("id", rfqIds) : { data: [] },
     rfqIds.length ? caller.from("rfq_questions").select("rfq_id,prompt").in("rfq_id", rfqIds) : { data: [] },
     rfqIds.length ? caller.from("rfq_colour_splits").select("rfq_id,colour").in("rfq_id", rfqIds) : { data: [] },
@@ -122,31 +171,65 @@ export default async function handler(request, response) {
       const { data, error } = await caller.rpc("brand_profile_for_factory", { brand_org: id });
       return error ? null : data;
     })),
+    // Read through messages_read: only a party's delivered messages.
+    messageIds.length ? caller.from("messages").select("id,body").in("id", messageIds) : { data: [] },
   ]);
-  if (rfqs.error) return response.status(503).json({ error: "Request text unavailable" });
+  if (rfqs.error || messages.error) return response.status(503).json({ error: "Text unavailable" });
 
   const own = (rows, id) => (rows?.data ?? []).filter((row) => row.rfq_id === id);
   const sources = [...new Set([
     ...(rfqs.data ?? []).flatMap((rfq) => rfqSources(rfq, own(questions, rfq.id), own(colours, rfq.id))),
     ...brands.flatMap(brandSources),
+    ...(messages.data ?? []).map((message) => message.body).filter(needsChinese).map((text) => text.trim()),
   ])];
 
-  const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const { translations, missing } = await translateAll(sources, {
     translate: (text, { timeoutMs }) => translateIntoChinese(text, { timeoutMs }),
-    cacheRead: async (texts) => {
-      const bySource = new Map(texts.map((source) => [hashOf(source), source]));
-      const hashes = [...bySource.keys()];
-      const reads = await Promise.all(Array.from({ length: Math.ceil(hashes.length / 80) }, (_, i) =>
-        service.from("profile_translation_cache").select("source_hash,english,translated").in("source_hash", hashes.slice(i * 80, i * 80 + 80))));
-      const failed = reads.find((read) => read.error);
-      if (failed) throw failed.error;
-      return new Map(reads.flatMap((read) => read.data).map((row) => [bySource.get(row.source_hash), row]));
-    },
-    cacheWrite: async (rows) => {
-      await service.from("profile_translation_cache")
-        .upsert(rows.map(({ source, english, translated }) => ({ source_hash: hashOf(source), english, translated })), { onConflict: "source_hash" });
-    },
+    ...cacheFor(service, hashOf),
   });
-  return response.status(200).json({ translations, incomplete: missing.length > 0 });
+  return response.status(200).json({ translations, missing, incomplete: missing.length > 0 });
+}
+
+/** A factory's own words in English for a brand, through the vendor profile's cache. */
+async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, response) {
+  const orders = orderIds.length
+    ? await caller.from("production_orders").select("id,quote_id,factory_org_id").in("id", orderIds)
+    : { data: [] };
+  if (orders.error) return response.status(503).json({ error: "Order text unavailable" });
+  const allQuoteIds = [...new Set([...quoteIds, ...(orders.data ?? []).map((order) => order.quote_id).filter(Boolean)])];
+  const quotes = allQuoteIds.length
+    ? await caller.from("quotes").select("id,factory_org_id,shipping_notes,sourcing_includes,factory_response,factory_notes").in("id", allQuoteIds)
+    : { data: [] };
+  if (quotes.error) return response.status(503).json({ error: "Quote text unavailable" });
+  const factories = [...new Set([...factoryOrgIds, ...(orders.data ?? []).map((order) => order.factory_org_id), ...(quotes.data ?? []).map((quote) => quote.factory_org_id)].filter(Boolean))].slice(0, 60);
+  const shownQuotes = (quotes.data ?? []).map((quote) => quote.id);
+  const [answers, sampleLines, materialLines, milestones, profiles, samples] = await Promise.all([
+    shownQuotes.length ? caller.from("quote_question_answers").select("answer_text").in("quote_id", shownQuotes) : { data: [] },
+    shownQuotes.length ? caller.from("quote_sample_lines").select("stage,includes").in("quote_id", shownQuotes) : { data: [] },
+    shownQuotes.length ? caller.from("quote_material_lines").select("material").in("quote_id", shownQuotes) : { data: [] },
+    orderIds.length ? caller.from("order_milestones").select("id").in("order_id", orderIds) : { data: [] },
+    // Published profiles only, as the vendor page and Browse read them.
+    factories.length ? caller.from("factory_profiles").select("org_id,location,intro").in("org_id", factories) : { data: [] },
+    // Sample titles, as a Browse card shows them (titled from the file name when untitled).
+    factories.length ? caller.from("documents").select("title,file_name").in("org_id", factories).eq("kind", "product_image").eq("bucket", "org-public") : { data: [] },
+  ]);
+  const milestoneIds = (milestones.data ?? []).map((row) => row.id);
+  const updates = milestoneIds.length
+    ? await caller.from("milestone_updates").select("body").in("milestone_id", milestoneIds)
+    : { data: [] };
+
+  const { needsEnglish, translateSources, titleFromFileName } = await import("../src/shared/profile-translation.mjs");
+  const sources = factoryWordsSources({
+    quotes: quotes.data, answers: answers.data, sampleLines: sampleLines.data, materialLines: materialLines.data,
+    updates: updates.data, profiles: profiles.data,
+    sampleTitles: (samples.data ?? []).map((sample) => sample.title || titleFromFileName(sample.file_name)),
+  }, needsEnglish).slice(0, 120);
+  // The vendor profile's key: one sentence reads the same English on Browse,
+  // the vendor page, the invite step, quotes and the order.
+  const { translations, missing } = await translateSources(sources, {
+    deadlineMs: DEADLINE_MS,
+    translate: (text, { timeoutMs }) => translateText(text, { timeoutMs }),
+    ...cacheFor(service, profileHashOf),
+  });
+  return response.status(200).json({ translations, missing, incomplete: missing.length > 0 });
 }

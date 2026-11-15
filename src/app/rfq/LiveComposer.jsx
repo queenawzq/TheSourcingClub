@@ -33,6 +33,7 @@ import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resu
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useVendorNames } from "../vendor-names.jsx";
+import { useEnglishContent } from "../content-translation.js";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
@@ -191,6 +192,8 @@ export default function LiveComposer({ org, rfqId }) {
   // the selection survives the visit.
   const [profileOf, setProfileOf] = useState(null);
   // Vendors' names in English where written in Chinese (vendor-names.jsx).
+  // Each vendor's location and intro in English, as Browse shows them (BrandEnglishLayer).
+  useEnglishContent({ factoryOrgIds: vendors.map((vendor) => vendor.org_id) });
   const vendorNames = useVendorNames([
     ...[...vendors, ...excludedVendors].map((vendor) => ({ id: vendor.org_id, name: vendor.orgs?.name })),
     ...(reorder ? [{ id: reorder.factoryOrgId, name: reorder.factoryName }] : []),

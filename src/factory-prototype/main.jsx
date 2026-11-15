@@ -767,8 +767,8 @@ export const factoryMainZhText = {
   "Review total": "审核报价",
   "Quote terms": "报价条款",
   "Enter exact commercial terms for this request.": "填写该需求的准确商务条款。",
-  "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，提交前会生成英文版本供你确认。",
-  "You can fill this page in Chinese. We'll create an English version for you to review before sending.": "本页可用中文填写，提交前会生成英文版本供你确认。",
+  "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，品牌会看到自动翻译的英文。",
+  "You can fill this page in Chinese. We'll create an English version for you to review before sending.": "本页可用中文填写，品牌会看到自动翻译的英文。",
   "Unit price": "单价",
   "Unit price *": "单价 *",
   "Exact production quantity *": "准确生产数量 *",
@@ -1096,7 +1096,6 @@ export const factoryMainZhText = {
   // Live screens (app.html): text the prototype never draws.
   "Log out": "退出登录",
   "Language": "语言",
-  "English": "英文",
   "Change password": "修改密码",
   "Changing…": "正在修改…",
   "Password changed": "密码已修改",
@@ -1249,7 +1248,39 @@ export const factoryMainZhText = {
   "Mark all read": "全部标为已读",
   "Close activity": "关闭动态",
   "Open activity": "打开动态",
-  "No completed orders yet.": "暂无已完成订单。"
+  "No completed orders yet.": "暂无已完成订单。",
+  "No funded earnings yet. Payments appear here after a brand funds a production step.": "暂无已到账收入。品牌为生产步骤付款后，款项会显示在这里。",
+  "Update posted": "已发布更新",
+  "‹ Revise quote": "‹ 修改报价",
+  "Search conversations": "搜索对话",
+  "unit price": "单价",
+  "production quantity": "生产数量",
+  "bulk lead time": "大货交期",
+  "bulk lead time (write days or weeks, like “30-35 days”)": "大货交期（填写天数或周数，如“30-35 天”）",
+  "payment terms": "付款条款",
+  "payment terms (try “30/70”, “paid in full”, or “Net 30”)": "付款条款（可填“30/70”、“全款”或“Net 30”）",
+  "shipping terms (try EXW, FOB or DDP)": "运输条款（可填 EXW、FOB 或 DDP）",
+  "quote valid until": "报价有效期",
+  "Show Original": "查看原文",
+  "Translate to Chinese": "翻译成中文",
+  "Today": "今天",
+  "Yesterday": "昨天",
+  "Payment": "付款",
+  "Add a withdrawal method": "添加提现方式",
+  "Drafts": "草稿",
+  "Active orders": "进行中订单",
+  "Archived": "已归档",
+  "e.g. $12–$15 / unit": "例如 $12–$15 / 件",
+  "Enter exact production quantity": "填写准确的生产数量",
+  "e.g. 30–35 days": "例如 30–35 天",
+  "e.g. Jan 5 - Mar 1, 2027 · 300 units": "例如 2027 年 1 月 5 日 - 3 月 1 日 · 300 件",
+  "e.g. 30/70, paid in full, or Net 30": "例如 30/70、全款或 Net 30",
+  "Enter shipping / incoterms": "填写运输 / 贸易条款",
+  "Enter information": "填写信息",
+  "e.g. 7–10 days": "例如 7–10 天",
+  "e.g. 1 revision": "例如 1 次修改",
+  "Choose a quote validity date": "选择报价有效期",
+  "Your quote is a draft and has not been sent yet.": "你的报价是草稿，尚未发送。"
 };
 
 // The profile's completion note lists these ("Add your factory details and
@@ -1393,6 +1424,7 @@ const factoryMainZhReplacements = [
   [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
   [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
   [/^Reference /, "参考号 "],
+  [/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 较空；(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 部分已订/g, (_, open, booked) => `${MONTH_NUMBER[open]} 月较空；${MONTH_NUMBER[booked]} 月部分已订`],
   [/^Needs the (.+) permission$/, (_, label) => `需要「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限`],
   [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (_, label, company) => `你需要 ${company} 的「${(factoryMainZhText[label] ?? label).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) roughly ([\d,.-]+) pieces$/, (_, month, pieces) => `${MONTH_NUMBER[month]} 月约 ${pieces} 件`],
@@ -8168,7 +8200,7 @@ function FactoryOnboardingStep({
         <label className="factory-onboarding-field">
           <span>{content.languageLabel}</span>
           <select value={language} onChange={(event) => onLanguageChange(event.target.value)}>
-            <option value="en">{language === "zh" ? "英文" : "English"}</option>
+            <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
           {content.languageHelp && <small>{content.languageHelp}</small>}
@@ -9668,7 +9700,7 @@ function getTranslatedListMeta(meta) {
 
   return meta.split(" · ").map((part, index) => {
     if (index === 0) return part;
-    return replacements[part] || translateFactoryMainText(part);
+    return replacements[part] || factoryMainZhText[part] || part;
   }).join(" · ");
 }
 

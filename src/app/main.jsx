@@ -16,6 +16,7 @@ import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { syncUiLanguage, useUiLanguage } from "../lib/ui-language.js";
 import FactoryLanguageLayer from "./FactoryLanguageLayer.jsx";
+import BrandEnglishLayer from "./BrandEnglishLayer.jsx";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
@@ -961,7 +962,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
 
   return (
     <div className={`app-shell${collapsed ? " nav-collapsed" : ""}${isFactory ? " factory-flow" : ""}`}>
-      {isFactory ? <FactoryLanguageLayer language={language} /> : null}
+      {isFactory ? <FactoryLanguageLayer language={language} /> : <BrandEnglishLayer />}
       <PrototypeSideNav
         account={{ initials: initialsOf(activeOrg.name), name: activeOrg.name, type: accountType }}
         active={activeNavFor(path, isFactory)}

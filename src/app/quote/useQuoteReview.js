@@ -16,6 +16,7 @@ import { useVendorNames } from "../vendor-names.jsx";
 import { initialsOf } from "../profile/factory-profile-view.js";
 import { dateFrom } from "../../lib/dates.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
+import { useEnglishContent } from "../content-translation.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
 
@@ -99,6 +100,8 @@ export function useQuoteReview(rfqId) {
 
   // Each vendor's name in English where written in Chinese, the original
   // under it (vendor-names.jsx): the same name as on Browse and the order.
+  // What each vendor typed in Chinese, in English for the brand (BrandEnglishLayer).
+  useEnglishContent({ quoteIds: (state?.quotes ?? []).map((quote) => quote.raw.id) });
   const vendorNames = useVendorNames((state?.quotes ?? []).map((quote) => ({ id: quote.raw.factory_org_id, name: quote.view.name })));
   const named = state && {
     ...state,

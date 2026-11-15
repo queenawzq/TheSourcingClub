@@ -9694,7 +9694,7 @@ export function InviteScreen({
   const isLive = Boolean(liveVendors);
   const searched = liveSearch.trim().toLowerCase();
   const inviteVendors = isLive
-    ? liveVendors.filter((vendor) => !searched || [vendor.name, vendor.location, vendor.note, ...(vendor.categories ?? []), ...(vendor.capabilities ?? [])]
+    ? liveVendors.filter((vendor) => !searched || [vendor.name, vendor.originalName, vendor.location, vendor.note, ...(vendor.categories ?? []), ...(vendor.capabilities ?? [])]
         .some((word) => String(word ?? "").toLowerCase().includes(searched)))
     : isTrading
       ? marketplaceTradingCompanies.map((company) => ({

@@ -124,6 +124,8 @@ export function useVendorNames(vendors, { enabled = true } = {}) {
       return {
         ...card,
         name: translated,
+        // Still found by the name as written (the invite step's search).
+        originalName: card.name,
         // The avatar's letters from the English name, as on the vendor's page.
         ...(card.initials != null ? { initials: initialsOf(translated) } : {}),
         nameNode: <VendorName id={card.id} name={card.name} english={translated} />,

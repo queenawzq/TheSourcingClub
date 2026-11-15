@@ -42,6 +42,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { initials, locationLine } from "./order-view.js";
 import "./fund.css";
 import { useVendorNames } from "../vendor-names.jsx";
+import { useEnglishContent } from "../content-translation.js";
 
 let stripePromise = null;
 const stripeClient = () => {
@@ -76,6 +77,8 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   const isOwner = can(activeOrg, "releaseFunds");
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
+  // What the vendor typed in Chinese, in English for the brand (BrandEnglishLayer).
+  useEnglishContent({ orderIds: [orderId] });
   const vendor = state?.order?.factory?.name ? { id: state.order.factory_org_id, name: state.order.factory.name } : null;
   // The vendor's name in English where it has one, as on the order (vendor-names.jsx).
   const vendorNames = useVendorNames(vendor ? [vendor] : []);

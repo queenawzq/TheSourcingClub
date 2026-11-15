@@ -16,7 +16,7 @@ import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
-import { awaitingScreen, fileOnlyBody, englishTranslation, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
@@ -26,6 +26,8 @@ import CallChangeDialog from "./CallChangeDialog.jsx";
 import MessageGuidelinesDialog from "./MessageGuidelinesDialog.jsx";
 import { MESSAGE_GUIDELINES } from "../../shared/message-guidelines.mjs";
 import { useVendorNames } from "../vendor-names.jsx";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { contentTranslations, useChineseContent, useContentTranslations } from "../content-translation.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -120,6 +122,22 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
   const [projectNames, setProjectNames] = useState(new Map());
   const [messagesByThread, setMessagesByThread] = useState({});
+  // A factory person reading Chinese: the brand's messages in Chinese, the
+  // original first and the Chinese one click away, as the design's bubble
+  // offers (翻译成中文). Translated on the server and cached, by message id.
+  const readsChinese = isFactory && readerLanguage([], org.id, [], getUiLanguage()) === "zh";
+  useContentTranslations();
+  useChineseContent({
+    messageIds: readsChinese
+      ? Object.values(messagesByThread).flat().filter((message) => message.sender_org_id !== org.id && message.id).map((message) => message.id)
+      : [],
+  });
+  const readerTranslation = (message, { own }) => {
+    const english = englishTranslation(message, { own });
+    if (!readsChinese || own || english.translation) return english;
+    const chinese = contentTranslations().translations.get(String(message.body ?? "").trim());
+    return chinese ? { body: message.body, translation: chinese, language: "zh", showAltLabel: "Translate to Chinese", hideAltLabel: "Show Original" } : english;
+  };
   // Messages on their way: drawn the moment Send is pressed, before the
   // database has answered. { [threadId]: [{ tempId, body, files, at, failed }] }
   const [outgoing, setOutgoing] = useState({});
@@ -560,7 +578,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
           status: deliveryStatus(message, { unscreened: unscreened.has(message.id), onGuidelines: () => setGuidelinesOpen(true) }),
-          ...englishTranslation(message, { own: mine }),
+          ...readerTranslation(message, { own: mine }),
           attachments: files.length ? files : undefined,
         };
       }),

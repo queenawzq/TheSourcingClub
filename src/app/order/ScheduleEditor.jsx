@@ -19,6 +19,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { MilestonesScreen } from "../../prototype/main.jsx";
 import { PAID_ON_OPEN, kindFor, moveScheduleRow, scheduleBar, scheduleProblem, stepAmount, typeOf } from "./order-view.js";
 import "./order.css";
+import { useEnglishContent } from "../content-translation.js";
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
 
@@ -26,6 +27,8 @@ export default function ScheduleEditor({ orderId, isFactory }) {
   const { navigate } = useRouter();
   const { activeOrg, orgs } = useAuth();
   const [order, setOrder] = useState(null);
+  // The brand reads what the factory typed (its location, the quote) in English.
+  useEnglishContent({ orderIds: [orderId] }, { enabled: !isFactory });
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);

@@ -1,18 +1,24 @@
 /**
- * A brand's words in Chinese for a factory person reading in Chinese
- * (api/content-translation.js). One store per page: every screen asks for
- * the requests and brands it shows, the answers are kept by their English
- * text, and `FactoryLanguageLayer` puts them on screen wherever that exact
- * text is drawn. The design's "查看英文原文" shows the English again.
+ * The other side's words in the reader's language (api/content-translation.js).
  *
- * Never blocking: the English is on screen until an answer arrives, and stays
- * when one does not (`failed` then says so in the design's translation note).
+ * - A factory person reading Chinese: a brand's requests, profile and
+ *   messages in Chinese (`useChineseContent`), put on screen by
+ *   `FactoryLanguageLayer`; the design's "查看英文原文" shows the English.
+ * - A brand: what a factory typed in Chinese (quote notes, answers, step
+ *   updates, its location and intro) in English (`useEnglishContent`), put on
+ *   screen by `BrandEnglishLayer`; a click on the text shows it as written.
+ *
+ * One store per page, kept by the exact source text. Never blocking: the
+ * original is on screen until an answer arrives, and stays when none does.
+ * Each source's own status is kept: `translations` for what came back,
+ * `failed` for what did not, so a note never calls untranslated text
+ * translated.
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase.js";
 import { getUiLanguage } from "../lib/ui-language.js";
 
-const state = { translations: new Map(), showOriginal: false, failed: false, version: 0 };
+const state = { translations: new Map(), failed: new Set(), pending: 0, showOriginal: false, version: 0 };
 const asked = new Set();
 const listeners = new Set();
 const changed = () => { state.version += 1; listeners.forEach((listener) => listener()); };
@@ -34,48 +40,74 @@ export function toggleOriginal() {
   changed();
 }
 
-async function ask(rfqIds, brandOrgIds) {
+async function post(body) {
   const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch("/api/content-translation", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
-    body: JSON.stringify({ rfqIds, brandOrgIds }),
+    body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error ?? "Translation unavailable");
   return data;
 }
 
-/** Asks once per id per page. `retry` asks again for ids that came back incomplete. */
-export async function requestChineseContent({ rfqIds = [], brandOrgIds = [] }) {
-  if (getUiLanguage() !== "zh") return;
-  const rfqs = [...new Set(rfqIds.filter(Boolean))].filter((id) => !asked.has(`rfq:${id}`)).slice(0, 50);
-  const brands = [...new Set(brandOrgIds.filter(Boolean))].filter((id) => !asked.has(`brand:${id}`)).slice(0, 20);
-  if (!rfqs.length && !brands.length) return;
-  rfqs.forEach((id) => asked.add(`rfq:${id}`));
-  brands.forEach((id) => asked.add(`brand:${id}`));
-  try {
-    const { translations = {}, incomplete } = await ask(rfqs, brands);
-    Object.entries(translations).forEach(([source, chinese]) => state.translations.set(source, chinese));
-    if (incomplete) {
-      state.failed = true;
-      // Asked again on the next screen that shows them.
-      rfqs.forEach((id) => asked.delete(`rfq:${id}`));
-      brands.forEach((id) => asked.delete(`brand:${id}`));
-    }
-  } catch {
-    state.failed = true;
-    rfqs.forEach((id) => asked.delete(`rfq:${id}`));
-    brands.forEach((id) => asked.delete(`brand:${id}`));
+/** Asks once per id per page; ids whose text did not all come back are asked again by the next screen. */
+async function ask(groups, extra = {}) {
+  const fresh = {};
+  const keys = [];
+  for (const [field, prefix, max] of groups) {
+    fresh[field] = [...new Set((extra[field] ?? []).filter(Boolean))].filter((id) => !asked.has(`${prefix}:${id}`)).slice(0, max);
+    fresh[field].forEach((id) => { asked.add(`${prefix}:${id}`); keys.push(`${prefix}:${id}`); });
   }
+  if (!keys.length) return;
+  state.pending += 1;
   changed();
+  try {
+    const { translations = {}, missing = [], incomplete } = await post({ ...fresh, ...(extra.to ? { to: extra.to } : {}) });
+    Object.entries(translations).forEach(([source, text]) => { state.translations.set(source, text); state.failed.delete(source); });
+    missing.forEach((source) => { if (!state.translations.has(source)) state.failed.add(source); });
+    if (incomplete) keys.forEach((key) => asked.delete(key));
+  } catch {
+    // Nothing is known: the screens keep the original, and the notes say so.
+    state.failed.add(Symbol.for("tsc-content-translation-down"));
+    keys.forEach((key) => asked.delete(key));
+  } finally {
+    state.pending -= 1;
+    changed();
+  }
 }
 
-/** A screen's requests and brands, asked for while the person reads Chinese. */
-export function useChineseContent({ rfqIds = [], brandOrgIds = [] }) {
-  const key = `${rfqIds.filter(Boolean).join(",")}|${brandOrgIds.filter(Boolean).join(",")}`;
+/** True when the last request failed outright, so no source has a status. */
+export function translationDown() {
+  return state.failed.has(Symbol.for("tsc-content-translation-down"));
+}
+
+export function requestChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [] }) {
+  if (getUiLanguage() !== "zh") return undefined;
+  return ask([["rfqIds", "rfq", 50], ["brandOrgIds", "brand", 20], ["messageIds", "message", 100]], { rfqIds, brandOrgIds, messageIds });
+}
+
+export function requestEnglishContent({ quoteIds = [], orderIds = [], factoryOrgIds = [] }) {
+  return ask([["quoteIds", "quote", 50], ["orderIds", "order", 50], ["factoryOrgIds", "factory", 50]], { quoteIds, orderIds, factoryOrgIds, to: "en" });
+}
+
+const keyOf = (groups) => groups.map((list) => (list ?? []).filter(Boolean).join(",")).join("|");
+
+/** A screen's requests, brands and messages, asked for while the person reads Chinese. */
+export function useChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [] }) {
+  const key = keyOf([rfqIds, brandOrgIds, messageIds]);
   useEffect(() => {
-    if (key !== "|") requestChineseContent({ rfqIds, brandOrgIds });
+    if (key.replace(/\|/g, "")) requestChineseContent({ rfqIds, brandOrgIds, messageIds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+}
+
+/** A brand screen's quotes, orders and vendors: what the factory typed, in English. */
+export function useEnglishContent({ quoteIds = [], orderIds = [], factoryOrgIds = [] }, { enabled = true } = {}) {
+  const key = keyOf([quoteIds, orderIds, factoryOrgIds]);
+  useEffect(() => {
+    if (enabled && key.replace(/\|/g, "")) requestEnglishContent({ quoteIds, orderIds, factoryOrgIds });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enabled]);
 }
