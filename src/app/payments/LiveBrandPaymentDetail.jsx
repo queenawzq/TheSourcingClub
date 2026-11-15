@@ -10,6 +10,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { paymentStatusWord } from "./brand-payments-view.js";
 import "../order/payout.css";
 import "./brand-payment-detail.css";
+import { useVendorNames } from "../vendor-names.jsx";
 
 /** The list's word, plus the states the list leaves out. */
 const statusWord = (payment, order) => paymentStatusWord(payment, order)
@@ -58,6 +59,9 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
     return () => { cancelled = true; };
   }, [orderId, paymentId]);
 
+  // The vendor's name in English where it has one, as on the order (vendor-names.jsx).
+  const vendorNames = useVendorNames(state.order?.factory?.name ? [{ id: state.order.factory_org_id, name: state.order.factory.name }] : []);
+  const factoryName = state.order?.factory?.name ? vendorNames.text(state.order.factory_org_id, state.order.factory.name) : null;
   const content = useMemo(() => {
     if (!state.payment || !state.order) return null;
     const { payment, order } = state;
@@ -69,7 +73,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
     return {
       title: payment.order_milestones?.title ?? "Payment",
       orderTitle: order.rfqs?.title ?? order.order_number,
-      factory: order.factory?.name ?? "Factory",
+      factory: factoryName ?? "Factory",
       status: statusWord(payment, order),
       statusKey: statusWord(payment, order).toLowerCase().replaceAll(" ", "-"),
       failure: failureLine(payment),
@@ -83,7 +87,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       processingFee: processingFee ? formatMoney(processingFee, payment.currency) : null,
       total: formatMoney(total, payment.currency),
     };
-  }, [state]);
+  }, [state, factoryName]);
 
   if (state.loading) {
     return <main className="billing-page-shell brand-payment-detail-page"><div className="spinner" aria-hidden="true" /></main>;

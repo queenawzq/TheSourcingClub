@@ -21,6 +21,8 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
 import useFactoryRfqOrganization from "./useFactoryRfqOrganization.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -105,6 +107,7 @@ export default function LiveFactoryRfqs({ org }) {
   const organization = useFactoryRfqOrganization(org.id);
   const { navigate } = useRouter();
   const [tabs, setTabs] = useState(null);
+  useChineseContent({ rfqIds: Object.values(tabs ?? {}).flat().map((card) => card?.rfqId ?? card?.id) });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -155,7 +158,7 @@ export default function LiveFactoryRfqs({ org }) {
 
   return (
     <FactoryRfqsPage
-      language="en"
+      language={getUiLanguage()}
       rfqsByTab={tabs}
       organization={organization}
       onBrowseRfqs={() => navigate("/browse")}

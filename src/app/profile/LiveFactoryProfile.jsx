@@ -40,6 +40,7 @@ import {
 import { loadOwnProfile as loadParts } from "./load-profile.js";
 import { profileSources } from "../../shared/profile-translation.mjs";
 import "./profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 /** The page's data, and a reload that keeps the page up while it fetches. */
 function useProfileParts(org) {
@@ -201,7 +202,8 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
 
   if (!parts) return <Waiting error={error} />;
 
-  const language = new URLSearchParams(window.location.search).get("lang") === "zh" ? "zh" : "en";
+  // The person's language (src/lib/ui-language.js), never the profile's.
+  const language = getUiLanguage();
   const isTrading = parts.profile?.vendor_kind === "trading_company";
   const verified = parts.profile?.verification_status === "verified";
   const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts, new Date(), language);
@@ -227,6 +229,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
   if (isTrading) {
     return (
       <TradingCompanyProfilePage
+        language={language}
         key={editor ?? "profile"}
         onViewCompletion={() => navigate("/profile/completion")}
         live={{
@@ -254,7 +257,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
         form: factoryProfileEditForm(parts),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
-        // The company's own words: ?lang=zh translates the page's labels, never these (B10).
+        // The company's own words: Chinese translates the page's labels, never these (B10).
         ownWords: ownWords(parts),
       }}
     />

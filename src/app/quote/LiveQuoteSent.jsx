@@ -23,10 +23,13 @@ import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import QuoteActionDialog, { reviseCopy } from "./QuoteActionDialog.jsx";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveQuoteSent({ org, rfqId, profile }) {
+  useChineseContent({ rfqIds: [rfqId] });
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);
@@ -101,7 +104,7 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
       )}
       <FactoryQuoteSent
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-        language="en"
+        language={getUiLanguage()}
         project={{
           title: rfq?.title ?? "your quote",
           brand: rfq?.orgs?.name ?? "the brand",

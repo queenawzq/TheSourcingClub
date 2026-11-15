@@ -101,7 +101,17 @@ export { notificationBody, notificationTitle } from "../../shared/notification-t
  * The label the Activity drawer puts on a notification. The design types its
  * examples Quote / File / Status / Vendor; these are the kinds that exist.
  */
-export function activityType(kind = "") {
+export function activityType(kind = "", locale = "en") {
+  const type = activityTypeEn(kind);
+  return locale === "zh" ? ACTIVITY_TYPE_ZH[type] ?? type : type;
+}
+
+// The factory prototype's own words where it has them (询价, 状态, 额度).
+const ACTIVITY_TYPE_ZH = {
+  Quote: "报价", Message: "消息", Payment: "付款", Verification: "验证", Request: "询价", Credits: "额度", Status: "状态",
+};
+
+function activityTypeEn(kind) {
   if (kind.startsWith("quote_")) return "Quote";
   // A held message that staff rejected is still news about a conversation.
   if (kind === "message" || kind === "message_rejected") return "Message";
@@ -112,10 +122,14 @@ export function activityType(kind = "") {
   return "Status";
 }
 
-const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const RELATIVE = {
+  en: new Intl.RelativeTimeFormat("en", { numeric: "auto" }),
+  zh: new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto" }),
+};
 
-/** "12 minutes ago", "yesterday", "just now". */
-export function timeAgo(iso) {
+/** "12 minutes ago", "yesterday", "just now"; "12分钟前", "昨天", "刚刚". */
+export function timeAgo(iso, locale = "en") {
+  const zh = locale === "zh";
   const seconds = Math.round((new Date(iso) - Date.now()) / 1000);
   const units = [
     ["day", 86400],
@@ -123,7 +137,7 @@ export function timeAgo(iso) {
     ["minute", 60],
   ];
   for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return RELATIVE.format(Math.round(seconds / size), unit);
+    if (Math.abs(seconds) >= size) return RELATIVE[zh ? "zh" : "en"].format(Math.round(seconds / size), unit);
   }
-  return "just now";
+  return zh ? "刚刚" : "just now";
 }

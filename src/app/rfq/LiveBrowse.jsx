@@ -37,6 +37,8 @@ import {
   toggleFilter,
 } from "./rfq-browse-view.js";
 import "../browse/browse.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const FILTER_KINDS = ["product_category", "price_point", "quantity_band", "region", "client_trust_band", "timeline_band", "certification", "sourcing_region"];
 
@@ -89,6 +91,8 @@ export default function LiveBrowse({ org, profile }) {
 
   const { navigate } = useRouter();
   const [rfqs, setRfqs] = useState(null);
+  // The brands' requests in Chinese for a person reading Chinese.
+  useChineseContent({ rfqIds: (rfqs ?? []).map((rfq) => rfq.id) });
   const [matchScores, setMatchScores] = useState(new Map());
   const [requestDocuments, setRequestDocuments] = useState(new Map());
   const [tagMetadata, setTagMetadata] = useState(new Map());
@@ -207,7 +211,7 @@ export default function LiveBrowse({ org, profile }) {
       )}
       <FactoryBrowsePage
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={getUiLanguage()}
         projects={projects}
         emptyNote={rfqs.length ? "No open requests match these filters." : "No open requests right now."}
         live={{

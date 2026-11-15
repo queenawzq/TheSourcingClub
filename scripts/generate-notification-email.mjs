@@ -4,8 +4,12 @@
  * emails: logo, white card with the blue bar, eyebrow, title, one button.
  *
  * The title and body are the notification's own words, as the bell shows
- * them. The frame around them is hand-written in English and Chinese; the
- * notification text itself is not translated.
+ * them, in the recipient's language: the frame around them is hand-written in
+ * English and Chinese, and a Chinese reader's title and body come from
+ * src/shared/notification-zh.mjs (no imports of its own, so this file stays
+ * loadable on its own). Every link into the app carries `lang=zh` for a
+ * Chinese reader, so the page it opens, and the sign-in before it, are in
+ * Chinese.
  *
  * Self-contained on purpose: Vercel builds api/ on its own and a static
  * import from src/ stops the function starting, so the link rules are a copy
@@ -14,6 +18,8 @@
  * src/shared/notification-text.mjs. The smoke
  * test fails if either pair ever disagrees.
  */
+
+import { zhDay, zhMoment, zhNotificationBody, zhNotificationTitle } from "../src/shared/notification-zh.mjs";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -49,11 +55,24 @@ export function notificationPath(notification, { isFactory }) {
 export function notificationBody(notification, { timeZone, withZone = false, locale = "en" } = {}) {
   const body = String(notification?.body ?? "");
   const data = notification?.data ?? {};
-  const moment = (iso) => formatMoment(iso, timeZone, withZone);
+  const zh = locale === "zh";
+  const moment = (iso) => formatMoment(iso, timeZone, withZone, zh);
 
   // A message in the reader's language: `body` is the English the bell
   // shows, data.message_text both languages when it was translated.
   if (data.message_text?.[locale]) return String(data.message_text[locale]);
+
+  // A Chinese reader: the database's sentences in Chinese, dates in the
+  // reader's zone; English, whole, when a sentence is not one we know.
+  if (zh) {
+    if (data.starts_at && String(notification?.kind ?? "").startsWith("call_")) {
+      const when = moment(data.starts_at);
+      if (when) return body ? `${body} · ${when}` : when;
+    }
+    const deadline = data.quote_deadline ? moment(data.quote_deadline) : null;
+    const translated = zhNotificationBody(notification, deadline ? { deadline } : {});
+    if (translated != null) return translated;
+  }
 
   if (data.quote_deadline && /Quotes close [^.]*\./.test(body)) {
     const when = moment(data.quote_deadline);
@@ -67,14 +86,22 @@ export function notificationBody(notification, { timeZone, withZone = false, loc
 }
 
 /** Same answers as notificationTitle() in src/shared/notification-text.mjs. */
-export function notificationTitle(notification, { timeZone, now = new Date() } = {}) {
+export function notificationTitle(notification, { timeZone, now = new Date(), locale = "en" } = {}) {
+  const zh = locale === "zh";
   const title = String(notification?.title ?? "");
   const due = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(notification?.data?.due_on ?? ""));
   const stem = / is due (?:today|tomorrow|in \d+ days)$/.exec(title);
-  if (notification?.kind !== "milestone_due_soon" || !due || !stem) return title;
+  const stored = zh ? zhNotificationTitle(notification) ?? title : title;
+  if (notification?.kind !== "milestone_due_soon" || !due || !stem) return stored;
   const today = calendarDay(now, timeZone);
-  if (!today) return title;
+  if (!today) return stored;
   const days = Math.round((Date.UTC(+due[1], +due[2] - 1, +due[3]) - today) / 86400000);
+  if (zh) {
+    const step = title.slice(0, stem.index).replace(/^"(.*)"$/, "“$1”");
+    const when = days < 0 ? `已于 ${zhDay(notification.data.due_on)} 到期`
+      : days === 0 ? "今天到期" : days === 1 ? "明天到期" : `${days} 天后到期`;
+    return `${step}${when}`;
+  }
   const words = days < 0
     ? `was due ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(Date.UTC(+due[1], +due[2] - 1, +due[3]))}`
     : `is due ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`;
@@ -97,15 +124,17 @@ function calendarDay(now, timeZone) {
   return Date.UTC(part("year"), part("month") - 1, part("day"));
 }
 
-function formatMoment(iso, timeZone, withZone) {
+function formatMoment(iso, timeZone, withZone, zh = false) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
+  if (zh) return zhMoment(date, timeZone, withZone);
   const options = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
   if (withZone) options.timeZoneName = "short";
+  const language = "en-US";
   try {
-    return new Intl.DateTimeFormat("en-US", { ...options, ...(timeZone ? { timeZone } : {}) }).format(date);
+    return new Intl.DateTimeFormat(language, { ...options, ...(timeZone ? { timeZone } : {}) }).format(date);
   } catch {
-    return new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(date);
+    return new Intl.DateTimeFormat(language, { ...options, timeZone: "UTC" }).format(date);
   }
 }
 
@@ -124,16 +153,16 @@ const copy = {
     cta: "Open in The Sourcing Club",
     ctaFallback: "Open The Sourcing Club",
     why: (company, setting) =>
-      `You’re receiving this because ${company} has “${setting}” emails turned on. Any member can turn them off in Settings → Notifications.`,
+      `You’re receiving this because ${company} has “${setting}” emails turned on. Anyone with Settings access can turn them off in Settings → Notifications.`,
     whyAlways: (company) =>
       `Sent to everyone at ${company}.`,
     questions: "Questions? Reply to this email or contact",
   },
   zh: {
     eyebrow: {
-      rfq: (isFactory) => (isFactory ? "新的匹配询价" : "新的报价动态"),
-      payments: () => "付款与审批请求",
-      messages: () => "消息与通话邀请",
+      rfq: (isFactory) => (isFactory ? "新的询价匹配" : "新的报价动态"),
+      payments: () => "付款和审批请求",
+      messages: () => "消息和通话邀请",
       account: () => "账户安全",
     },
     greeting: (name) => (name ? `${name} 你好，` : "你好，"),
@@ -143,7 +172,7 @@ const copy = {
     whyAlways: (company) =>
       `已发送给 ${company} 的所有成员。`,
     why: (company, setting) =>
-      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。任何成员都可以在 设置 → 通知 中关闭。`,
+      `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。拥有设置权限的成员可以在 设置 → 通知 中关闭。`,
     questions: "有问题？直接回复此邮件，或联系",
   },
 };
@@ -215,7 +244,7 @@ function emailHtml({ locale, title, eyebrow, greeting, body, url, cta, why, ques
             </tr>
             <tr>
               <td class="email-footer" style="padding:20px 4px 0;color:#5A6B87;">
-                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(questions)} <a href="mailto:${escapeHtml(env.supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(env.supportEmail)}</a>.</p>
+                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(questions)} <a href="mailto:${escapeHtml(env.supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(env.supportEmail)}</a>${locale === "zh" ? "。" : "."}</p>
                 <p style="margin:0;font-size:11px;line-height:17px;">${escapeHtml(why)}<br>The Sourcing Club · ${escapeHtml(env.companyAddress)}</p>
               </td>
             </tr>
@@ -233,6 +262,17 @@ function emailHtml({ locale, title, eyebrow, greeting, body, url, cta, why, ques
  * @param env  { appUrl, logoUrl, supportEmail, companyAddress }
  * @returns {{ subject: string, html: string, text: string }}
  */
+/**
+ * A link into the app for this recipient: a vendor's opens the vendor sign-in
+ * when it is signed out, and a Chinese reader's opens in Chinese (the sign-in
+ * page and the app read `lang`). The route survives signing in.
+ */
+export function appLink(url, { isFactory = false, locale = "en" } = {}) {
+  const query = [isFactory ? "portal=factory" : null, locale === "zh" ? "lang=zh" : null].filter(Boolean).join("&");
+  if (!query) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}${query}`;
+}
+
 export function notificationEmail(row, env) {
   const locale = row.locale === "zh" ? "zh" : "en";
   const t = copy[locale];
@@ -241,12 +281,12 @@ export function notificationEmail(row, env) {
   const setting = t.eyebrow[row.category]?.(isFactory) ?? "";
   const path = notificationPath(row, { isFactory });
   // A vendor's link opens the vendor sign-in when it is signed out; the
-  // route survives signing in, as the path is kept and the query ignored.
-  const portal = isFactory ? `${path?.includes("?") ? "&" : "?"}portal=factory` : "";
-  const url = `${env.appUrl}/app.html${path ?? ""}${portal}`;
+  // route survives signing in, as the path is kept. A Chinese reader's opens
+  // in Chinese.
+  const url = appLink(`${env.appUrl}/app.html${path ?? ""}`, { isFactory, locale });
   const cta = path ? t.cta : t.ctaFallback;
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
-  const title = notificationTitle(row, { timeZone: row.time_zone || "UTC" }).trim() || t.lead(company);
+  const title = notificationTitle(row, { timeZone: row.time_zone || "UTC", locale }).trim() || t.lead(company);
   const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true, locale }).trim();
   const why = row.category === "account" ? t.whyAlways(company) : t.why(company, setting);
 
@@ -259,7 +299,7 @@ export function notificationEmail(row, env) {
     `${cta}: ${url}`,
     "",
     why,
-    `${t.questions} ${env.supportEmail}.`,
+    `${t.questions} ${env.supportEmail}${locale === "zh" ? "。" : "."}`,
   ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
 
   const html = emailHtml({
