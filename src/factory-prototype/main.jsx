@@ -1092,7 +1092,20 @@ const factoryMainZhText = {
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
   "Completed": "已完成",
-  "In production": "生产中"
+  "In production": "生产中",
+  // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
+  "Bank account (Stripe)": "银行账户（Stripe）",
+  "International bank transfer (Wise)": "国际银行转账（Wise）",
+  "Bank transfer (Wise)": "银行转账（Wise）",
+  "Bank transfer": "银行转账",
+  "Fee: 0% (TSC pays Stripe's fee)": "手续费 0%（TSC 承担 Stripe 费用）",
+  "Fee: 0% to withdraw; Stripe converts from US$ at its rate": "提现手续费 0%；Stripe 按其汇率将美元换成你的币种",
+  "Fee: 0% (TSC pays Wise's fee), at the mid-market rate": "手续费 0%（TSC 承担 Wise 费用），按中间市场汇率",
+  "Paid by TSC by bank; your bank may charge to receive it": "由 TSC 银行汇款；你的银行可能收取入账费",
+  "Fee: 0% (TSC pays PayPal's fee); PayPal may charge about 3–4% to convert US$": "手续费 0%（TSC 承担 PayPal 费用）；PayPal 换汇美元可能收取约 3–4%",
+  "Not instant: usually 1–4 business days after you withdraw": "非即时到账：提现后通常 1–4 个工作日",
+  "Not instant: sent once released, then a few business days to arrive": "非即时到账：放款后发出，再需几个工作日到账",
+  "Not instant: sent once released": "非即时到账：放款后发出"
 };
 
 const factoryMainZhReplacements = [
