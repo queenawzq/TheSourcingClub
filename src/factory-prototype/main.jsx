@@ -1247,7 +1247,9 @@ export const factoryMainZhText = {
   "Activity": "动态",
   "Passive updates from quotes, files, vendors, and production.": "来自报价、文件、合作方和生产的更新。",
   "Mark all read": "全部标为已读",
-  "Close activity": "关闭动态"
+  "Close activity": "关闭动态",
+  "Open activity": "打开动态",
+  "No completed orders yet.": "暂无已完成订单。"
 };
 
 // The profile's completion note lists these ("Add your factory details and
@@ -1391,6 +1393,7 @@ const factoryMainZhReplacements = [
   [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
   [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
   [/^Reference /, "参考号 "],
+  [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) roughly ([\d,.-]+) pieces$/, (_, month, pieces) => `${MONTH_NUMBER[month]} 月约 ${pieces} 件`],
   [/^Declined by (.+)$/, "$1 已拒绝"],
   [/^(.+) proposed another time$/, "$1 提议了其他时间"],
   [/^(.+) invited you to a call$/, "$1 邀请你通话"],
