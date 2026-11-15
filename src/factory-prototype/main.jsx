@@ -1196,8 +1196,67 @@ export const factoryMainZhText = {
   "Sample before bulk": "大货前需打样",
   "Bulk only": "仅大货",
   "Posted today": "今天发布",
-  "Posted yesterday": "昨天发布"
+  "Posted yesterday": "昨天发布",
+  "Enter factory includes": "填写工厂报价包含的内容",
+  "Enter supplier network includes": "填写供应商网络报价包含的内容",
+  "Registration number": "注册号",
+  "None (sole proprietor)": "无（个体经营）",
+  "Certificate files": "证书文件",
+  "Add walkthrough": "添加巡视视频",
+  "Add a walkthrough video": "添加巡视视频",
+  "Add a short production-floor walkthrough so brands can see the factory before they contact you.": "添加一段简短的生产车间巡视视频，让品牌在联系你之前先了解工厂。",
+  "The walkthrough video is on your profile.": "巡视视频已在你的资料中。",
+  "Upload registration": "上传营业执照",
+  "Upload your business registration": "上传营业执照",
+  "Upload a new business registration": "上传新的营业执照",
+  "Upload your business registration. Quoting opens once TSC has verified it.": "上传营业执照。TSC 验证后即可报价。",
+  "Your business registration wasn't accepted. Upload a new one to open quoting.": "你的营业执照未通过审核。请上传新的营业执照以开通报价。",
+  "Your business registration is verified, so you can quote on matching RFQs.": "你的营业执照已验证，可以对匹配的询价报价。",
+  "Everything brands look for is filled in. Keep monthly capacity current.": "品牌关注的信息已全部填写。请保持每月产能为最新。",
+  "Accept": "接受",
+  "Add to calendar": "添加到日历",
+  "Call invite": "通话邀请",
+  "Cancel call": "取消通话",
+  "Cancelled": "已取消",
+  "Confirmed": "已确认",
+  "Decline": "拒绝",
+  "Ended": "已结束",
+  "Join call": "加入通话",
+  "No answer before the time": "到时未回复",
+  "On now": "进行中",
+  "Propose another time": "提议其他时间",
+  "Review invite": "查看邀请",
+  "Schedule another call": "预约另一次通话",
+  "Scheduled call": "已预约通话",
+  "Scheduled calls": "已预约通话",
+  "Send new time": "发送新时间",
+  "Starting soon": "即将开始",
+  "Withdraw invite": "撤回邀请",
+  "Withdrawn": "已撤回",
+  "You proposed another time": "你提议了其他时间",
+  "You're in the call in the Zoom app.": "你正在 Zoom 应用中通话。",
+  "You're in the call, in its own window.": "你正在单独窗口中通话。",
+  "Production order": "生产订单",
+  "Request for quote": "询价",
+  "Checking before it is sent": "发送前检查中",
+  "Not delivered": "未送达",
+  "Not sent": "未发送",
+  "It has not reached them yet. This page keeps trying.": "消息尚未送达对方，本页面会继续尝试。",
+  "Attach the files and send them again.": "请重新添加附件并发送。",
+  "Copy it and send it again.": "请复制后重新发送。"
 };
+
+// The profile's completion note lists these ("Add your factory details and
+// capacity and terms to strengthen this profile."), longest first.
+const PROFILE_TODO_ZH = [
+  ["client references and sample images", "客户案例和样品图片"],
+  ["the missing certificate files", "缺少的证书文件"],
+  ["your business registration", "营业执照"],
+  ["your factory details", "工厂详情"],
+  ["your production fit", "生产匹配"],
+  ["capacity and terms", "产能与条款"],
+  ["a walkthrough video", "工厂巡视视频"]
+];
 
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
@@ -1328,6 +1387,15 @@ const factoryMainZhReplacements = [
   [/^Quote sent to (.+) - /, "已向「$1」发送报价 - "],
   [/ - Invited, not joined yet - /, " - 已邀请，尚未加入 - "],
   [/^Reference /, "参考号 "],
+  [/^Declined by (.+)$/, "$1 已拒绝"],
+  [/^(.+) proposed another time$/, "$1 提议了其他时间"],
+  [/^(.+) invited you to a call$/, "$1 邀请你通话"],
+  [/^(.+) invited you$/, "$1 邀请了你"],
+  [/^Waiting for (.+) to answer$/, "等待 $1 回复"],
+  [/^With (.+)$/, "与 $1"],
+  [/^(Cancelled|Confirmed|Withdrawn|Ended) by (.+)$/, (_, word, who) => `${factoryMainZhText[word] ?? word}（${who}）`],
+  [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), /, (_, day) => `周${{ Mon: "一", Tue: "二", Wed: "三", Thu: "四", Fri: "五", Sat: "六", Sun: "日" }[day]}，`],
+  [/^Add (.+) to strengthen this profile\.$/, (_, list) => `补充${PROFILE_TODO_ZH.reduce((text, [en, zh]) => text.split(en).join(zh), list).replace(/ and more$/, "等").replace(/, /g, "、").replace(/ and /g, "和")}，让资料更完整。`],
   [/^(\$[\d,.]+) - (\$[\d,.]+) per unit$/, (_, low, high) => `每件 ${low} - ${high}`],
   [/^· Posted (\d+) days? ago$/, (_, days) => `· ${days} 天前发布`],
   [/^Posted (\d+) days? ago$/, (_, days) => `${days} 天前发布`],
@@ -9591,7 +9659,7 @@ function getTranslatedListMeta(meta) {
 
   return meta.split(" · ").map((part, index) => {
     if (index === 0) return part;
-    return replacements[part] || part;
+    return replacements[part] || translateFactoryMainText(part);
   }).join(" · ");
 }
 

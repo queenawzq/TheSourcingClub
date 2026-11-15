@@ -107,7 +107,12 @@ export default function FactoryLanguageLayer({ language }) {
       const translatedContent = !content.showOriginal && content.translations.get(trimmed);
       if (translatedContent) return value.replace(trimmed, translatedContent);
       if (element?.closest(TRANSLATION_NOTE)) return noteText(trimmed, content);
-      if (element?.closest(BRAND_WORDS)) return value;
+      // Inside a brand's words only the design's own whole entries and
+      // staff-written taxonomy labels ("Vendor should source some materials…").
+      if (element?.closest(BRAND_WORDS)) {
+        const whole = Object.hasOwn(factoryMainZhText, trimmed) ? factoryMainZhText[trimmed] : terms?.get(trimmed);
+        return whole ? value.replace(trimmed, whole) : value;
+      }
       const whole = chineseFor(value, terms ?? undefined);
       if (whole !== value || !trimmed.includes(" · ")) return whole;
       // "Maple Row Studio · Quote due Nov 24 · Sample before bulk": each part
