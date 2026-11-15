@@ -152,7 +152,7 @@ export default async function handler(request, response) {
   const quoteIds = ids(body?.quoteIds, MAX_RFQS);
   const orderIds = ids(body?.orderIds, MAX_RFQS);
   const factoryOrgIds = ids(body?.factoryOrgIds, MAX_RFQS);
-  const all = toEnglish ? [...quoteIds, ...orderIds, ...factoryOrgIds] : [...rfqIds, ...brandOrgIds, ...messageIds];
+  const all = toEnglish ? [...quoteIds, ...orderIds, ...factoryOrgIds] : [...rfqIds, ...brandOrgIds, ...messageIds, ...orderIds];
   if (!all.length || rfqIds.length > MAX_RFQS || brandOrgIds.length > MAX_BRANDS || messageIds.length > MAX_MESSAGES
     || quoteIds.length > MAX_RFQS || orderIds.length > MAX_RFQS || factoryOrgIds.length > MAX_RFQS
     || all.some((id) => !UUID.test(id ?? ""))) {
@@ -168,6 +168,12 @@ export default async function handler(request, response) {
   const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   if (toEnglish) return english(caller, service, { quoteIds, orderIds, factoryOrgIds }, response);
 
+  // An order's conversation is named after its request: the request is read through the order.
+  if (orderIds.length) {
+    const orders = await caller.from("production_orders").select("rfq_id").in("id", orderIds);
+    if (orders.error) return response.status(503).json({ error: "Order text unavailable" });
+    for (const order of orders.data ?? []) if (order.rfq_id && !rfqIds.includes(order.rfq_id) && rfqIds.length < MAX_RFQS) rfqIds.push(order.rfq_id);
+  }
   const [rfqs, questions, colours, brands, messages] = await Promise.all([
     rfqIds.length ? caller.from("rfqs").select("id,title,brief,material_notes,sample_notes,additional_details,sourcing_details").in("id", rfqIds) : { data: [] },
     rfqIds.length ? caller.from("rfq_questions").select("rfq_id,prompt").in("rfq_id", rfqIds) : { data: [] },

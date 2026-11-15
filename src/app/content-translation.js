@@ -83,9 +83,9 @@ export function translationDown() {
   return state.failed.has(Symbol.for("tsc-content-translation-down"));
 }
 
-export function requestChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [] }) {
+export function requestChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [], orderIds = [] }) {
   if (getUiLanguage() !== "zh") return undefined;
-  return ask([["rfqIds", "rfq", 50], ["brandOrgIds", "brand", 20], ["messageIds", "message", 100]], { rfqIds, brandOrgIds, messageIds });
+  return ask([["rfqIds", "rfq", 50], ["brandOrgIds", "brand", 20], ["messageIds", "message", 100], ["orderIds", "order-zh", 50]], { rfqIds, brandOrgIds, messageIds, orderIds });
 }
 
 export function requestEnglishContent({ quoteIds = [], orderIds = [], factoryOrgIds = [] }) {
@@ -95,10 +95,10 @@ export function requestEnglishContent({ quoteIds = [], orderIds = [], factoryOrg
 const keyOf = (groups) => groups.map((list) => (list ?? []).filter(Boolean).join(",")).join("|");
 
 /** A screen's requests, brands and messages, asked for while the person reads Chinese. */
-export function useChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [] }) {
-  const key = keyOf([rfqIds, brandOrgIds, messageIds]);
+export function useChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [], orderIds = [] }) {
+  const key = keyOf([rfqIds, brandOrgIds, messageIds, orderIds]);
   useEffect(() => {
-    if (key.replace(/\|/g, "")) requestChineseContent({ rfqIds, brandOrgIds, messageIds });
+    if (key.replace(/\|/g, "")) requestChineseContent({ rfqIds, brandOrgIds, messageIds, orderIds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }

@@ -10714,7 +10714,7 @@ export function FactoryReviewTotal({
               against. A vendor reading "Maison Rue" on its own quote has been
               told the wrong counterparty. */}
           <p data-no-translate={project?.brand ? true : undefined}>
-            Totals are calculated after saving the quote. Review the breakdown before sending it to {project?.brand ?? "Maison Rue"}.
+            {`Totals are calculated after saving the quote. Review the breakdown before sending it to ${project?.brand ?? "Maison Rue"}.`}
           </p>
           {isZh && <small className="submit-page-language-hint">以下英文发送版本已自动翻译，可直接在原字段中编辑。</small>}
         </header>

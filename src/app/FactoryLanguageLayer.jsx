@@ -63,6 +63,16 @@ const noteScope = (note) => note.closest("article, section, .brand-brief-copy, .
  * The design's note and button, for what its own card shows now: translated
  * only when some of that card's words came back in Chinese and none failed.
  */
+/** Whether a note's card has words the server translated (shown now or not). */
+function cardTranslated(note, content, swappedHere) {
+  const walker = document.createTreeWalker(noteScope(note), NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (swappedHere.has(node) || content.translations.has(node.nodeValue.trim())) return true;
+  }
+  return false;
+}
+
 function noteText(original, note, content, swappedHere) {
   if (original === "查看英文原文" || original === "查看中文翻译") return content.showOriginal ? "查看中文翻译" : "查看英文原文";
   if (content.showOriginal) return "英文原文";
@@ -113,6 +123,9 @@ export default function FactoryLanguageLayer({ language }) {
       if (element?.parentElement?.matches(".schedule-calendar-weekdays") && /^[MTWFS]$/.test(trimmed)) {
         return "一二三四五六日"[[...element.parentElement.children].indexOf(element)] ?? value;
       }
+      // A conversation's preview is the message as written, as its thread
+      // shows it first (翻译成中文 is in the thread).
+      if (element?.closest(".message-thread-card em")) return value;
       const server = contentFor(trimmed);
       if (server) {
         if (node) contentNodes.add(node);
@@ -214,9 +227,19 @@ export default function FactoryLanguageLayer({ language }) {
 
     // Each note says what its own card shows, once the card has been walked.
     const noteNodes = new WeakMap();
+    const hiddenButtons = new Set();
     function updateNotes() {
       for (const element of notes) {
         if (!element.isConnected) { notes.delete(element); continue; }
+        // "查看英文原文" only where there is a translation to leave.
+        const button = element.closest(`${TRANSLATION_NOTE} button`);
+        if (button && content.pending === 0) {
+          const hide = !cardTranslated(button, content, contentNodes);
+          if (button.hidden !== hide) {
+            button.hidden = hide;
+            if (hide) hiddenButtons.add(button);
+          }
+        }
         for (const node of element.childNodes) {
           if (node.nodeType !== Node.TEXT_NODE || !node.nodeValue.trim()) continue;
           const original = noteNodes.get(node) ?? node.nodeValue.trim();
@@ -241,6 +264,7 @@ export default function FactoryLanguageLayer({ language }) {
 
     return () => {
       document.removeEventListener("click", onNoteClick);
+      hiddenButtons.forEach((button) => { button.hidden = false; });
       observer.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
       // Back to English: every text this layer changed, unless the screen has

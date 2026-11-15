@@ -128,6 +128,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const readsChinese = isFactory && readerLanguage([], org.id, [], getUiLanguage()) === "zh";
   useContentTranslations();
   useChineseContent({
+    // Each conversation's request title, as its header shows it.
+    rfqIds: readsChinese ? (threads ?? []).map((thread) => thread.rfq_id) : [],
+    orderIds: readsChinese ? (threads ?? []).map((thread) => thread.order_id) : [],
     messageIds: readsChinese
       ? Object.values(messagesByThread).flat().filter((message) => message.sender_org_id !== org.id && message.id).map((message) => message.id)
       : [],
