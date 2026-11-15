@@ -1,10 +1,12 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
+import { ensureTazapayBeneficiary } from "./_tazapay-beneficiary.js";
+import { INVOICE_BUCKET, invoicePath, invoicePdf } from "./_tazapay-invoice.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
- * Pay with Wise and Pay with PayPal, one shape behind both routes.
+ * Pay with Wise, Pay with PayPal and Pay with Tazapay, one shape behind the three routes.
  *
  *   preview   Wise only: the fee, what arrives, and the balance, before anyone commits.
  *   pay       claim, call the provider with the attempt's key, read back. Pressing
@@ -66,6 +68,10 @@ const DB_WORDS = {
   paypal_not_set_up: "This factory has no PayPal address. Ask it to add one on its Payments page.",
   cny_statement: "Confirm the contract and invoice statement first.",
   payout_not_processing: "Nothing is under way for this payment. Reload the board.",
+  tazapay_not_set_up: "Tazapay pays bank accounts in mainland China and Hong Kong only. Use another way to pay this one.",
+  tazapay_details_missing: "This bank account is missing details Tazapay needs. Ask the factory to complete it on its Payments page.",
+  tazapay_not_the_company: "The registration number on this bank account isn't the company's own, so Tazapay won't pay it. Ask the factory to check it.",
+  no_number: "No full account number is on file. Ask the factory to add it on its Payments page.",
 };
 
 const refusalFrom = (error) => new PayoutFailure("database", DB_WORDS[error.hint] ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
@@ -324,6 +330,130 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
 }
 
 // ---------------------------------------------------------------------------
+// Tazapay
+// ---------------------------------------------------------------------------
+
+const loadTazapayRules = () => import("../src/shared/tazapay-payout.mjs");
+/** Tazapay remembers a key for 24 hours; past that, pressing again could pay twice. */
+export const TAZAPAY_KEY_MEMORY_MS = 23 * 3600 * 1000;
+const LOST_TAZAPAY_ANSWER = "Tazapay's answer to the first press was lost more than a day ago, so pressing again could pay twice. Check Tazapay for a payout with this payment's reference before doing anything else.";
+// Columns the checks read. Never the number: that stays in Vault.
+const ACCOUNT_COLUMNS = "id, org_id, method, bank_country, account_name, holder_name_local, registration_number, bank_name, bank_code, swift, address_line1, address_city, address_state, address_postal_code, number_changed_at";
+
+/**
+ * Pay with Tazapay. Claim first (the attempt's key is made before any call),
+ * check the account, make the payee once, quote, check the balance, keep the
+ * invoice, upload it to Tazapay, make the payout under the attempt's key, read
+ * it back. Pressing again resumes the same attempt: with a payout, it only reads
+ * it back; without one, the same key finds the first press's payout if it went.
+ */
+export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, now = () => new Date() }) {
+  const claim = await must(caller.rpc("claim_provider_payout", {
+    target_payment: paymentId, which: "tazapay", paid_to_changed_at: changedAt, cny_confirmed: false,
+  }));
+  const payoutId = claim.payout_id;
+  let payoutRef = claim.provider_ref ?? null;
+
+  async function shortBalance(byMinor, currency) {
+    const sentence = `TSC's Tazapay balance is short by ${money(byMinor, currency)}, fee included. Top up the balance in Tazapay, then pay again.`;
+    if (claim.resumed) await record(db, payoutId, { sentence });
+    else await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
+    return { done: "short_balance", sentence };
+  }
+
+  try {
+    if (!payoutRef) {
+      if (claim.resumed && now() - new Date(claim.attempt_started_at) > TAZAPAY_KEY_MEMORY_MS) {
+        throw new PayoutFailure("key_expired", LOST_TAZAPAY_ANSWER, { unsure: true });
+      }
+      const { tazapayDetailsProblems, tazapayProblemsSentence, tazapayRoute } = await loadTazapayRules();
+      const read = await db.from("factory_payout_accounts").select(ACCOUNT_COLUMNS).eq("id", claim.account_id).maybeSingle();
+      if (read.error || !read.data) throw new PayoutFailure("database", "This factory's bank account couldn't be read. Reload the page.");
+      const account = read.data;
+      const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
+      const problems = tazapayDetailsProblems(account, {
+        companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
+      });
+      if (problems.length) throw new PayoutFailure("details_missing", tazapayProblemsSentence(problems), { fields: problems.map((p) => p.field) });
+      const route = tazapayRoute(account);
+      if (claim.currency !== "USD") {
+        throw new PayoutFailure("refused", `Tazapay pays from TSC's USD balance, and this payment is in ${claim.currency}.`);
+      }
+
+      const beneficiary = await ensureTazapayBeneficiary({
+        caller, db, tazapay, accountId: claim.account_id, existingId: claim.tazapay_beneficiary_id,
+      });
+      const quote = await tazapay.quote({ holdingCurrency: claim.currency, amountMinor: claim.amount_cents, route });
+      const available = await tazapay.available(claim.currency);
+      if (available < quote.totalMinor) return await shortBalance(quote.totalMinor - available, claim.currency);
+      await record(db, payoutId, {
+        new_fee: quote.feeMinor, received: quote.payoutMinor, received_in: quote.payoutCurrency, keep_lease: true,
+      });
+
+      // Kept first, so for every payout Tazapay has, TSC has the document.
+      const reference = `TSC-${claim.order_number}-${String(paymentId).slice(0, 8)}`;
+      const bytes = invoicePdf({
+        reference,
+        issuedOn: now().toISOString().slice(0, 10),
+        payeeName: account.account_name,
+        orderNumber: claim.order_number,
+        stepTitle: claim.milestone_title,
+        amountMinor: claim.amount_cents,
+        currency: claim.currency,
+        payoutMinor: quote.payoutMinor,
+        payoutCurrency: quote.payoutCurrency,
+        rate: quote.rate,
+      });
+      const kept = await db.storage.from(INVOICE_BUCKET).upload(invoicePath(paymentId, claim.key), bytes, { contentType: "application/pdf", upsert: true });
+      if (kept.error) throw new PayoutFailure("invoice", "The invoice couldn't be saved, so nothing was sent. Press again.");
+      const documentUrl = await tazapay.uploadDocument({ fileName: `${reference}.pdf`, bytes });
+
+      const payout = await tazapay.createPayout({
+        beneficiary,
+        amount: quote.payoutMinor,
+        currency: quote.payoutCurrency,
+        holding_currency: claim.currency,
+        type: route.type,
+        local: { fund_transfer_network: route.network },
+        purpose: route.purpose,
+        reference_id: `tsc-${paymentId}`,
+        transaction_description: `Advance payment for goods, production order ${claim.order_number}`.slice(0, 140),
+        statement_descriptor: `TSC ${claim.order_number}`.slice(0, 22),
+        documents: [{ type: "invoice", url: documentUrl }],
+      }, `tsc-${claim.key}`);
+      if (!payout?.id) throw new PayoutFailure("unknown", "Tazapay answered without a payout. Press again: it can't pay twice.", { unsure: true });
+      payoutRef = payout.id;
+      await record(db, payoutId, {
+        new_ref: payout.id, new_stage: "sent", new_status: payout.status,
+        received: payout.amount ?? quote.payoutMinor, received_in: payout.currency ?? quote.payoutCurrency, keep_lease: true,
+      });
+    }
+
+    const status = await tazapay.status(payoutRef);
+    const state = await applyStatus({
+      db, payoutId, status, tellOnFailure: status.tellFactory ? CHECK_BANK : null,
+      received: status.state === "paid" ? status.arrivesCents : null,
+      receivedIn: status.state === "paid" ? status.arrivesCurrency : null,
+    });
+    return { done: state, sentence: status.waiting ?? status.failure ?? null };
+  } catch (failure) {
+    if (failure instanceof PayoutFailure && failure.unsure) {
+      await record(db, payoutId, { sentence: failure.message });
+      throw failure;
+    }
+    // A certain "no" before Tazapay has a payout ends the attempt: nothing went,
+    // and the next press gets a new key rather than replaying this answer.
+    const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
+    if (!payoutRef && !again.error && !again.data?.provider_ref) {
+      await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
+    } else {
+      await record(db, payoutId, { sentence: failure.message, new_ref: payoutRef ?? undefined });
+    }
+    throw failure;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Both
 // ---------------------------------------------------------------------------
 
@@ -371,6 +501,11 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
     if (held.provider === "paypal" && !held.provider_ref) {
       throw new PayoutFailure("refused", "We don't know yet if PayPal paid this. Press again first: it finds what PayPal did and can't pay twice.");
     }
+    // The same for Tazapay: a press whose answer was lost may have made a payout,
+    // and only the same key (pressed again) finds it.
+    if (held.provider === "tazapay" && !held.provider_ref) {
+      throw new PayoutFailure("refused", "We don't know yet if Tazapay made this payout. Press again first: it finds what Tazapay did and can't pay twice.");
+    }
     if (held.provider_ref) {
       if (held.provider === "paypal") {
         const status = await client.status(held.provider_ref);
@@ -389,7 +524,7 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
     // What the row says stays what it said: the payment is still where it was.
     await record(db, payoutId, { sentence: held.staff_sentence ?? null });
     if (failure instanceof PayoutFailure && failure.unsure) {
-      const name = held.provider === "paypal" ? "PayPal" : "Wise";
+      const name = { paypal: "PayPal", tazapay: "Tazapay" }[held.provider] ?? "Wise";
       throw new PayoutFailure("cancel_failed", `${name} didn't cancel this, so it's still where it was. Try again later, or cancel it in ${name}.`, { status: failure.status });
     }
     throw failure;
@@ -409,7 +544,7 @@ export async function readBack({ client, db, row }) {
   // can be for another pay-in route (seen on the sandbox).
   const arrived = status.state === "paid";
   const tell = status.state === "failed"
-    ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
+    ? (status.raw === "bounced_back" || status.tellFactory ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
     : null;
   return applyStatus({
     db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
@@ -519,6 +654,10 @@ export function payoutRoute({ provider, build, label, settings }) {
         }
         if (action === "pay") {
           return reply(response, 200, await wisePay({ wise: client, caller, db, row, paymentId, changedAt: paidToChangedAt, cnyConfirmed }));
+        }
+      } else if (provider === "tazapay") {
+        if (action === "pay") {
+          return reply(response, 200, await tazapayPay({ tazapay: client, caller, db, paymentId, changedAt: paidToChangedAt }));
         }
       } else if (action === "pay") {
         return reply(response, 200, await paypalPay({ paypal: client, caller, db, paymentId, changedAt: paidToChangedAt }));

@@ -231,7 +231,9 @@ assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: 
 // --- The sweep -------------------------------------------------------------------
 {
   const swept = await sweepProviderPayouts({}, {});
-  assert.deepEqual(swept, { wise: { configured: false }, paypal: { configured: false } }, "no settings, nothing swept, nothing thrown");
+  assert.deepEqual(swept, { wise: { configured: false }, paypal: { configured: false }, tazapay: { configured: false } }, "no settings, nothing swept, nothing thrown");
+  const liveTazapay = await sweepProviderPayouts({}, { TAZAPAY_BASE_URL: "https://service.tazapay.com", TAZAPAY_API_KEY: "k", TAZAPAY_API_SECRET: "s" });
+  assert.equal(liveTazapay.tazapay.error, "live_elsewhere", "a live Tazapay account away from production is refused, not thrown");
   const live = await sweepProviderPayouts({}, { WISE_API_BASE: "https://api.wise.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "1", WISE_PAYOUT_CURRENCY: "CNY" });
   assert.equal(live.wise.error, "live_elsewhere", "a live Wise account away from production is refused, not thrown");
 }

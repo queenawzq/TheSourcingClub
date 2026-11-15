@@ -1,30 +1,38 @@
+import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
+
 /**
- * Tazapay, a candidate for paying factories in mainland China and Hong Kong,
- * which Stripe Connect cannot reach. Step 1 only: a client used by
- * scripts/tazapay-sandbox.mjs. Nothing in the app calls it yet, and it is not
- * a provider in api/_payout-provider.js.
+ * Tazapay, for staff's Pay with Tazapay: factories in mainland China (CNY over
+ * CNAPS) and Hong Kong (HKD over CHATS), which Stripe Connect cannot reach.
+ * Server only: the key never reaches the browser.
  *
- * Settings: TAZAPAY_BASE_URL, TAZAPAY_API_KEY, TAZAPAY_API_SECRET. Server only.
- * The key and secret are never logged, returned or put in an error.
+ * Settings: TAZAPAY_BASE_URL, TAZAPAY_API_KEY, TAZAPAY_API_SECRET; optional
+ * TAZAPAY_APP_URL (the dashboard staff open). The key and secret are never
+ * logged, returned or put in an error.
  *
  * Only the sandbox host is allowed off production, the same rule as a live
  * Stripe key: a laptop or a preview can never move real money.
  *
- * Idempotency: Tazapay stores only 2xx answers under an Idempotency-Key, for
- * 24 hours; an error is not stored, so retrying with the same key runs again.
- * That means an old failure is never replayed (unlike Stripe), so a create may
- * be keyed by what it is for (e.g. the payment id).
+ * Idempotency: Tazapay stores only 2xx answers under an Idempotency-Key, for 24
+ * hours, and an error is not stored, so retrying with the same key runs again.
+ * An old failure is never replayed. A payout is keyed by its attempt (a payment
+ * paid again after a failed payout is a new attempt and a new key): keyed by the
+ * payment, Tazapay would answer the second attempt with the first, failed payout.
+ *
+ * Every figure below was read from the sandbox (notes: Tazapay step 1).
  */
 
 export const TAZAPAY_SANDBOX_HOST = "service-sandbox.tazapay.com";
 export const TAZAPAY_CALL_MS = 15000;
+const LABEL = "Tazapay";
 
-export class TazapayFailure extends Error {
+/** A PayoutFailure, so the shared payout code reads `unsure` the same way for every provider. */
+export class TazapayFailure extends PayoutFailure {
   constructor(kind, message, extra = {}) {
-    super(message);
+    super(kind, message, { unsure: Boolean(extra.unsure), status: extra.status ?? null, detail: extra.detail ?? null, fields: extra.fields ?? null });
     this.name = "TazapayFailure";
-    this.kind = kind;
-    Object.assign(this, extra);
+    this.body = extra.body ?? null;
+    this.path = extra.path ?? null;
+    this.codes = extra.codes ?? [];
   }
 }
 
@@ -42,12 +50,47 @@ export function tazapayBase(env = process.env) {
   return raw;
 }
 
-/** Tazapay's validation errors name the field in errors[].remarks or message. */
+/** Tazapay's validation errors name the field in errors[].remarks. */
 function describeRefusal(body) {
   const errors = Array.isArray(body?.errors) ? body.errors : [];
   const said = errors.map((e) => [e?.code, e?.message, e?.remarks].filter(Boolean).join(": ")).filter(Boolean);
   return (said.length ? said.join("; ") : (body?.message || "no reason given")).replace(/[.\s]+$/, "");
 }
+
+// ---------------------------------------------------------------------------
+// What a payout's status means for TSC (sandbox, Nov 15). Tazapay's own word
+// stays as `raw`; `state` is the attempt's: sent, paid, failed or cancelled.
+// ---------------------------------------------------------------------------
+export const TAZAPAY_STATES = {
+  requires_funding: "sent",
+  requires_confirmation: "sent",
+  requires_action: "sent",
+  requires_approval: "sent",
+  approval_hold: "sent",
+  initiator_bank_hold: "sent",
+  compliance_hold: "sent",
+  processing: "sent",
+  succeeded: "paid",
+  failed: "failed",
+  cancelled: "cancelled",
+  // After it was paid: the money came back, so the payment is owed again.
+  reversed: "failed",
+};
+
+const WAITING = {
+  compliance_hold: "Tazapay is checking this payout (compliance hold). It goes on by itself; nothing to do unless Tazapay asks.",
+  initiator_bank_hold: "The sending bank is holding this payout for review. It goes on by itself once cleared.",
+  requires_action: "Tazapay needs something before this payout can go on. Open it in Tazapay.",
+  requires_approval: "This payout waits for someone with approval rights in Tazapay. Approve it there.",
+  approval_hold: "This payout waits for an approval in Tazapay. Open it there.",
+  requires_funding: "This payout waits for money in TSC's Tazapay balance. Top up the balance in Tazapay.",
+  requires_confirmation: "This payout waits for confirmation in Tazapay. Open it there.",
+};
+
+/** A bank's refusal is the factory's to fix; everything else stays with staff. */
+const BANK_REFUSED = /^PF03/;
+
+const usd = (minor, currency = "USD") => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(minor) / 100);
 
 export function tazapayFrom(env = process.env, fetchImpl = fetch) {
   const base = tazapayBase(env);
@@ -55,6 +98,9 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
   const secret = env.TAZAPAY_API_SECRET;
   if (!base || !key || !secret) return null;
   const authorization = `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`;
+  const sandbox = new URL(base).host === TAZAPAY_SANDBOX_HOST;
+  const appUrl = String(env.TAZAPAY_APP_URL ?? "").replace(/\/+$/, "")
+    || (sandbox ? "https://dashboard-sandbox.tazapay.com" : "https://dashboard.tazapay.com");
 
   async function call(method, path, { body, query, idempotencyKey } = {}) {
     const url = new URL(`${base}${path}`);
@@ -71,9 +117,10 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
       text = await answer.text();
     } catch (failure) {
       if (failure?.name === "AbortError") {
-        throw new TazapayFailure("timeout", `Tazapay didn't answer ${method} ${path} in ${TAZAPAY_CALL_MS / 1000} s, so we don't know if it went.`, { unsure: true });
+        throw new TazapayFailure("timeout", `${LABEL} didn't answer in time, so we don't know yet if this went. Press again: it can't pay twice.`, { unsure: true, path });
       }
-      throw new TazapayFailure("unreachable", `Tazapay couldn't be reached for ${method} ${path} (${failure?.cause?.code ?? failure?.message ?? "network error"}).`, { unsure: true });
+      throw new TazapayFailure("unreachable", `${LABEL} couldn't be reached, so we don't know yet if this went. Press again: it can't pay twice.`,
+        { unsure: true, path, detail: withoutSecrets(failure?.cause?.code ?? failure?.message ?? "network error", env) });
     } finally {
       clearTimeout(timer);
     }
@@ -83,19 +130,53 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
     if (status >= 200 && status < 300) return parsed?.data ?? parsed;
 
     const reason = describeRefusal(parsed);
-    const extra = { status, body: parsed, path };
+    const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
+    const extra = {
+      status, body: parsed, path, detail: reason,
+      codes: errors.map((e) => e?.code).filter((c) => c != null),
+      fields: errors.map((e) => e?.remarks).filter((r) => typeof r === "string" && /^[A-Za-z][A-Za-z0-9._[\]]{0,59}$/.test(r)),
+    };
     // The gateway answers 403 {"message":"Forbidden"} (no "status") for a path
     // that is not an API route, whatever the key: that is not a key problem.
-    if (status === 403 && parsed && !parsed.status) throw new TazapayFailure("not_found", `Tazapay's gateway refused ${method} ${path} (403, no such route for API keys).`, extra);
-    if (status === 401 || status === 403) throw new TazapayFailure("key_refused", `Tazapay refused TSC's API key (${status}). Check TAZAPAY_API_KEY and TAZAPAY_API_SECRET.`, extra);
-    if (status === 404) throw new TazapayFailure("not_found", `Tazapay has no ${path} (404): ${reason}.`, extra);
-    if (status === 400 || status === 422) throw new TazapayFailure("invalid", `Tazapay refused ${method} ${path}: ${reason}.`, extra);
-    if (status === 429 || status >= 500) throw new TazapayFailure("provider_down", `Tazapay is having trouble (${status}), so we don't know if ${method} ${path} went: ${reason}.`, { ...extra, unsure: true });
-    throw new TazapayFailure("refused", `Tazapay answered ${status} to ${method} ${path}: ${reason}.`, extra);
+    if (status === 403 && parsed && !parsed.status) throw new TazapayFailure("not_found", `${LABEL} has no such route (${method} ${path}).`, extra);
+    if (status === 401 || status === 403) throw new TazapayFailure("key_refused", `${LABEL} refused TSC's API key. Check TAZAPAY_API_KEY and TAZAPAY_API_SECRET.`, extra);
+    if (status === 404) throw new TazapayFailure("not_found", `${LABEL} has no record of this (${reason}).`, extra);
+    if (status === 400 || status === 409 || status === 422) {
+      if (extra.codes.includes(20199)) {
+        throw new TazapayFailure("short_balance", "TSC's Tazapay balance is too low for this payout. Top up the balance in Tazapay, then pay again.", extra);
+      }
+      throw new TazapayFailure("refused", `${LABEL} refused this: ${reason}.`, extra);
+    }
+    // A 500 on a payout was seen when Tazapay could not fetch the invoice: no
+    // payout was made, but that can't be known from here, so it is unsure.
+    if (status === 429 || status >= 500) {
+      throw new TazapayFailure("provider_down", `${LABEL} is having trouble, so we don't know yet if this went. Press again in a minute: it can't pay twice.`, { ...extra, unsure: true });
+    }
+    throw new TazapayFailure("refused", `${LABEL} answered ${status}: ${reason}.`, extra);
+  }
+
+  /**
+   * What came back after a failed or reversed payout, and what TSC lost, from
+   * Tazapay's two balance transactions: the debit when it was made and the
+   * credit when it came back. In the holding currency (USD).
+   */
+  async function moneyBack(payout) {
+    if (!payout?.reversal_balance_transaction || !payout?.balance_transaction) return null;
+    const [debit, credit] = await Promise.all([
+      call("GET", `/v3/balance_transaction/${encodeURIComponent(payout.balance_transaction)}`),
+      call("GET", `/v3/balance_transaction/${encodeURIComponent(payout.reversal_balance_transaction)}`),
+    ]);
+    const out = Math.abs(Number(debit?.net?.amount));
+    const back = Math.abs(Number(credit?.net?.amount));
+    const currency = credit?.net?.currency ?? debit?.net?.currency;
+    if (!Number.isFinite(out) || !Number.isFinite(back) || !currency || debit?.net?.currency !== credit?.net?.currency) return null;
+    return { debitedMinor: out, returnedMinor: back, lostMinor: Math.max(0, out - back), currency };
   }
 
   return {
+    provider: "tazapay",
     base,
+    appUrl,
     call,
     balance: () => call("GET", "/v3/balance"),
     bankMetadata: (query) => call("GET", "/v3/metadata/payout/bank", { query }),
@@ -105,5 +186,106 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
     getPayout: (id) => call("GET", `/v3/payout/${encodeURIComponent(id)}`),
     payoutQuote: (body, idempotencyKey) => call("POST", "/v3/payout/quote", { body, idempotencyKey }),
     sandboxTopup: (body, idempotencyKey) => call("POST", "/v3/sandbox/balance/topup", { body, idempotencyKey }),
+    moneyBack,
+
+    /** How much of `currency` TSC's Tazapay balance holds, in minor units. */
+    async available(currency) {
+      const balance = await call("GET", "/v3/balance");
+      const row = (balance?.available ?? []).find((b) => b.currency === currency);
+      return Number(row?.amount ?? 0);
+    },
+
+    /**
+     * TSC pays Tazapay's fee on top, so what arrives is the whole step converted
+     * at Tazapay's rate: the rate from a quote of the step, then a quote of that
+     * payout amount, whose holding amount is what leaves the balance, fee included.
+     */
+    async quote({ holdingCurrency, amountMinor, route }) {
+      const ask = (info) => call("POST", "/v3/payout/quote", {
+        body: {
+          payout_type: route.type, local: { fund_transfer_network: route.network },
+          holding_info: { currency: holdingCurrency, ...(info.holding ? { amount: info.holding } : {}) },
+          payout_info: { currency: route.currency, ...(info.payout ? { amount: info.payout } : {}) },
+          destination_info: { currency: route.currency, country: route.country },
+        },
+      });
+      const first = await ask({ holding: Number(amountMinor) });
+      const rate = Number(first?.exchange_rates?.holding_to_payout);
+      if (!(rate > 0)) throw new TazapayFailure("quote_unavailable", `${LABEL} gave no rate for ${route.currency}. Try again in a minute.`);
+      const payoutMinor = Math.round(Number(amountMinor) * rate);
+      const second = await ask({ payout: payoutMinor });
+      const fixed = second?.fee_info?.fixed?.in_holding_currency ?? 0;
+      const variable = second?.fee_info?.variable?.in_holding_currency ?? 0;
+      return {
+        rate,
+        payoutMinor: Number(second?.payout_info?.amount ?? payoutMinor),
+        payoutCurrency: route.currency,
+        totalMinor: Number(second?.holding_info?.amount),
+        feeMinor: Number(fixed) + Number(variable),
+      };
+    },
+
+    /**
+     * An invoice for Tazapay to keep with the payout. Tazapay's own upload: a
+     * pre-signed PUT, then the object's address without the signature, which
+     * Tazapay reads with its own access (seen on the sandbox). Nothing of TSC's
+     * has to be reachable from the internet, so it works the same from a laptop.
+     */
+    async uploadDocument({ fileName, bytes, contentType = "application/pdf" }) {
+      const slot = await call("POST", "/v3/metadata/doc/upload", { body: { file_name: fileName } });
+      if (!slot?.url) throw new TazapayFailure("refused", `${LABEL} gave no place to upload the invoice. Try again.`);
+      let put;
+      try {
+        put = await fetchImpl(slot.url, { method: "PUT", headers: { "Content-Type": contentType }, body: bytes });
+      } catch {
+        throw new TazapayFailure("unreachable", `The invoice couldn't be uploaded to ${LABEL}. Press again.`, { unsure: true });
+      }
+      if (!put.ok) throw new TazapayFailure("refused", `${LABEL} didn't accept the invoice upload (${put.status}). Press again.`, { unsure: true, status: put.status });
+      const url = new URL(slot.url);
+      return `${url.origin}${url.pathname}`;
+    },
+
+    /**
+     * Where a payout is, for the shared code (api/_provider-payouts.js): state,
+     * Tazapay's word, the sentence staff read, what arrived, and whether the
+     * factory is told to check its details.
+     */
+    async status(id) {
+      const payout = await call("GET", `/v3/payout/${encodeURIComponent(id)}`);
+      const raw = String(payout?.status ?? "");
+      const state = TAZAPAY_STATES[raw] ?? "sent";
+      const arrivesCents = Number.isFinite(Number(payout?.amount)) ? Number(payout.amount) : null;
+      const result = { state, raw, arrivesCents, arrivesCurrency: payout?.currency ?? null, waiting: WAITING[raw] ?? null, failure: null, tellFactory: false };
+      if (state !== "failed") return result;
+      // Tazapay marks a payout failed or reversed a little before the money is
+      // back in the balance (seen on the sandbox). It stays open until it is, so
+      // staff are told what came back, and the payment isn't owed twice meanwhile.
+      if (payout?.balance_transaction && !payout?.reversal_balance_transaction) {
+        return { ...result, state: "sent", waiting: `Tazapay says this payout ${raw === "reversed" ? "was reversed" : "failed"}, and the money isn't back in TSC's Tazapay balance yet. It closes when it is.` };
+      }
+
+      const code = payout?.failure?.code ?? null;
+      const said = [payout?.failure?.description, payout?.status_description].filter(Boolean).join(" · ");
+      const back = await moneyBack(payout).catch(() => null);
+      const money = back
+        ? ` ${usd(back.returnedMinor, back.currency)} came back to TSC's Tazapay balance${back.lostMinor ? `; ${usd(back.lostMinor, back.currency)} was lost (fee, exchange rate and bank charges)` : ", fee included"}.`
+        : " Check TSC's Tazapay balance for what came back.";
+      if (raw === "reversed") {
+        result.failure = `Tazapay paid this, then the payout was reversed${said ? ` (${said})` : ""}.${money} The payment is owed again: check with the factory before paying again.`;
+      } else if (code && BANK_REFUSED.test(code)) {
+        result.failure = `The factory's bank refused this payout (${code}${said ? `: ${said}` : ""}).${money} The factory was asked to check its bank details.`;
+        result.tellFactory = true;
+      } else {
+        result.failure = `Tazapay didn't pay this${code ? ` (${code}${said ? `: ${said}` : ""})` : ""}.${money} Ask Tazapay why before paying again; the factory wasn't told.`;
+      }
+      result.moneyBack = back;
+      return result;
+    },
+
+    /** Tazapay has no way to take a payout back once it is made. */
+    async cancel() {
+      throw new TazapayFailure("refused", "A Tazapay payout can't be cancelled once it is made. Wait for it to finish, or ask Tazapay to recall it.");
+    },
   };
 }
+

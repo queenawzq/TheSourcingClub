@@ -17,13 +17,13 @@ const walk = (dir) => readdirSync(dir).flatMap((name) => {
 });
 const read = (path) => readFileSync(path, "utf8");
 
-const NUMBER_WORDS = /account_number(?!_last4)|payout_account_numbers|reveal_payout_account_number|save_bank_payout_account|save_wise_payout_account|payout_wise_recipient|decrypted_secrets/;
+const NUMBER_WORDS = /account_number(?!_last4)|payout_account_numbers|reveal_payout_account_number|save_bank_payout_account|save_wise_payout_account|payout_wise_recipient|payout_tazapay_beneficiary|decrypted_secrets/;
 
-// The one exception: Wise needs the number to make a recipient, so this file
-// reads it with the staff member's token, sends it to Wise and keeps nothing.
-const WISE_RECIPIENT = "api/_wise-recipient.js";
+// The two exceptions: Wise and Tazapay need the number to make a payee, so these
+// files read it with the staff member's token, send it on and keep nothing.
+const SENDS_NUMBER = new Set(["api/_wise-recipient.js", "api/_tazapay-beneficiary.js"]);
 for (const path of walk("api")) {
-  if (path === WISE_RECIPIENT) {
+  if (SENDS_NUMBER.has(path)) {
     assert(!/console\.\w+\([^)]*(number|details|recipient)/i.test(read(path)), `${path} logs something near the number`);
     continue;
   }
