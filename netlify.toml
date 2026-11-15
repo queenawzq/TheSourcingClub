@@ -13,3 +13,8 @@ publish = "dist"
 # rewrites. If the app is ever hosted here, it needs one for /app.html/* plus
 # Netlify-format functions plus a Supabase redirect-allowlist entry — all three,
 # or it fails quietly rather than loudly.
+#
+# The marketing site's production deploy (SITE_NAME=thesourcingclub) redirects
+# every page except the prototypes to the live site on Vercel: `npm run build`
+# ends with scripts/netlify-redirect.mjs, which writes dist/_redirects for that
+# one site and context only. Turn it off there (ON = false).
