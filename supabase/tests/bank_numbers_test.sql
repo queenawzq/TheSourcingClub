@@ -149,7 +149,7 @@ select is(
       and p.prosrc ~ 'payout_number_plain|decrypted_secrets|vault\.'),
   array['guard_payout_account_fields', 'payout_number_forget_secret', 'payout_number_plain', 'payout_tazapay_beneficiary',
         'payout_text_holds_number', 'payout_wise_recipient', 'reveal_payout_account_number',
-        'save_bank_payout_account', 'save_wise_payout_account'],
+        'save_bank_payout_account', 'save_tazapay_payout_account', 'save_wise_payout_account'],
   'only these functions decrypt or touch Vault: a new one fails here'
 );
 select is(
