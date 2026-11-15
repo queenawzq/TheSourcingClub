@@ -62,6 +62,62 @@ export const variants = {
   },
 };
 
+// A vendor who chose 中文 (user_profiles.locale = zh) gets these. Brands
+// have no Chinese side, so the brand email stays English.
+const zhVariant = (variant, more) => ({
+  ...variant,
+  lang: "zh",
+  stop: "。",
+  badge: "已提交 · 审核中",
+  noAction: "目前无需任何操作。如需补充信息，我们会发邮件告诉你下一步。",
+  questions: "有问题？直接回复此邮件，或联系",
+  reviewTitle: "我们正在审核",
+  nextTitle: "接下来",
+  cta: "查看提交内容",
+  ...more,
+});
+
+export const variantsZh = {
+  factory: zhVariant(variants.factory, {
+    eyebrow: "工厂入驻",
+    subject: "我们已收到你的工厂资料",
+    preheader: "你的 TSC 工厂资料正在验证中。完成后我们会发邮件通知你。",
+    title: "你的工厂资料正在审核中。",
+    intro: "感谢你介绍 {{ company_name }}。你的工厂资料已提交，我们的团队正在核对你提供的信息。",
+    reviewItems: [
+      ["企业验证", "注册信息和提交的文件"],
+      ["生产匹配", "品类、能力、产能和商务条款"],
+      ["信任信号", "认证、合作参考和工厂实拍资料"],
+    ],
+    nextCopy: "验证完成后我们会立即发邮件通知你。届时你可以重新登录，进入工作台，并被相关品牌找到。",
+    footerLine: "你收到这封邮件，是因为你向 The Sourcing Club 提交了工厂资料。",
+  }),
+  "trading-company": zhVariant(variants["trading-company"], {
+    eyebrow: "贸易公司入驻",
+    subject: "我们已收到你的贸易公司资料",
+    preheader: "你的 TSC 贸易公司资料正在验证中。完成后我们会发邮件通知你。",
+    title: "你的公司资料正在审核中。",
+    intro: "感谢你介绍 {{ company_name }}。你的贸易公司资料已提交，我们的团队正在核对你提供的信息。",
+    reviewItems: [
+      ["企业验证", "注册信息和提交的文件"],
+      ["供应商网络", "生产项目、采购地区和订单匹配"],
+      ["管理能力", "开发、质量、合规和客户参考"],
+    ],
+    nextCopy: "验证完成后我们会立即发邮件通知你。届时你可以重新登录，进入工作台，并与适合你网络的品牌匹配。",
+    footerLine: "你收到这封邮件，是因为你向 The Sourcing Club 提交了贸易公司资料。",
+  }),
+};
+
+// The English frame's words, unchanged; a Chinese variant brings its own.
+const frame = (data) => ({
+  lang: "en",
+  stop: ".",
+  badge: "SUBMITTED · IN REVIEW",
+  noAction: "No action is needed right now. If we need anything else, we’ll email you with clear next steps.",
+  questions: "Questions? Reply to this email or contact",
+  ...data,
+});
+
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -99,9 +155,10 @@ function rewardBlock(enabled) {
                 </tr>`;
 }
 
-export function emailHtml(key, data) {
+export function emailHtml(key, variant) {
+  const data = frame(variant);
   return `<!doctype html>
-<html lang="en">
+<html lang="${data.lang}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -135,7 +192,7 @@ export function emailHtml(key, data) {
                     <td class="email-pad" style="padding:38px 40px 24px;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                         <tr>
-                          <td style="padding:6px 10px;background:#EAF4FF;border:1px solid #8DB7FF;border-radius:5px;color:#1A4DF2;font-size:11px;line-height:14px;font-weight:700;">SUBMITTED · IN REVIEW</td>
+                          <td style="padding:6px 10px;background:#EAF4FF;border:1px solid #8DB7FF;border-radius:5px;color:#1A4DF2;font-size:11px;line-height:14px;font-weight:700;">${escapeHtml(data.badge)}</td>
                         </tr>
                       </table>
                       <p style="margin:22px 0 10px;font-size:12px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(data.eyebrow)}</p>
@@ -167,7 +224,7 @@ export function emailHtml(key, data) {
                           </td>
                         </tr>
                       </table>
-                      <p style="margin:18px 0 0;font-size:12px;line-height:18px;color:#5A6B87;">No action is needed right now. If we need anything else, we’ll email you with clear next steps.</p>
+                      <p style="margin:18px 0 0;font-size:12px;line-height:18px;color:#5A6B87;">${escapeHtml(data.noAction)}</p>
                     </td>
                   </tr>
                 </table>
@@ -175,7 +232,7 @@ export function emailHtml(key, data) {
             </tr>
             <tr>
               <td class="email-footer" style="padding:20px 4px 0;color:#5A6B87;">
-                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">Questions? Reply to this email or contact <a href="mailto:{{ support_email }}" style="color:#1A4DF2;text-decoration:none;">{{ support_email }}</a>.</p>
+                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(data.questions)} <a href="mailto:{{ support_email }}" style="color:#1A4DF2;text-decoration:none;">{{ support_email }}</a>${data.stop}</p>
                 <p style="margin:0;font-size:11px;line-height:17px;">${escapeHtml(data.footerLine)}<br>The Sourcing Club · {{ company_address }}</p>
               </td>
             </tr>
@@ -244,11 +301,17 @@ function previewHtml() {
 </html>`;
 }
 
+/**
+ * @param key        brand | factory | trading-company
+ * @param variables  { companyName, dashboardUrl, logoUrl, supportEmail, companyAddress,
+ *                     locale: the recipient's user_profiles.locale ("zh": Chinese, for a vendor) }
+ */
 export function onboardingEmail(key, variables = {}) {
-  const data = variants[key];
-  if (!data) throw new Error(`unknown onboarding email variant: ${key}`);
+  if (!variants[key]) throw new Error(`unknown onboarding email variant: ${key}`);
+  const zh = variables.locale === "zh" && Boolean(variantsZh[key]);
+  const data = frame(zh ? variantsZh[key] : variants[key]);
 
-  const companyName = variables.companyName || (key === "brand" ? "your brand" : "your company");
+  const companyName = variables.companyName || (zh ? "你的公司" : key === "brand" ? "your brand" : "your company");
   const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
   const logoUrl = variables.logoUrl || "https://sourcing-club.com/assets/logo.png";
   const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
@@ -270,7 +333,7 @@ export function onboardingEmail(key, variables = {}) {
     html,
     text: `${data.title}\n\n${data.intro
       .replaceAll("{{ brand_name }}", companyName)
-      .replaceAll("{{ company_name }}", companyName)}\n\n${data.reviewTitle}\n${review}\n${reward}\n${data.nextTitle}\n${data.nextCopy}\n\n${data.cta}: ${dashboardUrl}\n\nNo action is needed right now. If we need anything else, we’ll email you with clear next steps.\n\nQuestions? Reply to this email or contact ${supportEmail}.\n${data.footerLine}\nThe Sourcing Club · ${companyAddress}`,
+      .replaceAll("{{ company_name }}", companyName)}\n\n${data.reviewTitle}\n${review}\n${reward}\n${data.nextTitle}\n${data.nextCopy}\n\n${data.cta}: ${dashboardUrl}\n\n${data.noAction}\n\n${data.questions} ${supportEmail}${data.stop}\n${data.footerLine}\nThe Sourcing Club · ${companyAddress}`,
   };
 }
 

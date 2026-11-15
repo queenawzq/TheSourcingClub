@@ -32,6 +32,7 @@ import {
   vendorCard,
 } from "./vendor-directory-view.js";
 import { useVendorTranslations } from "./useVendorTranslations.js";
+import { useVendorNames } from "../vendor-names.jsx";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
 
@@ -107,7 +108,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
   }, [org.id]);
 
   const originalCards = useMemo(() => (state.data?.vendors ?? []).map((parts) => vendorCard(parts)), [state.data]);
-  const cards = useVendorTranslations(originalCards, org.id);
+  const vendorNames = useVendorNames(originalCards);
+  const cards = useVendorTranslations(originalCards, org.id).map(vendorNames.card);
   const ofType = useMemo(
     () => cards.filter((card) => (vendorType === "trading" ? card.vendorType === "trading" : card.vendorType === "factory")),
     [cards, vendorType],

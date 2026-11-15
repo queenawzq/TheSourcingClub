@@ -23,7 +23,7 @@ import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getS
 import { reviewCompletion } from "./review-completion.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
-import { saveEmailLanguage } from "../../lib/email-language.js";
+import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import {
@@ -172,8 +172,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
   // The language chosen at sign-up carries on here.
-  const [language, setLanguage] = useState(() => (new URLSearchParams(window.location.search).get("lang") === "zh"
-    || window.localStorage.getItem("factoryLang") === "zh" ? "zh" : "en"));
+  // The person's language: the sign-up page's, or their saved one when a
+  // company already onboarded is sent back here (src/lib/ui-language.js).
+  const [language, setLanguage] = useState(getUiLanguage);
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
   const uploads = useUploadOnce(step);
@@ -710,7 +711,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       language={language}
       step={step}
       isReviewEdit={reviewEditStep !== null}
-      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); saveEmailLanguage(user?.id); }}
+      onLanguageChange={(next) => { setLanguage(next); chooseUiLanguage(user?.id, next).catch(() => {}); }}
       onCompanyTypeChange={setCompanyType}
       onBack={() => {
         if (reviewEditStep !== null) {

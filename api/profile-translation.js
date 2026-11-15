@@ -24,6 +24,49 @@ export function tokenSubject(token) {
 }
 
 const hashOf = (source) => createHash("sha256").update(`profile-en-v1:${source}`).digest("hex");
+// A company name is cached per company and per name as written: a rename is
+// a new key, so it is translated again, and one company reads the same in
+// English to every brand.
+const nameHashOf = (orgId, name) => createHash("sha256").update(`name-en-v2:${orgId}:${name}`).digest("hex");
+
+/**
+ * `{ orgIds, scope: "names" }`: vendors' company names in English, for every
+ * brand screen that names a vendor. The names are read with the caller's own
+ * token, so a brand gets only the companies it may already see; brands' names
+ * and names already in Latin script are not translated.
+ * Answers `{ byOrg: { id: { source, english } } }`; `english` is null when
+ * there is no translation (yet): the screen keeps the name as written.
+ */
+async function vendorNames(response, { caller, orgIds, supabaseUrl, serviceKey }) {
+  const { data: orgs, error } = await caller.from("orgs").select("id,name,type").in("id", orgIds).neq("type", "brand");
+  if (error) return response.status(503).json({ error: "Names unavailable" });
+  const { needsEnglish, translateSources } = await loadRules();
+  const named = (orgs ?? []).filter((org) => typeof org.name === "string" && org.name.trim());
+  // Keyed per company: the same characters for two companies are two cache rows.
+  const keyOf = new Map(named.filter((org) => needsEnglish(org.name)).map((org) => [`${org.id}\u0000${org.name.trim()}`, org]));
+  const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const hashFor = (key) => { const org = keyOf.get(key); return nameHashOf(org.id, org.name.trim()); };
+  const { translations } = await translateSources([...keyOf.keys()], {
+    deadlineMs: DEADLINE_MS,
+    translate: (key, { timeoutMs }) => translateText(keyOf.get(key)?.name.trim() ?? "", { context: "company name", timeoutMs }),
+    cacheRead: async (keys) => {
+      const byHash = new Map(keys.map((key) => [hashFor(key), key]));
+      const { data, error: readError } = await service.from("profile_translation_cache").select("source_hash,english,translated").in("source_hash", [...byHash.keys()]);
+      if (readError) throw readError;
+      return new Map(data.map((row) => [byHash.get(row.source_hash), row]));
+    },
+    cacheWrite: async (rows) => {
+      await service.from("profile_translation_cache")
+        .upsert(rows.map(({ source, english, translated }) => ({ source_hash: hashFor(source), english, translated })), { onConflict: "source_hash" });
+    },
+  });
+  return response.status(200).json({
+    byOrg: Object.fromEntries(named.map((org) => {
+      const key = `${org.id}\u0000${org.name.trim()}`;
+      return [org.id, { source: org.name, english: translations[key] ?? null }];
+    })),
+  });
+}
 
 /**
  * `{ orgId }`: the vendor page, every string it shows.
@@ -54,11 +97,12 @@ export default async function handler(request, response) {
   if (!orgIds.length || orgIds.length > MAX_ORGS || orgIds.some((id) => !/^[0-9a-f-]{36}$/i.test(id ?? ""))) {
     return response.status(400).json({ error: "Invalid factory" });
   }
-  const scope = single ? "page" : "card";
+  const scope = single ? "page" : body?.scope === "names" ? "names" : "card";
   const { data: memberships, error: membershipError } = await caller.from("org_members").select("orgs!inner(type)").eq("user_id", userId);
   // The database refuses an expired or forged token.
   if (membershipError) return response.status(/jwt|token/i.test(membershipError.message ?? "") || membershipError.code === "PGRST301" ? 401 : 503).json({ error: "Sign in required" });
   if (!memberships?.some((row) => row.orgs?.type === "brand")) return response.status(403).json({ error: "Brand access required" });
+  if (scope === "names") return vendorNames(response, { caller, orgIds, supabaseUrl, serviceKey });
 
   // Text is read from the authorized profiles, never supplied by the caller.
   const [profiles, media, references] = await Promise.all([

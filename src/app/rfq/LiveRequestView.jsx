@@ -57,6 +57,8 @@ import { matchFit } from "./match-fit.js";
 import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -109,6 +111,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [certificationTags, setCertificationTags] = useState([]);
   const [serviceTags, setServiceTags] = useState([]);
   const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], images: [], saved: false });
+  // The request and the brand card in Chinese for a person reading Chinese.
+  useChineseContent({ rfqIds: [rfqId], brandOrgIds: [rfq?.brand_org_id] });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   // "revise" or "withdraw" while the vendor is being asked; a sent quote is
@@ -307,7 +311,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         {gate}
         <FactoryProjectDetail
           companyType={isTrading ? "trading" : "factory"}
-          language="en"
+          language={getUiLanguage()}
           project={project}
           brief={rfq.brief ?? ""}
           details={{
@@ -449,7 +453,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // first render, and they load after the quote: remount when they arrive.
         key={`materials-${materialLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
-        language="en"
+        language={getUiLanguage()}
         project={project}
         // This vendor's own quote, read back: the terms it sent and the
         // sample plan it priced, not the design's example.

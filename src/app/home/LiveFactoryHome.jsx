@@ -33,6 +33,8 @@ import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -118,6 +120,7 @@ const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZo
 export default function LiveFactoryHome({ org, profile }) {
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
+  useChineseContent({ rfqIds: [...(state?.rfqs ?? []).map((rfq) => rfq?.id), ...(state?.orders ?? []).map((order) => order?.rfq_id)] });
   // The first read failed: nothing is known, so no layout can be drawn.
   const [failed, setFailed] = useState(false);
   // Something later did not go through, on a dashboard that is still right.
@@ -128,6 +131,8 @@ export default function LiveFactoryHome({ org, profile }) {
   const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
   const { unreadCount: unreadNotifications, openActivity, activityDrawer } = useActivity(org.id, {
     isFactory: true,
+    // The bell speaks the person's language (src/lib/ui-language.js).
+    language: getUiLanguage(),
     onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
 
@@ -244,7 +249,7 @@ export default function LiveFactoryHome({ org, profile }) {
         <FactoryDashboardPage
           companyType={isTrading ? "trading" : "factory"}
           dashboardState={layout}
-          language="en"
+          language={getUiLanguage()}
           orgName={org.name}
           unreadCount={n(unreadNotifications)}
           onOpenActivity={openActivity}
@@ -349,7 +354,7 @@ export default function LiveFactoryHome({ org, profile }) {
     <>
     {drawer && (
       <FactoryCapacityDrawer
-        language="en"
+        language={getUiLanguage()}
         initial={drawer.initial}
         months={drawer.window.map(SHORT_MONTH)}
         onClose={() => setDrawer(null)}
@@ -360,7 +365,7 @@ export default function LiveFactoryHome({ org, profile }) {
       companyType={isTrading ? "trading" : "factory"}
       dashboardState={layout}
       notice={<HomeNotice text={notice} />}
-      language="en"
+      language={getUiLanguage()}
       orgName={org.name}
       creditBalance={credits ?? 0}
       unreadCount={n(unreadNotifications)}

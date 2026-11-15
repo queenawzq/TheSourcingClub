@@ -71,9 +71,10 @@ const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payme
  * listPaymentsForOrders() for those orders, stepCharges: listStepCharges()
  * for them, vendor: the filter's choice.
  */
-export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS }) {
+export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
   const byOrder = new Map(orders.map((order) => [order.id, order]));
-  const vendorOf = (order) => order.factory?.name ?? "Factory";
+  // `nameOf`: the vendor's name as the brand reads it (English where it has one).
+  const vendorOf = (order) => nameOf(order) ?? "Factory";
   const listed = payments.filter((payment) => byOrder.has(payment.order_id));
 
   const rows = listed

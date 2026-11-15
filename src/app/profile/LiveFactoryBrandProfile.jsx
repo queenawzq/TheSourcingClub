@@ -15,6 +15,8 @@ import { useRouter } from "../../lib/router.jsx";
 import { factoryBrandView } from "./brand-profile-view.js";
 import { loadBrandProfileForFactory } from "./load-profile.js";
 import "./profile.css";
+import { getUiLanguage } from "../../lib/ui-language.js";
+import { useChineseContent } from "../content-translation.js";
 
 /** Where it was opened → the back link's words, and where it goes when there is no history. */
 const BACK = {
@@ -28,6 +30,8 @@ function Frame({ children }) {
 }
 
 export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = null }) {
+  // The brand's own words in Chinese for a person reading Chinese.
+  useChineseContent({ brandOrgIds: [brandOrgId] });
   const { navigate } = useRouter();
   const [state, setState] = useState({ parts: undefined, error: null });
   const [saving, setSaving] = useState(false);
@@ -97,7 +101,7 @@ export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = 
     <>
       <FactoryBrandPublicProfilePage
         brandName={parts.data?.name}
-        language="en"
+        language={getUiLanguage()}
         onBack={back}
         live={{
           ...factoryBrandView(parts),

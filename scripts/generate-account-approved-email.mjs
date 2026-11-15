@@ -139,6 +139,8 @@ function reviewDecisionEmail({
   const needsInformation = decision === "needs_information";
   const declined = decision === "declined";
   const t = (needsInformation ? needsInformationCopy : declined ? declinedCopy : copy)[locale === "zh" ? "zh" : "en"];
+  // The sentence's own full stop: Chinese ends in 。, English in "."
+  const stop = locale === "zh" ? "。" : ".";
   const safeNote = String(note ?? "").trim();
   // The note is the card on a request or a decline, and a box of its own on an approval.
   const noteInCard = needsInformation || declined;
@@ -214,7 +216,7 @@ ${declined && !safeNote ? "" : `              <tr><td class="email-pad" style="p
             </table>
           </td></tr>
           <tr><td class="email-footer" style="padding:20px 4px 0;color:#5A6B87;">
-            <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(t.help)} <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(supportEmail)}</a>.</p>
+            <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(t.help)} <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(supportEmail)}</a>${stop}</p>
             <p style="margin:0;font-size:11px;line-height:17px;">${escapeHtml(t.footer)}<br>The Sourcing Club · ${escapeHtml(companyAddress)}</p>
           </td></tr>
         </table>
@@ -228,7 +230,7 @@ ${declined && !safeNote ? "" : `              <tr><td class="email-pad" style="p
   const noteHeading = needsInformation ? t.cardEyebrow(companyName) : noteInCard ? t.cardTitle : t.noteTitle;
   const noteText = safeNote ? `${noteHeading}:\n${safeNote}` : "";
   const opening = [t.intro?.(companyName), noteText].filter(Boolean).join("\n\n");
-  const text = `${t.greeting(recipientName)}\n\n${opening}\n\n${t.nextTitle}\n${t.nextCopy}\n\n${t.cta}: ${loginUrl}\n\n${t.help} ${supportEmail}.\nThe Sourcing Club · ${companyAddress}`;
+  const text = `${t.greeting(recipientName)}\n\n${opening}\n\n${t.nextTitle}\n${t.nextCopy}\n\n${t.cta}: ${loginUrl}\n\n${t.help} ${supportEmail}${stop}\nThe Sourcing Club · ${companyAddress}`;
   return { subject: t.subject, html, text };
 }
 

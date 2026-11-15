@@ -138,7 +138,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       rail={found ? {
         vendor: {
           initials: found.view.initials,
-          name: found.view.name,
+          name: found.view.nameNode ?? found.view.name,
           location: found.raw.orgs?.factory_profiles?.location ?? "",
           onMessage: message,
         },

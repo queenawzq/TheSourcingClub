@@ -24,6 +24,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
+import { useVendorNames } from "../vendor-names.jsx";
 
 const DISCOUNTS_USABLE = false;
 
@@ -35,7 +36,12 @@ export default function LiveBrandPayments({ org }) {
   // rows only; the live mount hears the same change and recomputes the four
   // figures from that vendor's payments, as the factory's page does.
   const [vendor, setVendor] = useState(ALL_VENDORS);
-  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor }) : null), [state.loaded, vendor]);
+  // Vendors' names in English where written in Chinese, as on their orders (vendor-names.jsx).
+  const vendorNames = useVendorNames((state.loaded?.orders ?? []).map((order) => ({ id: order.factory_org_id, name: order.factory?.name })));
+  const nameOf = (order) => (order.factory?.name ? vendorNames.text(order.factory_org_id, order.factory.name) : null);
+  const namesKey = (state.loaded?.orders ?? []).map((order) => nameOf(order)).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor, nameOf }) : null), [state.loaded, vendor, namesKey]);
 
   useEffect(() => {
     let cancelled = false;
