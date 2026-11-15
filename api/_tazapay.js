@@ -253,15 +253,21 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
     async status(id) {
       const payout = await call("GET", `/v3/payout/${encodeURIComponent(id)}`);
       const raw = String(payout?.status ?? "");
-      const state = TAZAPAY_STATES[raw] ?? "sent";
+      const known = Object.hasOwn(TAZAPAY_STATES, raw);
+      const state = known ? TAZAPAY_STATES[raw] : "sent";
       const arrivesCents = Number.isFinite(Number(payout?.amount)) ? Number(payout.amount) : null;
-      const result = { state, raw, arrivesCents, arrivesCurrency: payout?.currency ?? null, waiting: WAITING[raw] ?? null, failure: null, tellFactory: false };
-      if (state !== "failed") return result;
+      const result = {
+        state, raw, arrivesCents, arrivesCurrency: payout?.currency ?? null, failure: null, tellFactory: false,
+        // A status Tazapay adds later stays open, and staff are told to look, never guessed at.
+        waiting: WAITING[raw] ?? (known ? null : `Tazapay reports this payout as "${raw.slice(0, 40) || "no status"}", which TSC doesn't know yet. Check it in Tazapay.`),
+      };
+      if (state !== "failed" && state !== "cancelled") return result;
       // Tazapay marks a payout failed or reversed a little before the money is
       // back in the balance (seen on the sandbox). It stays open until it is, so
       // staff are told what came back, and the payment isn't owed twice meanwhile.
       if (payout?.balance_transaction && !payout?.reversal_balance_transaction) {
-        return { ...result, state: "sent", waiting: `Tazapay says this payout ${raw === "reversed" ? "was reversed" : "failed"}, and the money isn't back in TSC's Tazapay balance yet. It closes when it is.` };
+        const what = { reversed: "was reversed", cancelled: "was cancelled" }[raw] ?? "failed";
+        return { ...result, state: "sent", waiting: `Tazapay says this payout ${what}, and the money isn't back in TSC's Tazapay balance yet. It closes when it is.` };
       }
 
       const code = payout?.failure?.code ?? null;
@@ -270,7 +276,9 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
       const money = back
         ? ` ${usd(back.returnedMinor, back.currency)} came back to TSC's Tazapay balance${back.lostMinor ? `; ${usd(back.lostMinor, back.currency)} was lost (fee, exchange rate and bank charges)` : ", fee included"}.`
         : " Check TSC's Tazapay balance for what came back.";
-      if (raw === "reversed") {
+      if (raw === "cancelled") {
+        result.failure = `Tazapay cancelled this payout before it was paid${said ? ` (${said})` : ""}. Nothing reached the factory.${back ? money : ""} The payment is still owed: pay again when ready.`;
+      } else if (raw === "reversed") {
         result.failure = `Tazapay paid this, then the payout was reversed${said ? ` (${said})` : ""}.${money} The payment is owed again: check with the factory before paying again.`;
       } else if (code && BANK_REFUSED.test(code)) {
         result.failure = `The factory's bank refused this payout (${code}${said ? `: ${said}` : ""}).${money} The factory was asked to check its bank details.`;

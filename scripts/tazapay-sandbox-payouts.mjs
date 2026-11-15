@@ -5,7 +5,7 @@
  * staff, exactly as the board calls it; the board's own read-back ("sync")
  * records where each payout goes.
  *
- *   npx supabase start && node scripts/tazapay-sandbox-payouts.mjs
+ *   npx supabase start && node scripts/tazapay-sandbox-payouts.mjs [--scenario=outcomes|hk|retry]
  *
  * Needs TAZAPAY_* in the environment or .env.local, with money in the sandbox's
  * USD balance (about USD 1,700 a run). Refuses any database that isn't on this
@@ -59,13 +59,29 @@ const USERS = { owner: id(3), brand: id(4) };
 const ORDER = id(5);
 const ACCOUNT = id(6);
 const USCC = "91440300MA5G8X2Q7" + usccCheckChar("91440300MA5G8X2Q7");
-const CASES = [
-  { name: "success", usd: 10000, band: [1, 99999] },
-  { name: "bank refuses", usd: 34375, band: [200000, 250000] },
-  { name: "compliance hold, then paid", usd: 50000, band: [300000, 350000] },
-  { name: "compliance hold, then refused", usd: 64000, band: [400000, 450000] },
-  { name: "paid, then reversed", usd: 80000, band: [500001, 550000] },
-].map((c, i) => ({ ...c, milestone: id(10 + i), payment: id(20 + i) }));
+// --scenario=outcomes (default): the five outcomes, a mainland account.
+// --scenario=hk: one payout to a Hong Kong account, HKD over CHATS.
+// --scenario=retry: a bank refusal, then the reopened payment paid again (a new
+//   attempt, key and payout; the first left as it was). The sandbox decides by
+//   amount, so the second payout of the same step is refused by the bank too.
+const SCENARIO = process.argv.find((a) => a.startsWith("--scenario="))?.slice(11) ?? "outcomes";
+const HK = SCENARIO === "hk";
+const CASES = ({
+  outcomes: [
+    { name: "success", usd: 10000, band: [1, 99999] },
+    { name: "bank refuses", usd: 34375, band: [200000, 250000] },
+    { name: "compliance hold, then paid", usd: 50000, band: [300000, 350000] },
+    { name: "compliance hold, then refused", usd: 64000, band: [400000, 450000] },
+    { name: "paid, then reversed", usd: 80000, band: [500001, 550000] },
+  ],
+  hk: [{ name: "Hong Kong, HKD over CHATS", usd: 3000, band: [100, 99999] }],
+  retry: [{ name: "bank refuses, then paid again", usd: 34375, band: [200000, 250000] }],
+})[SCENARIO].map((c, i) => ({ ...c, milestone: id(10 + i), payment: id(20 + i) }));
+const ACCOUNT_VALUES = HK
+  ? `'${ACCOUNT}', '${ORG.factory}', 'bank', 'The Hongkong and Shanghai Banking Corporation Limited', 'Kowloon Knitwear Trading Ltd', '0001', 'HK', true,
+  null, null, '004', 'HSBCHKHH', 'Unit 12, 8/F, 45 Hung To Road', 'Kwun Tong', 'Kowloon', now()`
+  : `'${ACCOUNT}', '${ORG.factory}', 'bank', 'Bank of China', 'Shenzhen Hengda Garment Co Ltd', '0001', 'CN', true,
+  '深圳市恒达服装制造有限公司', '${USCC}', '104100000004', 'BKCHCNBJ', '88 Bantian Industrial Road', 'Shenzhen', 'Guangdong', now()`;
 
 const staffEmail = `tazapay-staff-${RUN}@example.com`;
 const password = `tz-${RUN}-pw`;
@@ -96,8 +112,7 @@ insert into public.order_payments (id, order_id, milestone_id, amount_cents, cur
 values ('${c.payment}', '${ORDER}', '${c.milestone}', ${c.usd}, 'USD', 'confirmed', now(), now());`).join("")}
 insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, bank_country, is_primary,
   holder_name_local, registration_number, bank_code, swift, address_line1, address_city, address_state, details_changed_at)
-values ('${ACCOUNT}', '${ORG.factory}', 'bank', 'Bank of China', 'Shenzhen Hengda Garment Co Ltd', '0001', 'CN', true,
-  '深圳市恒达服装制造有限公司', '${USCC}', '104100000004', 'BKCHCNBJ', '88 Bantian Industrial Road', 'Shenzhen', 'Guangdong', now());
+values (${ACCOUNT_VALUES});
 insert into public.payout_account_numbers (account_id, vault_secret_id, number_kind)
 values ('${ACCOUNT}', vault.create_secret('0000000062178500001', 'payout-number-${ACCOUNT}'), 'account');
 -- The guard sets this from the stored number; it is off in replica mode.
@@ -128,51 +143,78 @@ async function snapshot(c) {
 }
 
 // --- Press: each payment once, one of them twice at the same moment -------------
-const result = { run: RUN, startedAt: new Date().toISOString(), cases: {} };
-for (const c of CASES) {
+const result = { run: RUN, scenario: SCENARIO, startedAt: new Date().toISOString(), cases: {} };
+function pick(s) {
+  return { payment: s.payment, status: s.status, provider_status: s.provider_status, stage: s.stage, sentence: s.staff_sentence, attempts: s.attempts, failure_code: s.failure_code, ref: s.provider_ref };
+}
+async function press(c, twice = false) {
   const t0 = Date.now();
-  const presses = c.name.startsWith("compliance hold, then paid") ? await Promise.all([pay(c), pay(c)]) : [await pay(c)];
+  const presses = twice ? await Promise.all([pay(c), pay(c)]) : [await pay(c)];
   const snap = await snapshot(c);
-  result.cases[c.name] = { usd: c.usd, presses: presses.map((p) => ({ code: p.code, done: p.done ?? null, error: p.error ?? null })), ms: Date.now() - t0, seen: [{ at: new Date().toISOString(), ...pick(snap) }] };
+  const entry = result.cases[c.name] ??= { usd: c.usd, presses: [], seen: [] };
+  entry.presses.push(...presses.map((p) => ({ at: new Date().toISOString(), code: p.code, done: p.done ?? null, error: p.error ?? null })));
+  entry.ms = Date.now() - t0;
+  entry.seen.push({ at: new Date().toISOString(), ...pick(snap) });
   const payout = snap.provider_ref ? await tazapay.getPayout(snap.provider_ref) : null;
   c.ref = snap.provider_ref;
-  c.cny = payout?.amount;
+  c.sent = payout?.amount;
+  c.currency = payout?.currency;
+  c.network = payout?.local?.fund_transfer_network;
   c.beneficiary = payout?.beneficiary;
   c.documents = payout?.documents?.length ?? 0;
-  log(`${c.name}: ${presses.map((p) => `${p.code} ${p.done ?? p.error}`).join(" | ")}  payout ${c.ref} CNY ${c.cny} in band ${c.cny >= c.band[0] && c.cny <= c.band[1]}`);
-}
-function pick(s) {
-  return { payment: s.payment, status: s.status, provider_status: s.provider_status, stage: s.stage, sentence: s.staff_sentence, attempts: s.attempts, failure_code: s.failure_code };
+  log(`${c.name}: ${presses.map((p) => `${p.code} ${p.done ?? p.error}`).join(" | ")}  payout ${c.ref} ${c.currency} ${c.sent} over ${c.network || "(Tazapay's choice)"} in band ${c.sent >= c.band[0] && c.sent <= c.band[1]}`);
 }
 
 // --- Read back, as the board does, until each is where it ends -----------------
-const done = (name, s) => name === "paid, then reversed" ? s.provider_status === "reversed" : ["paid", "failed"].includes(s.status);
-const until = Date.now() + 9 * 60_000;
-while (Date.now() < until) {
-  await sleep(20_000);
-  const synced = await call({ action: "sync" });
-  let all = true;
-  for (const c of CASES) {
-    const s = pick(await snapshot(c));
-    const seen = result.cases[c.name].seen;
-    const last = seen.at(-1);
-    if (s.status !== last.status || s.provider_status !== last.provider_status || s.payment !== last.payment || s.sentence !== last.sentence) {
-      seen.push({ at: new Date().toISOString(), ...s });
-      log(`${new Date().toISOString()} ${c.name}: ${last.provider_status} -> ${s.provider_status} (attempt ${s.status}, payment ${s.payment})`);
+async function readBackUntil(done, minutes = 9) {
+  const until = Date.now() + minutes * 60_000;
+  while (Date.now() < until) {
+    await sleep(20_000);
+    const synced = await call({ action: "sync" });
+    if (synced.code !== 200) log("sync", synced.code, synced.error);
+    let all = true;
+    for (const c of CASES) {
+      const s = pick(await snapshot(c));
+      const seen = result.cases[c.name].seen;
+      const last = seen.at(-1);
+      if (s.status !== last.status || s.provider_status !== last.provider_status || s.payment !== last.payment || s.sentence !== last.sentence || s.ref !== last.ref) {
+        seen.push({ at: new Date().toISOString(), ...s });
+        log(`${new Date().toISOString()} ${c.name}: ${last.provider_status} -> ${s.provider_status} (attempt ${s.status}, payment ${s.payment})`);
+      }
+      if (!done(c.name, s)) all = false;
     }
-    if (!done(c.name, s)) all = false;
+    if (all) return true;
   }
-  if (synced.code !== 200) log("sync", synced.code, synced.error);
-  if (all) break;
+  return false;
+}
+const finished = (name, s) => name === "paid, then reversed" ? s.provider_status === "reversed" : ["paid", "failed", "cancelled"].includes(s.status);
+
+for (const c of CASES) await press(c, c.name.startsWith("compliance hold, then paid"));
+await readBackUntil(finished);
+
+if (SCENARIO === "retry") {
+  // The bank refused; the payment is owed again. Staff press again.
+  const c = CASES[0];
+  const first = (await db.from("provider_payouts").select("id, status, provider_ref, failure_code, updated_at").eq("payment_id", c.payment).order("created_at")).data[0];
+  const firstKey = (await db.from("provider_payout_attempts").select("attempt_key").eq("payout_id", first.id).single()).data.attempt_key;
+  await press(c);
+  await readBackUntil((_n, s) => s.attempts === 2 && ["paid", "failed"].includes(s.status));
+  const rows = (await db.from("provider_payouts").select("id, status, provider_ref, failure_code, updated_at").eq("payment_id", c.payment).order("created_at")).data;
+  const keys = await Promise.all(rows.map(async (r) => (await db.from("provider_payout_attempts").select("attempt_key").eq("payout_id", r.id).single()).data.attempt_key));
+  result.retry = {
+    firstBefore: first, firstKey, rows, keys,
+    newKey: keys[1] !== firstKey, newPayout: rows[1]?.provider_ref && rows[1].provider_ref !== first.provider_ref,
+    firstUntouched: rows[0].status === first.status && rows[0].provider_ref === first.provider_ref && rows[0].updated_at === first.updated_at,
+  };
+  log(`retry: new key ${result.retry.newKey}, new payout ${result.retry.newPayout} (${rows[1]?.provider_ref}), first untouched ${result.retry.firstUntouched}`);
 }
 
 // --- Replays and what each side was told -----------------------------------------
-const success = CASES[0];
-result.replayPaid = await pay(success);
-result.replayWhileSent = null;
-const again = await snapshot(CASES[2]);
-result.attemptsAfterDoublePress = again.attempts;
-result.providerRefsDoublePress = (await db.from("provider_payouts").select("provider_ref").eq("payment_id", CASES[2].payment)).data;
+result.replay = await pay(CASES[0]);
+const doubled = CASES.find((c) => c.name.startsWith("compliance hold, then paid"));
+if (doubled) {
+  result.providerRefsDoublePress = (await db.from("provider_payouts").select("provider_ref").eq("payment_id", doubled.payment)).data;
+}
 result.beneficiaries = [...new Set(CASES.map((c) => c.beneficiary))];
 result.accountBeneficiary = (await db.from("factory_payout_accounts").select("tazapay_beneficiary_id").eq("id", ACCOUNT).single()).data.tazapay_beneficiary_id;
 result.documents = CASES.map((c) => c.documents);
@@ -180,11 +222,11 @@ result.invoicesKept = await Promise.all(CASES.map(async (c) => ((await db.storag
 result.factoryNotices = (await db.from("notifications").select("title, body, created_at").eq("org_id", ORG.factory).order("created_at")).data;
 result.events = (await db.from("payment_events").select("payment_id, from_state, to_state, note, created_at").in("payment_id", CASES.map((c) => c.payment)).order("created_at")).data;
 result.reveals = sql(`select how || ' by ' || staff_email from public.payout_number_reveals where account_id = '${ACCOUNT}'`).split("\n");
-result.cny = Object.fromEntries(CASES.map((c) => [c.name, { cny: c.cny, band: c.band, inBand: c.cny >= c.band[0] && c.cny <= c.band[1], ref: c.ref }]));
+result.sent = Object.fromEntries(CASES.map((c) => [c.name, { amount: c.sent, currency: c.currency, network: c.network, band: c.band, inBand: c.sent >= c.band[0] && c.sent <= c.band[1], ref: c.ref }]));
 result.finishedAt = new Date().toISOString();
 writeFileSync(OUT, JSON.stringify(result, null, 2));
-log(`\nreplay of a paid payment: ${result.replayPaid.code} ${result.replayPaid.error ?? result.replayPaid.done}`);
-log(`double press: ${result.attemptsAfterDoublePress} attempt(s), refs ${JSON.stringify(result.providerRefsDoublePress)}`);
+log(`\npressing again on the first payment: ${result.replay.code} ${result.replay.error ?? result.replay.done}`);
+if (doubled) log(`double press: refs ${JSON.stringify(result.providerRefsDoublePress)}`);
 log(`payees used: ${JSON.stringify(result.beneficiaries)} (account keeps ${result.accountBeneficiary})`);
 log(`invoices: Tazapay ${result.documents.join(",")} / kept ${result.invoicesKept.join(",")}`);
 log(`summary written to ${OUT}`);

@@ -113,7 +113,7 @@ export async function applyStatus({ db, payoutId, status, wasPaid = false, tellO
     return "failed";
   }
   if (status.state === "cancelled") {
-    await finish(db, payoutId, "cancelled", { raw_status: status.raw, sentence: "Cancelled in Wise. Nothing was sent." });
+    await finish(db, payoutId, "cancelled", { raw_status: status.raw, sentence: status.failure ?? "Cancelled in Wise. Nothing was sent." });
     return "cancelled";
   }
   if (wasPaid) return "paid";
@@ -666,7 +666,9 @@ export function payoutRoute({ provider, build, label, settings }) {
     } catch (failure) {
       log(`${provider}-payout`, failure, { action, paymentId });
       const known = failure instanceof PayoutFailure;
-      return reply(response, known && failure.unsure ? 504 : 502, {
+      // Someone else's press is running: a conflict, not a provider failure.
+      const busy = known && failure.kind === "database" && failure.detail === "payout_in_progress";
+      return reply(response, busy ? 409 : known && failure.unsure ? 504 : 502, {
         error: known ? failure.message : `${label} didn't answer as expected. Press Refresh to see where this is.`,
         kind: known ? failure.kind : "unknown",
         unsure: known ? failure.unsure : true,

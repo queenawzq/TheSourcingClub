@@ -1,4 +1,4 @@
-import { createVerify } from "node:crypto";
+import { createHmac, createVerify, timingSafeEqual } from "node:crypto";
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { readBackRef } from "./_provider-payouts.js";
 import { rawBody, reply, serviceClient } from "./_stripe.js";
@@ -17,6 +17,8 @@ import { rawBody, reply, serviceClient } from "./_stripe.js";
  *           Wise's published key: the sandbox's when WISE_API_BASE says sandbox,
  *           production's otherwise. WISE_WEBHOOK_PUBLIC_KEY overrides both.
  *   PayPal  PayPal's own verify-webhook-signature, with PAYPAL_WEBHOOK_ID.
+ *   Tazapay HMAC-SHA256 with TAZAPAY_WEBHOOK_SECRET over event id + raw body +
+ *           created_at, header `signature` (tazapaySignatureOk below).
  *
  * Idempotent like api/stripe-webhook.js: each delivery is claimed in
  * provider_events (claim_provider_event) and marked processed; a repeat does
@@ -65,6 +67,36 @@ export function wiseSignatureOk(body, signature, publicKey) {
   } catch {
     return false;
   }
+}
+
+/**
+ * True only when Tazapay signed these exact bytes. Tazapay's scheme (Webhook
+ * Authentication): HMAC-SHA256, keyed with the dashboard's webhook secret
+ * (TAZAPAY_WEBHOOK_SECRET), over the event id, then the raw body, then the
+ * event's own top-level created_at, Base64, in the `signature` header. The id
+ * and time are read from the body, but the hash is over the bytes as received.
+ */
+export function tazapaySignatureOk(body, signature, secret) {
+  if (!secret || typeof signature !== "string" || !signature.trim()) return false;
+  let event;
+  try {
+    event = JSON.parse(body.toString("utf8"));
+  } catch {
+    return false;
+  }
+  if (typeof event?.id !== "string" || typeof event?.created_at !== "string") return false;
+  const expected = createHmac("sha256", secret)
+    .update(Buffer.concat([Buffer.from(event.id, "utf8"), body, Buffer.from(event.created_at, "utf8")]))
+    .digest();
+  const given = Buffer.from(signature.trim(), "base64");
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** Which payout a Tazapay event is about. Only payout events name one we track. */
+export function tazapayRef(event) {
+  if (!/^payout\./.test(event?.type ?? "")) return null;
+  const id = event?.data?.id;
+  return typeof id === "string" && /^pot_[A-Za-z0-9]{4,64}$/.test(id) ? id : null;
 }
 
 /** Which transfer a Wise event is about. Only state changes name one we track. */
