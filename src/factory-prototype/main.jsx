@@ -1196,7 +1196,7 @@ const factoryMainZhReplacements = [
   [/([A-Z][a-z]{2}) mostly open; ([A-Z][a-z]{2}) partly booked/g, "$1 较空；$2 部分已订"]
 ];
 
-function translateFactoryMainText(value) {
+export function translateFactoryMainText(value) {
   const trimmed = value.trim();
   if (!trimmed) return value;
   const leading = value.match(/^\s*/)?.[0] || "";

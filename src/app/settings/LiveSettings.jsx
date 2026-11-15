@@ -36,6 +36,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
+import { translateFactoryMainText } from "../../factory-prototype/main.jsx";
 import {
   can, inviteMember, permissionHint, listMembers, listPendingInvitations, permissionLabel, removeMember,
   resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamError, teamInviteNotice,
@@ -66,6 +67,21 @@ const FACTORY_EMAIL_NOTES = {
   rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders. ${EVERY_MEMBER}`,
   ...SHARED_EMAIL_NOTES,
 };
+// What each switch covers is the map in 20261115400000_email_category_map.sql.
+// Hand-written, like the factory's other Chinese copy.
+const FACTORY_EMAIL_NOTES_ZH = {
+  rfq: "与你匹配或邀请你的询价、报价结果和产能提醒。发送给公司所有成员。",
+  payments: "付款、待审批的步骤、即将到期的步骤和订单变更。发送给公司所有成员。",
+  messages: "新消息（每个对话每 6 小时最多一封邮件）和通话邀请。发送给公司所有成员。",
+};
+
+/** The notes under the switches, with why they are locked for this viewer. */
+function emailNotes({ isFactory, zh, locked }) {
+  const notes = isFactory ? (zh ? FACTORY_EMAIL_NOTES_ZH : FACTORY_EMAIL_NOTES) : BRAND_EMAIL_NOTES;
+  if (!locked) return notes;
+  const why = zh ? "需要“设置权限”权限才能更改。" : `${locked}.`;
+  return Object.fromEntries(Object.entries(notes).map(([key, note]) => [key, `${note} ${why}`]));
+}
 
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
@@ -86,7 +102,9 @@ function sentLabel(createdAt) {
   return `Sent ${sent.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
-export default function LiveSettings({ org, isFactory, onSignOut }) {
+export default function LiveSettings({ org, isFactory, onSignOut, language = "en" }) {
+  // Only the factory's screens are drawn in Chinese.
+  const zh = isFactory && language === "zh";
   const { user, refreshOrgs } = useAuth();
   const [savedAccount, setSavedAccount] = useState(null);
   const [members, setMembers] = useState(null);
@@ -486,7 +504,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         nameLocked={!isOwner}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
-        notificationEmailNotes={isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES}
+        notificationEmailNotes={emailNotes({ isFactory, zh, locked: canSettings ? "" : permissionHint(org, "settingsAccess") })}
+        notificationEmailText={zh ? translateFactoryMainText : undefined}
         notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}
