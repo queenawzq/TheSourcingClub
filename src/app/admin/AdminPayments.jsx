@@ -86,6 +86,8 @@ const providerFor = (row) => (paidByWise(row) ? "wise" : paidByTazapay(row) ? "t
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal", tazapay: "Tazapay" };
 /** Tazapay's balance and dashboard, from the board's read-back. */
 const TazapayContext = createContext(null);
+/** The board's word once a press sent money: the row itself moves to Processing. */
+const SentContext = createContext(null);
 /** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
 const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
 /**
@@ -268,6 +270,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const provider = providerFor(row);
   const name = PROVIDER_NAME[provider];
   const tazapay = useContext(TazapayContext);
+  const onSent = useContext(SentContext);
   const needsStatement = provider === "wise" && row.wise_currency === "CNY";
   const [step, setStep] = useState(null); // null | "statement" | "confirm"
   const [statement, setStatement] = useState(false);
@@ -353,7 +356,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}.${attempt.fee_minor != null ? ` ${name} fee ${moneyIn(attempt.fee_minor, row.currency)}.` : ""}`}</span>
           : null}
         {transferUrl ? <a className="admin-sub" href={transferUrl} target="_blank" rel="noreferrer" data-testid="open-in-wise">Open in Wise</a> : null}
-        {tazapayUrl ? <a className="admin-sub" href={tazapayUrl} target="_blank" rel="noreferrer" data-testid="open-in-tazapay">{`Open in Tazapay (payout ${attempt.provider_ref})`}</a> : null}
+        {tazapayUrl ? <a className="admin-sub" href={tazapayUrl} target="_blank" rel="noreferrer" data-testid="open-in-tazapay">{`Open Tazapay · payout ${attempt.provider_ref}`}</a> : null}
         {unclaimed && paypal?.appUrl ? <a className="admin-sub" href={paypal.appUrl} target="_blank" rel="noreferrer" data-testid="open-in-paypal">Open PayPal</a> : null}
         {waiting || (pending && !attempt.in_progress) ? (
           <button type="button" className="admin-approve" disabled={working || attempt.in_progress} data-testid="provider-press-again"
@@ -430,7 +433,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
-                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => {
+                    if (answer?.done === "sent" || answer?.done === "paid") onSent?.(row, name, answer.done);
+                    return null;
+                  })}>
             {working ? "Paying…" : "Yes, pay"}
           </button>
         )}
@@ -888,6 +894,12 @@ const TABS = [
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
   attempts = new Map(), wise = null, paypal = null, tazapay = null, onChanged = load, setups = new Map() }) {
   const [chosen, setChosen] = useState("payout");
+  const [sentNotice, setSentNotice] = useState(null);
+  const onSent = useCallback((row, name, done) => {
+    setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
+      : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
+    if (done !== "paid") setChosen("clearing");
+  }, []);
   const sections = boardSections(rows, attempts);
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   const tabs = TABS;
@@ -915,6 +927,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
   return (
     <TazapayContext.Provider value={tazapay}>
+    <SentContext.Provider value={onSent}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -930,6 +943,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
+      {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine || tazapayLine ? <>{wiseLine}{tazapayLine}</> : null}
@@ -943,6 +957,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
 
     </main>
+    </SentContext.Provider>
     </TazapayContext.Provider>
   );
 }
