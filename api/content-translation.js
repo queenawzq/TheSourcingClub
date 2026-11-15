@@ -1,8 +1,13 @@
 /**
- * A brand's words in Chinese, for a factory person who reads the app in
- * Chinese: requests (title, brief, notes, questions, colours) and the brand's
- * profile as `brand_profile_for_factory()` gives it (never revenue, email,
- * website or documents).
+ * The other side's words in the reader's language.
+ * - Chinese, for a factory person who reads the app in Chinese: requests
+ *   (title, brief, notes, questions, colours), the brand's profile as
+ *   `brand_profile_for_factory()` gives it (never revenue, email, website or
+ *   documents) and the brand's messages.
+ * - English (`to: "en"`), for a brand: what a factory typed on its quotes and
+ *   orders (notes, answers, shipping text, sample and material lines, step
+ *   updates) and its location, intro and sample titles, cached under the
+ *   vendor profile's key so one sentence reads the same English everywhere.
  *
  * The text is read here, with the caller's own token, so row level security
  * decides what may be translated; a caller never supplies text. Answers are
