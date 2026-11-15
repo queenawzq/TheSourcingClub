@@ -94,8 +94,11 @@ const usd = (minor, currency = "USD") => new Intl.NumberFormat("en-US", { style:
 
 export function tazapayFrom(env = process.env, fetchImpl = fetch) {
   const base = tazapayBase(env);
-  const key = env.TAZAPAY_API_KEY;
-  const secret = env.TAZAPAY_API_SECRET;
+  // A value pasted into a dashboard often carries a newline, a space or quotes;
+  // any of those makes Tazapay answer "access key is missing".
+  const clean = (value) => String(value ?? "").trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+  const key = clean(env.TAZAPAY_API_KEY);
+  const secret = clean(env.TAZAPAY_API_SECRET);
   if (!base || !key || !secret) return null;
   const authorization = `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`;
   const sandbox = new URL(base).host === TAZAPAY_SANDBOX_HOST;
