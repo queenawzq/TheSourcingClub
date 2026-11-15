@@ -132,7 +132,9 @@ const HK_COMPANY = {
 
 // A goods payout to China over CNAPS needs logistics tracking and items (PYR022);
 // services and advance payments (PYR031) need an invoice document instead.
-const CN_DOCS = [{ type: "invoice", url: "https://example.com/tsc-sandbox-invoice.pdf" }];
+// Tazapay downloads each document when the payout is created: a URL it cannot
+// fetch is a 500, and no document at all on PYR031 is 400 20283.
+const CN_DOCS = [{ type: "invoice", url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" }];
 const CN_ITEMS = (amount) => [{ name: "Knitted sweaters, production deposit", quantity: 1, amount, category: "Goods", description: "Sandbox test order" }];
 
 function cnPayout(amount, purpose = "PYR031") {
@@ -180,6 +182,7 @@ steps.corridors = async (tz) => {
     show(`corridor ${country} ${currency}`, methods);
     (state.corridors ??= {})[`${country}-${currency}`] = methods;
   }
+  save();
 };
 
 steps.beneficiaries = async (tz) => {
@@ -245,7 +248,6 @@ steps.poll = async (tz, { minutes = Number(process.env.POLL_MINUTES ?? 6) } = {}
         log(`${now()}  ${name}: ${last} -> ${p.status}`);
       }
       entry.last = payoutSummary(p);
-      entry.raw = p;
     }
     save();
     const terminal = entries.every(([n, e]) => ["failed", "cancelled", "reversed"].includes(e.last?.status) || (e.last?.status === "succeeded" && !/reversed/.test(n)));
@@ -258,7 +260,8 @@ steps.poll = async (tz, { minutes = Number(process.env.POLL_MINUTES ?? 6) } = {}
 steps.hk = async (tz) => {
   if (!state.hkBeneficiary) throw new Error("no HK beneficiary yet: run --step=beneficiaries");
   const meta = state.corridors?.["HK-HKD"]?.find((m) => m.payout_type === "local");
-  const network = meta?.networks?.[0]?.split(" ")[0];
+  // CHATS was the cheaper quote (USD 3.23 vs 5.38 with no network named).
+  const network = meta?.networks?.[0]?.split(" ")[0] ?? "chats";
   const body = {
     beneficiary: state.hkBeneficiary,
     amount: 23_456,
