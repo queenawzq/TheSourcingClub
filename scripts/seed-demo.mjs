@@ -495,6 +495,9 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Knitwear, small runs.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
   trust_tier: "verified", published_at: new Date().toISOString(),
 }), "the new China factory's profile");
+// Its USCC on file, as verification leaves it: Tazapay pays only an account in the company's own name,
+// so the bank form shows this number rather than asking for it.
+must(await admin.from("company_registrations").upsert({ org_id: chinaNewOrg.id, country_code: "CN", number: "91330109MA2B7Q3K5Y" }), "the new China factory's registration");
 must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
   subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
 })))), "the new China factory's tags");

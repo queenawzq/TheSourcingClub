@@ -17,6 +17,12 @@
  *           on top, so the whole step arrives (api/_wise.js, quote()).
  *   bank    "Bank transfer" for a country not listed: staff pay it by bank
  *           ("Mark paid out by bank").
+ *   tazapay "Bank transfer (Tazapay)" in mainland China (CNY over CNAPS) and Hong
+ *           Kong (HKD over CHATS) (src/shared/tazapay-payout.mjs). TSC pays
+ *           Tazapay's fee on top (about US$5.40 a payout, sandbox Nov 15), so
+ *           the whole step is converted; Tazapay sets the rate (quote,
+ *           api/_tazapay.js). China payouts run weekdays 9-5 China time, 3pm
+ *           cut-off, and settle the same or next day.
  *   paypal  PayPal Payouts: the sender (TSC) pays the payout fee
  *           (developer.paypal.com/docs/payouts/standard/reference/fees/).
  *           Timing: staff send it from the payments board once released
@@ -25,13 +31,19 @@
  *           takes days. So no "few business days" here (Nov 13 tester, #3).
  */
 const SENT_AFTER_RELEASE = "Not instant: sent once released, then a few business days to arrive";
+const TAZAPAY_TIMING = "Not instant: sent once released, then usually the same or next business day";
 
 export const PAYOUT_METHOD_INFO = {
   stripe: ["No TSC fee per withdrawal", "Not instant: usually 1–4 business days after you withdraw"],
   wise: ["No fee: TSC pays the transfer fee", SENT_AFTER_RELEASE],
   bank: ["No TSC fee; your bank may charge to receive a transfer", SENT_AFTER_RELEASE],
   paypal: ["No TSC fee; PayPal may charge to convert or withdraw", "Not instant: sent once released"],
+  tazapayCN: ["Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate", TAZAPAY_TIMING],
+  tazapayHK: ["Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate", TAZAPAY_TIMING],
 };
+
+/** The chooser's Tazapay option for a country, or null where Tazapay doesn't pay. */
+export const tazapayMethod = (country) => ({ CN: "tazapayCN", HK: "tazapayHK" })[String(country ?? "").toUpperCase()] ?? null;
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
 

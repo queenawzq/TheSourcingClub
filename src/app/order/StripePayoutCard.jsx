@@ -7,12 +7,13 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
-import { chooserMethod, payoutMethodLines } from "../../shared/payout-method-info.mjs";
+import { chooserMethod, payoutMethodLines, tazapayMethod } from "../../shared/payout-method-info.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
-import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
+import { PaypalStep, TazapayBankStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
+import { tazapayDetailsProblems } from "../../shared/tazapay-payout.mjs";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -200,8 +201,10 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
 const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line) => <li key={line}>{line}</li>)}</ul>;
 
 /** Presentation only; the live payout flow owns every setup action. */
-export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {
+export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, tazapayEnabled = false, onTazapay }) {
   const words = LIST_WORDS;
+  // Tazapay replaces the bank option where it pays (China, Hong Kong), only when this deploy has it set up.
+  const tazapay = tazapayEnabled && onTazapay && !supported && !notListed ? tazapayMethod(country) : null;
   return <>
             <label className="payout-country-field">
               <span>{words.country}</span>
@@ -218,9 +221,9 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong></div><MethodLines method={chooserMethod("bank", { supported })} /></div>
-                  <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
-                          onClick={onBank}>{words.setUp}</button>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{tazapay ? "Bank transfer (Tazapay)" : supported ? "Bank account" : words.bank}</strong></div><MethodLines method={tazapay ?? chooserMethod("bank", { supported })} /></div>
+                  <button className="primary-btn compact-btn" type="button" data-testid={tazapay ? "payout-set-up-tazapay" : "payout-set-up-bank"} disabled={busy}
+                          onClick={tazapay ? onTazapay : onBank}>{words.setUp}</button>
                 </article>
               </div>
               </section>
@@ -284,6 +287,8 @@ export default function StripePayoutCard({
   onManualFieldChange,
   onSaveManual,
   onSaveWise,
+  onSaveTazapay,
+  loadCompanyRegistration,
   onSavePaypal,
   onDeleteManual,
   manualBusy,
@@ -307,6 +312,20 @@ export default function StripePayoutCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
+  // Whether this deploy pays China and Hong Kong through Tazapay (api/payout-options.js).
+  const [tazapayEnabled, setTazapayEnabled] = useState(false);
+  const [companyUscc, setCompanyUscc] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/payout-options").then((answer) => (answer.ok ? answer.json() : {})).then((options) => {
+      if (live) setTazapayEnabled(Boolean(options?.tazapayEnabled) && Boolean(onSaveTazapay));
+    }).catch(() => {});
+    loadCompanyRegistration?.().then((number) => { if (live) setCompanyUscc(number); }).catch(() => {});
+    return () => { live = false; };
+  }, [onSaveTazapay, loadCompanyRegistration]);
+  /** A saved bank row Tazapay pays: in China or Hong Kong, not set up on Wise. */
+  const isTazapayRow = (row) => tazapayEnabled && row && !isPaypal(row) && !row.wise_recipient_type
+    && ["CN", "HK"].includes(String(row.bank_country ?? "").trim().toUpperCase());
   const [methodMenu, setMethodMenu] = useState(null);
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
@@ -362,6 +381,7 @@ export default function StripePayoutCard({
   const stepFor = (row) => {
     if (!row) return "setup";
     if (isPaypal(row)) return "setup-paypal";
+    if (isTazapayRow(row)) return "setup-tazapay";
     return row.wise_recipient_type || (row.bank_country ?? country) === "CN" ? "setup-wise" : "setup-bank";
   };
   const load = useCallback(async () => {
@@ -847,7 +867,11 @@ export default function StripePayoutCard({
   // Removing the last manual method hands payouts back to the banks below it.
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
-  const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : endingIn(transferName(row.bank_country), row.account_number_last4));
+  const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}`
+    : endingIn(isTazapayRow(row) ? "Bank transfer (Tazapay)" : transferName(row.bank_country), row.account_number_last4));
+  // Everything Tazapay needs but the number, which has its own line.
+  const tazapayMissing = (row) => isTazapayRow(row)
+    && tazapayDetailsProblems({ ...row, bank_country: row.bank_country.trim().toUpperCase() }).some((p) => p.field !== "full_number");
 
   const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
     ?? (manualSuccessor
@@ -1033,7 +1057,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">{isPaypal(row)
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
-                  : <><strong>{manualLabel(row)}</strong><span>{row.number_changed_at ? row.bank_name : "Add your full account number."}</span></>}</div>
+                  : <><strong>{manualLabel(row)}</strong><span>{row.number_changed_at ? (tazapayMissing(row) ? "Add the missing bank details." : row.bank_name) : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
@@ -1135,7 +1159,8 @@ export default function StripePayoutCard({
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
             <p className="payout-modal-intro">Choose where your company is registered. We’ll show the withdrawal methods available for that country. {supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
-            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : notListed ? "setup-bank" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
+            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : notListed ? "setup-bank" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}
+                            tazapayEnabled={tazapayEnabled} onTazapay={() => { setManualError(null); onStartManual?.(null); setModal("setup-tazapay"); }} />
             {removeError && modal === "add" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           </PayoutModal>
         );
@@ -1143,6 +1168,11 @@ export default function StripePayoutCard({
 
       {modal === "setup-wise" ? (
         <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => savingNewMethod(() => onSaveWise?.(details))} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("setup-bank")} />
+      ) : null}
+
+      {modal === "setup-tazapay" ? (
+        <TazapayBankStep row={stepRow} country={String(stepRow?.bank_country ?? country).trim().toUpperCase()} busy={manualBusy} companyRegistration={companyUscc}
+                         save={(details) => savingNewMethod(() => onSaveTazapay?.(details))} onBack={backFromStep} onClose={closeModal} />
       ) : null}
 
       {modal === "setup-paypal" && manualForm ? (

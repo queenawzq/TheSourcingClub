@@ -38,6 +38,9 @@ async function call(provider, body) {
 
 export const previewWise = (paymentId, cnyConfirmed) => call("wise", { action: "preview", paymentId, cnyConfirmed });
 
+/** Wise's or Tazapay's fee, total and arrival before anyone commits. */
+export const previewProvider = (provider, paymentId, cnyConfirmed = false) => call(provider, { action: "preview", paymentId, cnyConfirmed });
+
 export const payByProvider = (provider, row, cnyConfirmed = false) => call(provider, {
   action: "pay", paymentId: row.payment_id, paidToChangedAt: row.payout_changed_at, cnyConfirmed,
 });

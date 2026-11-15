@@ -17,7 +17,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
-const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
+const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at, holder_name_local, registration_number, bank_code, address_line1, address_city, address_state";
 
 // The database's refusals, in the owner's words. No raise there carries a value.
 const SAVE_REFUSALS = {
@@ -33,6 +33,7 @@ const SAVE_REFUSALS = {
   name_not_latin: "Enter the name on the account in English letters.",
   wise_form_invalid: "Couldn't save your bank details right now. Nothing changed. Try again.",
   payout_not_bank: "That withdrawal method is not a bank account.",
+  tazapay_not_set_up: "Tazapay pays bank accounts in mainland China and Hong Kong only.",
 };
 
 export const blankPayout = (row) => ({
@@ -162,6 +163,29 @@ export function useManualPayouts(orgId) {
     }
   }
 
+  // Tazapay's form (PayoutSetupSteps, TazapayBankStep): one save, number included.
+  async function saveTazapay(details) {
+    setBusy(true);
+    try {
+      const row = unwrap(await supabase.rpc("save_tazapay_payout_account", {
+        target_org: orgId, target_account: editingId, ...details,
+      }), "save your payout account");
+      await load();
+      setSaved(true);
+      return row;
+    } catch (failure) {
+      throw inWords(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The company's own USCC, when TSC has it: the Tazapay form shows it instead of asking. */
+  async function companyRegistration() {
+    const { data } = await supabase.from("company_registrations").select("number, country_code").eq("org_id", orgId).maybeSingle();
+    return data?.country_code === "CN" ? data.number ?? null : null;
+  }
+
   async function savePaypal() {
     const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
     const email = paypalEmail(form.paypal_email);
@@ -226,6 +250,8 @@ export function useManualPayouts(orgId) {
     setField,
     save,
     saveWise,
+    saveTazapay,
+    companyRegistration,
     savePaypal,
     remove,
     makePrimary,

@@ -510,6 +510,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onManualFieldChange={payouts.setField}
           onSavePaypal={async () => { const row = await payouts.savePaypal(); await reload(); return row; }}
           onSaveWise={async (details) => { const row = await payouts.saveWise(details); await reload(); return row; }}
+          onSaveTazapay={async (details) => { const row = await payouts.saveTazapay(details); await reload(); return row; }}
+          loadCompanyRegistration={payouts.companyRegistration}
           onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}

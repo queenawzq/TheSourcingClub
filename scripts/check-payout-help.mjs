@@ -48,9 +48,16 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "other
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
-for (const option of ["bank", "wise", "paypal"]) {
+for (const option of ["wise", "paypal"]) {
   assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported })} />`), `the ${option} option draws the lines of its route`);
 }
+// China and Hong Kong: Tazapay's lines where this deploy has Tazapay, the bank's otherwise.
+assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", { supported })} />`), "the bank option draws the lines of its route");
+assert.equal(info.tazapayMethod("CN"), "tazapayCN");
+assert.equal(info.tazapayMethod("HK"), "tazapayHK");
+assert.equal(info.tazapayMethod("TW"), null, "Tazapay pays China and Hong Kong only");
+assert.deepEqual(info.payoutMethodLines("tazapayCN"), ["Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
+assert.deepEqual(info.payoutMethodLines("tazapayHK"), ["Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
 assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");

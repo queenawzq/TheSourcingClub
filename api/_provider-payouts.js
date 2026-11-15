@@ -340,6 +340,45 @@ const LOST_TAZAPAY_ANSWER = "Tazapay's answer to the first press was lost more t
 // Columns the checks read. Never the number: that stays in Vault.
 const ACCOUNT_COLUMNS = "id, org_id, method, bank_country, account_name, holder_name_local, registration_number, bank_name, bank_code, swift, address_line1, address_city, address_state, address_postal_code, number_changed_at";
 
+/** The account's details and what still stops a payout, read with the server's key (never the number). */
+async function tazapayAccountProblems(db, accountId) {
+  const { tazapayDetailsProblems, tazapayProblemsSentence, tazapayRoute } = await loadTazapayRules();
+  const read = await db.from("factory_payout_accounts").select(ACCOUNT_COLUMNS).eq("id", accountId).maybeSingle();
+  if (read.error || !read.data) throw new PayoutFailure("database", "This factory's bank account couldn't be read. Reload the page.");
+  const account = read.data;
+  const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
+  const problems = tazapayDetailsProblems(account, {
+    companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
+  });
+  return { account, problems, sentence: tazapayProblemsSentence(problems), route: tazapayRoute(account) };
+}
+
+/**
+ * What a press would send, before anyone commits: the fee, the total, what
+ * arrives and the balance, as Wise's preview. Nothing is claimed or made.
+ */
+export async function tazapayPreview({ tazapay, db, row }) {
+  if (!row.payout_account_id) throw new PayoutFailure("details_missing", "This factory has no bank account on file.");
+  const { problems, sentence, route } = await tazapayAccountProblems(db, row.payout_account_id);
+  if (problems.length) throw new PayoutFailure("details_rejected", sentence, { fields: problems.map((p) => p.field) });
+  if (row.currency !== "USD") throw new PayoutFailure("refused", `Tazapay pays from TSC's USD balance, and this payment is in ${row.currency}.`);
+  const [quote, available] = await Promise.all([
+    tazapay.quote({ holdingCurrency: row.currency, amountMinor: row.amount_cents, route }),
+    tazapay.available(row.currency),
+  ]);
+  return {
+    feeCents: quote.feeMinor,
+    totalCents: quote.totalMinor,
+    arrivesCents: quote.payoutMinor,
+    arrivesCurrency: quote.payoutCurrency,
+    shortByCents: Math.max(0, quote.totalMinor - available),
+    balanceCents: available,
+    balanceCurrency: row.currency,
+    balancesUrl: tazapay.appUrl,
+    country: route.country,
+  };
+}
+
 /**
  * Pay with Tazapay. Claim first (the attempt's key is made before any call),
  * check the account, make the payee once, quote, check the balance, keep the
@@ -630,7 +669,9 @@ export function payoutRoute({ provider, build, label, settings }) {
     try {
       if (action === "sync") {
         const synced = await syncAttempts({ client, db });
-        const balance = provider === "wise" ? { ...(await wiseBalance(client, "USD")), appUrl: client.appUrl } : { appUrl: client.appUrl };
+        const balance = provider === "wise" ? { ...(await wiseBalance(client, "USD")), appUrl: client.appUrl }
+          : provider === "tazapay" ? { balanceCents: await client.available("USD"), balanceCurrency: "USD", balancesUrl: client.appUrl, appUrl: client.appUrl }
+          : { appUrl: client.appUrl };
         return reply(response, 200, { ...synced, ...balance });
       }
       if (action === "cancel") return reply(response, 200, await cancelAttempt({ client, caller, db, paymentId }));
@@ -656,6 +697,7 @@ export function payoutRoute({ provider, build, label, settings }) {
           return reply(response, 200, await wisePay({ wise: client, caller, db, row, paymentId, changedAt: paidToChangedAt, cnyConfirmed }));
         }
       } else if (provider === "tazapay") {
+        if (action === "preview") return reply(response, 200, await tazapayPreview({ tazapay: client, db, row }));
         if (action === "pay") {
           return reply(response, 200, await tazapayPay({ tazapay: client, caller, db, paymentId, changedAt: paidToChangedAt }));
         }
