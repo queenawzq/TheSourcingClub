@@ -1243,7 +1243,11 @@ export const factoryMainZhText = {
   "Not sent": "未发送",
   "It has not reached them yet. This page keeps trying.": "消息尚未送达对方，本页面会继续尝试。",
   "Attach the files and send them again.": "请重新添加附件并发送。",
-  "Copy it and send it again.": "请复制后重新发送。"
+  "Copy it and send it again.": "请复制后重新发送。",
+  "Activity": "动态",
+  "Passive updates from quotes, files, vendors, and production.": "来自报价、文件、合作方和生产的更新。",
+  "Mark all read": "全部标为已读",
+  "Close activity": "关闭动态"
 };
 
 // The profile's completion note lists these ("Add your factory details and

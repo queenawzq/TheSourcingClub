@@ -160,9 +160,9 @@ const copy = {
   },
   zh: {
     eyebrow: {
-      rfq: (isFactory) => (isFactory ? "新的匹配询价" : "新的报价动态"),
-      payments: () => "付款与审批请求",
-      messages: () => "消息与通话邀请",
+      rfq: (isFactory) => (isFactory ? "新的询价匹配" : "新的报价动态"),
+      payments: () => "付款和审批请求",
+      messages: () => "消息和通话邀请",
       account: () => "账户安全",
     },
     greeting: (name) => (name ? `${name} 你好，` : "你好，"),

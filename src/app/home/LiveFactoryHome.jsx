@@ -131,6 +131,8 @@ export default function LiveFactoryHome({ org, profile }) {
   const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
   const { unreadCount: unreadNotifications, openActivity, activityDrawer } = useActivity(org.id, {
     isFactory: true,
+    // The bell speaks the person's language (src/lib/ui-language.js).
+    language: getUiLanguage(),
     onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
 
