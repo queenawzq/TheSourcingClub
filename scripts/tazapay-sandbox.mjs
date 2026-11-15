@@ -346,6 +346,54 @@ steps.validate = async (tz) => {
   show("idempotency", { first: first?.id, second: second?.id, same: Boolean(first && first.id === second?.id) });
 };
 
+/**
+ * A hosted checkout to fund the sandbox balance when no collection account can
+ * be made. A person pays it in a browser with Tazapay's published test card.
+ * Tries the largest amount first and steps down if refused.
+ */
+steps.checkout = async (tz) => {
+  // Card is offered only up to some amount (not at USD 50,000 in sandbox; yes at
+  // 10,000), and only for some buyer countries (an SG buyer, not a US one).
+  for (const dollars of [50_000, 25_000, 10_000, 5_000, 1_000]) {
+    const body = {
+      invoice_currency: "USD",
+      payment_methods: ["card"],
+      amount: dollars * 100,
+      transaction_description: "TSC sandbox: fund balance for payout tests",
+      reference_id: `tsc-sbx-fund-card-${run}-${dollars}`,
+      success_url: "https://example.com/tsc-sandbox/success",
+      cancel_url: "https://example.com/tsc-sandbox/cancel",
+      customer_details: {
+        name: "TSC Sandbox Buyer",
+        email: `tazapay-buyer-${run}@example.com`,
+        country: "SG",
+        phone: { calling_code: "65", number: "61234567" },
+      },
+      billing_details: {
+        name: "TSC Sandbox Buyer",
+        address: { line1: "1 Test Street", city: "Singapore", country: "SG", postal_code: "018989" },
+        phone: { calling_code: "65", number: "61234567" },
+      },
+    };
+    const c = await attempt(`checkout USD ${dollars}`, () => tz.call("POST", "/v3/checkout", { body, idempotencyKey: body.reference_id }));
+    if (!c) continue;
+    (state.checkouts ??= []).push({ id: c.id, dollars, url: c.url, payin: c.payin, at: now() });
+    save();
+    show(`checkout USD ${dollars} created`, { id: c.id, url: c.url, status: c.status, payment_status: c.payment_status, payin: c.payin, payment_methods: c.payment_methods, expires_at: c.expires_at });
+    return c;
+  }
+};
+
+/** Read back each checkout made here: status, payin, and what it did to the balance. */
+steps.checkoutStatus = async (tz) => {
+  for (const c of state.checkouts ?? []) {
+    const got = await attempt(`checkout ${c.id}`, () => tz.call("GET", `/v3/checkout/${c.id}`));
+    if (got) show(`checkout ${c.id}`, { status: got.status, payment_status: got.payment_status, payment_status_description: got.payment_status_description, payin: got.payin, paid_amount: got.paid_amount, latest_payment_attempt: got.latest_payment_attempt });
+  }
+  show("balance now", await tz.balance());
+  show("balance transactions", await tz.call("GET", "/v3/balance_transaction"));
+};
+
 const ORDER = ["auth", "corridors", "beneficiaries", "balance", "payouts", "hk", "poll"];
 
 async function main() {
