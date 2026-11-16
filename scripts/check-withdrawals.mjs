@@ -18,8 +18,9 @@ import { PayoutFailure } from "../api/_payout-provider.js";
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
   const paid = [];
-  let claim = { withdrawal_id: "w1", key: "key-1", resumed: false, provider: "fake", provider_ref: null, amount_cents: 6500, currency: "USD", account_id: "a1", paypal_email: "f@example.com" };
+  let claim = { withdrawal_id: "w1", key: "key-1", resumed: false, provider: "paypal", provider_ref: null, amount_cents: 6500, currency: "USD", account_id: "a1", paypal_email: "f@example.com" };
   const db = {
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "CN" }, error: null }) }) }) }),
     rpc: async (name, args) => {
       assert.equal(name, "record_withdrawal");
       recorded.push(args);
@@ -30,7 +31,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   };
   const caller = { rpc: async (name) => (assert.equal(name, "claim_withdrawal"), { data: claim, error: null }) };
   const adapter = {
-    provider: "fake", label: "Fake",
+    provider: "paypal", label: "Fake",
     balance: async () => balance,
     quote: async (_client, ctx) => ({ feeCents: fee, leavesCents: feeOnTop ? ctx.amountCents + fee : ctx.amountCents, receivesMinor: ctx.amountCents - fee, receivesCurrency: "USD", quote: null }),
     pay: async (_client, ctx, quote) => {

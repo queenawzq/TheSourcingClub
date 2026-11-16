@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
-import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
+import { withdrawalFee, withdrawalFeeLine } from "../../shared/withdrawal-fees.mjs";
 
 /**
  * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
@@ -108,7 +108,7 @@ export async function cancelWithdrawal(id) {
 }
 
 /** The dialog body and its Confirm, in the payouts page's own PayoutModal. */
-export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose }) {
+export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "" }) {
   const choices = methods.filter(usable);
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
@@ -119,7 +119,9 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   const amountCents = /^\d+(\.\d{0,2})?$/.test(amountText.trim()) ? Math.round(Number(amountText.trim()) * 100) : NaN;
   const amountProblem = !Number.isFinite(amountCents) || amountCents <= 0 ? "Enter an amount to withdraw."
     : amountCents > available ? `You can withdraw up to ${formatMoney(available, "USD")}.` : null;
-  const fee = amountProblem || !method ? null : withdrawalFee({ provider, amountCents, currency: "USD" });
+  const fee = amountProblem || !method ? null : withdrawalFee({ provider, amountCents, currency: "USD", country });
+  // Wise quotes its fee per transfer: the line says how, and staff's approval uses the quote.
+  const quoted = fee?.basis === "quote_needed";
 
   async function confirm() {
     if (busy || amountProblem || !method || !fee || fee.refused) return;
@@ -157,8 +159,10 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
       </label>
       {fee?.refused ? <p className="live-stripe-error" role="alert">{fee.refused}</p> : fee ? (
         <ul data-testid="withdraw-fee">
-          <li>Fee: {provider === "wise" ? "about " : ""}{formatMoney(fee.feeCents, "USD")}, taken from the amount</li>
-          <li>You receive: {provider === "wise" ? "about " : ""}{formatMoney(fee.receivesCents, "USD")}{provider === "wise" && method?.bank_country && method.bank_country !== "US" ? ", converted at Wise's rate" : ""}</li>
+          {quoted ? <li>{withdrawalFeeLine(provider, { country })}</li> : <>
+            <li>Fee: {formatMoney(fee.feeCents, "USD")}, taken from the amount</li>
+            <li>You receive: {formatMoney(fee.receivesCents, "USD")}</li>
+          </>}
           <li>{withdrawalTiming(provider)}</li>
         </ul>
       ) : null}

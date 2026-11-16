@@ -52,7 +52,7 @@ async function loadFeeRule() {
   return withdrawalFee;
 }
 
-function contextFrom(claim, { caller, db, cnyConfirmed }) {
+function contextFrom(claim, { caller, db, cnyConfirmed, country = "" }) {
   return {
     amountCents: Number(claim.amount_cents),
     currency: claim.currency,
@@ -60,18 +60,25 @@ function contextFrom(claim, { caller, db, cnyConfirmed }) {
     reference: `TSC withdrawal ${String(claim.withdrawal_id).slice(0, 8)}`,
     account: { id: claim.account_id, paypalEmail: claim.paypal_email, wiseRecipientId: claim.wise_recipient_id, wiseCurrency: claim.wise_currency },
     caller, db, cnyConfirmed: Boolean(cnyConfirmed),
-    feeFor: ({ provider, quotedFeeCents }) => withdrawalFee({ provider, amountCents: Number(claim.amount_cents), currency: claim.currency, quotedFeeCents }),
+    country,
+    feeFor: ({ provider, quotedFeeCents }) => withdrawalFee({ provider, amountCents: Number(claim.amount_cents), currency: claim.currency, country, quotedFeeCents }),
   };
 }
 
 /** Is the fee inside the amount, and does the factory receive something? The one rule, checked on the server. */
 function checkQuote(adapter, ctx, quote) {
-  const rule = withdrawalFee({ provider: adapter.provider, amountCents: ctx.amountCents, currency: ctx.currency, quotedFeeCents: quote.feeCents });
+  const rule = withdrawalFee({ provider: adapter.provider, amountCents: ctx.amountCents, currency: ctx.currency, country: ctx.country, quotedFeeCents: quote.feeCents });
   if (rule.refused) throw new PayoutFailure("too_small", rule.refused);
   if (quote.leavesCents != null && quote.leavesCents > ctx.amountCents) {
     throw new PayoutFailure("fee_on_top", `${adapter.label} would take more than the amount from TSC's balance. Nothing was sent.`);
   }
   return { ...quote, feeCents: rule.feeCents };
+}
+
+/** The factory's country: PayPal's fee is domestic or international by it. Unknown reads as abroad (the larger fee). */
+async function factoryCountry(db, orgId) {
+  const { data } = await db.from("factory_profiles").select("country_code").eq("org_id", orgId).maybeSingle();
+  return data?.country_code ?? "";
 }
 
 async function providerShort(adapter, client, ctx) {
@@ -86,7 +93,7 @@ export async function previewWithdrawal({ adapter, client, caller, db, row, cnyC
   const ctx = contextFrom({
     withdrawal_id: row.id, amount_cents: row.amount_cents, currency: row.currency, key: null,
     account_id: row.account_id, paypal_email: row.paypal_email, wise_recipient_id: row.wise_recipient_id, wise_currency: row.wise_currency,
-  }, { caller, db, cnyConfirmed });
+  }, { caller, db, cnyConfirmed, country: await factoryCountry(db, row.org_id) });
   const balance = await adapter.balance(client, ctx.currency);
   const shortBy = balance == null ? null : Math.max(0, ctx.amountCents - balance);
   if (shortBy) return { shortByCents: shortBy, balanceCents: balance };
@@ -100,7 +107,7 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
   if (claimed.error) throw refusalFrom(claimed.error);
   const claim = claimed.data;
   if (claim.provider !== adapter.provider) throw new PayoutFailure("database", "This withdrawal is paid another way. Reload the board.");
-  const ctx = contextFrom(claim, { caller, db, cnyConfirmed });
+  const ctx = contextFrom(claim, { caller, db, cnyConfirmed, country: await factoryCountry(db, claim.org_id) });
   let ref = claim.provider_ref ?? null;
 
   try {

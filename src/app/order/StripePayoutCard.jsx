@@ -1010,7 +1010,7 @@ export default function StripePayoutCard({
       </section> : null}
 
       {modal === "withdraw-balance" && fromBalance.available != null ? (
-        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id}
+        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id} country={country}
           Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); }} />
       ) : null}
 

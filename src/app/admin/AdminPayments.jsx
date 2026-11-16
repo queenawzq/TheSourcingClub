@@ -41,7 +41,7 @@ import { useAuth } from "../../lib/auth.jsx";
 import {
   factoryStripeSetup, paymentBoard, releasePayment, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
-import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
+import { cancelProviderPayout, payByProvider, previewProvider, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
@@ -300,7 +300,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     setWorking(true);
     setProblem(null);
     try {
-      setPreview(await previewWise(row.payment_id, statement));
+      setPreview(await previewProvider(provider, row.payment_id, statement));
       setStep("confirm");
     } catch (failure) {
       setProblem(failure);
@@ -402,8 +402,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
         {said}
         <span className="admin-sub admin-row-message" role="alert">
           {provider === "wise"
-            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)} in total. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
-            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null || preview.refused ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}, arriving as ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`
+            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?${preview.feeCents == null || preview.refused ? "" : ` PayPal fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`}
         </span>
         {short ? (
           <span className="admin-error admin-row-message" data-testid="wise-short">
@@ -411,7 +411,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
             <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
           </span>
         ) : null}
-        {short ? (
+        {preview.refused ? <span className="admin-error admin-row-message" data-testid="provider-fee-refused">{preview.refused}</span> : null}
+        {preview.refused ? null : short ? (
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
@@ -438,7 +439,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
               title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
               onClick={() => {
                 setProblem(null);
-                if (provider === "paypal") { setPreview({}); setStep("confirm"); }
+                if (provider === "paypal") review();
                 else if (needsStatement) setStep("statement");
                 else review();
               }}>

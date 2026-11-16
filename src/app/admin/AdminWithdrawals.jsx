@@ -141,7 +141,8 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                       <span className="admin-sub">
                         {row.fee_cents != null
                           ? `Fee ${moneyIn(row.fee_cents, row.currency)} · receives ${moneyIn(row.receives_minor, row.receives_currency ?? row.currency)}`
-                          : estimate && !estimate.refused ? `Fee about ${moneyIn(estimate.feeCents, row.currency)} · receives about ${moneyIn(estimate.receivesCents, row.currency)}` : ""}
+                          : estimate?.feeCents != null ? `Fee about ${moneyIn(estimate.feeCents, row.currency)} · receives about ${moneyIn(estimate.receivesCents, row.currency)}`
+                          : estimate?.basis === "quote_needed" ? "Fee: quoted on Approve" : ""}
                       </span>
                     </td>
                     <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}</td>

@@ -582,7 +582,7 @@ begin
     perform public.withdrawal_notice(w,
       format('%s paid out to you', public.format_money(w.amount_cents, w.currency)),
       case when w.fee_cents is not null and w.receives_minor is not null then
-        format('Sent to %s. Fee %s; you receive %s.', w.paid_to, public.format_money(w.fee_cents, w.currency),
+        format('Sent to %s. Fee %s, taken from it: you receive %s.', w.paid_to, public.format_money(w.fee_cents, w.currency),
                public.format_money(w.receives_minor, coalesce(w.receives_currency, w.currency)))
       else format('Sent to %s.', w.paid_to) end);
   elsif outcome = 'failed' then
