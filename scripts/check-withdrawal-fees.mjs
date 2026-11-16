@@ -27,11 +27,15 @@ for (const provider of ["stripe", "paypal"]) {
 assert.deepEqual(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "US" }), { feeCents: 275, receivesCents: 99_725, basis: "formula" });
 // Stripe DE adds the 0.25% cross-border fee.
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "DE" }).feeCents, 523);
-// PayPal 2%: US$100.00 → sends 98.03, PayPal charges 1.97 (rounded up).
-assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "US" }), { feeCents: 197, receivesCents: 9_803, basis: "formula" });
-// Caps: US$20 domestic, US$100 international.
-assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "US" }).feeCents, 2000);
+// PayPal to a US account: US$0.25 a payout (what the sandbox charged).
+assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "US" }), { feeCents: 25, receivesCents: 9_975, basis: "formula" });
+assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "US" }).feeCents, 25);
+// Abroad: 2%, at most US$100: US$100.00 → sends 98.03, PayPal charges 1.97 (rounded up).
+assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "DE" }), { feeCents: 197, receivesCents: 9_803, basis: "formula" });
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "DE" }).feeCents, 10_000);
+// An unknown country pays the larger fee, never less than TSC is charged.
+assert.equal(withdrawalFee({ provider: "paypal", amountCents: 10_000 }).feeCents, 197);
+assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000 }).feeCents, 523);
 
 // A quote wins, rounded up; Wise/Tazapay without a quote decide nothing.
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000, quotedFeeCents: 412 }), { feeCents: 412, receivesCents: 9_588, basis: "quote" });

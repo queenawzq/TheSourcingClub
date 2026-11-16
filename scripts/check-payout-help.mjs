@@ -19,20 +19,20 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 // its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
 const methodLines = {
-  stripeUs: ["Fee: 0% (TSC pays Stripe's fee)", "Not instant: usually 1–4 business days after you withdraw"],
-  stripe: ["Fee: 0% to withdraw; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
-  wise: ["Fee: 0% (TSC pays Wise's fee), at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
-  wiseUs: ["Fee: 0% (TSC pays Wise's fee)", "Not instant: sent once released, then a few business days to arrive"],
+  stripeUs: ["Fee: 0.25% + US$0.25 per payment, taken from it", "Not instant: usually 1–4 business days after you withdraw"],
+  stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
+  wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
+  wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
   bank: ["Fee: 0% from TSC; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
   // PayPal usually lands within minutes of staff sending it.
-  paypal: ["Fee: 0% (TSC pays PayPal's fee); PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
-  paypalUs: ["Fee: 0% (TSC pays PayPal's fee)", "Not instant: sent once released"],
+  paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
+  paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
 };
 assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
   assert.deepEqual(info.payoutMethodLines(method), lines, `${method} keeps its fee and timing lines`);
 }
-for (const lines of Object.values(info.PAYOUT_METHOD_INFO)) assert.ok(!/No TSC fee/.test(lines.join(" ")), "no line says \"No TSC fee\"");
+for (const lines of Object.values(info.PAYOUT_METHOD_INFO)) assert.ok(!/No TSC fee|TSC pays/.test(lines.join(" ")), "no line says TSC pays the fee: the factory does");
 // The lines follow the route Set up takes: Stripe's "Bank account" in a Stripe
 // country; Wise's form wherever Wise has a currency for the country; staff's
 // bank form where it has none (TW, KH, a country not listed).
@@ -60,8 +60,10 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
 }
 for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), "bank", `${country}: staff's bank lines`);
 const factoryZh = read("src/factory-prototype/main.jsx");
+const { WITHDRAWAL_FEE_LINES_ZH } = await import("../src/shared/withdrawal-fees.mjs");
+assert.ok(factoryZh.includes("  ...WITHDRAWAL_FEE_LINES_ZH,"), "the factory dictionary takes the fee lines' Chinese from the fee module");
 for (const text of [...new Set(Object.values(info.PAYOUT_METHOD_INFO).flat()), "Bank account (Stripe)", "International bank transfer (Wise)", "Bank transfer (Wise)"]) {
-  assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`), `the factory dictionary has Chinese for: ${text}`);
+  assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`) || WITHDRAWAL_FEE_LINES_ZH[text], `the factory dictionary has Chinese for: ${text}`);
 }
 assert.ok(card.includes("<strong>{listLabel(method)}</strong>") && card.includes("<strong>{manualListLabel(row)}</strong>") && card.includes("(Wise)`, row.account_number_last4)"), "the saved methods list names the provider as the chooser does");
 assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferName(country)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");

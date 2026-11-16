@@ -8,6 +8,7 @@ import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
+import { WITHDRAWAL_FEE_LINES_ZH } from "../shared/withdrawal-fees.mjs";
 
 const factorySamplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -1098,13 +1099,7 @@ export const factoryMainZhText = {
   "International bank transfer (Wise)": "国际银行转账（Wise）",
   "Bank transfer (Wise)": "银行转账（Wise）",
   "Bank transfer": "银行转账",
-  "Fee: 0% (TSC pays Stripe's fee)": "手续费 0%（TSC 承担 Stripe 费用）",
-  "Fee: 0% to withdraw; Stripe converts from US$ at its rate": "提现手续费 0%；Stripe 按其汇率将美元换成你的币种",
-  "Fee: 0% (TSC pays Wise's fee), at the mid-market rate": "手续费 0%（TSC 承担 Wise 费用），按中间市场汇率",
-  "Fee: 0% from TSC; your bank may charge to receive it": "TSC 手续费 0%；你的银行可能收取入账费",
-  "Fee: 0% (TSC pays Wise's fee)": "手续费 0%（TSC 承担 Wise 费用）",
-  "Fee: 0% (TSC pays PayPal's fee)": "手续费 0%（TSC 承担 PayPal 费用）",
-  "Fee: 0% (TSC pays PayPal's fee); PayPal may charge about 3–4% to convert US$": "手续费 0%（TSC 承担 PayPal 费用）；PayPal 换汇美元可能收取约 3–4%",
+  ...WITHDRAWAL_FEE_LINES_ZH,
   "Not instant: usually 1–4 business days after you withdraw": "非即时到账：提现后通常 1–4 个工作日",
   "Not instant: sent once released, then a few business days to arrive": "非即时到账：放款后发出，再需几个工作日到账",
   "Not instant: sent once released": "非即时到账：放款后发出",
@@ -1312,6 +1307,7 @@ const PROFILE_TODO_ZH = [
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 const factoryMainZhReplacements = [
+  [/Fee (\S+), taken from it: you receive (\S+?)\.(?=\s|$)/g, "手续费 $1，已从中扣除：你收到 $2。"],
   [/Current status:/g, "当前状态："],
   [/(\d+) day avg\. response/g, "平均 $1 天回复"],
   [/Best Fit/g, "最佳匹配"],
