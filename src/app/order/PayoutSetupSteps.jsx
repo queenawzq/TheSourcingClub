@@ -11,7 +11,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
-import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
+import { REQUIRED, chosenBankName, inEnglish, wiseBankList, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs";
 import { PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
@@ -85,13 +85,16 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
   const typed = normalBankNumber(number);
   const numberField = form?.fields.find((field) => field.key === form.numberKey);
   const otherFields = form?.fields.filter((field) => field.key !== form.numberKey) ?? [];
+  // Hong Kong: Wise's form already asks which bank, so "Bank name" is asked once.
+  const bankList = wiseBankList(otherFields);
+  const savedBankName = bankList ? chosenBankName(bankList, values[bankList.key]) : bankName;
 
   const fieldError = (field) => wiseFieldError(field, values[field.key]);
   const numberError = !typed
     ? hasStoredNumber ? null : REQUIRED
     : !validBankNumber(typed) ? words.numberFormat : null;
   const againError = (typed || numberAgain) && typed !== normalBankNumber(numberAgain) ? words.numberMismatch : null;
-  const bankError = bankName.trim() ? null : REQUIRED;
+  const bankError = bankList || bankName.trim() ? null : REQUIRED;
   const anyError = !form || bankError || numberError || againError || otherFields.some(fieldError);
   const shown = (key, error) => ((pressed || touched[key]) ? error : null);
   const leave = (key) => () => setTouched((current) => ({ ...current, [key]: true }));
@@ -104,7 +107,7 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
     for (const field of otherFields) details[field.key] = values[field.key].trim();
     try {
       await saveWise({
-        bankName, type: form.type, currency: form.currency, details,
+        bankName: savedBankName, type: form.type, currency: form.currency, details,
         numberKey: form.numberKey, number, numberAgain,
       });
     } catch (failure) {
@@ -132,11 +135,11 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
     >
       {!form ? <p className="payout-modal-intro" role="status">{words.loading}</p> : (
         <div className="payout-form-stack">
-          <label>
+          {bankList ? null : <label>
             <span>{words.bankName} *</span>
             <input data-field="payout_bank_name" value={bankName} onBlur={leave("bank")} onChange={(event) => setBankName(event.target.value)} />
             {shown("bank", bankError) ? <small className="live-stripe-error" role="alert">{say(bankError)}</small> : null}
-          </label>
+          </label>}
           {otherFields.map((field) => (
             <label key={field.key}>
               <span>{say(fieldLabel(field))} *</span>

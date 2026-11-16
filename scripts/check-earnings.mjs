@@ -82,7 +82,14 @@ assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing");
 assert.equal(usd(earningsSummaryFor(money, "All clients").paid), 700 + 900 + 1100 + 1300 + 1500, "every Paid row is in Paid out, Stripe's too");
 assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
 assert.ok(rows.find((row) => row.id === "provider-b").amount < 0, "a failed row keeps its sign, struck through");
-assert.equal(rows.find((row) => row.id === "provider-d").note, "TSC will try again", "and one the factory can't fix says so");
+assert.equal(rows.find((row) => row.id === "provider-d").note, "The payment did not go through. Check your payout details or contact TSC operations", "and one with no known reason says what to do");
+// Why it failed, from the provider's code (src/shared/payout-failure-words.mjs).
+const bouncedBack = withdrawalRows([pay("bounced-back", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("f", "failed", { failure_code: "other", failure_detail: "bounced_back", amount_cents: 500 })] })]);
+assert.equal(bouncedBack[0].note, "Your bank returned the payment. Check your bank details: TSC pays again once they are right", "a known code says why");
+assert.equal(withdrawalProblem([pay("returned", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("g", "failed", { provider: "paypal", failure_code: "other", failure_detail: "RETURNED", amount_cents: 500 })] })])?.line,
+  "A withdrawal failed. PayPal returned the payment: nothing arrived. Check your PayPal address: TSC pays again once it is right.", "and the card says the same");
+assert.equal(earningStatus(money.find((row) => row.id === "by-stripe")), "Added to your balance", "a Stripe transfer is in the factory's balance, not its bank");
+assert.equal(earningStatus(money.find((row) => row.id === "wise-paid")), "Paid");
 assert.ok(rows.every((row) => !/\b\d{5,}\b/.test(row.meta ?? "")), "no row carries a number");
 assert.equal(withdrawalProblem(money)?.line, "A withdrawal failed. Check your bank details.", "the card raises a failure on money still owed");
 assert.equal(withdrawalProblem(money.filter((row) => row.id !== "bounced")), null, "not one since retried and paid");
@@ -143,7 +150,8 @@ assert.equal(isHandPaid(null, null), true);
 const answered = earningsSummaryFor(transferred, "All clients");
 assert.equal(usd(answered.pending), 0, "paid through Stripe is not Pending");
 assert.equal(usd(answered.paid), 5, "it is Paid out, the word on its row, with no answer from Stripe");
-assert.equal(earningStatus(transferred[0]), "Paid", "the same word as the order page");
+assert.equal(earningStatus(transferred[0]), "Added to your balance", "the same word as the order page: in its Stripe balance, not its bank");
+assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8"), /case "released":\s*\/\/[^\n]*\n\s*return isFactory \? earningStatus\(payment\)/, "the order page uses that word for the factory");
 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");

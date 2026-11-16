@@ -30,3 +30,16 @@ export function wiseFieldError(field, raw) {
   }
   return null;
 }
+
+/**
+ * Wise's own list of banks, when its form has one (Hong Kong's "Bank name",
+ * `bankCode`): it names the bank, so the form does not ask for the name a
+ * second time, and the saved name is the bank chosen there. Null when Wise's
+ * form has no such list (China's, which asks for the name as text, or ours).
+ */
+export function wiseBankList(fields) {
+  return (fields ?? []).find((field) => field.kind === "select" && /^bank( name)?$/i.test(String(field.label ?? "").trim())) ?? null;
+}
+
+/** The name of the bank chosen in that list, or "" before one is chosen. */
+export const chosenBankName = (field, value) => field?.options?.find((option) => option.value === value)?.label ?? "";

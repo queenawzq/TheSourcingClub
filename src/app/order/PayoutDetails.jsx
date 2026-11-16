@@ -32,7 +32,8 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { earningPaid, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -83,7 +84,8 @@ function RowPlaceholders({ className, cells, label }) {
 }
 
 const PAYOUT_STATUS = {
-  paid: "Completed",
+  // A withdrawal from the factory's Stripe balance that reached its bank.
+  paid: "Paid out to your bank",
   pending: "Pending",
   in_transit: "Processing",
   canceled: "Canceled",
@@ -224,7 +226,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -325,7 +327,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       status: earningStatus(row),
       amount: factoryAmount(row),
       currency: row.currency,
-      available: earningStatus(row) === "Paid",
+      available: earningPaid(row),
     })),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,
@@ -339,6 +341,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       title: "Bank transfer",
       meta: [payoutDestination(row, stripeBalance), row.arrival_date ? stripeDateLabel(row.arrival_date) : null].filter(Boolean).join(" · "),
       status: PAYOUT_STATUS[row.status] || row.status,
+      // Why the bank did not take it; Stripe puts the money back in the balance.
+      note: row.status === "failed" ? payoutFailureSentence("stripe", row.failure_code) : null,
+      failed: row.status === "failed",
       amount: -Math.abs(row.amount),
       currency: row.currency,
       available: true,

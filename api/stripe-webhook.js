@@ -2,6 +2,7 @@ import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, rele
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
+import { tellPayoutEvent } from "./_stripe-payout-events.js";
 import { emailTransport, sendDueNotificationEmails } from "./_notification-sender.js";
 import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
@@ -12,7 +13,7 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
  * secret: one for TSC's own account (payment_intent.processing / succeeded /
  * payment_failed, charge.refunded, refund.updated / refund.failed /
  * charge.refund.updated for a cancelled order's refund that failed) and one for connected accounts
- * (account.updated, account.external_account.*). Locally,
+ * (account.updated, account.external_account.*, payout.paid, payout.failed). Locally,
  * `stripe listen` forwards both with one secret.
  *
  * A PaymentIntent is either an order payment (metadata payment_id) or a
@@ -123,6 +124,13 @@ export default async function handler(request, response) {
       case "account.external_account.updated":
       case "account.external_account.deleted": {
         if (await tellExternalAccountEvent(db, event) && emailTransport()) {
+          await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+        }
+        break;
+      }
+      case "payout.paid":
+      case "payout.failed": {
+        if (await tellPayoutEvent(db, event) && emailTransport()) {
           await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
         }
         break;
