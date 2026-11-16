@@ -241,7 +241,12 @@ function BankDetails({ row, onViewed, stripeSetup }) {
       <PayoutField label="Account holder">{row.payout_holder || "Not provided"}</PayoutField>
       <PayoutField label="Bank">{`${row.payout_bank || "Not provided"}${country ? `, ${country}` : ""}`}</PayoutField>
       {row.payout_branch ? <PayoutField label="Branch">{row.payout_branch}</PayoutField> : null}
-      {row.payout_swift || !row.wise_recipient_type ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField> : null}
+      {row.payout_swift || !row.wise_recipient_type ? (
+        row.payout_swift || row.payout_country?.trim() === "US"
+          ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField>
+          // An international wire cannot go without it.
+          : <span className="admin-error" data-testid="no-swift">SWIFT/BIC missing, so an international wire can't be sent. Ask the factory to add it on its Payments page.</span>
+      ) : null}
       {typedBankDetails(row).map(([label, value]) => <PayoutField key={label} label={label}>{value}</PayoutField>)}
       {row.payout_has_number
         ? <AccountNumber row={row} onViewed={onViewed} />
@@ -524,7 +529,7 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
       {said}
       {pay}
       {canMarkByBank(row) ? (
-      <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN}
+      <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN || Boolean(bankFee.refused)}
               data-testid="release-payment"
               title={note.trim().length < REFERENCE_MIN ? "Enter the bank's reference for this transfer" : "Pay the factory by bank transfer first, then mark it here"}
               onClick={() => setConfirming("bank")}>
@@ -562,6 +567,7 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
   // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
   const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
+  const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
   const acts = rowActs(section, row, attempt);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
@@ -573,10 +579,20 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           <input type="text" data-testid="refund-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
       ) : providerLive || (section === "payout" && !paidByStripe(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
-        <label className="admin-sub">
-          Bank reference (required)
-          <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
-        </label>
+        // What to wire, before anyone wires it: the factory pays the bank transfer fee (src/shared/withdrawal-fees.mjs).
+        bankFee.refused ? (
+          <span className="admin-error" data-testid="bank-fee-refused">{bankFee.refused}</span>
+        ) : (
+          <>
+            <span className="admin-sub" data-testid="bank-send-amount">
+              {`Send ${formatMoney(bankFee.receivesCents, row.currency)} (the ${formatMoney(row.amount_cents, row.currency)} step less the factory's ${formatMoney(bankFee.feeCents, row.currency)} bank transfer fee)`}
+            </span>
+            <label className="admin-sub">
+              Bank reference (required)
+              <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
+            </label>
+          </>
+        )
       ) : (
         <input type="text" aria-label="Note" placeholder="Optional note"
                value={note} onChange={(event) => setNote(event.target.value)} />
