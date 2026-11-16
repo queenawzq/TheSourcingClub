@@ -25,9 +25,10 @@
  *           quoted fee comes out of the step, the rest converted at Wise's
  *           mid-market rate (api/_wise.js, quote();
  *           https://wise.com/pricing/business).
- *   bank    "Bank transfer" where Wise has no currency (Taiwan, Cambodia, a
- *           country not listed): staff pay it by bank ("Mark paid out by bank"),
- *           and TSC charges nothing for it.
+ *   (no staff-paid bank option) TSC pays only through Stripe, Wise, PayPal or
+ *           Tazapay: where Wise has no currency (Taiwan, Cambodia, a country
+ *           not listed) the chooser offers PayPal alone. Bank accounts saved
+ *           before that are still paid by staff ("Mark paid out by bank").
  *   wiseUs / paypalUs  the same for a US factory, paid US$ to US$, so without
  *           the conversion words.
  *   paypal  PayPal Payouts: PayPal bills the sender (TSC), and the
@@ -52,7 +53,6 @@ export const PAYOUT_METHOD_INFO = {
   wise: [withdrawalFeeLine("wise"), SENT_AFTER_RELEASE],
   // A US factory is paid US$ to US$: nothing is converted.
   wiseUs: [withdrawalFeeLine("wise", { country: "US" }), SENT_AFTER_RELEASE],
-  bank: [withdrawalFeeLine("bank"), SENT_AFTER_RELEASE],
   paypal: [withdrawalFeeLine("paypal"), "Not instant: sent once released"],
   paypalUs: [withdrawalFeeLine("paypal", { country: "US" }), "Not instant: sent once released"],
 };
@@ -78,12 +78,14 @@ export const paidByWise = (country) => WISE_COUNTRIES.has(country);
 /**
  * Which lines a chooser option draws: the route its Set up actually takes.
  * "Bank account" in a Stripe country is Stripe's. Every other bank option
- * opens Wise's form where Wise has a currency for the country, and staff's
- * bank form otherwise (WiseBankStep's onUnavailable).
+ * opens Wise's form where Wise has a currency for the country; elsewhere there
+ * is no bank option (null), and where Wise's form can't be had the card says
+ * so and offers PayPal (WiseBankStep's onUnavailable).
  */
 export function chooserMethod(option, { supported = false, country = "" } = {}) {
   const us = country === "US";
   if (option === "paypal") return us ? "paypalUs" : "paypal";
   if (option === "bank" && supported) return us ? "stripeUs" : "stripe";
-  return paidByWise(country) ? (us ? "wiseUs" : "wise") : "bank";
+  // No staff-paid bank option: where neither Stripe nor Wise pays, there is no bank line.
+  return paidByWise(country) ? (us ? "wiseUs" : "wise") : null;
 }
