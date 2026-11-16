@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
-import { chooserMethod, paidByWise, payoutMethodLines } from "../../shared/payout-method-info.mjs";
+import { chooserMethod, paidByWise, payoutMethodLines, payoutMethodFeeUrl } from "../../shared/payout-method-info.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
@@ -209,7 +209,7 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
 }
 
 /** A method's fee and timing, under its name (src/shared/payout-method-info.mjs). */
-const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line) => <li key={line}>{line}</li>)}</ul>;
+const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, index) => <li key={line}>{line}{index === 0 && payoutMethodFeeUrl(method) ? <> · <a href={payoutMethodFeeUrl(method)} target="_blank" rel="noopener noreferrer">Full fee details</a></> : null}</li>)}</ul>;
 
 /** Presentation only; the live payout flow owns every setup action. */
 export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {

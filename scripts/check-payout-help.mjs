@@ -19,13 +19,12 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 // its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
 const methodLines = {
-  stripeUs: ["Fee: 0.25% + US$0.25 per payment, taken from it", "Not instant: usually 1–4 business days after you withdraw"],
-  stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
-  wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
-  wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
-  // PayPal usually lands within minutes of staff sending it.
-  paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
-  paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
+  stripeUs: ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"],
+  stripe: ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"],
+  wise: ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"],
+  wiseUs: ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"],
+  paypal: ["Up to 2% fee", "Usually processed within 3–7 business days"],
+  paypalUs: ["Up to 2% fee", "Usually processed within 3–7 business days"],
 };
 assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {

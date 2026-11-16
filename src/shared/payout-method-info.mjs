@@ -1,60 +1,22 @@
-/**
- * What each withdrawal method costs and how long it takes, in the two short
- * lines the chooser draws under its name. One entry per route, so a new
- * provider adds its own here. Each option names the provider that pays the
- * factory, and its fee as a percentage of what reaches it.
- *
- * Every line must be true for every country it is shown in. No payout is
- * instant (a card payment can still be reversed), so each says so.
- * The fee line comes from src/shared/withdrawal-fees.mjs, the one source of
- * the fee: the factory pays the provider's fee, TSC none (its header has the
- * figures and their sources). Routes, checked 2026-11-15:
- *
- *   stripe / stripeUs  "Bank account (Stripe)" where Stripe pays out
- *           (stripe-payout-countries.mjs). TSC-managed accounts are created
- *           with fees.payer = application (api/_stripe-payouts.js), so Stripe
- *           bills TSC its payout fees, and the transfer holds them back. TSC
- *           transfers US$ (api/_stripe.js); outside the US Stripe converts it
- *           to the account's currency at its rate
- *           (https://docs.stripe.com/connect/currencies). Stripe publishes no
- *           figure for converting a Connect transfer, so that line has no
- *           number. Timing: "Manual payouts typically take 1–4 business days"
- *           (https://docs.stripe.com/payouts).
- *   wise    "International bank transfer (Wise)" (US: "Bank transfer (Wise)"), and "Bank transfer (Wise)"
- *           where Wise has a currency for the country (wiseCurrencyFor). Wise's
- *           quoted fee comes out of the step, the rest converted at Wise's
- *           mid-market rate (api/_wise.js, quote();
- *           https://wise.com/pricing/business).
- *   (no staff-paid bank option) TSC pays only through Stripe, Wise, PayPal or
- *           Tazapay: where Wise has no currency (Taiwan, Cambodia, a country
- *           not listed) the chooser offers PayPal alone. Bank accounts saved
- *           before that are still paid by staff ("Mark paid out by bank").
- *   wiseUs / paypalUs  the same for a US factory, paid US$ to US$, so without
- *           the conversion words.
- *   paypal  PayPal Payouts: PayPal bills the sender (TSC), and the
- *           payment sent holds it back
- *           (https://developer.paypal.com/docs/payouts/standard/reference/fees/).
- *           PayPal charges the receiver to convert US$, about 3% above its base
- *           rate on its regional fee pages
- *           (https://www.paypal.com/us/business/paypal-business-fees), more in
- *           some countries. Timing: staff send it from the payments board once
- *           released (api/_provider-payouts.js), and it usually reaches the
- *           PayPal balance within minutes, so no "few business days" here.
- */
-
-import { withdrawalFeeLine } from "./withdrawal-fees.mjs";
-
-const SENT_AFTER_RELEASE = "Not instant: sent once released, then a few business days to arrive";
-const STRIPE_TIMING = "Not instant: usually 1–4 business days after you withdraw";
+/** Shared chooser copy for every country; fee calculations remain in withdrawal-fees.mjs. */
+const STRIPE_LINES = ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"];
+const WISE_LINES = ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"];
+const PAYPAL_LINES = ["Up to 2% fee", "Usually processed within 3–7 business days"];
 
 export const PAYOUT_METHOD_INFO = {
-  stripeUs: [withdrawalFeeLine("stripe", { country: "US" }), STRIPE_TIMING],
-  stripe: [withdrawalFeeLine("stripe"), STRIPE_TIMING],
-  wise: [withdrawalFeeLine("wise"), SENT_AFTER_RELEASE],
-  // A US factory is paid US$ to US$: nothing is converted.
-  wiseUs: [withdrawalFeeLine("wise", { country: "US" }), SENT_AFTER_RELEASE],
-  paypal: [withdrawalFeeLine("paypal"), "Not instant: sent once released"],
-  paypalUs: [withdrawalFeeLine("paypal", { country: "US" }), "Not instant: sent once released"],
+  stripeUs: STRIPE_LINES,
+  stripe: STRIPE_LINES,
+  wise: WISE_LINES,
+  wiseUs: WISE_LINES,
+  paypal: PAYPAL_LINES,
+  paypalUs: PAYPAL_LINES,
+};
+
+export const payoutMethodFeeUrl = (method) => {
+  if (method?.startsWith("stripe")) return "https://stripe.com/connect/pricing";
+  if (method?.startsWith("wise")) return "https://wise.com/us/pricing/";
+  if (method?.startsWith("paypal")) return "https://www.paypal.com/us/business/paypal-business-fees";
+  return null;
 };
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
