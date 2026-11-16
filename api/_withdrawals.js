@@ -119,11 +119,12 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
         return { done: "short_balance", sentence };
       }
       const quote = checkQuote(adapter, ctx, await adapter.quote(client, ctx));
+      // The fee is kept on the withdrawal before any money moves: the board,
+      // the factory's page and its bell read this one figure.
+      await record(db, id, "sent", { fee: quote.feeCents, receives: quote.receivesMinor, receives_in: quote.receivesCurrency });
       const paid = await adapter.pay(client, ctx, quote);
       ref = paid.ref;
-      await record(db, id, "sent", {
-        ref, fee: quote.feeCents, receives: quote.receivesMinor, receives_in: quote.receivesCurrency, sentence: "Sent. Waiting for the provider to confirm.",
-      });
+      await record(db, id, "sent", { ref, sentence: "Sent. Waiting for the provider to confirm." });
     }
     return { done: await readBack({ adapter, client, db, id, ref }) };
   } catch (failure) {

@@ -25,7 +25,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       assert.equal(name, "record_withdrawal");
       recorded.push(args);
       if (args.ref) claim = { ...claim, provider_ref: args.ref };
-      if (args.outcome === "requeue") claim = { ...claim, key: `key-${recorded.length + 1}` };
+      if (args.outcome === "requeue") claim = { ...claim, key: `key-${recorded.filter((r) => r.outcome === "requeue").length + 1}` };
       return { data: {}, error: null };
     },
   };
@@ -61,7 +61,8 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(result.done, "paid");
   assert.deepEqual(w.paid, [{ key: "key-1", amount: 6420 }]);
   assert.equal(w.recorded[0].outcome, "sent");
-  assert.equal(w.recorded[0].fee, 80);
+  assert.equal(w.recorded[0].fee, 80, "the fee is recorded before the provider is asked");
+  assert.equal(w.recorded[0].ref, undefined);
   assert.equal(w.recorded.at(-1).outcome, "paid");
 }
 
