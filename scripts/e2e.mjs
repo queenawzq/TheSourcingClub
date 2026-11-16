@@ -2404,7 +2404,8 @@ async function main() {
     check(/Available: \$95\.00/.test(withdrawDialog) && /Fee: \$50\.00, taken from the amount/.test(withdrawDialog) && /You receive: \$45\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
       "the dialog offers all of it, with the US$50 bank transfer fee taken from it, what arrives and when");
     await record(page, "Withdraw", "the whole balance, prefilled; the fee and the timing before it asks");
-    await page.locator('[data-testid="withdraw-confirm"]').dblclick();
+    // Two presses in the same tick (Stagehand's locator has no dblclick).
+    await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
     await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
     check(/Withdrawal of \$95\.00 to .+: Waiting for TSC\./.test(await page.locator('[data-testid="withdrawal-open"]').innerText()),
       "the request waits for TSC, on the card");
