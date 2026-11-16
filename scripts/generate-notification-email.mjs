@@ -306,7 +306,9 @@ export function notificationEmail(row, env) {
     locale, title, eyebrow: setting, greeting: t.greeting(row.recipient_name), body, url, cta, why, questions: t.questions,
   }, env);
 
-  return { subject: title, html, text };
+  // A step update names its order in the subject: several orders can have a step of the same name.
+  const subject = row.kind === "milestone_update" && row.order_number ? `${title} · ${row.order_number}` : title;
+  return { subject, html, text };
 }
 
 const inviteCopy = {

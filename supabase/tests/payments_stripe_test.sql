@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(161);
+select plan(166);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -343,8 +343,29 @@ select ok(
 select is(pg_temp.p18_state('order_a', 'Balance'), 'due',
   'the chain moved on the approval, not the payout: the balance is due');
 
+-- The factory pays the payout fee (20261116100000): the server records it
+-- before the money moves, and the paid notification says it.
+select ok(not has_function_privilege('authenticated', 'public.record_payout_fee(uuid, bigint)', 'execute'),
+  'a signed-in account cannot record a payout fee');
+select throws_ok(
+  format('select public.record_payout_fee(%L, (select amount_cents from public.order_payments where id = %L))',
+    pg_temp.p18_pay('order_a', 'Fit sample'), pg_temp.p18_pay('order_a', 'Fit sample')),
+  '22023', null, 'a fee as large as the payment is refused: nothing would arrive');
+select lives_ok(
+  format('select public.record_payout_fee(%L, 50)', pg_temp.p18_pay('order_a', 'Fit sample')),
+  'the server records the fee before the transfer');
 select public.record_payment_released(pg_temp.p18_pay('order_a', 'Fit sample'), 'tr_p18_a');
 select public.record_payment_released(pg_temp.p18_pay('order_a', 'Fit sample'), 'tr_p18_other');
+select ok(
+  (select n.body from public.notifications n
+    where n.org_id = '18b00000-0000-0000-0000-0000000000f1' and n.kind = 'funds_released'
+      and n.subject_id = pg_temp.p18_pay('order_a', 'Fit sample'))
+  like (select '% Payout fee $0.50 is taken from this payment: you receive ' || public.format_money(p.amount_cents - 50, p.currency) || '.'
+          from public.order_payments p where p.id = pg_temp.p18_pay('order_a', 'Fit sample')),
+  'the paid notification says the fee and what the factory receives');
+select public.record_payout_fee(pg_temp.p18_pay('order_a', 'Fit sample'), 99);
+select is((select payout_fee_cents from public.order_payments where id = pg_temp.p18_pay('order_a', 'Fit sample')),
+  50::bigint, 'a payment already paid out keeps its fee');
 select is(
   (select state::text || ' ' || stripe_transfer_id from public.order_payments where id = pg_temp.p18_pay('order_a', 'Fit sample')),
   'released tr_p18_a', 'paid out once; a repeat changes nothing');

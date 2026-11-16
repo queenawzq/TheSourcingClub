@@ -8,6 +8,7 @@ import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
+import { WITHDRAWAL_FEE_LINES_ZH } from "../shared/withdrawal-fees.mjs";
 
 const factorySamplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -1092,7 +1093,22 @@ export const factoryMainZhText = {
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
   "Completed": "已完成",
+  "Failed": "失败",
+  "Available": "可用方式",
+  "A bank transfer isn't available right now. You can set up PayPal instead.": "银行转账暂不可用。你可以改为设置 PayPal。",
+  "Set up PayPal": "设置 PayPal",
+  "Add your bank's SWIFT / BIC: TSC can't send an international transfer without it.": "请填写你银行的 SWIFT / BIC：没有它，TSC 无法发送国际转账。",
+  "A SWIFT / BIC is 8 or 11 letters and digits.": "SWIFT / BIC 由 8 或 11 位字母和数字组成。",
   "In production": "生产中",
+  // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
+  "Bank account (Stripe)": "银行账户（Stripe）",
+  "International bank transfer (Wise)": "国际银行转账（Wise）",
+  "Bank transfer (Wise)": "银行转账（Wise）",
+  "Bank transfer": "银行转账",
+  ...WITHDRAWAL_FEE_LINES_ZH,
+  "Not instant: usually 1–4 business days after you withdraw": "非即时到账：提现后通常 1–4 个工作日",
+  "Not instant: sent once released, then a few business days to arrive": "非即时到账：放款后发出，再需几个工作日到账",
+  "Not instant: sent once released": "非即时到账：放款后发出",
   // Live screens (app.html): text the prototype never draws.
   "Log out": "退出登录",
   "Language": "语言",
@@ -1166,7 +1182,6 @@ export const factoryMainZhText = {
   "Date": "日期",
   "Type / details": "类型 / 详情",
   "Amount": "金额",
-  "Bank transfer": "银行转账",
   "Invite a factory": "邀请工厂",
   "Referral bonus pending": "推荐奖励待发放",
   "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings.": "这是你的步骤金额。TSC 服务费由品牌另行支付，不从你的收入中扣除。",

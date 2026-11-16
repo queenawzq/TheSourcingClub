@@ -41,7 +41,8 @@ import { useAuth } from "../../lib/auth.jsx";
 import {
   factoryStripeSetup, paymentBoard, releasePayment, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
-import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
+import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
+import { cancelProviderPayout, payByProvider, previewProvider, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
@@ -240,7 +241,12 @@ function BankDetails({ row, onViewed, stripeSetup }) {
       <PayoutField label="Account holder">{row.payout_holder || "Not provided"}</PayoutField>
       <PayoutField label="Bank">{`${row.payout_bank || "Not provided"}${country ? `, ${country}` : ""}`}</PayoutField>
       {row.payout_branch ? <PayoutField label="Branch">{row.payout_branch}</PayoutField> : null}
-      {row.payout_swift || !row.wise_recipient_type ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField> : null}
+      {row.payout_swift || !row.wise_recipient_type ? (
+        row.payout_swift || row.payout_country?.trim() === "US"
+          ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField>
+          // An international wire cannot go without it.
+          : <span className="admin-error" data-testid="no-swift">SWIFT/BIC missing, so an international wire can't be sent. Ask the factory to add it on its Payments page.</span>
+      ) : null}
       {typedBankDetails(row).map(([label, value]) => <PayoutField key={label} label={label}>{value}</PayoutField>)}
       {row.payout_has_number
         ? <AccountNumber row={row} onViewed={onViewed} />
@@ -298,7 +304,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     setWorking(true);
     setProblem(null);
     try {
-      setPreview(await previewWise(row.payment_id, statement));
+      setPreview(await previewProvider(provider, row.payment_id, statement));
       setStep("confirm");
     } catch (failure) {
       setProblem(failure);
@@ -400,8 +406,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
         {said}
         <span className="admin-sub admin-row-message" role="alert">
           {provider === "wise"
-            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)} in total. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
-            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null || preview.refused ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}, arriving as ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`
+            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?${preview.feeCents == null || preview.refused ? "" : ` PayPal fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`}
         </span>
         {short ? (
           <span className="admin-error admin-row-message" data-testid="wise-short">
@@ -409,7 +415,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
             <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
           </span>
         ) : null}
-        {short ? (
+        {preview.refused ? <span className="admin-error admin-row-message" data-testid="provider-fee-refused">{preview.refused}</span> : null}
+        {preview.refused ? null : short ? (
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
@@ -436,7 +443,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
               title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
               onClick={() => {
                 setProblem(null);
-                if (provider === "paypal") { setPreview({}); setStep("confirm"); }
+                if (provider === "paypal") review();
                 else if (needsStatement) setStep("statement");
                 else review();
               }}>
@@ -447,6 +454,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
 }
 
 function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
+  // What the factory receives when staff pay it by bank: the wire fee comes out of it (src/shared/withdrawal-fees.mjs).
+  const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -499,11 +508,13 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
     ) : confirming ? (
       <>
         <span className="admin-sub admin-row-message" role="alert">
-          {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
+          {bankFee.refused
+            ? bankFee.refused
+            : `Sent ${formatMoney(bankFee.receivesCents, row.currency)} to ${row.factory_name} by bank? Bank transfer fee ${formatMoney(bankFee.feeCents, row.currency)}, paid by the factory, out of the ${formatMoney(row.amount_cents, row.currency)}: TSC pays ${formatMoney(row.amount_cents, row.currency)}, the amount.`}
           {row.payout_account_id ? ` To ${row.payout_holder || row.factory_name}, ${row.payout_bank}, ending ${row.payout_last4}.` : null}
           {` They will read: "${note.trim()}"`}
         </span>
-        <button type="button" className="admin-approve" disabled={busy}
+        <button type="button" className="admin-approve" disabled={busy || Boolean(bankFee.refused)}
                 data-testid="release-payment-confirm"
                 onClick={() => { setConfirming(null); onDecide(row, "release", note); }}>
           Yes, mark paid out
@@ -518,7 +529,7 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
       {said}
       {pay}
       {canMarkByBank(row) ? (
-      <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN}
+      <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN || Boolean(bankFee.refused)}
               data-testid="release-payment"
               title={note.trim().length < REFERENCE_MIN ? "Enter the bank's reference for this transfer" : "Pay the factory by bank transfer first, then mark it here"}
               onClick={() => setConfirming("bank")}>
@@ -556,6 +567,7 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
   // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
   const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
+  const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
   const acts = rowActs(section, row, attempt);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
@@ -567,10 +579,20 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
           <input type="text" data-testid="refund-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
       ) : providerLive || (section === "payout" && !paidByStripe(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
-        <label className="admin-sub">
-          Bank reference (required)
-          <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
-        </label>
+        // What to wire, before anyone wires it: the factory pays the bank transfer fee (src/shared/withdrawal-fees.mjs).
+        bankFee.refused ? (
+          <span className="admin-error" data-testid="bank-fee-refused">{bankFee.refused}</span>
+        ) : (
+          <>
+            <span className="admin-sub" data-testid="bank-send-amount">
+              {`Send ${formatMoney(bankFee.receivesCents, row.currency)} (the ${formatMoney(row.amount_cents, row.currency)} step less the factory's ${formatMoney(bankFee.feeCents, row.currency)} bank transfer fee)`}
+            </span>
+            <label className="admin-sub">
+              Bank reference (required)
+              <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
+            </label>
+          </>
+        )
       ) : (
         <input type="text" aria-label="Note" placeholder="Optional note"
                value={note} onChange={(event) => setNote(event.target.value)} />

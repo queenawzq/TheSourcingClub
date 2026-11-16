@@ -1863,6 +1863,12 @@ console.log("\nnotification emails");
     && brandStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}`
     ? ok("a vendor's email links open the vendor sign-in; a brand's open the brand's")
     : fail(`email links: ${vendorStep} / ${vendorCredits} / ${brandStep}`);
+  const subjectOf = (row) => notificationEmail({ category: "payments", org_type: "brand", subject_type: "milestone", ...ids, ...row }, emailEnv).subject;
+  subjectOf({ kind: "milestone_update", title: 'New update on "Fit sample"', order_number: "TSC-000002" }) === 'New update on "Fit sample" · TSC-000002'
+    && subjectOf({ kind: "milestone_update", title: 'New update on "Fit sample"' }) === 'New update on "Fit sample"'
+    && subjectOf({ kind: "milestone_approved", title: '"Fit sample" approved', order_number: "TSC-000002" }) === '"Fit sample" approved'
+    ? ok("a step update's email subject names its order")
+    : fail("a step update's email subject does not name its order");
 
   const sender = await signedInUser(`notify-sender-${stamp}@example.com`);
   const receiver = await signedInUser(`notify-receiver-${stamp}@example.com`);

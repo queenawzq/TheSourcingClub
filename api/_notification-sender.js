@@ -118,6 +118,17 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
   if (claimError) throw new Error("the email queue could not be read");
 
   const { notificationEmail } = await loadNotificationEmail();
+  // The order's number, for a subject that names it. Not read, it is left out.
+  const orderNumbers = new Map();
+  const orderIds = [...new Set((rows ?? []).map((row) => row.order_id).filter(Boolean))];
+  if (orderIds.length) {
+    try {
+      const { data: orders } = await service.from("production_orders").select("id, order_number").in("id", orderIds);
+      for (const order of orders ?? []) orderNumbers.set(order.id, order.order_number);
+    } catch {
+      // The email still goes, without the number.
+    }
+  }
   const env = {
     appUrl: appUrl(request),
     logoUrl: EMAIL_LOGO_URL,
@@ -136,7 +147,7 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
     }
     try {
       if (mail.name === "resend" && index > 0) await wait(RESEND_SPACING_MS);
-      const providerId = await mail.send(row, notificationEmail(row, env));
+      const providerId = await mail.send(row, notificationEmail({ ...row, order_number: orderNumbers.get(row.order_id) ?? null }, env));
       await service.rpc("finish_notification_email", { outbox_id: row.id, delivered: true, provider: providerId, error_text: null });
       sent += 1;
     } catch (error) {

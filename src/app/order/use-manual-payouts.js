@@ -23,6 +23,7 @@ const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise
 const SAVE_REFUSALS = {
   payout_owner_only: "Only a company owner can change withdrawal methods.",
   bank_details_missing: "Add the account holder and the bank so TSC can pay you.",
+  swift_missing: "Add your bank's SWIFT / BIC: TSC can't send an international transfer without it.",
   swift_format: "A SWIFT / BIC is 8 or 11 letters and digits.",
   country_missing: "Name your bank's country in the instructions.",
   number_required: "Add the full account number so TSC can pay you.",
@@ -70,13 +71,13 @@ export function useManualPayouts(orgId) {
     const [rows, owedRows] = await Promise.all([
       supabase.from("factory_payout_accounts").select(COLUMNS).eq("org_id", orgId)
         .order("is_primary", { ascending: false }).order("created_at"),
-      supabase.from("order_payments").select("amount_cents, currency, production_orders!inner (factory_org_id)")
+      supabase.from("order_payments").select("amount_cents, payout_fee_cents, currency, production_orders!inner (factory_org_id)")
         .eq("state", "confirmed").not("release_requested_at", "is", null)
         .eq("production_orders.factory_org_id", orgId),
     ]);
     const list = unwrap(rows, "load your payout accounts");
     setAccounts(list);
-    setOwed(unwrap(owedRows, "load what TSC owes you").map((row) => ({ amount: Number(row.amount_cents), currency: row.currency })));
+    setOwed(unwrap(owedRows, "load what TSC owes you").map((row) => ({ amount: Number(row.amount_cents) - (Number(row.payout_fee_cents) || 0), currency: row.currency })));
     return list;
   }, [orgId]);
 
@@ -105,6 +106,7 @@ export function useManualPayouts(orgId) {
   async function save(details = {}) {
     const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
     if (!form.bank_name.trim() || !form.account_name.trim()) throw new Error(SAVE_REFUSALS.bank_details_missing);
+    if (!form.swift.trim()) throw new Error(SAVE_REFUSALS.swift_missing);
     if (!validSwift(form.swift)) throw new Error(SAVE_REFUSALS.swift_format);
     const typed = normalBankNumber(form.account_number);
     if (typed !== normalBankNumber(form.account_number_again)) throw new Error(SAVE_REFUSALS.number_mismatch);
