@@ -94,17 +94,18 @@ export function useWithdrawalBalance(orgId, enabled = true) {
 }
 
 /**
- * "Withdrawal of $1,200.00 to a@b.c: Waiting for TSC.", with Cancel while it
- * waits. Each line is one whole sentence, so the Chinese layer can read it
+ * While a withdrawal is open, only the owner's Cancel shows here: the
+ * Transactions list already says what was asked and where it stands.
+ * Declined and failed keep a sentence, because each carries something to act on.
+ * Each line is one whole sentence, so the Chinese layer can read it
  * (src/app/live-zh.js patterns).
  */
 export function WithdrawalStatus({ open, last, isOwner, onCancel, busy }) {
   if (open) {
-    const where = open.status === "paying" ? "TSC is sending it" : "Waiting for TSC";
+    if (!(isOwner && open.status === "requested")) return null;
     return (
-      <p className="payout-balance-line" role="status" data-testid="withdrawal-open">
-        <span>{`Withdrawal of ${formatMoney(open.amount_cents, open.currency)} to ${open.paid_to}: ${where}.`}</span>
-        {isOwner && open.status === "requested" ? <> <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={onCancel}>Cancel withdrawal</button></> : null}
+      <p className="payout-balance-line" data-testid="withdrawal-open">
+        <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={onCancel}>Cancel withdrawal</button>
       </p>
     );
   }

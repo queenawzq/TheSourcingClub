@@ -2401,14 +2401,14 @@ async function main() {
     await page.locator('[data-testid="withdraw-balance"]').click();
     await waitFor(page, '[data-testid="withdraw-fee"]', 10000);
     const withdrawDialog = await page.locator(".payout-modal").innerText();
-    check(/Available: \$95\.00/.test(withdrawDialog) && /Fee: \$50\.00, taken from the amount/.test(withdrawDialog) && /You receive: \$45\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
+    check(/Available: \$95\.00/.test(withdrawDialog) && /Fee: \$50\.00( \([^)]*\))?, taken from the amount/.test(withdrawDialog) && /You receive: \$45\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
       "the dialog offers all of it, with the US$50 bank transfer fee taken from it, what arrives and when");
     await record(page, "Withdraw", "the whole balance, prefilled; the fee and the timing before it asks");
     // Two presses in the same tick (Stagehand's locator has no dblclick).
     await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
     await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
-    check(/Withdrawal of \$95\.00 to .+: Waiting for TSC\./.test(await page.locator('[data-testid="withdrawal-open"]').innerText()),
-      "the request waits for TSC, on the card");
+    check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()),
+      "the request waits for TSC: the owner can cancel it from the card");
     const { data: asked } = await db.from("factory_withdrawals").select("id, status, provider").eq("org_id", factoryOrg.id);
     check(asked.length === 1 && asked[0].status === "requested" && asked[0].provider === "bank", "a double click asks once, by bank");
 
@@ -2530,11 +2530,11 @@ async function main() {
       await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
       await page.locator('[data-testid="withdraw-balance"]').click();
       await waitFor(page, '[data-testid="withdraw-fee"]', 10000);
-      const feeShown = await within(page, async () => /Fee: \$[\d.]+, taken from the amount/.test(await page.locator('[data-testid="withdraw-fee"]').innerText()));
+      const feeShown = await within(page, async () => /Fee: \$[\d.]+( \([^)]*\))?, taken from the amount/.test(await page.locator('[data-testid="withdraw-fee"]').innerText()));
       check(feeShown !== null, "PayPal's fee is said before the factory asks");
       await page.locator('[data-testid="withdraw-confirm"]').click();
       await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
-      check(/Waiting for TSC/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC");
+      check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC: the owner can cancel it");
       check(await page.evaluate(() => document.querySelector('[data-testid="withdraw-balance"]')?.disabled === true), "and a second can't be asked while it waits");
 
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });

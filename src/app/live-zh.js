@@ -152,8 +152,6 @@ const PATTERNS = [
   [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (m, inner) => `你需要 ${m[2]} 的「${inner(m[1]).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
   [/^Add (.+) to strengthen this profile\.$/, (m) => profileTodo(m[1])],
   // Withdrawing from the balance (src/app/order/WithdrawFromBalance.jsx); amounts and addresses kept.
-  [/^Withdrawal of (\S+) to (.+): Waiting for TSC\.$/, (m) => `提现 ${m[1]} 至 ${m[2]}：等待 TSC 处理。`],
-  [/^Withdrawal of (\S+) to (.+): TSC is sending it\.$/, (m) => `提现 ${m[1]} 至 ${m[2]}：TSC 正在发送。`],
   [/^Withdrawal of (\S+) declined: (.+)$/, (m, inner) => `提现 ${m[1]} 被拒绝：${inner(m[2])}`, { free: true }],
   [/^Withdrawal of (\S+) did not go through\. The amount is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。该金额已退回你的余额。`],
   [/^Paid out (\S+) to (.+) \(fee (\S+); you receive (\S+)\)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}（手续费 ${m[3]}；你收到 ${m[4]}）。`],
