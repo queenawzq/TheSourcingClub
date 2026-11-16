@@ -1093,6 +1093,7 @@ export const factoryMainZhText = {
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
   "Completed": "已完成",
+  "Failed": "失败",
   "In production": "生产中",
   // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
   "Bank account (Stripe)": "银行账户（Stripe）",

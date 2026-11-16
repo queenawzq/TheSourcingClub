@@ -26,13 +26,14 @@ import {
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { can } from "../../lib/domain/org.js";
 import { formatMoney } from "../../lib/money.js";
+import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { earningPaid, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { earningPaid, earningStatus, earningsSummaryFor, factoryAmount, grossAmount, handPaidFigures, payoutFee, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
 import "./payout.css";
@@ -321,10 +322,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       // A brand pays the step plus TSC's fee; the factory earns the step.
       note: [
-        row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+        // With a payout fee the amount is what the factory received, so the step is said here.
+        payoutFee(row) > 0
+          ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`
+          : row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
-        // The provider's payout fee, taken from this payment (src/shared/withdrawal-fees.mjs): the same figures as the bell.
-        Number(row.payout_fee_cents) > 0 ? `Fee ${formatMoney(row.payout_fee_cents, row.currency)}, taken from it: you receive ${formatMoney(Number(row.amount_cents) - Number(row.payout_fee_cents), row.currency)}.` : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row),
       amount: factoryAmount(row),

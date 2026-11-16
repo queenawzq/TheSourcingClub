@@ -70,13 +70,13 @@ export function useManualPayouts(orgId) {
     const [rows, owedRows] = await Promise.all([
       supabase.from("factory_payout_accounts").select(COLUMNS).eq("org_id", orgId)
         .order("is_primary", { ascending: false }).order("created_at"),
-      supabase.from("order_payments").select("amount_cents, currency, production_orders!inner (factory_org_id)")
+      supabase.from("order_payments").select("amount_cents, payout_fee_cents, currency, production_orders!inner (factory_org_id)")
         .eq("state", "confirmed").not("release_requested_at", "is", null)
         .eq("production_orders.factory_org_id", orgId),
     ]);
     const list = unwrap(rows, "load your payout accounts");
     setAccounts(list);
-    setOwed(unwrap(owedRows, "load what TSC owes you").map((row) => ({ amount: Number(row.amount_cents), currency: row.currency })));
+    setOwed(unwrap(owedRows, "load what TSC owes you").map((row) => ({ amount: Number(row.amount_cents) - (Number(row.payout_fee_cents) || 0), currency: row.currency })));
     return list;
   }, [orgId]);
 

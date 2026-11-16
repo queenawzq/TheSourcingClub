@@ -1,6 +1,14 @@
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 
-export const factoryAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
+/** The step as earned, before any payout fee. */
+export const grossAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
+/** The provider's payout fee the factory paid on it (src/shared/withdrawal-fees.mjs), recorded before the money moved. */
+export const payoutFee = (row) => Math.max(0, Number(row?.payout_fee_cents) || 0);
+/**
+ * What the factory receives for a payment: the step less the payout fee. The
+ * one figure for the row, the balance, the card and the summary tiles.
+ */
+export const factoryAmount = (row) => Number(grossAmount(row)) - payoutFee(row);
 
 /** Keep currencies separate: a converted bank withdrawal is not a USD total. */
 export function currencyTotals(rows) {
@@ -157,7 +165,8 @@ export function withdrawalRows(earnings, method = null) {
       note: attempt.status === "failed" ? (detailsChangedSince(attempt, method) ? null : failureNote(attempt)) : sentToOldAddress(attempt, method) ? WILL_RESEND : waitingOnDetails(attempt) ? askFor(attempt) : null,
       status: waitingOnDetails(attempt) ? "Waiting" : WITHDRAWAL_STATUS[attempt.status],
       failed: attempt.status === "failed",
-      amount: -Number(attempt.amount_cents),
+      // What left for the factory: the attempt less the payout fee taken from it.
+      amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
     if (row.state !== "released" || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
     const bank = row.bank_payouts;

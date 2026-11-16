@@ -23,7 +23,7 @@ const methodLines = {
   stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
   wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
   wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
-  bank: ["Fee: 0% from TSC; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
+  bank: ["Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
   // PayPal usually lands within minutes of staff sending it.
   paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
   paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
