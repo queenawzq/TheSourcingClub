@@ -1441,6 +1441,21 @@ async function approveOpenStep(order, title, vendor = factory) {
   must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
 }
 
+/**
+ * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
+ * its withdrawal balance, so the step is paid by a withdrawal staff sent by
+ * bank, recorded as the server would.
+ */
+async function withdrawnByHand(org, payment, reference) {
+  const withdrawal = must(await admin.from("factory_withdrawals").insert({
+    org_id: org.id, provider: "bank", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
+    paid_to: "your bank account", decided_by: adminUser.id,
+  }).select("id").single(), `a withdrawal for ${reference}`);
+  must(await admin.rpc("record_withdrawal", {
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 0, receives: payment.amount_cents, receives_in: "USD",
+  }), `paid by hand: ${reference}`);
+}
+
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
 //    by hand, as staff do for a factory with no Stripe account), then the
 //    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
@@ -1524,9 +1539,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-must(await adminUser.client.rpc("release_payment_to_factory", {
-  target_payment: hopsackFit.id, note: "DEMO-20260001",
-}), "mark the blazer's fit sample paid");
+await withdrawnByHand(tradingOrg, hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,

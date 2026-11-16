@@ -13,6 +13,7 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
+import { WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -316,6 +317,10 @@ export default function StripePayoutCard({
   const [methodMenu, setMethodMenu] = useState(null);
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
+  // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
+  const fromBalance = useWithdrawalBalance(org.id, Boolean(handFigures) && renderCard);
+  const [cancellingWithdrawal, setCancellingWithdrawal] = useState(false);
+  const [withdrawalError, setWithdrawalError] = useState(null);
   // Remove and Add are TSC's own steps; Stripe's form does the last part,
   // since TSC cannot change an Express account's bank accounts itself.
   // `handover` remembers what the factory went there to do, so closing the
@@ -918,10 +923,19 @@ export default function StripePayoutCard({
             {/* Nothing rests in Stripe: the figures are the payments' own
                 states, the same as the staff board's. */}
             <span className="payment-metric-label">Balance (USD) <PaymentHelp label="Balance">Approved earnings TSC still has to send you, across all clients. Payments already on their way are shown separately.</PaymentHelp></span>
-            <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
+            <strong data-testid="payout-balance">{fromBalance.pool && fromBalance.available != null ? formatMoney(fromBalance.available, "USD")
+              : handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
+            <WithdrawalStatus open={fromBalance.open} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async () => {
+              setCancellingWithdrawal(true);
+              setWithdrawalError(null);
+              try { await cancelWithdrawal(fromBalance.open.id); } catch (failure) { setWithdrawalError(failure.message); }
+              setCancellingWithdrawal(false);
+              fromBalance.load();
+            }} />
+            {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           </> : <>
           <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
           <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(balance.available, balance.displayFx), "USD")
@@ -977,15 +991,28 @@ export default function StripePayoutCard({
             </>
           ) : manualAccount && !savedMethod ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Add account number</button>
+          ) : handPaid && fromBalance.pool && savedMethod ? (
+            <>
+            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || Boolean(fromBalance.open) || !(fromBalance.available > 0)}
+              title={fromBalance.open ? "You already have a withdrawal waiting" : fromBalance.available > 0 ? undefined : "Nothing to withdraw yet"}
+              onClick={() => { setWithdrawalError(null); setModal("withdraw-balance"); }}>Withdraw</button>
+            <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={openManage}>{cardWords.methods}</button>
+            </>
           ) : (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
           )
           : <>
+            {handPaid && fromBalance.pool ? <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled title="Only a company owner can withdraw">Withdraw</button> : null}
             {account?.transfers_active ? <button className="primary-btn compact-btn" type="button" disabled title="Only a company owner can withdraw">Withdraw to bank</button> : null}
             <button className={`${account?.transfers_active ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
       </section> : null}
+
+      {modal === "withdraw-balance" && fromBalance.available != null ? (
+        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id}
+          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); }} />
+      ) : null}
 
       {modal === "withdraw" && withdrawal ? (
         <PayoutModal title="Withdraw to bank" onClose={closeModal} actions={<>

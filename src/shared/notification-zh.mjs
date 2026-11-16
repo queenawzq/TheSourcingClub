@@ -170,6 +170,10 @@ const TITLES = [
   ["payment_sent", /^(.+) says a payment is on its way$/, (who) => `${who} 表示付款已在途中`],
   ["funds_released", amountRe("^AMT released to you$"), (amount) => `${amount} 已打款给你`],
   ["funds_released", amountRe("^AMT paid out to you$"), (amount) => `${amount} 已支付给你`],
+  ["withdrawal", amountRe("^Withdrawal of AMT requested$"), (amount) => `已申请提现 ${amount}`],
+  ["withdrawal", amountRe("^Withdrawal of AMT cancelled$"), (amount) => `提现 ${amount} 已取消`],
+  ["withdrawal", amountRe("^Withdrawal of AMT declined$"), (amount) => `提现 ${amount} 被拒绝`],
+  ["withdrawal", amountRe("^Withdrawal of AMT did not go through$"), (amount) => `提现 ${amount} 未成功`],
   ["payout_method_changed", /^Your payout methods changed$/, () => "你的收款方式已变更"],
   ["payout_method_changed", /^Withdrawals are paused$/, () => "提现已暂停"],
   ["payout_method_changed", /^Payments to you are paused$/, () => "向你的付款已暂停"],
@@ -289,6 +293,14 @@ const SENTENCES = [
   [/^Payoneer payment ID (.+)\.$/, (id) => `Payoneer 付款编号：${id}。`],
   [/^Sent by bank transfer against (.+)\.$/, (order) => `已通过银行转账支付，对应订单 ${order}。`],
   [/^Sent against (.+)\.$/, (order) => `对应订单 ${order}。`],
+  // Withdrawals
+  [/^To (.+)\.$/, (to) => `转至 ${bank(to)}。`],
+  [/^TSC will send it after checking\.$/, () => "TSC 审核后将发送。"],
+  [/^The amount is back in your balance\.$/, () => "该金额已退回你的余额。"],
+  [/^Check your withdrawal method, then withdraw again\.$/, () => "请检查你的提现方式，然后重新提现。"],
+  [/^Sent by bank transfer to (.+)\.$/, (to) => `已通过银行转账转入 ${bank(to)}。`],
+  [/^Sent to (.+)\.$/, (to) => `已转入 ${bank(to)}。`],
+  [amountRe("^Fee AMT; you receive AMT\\.$"), (fee, receives) => `手续费 ${fee}；你将收到 ${receives}。`],
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
   [/^Check your (.+)\.$/, (list) => (details(list) ? `请检查你的${details(list)}。` : null)],
   // Payout methods
@@ -331,6 +343,8 @@ const SENTENCES = [
 const TYPED_TAILS = [
   [" Their note: ", "品牌备注："],
   [" TSC's note: ", "TSC 备注："],
+  [" TSC's reason: ", "TSC 的理由："],
+  [" Reference: ", "参考号："],
 ];
 
 /** Sentences end at ". ", "? " or the end; a dot inside an address or an amount does not end one. */

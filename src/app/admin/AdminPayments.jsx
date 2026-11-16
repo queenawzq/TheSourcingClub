@@ -48,6 +48,8 @@ import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
+import WithdrawalsSection from "./AdminWithdrawals.jsx";
+import { adminWithdrawals, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
   const date = dateFrom(value);
@@ -738,13 +740,15 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
  * The board no longer shows bank-wire claims (`sent`) or payments refunded
  * after payout (`released`): John, Nov 7.
  */
-export function boardSections(rows, attempts = new Map()) {
+export function boardSections(rows, attempts = new Map(), pool = new Set()) {
   const cancelled = (row) => row.order_status === "cancelled";
   const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
+  // A step in a factory's withdrawal balance is paid when the factory asks (the Withdrawals tab).
+  const inBalance = (row) => pool.has(row.payment_id);
   const moving = (row) => underway(row, attempts.get(row.payment_id));
   const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {
-    payout: owed.filter((row) => !moving(row) && !refused(row)),
+    payout: owed.filter((row) => !moving(row) && !refused(row) && !inBalance(row)),
     // A cancelled order's held money is refunded automatically; only a refund
     // Stripe refused (20261108300000) needs a person.
     failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
@@ -770,10 +774,12 @@ export default function AdminPayments() {
   const [wise, setWise] = useState(null);
   const [paypal, setPaypal] = useState(null);
   const [setups, setSetups] = useState(() => new Map());
+  const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
 
   const load = useCallback(async () => {
     try {
-      const [board, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
+      const [board, tried, asked] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals()]);
+      setWithdrawals(asked);
       setRows(board);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
@@ -787,7 +793,8 @@ export default function AdminPayments() {
 
   /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
   const readBack = useCallback(async () => {
-    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
+    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal"),
+      syncWithdrawals("wise"), syncWithdrawals("paypal")]);
     if (fromWise.status === "fulfilled") {
       const answer = fromWise.value;
       setWise({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
@@ -847,7 +854,7 @@ export default function AdminPayments() {
   return (
     <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
-                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} />
+                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} withdrawals={withdrawals} />
     </AdminWorkspaceShell>
   );
 }
@@ -862,11 +869,12 @@ const TABS = [
  * rows. All four queues always have a tab.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map() }) {
+  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null }) {
   const [chosen, setChosen] = useState("payout");
-  const sections = boardSections(rows, attempts);
+  const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
+  if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
-  const tabs = TABS;
+  const tabs = withdrawals ? [...TABS, ["withdrawals", "Withdrawals"]] : TABS;
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
@@ -906,6 +914,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} /> : null}
 
     </main>
   );

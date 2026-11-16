@@ -703,6 +703,15 @@ select throws_ok(
   'a payment cannot be confirmed twice'
 );
 
+-- Paid step by step, the way a step approved before its factory withdrew from a
+-- balance still is (20261116200000): out of the withdrawal balance for this test.
+reset role;
+set local session_replication_role = replica;
+update public.order_payments set withdrawal_pool = false where id = (select pay_id from p3p);
+set local session_replication_role = origin;
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000005","email":"p3-admin@example.com","role":"authenticated"}';
+set local role authenticated;
+
 select lives_ok(
   $$select public.release_payment_to_factory((select pay_id from p3p), 'WIRE-REF-P3')$$,
   'the admin releases the funds'
