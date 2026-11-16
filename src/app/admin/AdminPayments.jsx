@@ -815,7 +815,8 @@ export default function AdminPayments() {
   }, [load]);
 
   // While money is on its way, keep reading: nobody else can tell staff.
-  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing");
+  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
+    || withdrawals.withdrawals.some((row) => row.status === "paying");
   useEffect(() => {
     if (!anyLive) return undefined;
     const timer = setInterval(readBack, 30000);

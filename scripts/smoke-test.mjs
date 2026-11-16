@@ -1449,7 +1449,18 @@ console.log("\nphase 3 — the order runs");
         ? ok("payment notifications carry their order, so the link in the feed resolves")
         : fail("a payment notification has no order to link to");
 
-      const released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
+      // This factory saved a bank account, so its approved step is in its withdrawal
+      // balance (20261116200000): it is paid by a withdrawal, recorded as the server would.
+      const { data: pooled } = await admin.from("order_payments").select("withdrawal_pool, amount_cents").eq("id", deposit.id).single();
+      let released;
+      if (pooled?.withdrawal_pool) {
+        const asked = await admin.from("factory_withdrawals").insert({
+          org_id: winner.factory_org_id, provider: "bank", amount_cents: pooled.amount_cents, paid_to: "smoke bank",
+        }).select("id").single();
+        released = asked.error ? asked : await admin.rpc("record_withdrawal", { target_withdrawal: asked.data.id, outcome: "paid", ref: "SMOKE-1", fee: 0, receives: pooled.amount_cents, receives_in: "USD" });
+      } else {
+        released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
+      }
       released.error ? fail("the payout is recorded", released.error)
                      : ok("the payout to the factory is recorded");
 

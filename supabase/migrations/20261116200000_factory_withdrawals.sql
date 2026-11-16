@@ -566,6 +566,10 @@ begin
          updated_at = now()
    where id = w.id returning * into w;
   if outcome = 'sent' then
+    -- The provider has it: pressing again only reads it back, so it need not wait.
+    if w.provider_ref is not null then
+      update public.factory_withdrawals set lease_until = null where id = w.id returning * into w;
+    end if;
     return w;
   elsif outcome = 'requeue' then
     if w.provider_ref is not null then
