@@ -162,6 +162,9 @@ const PATTERNS = [
   [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
   [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
   [/^Fee: (\S+), taken from the amount$/, (m) => `手续费：${m[1]}，从金额中扣除`],
+  [/^Fee: (about )?(\S+) \((?:([\d.]+%)|US\$([\d.]+) per payment)\), taken from the amount$/,
+    (m) => `手续费：${m[1] ? "约 " : ""}${m[2]}（${m[3] ?? `每笔 ${m[4]} 美元`}），从金额中扣除`],
+  [/^You receive: about (\S+)$/, (m) => `你将收到：约 ${m[1]}`],
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
 ];

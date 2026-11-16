@@ -116,7 +116,8 @@ export async function factoryQuote({ adapter, client, db, orgId, account, amount
   if (!asked) return { exact: false };
   const quote = checkQuote(adapter, ctx, asked);
   return {
-    exact: true, feeCents: quote.feeCents, receivesMinor: quote.receivesMinor, receivesCurrency: quote.receivesCurrency };
+    exact: !asked.estimate,
+    estimate: Boolean(asked.estimate), feeCents: quote.feeCents, receivesMinor: quote.receivesMinor, receivesCurrency: quote.receivesCurrency };
 }
 
 export async function approveWithdrawal({ adapter, client, caller, db, id, cnyConfirmed }) {

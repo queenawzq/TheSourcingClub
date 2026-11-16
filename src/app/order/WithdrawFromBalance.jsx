@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
-import { withdrawalFee, withdrawalFeeLine } from "../../shared/withdrawal-fees.mjs";
+import { FEE_FORMULAS, withdrawalFee, withdrawalFeeLine } from "../../shared/withdrawal-fees.mjs";
 
 /**
  * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
@@ -37,6 +37,22 @@ const TIMING = {
   bank: "Sent by bank transfer after TSC approves it; a few business days to arrive.",
 };
 export const withdrawalTiming = (provider) => TIMING[provider] ?? TIMING.bank;
+
+const dollars = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
+/**
+ * The rate beside the fee, from the fee module's own formulas: "2%",
+ * "US$0.25 per payment", "US$50 per payment"; for a quoted fee, its share of
+ * the amount.
+ */
+export function feeRate(provider, { country = "", feeCents, amountCents }) {
+  if (provider === "bank") return `${dollars(FEE_FORMULAS.bank.fixedCents)} per payment`;
+  if (provider === "paypal") {
+    const f = FEE_FORMULAS.paypal;
+    return country === f.home ? `${dollars(f.domesticFixedCents)} per payment` : `${f.bps / 100}%`;
+  }
+  if (!(amountCents > 0) || feeCents == null) return null;
+  return `${Math.round((feeCents / amountCents) * 1000) / 10}%`;
+}
 
 /** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
 export function useWithdrawalBalance(orgId, enabled = true) {
@@ -158,7 +174,7 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   // otherwise the fee line, and the exact figure comes when TSC sends it.
   const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee) && provider !== "bank");
   const asking = Boolean(fee) && provider !== "bank" && !exact;
-  const quoted = fee?.basis === "quote_needed" && !exact?.exact;
+  const quoted = fee?.basis === "quote_needed" && !exact?.exact && !exact?.estimate;
 
   async function confirm() {
     if (busy || amountProblem || !method || !fee || fee.refused || exact?.refused) return;
@@ -198,13 +214,18 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
         <ul data-testid="withdraw-fee">
           {asking ? <li>Checking the fee…</li>
             : exact?.exact ? <>
-              <li>{`Fee: ${formatMoney(exact.feeCents, "USD")}, taken from the amount`}</li>
+              <li>{`Fee: ${formatMoney(exact.feeCents, "USD")} (${feeRate(provider, { country, feeCents: exact.feeCents, amountCents })}), taken from the amount`}</li>
               <li>{`You receive: ${formatMoney(exact.receivesMinor, exact.receivesCurrency ?? "USD")}`}</li>
+            </> : exact?.estimate ? <>
+              <li>{`Fee: about ${formatMoney(exact.feeCents, "USD")} (${feeRate(provider, { country, feeCents: exact.feeCents, amountCents })}), taken from the amount`}</li>
+              <li>{`You receive: about ${formatMoney(exact.receivesMinor, exact.receivesCurrency ?? "USD")}`}</li>
+              <li>The exact fee is shown when TSC sends it.</li>
             </> : quoted ? <>
-              <li>{withdrawalFeeLine(provider, { country })}</li>
+              {/* No figure from Wise: its line, without the provider's word for the rate. */}
+              <li>{withdrawalFeeLine(provider, { country: "US" })}</li>
               <li>The exact fee is shown when TSC sends it.</li>
             </> : <>
-              <li>{`Fee: ${formatMoney(fee.feeCents, "USD")}, taken from the amount`}</li>
+              <li>{`Fee: ${formatMoney(fee.feeCents, "USD")} (${feeRate(provider, { country, feeCents: fee.feeCents, amountCents })}), taken from the amount`}</li>
               <li>{`You receive: ${formatMoney(fee.receivesCents, "USD")}`}</li>
             </>}
           <li>{withdrawalTiming(provider)}</li>

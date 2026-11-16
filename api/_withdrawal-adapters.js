@@ -82,18 +82,18 @@ export const wiseAdapter = {
     };
   },
   /**
-   * Only for an account Wise already knows (a recipient made on an earlier
-   * payout). Wise prices without one too, but its fee depends on the recipient
+   * Exact for an account Wise already knows (a recipient made on an earlier
+   * payout); otherwise an estimate, said as one. Wise prices without one too, but its fee depends on the recipient
    * (sandbox: US$3.63 without, US$9.54 with, for the same CNY account), so a
    * quote without one would show the factory the wrong fee. Creates nothing.
    */
   async factoryQuote(wise, ctx) {
-    if (!ctx.account.wiseRecipientId) return null;
     const quote = await wise.quote({
       sourceCurrency: ctx.currency, targetCurrency: ctx.account.wiseCurrency ?? wise.payoutCurrency,
       amountCents: ctx.amountCents, recipientId: ctx.account.wiseRecipientId ?? undefined,
     });
-    return { feeCents: quote.feeCents, leavesCents: quote.totalCents, receivesMinor: quote.arrivesCents, receivesCurrency: quote.arrivesCurrency, quote: null };
+    // Without a recipient it is an estimate: the factory reads "about".
+    return { feeCents: quote.feeCents, leavesCents: quote.totalCents, receivesMinor: quote.arrivesCents, receivesCurrency: quote.arrivesCurrency, quote: null, estimate: !ctx.account.wiseRecipientId };
   },
   async pay(wise, ctx, quote) {
     const transfer = await wise.createTransfer({
