@@ -41,6 +41,7 @@ import { useAuth } from "../../lib/auth.jsx";
 import {
   factoryStripeSetup, paymentBoard, releasePayment, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
+import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { cancelProviderPayout, payByProvider, previewProvider, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
@@ -289,6 +290,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const [problem, setProblem] = useState(null);
   // What the last press found, when the row itself would look unchanged.
   const [heard, setHeard] = useState(null);
+  // The last quote's "too small for the fee", kept after Cancel.
+  const [feeRefusal, setFeeRefusal] = useState(null);
   // A double click lands before the button can grey out. The database would
   // refuse the second press anyway, but its refusal would then sit on the row.
   const running = useRef(false);
@@ -321,7 +324,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     setWorking(true);
     setProblem(null);
     try {
-      setPreview(await previewProvider(provider, row.payment_id, statement));
+      const quoted = await previewProvider(provider, row.payment_id, statement);
+      setPreview(quoted);
+      // Too small for the fee: Pay stays disabled with that reason once the confirm is closed.
+      if (provider === "tazapay") setFeeRefusal(quoted?.refused ?? null);
       setStep("confirm");
     } catch (failure) {
       setProblem(failure);
@@ -424,12 +430,14 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
       <>
         {said}
         <span className="admin-sub admin-row-message" role="alert">
-          {provider === "tazapay" && preview.receivesCents != null
+          {provider === "tazapay" && preview.refused
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}, by Tazapay?`
+            : provider === "tazapay" && preview.receivesCents != null
             // The factory pays Tazapay's fee: it comes out of the step, and TSC pays exactly the step.
             ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}, by Tazapay? Tazapay fee ${moneyIn(preview.feeCents, row.currency)}, taken from it: the factory receives ${moneyIn(preview.receivesCents, row.currency)}, arriving ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)} (${preview.arrivesCurrency}). TSC pays ${moneyIn(preview.totalCents, row.currency)} in total.`
-            : provider === "wise" || provider === "tazapay"
-            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}${provider === "tazapay" ? ", by Tazapay" : ""}?${preview.feeCents == null ? "" : ` ${name} fee ${moneyIn(preview.feeCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)} in total. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)} (${preview.arrivesCurrency}).`}`
-            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
+            : provider === "wise"
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null || preview.refused ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}, arriving as ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`
+            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?${preview.feeCents == null || preview.refused ? "" : ` PayPal fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`}
         </span>
         {provider === "tazapay" && preview.country === "CN" ? (
           <span className="admin-sub admin-row-message">China payouts go out weekdays 9–5 China time. After 3pm, they go the next business day.</span>
@@ -442,7 +450,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
             <a href={preview.balancesUrl} target="_blank" rel="noreferrer">{`Open ${name}`}</a>
           </span>
         ) : null}
-        {short ? (
+        {preview.refused ? <span className="admin-error admin-row-message" data-testid="provider-fee-refused">{preview.refused}</span> : null}
+        {preview.refused ? null : short ? (
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
@@ -458,8 +467,14 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     );
   }
 
-  // Tazapay can't pay an incomplete account: say what's missing before anyone presses.
-  const blocked = provider === "tazapay" ? tazapayBlock(row) : null;
+  // Tazapay can't pay an incomplete account, or a step no bigger than its fee:
+  // say why before anyone presses. The fee refusal is the last quote's, or the
+  // last press's (a cancelled attempt that ended on it).
+  const feeBlocked = provider === "tazapay"
+    ? feeRefusal ?? (attempt?.status === "cancelled" && attempt.provider_status === "fee_too_large" ? attempt.staff_sentence : null)
+    : null;
+  const detailsBlocked = provider === "tazapay" ? tazapayBlock(row) : null;
+  const blocked = detailsBlocked ?? feeBlocked;
   const toldAlready = blocked && attempt?.status === "failed" && attempt.provider_status === "details_rejected" && !fixedSince;
 
   return (
@@ -467,9 +482,9 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
       {said}
       {lastFailed}
       {blocked && !lastFailed ? <span className="admin-error admin-row-message" data-testid="tazapay-blocked">{blocked}</span> : null}
-      {blocked && !toldAlready && !refusedDetails ? (
+      {detailsBlocked && !toldAlready && !refusedDetails ? (
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
-                onClick={() => run(() => tellFactoryToFixDetails(provider, row, blocked, false, tazapayProblemsOf(row).map((p) => p.field)), () => "The factory was told what to fix.")}>
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, detailsBlocked, false, tazapayProblemsOf(row).map((p) => p.field)), () => "The factory was told what to fix.")}>
           Tell the factory to fix its details
         </button>
       ) : null}
@@ -483,7 +498,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
               title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : blocked ?? undefined}
               onClick={() => {
                 setProblem(null);
-                if (provider === "paypal") { setPreview({}); setStep("confirm"); }
+                if (provider === "paypal") review();
                 else if (needsStatement) setStep("statement");
                 else review();
               }}>
@@ -494,6 +509,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
 }
 
 function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
+  // What the factory receives when staff pay it by bank: the wire fee comes out of it (src/shared/withdrawal-fees.mjs).
+  const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -546,11 +563,13 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
     ) : confirming ? (
       <>
         <span className="admin-sub admin-row-message" role="alert">
-          {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
+          {bankFee.refused
+            ? bankFee.refused
+            : `Sent ${formatMoney(bankFee.receivesCents, row.currency)} to ${row.factory_name} by bank? Bank transfer fee ${formatMoney(bankFee.feeCents, row.currency)}, paid by the factory, out of the ${formatMoney(row.amount_cents, row.currency)}: TSC pays ${formatMoney(row.amount_cents, row.currency)}, the amount.`}
           {row.payout_account_id ? ` To ${row.payout_holder || row.factory_name}, ${row.payout_bank}, ending ${row.payout_last4}.` : null}
           {` They will read: "${note.trim()}"`}
         </span>
-        <button type="button" className="admin-approve" disabled={busy}
+        <button type="button" className="admin-approve" disabled={busy || Boolean(bankFee.refused)}
                 data-testid="release-payment-confirm"
                 onClick={() => { setConfirming(null); onDecide(row, "release", note); }}>
           Yes, mark paid out

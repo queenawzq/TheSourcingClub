@@ -5,6 +5,9 @@ import { holdPayouts } from "./_stripe-payouts.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { cardReason } from "./_card-words.js";
 
+/** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
+const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
+
 /**
  * Payments held by TSC, through Stripe Connect: the parts every payment route
  * shares. The leading underscore keeps Vercel from serving this file.
@@ -470,7 +473,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
 
   let { data: account } = await db
     .from("stripe_connect_accounts")
-    .select("stripe_account_id, transfers_active")
+    .select("stripe_account_id, transfers_active, country")
     .eq("org_id", payment.production_orders.factory_org_id)
     .maybeSingle();
   if (!account?.transfers_active) {
@@ -486,6 +489,13 @@ export async function releasePayment({ stripe, db, paymentId }) {
     if (settled) return settled;
     return { released: false, reason: "the factory selected another payout method" };
   }
+
+  // The factory pays Stripe's payout fee (src/shared/withdrawal-fees.mjs):
+  // TSC-managed accounts keep fees.payer = application, so Stripe bills TSC
+  // for each payout, and the transfer holds that back. A payment no bigger
+  // than the fee is refused, nothing sent.
+  const tooSmall = await feeFor({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
+  if (tooSmall.refused) return { released: false, reason: tooSmall.refused };
 
   // A transfer credits earnings, never an automatic withdrawal to the bank.
   // Configure existing accounts before any money can reach them.
@@ -507,7 +517,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
   try {
     // A caller may have read the old account just before an upgrade completed.
     // The claim serialises against cutover; re-read its destination afterwards.
-    const fresh = await db.from("stripe_connect_accounts").select("stripe_account_id, transfers_active")
+    const fresh = await db.from("stripe_connect_accounts").select("stripe_account_id, transfers_active, country")
       .eq("org_id", payment.production_orders.factory_org_id).single();
     if (fresh.error) throw new Error(fresh.error.message);
     account = fresh.data;
@@ -520,10 +530,14 @@ export async function releasePayment({ stripe, db, paymentId }) {
       if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
     }
     if (already) {
+      await recordTransferFee(db, payment, already);
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
       return { released: true, reason: already.id };
     }
     foundNoTransfer = true;
+    const fee = await feeFor({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
+    if (fee.refused) throw Object.assign(new Error(fee.refused), { statusCode: 400 });
+    await rpc(db, "record_payout_fee", { target_payment: payment.id, fee: fee.feeCents });
 
     // One key per claim: Stripe's own retries inside this call reuse it, and
     // the next claim gets a new one, because Stripe replays a key's first
@@ -531,7 +545,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
     // could take transfers must not outlive it.
     const transfer = await stripe.transfers.create(
       {
-        amount: Number(payment.amount_cents),
+        amount: fee.receivesCents,
         currency: payment.currency.toLowerCase(),
         destination: account.stripe_account_id,
         // Tied to the brand's charge: the transfer waits for that money to be
@@ -539,7 +553,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
         source_transaction: payment.stripe_charge_id,
         transfer_group: payment.order_id,
         description: `${payment.production_orders.order_number}: payout`,
-        metadata: { payment_id: payment.id, order_id: payment.order_id },
+        metadata: { payment_id: payment.id, order_id: payment.order_id, payout_fee_cents: String(fee.feeCents) },
       },
       { idempotencyKey: `release-${payment.id}-${Date.parse(claimedAt)}` },
     );
@@ -561,6 +575,12 @@ export async function releasePayment({ stripe, db, paymentId }) {
   }
 }
 
+/** What the factory paid on a transfer that went: the step less what was sent. */
+async function recordTransferFee(db, payment, transfer) {
+  const fee = Number(payment.amount_cents) - Number(transfer.amount);
+  if (fee > 0) await rpc(db, "record_payout_fee", { target_payment: payment.id, fee });
+}
+
 /** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about whether a transfer exists. */
 function stripeMadeNoTransfer(failure) {
   return [400, 402, 403, 404].includes(failure?.statusCode);
@@ -580,6 +600,7 @@ async function settleStartedRelease({ stripe, db, payment }) {
     if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
   }
   if (already) {
+    await recordTransferFee(db, payment, already);
     await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
     return { released: true, reason: already.id };
   }

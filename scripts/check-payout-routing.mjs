@@ -50,16 +50,21 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
 {
   const charged = { ...payment, amount_cents: 50000, charged_cents: 55129, fee_bps: 700, processing_fee_bps: 290, processing_fee_fixed_cents: 30 };
   const sent = [];
+  const fees = [];
   const db = {
     from(table) { const q = { select() { return q; }, eq() { return q; },
-      async maybeSingle() { return { data: table === 'order_payments' ? charged : { stripe_account_id: 'acct_route_fake', transfers_active: true } }; },
-      async single() { return { data: { stripe_account_id: 'acct_route_fake', transfers_active: true } }; } }; return q; },
-    async rpc(name) { return { data: name === 'uses_stripe_payout' ? true : name === 'claim_payment_release' ? '2026-11-08T00:00:00Z' : null }; },
+      async maybeSingle() { return { data: table === 'order_payments' ? charged : { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'US' } }; },
+      async single() { return { data: { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'US' } }; } }; return q; },
+    async rpc(name, args) { if (name === 'record_payout_fee') fees.push(args.fee); return { data: name === 'uses_stripe_payout' ? true : name === 'claim_payment_release' ? '2026-11-08T00:00:00Z' : null }; },
   };
   const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } }, accounts: { async update() {} },
     transfers: { list: async function* () {}, async create(args) { sent.push(args); return { id: 'tr_step_only' }; } } };
   assert.deepEqual(await releasePayment({ db, stripe, paymentId: charged.id }), { released: true, reason: 'tr_step_only' });
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].amount, 50000, 'the factory is sent the $500.00 step, not the $551.29 the brand was charged');
+  // Less Stripe's payout fee, which the factory pays (src/shared/withdrawal-fees.mjs):
+  // US: 0.25% + 25 cents on what is sent, so 49,850 + 125 + 25 = the step.
+  assert.equal(sent[0].amount, 49850, 'the factory is sent the $500.00 step less the payout fee, not the $551.29 the brand was charged');
+  assert.deepEqual(fees, [150], 'the fee is recorded before the transfer');
+  assert.equal(sent[0].metadata.payout_fee_cents, '150');
 }
 console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read');

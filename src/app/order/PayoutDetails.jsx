@@ -25,14 +25,16 @@ import {
 } from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { can } from "../../lib/domain/org.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
+import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { earningStatus, earningsSummaryFor, factoryAmount, grossAmount, handPaidFigures, payoutFee, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -132,6 +134,8 @@ function showTabInAddress(key) {
 }
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
+  // A select's options are not reached by the language layer, so "All clients" is drawn here.
+  const uiLanguage = useUiLanguage();
   // Payouts stay with owners; cards and credits are Settings access.
   const canSettings = can(org, "settingsAccess");
   const [tab, setTab] = useState(() => {
@@ -224,7 +228,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -319,7 +323,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       // A brand pays the step plus TSC's fee; the factory earns the step.
       note: [
-        row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+        // With a payout fee the amount is what the factory received, so the step is said here.
+        payoutFee(row) > 0
+          ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`
+          : row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row),
@@ -429,7 +436,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <label className="payments-client-filter">
             <span>Filter by client</span>
             <select aria-label="Filter by client" value={client} disabled={!earningsShown} onChange={(event) => setClient(event.target.value)}>
-              <option value="All clients">All clients</option>
+              <option value="All clients">{uiLanguage === "zh" ? "所有客户" : "All clients"}</option>
               {clients.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
             </select>
           </label>

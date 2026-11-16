@@ -15,20 +15,21 @@ for (const label of ["Balance", "Available balance", "Pending balance"]) {
 for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies", "Choose where your company is registered."]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
-// Nov 12 call: each withdrawal method says its fee and its timing, and none promises instant.
+// Each withdrawal method names its provider, says its fee as a percentage and
+// its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
 const methodLines = {
   stripeUs: ["Fee: 0.25% + US$0.25 per payment, taken from it", "Not instant: usually 1–4 business days after you withdraw"],
   stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
   wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
   wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
-  bank: ["Fee: 0% from TSC; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
+  bank: ["Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
   // PayPal usually lands within minutes of staff sending it.
   paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
   paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
   // Mainland China and Hong Kong where this deploy has Tazapay (src/shared/tazapay-payout.mjs).
-  tazapayCN: ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
-  tazapayHK: ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
+  tazapayCN: ["Fee: about US$5.44 per payment to China, quoted when sent and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
+  tazapayHK: ["Fee: about US$3.23 per payment to Hong Kong, quoted when sent and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
 };
 assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
@@ -67,6 +68,12 @@ assert.ok(factoryZh.includes("  ...WITHDRAWAL_FEE_LINES_ZH,"), "the factory dict
 for (const text of [...new Set(Object.values(info.PAYOUT_METHOD_INFO).flat()), "Bank account (Stripe)", "International bank transfer (Wise)", "Bank transfer (Wise)"]) {
   assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`) || WITHDRAWAL_FEE_LINES_ZH[text], `the factory dictionary has Chinese for: ${text}`);
 }
+assert.ok(card.includes("<strong>{listLabel(method)}</strong>") && card.includes("<strong>{manualListLabel(row)}</strong>") && card.includes("(Wise)`, row.account_number_last4)"), "the saved methods list names the provider as the chooser does");
+assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferName(country)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");
+// A US factory's Wise option, its dialog and its saved row say "Bank transfer": US$ to US$ is not international.
+assert.ok(card.includes('export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) && country !== "US" ? "International bank transfer" : LIST_WORDS.bank);'), "a US bank transfer is not called international");
+// "(Wise)" on a saved bank row only where the server pays it through Wise: a Wise recipient on the row (20261108163459).
+assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? '), "the saved list says (Wise) only on a row Wise pays (the balance card has no method line)");
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
@@ -78,8 +85,6 @@ assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", {
 assert.equal(info.tazapayMethod("CN"), "tazapayCN");
 assert.equal(info.tazapayMethod("HK"), "tazapayHK");
 assert.equal(info.tazapayMethod("TW"), null, "Tazapay pays China and Hong Kong only");
-assert.deepEqual(info.payoutMethodLines("tazapayCN"), ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
-assert.deepEqual(info.payoutMethodLines("tazapayHK"), ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
 assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");

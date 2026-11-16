@@ -216,20 +216,25 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
         },
       });
       const step = Number(amountMinor);
-      const tooSmall = () => new TazapayFailure("too_small", `This payment is not more than ${LABEL}'s fee to send it, so nothing would arrive. Nothing was sent.`);
+      const feeOf = (quote) => Number(quote?.fee_info?.fixed?.in_holding_currency ?? 0) + Number(quote?.fee_info?.variable?.in_holding_currency ?? 0);
+      // Too small to send: the fee, read from a quote of a larger amount, so the
+      // refusal can name it (withdrawalFee() words it). Nothing is sent.
+      const tooSmall = async () => {
+        const probe = await ask({ holding: step + 10000 });
+        return { tooSmall: true, rate: Number(probe?.exchange_rates?.holding_to_payout) || null, payoutMinor: 0, payoutCurrency: route.currency, totalMinor: step, feeMinor: feeOf(probe) };
+      };
       let first;
       try {
         first = await ask({ holding: step });
       } catch (failure) {
         // Tazapay refuses a holding amount its fee would swallow (20003, "valid amount").
-        if (failure instanceof TazapayFailure && /20003/.test(failure.message)) throw tooSmall();
+        if (failure instanceof TazapayFailure && /20003/.test(failure.message)) return await tooSmall();
         throw failure;
       }
       const rate = Number(first?.exchange_rates?.holding_to_payout);
       if (!(rate > 0)) throw new TazapayFailure("quote_unavailable", `${LABEL} gave no rate for ${route.currency}. Try again in a minute.`);
-      const feeOf = (quote) => Number(quote?.fee_info?.fixed?.in_holding_currency ?? 0) + Number(quote?.fee_info?.variable?.in_holding_currency ?? 0);
       let payoutMinor = Number(first?.payout_info?.amount);
-      if (!(payoutMinor > 0)) throw tooSmall();
+      if (!(payoutMinor > 0)) return await tooSmall();
       for (let tries = 0; tries < 4; tries += 1) {
         const back = await ask({ payout: payoutMinor });
         const total = Number(back?.holding_info?.amount);

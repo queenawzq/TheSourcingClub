@@ -69,6 +69,9 @@ const PROPOSED = /^(.+) proposed cancelling: (.*)$/;
 const YOU_PROPOSED = /^You proposed cancelling: (.*)$/;
 
 const PATTERNS = [
+  // The payout fee the factory paid: its payments row (PayoutDetails) and the paid notification.
+  [/^Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `提现手续费 ${m[1]} 从该笔款项中扣除：你收到 ${m[2]}。`],
+  [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
@@ -80,6 +83,8 @@ const PATTERNS = [
   [/^(\d{1,2}):(\d{2}) (AM|PM)( [A-Z]{2,5})?$/, (m) => `${clock(m[1], m[2], m[3])}${m[4] ?? ""}`],
   [/^just now$/i, () => "刚刚"],
   [/^Bank transfer \(Tazapay\) ····(\d{4})$/, (m) => `银行转账（Tazapay）····${m[1]}`],
+  // A bank and its last four digits on a withdrawal row: "Bank of China ending 5001".
+  [/^(.{1,80}) ending (\d{4})$/, (m) => `${m[1]} 尾号 ${m[2]}`],
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],
   [/^Last message (.+)$/, (m, inner) => `最新消息 ${inner(m[1])}`],
   [/^(\d+) (?:min|mins|minute|minutes) ago$/, (m) => `${m[1]} 分钟前`],

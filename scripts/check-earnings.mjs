@@ -121,6 +121,16 @@ const buckets = (rows) => { const s = earningsSummaryFor(rows, "All clients"); r
 assert.equal(buckets(money), usd(earningsSummaryFor(money, "All clients").total), "with a Stripe payout among them, the figures add up");
 assert.equal(usd(moneySummary.total), usd(moneySummary.approval) + usd(moneySummary.pending) + usd(moneySummary.paid), "total = awaiting + pending + paid out");
 assert.equal(factoryAmount(money[0]), 300);
+// A payout fee (src/shared/withdrawal-fees.mjs) comes off the one figure: the row,
+// the summary and the withdrawal all say what the factory received.
+{
+  const paidWithFee = { id: "fee1", state: "released", amount_cents: 6500, charged_cents: 7194, payout_fee_cents: 128, currency: "USD", released_at: "2026-11-16T10:00:00Z",
+    order: { brand_org_id: "b1" }, provider_payouts: [{ id: "x1", provider: "paypal", status: "paid", paid_to: "p@example.com", amount_cents: 6500, money_left_at: "t", paid_at: "2026-11-16T10:00:00Z" }] };
+  assert.equal(factoryAmount(paidWithFee), 6372, "the earning is what arrived");
+  assert.equal(usd(earningsSummaryFor([paidWithFee], "All clients").paid), 6372, "Paid out is what arrived");
+  assert.equal(withdrawalRows([paidWithFee])[0].amount, -6372, "the withdrawal is what left for the factory");
+  assert.equal(factoryAmount({ ...paidWithFee, payout_fee_cents: null }), 6500, "no fee, the step");
+}
 
 // Staff's bank note reaches the factory only if a person typed one.
 const bankPaid = { state: "released", released_by: "staff", released_note: " Wire ref HSBC-7788 " };
@@ -160,10 +170,14 @@ const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", impor
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
+// The one exception: a withdrawal method names the provider that pays it
+// (src/shared/payout-method-info.mjs).
+const PROVIDER_NAMED = new Set(["Bank account (Stripe)"]);
 for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "order/PayoutSetupSteps.jsx", "order/AddPayoutMethodForm.jsx", "order/payment-summary.mjs", "order/StripeConnectEmbed.jsx", "order/LiveFund.jsx", "payments/LiveBrandPaymentDetail.jsx"]) {
   const code = readFileSync(new URL(`../src/app/${file}`, import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
+    if (file === "order/StripePayoutCard.jsx" && PROVIDER_NAMED.has(text.trim())) continue;
     assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
   }
 }

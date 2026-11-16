@@ -62,8 +62,11 @@ export const PAYOUT_METHOD_INFO = {
   bank: [withdrawalFeeLine("bank"), SENT_AFTER_RELEASE],
   paypal: [withdrawalFeeLine("paypal"), "Not instant: sent once released"],
   paypalUs: [withdrawalFeeLine("paypal", { country: "US" }), "Not instant: sent once released"],
-  tazapayCN: [`${withdrawalFeeLine("tazapay")}; arrives in CNY at Tazapay's rate`, TAZAPAY_TIMING],
-  tazapayHK: [`${withdrawalFeeLine("tazapay")}; arrives in HKD at Tazapay's rate`, TAZAPAY_TIMING],
+  // Tazapay quotes its fee per payment; the figure here is the typical one seen on
+  // its sandbox quotes (Nov 16), stated as "about". The exact fee is on the
+  // payment's row and notice once it is sent (record_payout_fee).
+  tazapayCN: ["Fee: about US$5.44 per payment to China, quoted when sent and taken from it; arrives in CNY at Tazapay's rate", TAZAPAY_TIMING],
+  tazapayHK: ["Fee: about US$3.23 per payment to Hong Kong, quoted when sent and taken from it; arrives in HKD at Tazapay's rate", TAZAPAY_TIMING],
 };
 
 /** The chooser's Tazapay option for a country, or null where Tazapay doesn't pay. */

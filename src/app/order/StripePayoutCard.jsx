@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
-import { chooserMethod, payoutMethodLines, tazapayMethod } from "../../shared/payout-method-info.mjs";
+import { chooserMethod, paidByWise, payoutMethodLines, tazapayMethod } from "../../shared/payout-method-info.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
@@ -71,8 +71,14 @@ function methodLabel(method) {
   return endingIn(method.type === "card" ? "Debit card" : "Bank account", method.last4);
 }
 
+/** The list's name for a saved method: the chooser's, provider included ("Bank account (Stripe) ····2345"). */
+function listLabel(method) {
+  return method.type === "card" ? methodLabel(method) : endingIn("Bank account (Stripe)", method.last4);
+}
+
 /** Where a country has two bank options, this one needs telling from "Bank account". */
-export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) ? "International bank transfer" : LIST_WORDS.bank);
+// A US bank is paid US$ to US$ at home: a bank transfer, not an international one.
+export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) && country !== "US" ? "International bank transfer" : LIST_WORDS.bank);
 
 /** "Re-enter IBAN", "Re-enter account number": the second field says what the first one is. */
 export const reEnter = (label) => `Re-enter ${/^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label}`;
@@ -221,7 +227,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{tazapay ? "Bank transfer (Tazapay)" : supported ? "Bank account" : words.bank}</strong></div><MethodLines method={tazapay ?? chooserMethod("bank", { supported, country })} /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{tazapay ? "Bank transfer (Tazapay)" : supported ? "Bank account (Stripe)" : paidByWise(country) ? `${words.bank} (Wise)` : words.bank}</strong></div><MethodLines method={tazapay ?? chooserMethod("bank", { supported, country })} /></div>
                   <button className="primary-btn compact-btn" type="button" data-testid={tazapay ? "payout-set-up-tazapay" : "payout-set-up-bank"} disabled={busy}
                           onClick={tazapay ? onTazapay : onBank}>{words.setUp}</button>
                 </article>
@@ -233,7 +239,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 {supported ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)}</strong></div><MethodLines method={chooserMethod("wise", { supported, country })} /></div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)} (Wise)</strong></div><MethodLines method={chooserMethod("wise", { supported, country })} /></div>
                     <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
                             onClick={onWise}>{words.setUp}</button>
                   </article>
@@ -872,6 +878,10 @@ export default function StripePayoutCard({
   // Everything Tazapay needs but the number, which has its own line.
   const tazapayMissing = (row) => isTazapayRow(row)
     && tazapayDetailsProblems({ ...row, bank_country: row.bank_country.trim().toUpperCase() }).some((p) => p.field !== "full_number");
+  // A bank Wise pays says so, as in the chooser. Wise pays a bank row only with a
+  // Wise recipient on it (the server's rule, 20261108163459); without one, staff
+  // pay it by bank, China included.
+  const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? endingIn(`${transferName(row.bank_country)} (Wise)`, row.account_number_last4) : manualLabel(row));
 
   const manualRemovalLine = !removingManual ? null : manualRemovalRefusal
     ?? (manualSuccessor
@@ -1026,7 +1036,7 @@ export default function StripePayoutCard({
             {account && !account.transfers_active ? (
               <article className="payout-method-row" data-testid="payout-unfinished-bank">
                 <div className="payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                <div className="payout-method-name"><strong>Bank account</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
+                <div className="payout-method-name"><strong>Bank account (Stripe)</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
                 {verifying ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
               </article>
             ) : null}
@@ -1036,7 +1046,7 @@ export default function StripePayoutCard({
                   {BANK_ICON}
                 </div>
                 <div className="payout-method-name">
-                  <strong>{methodLabel(method)}</strong>
+                  <strong>{listLabel(method)}</strong>
                   {method.name && !/stripe/i.test(method.name) ? <span>{method.name}</span> : null}
                 </div>
                 {method.default && payoutRoute === "stripe" ? <span className="payout-method-default">Default</span> : null}
@@ -1058,7 +1068,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">{isPaypal(row)
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
-                  : <><strong>{manualLabel(row)}</strong><span>{row.number_changed_at ? (tazapayMissing(row) ? "Add the missing bank details." : row.bank_name) : "Add your full account number."}</span></>}</div>
+                  : <><strong>{manualListLabel(row)}</strong><span>{row.number_changed_at ? (tazapayMissing(row) ? "Add the missing bank details." : row.bank_name) : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>

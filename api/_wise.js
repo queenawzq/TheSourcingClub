@@ -135,41 +135,34 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
     },
 
     /**
-     * TSC pays Wise's fee on top, so the quote fixes what arrives: the whole step,
-     * converted at Wise's rate. The rate comes from a first quote of the step; the
-     * second fixes the target, and its sourceAmount is what leaves TSC's balance,
-     * fee included (seen on the sandbox). The fee depends on the recipient, so one
-     * is always named.
+     * The factory pays Wise's fee (src/shared/withdrawal-fees.mjs): the quote is
+     * asked with the amount as the SOURCE, so the fee is inside it, TSC's
+     * balance goes down by exactly the amount, and what arrives is
+     * amount − fee, converted at Wise's rate. The fee depends on the recipient,
+     * so one is always named.
      *
      * A quote larger than the balance comes back with the balance route disabled and
      * its figures intact (seen on the sandbox): the caller says how short it is.
      */
     async quote({ sourceCurrency, targetCurrency = payoutCurrency, amountCents, recipientId }) {
-      const ask = async (amounts) => {
-        const answer = await call("POST", `/v3/profiles/${profile}/quotes`, {
-          sourceCurrency, targetCurrency, ...amounts,
-          targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
-        });
-        if (answer.status >= 300) throw refusedPaying(answer, "quote this payment");
-        return answer.body;
-      };
+      const answer = await call("POST", `/v3/profiles/${profile}/quotes`, {
+        sourceCurrency, targetCurrency, sourceAmount: Number(decimal(amountCents)),
+        targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
+      });
+      if (answer.status >= 300) throw refusedPaying(answer, "quote this payment");
+      const body = answer.body;
       const unavailable = new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
-      const sameCurrency = sourceCurrency === targetCurrency;
-      const rate = sameCurrency ? 1 : Number((await ask({ sourceAmount: Number(decimal(amountCents)) })).rate);
-      if (!(rate > 0)) throw unavailable;
-      const wanted = Math.round(Number(amountCents) * rate);
-      const body = await ask({ targetAmount: Number(decimal(wanted)) });
       const option = (body.paymentOptions ?? []).find((o) => o.payIn === "BALANCE");
       const balanceRefused = Boolean(option?.disabled) && option.disabledReason?.code === BALANCE_TOO_LOW;
       if (!option || (option.disabled && !balanceRefused)) throw unavailable;
-      const arrivesCents = cents(option.targetAmount);
-      // Wise rounds a currency without cents to a whole unit, and nothing else moves it.
-      if (Math.abs(arrivesCents - wanted) > (sameCurrency ? 0 : 100)) throw unavailable;
+      const totalCents = cents(option.sourceAmount);
+      // The fee is inside the amount: anything else would charge TSC more.
+      if (totalCents !== Number(amountCents)) throw unavailable;
       return {
         id: body.id,
         feeCents: cents(option.fee?.total),
-        totalCents: cents(option.sourceAmount),
-        arrivesCents,
+        totalCents,
+        arrivesCents: cents(option.targetAmount),
         arrivesCurrency: targetCurrency,
         rate: body.rate ?? null,
         balanceRefused,

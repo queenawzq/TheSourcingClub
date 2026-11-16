@@ -185,6 +185,7 @@ function world({ claim = {}, account = ACCOUNT, registration = USCC, balance = 1
     rpc: async (name, args) => {
       if (name === "record_provider_attempt") w.records.push(args);
       if (name === "finish_provider_payout") w.finishes.push(args);
+      if (name === "record_payout_fee") w.calls.push(["db", "fee", args.fee]);
       if (name === "set_tazapay_beneficiary") return { data: true };
       return { data: null, error: null };
     },
@@ -225,6 +226,9 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert(w.calls.findIndex((c) => c[1] === "payout") > w.calls.findIndex((c) => c[1] === "beneficiary"), "the payee is made before the payout");
   assert(w.records.some((r) => r.new_ref === "pot_new" && r.new_stage === "sent"), "the payout's id is kept the moment it exists");
   assert.equal(w.finishes.length, 0, "nothing finished yet");
+  const feeAt = w.calls.findIndex((c) => c[0] === "db" && c[1] === "fee");
+  assert(feeAt >= 0 && w.calls[feeAt][2] === 544, "Tazapay's quoted fee is recorded on the payment (record_payout_fee)");
+  assert(feeAt < w.calls.findIndex((c) => c[1] === "payout"), "and recorded before any money moves");
 }
 {
   const w = world({ claim: { tazapay_beneficiary_id: "bnf_kept0001" } });
@@ -253,7 +257,7 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
 {
   // A step no bigger than Tazapay's fee: refused in words, nothing sent, the attempt ends.
   const w = world({ claim: { amount_cents: 544 } });
-  await assert.rejects(pay(w), (e) => e.kind === "refused" && /the fee to send it is US\$5\.44, so nothing would arrive\. Nothing was sent\./.test(e.message));
+  await assert.rejects(pay(w), (e) => e.kind === "fee_too_large" && /the fee to send it is US\$5\.44, so nothing would arrive\. Nothing was sent\./.test(e.message));
   assert.equal(w.made().length, 0, "a payment the fee would swallow pays nothing");
   assert.equal(w.finishes[0]?.outcome, "cancelled");
 }
