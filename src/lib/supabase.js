@@ -35,6 +35,7 @@ export const supabaseUrl = url ?? "";
 const sessionStore = createSessionStorage(globalThis);
 
 export const setKeepSignedIn = sessionStore.setKeepSignedIn;
+export const keepChoice = sessionStore.keepChoice;
 
 /** Before a sign-up: kept, unless the browser already keeps someone else. */
 export const keepNewAccount = () => sessionStore.keepNewAccount(supabase.auth.storageKey);
