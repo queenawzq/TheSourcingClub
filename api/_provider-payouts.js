@@ -1,8 +1,10 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
-import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+
+/** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
+const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
 
 /**
  * Pay with Wise and Pay with PayPal, one shape behind both routes.
@@ -170,7 +172,7 @@ export async function wisePreview({ wise, caller, db, row, cnyConfirmed }) {
   });
   const shortByCents = Math.max(0, quote.totalCents - balance.balanceCents);
   if (quote.balanceRefused && !shortByCents) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
-  const fee = withdrawalFee({ provider: "wise", amountCents: Number(row.amount_cents), currency: row.currency, quotedFeeCents: quote.feeCents });
+  const fee = await feeFor({ provider: "wise", amountCents: Number(row.amount_cents), currency: row.currency, quotedFeeCents: quote.feeCents });
   return {
     refused: fee.refused ?? null,
     receivesCents: fee.receivesCents ?? null,
@@ -215,7 +217,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       });
       if (quote.totalCents > balance.cents) return await shortBalance(quote.totalCents - balance.cents);
       if (quote.balanceRefused) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
-      const fee = withdrawalFee({ provider: "wise", amountCents: Number(claim.amount_cents), currency: claim.currency, quotedFeeCents: quote.feeCents });
+      const fee = await feeFor({ provider: "wise", amountCents: Number(claim.amount_cents), currency: claim.currency, quotedFeeCents: quote.feeCents });
       if (fee.refused) throw new PayoutFailure("fee_too_large", fee.refused);
       await recordFee(db, paymentId, fee.feeCents);
       await record(db, payoutId, { new_quote: quote.id, new_fee: quote.feeCents, keep_lease: true });
@@ -304,7 +306,7 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
 
 /** What staff confirm: the fee the factory pays and what it receives. Nothing is asked of PayPal. */
 export async function paypalPreview({ db, row }) {
-  const fee = withdrawalFee({ provider: "paypal", amountCents: Number(row.amount_cents), currency: row.currency, country: await factoryCountry(db, row.payment_id) });
+  const fee = await feeFor({ provider: "paypal", amountCents: Number(row.amount_cents), currency: row.currency, country: await factoryCountry(db, row.payment_id) });
   return { refused: fee.refused ?? null, feeCents: fee.feeCents ?? null, receivesCents: fee.receivesCents ?? null, totalCents: Number(row.amount_cents) };
 }
 
@@ -321,7 +323,7 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
     if (!batchId) {
       // PayPal charges TSC its fee on top of what is sent: send what, with that
       // fee, comes to the amount. The factory pays the difference.
-      const fee = withdrawalFee({ provider: "paypal", amountCents: Number(claim.amount_cents), currency: claim.currency, country: await factoryCountry(db, paymentId) });
+      const fee = await feeFor({ provider: "paypal", amountCents: Number(claim.amount_cents), currency: claim.currency, country: await factoryCountry(db, paymentId) });
       if (fee.refused) throw new PayoutFailure("fee_too_large", fee.refused);
       await recordFee(db, paymentId, fee.feeCents);
       await record(db, payoutId, { new_fee: fee.feeCents, received: fee.receivesCents, received_in: claim.currency, keep_lease: true });

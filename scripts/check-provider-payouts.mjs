@@ -26,8 +26,9 @@ const PAYPAL_ENV = { PAYPAL_API_BASE: "https://api-m.sandbox.paypal.com", PAYPAL
 const json = (status, body, headers = {}) => ({ status, headers: new Headers(headers), text: async () => JSON.stringify(body ?? null) });
 
 /** A pretend Wise: one transfer per key, one payment per transfer, as the sandbox behaves. */
-function fakeWise({ fund = "ok", balance = 1000000, failNext = [], lag = 0, disabled = null, shave = 0 } = {}) {
+function fakeWise({ fund = "ok", balance = 1000000, failNext = [], lag = 0, disabled = null, shave = 0, extra = 0 } = {}) {
   const state = { transfers: new Map(), byId: new Map(), funded: 0, recipients: [], calls: [], quotes: [], lag };
+  state.setBalance = (value) => { balance = value; };
   const fetchImpl = async (url, options) => {
     const path = url.replace(WISE_ENV.WISE_API_BASE, "");
     const name = `${options.method} ${path.replace(/\d{3,}/g, "N")}`;
@@ -52,7 +53,7 @@ function fakeWise({ fund = "ok", balance = 1000000, failNext = [], lag = 0, disa
       // balance can't cover keeps its figures with the balance route disabled.
       state.quotes.push(body);
       const rate = body.sourceCurrency === body.targetCurrency ? 1 : 6.6;
-      const sourceAmount = body.targetAmount != null ? Math.round((body.targetAmount / rate + 14.74) * 100) / 100 : body.sourceAmount;
+      const sourceAmount = body.targetAmount != null ? Math.round((body.targetAmount / rate + 14.74) * 100) / 100 : body.sourceAmount + extra;
       const targetAmount = body.targetAmount != null ? body.targetAmount - shave : Math.max(0, (body.sourceAmount - 14.74) * rate);
       const code = disabled ?? (sourceAmount > balance ? "error.payInmethod.disabled" : null);
       return json(200, { id: `q${state.calls.length}`, rate, paymentOptions: [{ payIn: "BALANCE", disabled: Boolean(code), disabledReason: code ? { code, message: "No." } : undefined, fee: { total: 14.74 }, sourceAmount, targetAmount }] });
@@ -95,6 +96,7 @@ function fakePaypal({ item = "SUCCESS", refuse = null, loseAnswer = false } = {}
     if (path === "/v1/payments/payouts") {
       if (refuse) return json(refuse.status, refuse.body);
       const body = JSON.parse(options.body);
+      state.sent = body.items[0].amount.value;
       const key = body.sender_batch_header.sender_batch_id;
       if (state.batches.has(key)) {
         return json(400, { name: "USER_BUSINESS_ERROR", details: [{ field: "SENDER_BATCH_ID", issue: "exists", link: [{ href: `https://x/v1/payments/payouts/${state.batches.get(key)}` }] }] });
@@ -115,7 +117,7 @@ function fakePaypal({ item = "SUCCESS", refuse = null, loseAnswer = false } = {}
 /** A pretend database that claims as the real one does: one live attempt, one lease, one key. */
 function fakeDb({ recipient = null } = {}) {
   const db = {
-    payout: null, finished: [], told: [], records: [], reads: 0, recipientSet: 0, leased: false,
+    payout: null, finished: [], told: [], records: [], fees: [], reads: 0, recipientSet: 0, leased: false,
     claim(which) {
       if (this.leased) return { error: { hint: "payout_in_progress" } };
       if (this.payout?.status === "paid") return { error: { hint: "payout_already_released" } };
@@ -152,6 +154,7 @@ function fakeDb({ recipient = null } = {}) {
       db.leased = false;
       return {};
     }
+    if (name === "record_payout_fee") { db.fees.push(args.fee); return {}; }
     if (name === "set_wise_recipient") { db.recipientSet += 1; recipient = args.recipient_id; return { data: true }; }
     throw new Error(`unexpected ${name}`);
   };
@@ -270,49 +273,51 @@ for (const lag of [1, 5]) {
   assert.match(db2.payout.sentence, /too low/);
 }
 {
-  // TSC pays the fee: the quote fixes what arrives, converted at Wise's rate, and the fee is on top.
+  // The factory pays the fee: the quote is asked with the amount as the source, so
+  // the fee is inside it, TSC pays exactly the amount, and the rest is converted.
   const fake = fakeWise(); const db = fakeDb();
   const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
   const seen = await wisePreview({ wise, caller: db.caller, db, row, cnyConfirmed: true });
-  assert.deepEqual([seen.feeCents, seen.totalCents, seen.arrivesCents, seen.arrivesCurrency, seen.shortByCents], [1474, 101474, 660000, "CNY", 0], "staff see the fee, the total and the whole step arriving");
-  assert.equal(fake.state.quotes.at(-1).targetAmount, 6600, "the step, converted");
-  assert.equal(fake.state.quotes.at(-1).sourceAmount, undefined, "the source is left for Wise to work out");
+  assert.deepEqual([seen.feeCents, seen.totalCents, seen.receivesCents, seen.arrivesCents, seen.arrivesCurrency, seen.shortByCents, seen.refused], [1474, 100000, 98526, 650272, "CNY", 0, null], "staff see the fee, TSC paying exactly the amount, and what the factory receives");
+  assert.equal(fake.state.quotes.at(-1).sourceAmount, 1000, "the amount is the source");
+  assert.equal(fake.state.quotes.at(-1).targetAmount, undefined, "what arrives is Wise's to work out, fee taken");
   const answer = await pay(wise, db);
   assert.equal(answer.done, "sent");
   assert.equal(fake.state.funded, 1);
-  assert(db.records.some((r) => r.new_fee === 1474), "the fee is recorded");
-  assert(db.records.some((r) => r.received === 660000 && r.received_in === "CNY"), "and what arrives, with no fee taken from it");
+  assert(db.records.some((r) => r.new_fee === 1474), "the fee is recorded on the attempt");
+  assert.deepEqual(db.fees, [1474], "and on the payment, before the transfer: the one figure the row and bell read");
+  assert(db.records.some((r) => r.received === 650272 && r.received_in === "CNY"), "and what arrives, the fee taken from it");
 
-  // Same currency: exactly the step, from one quote.
+  // Same currency: one quote, the amount less the fee.
   const fake2 = fakeWise(); const db2 = fakeDb();
   const usd = await wisePreview({ wise: wiseFrom(WISE_ENV, fake2.fetchImpl), caller: db2.caller, db: db2, row: { ...row, wise_currency: "USD" }, cnyConfirmed: true });
-  assert.equal(fake2.state.quotes.length, 1, "no rate to ask for");
-  assert.equal(fake2.state.quotes[0].targetAmount, 1000);
-  assert.deepEqual([usd.arrivesCents, usd.arrivesCurrency, usd.totalCents], [100000, "USD", 101474]);
+  assert.equal(fake2.state.quotes.length, 1, "one quote");
+  assert.deepEqual([usd.arrivesCents, usd.arrivesCurrency, usd.totalCents], [98526, "USD", 100000]);
 
-  // A fee bigger than the payment no longer matters: the factory still gets it all.
+  // A payment no bigger than its fee is refused with a sentence, nothing sent.
   const fake3 = fakeWise(); const db3 = fakeDb(); db3.amount = 1000;
-  const small = await pay(wiseFrom(WISE_ENV, fake3.fetchImpl), db3);
-  assert.equal(small.done, "sent");
-  assert.equal(fake3.state.quotes.at(-1).targetAmount, 66);
+  await assert.rejects(pay(wiseFrom(WISE_ENV, fake3.fetchImpl), db3), /too small: the fee to send it is US\$14\.74/);
+  assert.equal(fake3.state.transfers.size, 0, "no transfer made");
+  assert.equal(db3.payout.status, "cancelled", "the attempt ends: nothing was sent");
+  assert.deepEqual(db3.fees, [], "no fee recorded for a payment that did not go");
+  const tinyPreview = await wisePreview({ wise: wiseFrom(WISE_ENV, fakeWise().fetchImpl), caller: db3.caller, db: db3, row: { ...row, amount_cents: 1000 }, cnyConfirmed: true });
+  assert.match(tinyPreview.refused, /too small/, "staff see the refusal before pressing");
 }
 {
-  // The balance covers the step but not the fee: said with the exact shortfall, before any transfer.
-  const fake = fakeWise({ balance: 1005 }); const db = fakeDb();
+  // The balance covers the amount: the fee is inside it, so nothing is short.
+  const fake = fakeWise({ balance: 1000 }); const db = fakeDb();
   const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
   const seen = await wisePreview({ wise, caller: db.caller, db, row, cnyConfirmed: true });
-  assert.deepEqual([seen.shortByCents, seen.feeCents, seen.totalCents], [974, 1474, 101474]);
+  assert.deepEqual([seen.shortByCents, seen.feeCents, seen.totalCents], [0, 1474, 100000]);
   const answer = await pay(wise, db);
-  assert.equal(answer.done, "short_balance");
-  assert.match(answer.sentence, /short by \$9\.74\./);
-  assert.equal(fake.state.transfers.size, 0);
-  assert.equal(db.payout.status, "cancelled", "a first press ends: nothing was sent");
+  assert.equal(answer.done, "sent", "a balance of exactly the amount pays it");
 }
 {
   // Short on a press after a lost answer: Wise may hold a transfer for this key, so the key stays.
-  const fake = fakeWise({ balance: 1005, failNext: [{ match: "POST /v3/profiles", before: "throw" }] }); const db = fakeDb();
+  const fake = fakeWise({ failNext: [{ match: "POST /v3/profiles", before: "throw" }] }); const db = fakeDb();
   const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
   await assert.rejects(pay(wise, db), (f) => f.unsure);
+  fake.state.setBalance(995);
   const answer = await pay(wise, db);
   assert.equal(answer.done, "short_balance");
   assert.equal(db.payout.status, "processing", "not ended, or the next press would use a new key");
@@ -322,7 +327,7 @@ for (const lag of [1, 5]) {
 for (const [label, options] of [
   ["Wise disables the balance for another reason", { disabled: "error.quote.targetAmount.max" }],
   ["Wise says the balance is too low when it isn't", { disabled: "error.payInmethod.disabled" }],
-  ["the quote takes something off what arrives", { shave: 5 }],
+  ["the quote would take more than the amount from TSC", { extra: 0.01 }],
 ]) {
   const fake = fakeWise(options); const db = fakeDb();
   await assert.rejects(pay(wiseFrom(WISE_ENV, fake.fetchImpl), db), /can't pay this from TSC's balance/, label);
@@ -454,6 +459,28 @@ const paypalPress = (paypal, db) => paypalPay({ paypal, caller: db.caller, db, p
   const answer = await paypalPress(paypalFrom(PAYPAL_ENV, fake.fetchImpl), db);
   assert.equal(answer.done, "paid", "SUCCESS on the item is paid");
   assert.equal(db.payout.status, "paid");
+  // The factory pays PayPal's fee: a country we can't read is charged as abroad (2%),
+  // so US$1,000.00 sends 980.39 and PayPal's 19.61 on top makes the amount.
+  assert.equal(fake.state.sent, "980.39", "PayPal is sent the amount less its fee");
+  assert.deepEqual(db.fees, [1961], "the fee is recorded on the payment before PayPal is asked");
+}
+{
+  // A US factory: PayPal's US$0.25.
+  const fake = fakePaypal(); const db = fakeDb();
+  const from = db.from;
+  db.from = (table) => (table === "order_payments"
+    ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { production_orders: { factory_org_id: "f" } } }) }) }) }
+    : table === "factory_profiles" ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "US" } }) }) }) } : from(table));
+  await paypalPress(paypalFrom(PAYPAL_ENV, fake.fetchImpl), db);
+  assert.equal(fake.state.sent, "999.75");
+  assert.deepEqual(db.fees, [25]);
+}
+{
+  // Too small to send: refused with a sentence, PayPal never asked.
+  const fake = fakePaypal(); const db = fakeDb(); db.amount = 1;
+  await assert.rejects(paypalPress(paypalFrom(PAYPAL_ENV, fake.fetchImpl), db), /too small/);
+  assert.equal(fake.state.paid, 0, "nothing sent");
+  assert.equal(db.payout.status, "cancelled");
 }
 // The factory is told which detail, in our words, never Wise's.
 assert.equal(checkWords("Wise refused this: Please enter a valid SWIFT code."), "Check your SWIFT code");

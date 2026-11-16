@@ -4,7 +4,9 @@ import { supabaseServerEnv } from "./_supabase-env.js";
 import { holdPayouts } from "./_stripe-payouts.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { cardReason } from "./_card-words.js";
-import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
+
+/** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
+const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
 
 /**
  * Payments held by TSC, through Stripe Connect: the parts every payment route
@@ -492,7 +494,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
   // TSC-managed accounts keep fees.payer = application, so Stripe bills TSC
   // for each payout, and the transfer holds that back. A payment no bigger
   // than the fee is refused, nothing sent.
-  const tooSmall = withdrawalFee({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
+  const tooSmall = await feeFor({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
   if (tooSmall.refused) return { released: false, reason: tooSmall.refused };
 
   // A transfer credits earnings, never an automatic withdrawal to the bank.
@@ -533,7 +535,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
       return { released: true, reason: already.id };
     }
     foundNoTransfer = true;
-    const fee = withdrawalFee({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
+    const fee = await feeFor({ provider: "stripe", amountCents: Number(payment.amount_cents), currency: payment.currency, country: account.country ?? "" });
     if (fee.refused) throw Object.assign(new Error(fee.refused), { statusCode: 400 });
     await rpc(db, "record_payout_fee", { target_payment: payment.id, fee: fee.feeCents });
 
