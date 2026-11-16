@@ -2132,13 +2132,24 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
     check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()),
       "where it cannot, a bank or PayPal, and Payoneer can no longer be chosen");
-    await page.locator('[data-testid="payout-set-up-bank"]').click();
-    // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
-    await waitFor(page, '[data-field="payout_bank_name"]', 25000);
-    check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in mainland China is set up on Wise's form");
+    // Where this deploy has Tazapay's keys, mainland China and Hong Kong banks are Tazapay's.
+    const tazapayOn = (await page.locator('[data-testid="payout-set-up-tazapay"]').count()) === 1;
+    if (tazapayOn) {
+      check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0, "in mainland China the bank option is Tazapay's");
+      await page.locator('[data-testid="payout-set-up-tazapay"]').click();
+      await waitFor(page, '[data-field^="tazapay_"]', 25000);
+      check((await page.locator('[data-field^="wise_"]').count()) === 0, "a bank in mainland China is set up on Tazapay's form");
+    } else {
+      await page.locator('[data-testid="payout-set-up-bank"]').click();
+      // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
+      await waitFor(page, '[data-field="payout_bank_name"]', 25000);
+      check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in mainland China is set up on Wise's form");
+    }
     await page.locator(".payout-modal-actions .secondary-btn").first().click();
     await waitFor(page, '[data-field="payout_country"]', 10000);
-    await page.locator('[data-field="payout_country"]').selectOption("HK");
+    // A country neither Stripe, Wise nor Tazapay pays: Hong Kong without Tazapay, else Taiwan.
+    const byHandCountry = tazapayOn ? "TW" : "HK";
+    await page.locator('[data-field="payout_country"]').selectOption(byHandCountry);
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     await waitFor(page, '[data-field="payout_bank_name"]', 10000);
@@ -2158,7 +2169,7 @@ async function main() {
       .select("id, account_number_last4, bank_country").eq("org_id", factoryOrg.id).single();
     check(payout.account_number_last4 === "4417",
       "the factory can say where staff pay it by bank");
-    check(payout.bank_country === "HK", "and the bank's country is kept with it");
+    check(payout.bank_country === byHandCountry, "and the bank's country is kept with it");
 
     // ================= THE BRAND FUNDS THE STEP =================
     // TSC holds the money through Stripe: the step's payment fell due as the
