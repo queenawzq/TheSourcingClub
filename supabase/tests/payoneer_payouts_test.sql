@@ -75,7 +75,7 @@ select ('31f00000-0000-0000-0000-00000000000' || n)::uuid, ('31d00000-0000-0000-
 
 insert into public.order_milestones (id, order_id, kind, title, amount_cents)
 select ('31900000-0000-0000-0000-0000000000' || lpad(i::text, 2, '0'))::uuid,
-       ('31f00000-0000-0000-0000-00000000000' || o)::uuid, 'payment_only', 'P31 step ' || i, 1000
+       ('31f00000-0000-0000-0000-00000000000' || o)::uuid, 'payment_only', 'P31 step ' || i, 10000
   from (values (1,1),(2,1),(3,1),(4,1),(5,1),(6,2),(7,3),(8,4)) v(i, o);
 
 -- 1-3 owed to the mill, 4 held on an unapproved Stripe charge, 5 still due.
@@ -84,7 +84,7 @@ insert into public.order_payments (id, order_id, milestone_id, amount_cents, cur
 select ('31800000-0000-0000-0000-0000000000' || lpad(i::text, 2, '0'))::uuid,
        ('31f00000-0000-0000-0000-00000000000' || o)::uuid,
        ('31900000-0000-0000-0000-0000000000' || lpad(i::text, 2, '0'))::uuid,
-       1000, 'USD', st::public.payment_state, now(),
+       10000, 'USD', st::public.payment_state, now(),
        case when approved then now() end, charge, intent
   from (values
     (1, 1, 'confirmed', true,  null, null),
@@ -594,7 +594,7 @@ reset role;
 -- ---------------------- staff's bank note reaches the factory --------------
 select is(
   (select body from public.notifications where subject_id = '31800000-0000-0000-0000-000000000003' and kind = 'funds_released'),
-  (select format('Sent by bank transfer against P31 mill (%s). TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
+  (select format('Sent by bank transfer against P31 mill (%s). Payout fee $50.00 is taken from this payment: you receive $50.00. TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
      from public.order_payments p join public.production_orders o on o.id = p.order_id
     where p.id = '31800000-0000-0000-0000-000000000003'),
   'the bell and the email carry the note staff typed'

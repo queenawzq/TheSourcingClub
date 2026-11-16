@@ -41,7 +41,22 @@
  *              the sandbox: check the first international payout's fee.
  *            PayPal deducts it from TSC's balance on top of the item, so TSC
  *            sends the most that, with PayPal's fee on it, fits in the amount.
- *   bank     Staff pay it by bank and mark it paid: unchanged, no fee taken.
+ *   bank     Staff pay it by bank wire ("Mark paid out by bank"), and TSC's bank
+ *            charges TSC for the outgoing international wire. A fixed US$50:
+ *            the highest common outgoing international wire fee of a US
+ *            business bank (TO CONFIRM WITH JOHN: TSC's own bank's figure).
+ *            Copied in public.bank_payout_fee_cents() (migration
+ *            20261116100200); check:withdrawal-fees fails if they differ.
+ *
+ * Where a fee is uncertain, the HIGHEST published figure is charged, so TSC
+ * is never short (decided 2026-11-16). Stripe's cross-border payout fee: the
+ * Connect pricing page (https://stripe.com/connect/pricing, read 2026-11-16)
+ * gives only "Starting at 0.25% of payout volume", with no per-country table,
+ * no range and no higher figure, and its linked page
+ * (https://docs.stripe.com/connect/cross-border-payouts) gives no other; so
+ * 0.25% is the highest Stripe publishes. Recheck it against the first
+ * monthly Connect invoice. Stripe's US$2 per monthly active account is not
+ * charged to factories (decided 2026-11-16).
  *
  * withdrawalFee() never decides alone where a provider gives a figure: a
  * quoted fee (quotedFeeCents) always wins over the formula.
@@ -54,6 +69,7 @@ const QUOTED = new Set(["wise", "tazapay"]);
 export const FEE_FORMULAS = {
   stripe: { bps: 25, fixedCents: 25, crossBorderBps: 25, home: "US" },
   paypal: { domesticFixedCents: 25, bps: 200, internationalCapCents: 10000, home: "US" },
+  bank: { fixedCents: 5000 },
 };
 
 /** ceil(amount × bps / 10000), in whole integers so no float decides a cent. */
@@ -67,6 +83,7 @@ export function providerCharge(provider, country = "") {
     const bps = f.bps + (country !== f.home ? f.crossBorderBps : 0);
     return (x) => percentUp(x, bps) + f.fixedCents;
   }
+  if (provider === "bank") return () => FEE_FORMULAS.bank.fixedCents;
   const f = FEE_FORMULAS.paypal;
   if (country === f.home) return () => f.domesticFixedCents;
   return (x) => Math.min(percentUp(x, f.bps), f.internationalCapCents);
@@ -94,8 +111,8 @@ export const feeMoney = (cents, currency = "USD") => {
  *   → { feeCents, receivesCents, basis }
  *   → { refused: "<sentence>" } when nothing would arrive.
  *
- * basis: "quote" (the provider's own figure), "formula" (published), "none"
- * (bank: no fee taken), or "quote_needed" (Wise/Tazapay with no quote yet:
+ * basis: "quote" (the provider's own figure), "formula" (published, or the bank wire's fixed fee)
+ * or "quote_needed" (Wise/Tazapay with no quote yet:
  * feeCents and receivesCents are null, and nothing may be sent on it).
  */
 export function withdrawalFee({ provider, amountCents, currency = "USD", country = "", quotedFeeCents = null } = {}) {
@@ -110,7 +127,7 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
     basis = "quote";
   } else if (QUOTED.has(provider)) {
     return { feeCents: null, receivesCents: null, basis: "quote_needed" };
-  } else if (provider === "stripe" || provider === "paypal") {
+  } else {
     // The provider bills TSC its fee on what is SENT, on top of it. So send the
     // most that, with its own fee, still fits in the amount; the factory's fee
     // is the rest. TSC's balance then goes down by the amount (at most a cent
@@ -118,9 +135,6 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
     const charge = providerCharge(provider, country);
     feeCents = amount - largestSend(amount, charge);
     basis = "formula";
-  } else {
-    feeCents = 0;
-    basis = "none";
   }
 
   const receivesCents = amount - feeCents;
@@ -176,8 +190,8 @@ const LINES = {
       : "手续费：每笔 2%（最多 100 美元），从该笔款项中扣除；PayPal 换汇美元可能收取约 3–4%"),
   },
   bank: {
-    en: () => "Fee: 0% from TSC; your bank may charge to receive it",
-    zh: () => "TSC 手续费 0%；你的银行可能收取入账费",
+    en: () => "Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it",
+    zh: () => "手续费：每笔银行转账 50 美元，从该笔款项中扣除；你的银行可能收取入账费",
   },
 };
 
