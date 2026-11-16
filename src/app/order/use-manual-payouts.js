@@ -23,6 +23,7 @@ const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise
 const SAVE_REFUSALS = {
   payout_owner_only: "Only a company owner can change withdrawal methods.",
   bank_details_missing: "Add the account holder and the bank so TSC can pay you.",
+  swift_missing: "Add your bank's SWIFT / BIC: TSC can't send an international transfer without it.",
   swift_format: "A SWIFT / BIC is 8 or 11 letters and digits.",
   country_missing: "Name your bank's country in the instructions.",
   number_required: "Add the full account number so TSC can pay you.",
@@ -106,6 +107,7 @@ export function useManualPayouts(orgId) {
   async function save(details = {}) {
     const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
     if (!form.bank_name.trim() || !form.account_name.trim()) throw new Error(SAVE_REFUSALS.bank_details_missing);
+    if (!form.swift.trim()) throw new Error(SAVE_REFUSALS.swift_missing);
     if (!validSwift(form.swift)) throw new Error(SAVE_REFUSALS.swift_format);
     const typed = normalBankNumber(form.account_number);
     if (typed !== normalBankNumber(form.account_number_again)) throw new Error(SAVE_REFUSALS.number_mismatch);
