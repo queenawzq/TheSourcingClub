@@ -2535,7 +2535,7 @@ async function main() {
       await page.locator('[data-testid="withdraw-confirm"]').click();
       await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
       check(/Waiting for TSC/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC");
-      check(await page.locator('[data-testid="withdraw-balance"]').isDisabled(), "and a second can't be asked while it waits");
+      check(await page.evaluate(() => document.querySelector('[data-testid="withdraw-balance"]')?.disabled === true), "and a second can't be asked while it waits");
 
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
       await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
