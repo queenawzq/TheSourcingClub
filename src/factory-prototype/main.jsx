@@ -1094,6 +1094,8 @@ export const factoryMainZhText = {
   "Back to profile": "返回资料",
   "Completed": "已完成",
   "Failed": "失败",
+  "Add your bank's SWIFT / BIC: TSC can't send an international transfer without it.": "请填写你银行的 SWIFT / BIC：没有它，TSC 无法发送国际转账。",
+  "A SWIFT / BIC is 8 or 11 letters and digits.": "SWIFT / BIC 由 8 或 11 位字母和数字组成。",
   "In production": "生产中",
   // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
   "Bank account (Stripe)": "银行账户（Stripe）",
