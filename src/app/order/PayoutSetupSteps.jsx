@@ -10,10 +10,12 @@
  */
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
+import { registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, chosenBankName, inEnglish, wiseBankList, wiseFieldError } from "../../shared/wise-form-check.mjs";
-import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs";
-import { PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
+import { normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
+import { OPERATIONS_EMAIL, PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
 /** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
@@ -171,6 +173,173 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
           </label>
         </div>
       )}
+    </PayoutModal>
+  );
+}
+
+/**
+ * Tazapay's bank form for mainland China and Hong Kong: WiseBankStep's frame,
+ * Tazapay's fixed field list (src/shared/tazapay-payout.mjs checks the same
+ * fields when staff pay). The company's USCC is shown, not asked, when TSC
+ * already has it: Tazapay refuses any other number.
+ */
+const TAZAPAY_WORDS = {
+  ...BANK_WORDS,
+  holderEnglish: "Account holder name (English)",
+  holderChinese: "Account holder name (Chinese)",
+  uscc: "Unified Social Credit Code",
+  number: "Account number",
+  street: "Street address",
+  city: "City",
+  district: "District",
+  bankCode: "Bank code",
+  swift: "SWIFT code",
+  notLatin: "Use English letters",
+  notChinese: "Use Chinese characters, as your bank has the name",
+  bankCodeFormat: "3 digits, for example 004",
+  swiftFormat: "8 or 11 letters and digits, for example HSBCHKHH",
+  // A function: StripePayoutCard imports this file, so its constant is read at render, not at load.
+  usccNotOnFile: () => `TSC pays this account only once this code matches your company's business registration on TSC. If TSC doesn't have it, contact TSC operations at ${OPERATIONS_EMAIL} to add it.`,
+};
+// Stored in English (Tazapay's address); labelled in the reader's language. The
+// language layer leaves a select's own text alone, so the options are drawn here.
+const HK_DISTRICTS = [["Hong Kong Island", "香港岛"], ["Kowloon", "九龙"], ["New Territories", "新界"]];
+const isLatinName = (value) => /^[\x20-\x7EÀ-ɏ’]+$/.test(value) && /[A-Za-zÀ-ɏ]/.test(value);
+
+export function TazapayBankStep({ row, country, busy, companyRegistration = null, save, onBack, onClose }) {
+  const words = TAZAPAY_WORDS;
+  const hk = country === "HK";
+  const zh = useUiLanguage() === "zh";
+  const [values, setValues] = useState(() => ({
+    bank_name: row?.bank_name ?? "",
+    account_name: row?.account_name ?? "",
+    holder_name_local: row?.holder_name_local ?? "",
+    registration_number: row?.registration_number ?? "",
+    bank_code: row?.bank_code ?? "",
+    swift: row?.swift ?? "",
+    address_line1: row?.address_line1 ?? "",
+    address_city: row?.address_city ?? "",
+    address_state: row?.address_state ?? "",
+  }));
+  const [number, setNumber] = useState("");
+  const [numberAgain, setNumberAgain] = useState("");
+  const [touched, setTouched] = useState({});
+  const [pressed, setPressed] = useState(false);
+  const [problem, setProblem] = useState(null);
+
+  const hasStoredNumber = Boolean(row?.number_changed_at);
+  const typed = normalBankNumber(number);
+  const v = (key) => (values[key] ?? "").trim();
+  const errors = {
+    bank_name: v("bank_name") ? null : REQUIRED,
+    account_name: !v("account_name") ? REQUIRED : isLatinName(v("account_name")) ? null : words.notLatin,
+    holder_name_local: hk ? null : !v("holder_name_local") ? REQUIRED : /[㐀-鿿]/.test(v("holder_name_local")) && v("holder_name_local").length >= 2 && v("holder_name_local").length <= 140 ? null : words.notChinese,
+    // The server refuses a bad number by a constraint; say why at the field instead.
+    registration_number: hk || companyRegistration ? null : !v("registration_number") ? REQUIRED
+      : registrationNumberProblem("CN", v("registration_number")) ? registrationProblemText("CN", registrationNumberProblem("CN", v("registration_number")), zh ? "zh" : "en") : null,
+    bank_code: !hk ? null : !v("bank_code") ? REQUIRED : /^\d{3}$/.test(v("bank_code")) ? null : words.bankCodeFormat,
+    swift: !hk ? null : !v("swift") ? REQUIRED : validSwift(v("swift")) ? null : words.swiftFormat,
+    address_line1: v("address_line1") ? null : REQUIRED,
+    address_city: hk ? null : v("address_city") ? null : REQUIRED,
+    address_state: !hk ? null : v("address_state") ? null : REQUIRED,
+    number: !typed ? (hasStoredNumber ? null : REQUIRED) : !validBankNumber(typed) ? words.numberFormat : null,
+    again: (typed || numberAgain) && typed !== normalBankNumber(numberAgain) ? words.numberMismatch : null,
+  };
+  const anyError = Object.values(errors).some(Boolean);
+  const shown = (key) => ((pressed || touched[key]) ? errors[key] : null);
+  const leave = (key) => () => setTouched((current) => ({ ...current, [key]: true }));
+  const set = (key, transform = (x) => x) => (event) => { const value = transform(event.target.value); setValues((current) => ({ ...current, [key]: value })); };
+  const upperOnBlur = (key) => () => { leave(key)(); setValues((current) => ({ ...current, [key]: (current[key] ?? "").toUpperCase().trim() })); };
+
+  async function submit() {
+    setPressed(true);
+    setProblem(null);
+    if (anyError) return;
+    try {
+      await save({
+        bank_country: country,
+        bank_name: v("bank_name"),
+        account_name: v("account_name"),
+        holder_name_local: hk ? null : v("holder_name_local"),
+        registration_number: hk ? null : companyRegistration ?? v("registration_number"),
+        bank_code: hk ? v("bank_code") : null,
+        swift: hk ? v("swift") : null,
+        address_line1: v("address_line1"),
+        address_city: hk ? null : v("address_city"),
+        address_state: hk ? v("address_state") : null,
+        account_number: number,
+        account_number_again: numberAgain,
+      });
+    } catch (failure) {
+      setProblem(failure);
+    }
+  }
+
+  const field = (key, label, input) => (
+    <label key={key}>
+      <span>{label} *</span>
+      {input}
+      {shown(key) ? <small className="live-stripe-error" role="alert">{shown(key)}</small> : null}
+    </label>
+  );
+  const text = (key, extra = {}) => (
+    <input data-field={`tazapay_${key}`} value={values[key]} onBlur={leave(key)} onChange={set(key)} {...extra} />
+  );
+  const numberFields = [
+    field("number", words.number, (
+      <input data-field="payout_account_number" autoComplete="off" spellCheck={false} value={number}
+             placeholder={hasStoredNumber ? words.numberStored(row.account_number_last4) : ""}
+             onBlur={leave("number")} onChange={(event) => setNumber(event.target.value)} />
+    )),
+    field("again", reEnter(words.number), (
+      <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={numberAgain}
+             onBlur={leave("again")} onChange={(event) => setNumberAgain(event.target.value)} />
+    )),
+  ];
+
+  return (
+    <PayoutModal
+      keepOpen
+      title={!row ? "Bank transfer" : row.number_changed_at ? words.titleEdit : words.titleFinish}
+      onClose={onClose}
+      actions={<>
+        {problem ? <p className="live-stripe-error payout-modal-refusal" role="alert">{problem.message}</p> : null}
+        <button className="secondary-btn" type="button" disabled={busy} onClick={onBack}>{words.back}</button>
+        <button className="primary-btn" type="button" data-testid="save-payout" disabled={busy} onClick={submit}>{busy ? words.saving : words.save}</button>
+      </>}
+    >
+      <div className="payout-form-stack">
+        {field("bank_name", words.bankName, text("bank_name"))}
+        {hk ? <>
+          {field("bank_code", words.bankCode, text("bank_code", { inputMode: "numeric", maxLength: 3, placeholder: "004" }))}
+          {field("swift", words.swift, text("swift", { placeholder: "HSBCHKHH", onBlur: upperOnBlur("swift") }))}
+          {field("account_name", words.holderEnglish, text("account_name"))}
+          {numberFields}
+          {field("address_line1", words.street, text("address_line1", { maxLength: 140 }))}
+          {field("address_state", words.district, (
+            <select data-field="tazapay_address_state" value={values.address_state} onBlur={leave("address_state")} onChange={set("address_state")}>
+              <option value="" />
+              {HK_DISTRICTS.map(([name, nameZh]) => <option key={name} value={name}>{zh ? nameZh : name}</option>)}
+            </select>
+          ))}
+        </> : <>
+          {field("account_name", words.holderEnglish, text("account_name"))}
+          {field("holder_name_local", words.holderChinese, text("holder_name_local"))}
+          {companyRegistration ? (
+            <label key="uscc">
+              <span>{words.uscc}</span>
+              <span className="payout-readonly-value" data-field="tazapay_registration_number" style={{ overflowWrap: "anywhere" }}>{companyRegistration}</span>
+            </label>
+          ) : <>
+            {field("registration_number", words.uscc, text("registration_number", { onBlur: upperOnBlur("registration_number") }))}
+            {/* No registration on file: Tazapay pays only an account in the company's own name, checked against it. */}
+            <small>{words.usccNotOnFile()}</small>
+          </>}
+          {numberFields}
+          {field("address_line1", words.street, text("address_line1", { maxLength: 140 }))}
+          {field("address_city", words.city, text("address_city", { maxLength: 80 }))}
+        </>}
+      </div>
     </PayoutModal>
   );
 }

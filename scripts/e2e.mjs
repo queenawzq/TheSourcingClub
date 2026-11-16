@@ -2132,10 +2132,19 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
     check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()),
       "where it cannot, a bank or PayPal, and Payoneer can no longer be chosen");
-    await page.locator('[data-testid="payout-set-up-bank"]').click();
-    // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
-    await waitFor(page, '[data-field="payout_bank_name"]', 25000);
-    check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in mainland China is set up on Wise's form");
+    // Where this deploy has Tazapay's keys, mainland China and Hong Kong banks are Tazapay's.
+    const tazapayOn = (await page.locator('[data-testid="payout-set-up-tazapay"]').count()) === 1;
+    if (tazapayOn) {
+      check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0, "in mainland China the bank option is Tazapay's");
+      await page.locator('[data-testid="payout-set-up-tazapay"]').click();
+      await waitFor(page, '[data-field^="tazapay_"]', 25000);
+      check((await page.locator('[data-field^="wise_"]').count()) === 0, "a bank in mainland China is set up on Tazapay's form");
+    } else {
+      await page.locator('[data-testid="payout-set-up-bank"]').click();
+      // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
+      await waitFor(page, '[data-field="payout_bank_name"]', 25000);
+      check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in mainland China is set up on Wise's form");
+    }
     await page.locator(".payout-modal-actions .secondary-btn").first().click();
     await waitFor(page, '[data-field="payout_country"]', 10000);
     // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
@@ -2146,7 +2155,9 @@ async function main() {
       check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0 && !/US\$50/.test(await page.locator(".payout-modal").innerText()),
         `${where === "TW" ? "Taiwan" : "a country not listed"}: no bank transfer TSC pays by hand, PayPal is offered`);
     }
-    await page.locator('[data-field="payout_country"]').selectOption("HK");
+    // The staff-paid account saved below is in Hong Kong; Wise's form is checked where Tazapay does not take the bank option.
+    const byHandCountry = "HK";
+    await page.locator('[data-field="payout_country"]').selectOption(tazapayOn ? "VN" : "HK");
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     // Wise's form, or where it can't be had, a sentence and PayPal: never the form staff pay from by hand.
@@ -2154,7 +2165,7 @@ async function main() {
     if (await page.locator('[data-testid="bank-unavailable"]').count()) {
       check((await page.locator('[data-testid="bank-unavailable-paypal"]').count()) === 1, "Wise's form unavailable: the card says so and offers PayPal");
     } else {
-      check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in Hong Kong is set up on Wise's form");
+      check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in a Wise country is set up on Wise's form");
     }
     await page.locator(".payout-modal-actions .secondary-btn").first().click();
 
@@ -2178,7 +2189,7 @@ async function main() {
       .select("id, account_number_last4, bank_country").eq("org_id", factoryOrg.id).single();
     check(payout.account_number_last4 === "4417",
       "the factory can say where staff pay it by bank");
-    check(payout.bank_country === "HK", "and the bank's country is kept with it");
+    check(payout.bank_country === byHandCountry, "and the bank's country is kept with it");
 
     // ================= THE BRAND FUNDS THE STEP =================
     // TSC holds the money through Stripe: the step's payment fell due as the
@@ -2524,6 +2535,30 @@ async function main() {
       check(!Object.keys(nothingSetUp.buttons).some((name) => name.startsWith("pay-with-")), "and there is no provider to pay it through");
     }
 
+    // Tazapay (mainland China and Hong Kong, when this deploy has Tazapay's keys).
+    // Stops at the confirm: the factory pays Tazapay's fee, so TSC pays exactly the step.
+    const tazapayRow = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
+      .find((row) => /tazapay or bank transfer/i.test(row.innerText))?.innerText.match(/TSC-\d+/)?.[0] ?? null);
+    if (!tazapayRow) {
+      console.log("  (no Tazapay row on this board: skipped)");
+    } else {
+      const before = await owedRow(tazapayRow);
+      if (before.buttons["pay-with-tazapay"] === true) {
+        check(/tazapay can't pay this account yet/i.test(before.text) && "provider-tell-factory" in before.buttons,
+          "an incomplete Tazapay account says what it needs, Pay is disabled, and staff can tell the factory");
+      } else {
+        await pressInOwedRow(tazapayRow, "pay-with-tazapay");
+        const confirmAfter = await owedRowShows(tazapayRow, "provider-confirm");
+        const confirmText = (await owedRow(tazapayRow))?.text ?? "";
+        const amount = confirmText.match(/Send (\$[\d,.]+)/)?.[1];
+        check(confirmAfter !== null && /Tazapay fee \$[\d,.]+, taken from it: the factory receives \$[\d,.]+/.test(confirmText)
+          && amount && confirmText.includes(`TSC pays ${amount} in total`),
+          "Pay with Tazapay shows the fee taken from the step, what the factory receives, and TSC paying exactly the step");
+        await record(page, "Pay with Tazapay", "the factory pays Tazapay's fee; TSC pays the step");
+        await pressInOwedRow(tazapayRow, "Cancel");
+      }
+    }
+
     // Kowloon Sourcing Partners is paid by PayPal: its approved fit sample is in
     // its balance (seed-demo.mjs), so it has no row under Payout owed. Its owner
     // asks, staff decline with a reason, and the factory reads it. Nothing calls
@@ -2545,8 +2580,7 @@ async function main() {
       await page.waitForTimeout(4000);
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
-      const howPaid = await page.locator('[data-testid="payout-how-paid"]').innerText();
-      check(/paypal/i.test(howPaid) && howPaid.includes(kowloonEmail), `the factory's card says it is paid by PayPal (${howPaid})`);
+      check((await page.locator('[data-testid="payout-how-paid"]').count()) === 0, "the factory's card has no method line under the balance");
       await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
       await page.locator('[data-testid="withdraw-balance"]').click();
       await waitFor(page, '[data-testid="withdraw-fee"]', 10000);

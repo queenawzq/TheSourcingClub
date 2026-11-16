@@ -1,5 +1,5 @@
 /**
- * What Wise and PayPal share: reading a setting, refusing a live account away
+ * What Wise, PayPal and Tazapay share: reading a setting, refusing a live account away
  * from production, one timed call, and failures that say what happened.
  * The leading underscore keeps Vercel from serving this file.
  *
@@ -27,10 +27,10 @@ export class PayoutFailure extends Error {
 /** No token, id or secret, even in a log. */
 export function withoutSecrets(text, env = process.env) {
   let said = String(text ?? "");
-  for (const name of ["WISE_API_TOKEN", "PAYPAL_CLIENT_SECRET", "PAYPAL_CLIENT_ID"]) {
+  for (const name of ["WISE_API_TOKEN", "PAYPAL_CLIENT_SECRET", "PAYPAL_CLIENT_ID", "TAZAPAY_API_KEY", "TAZAPAY_API_SECRET", "TAZAPAY_WEBHOOK_SECRET"]) {
     if (env[name]) said = said.split(env[name]).join("[key]");
   }
-  return said.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer [key]");
+  return said.replace(/(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/g, "$1 [key]");
 }
 
 /** A live account pays real money, so only production may hold one. */

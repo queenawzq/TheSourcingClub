@@ -99,6 +99,7 @@ const DETAILS = {
   "account holder's name": "账户持有人姓名",
   address: "地址",
   "bank name": "银行名称",
+  "company registration number": "公司注册号",
 };
 const details = (list) => {
   const named = String(list).split(/, | and /).map((each) => DETAILS[each.trim()]);

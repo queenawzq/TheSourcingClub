@@ -2,6 +2,8 @@
 const STRIPE_LINES = ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"];
 const WISE_LINES = ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"];
 const PAYPAL_LINES = ["Up to 2% fee", "Usually processed within 3–7 business days"];
+// Tazapay (China, Hong Kong): its pricing page lists local payouts from US$2; the line follows TSC's chosen wording.
+const TAZAPAY_LINES = ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"];
 
 export const PAYOUT_METHOD_INFO = {
   stripeUs: STRIPE_LINES,
@@ -10,14 +12,20 @@ export const PAYOUT_METHOD_INFO = {
   wiseUs: WISE_LINES,
   paypal: PAYPAL_LINES,
   paypalUs: PAYPAL_LINES,
+  tazapayCN: TAZAPAY_LINES,
+  tazapayHK: TAZAPAY_LINES,
 };
 
 export const payoutMethodFeeUrl = (method) => {
   if (method?.startsWith("stripe")) return "https://stripe.com/connect/pricing";
   if (method?.startsWith("wise")) return "https://wise.com/us/pricing/";
   if (method?.startsWith("paypal")) return "https://www.paypal.com/us/business/paypal-business-fees";
+  if (method?.startsWith("tazapay")) return "https://tazapay.com/pricing";
   return null;
 };
+
+/** The chooser's Tazapay option for a country, or null where Tazapay doesn't pay. */
+export const tazapayMethod = (country) => ({ CN: "tazapayCN", HK: "tazapayHK" })[String(country ?? "").toUpperCase()] ?? null;
 
 export const payoutMethodLines = (method) => PAYOUT_METHOD_INFO[method] ?? [];
 

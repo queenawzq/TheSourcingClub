@@ -145,7 +145,7 @@ export function earningStatus(row) {
 
 const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
 const FAILURE_NOTE = {
-  details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal address" },
+  details_rejected: { wise: "Check your bank details", tazapay: "Check your bank details", paypal: "Check your PayPal address" },
 };
 
 /** Sent, but the provider is holding it until the factory corrects its details. */

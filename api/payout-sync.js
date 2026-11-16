@@ -3,11 +3,12 @@ import { supabaseServerEnv } from "./_supabase-env.js";
 import { syncAttempts } from "./_provider-payouts.js";
 import { withoutSecrets } from "./_payout-provider.js";
 import { paypalFrom } from "./_paypal.js";
+import { tazapayFrom } from "./_tazapay.js";
 import { reply, serviceClient } from "./_stripe.js";
 import { wiseFrom } from "./_wise.js";
 
 /**
- * The sweep: read back every Wise and PayPal payout that can still change, with
+ * The sweep: read back every Wise, PayPal and Tazapay payout that can still change, with
  * nobody on the staff board. The webhooks (api/wise-webhook.js,
  * api/paypal-webhook.js) do this the moment a payout moves; this catches what
  * they missed (a site they can't reach, a delivery that gave up).
@@ -19,7 +20,7 @@ import { wiseFrom } from "./_wise.js";
  */
 export async function sweepProviderPayouts(db, env = process.env) {
   const result = {};
-  for (const [provider, build] of [["wise", wiseFrom], ["paypal", paypalFrom]]) {
+  for (const [provider, build] of [["wise", wiseFrom], ["paypal", paypalFrom], ["tazapay", tazapayFrom]]) {
     try {
       const client = build(env);
       result[provider] = client ? await syncAttempts({ client, db }) : { configured: false };
