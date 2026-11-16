@@ -2535,9 +2535,9 @@ async function main() {
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
       const balanceAfter = await within(page, async () => /^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim()));
-      const howPaid = await page.locator('[data-testid="payout-how-paid"]').innerText();
-      check(balanceAfter !== null && /paypal/i.test(howPaid) && howPaid.includes(kowloonEmail),
-        `the factory's card shows its balance and says it is paid by PayPal (${howPaid})`);
+      const howPaid = await page.locator('[data-testid="payout-how-paid"]').count();
+      check(balanceAfter !== null && howPaid === 0,
+        "the factory's card shows its balance, with no method line under it (the withdrawals say where money went)");
       const transactionsAfter = await within(page, async () => (await page.locator(".payout-transaction-table").first().innerText().catch(() => "")).includes(paidByHandReference));
       const paypalEarnings = await page.locator(".payout-transaction-table").first().innerText();
       check(transactionsAfter !== null, "its withdrawals name the reference");
