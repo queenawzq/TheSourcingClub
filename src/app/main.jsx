@@ -21,7 +21,7 @@ import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations,
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
-import { isConfigured, supabase } from "../lib/supabase.js";
+import { isConfigured, keepChoice, supabase } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqDetail from "./rfq/RfqDetail.jsx";
@@ -179,8 +179,8 @@ function SignIn({ invitation = null }) {
   const [codeFor, setCodeFor] = useState(null);
   // "Keep me logged in", held here rather than inside the form: the demo
   // buttons and the emailed-code sign-in sit outside it and must follow the
-  // same box.
-  const [keepSignedIn, setKeepSignedIn] = useState(true);
+  // same box. It starts as this tab's saved choice.
+  const [keepSignedIn, setKeepSignedIn] = useState(keepChoice);
 
   async function authenticate(submitted) {
     if (submitted.provider === "google") {
