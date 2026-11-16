@@ -168,10 +168,14 @@ const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", impor
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
+// The one exception: a withdrawal method names the provider that pays it
+// (src/shared/payout-method-info.mjs).
+const PROVIDER_NAMED = new Set(["Bank account (Stripe)"]);
 for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "order/PayoutSetupSteps.jsx", "order/AddPayoutMethodForm.jsx", "order/payment-summary.mjs", "order/StripeConnectEmbed.jsx", "order/LiveFund.jsx", "payments/LiveBrandPaymentDetail.jsx"]) {
   const code = readFileSync(new URL(`../src/app/${file}`, import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
+    if (file === "order/StripePayoutCard.jsx" && PROVIDER_NAMED.has(text.trim())) continue;
     assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
   }
 }

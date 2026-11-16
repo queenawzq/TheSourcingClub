@@ -2508,6 +2508,9 @@ export function SettingsScreen({
   // the switches could not be read or saved.
   notificationEmailNotes,
   notificationEmailsError = null,
+  // Live only: the factory's own translation of the section's designed words
+  // (a Chinese factory reads the factory prototype's labels).
+  notificationEmailText = (value) => value,
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
@@ -3178,8 +3181,8 @@ export function SettingsScreen({
 
         <section className="settings-section" id="settings-notifications">
             <div className="settings-section-header">
-              <h3>Notifications</h3>
-              <p>Choose which updates should reach your team by email.</p>
+              <h3>{notificationEmailText("Notifications")}</h3>
+              <p>{notificationEmailText("Choose which updates should reach your team by email.")}</p>
             </div>
             {notificationEmailsError && (
               <p className="settings-invite-error" role="alert">{notificationEmailsError.message ?? String(notificationEmailsError)}</p>
@@ -3187,7 +3190,7 @@ export function SettingsScreen({
             {(notificationEmails || !notificationEmailsError) && [[isFactory ? "New RFQ matches" : "New quote activity", "rfq"], ["Payment and approval requests", "payments"], ["Messages and call invites", "messages"]].map(([label, key]) => (
               <div className="settings-inline-row" key={label}>
                 <div>
-                  <strong>{label}</strong>
+                  <strong>{notificationEmailText(label)}</strong>
                   {/* Email switches apply to the company; action permissions are per person. */}
                   <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
                 </div>
@@ -3195,7 +3198,7 @@ export function SettingsScreen({
                   {notificationEmails ? (
                     <input
                       type="checkbox"
-                      aria-label={label}
+                      aria-label={notificationEmailText(label)}
                       data-notification-email={key}
                       checked={notificationEmails[key] !== false}
                       disabled={busy || Boolean(notificationEmailsLocked)}

@@ -226,7 +226,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -323,6 +323,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       note: [
         row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
+        // The provider's payout fee, taken from this payment (src/shared/withdrawal-fees.mjs): the same figures as the bell.
+        Number(row.payout_fee_cents) > 0 ? `Fee ${formatMoney(row.payout_fee_cents, row.currency)}, taken from it: you receive ${formatMoney(Number(row.amount_cents) - Number(row.payout_fee_cents), row.currency)}.` : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row),
       amount: factoryAmount(row),

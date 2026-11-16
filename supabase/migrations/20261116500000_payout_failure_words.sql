@@ -16,7 +16,8 @@
 -- 2. A Stripe transfer reaches the factory's Stripe balance, not its bank:
 --    record_payment_released said "paid out to you". It now says "added to
 --    your balance"; the bank payout says "paid out to your bank" when it lands
---    (api/stripe-webhook.js). Same signature and grants.
+--    (api/stripe-webhook.js). Same signature and grants, and the body as
+--    20261116100000 left it (with the factory's payout fee sentence).
 -- ============================================================================
 
 alter table public.provider_payouts
@@ -100,7 +101,8 @@ create trigger provider_payout_failure_said
   when (new.stage = 'done')
   execute function public.say_provider_payout_failure();
 
--- From 20261107500100. Only the title changes.
+-- From 20261116100000 (the factory pays the payout fee: its fee sentence on
+-- the body stays). Only the title changes.
 create or replace function public.record_payment_released(target_payment uuid, transfer text)
 returns public.order_payments
 language plpgsql
@@ -136,7 +138,7 @@ begin
   values (
     o.factory_org_id, 'funds_released', 'payment', p.id, o.id,
     format('%s added to your balance', public.format_money(p.amount_cents, p.currency)),
-    format('Sent against %s.', o.order_number)
+    format('Sent against %s.', o.order_number) || public.payout_fee_sentence(p)
   );
 
   return p;

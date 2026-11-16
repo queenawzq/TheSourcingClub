@@ -3,10 +3,18 @@ import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
+/** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
+const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
+
 /**
  * Pay with Wise and Pay with PayPal, one shape behind both routes.
  *
- *   preview   Wise only: the fee, what arrives, and the balance, before anyone commits.
+ *   preview   the fee, what the factory receives (and for Wise what arrives, and the
+ *             balance), before anyone commits.
+ *
+ * The factory pays the provider's fee (src/shared/withdrawal-fees.mjs): TSC's
+ * balance goes down by the payment's amount, and the factory receives
+ * amount − fee. A payment no bigger than its fee is refused, nothing sent.
  *   pay       claim, call the provider with the attempt's key, read back. Pressing
  *             again resumes the same attempt with the same key.
  *   cancel    take back a transfer nobody funded, or a PayPal payment nobody claimed.
@@ -85,6 +93,24 @@ async function record(db, payoutId, patch) {
   if (error) log("record_provider_attempt", error, { payoutId });
 }
 
+/** The fee the factory pays on this payment, kept with it: the board, its row and its bell read this one figure. */
+async function recordFee(db, paymentId, feeCents) {
+  const { error } = await db.rpc("record_payout_fee", { target_payment: paymentId, fee: feeCents });
+  if (error) {
+    log("record_payout_fee", error, { paymentId });
+    throw new PayoutFailure("record_failed", "We couldn't record the fee, so nothing was sent. Press again.");
+  }
+}
+
+/** The factory's country, for PayPal's domestic or international fee cap. */
+export async function factoryCountry(db, paymentId) {
+  const { data, error } = await db.from("order_payments").select("production_orders (factory_org_id)").eq("id", paymentId).maybeSingle();
+  const orgId = data?.production_orders?.factory_org_id;
+  if (error || !orgId) return "";
+  const profile = await db.from("factory_profiles").select("country_code").eq("org_id", orgId).maybeSingle();
+  return profile.data?.country_code ?? "";
+}
+
 async function finish(db, payoutId, outcome, patch = {}) {
   const { error } = await db.rpc("finish_provider_payout", { target_payout: payoutId, outcome, ...patch });
   if (error) {
@@ -146,7 +172,10 @@ export async function wisePreview({ wise, caller, db, row, cnyConfirmed }) {
   });
   const shortByCents = Math.max(0, quote.totalCents - balance.balanceCents);
   if (quote.balanceRefused && !shortByCents) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
+  const fee = await feeFor({ provider: "wise", amountCents: Number(row.amount_cents), currency: row.currency, quotedFeeCents: quote.feeCents });
   return {
+    refused: fee.refused ?? null,
+    receivesCents: fee.receivesCents ?? null,
     feeCents: quote.feeCents,
     totalCents: quote.totalCents,
     arrivesCents: quote.arrivesCents,
@@ -188,6 +217,9 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       });
       if (quote.totalCents > balance.cents) return await shortBalance(quote.totalCents - balance.cents);
       if (quote.balanceRefused) throw new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
+      const fee = await feeFor({ provider: "wise", amountCents: Number(claim.amount_cents), currency: claim.currency, quotedFeeCents: quote.feeCents });
+      if (fee.refused) throw new PayoutFailure("fee_too_large", fee.refused);
+      await recordFee(db, paymentId, fee.feeCents);
       await record(db, payoutId, { new_quote: quote.id, new_fee: quote.feeCents, keep_lease: true });
       const transfer = await wise.createTransfer({
         recipientId, quoteId: quote.id, key: claim.key, reference: String(claim.order_number).slice(0, 30),
@@ -272,6 +304,12 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
 // PayPal
 // ---------------------------------------------------------------------------
 
+/** What staff confirm: the fee the factory pays and what it receives. Nothing is asked of PayPal. */
+export async function paypalPreview({ db, row }) {
+  const fee = await feeFor({ provider: "paypal", amountCents: Number(row.amount_cents), currency: row.currency, country: await factoryCountry(db, row.payment_id) });
+  return { refused: fee.refused ?? null, feeCents: fee.feeCents ?? null, receivesCents: fee.receivesCents ?? null, totalCents: Number(row.amount_cents) };
+}
+
 const LOST_PAYPAL_ANSWER = "PayPal's first answer was lost and this retry was refused, so we don't know if it went. Check PayPal, then press again: it can't pay twice.";
 
 export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
@@ -283,8 +321,14 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
   try {
     // PayPal has this one: read it, never send it again. Its key doesn't last for ever.
     if (!batchId) {
+      // PayPal charges TSC its fee on top of what is sent: send what, with that
+      // fee, comes to the amount. The factory pays the difference.
+      const fee = await feeFor({ provider: "paypal", amountCents: Number(claim.amount_cents), currency: claim.currency, country: await factoryCountry(db, paymentId) });
+      if (fee.refused) throw new PayoutFailure("fee_too_large", fee.refused);
+      await recordFee(db, paymentId, fee.feeCents);
+      await record(db, payoutId, { new_fee: fee.feeCents, received: fee.receivesCents, received_in: claim.currency, keep_lease: true });
       const paid = await paypal.pay({
-        key: claim.key, email: claim.paypal_email, amountCents: claim.amount_cents,
+        key: claim.key, email: claim.paypal_email, amountCents: fee.receivesCents,
         currency: claim.currency, reference: `TSC ${claim.order_number}`,
       });
       batchId = paid.batchId;
@@ -520,6 +564,8 @@ export function payoutRoute({ provider, build, label, settings }) {
         if (action === "pay") {
           return reply(response, 200, await wisePay({ wise: client, caller, db, row, paymentId, changedAt: paidToChangedAt, cnyConfirmed }));
         }
+      } else if (action === "preview") {
+        return reply(response, 200, await paypalPreview({ db, row }));
       } else if (action === "pay") {
         return reply(response, 200, await paypalPay({ paypal: client, caller, db, paymentId, changedAt: paidToChangedAt }));
       }

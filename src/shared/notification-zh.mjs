@@ -293,6 +293,7 @@ const SENTENCES = [
   [/^Payoneer payment ID (.+)\.$/, (id) => `Payoneer 付款编号：${id}。`],
   [/^Sent by bank transfer against (.+)\.$/, (order) => `已通过银行转账支付，对应订单 ${order}。`],
   [/^Sent against (.+)\.$/, (order) => `对应订单 ${order}。`],
+  [amountRe("^Fee AMT, taken from it: you receive AMT\\.$"), (fee, receives) => `手续费 ${fee}，已从中扣除：你收到 ${receives}。`],
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
   [amountRe("^Your payment of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 款项未成功。`],
   [amountRe("^Your withdrawal of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 提现未成功。`],
