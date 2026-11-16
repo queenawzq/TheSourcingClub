@@ -2494,6 +2494,30 @@ async function main() {
       check(!Object.keys(nothingSetUp.buttons).some((name) => name.startsWith("pay-with-")), "and there is no provider to pay it through");
     }
 
+    // Tazapay (mainland China and Hong Kong, when this deploy has Tazapay's keys).
+    // Stops at the confirm: the factory pays Tazapay's fee, so TSC pays exactly the step.
+    const tazapayRow = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
+      .find((row) => /tazapay or bank transfer/i.test(row.innerText))?.innerText.match(/TSC-\d+/)?.[0] ?? null);
+    if (!tazapayRow) {
+      console.log("  (no Tazapay row on this board: skipped)");
+    } else {
+      const before = await owedRow(tazapayRow);
+      if (before.buttons["pay-with-tazapay"] === true) {
+        check(/tazapay can't pay this account yet/i.test(before.text) && "provider-tell-factory" in before.buttons,
+          "an incomplete Tazapay account says what it needs, Pay is disabled, and staff can tell the factory");
+      } else {
+        await pressInOwedRow(tazapayRow, "pay-with-tazapay");
+        const confirmAfter = await owedRowShows(tazapayRow, "provider-confirm");
+        const confirmText = (await owedRow(tazapayRow))?.text ?? "";
+        const amount = confirmText.match(/Send (\$[\d,.]+)/)?.[1];
+        check(confirmAfter !== null && /Tazapay fee \$[\d,.]+, taken from it: the factory receives \$[\d,.]+/.test(confirmText)
+          && amount && confirmText.includes(`TSC pays ${amount} in total`),
+          "Pay with Tazapay shows the fee taken from the step, what the factory receives, and TSC paying exactly the step");
+        await record(page, "Pay with Tazapay", "the factory pays Tazapay's fee; TSC pays the step");
+        await pressInOwedRow(tazapayRow, "Cancel");
+      }
+    }
+
     const kowloonEmail = "kowloon-payouts@example.com";
     const paypalRow = await owedRow(kowloonEmail);
     if (!paypalRow) {
