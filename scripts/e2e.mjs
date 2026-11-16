@@ -2147,23 +2147,43 @@ async function main() {
     }
     await page.locator(".payout-modal-actions .secondary-btn").first().click();
     await waitFor(page, '[data-field="payout_country"]', 10000);
-    // A country neither Stripe, Wise nor Tazapay pays: Hong Kong without Tazapay, else Taiwan.
-    const byHandCountry = tazapayOn ? "TW" : "HK";
-    await page.locator('[data-field="payout_country"]').selectOption(byHandCountry);
+    // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
+    // nor Wise has a bank route (Taiwan, a country not listed), PayPal alone.
+    for (const where of ["TW", "__other__"]) {
+      await page.locator('[data-field="payout_country"]').selectOption(where === "__other__" ? { index: (await page.locator('[data-field="payout_country"] option').count()) - 1 } : where);
+      await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
+      check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0 && !/US\$50/.test(await page.locator(".payout-modal").innerText()),
+        `${where === "TW" ? "Taiwan" : "a country not listed"}: no bank transfer TSC pays by hand, PayPal is offered`);
+    }
+    // The staff-paid account saved below is in Hong Kong; Wise's form is checked where Tazapay does not take the bank option.
+    const byHandCountry = "HK";
+    await page.locator('[data-field="payout_country"]').selectOption(tazapayOn ? "VN" : "HK");
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
-    await waitFor(page, '[data-field="payout_bank_name"]', 10000);
-    check((await page.locator('[data-field^="wise_"]').count()) === 0, "a bank elsewhere gets the form staff pay from by hand");
-    await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
-    await page.locator('[data-field="payout_account_name"]').fill(factoryName);
-    await page.locator('[data-field="payout_account_number"]').fill("0000000000004417");
-    await page.locator('[data-field="payout_account_number_again"]').fill("0000000000004417");
-    await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
-    await page.locator('[data-field="payout_branch"]').fill("001 002");
-    await record(page, "Bank details for manual payouts", "the whole number, typed twice; only the last four come back");
+    // Wise's form, or where it can't be had, a sentence and PayPal: never the form staff pay from by hand.
+    await waitFor(page, '[data-field="payout_bank_name"], [data-testid="bank-unavailable"]', 25000);
+    if (await page.locator('[data-testid="bank-unavailable"]').count()) {
+      check((await page.locator('[data-testid="bank-unavailable-paypal"]').count()) === 1, "Wise's form unavailable: the card says so and offers PayPal");
+    } else {
+      check((await page.locator('[data-field^="wise_"]').count()) > 0, "a bank in a Wise country is set up on Wise's form");
+    }
+    await page.locator(".payout-modal-actions .secondary-btn").first().click();
 
-    await page.locator('[data-testid="save-payout"]').click();
-    await page.waitForTimeout(2500);
+    // A bank account saved before the change is still paid by staff: saved here
+    // the way that form saved it, by the factory's own call.
+    const ownerClient = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+      { auth: { persistSession: false } },
+    );
+    await ownerClient.auth.signInWithPassword({ email: `e2e-factory-${stamp}@example.com`, password: PASSWORD });
+    const { error: savedBankError } = await ownerClient.rpc("save_bank_payout_account", {
+      target_org: factoryOrg.id, target_account: null, bank_name: "Banco de Porto", account_name: factoryName, bank_country: "HK",
+      swift: "BCOMPTPL", branch: "001 002", instructions: null,
+      account_number: "0000000000004417", account_number_again: "0000000000004417", number_kind: "account",
+    });
+    check(!savedBankError, `an existing staff-paid bank account still saves (${savedBankError?.message ?? "ok"})`);
+    await ownerClient.auth.signOut();
 
     const { data: payout } = await db.from("factory_payout_accounts")
       .select("id, account_number_last4, bank_country").eq("org_id", factoryOrg.id).single();

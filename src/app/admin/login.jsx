@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../../lib/auth.jsx";
-import { isConfigured } from "../../lib/supabase.js";
+import { isConfigured, keepChoice } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import "./admin-login.css";
@@ -41,8 +41,9 @@ function AdminLogin() {
   const [accessState, setAccessState] = useState("idle");
   const [localError, setLocalError] = useState("");
   // "Keep me signed in", held here so the demo admin button below the form
-  // and the emailed-code sign-in follow the same box as the form.
-  const [keepSignedIn, setKeepSignedIn] = useState(true);
+  // and the emailed-code sign-in follow the same box as the form. It starts
+  // as this tab's saved choice.
+  const [keepSignedIn, setKeepSignedIn] = useState(keepChoice);
 
   useEffect(() => {
     if (resetting) {

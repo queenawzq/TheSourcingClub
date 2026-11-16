@@ -171,6 +171,10 @@ const TITLES = [
   ["payment_sent", /^(.+) says a payment is on its way$/, (who) => `${who} 表示付款已在途中`],
   ["funds_released", amountRe("^AMT released to you$"), (amount) => `${amount} 已打款给你`],
   ["funds_released", amountRe("^AMT paid out to you$"), (amount) => `${amount} 已支付给你`],
+  ["funds_released", amountRe("^AMT added to your balance$"), (amount) => `${amount} 已计入你的余额`],
+  ["funds_released", amountRe("^AMT paid out to your bank$"), (amount) => `${amount} 已付至你的银行账户`],
+  ["payout_method_changed", /^A payment to you did not go through$/, () => PAYOUT_WORDS_ZH["A payment to you did not go through"]],
+  ["payout_method_changed", /^A withdrawal did not go through$/, () => PAYOUT_WORDS_ZH["A withdrawal did not go through"]],
   ["payout_method_changed", /^Your payout methods changed$/, () => "你的收款方式已变更"],
   ["payout_method_changed", /^Withdrawals are paused$/, () => "提现已暂停"],
   ["payout_method_changed", /^Payments to you are paused$/, () => "向你的付款已暂停"],
@@ -292,6 +296,8 @@ const SENTENCES = [
   [/^Sent against (.+)\.$/, (order) => `对应订单 ${order}。`],
   [amountRe("^Payout fee AMT is taken from this payment: you receive AMT\\.$"), (fee, receives) => `提现手续费 ${fee} 从该笔款项中扣除：你收到 ${receives}。`],
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
+  [amountRe("^Your payment of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 款项未成功。`],
+  [amountRe("^Your withdrawal of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 提现未成功。`],
   [/^Check your (.+)\.$/, (list) => (details(list) ? `请检查你的${details(list)}。` : null)],
   // Payout methods
   [/^If nobody at your company made this change, email (\S+) now\.$/, (address) => `如果这不是你公司的人员所做的更改，请立即发邮件至 ${address}。`],
@@ -326,8 +332,81 @@ const SENTENCES = [
   [/^You haven't set your open capacity yet\.$/, () => "你还没有设置可接单产能。"],
   [/^You last updated your open capacity (\d+) days ago\.$/, (n) => `你上次更新可接单产能是在 ${n} 天前。`],
   [/^Brands see it when they choose who to invite, so add it from your dashboard\.$/, () => "品牌在选择邀请对象时会看到它，请在工作台中添加。"],
-  [/^Brands see it when they choose who to invite, so update it from your dashboard\.$/, () => "品牌在选择邀请对象时会看到它，请在工作台中更新。"],
+  [/^Brands see it when they choose who to invite, so update it from your dashboard\.$/, () => "品牌在选择邀请对象时会看到它，请在工作台中更新。"],  // Why a payout failed, and the rest of the payout words (PAYOUT_WORDS_ZH).
+  [/^(.+)$/, (sentence) => (Object.hasOwn(PAYOUT_WORDS_ZH, sentence) ? PAYOUT_WORDS_ZH[sentence] : null)],
 ];
+
+/**
+ * The payout words the factory reads, sentence by sentence: why a payout failed
+ * (src/shared/payout-failure-words.mjs, and the database's
+ * payout_failure_sentence()), and where Stripe money is. Used by the bell here
+ * and by the live screens (src/app/live-zh.js). check:provider-payouts fails on
+ * a sentence of those maps missing here.
+ */
+export const PAYOUT_WORDS_ZH = {
+  "Added to your balance": "已计入余额",
+  "Paid out to your bank": "已付至你的银行账户",
+  "A payment to you did not go through": "一笔给你的付款未成功",
+  "A withdrawal did not go through": "一笔提现未成功",
+  "A withdrawal failed.": "一笔提现失败。",
+  "The money is back in your balance.": "款项已退回你的余额。",
+  "Withdrawn from your balance.": "已从你的余额提现。",
+  "The payment did not go through.": "付款未成功。",
+  "Check your payout details or contact TSC operations.": "请检查你的收款信息，或联系 TSC 运营团队。",
+  "Your bank account is closed.": "你的银行账户已关闭。",
+  "Add another bank account, then withdraw again.": "请添加另一个银行账户，然后重新提现。",
+  "Your bank account is frozen.": "你的银行账户已被冻结。",
+  "Ask your bank, or add another bank account, then withdraw again.": "请咨询你的银行，或添加另一个银行账户，然后重新提现。",
+  "Your bank account cannot receive this payment.": "你的银行账户无法接收这笔款项。",
+  "Your bank account has a new owner.": "你的银行账户已更换户主。",
+  "Add the bank account again, then withdraw again.": "请重新添加该银行账户，然后重新提现。",
+  "Your bank could not process the payment.": "你的银行无法处理这笔款项。",
+  "Withdraw again, or contact TSC operations.": "请重新提现，或联系 TSC 运营团队。",
+  "Your bank refused the payment.": "你的银行拒收了这笔款项。",
+  "Ask your bank to accept it, then withdraw again.": "请让你的银行接受这笔款项，然后重新提现。",
+  "Your bank declined the payment.": "你的银行拒绝了这笔款项。",
+  "Ask your bank why, or add another bank account, then withdraw again.": "请向你的银行了解原因，或添加另一个银行账户，然后重新提现。",
+  "The account holder's address does not match your bank's records.": "账户持有人地址与银行记录不符。",
+  "Check it, then withdraw again.": "请检查后重新提现。",
+  "The account holder's name does not match your bank's records.": "账户持有人姓名与银行记录不符。",
+  "The tax ID does not match your bank's records.": "税号与银行记录不符。",
+  "Your balance was too low when the withdrawal was sent.": "发起提现时你的余额不足。",
+  "Withdraw again.": "请重新提现。",
+  "The account number is wrong.": "账号有误。",
+  "Check your bank details, then withdraw again.": "请检查你的银行信息，然后重新提现。",
+  "Your bank account cannot receive this currency.": "你的银行账户无法接收该币种。",
+  "Add a bank account in your balance's currency, then withdraw again.": "请添加与余额币种相同的银行账户，然后重新提现。",
+  "Your bank has no account with these details.": "你的银行没有与这些信息相符的账户。",
+  "Check the account number, then withdraw again.": "请检查账号，然后重新提现。",
+  "This debit card cannot receive withdrawals.": "此借记卡无法接收提现。",
+  "Add a bank account, then withdraw again.": "请添加银行账户，然后重新提现。",
+  "Your bank returned the payment.": "你的银行退回了这笔款项。",
+  "Check your bank details: TSC pays again once they are right.": "请检查你的银行信息：信息无误后 TSC 会重新付款。",
+  "The payment came back before it reached your bank.": "款项在到达你的银行前被退回。",
+  "TSC will pay again or contact you.": "TSC 将重新付款或与你联系。",
+  "The payment was reversed.": "这笔款项已被撤回。",
+  "TSC operations will contact you.": "TSC 运营团队会与你联系。",
+  "PayPal could not pay your PayPal account.": "PayPal 无法向你的 PayPal 账户付款。",
+  "Check your PayPal address: TSC pays again once it is right.": "请检查你的 PayPal 地址：地址无误后 TSC 会重新付款。",
+  "PayPal returned the payment: nothing arrived.": "PayPal 退回了这笔款项：你没有收到任何款项。",
+  "PayPal blocked the payment.": "PayPal 拦截了这笔款项。",
+  "Check your PayPal account for limits, or contact TSC operations.": "请检查你的 PayPal 账户是否受限，或联系 TSC 运营团队。",
+  "The payment was returned to TSC.": "款项已退回 TSC。",
+};
+
+/** A text made only of the payout sentences above, in Chinese; null otherwise. */
+export function zhPayoutWords(text) {
+  const parts = sentencesOf(text);
+  if (!parts.length) return null;
+  const out = [];
+  for (const part of parts) {
+    // A short note on a row is written without its last full stop.
+    const key = Object.hasOwn(PAYOUT_WORDS_ZH, part) ? part : Object.hasOwn(PAYOUT_WORDS_ZH, `${part}.`) ? `${part}.` : null;
+    if (!key) return null;
+    out.push(PAYOUT_WORDS_ZH[key]);
+  }
+  return out.join("");
+}
 
 /** Where a body turns into what someone typed: the rest is kept as written. */
 const TYPED_TAILS = [

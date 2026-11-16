@@ -19,17 +19,15 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 // its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
 const methodLines = {
-  stripeUs: ["Fee: 0.25% + US$0.25 per payment, taken from it", "Not instant: usually 1–4 business days after you withdraw"],
-  stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
-  wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
-  wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
-  bank: ["Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
-  // PayPal usually lands within minutes of staff sending it.
-  paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
-  paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
+  stripeUs: ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"],
+  stripe: ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"],
+  wise: ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"],
+  wiseUs: ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"],
+  paypal: ["Up to 2% fee", "Usually processed within 3–7 business days"],
+  paypalUs: ["Up to 2% fee", "Usually processed within 3–7 business days"],
   // Mainland China and Hong Kong where this deploy has Tazapay (src/shared/tazapay-payout.mjs).
-  tazapayCN: ["Fee: about US$5.44 per payment to China, quoted when sent and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
-  tazapayHK: ["Fee: about US$3.23 per payment to Hong Kong, quoted when sent and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
+  tazapayCN: ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"],
+  tazapayHK: ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"],
 };
 assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
@@ -38,10 +36,10 @@ for (const [method, lines] of Object.entries(methodLines)) {
 for (const lines of Object.values(info.PAYOUT_METHOD_INFO)) assert.ok(!/No TSC fee|TSC pays/.test(lines.join(" ")), "no line says TSC pays the fee: the factory does");
 // The lines follow the route Set up takes: Stripe's "Bank account" in a Stripe
 // country; Wise's form wherever Wise has a currency for the country; staff's
-// bank form where it has none (TW, KH, a country not listed).
+// PayPal alone where it has none (TW, KH, a country not listed).
 const { PAYOUT_COUNTRIES } = await import("../src/shared/stripe-payout-countries.mjs");
 const { wiseCurrencyFor } = await import("../api/_wise-currencies.js");
-for (const country of ["TW", "KH"]) assert.equal(wiseCurrencyFor(country, "CNY"), null, `${country} has no Wise currency, so its bank option opens the staff form`);
+for (const country of ["TW", "KH"]) assert.equal(wiseCurrencyFor(country, "CNY"), null, `${country} has no Wise currency, so it is offered PayPal alone`);
 // Wise's HKD requirements offer only "hongkong" (a bank account) beside FPS; CNY
 // offers it as "To Hong Kong". Hong Kong gets Wise's form, China never that kind.
 const { chooseRecipientType } = await import("../api/_wise-requirements-shape.js");
@@ -57,11 +55,15 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
   assert.equal(info.paidByWise(country), wise, `${country}: named Wise only where Wise has a currency`);
   // A US factory is paid US$ to US$, so its lines say nothing about converting.
   const us = country === "US";
-  assert.equal(info.chooserMethod("bank", { supported, country }), supported ? (us ? "stripeUs" : "stripe") : wise ? "wise" : "bank", `${country}: the recommended bank option's lines match its route`);
-  assert.equal(info.chooserMethod("wise", { supported, country }), wise ? (us ? "wiseUs" : "wise") : "bank", `${country}: International bank transfer draws Wise's lines`);
+  assert.equal(info.chooserMethod("bank", { supported, country }), supported ? (us ? "stripeUs" : "stripe") : wise ? "wise" : null, `${country}: the recommended bank option's lines match its route`);
+  assert.equal(info.chooserMethod("wise", { supported, country }), wise ? (us ? "wiseUs" : "wise") : null, `${country}: International bank transfer draws Wise's lines`);
   assert.equal(info.chooserMethod("paypal", { supported, country }), us ? "paypalUs" : "paypal", `${country}: PayPal's lines`);
 }
-for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), "bank", `${country}: staff's bank lines`);
+// No staff-paid bank option: where neither Stripe nor Wise pays, PayPal alone.
+for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), null, `${country}: no bank option`);
+assert.ok(card.includes("const bankRoute = supported || paidByWise(country);") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
+assert.ok(card.includes('onUnavailable={() => setModal("bank-unavailable")}') && !card.includes('onUnavailable={() => setModal("setup-bank")}'), "Wise's form unavailable never falls back to the staff bank form");
+assert.ok(!card.includes('notListed ? "setup-bank"'), "the chooser never opens the staff bank form");
 const factoryZh = read("src/factory-prototype/main.jsx");
 const { WITHDRAWAL_FEE_LINES_ZH } = await import("../src/shared/withdrawal-fees.mjs");
 assert.ok(factoryZh.includes("  ...WITHDRAWAL_FEE_LINES_ZH,"), "the factory dictionary takes the fee lines' Chinese from the fee module");

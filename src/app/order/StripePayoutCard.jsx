@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
-import { chooserMethod, paidByWise, payoutMethodLines, tazapayMethod } from "../../shared/payout-method-info.mjs";
+import { chooserMethod, paidByWise, payoutMethodLines, payoutMethodFeeUrl, tazapayMethod } from "../../shared/payout-method-info.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
@@ -44,6 +44,9 @@ const LIST_WORDS = {
   edit: "Edit method", makeDefault: "Make default", remove: "Remove method", back: "Back", done: "Done",
   saved: "Withdrawal method saved.", removed: "Withdrawal method removed.",
   recommended: (name) => `Recommended for ${name}`,
+  available: "Available",
+  bankUnavailable: "A bank transfer isn't available right now. You can set up PayPal instead.",
+  setUpPaypal: "Set up PayPal",
 };
 
 const SLOW_BALANCE_MS = 8000;
@@ -63,6 +66,9 @@ function availableFrom(balance) {
     ? new Date(first * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
     : null;
 }
+
+/** Why money already earned cannot be withdrawn yet: Stripe's date for it. */
+export const availableOnWords = (day) => `Available to withdraw on ${day}`;
 
 const endingIn = (name, last4) => `${name}${last4 ? ` ····${last4}` : ""}`;
 
@@ -204,13 +210,24 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
 }
 
 /** A method's fee and timing, under its name (src/shared/payout-method-info.mjs). */
-const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line) => <li key={line}>{line}</li>)}</ul>;
+const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, index) => <li key={line}>{line}{index === 0 && payoutMethodFeeUrl(method) ? <> · <a href={payoutMethodFeeUrl(method)} target="_blank" rel="noopener noreferrer">Full fee details</a></> : null}</li>)}</ul>;
 
 /** Presentation only; the live payout flow owns every setup action. */
 export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, tazapayEnabled = false, onTazapay }) {
   const words = LIST_WORDS;
   // Tazapay replaces the bank option where it pays (China, Hong Kong), only when this deploy has it set up.
   const tazapay = tazapayEnabled && onTazapay && !supported && !notListed ? tazapayMethod(country) : null;
+  // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
+  // nor Wise has a bank route, PayPal is the one option.
+  const bankRoute = supported || paidByWise(country);
+  const paypalOption = (primary) => (
+                <article className="payout-method-option">
+                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported, country })} /></div>
+                  <button className={`${primary ? "primary-btn" : "secondary-btn"} compact-btn`} type="button" data-testid="payout-set-up-paypal" disabled={busy}
+                          onClick={onPaypal}>{words.setUp}</button>
+                </article>
+  );
   return <>
             <label className="payout-country-field">
               <span>{words.country}</span>
@@ -220,7 +237,16 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 <option value={NOT_LISTED}>Other / not listed</option>
               </select>
             </label>
-            {country ? <>
+            {country && !bankRoute ? (
+              <div className="payout-options-columns">
+              <section className="payout-options-section">
+              <h3 className="payout-recommended">{notListed ? words.available : words.recommended(countryName(country))}</h3>
+              <div className="payout-method-options" role="group" aria-label={notListed ? words.available : words.recommended(countryName(country))}>
+                {paypalOption(true)}
+              </div>
+              </section>
+              </div>
+            ) : country ? <>
               <div className="payout-options-columns">
               <section className="payout-options-section">
               <h3 className="payout-recommended">{notListed ? words.bank : words.recommended(countryName(country))}</h3>
@@ -244,12 +270,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                             onClick={onWise}>{words.setUp}</button>
                   </article>
                 ) : null}
-                <article className="payout-method-option">
-                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported, country })} /></div>
-                  <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
-                          onClick={onPaypal}>{words.setUp}</button>
-                </article>
+                {paypalOption(false)}
               </div>
               </section>
               </div>
@@ -969,7 +990,7 @@ export default function StripePayoutCard({
             ? [
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. You can withdraw ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.` : null,
+              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
@@ -996,7 +1017,7 @@ export default function StripePayoutCard({
           {isOwner ? account?.transfers_active ? (
             <>
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
-              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 ? `Nothing to withdraw yet${arrivesOn ? `. Available ${arrivesOn}` : ""}` : "Nothing to withdraw yet"} onClick={() => {
+              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 && arrivesOn ? availableOnWords(arrivesOn) : "Nothing to withdraw yet"} onClick={() => {
               setError(null);
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
@@ -1179,7 +1200,7 @@ export default function StripePayoutCard({
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
             <p className="payout-modal-intro">Choose where your company is registered. We’ll show the withdrawal methods available for that country. {supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
-            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : notListed ? "setup-bank" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}
+            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}
                             tazapayEnabled={tazapayEnabled} onTazapay={() => { setManualError(null); onStartManual?.(null); setModal("setup-tazapay"); }} />
             {removeError && modal === "add" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           </PayoutModal>
@@ -1187,7 +1208,18 @@ export default function StripePayoutCard({
       })() : null}
 
       {modal === "setup-wise" ? (
-        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => savingNewMethod(() => onSaveWise?.(details))} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("setup-bank")} />
+        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => savingNewMethod(() => onSaveWise?.(details))} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("bank-unavailable")} />
+      ) : null}
+
+      {modal === "bank-unavailable" ? (
+        // Wise's form could not be had: TSC no longer pays by hand, so PayPal is offered.
+        <PayoutModal title={LIST_WORDS.title} onClose={closeModal} actions={<>
+          <button className="secondary-btn" type="button" onClick={backFromStep}>{LIST_WORDS.back}</button>
+          <button className="primary-btn" type="button" data-testid="bank-unavailable-paypal" disabled={busy}
+                  onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}>{LIST_WORDS.setUpPaypal}</button>
+        </>}>
+          <p className="payout-modal-intro" data-testid="bank-unavailable">{LIST_WORDS.bankUnavailable}</p>
+        </PayoutModal>
       ) : null}
 
       {modal === "setup-tazapay" ? (

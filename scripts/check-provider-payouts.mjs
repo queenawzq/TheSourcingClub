@@ -637,4 +637,72 @@ assert(/is_platform_admin/.test(routeCode), "the route checks staff");
 assert(!/account_number/.test(routeCode), "the route never handles the number");
 assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't name it either");
 
+// Why a payout failed, in the factory's words (src/shared/payout-failure-words.mjs):
+// the same sentence on the row, the card and the bell, in both languages.
+{
+  const { PAYOUT_FAILURE_WORDS, UNKNOWN_PAYOUT_FAILURE, payoutFailureSentence } = await import("../src/shared/payout-failure-words.mjs");
+  const { PAYOUT_WORDS_ZH, zhPayoutWords, zhNotificationBody, zhNotificationTitle } = await import("../src/shared/notification-zh.mjs");
+  const { tellPayoutEvent } = await import("../api/_stripe-payout-events.js");
+  const { chosenBankName, wiseBankList } = await import("../src/shared/wise-form-check.mjs");
+
+  assert.equal(payoutFailureSentence("wise", "no_such_code"), UNKNOWN_PAYOUT_FAILURE, "an unknown code gets the plain sentence");
+  assert.equal(payoutFailureSentence("paypal", null), UNKNOWN_PAYOUT_FAILURE);
+  assert.equal(payoutFailureSentence("wise", "toString"), UNKNOWN_PAYOUT_FAILURE, "never a property of the map itself");
+  assert.equal(UNKNOWN_PAYOUT_FAILURE, "The payment did not go through. Check your payout details or contact TSC operations.");
+  for (const sentence of [UNKNOWN_PAYOUT_FAILURE, ...Object.values(PAYOUT_FAILURE_WORDS).flatMap(Object.values)]) {
+    assert(zhPayoutWords(sentence), `no Chinese for: ${sentence}`);
+    assert(zhPayoutWords(sentence.replace(/\.$/, "")), `no Chinese for the row's note: ${sentence}`);
+    assert(!/stripe|\bwise\b/i.test(sentence) && !/_|\b[A-Z]{4,}\b/.test(sentence), `a provider's word or code in: ${sentence}`);
+  }
+  // The database writes the bell from its own copy of the Wise and PayPal map.
+  const sql = read("supabase/migrations/20261116500000_payout_failure_words.sql");
+  for (const provider of ["wise", "paypal"]) {
+    for (const [code, sentence] of Object.entries(PAYOUT_FAILURE_WORDS[provider])) {
+      assert(sql.includes(`when '${code}' then '${sentence.replaceAll("'", "''")}'`), `payout_failure_sentence() says something else for ${provider} ${code}`);
+    }
+  }
+  assert(sql.includes(`'${UNKNOWN_PAYOUT_FAILURE}'`), "the database's unknown sentence is the same");
+  assert.equal(zhNotificationTitle({ kind: "payout_method_changed", title: "A payment to you did not go through" }), PAYOUT_WORDS_ZH["A payment to you did not go through"]);
+  assert.equal(zhNotificationBody({ kind: "payout_method_changed", body: `Your payment of $250.00 did not go through. ${payoutFailureSentence("wise", "bounced_back")}` }),
+    "你的一笔 $250.00 款项未成功。你的银行退回了这笔款项。请检查你的银行信息：信息无误后 TSC 会重新付款。");
+  assert.equal(zhNotificationTitle({ kind: "funds_released", title: "$1,250.00 added to your balance" }), "$1,250.00 已计入你的余额");
+
+  // Stripe's own withdrawal: the bell when it lands at the bank, and when it fails.
+  const inserted = [];
+  const fakeDb = {
+    from(table) {
+      if (table === "stripe_connect_accounts") {
+        return { select: () => ({ eq: (_, id) => ({ maybeSingle: async () => ({ data: id === "acct_known" ? { org_id: "org-1" } : null, error: null }) }) }) };
+      }
+      return { insert: async (row) => { inserted.push(row); return { error: null }; } };
+    },
+  };
+  const payoutEvent = (type, payout, account = "acct_known") => ({ type, account, data: { object: { amount: 123456, currency: "eur", ...payout } } });
+  assert.equal(await tellPayoutEvent(fakeDb, payoutEvent("payout.failed", { failure_code: "account_closed" })), true);
+  assert.deepEqual(inserted.at(-1), { org_id: "org-1", kind: "payout_method_changed", title: "A withdrawal did not go through",
+    body: "Your withdrawal of EUR 1,234.56 did not go through. Your bank account is closed. Add another bank account, then withdraw again. The money is back in your balance." });
+  assert(zhNotificationBody(inserted.at(-1)) && zhNotificationTitle(inserted.at(-1)), "the failed withdrawal's bell has its Chinese");
+  assert.equal(await tellPayoutEvent(fakeDb, payoutEvent("payout.paid", { amount: 5000, currency: "usd" })), true);
+  assert.deepEqual(inserted.at(-1), { org_id: "org-1", kind: "funds_released", title: "$50.00 paid out to your bank", body: "Withdrawn from your balance." });
+  assert.equal(zhNotificationTitle(inserted.at(-1)), "$50.00 已付至你的银行账户");
+  assert.equal(zhNotificationBody(inserted.at(-1)), "已从你的余额提现。");
+  assert.equal(await tellPayoutEvent(fakeDb, payoutEvent("payout.failed", { failure_code: "weird" }, "acct_other")), false, "an account TSC does not know writes nothing");
+  assert.equal(inserted.length, 2);
+  assert.match(read("api/stripe-webhook.js"), /case "payout\.paid":\s*case "payout\.failed":\s*\{\s*if \(await tellPayoutEvent/, "the webhook says both");
+
+  // Hong Kong's Wise form names the bank in its own list: "Bank name" is asked once.
+  const hk = [
+    { key: "accountHolderName", label: "Full name of the account holder", kind: "text" },
+    { key: "bankCode", label: "Bank name", kind: "select", options: [{ value: "004", label: "THE HONGKONG AND SHANGHAI BANKING CORPORATION LIMITED" }] },
+  ];
+  assert.equal(wiseBankList(hk)?.key, "bankCode");
+  assert.equal(chosenBankName(wiseBankList(hk), "004"), "THE HONGKONG AND SHANGHAI BANKING CORPORATION LIMITED", "the saved name is the bank chosen");
+  assert.equal(chosenBankName(wiseBankList(hk), undefined), "");
+  assert.equal(wiseBankList([{ key: "bankName", label: "Bank name", kind: "text" }]), null, "a typed bank name is not a list");
+  assert.equal(wiseBankList([{ key: "branchCode", label: "Branch", kind: "select", options: [] }]), null);
+  const steps = read("src/app/order/PayoutSetupSteps.jsx");
+  assert.match(steps, /\{bankList \? null : <label>/, "our own Bank name field steps aside for Wise's list");
+  assert.match(steps, /bankName: savedBankName/, "and the bank chosen is what is saved");
+}
+
 console.log("check:provider-payouts ok");

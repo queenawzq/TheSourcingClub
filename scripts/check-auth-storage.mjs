@@ -202,6 +202,31 @@ check(takeRecoveryToken(keepOther) === "abc" && keepOther.location.hash === "#ta
 check(/event === "SIGNED_OUT"\) setKeepSignedIn\(false\)/.test(readFileSync("src/lib/auth.jsx", "utf8")),
   "AuthProvider parks a signed-out tab");
 
+// The sign-in box shows this tab's own choice (keepChoice), never a ticked box
+// the tab did not choose: a shared computer's next person read "Keep me logged
+// in" ticked in a tab whose saved choice was not to keep.
+{
+  const fresh = openTab();
+  check(fresh.keepChoice() === true, "the sign-in box starts ticked in a tab with no choice yet");
+  signIn(fresh, "box-unticked", false);
+  check(fresh.keepChoice() === false, "a tab that signed in unticked shows the box unticked");
+  signOut(fresh);
+  check(fresh.keepChoice() === false, "and still unticked after signing out, for the next person");
+  signIn(fresh, "box-ticked", true);
+  check(fresh.keepChoice() === true, "ticking it keeps: the box shows ticked");
+  check(JSON.parse(browser.localStorage.getItem(KEY)).user === "box-ticked", "and the ticked sign-in is kept");
+  const beside = openTab();
+  signIn(beside, "box-beside", false);
+  check(fresh.keepChoice() === true && beside.keepChoice() === false, "each tab shows its own choice");
+  signOut(fresh);
+}
+// The screens start from that choice rather than a literal true.
+for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
+  const source = readFileSync(file, "utf8");
+  check(/useState\(keepChoice\)/.test(source) && !/\[keepSignedIn, setKeepSignedIn\] = useState\(true\)/.test(source),
+    `${file} draws the box from this tab's saved choice`);
+}
+
 // The company a tab works in belongs to the tab (src/lib/active-org-storage.mjs).
 // Recorded Nov 13: a brand tab reloaded into the factory workspace after another
 // tab switched company, or after another person's tab reloaded.

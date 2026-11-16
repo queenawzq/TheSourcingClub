@@ -1,72 +1,27 @@
-/**
- * What each withdrawal method costs and how long it takes, in the two short
- * lines the chooser draws under its name. One entry per route, so a new
- * provider adds its own here. Each option names the provider that pays the
- * factory, and its fee as a percentage of what reaches it.
- *
- * Every line must be true for every country it is shown in. No payout is
- * instant (a card payment can still be reversed), so each says so.
- * The fee line comes from src/shared/withdrawal-fees.mjs, the one source of
- * the fee: the factory pays the provider's fee, TSC none (its header has the
- * figures and their sources). Routes, checked 2026-11-15:
- *
- *   stripe / stripeUs  "Bank account (Stripe)" where Stripe pays out
- *           (stripe-payout-countries.mjs). TSC-managed accounts are created
- *           with fees.payer = application (api/_stripe-payouts.js), so Stripe
- *           bills TSC its payout fees, and the transfer holds them back. TSC
- *           transfers US$ (api/_stripe.js); outside the US Stripe converts it
- *           to the account's currency at its rate
- *           (https://docs.stripe.com/connect/currencies). Stripe publishes no
- *           figure for converting a Connect transfer, so that line has no
- *           number. Timing: "Manual payouts typically take 1–4 business days"
- *           (https://docs.stripe.com/payouts).
- *   wise    "International bank transfer (Wise)" (US: "Bank transfer (Wise)"), and "Bank transfer (Wise)"
- *           where Wise has a currency for the country (wiseCurrencyFor). Wise's
- *           quoted fee comes out of the step, the rest converted at Wise's
- *           mid-market rate (api/_wise.js, quote();
- *           https://wise.com/pricing/business).
- *   bank    "Bank transfer" where Wise has no currency (Taiwan, Cambodia, a
- *           country not listed): staff pay it by bank ("Mark paid out by bank"),
- *           and TSC charges nothing for it.
- *   wiseUs / paypalUs  the same for a US factory, paid US$ to US$, so without
- *           the conversion words.
- *   tazapay "Bank transfer (Tazapay)" in mainland China (CNY over CNAPS) and Hong
- *           Kong (HKD over CHATS) (src/shared/tazapay-payout.mjs). Tazapay's
- *           quoted fee comes out of the step (about US$5.44 to China, US$3.23
- *           to Hong Kong, sandbox Nov 16), the rest converted at Tazapay's rate
- *           (api/_tazapay.js, quote()). China payouts run weekdays 9-5 China
- *           time, 3pm cut-off, and settle the same or next day.
- *   paypal  PayPal Payouts: PayPal bills the sender (TSC), and the
- *           payment sent holds it back
- *           (https://developer.paypal.com/docs/payouts/standard/reference/fees/).
- *           PayPal charges the receiver to convert US$, about 3% above its base
- *           rate on its regional fee pages
- *           (https://www.paypal.com/us/business/paypal-business-fees), more in
- *           some countries. Timing: staff send it from the payments board once
- *           released (api/_provider-payouts.js), and it usually reaches the
- *           PayPal balance within minutes, so no "few business days" here.
- */
-
-import { withdrawalFeeLine } from "./withdrawal-fees.mjs";
-
-const SENT_AFTER_RELEASE = "Not instant: sent once released, then a few business days to arrive";
-const STRIPE_TIMING = "Not instant: usually 1–4 business days after you withdraw";
-const TAZAPAY_TIMING = "Not instant: sent once released, then usually the same or next business day";
+/** Shared chooser copy for every country; fee calculations remain in withdrawal-fees.mjs. */
+const STRIPE_LINES = ["From 0.25% fee, processed by Stripe", "Usually processed within 3–7 business days"];
+const WISE_LINES = ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"];
+const PAYPAL_LINES = ["Up to 2% fee", "Usually processed within 3–7 business days"];
+// Tazapay (China, Hong Kong): its pricing page lists local payouts from US$2; the line follows TSC's chosen wording.
+const TAZAPAY_LINES = ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"];
 
 export const PAYOUT_METHOD_INFO = {
-  stripeUs: [withdrawalFeeLine("stripe", { country: "US" }), STRIPE_TIMING],
-  stripe: [withdrawalFeeLine("stripe"), STRIPE_TIMING],
-  wise: [withdrawalFeeLine("wise"), SENT_AFTER_RELEASE],
-  // A US factory is paid US$ to US$: nothing is converted.
-  wiseUs: [withdrawalFeeLine("wise", { country: "US" }), SENT_AFTER_RELEASE],
-  bank: [withdrawalFeeLine("bank"), SENT_AFTER_RELEASE],
-  paypal: [withdrawalFeeLine("paypal"), "Not instant: sent once released"],
-  paypalUs: [withdrawalFeeLine("paypal", { country: "US" }), "Not instant: sent once released"],
-  // Tazapay quotes its fee per payment; the figure here is the typical one seen on
-  // its sandbox quotes (Nov 16), stated as "about". The exact fee is on the
-  // payment's row and notice once it is sent (record_payout_fee).
-  tazapayCN: ["Fee: about US$5.44 per payment to China, quoted when sent and taken from it; arrives in CNY at Tazapay's rate", TAZAPAY_TIMING],
-  tazapayHK: ["Fee: about US$3.23 per payment to Hong Kong, quoted when sent and taken from it; arrives in HKD at Tazapay's rate", TAZAPAY_TIMING],
+  stripeUs: STRIPE_LINES,
+  stripe: STRIPE_LINES,
+  wise: WISE_LINES,
+  wiseUs: WISE_LINES,
+  paypal: PAYPAL_LINES,
+  paypalUs: PAYPAL_LINES,
+  tazapayCN: TAZAPAY_LINES,
+  tazapayHK: TAZAPAY_LINES,
+};
+
+export const payoutMethodFeeUrl = (method) => {
+  if (method?.startsWith("stripe")) return "https://stripe.com/connect/pricing";
+  if (method?.startsWith("wise")) return "https://wise.com/us/pricing/";
+  if (method?.startsWith("paypal")) return "https://www.paypal.com/us/business/paypal-business-fees";
+  if (method?.startsWith("tazapay")) return "https://tazapay.com/pricing";
+  return null;
 };
 
 /** The chooser's Tazapay option for a country, or null where Tazapay doesn't pay. */
@@ -93,12 +48,14 @@ export const paidByWise = (country) => WISE_COUNTRIES.has(country);
 /**
  * Which lines a chooser option draws: the route its Set up actually takes.
  * "Bank account" in a Stripe country is Stripe's. Every other bank option
- * opens Wise's form where Wise has a currency for the country, and staff's
- * bank form otherwise (WiseBankStep's onUnavailable).
+ * opens Wise's form where Wise has a currency for the country; elsewhere there
+ * is no bank option (null), and where Wise's form can't be had the card says
+ * so and offers PayPal (WiseBankStep's onUnavailable).
  */
 export function chooserMethod(option, { supported = false, country = "" } = {}) {
   const us = country === "US";
   if (option === "paypal") return us ? "paypalUs" : "paypal";
   if (option === "bank" && supported) return us ? "stripeUs" : "stripe";
-  return paidByWise(country) ? (us ? "wiseUs" : "wise") : "bank";
+  // No staff-paid bank option: where neither Stripe nor Wise pays, there is no bank line.
+  return paidByWise(country) ? (us ? "wiseUs" : "wise") : null;
 }
