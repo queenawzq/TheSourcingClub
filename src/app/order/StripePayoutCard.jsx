@@ -321,12 +321,14 @@ export default function StripePayoutCard({
   // Whether this deploy pays China and Hong Kong through Tazapay (api/payout-options.js).
   const [tazapayEnabled, setTazapayEnabled] = useState(false);
   const [companyUscc, setCompanyUscc] = useState(null);
+  // Whether the company's registration was read: only then can "none on file" be said.
+  const [usccRead, setUsccRead] = useState(false);
   useEffect(() => {
     let live = true;
     fetch("/api/payout-options").then((answer) => (answer.ok ? answer.json() : {})).then((options) => {
       if (live) setTazapayEnabled(Boolean(options?.tazapayEnabled) && Boolean(onSaveTazapay));
     }).catch(() => {});
-    loadCompanyRegistration?.().then((number) => { if (live) setCompanyUscc(number); }).catch(() => {});
+    loadCompanyRegistration?.().then((number) => { if (live) { setCompanyUscc(number); setUsccRead(true); } }).catch(() => {});
     return () => { live = false; };
   }, [onSaveTazapay, loadCompanyRegistration]);
   /** A saved bank row Tazapay pays: in China or Hong Kong, not set up on Wise. */
@@ -876,8 +878,15 @@ export default function StripePayoutCard({
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}`
     : endingIn(isTazapayRow(row) ? "Bank transfer (Tazapay)" : transferName(row.bank_country), row.account_number_last4));
   // Everything Tazapay needs but the number, which has its own line.
-  const tazapayMissing = (row) => isTazapayRow(row)
-    && tazapayDetailsProblems({ ...row, bank_country: row.bank_country.trim().toUpperCase() }).some((p) => p.field !== "full_number");
+  const tazapayProblemsFor = (row) => (isTazapayRow(row)
+    ? tazapayDetailsProblems({ ...row, bank_country: row.bank_country.trim().toUpperCase() }, { companyRegistration: companyUscc, registrationKnown: usccRead })
+      .filter((p) => p.field !== "full_number")
+    : []);
+  const tazapayMissing = (row) => tazapayProblemsFor(row).length > 0;
+  /** What the saved Tazapay row still needs, in the owner's words. */
+  const tazapayMissingLine = (row) => (tazapayProblemsFor(row).every((p) => p.problem === "not_on_file")
+    ? "Add your business registration on your Profile: TSC pays this account once its code matches."
+    : "Add the missing bank details.");
   // A bank Wise pays says so, as in the chooser. Wise pays a bank row only with a
   // Wise recipient on it (the server's rule, 20261108163459); without one, staff
   // pay it by bank, China included.
@@ -1068,7 +1077,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">{isPaypal(row)
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
-                  : <><strong>{manualListLabel(row)}</strong><span>{row.number_changed_at ? (tazapayMissing(row) ? "Add the missing bank details." : row.bank_name) : "Add your full account number."}</span></>}</div>
+                  : <><strong>{manualListLabel(row)}</strong><span>{row.number_changed_at ? (tazapayMissing(row) ? tazapayMissingLine(row) : row.bank_name) : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>

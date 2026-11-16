@@ -83,6 +83,7 @@ const PATTERNS = [
   [/^(\d{1,2}):(\d{2}) (AM|PM)( [A-Z]{2,5})?$/, (m) => `${clock(m[1], m[2], m[3])}${m[4] ?? ""}`],
   [/^just now$/i, () => "刚刚"],
   [/^Bank transfer \(Tazapay\) ····(\d{4})$/, (m) => `银行转账（Tazapay）····${m[1]}`],
+  [/^(\$[\d,.]+) on its way$/, (m) => `${m[1]} 正在途中`],
   // A bank and its last four digits on a withdrawal row: "Bank of China ending 5001".
   [/^(.{1,80}) ending (\d{4})$/, (m) => `${m[1]} 尾号 ${m[2]}`],
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],

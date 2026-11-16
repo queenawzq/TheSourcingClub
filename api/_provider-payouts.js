@@ -50,6 +50,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * else its sentence. A refusal naming none asks for the lot.
  */
 const DETAIL_WORDS = [
+  [/registration/i, "company registration number"],
   [/swift|\bbic\b/i, "SWIFT code"],
   [/iban|account ?number/i, "account number"],
   [/holder|account ?name|full ?name|legal ?name/i, "account holder's name"],
@@ -411,6 +412,7 @@ async function tazapayAccountProblems(db, accountId) {
   const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
   const problems = tazapayDetailsProblems(account, {
     companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
+    registrationKnown: !registered.error,
   });
   return { account, problems, sentence: tazapayProblemsSentence(problems), route: tazapayRoute(account) };
 }
@@ -478,6 +480,7 @@ export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, no
       const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
       const problems = tazapayDetailsProblems(account, {
         companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
+        registrationKnown: !registered.error,
       });
       if (problems.length) throw new PayoutFailure("details_missing", tazapayProblemsSentence(problems), { fields: problems.map((p) => p.field) });
       const route = tazapayRoute(account);

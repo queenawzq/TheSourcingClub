@@ -30,6 +30,13 @@ export const TAZAPAY_ROUTES = Object.freeze({
 });
 
 /** The route Tazapay would pay this account by, or null when Tazapay doesn't pay it. */
+/**
+ * Tazapay's usual fee per payout, in US cents, from its sandbox quotes
+ * (Nov 16): the chooser's "about" figure, and the board's "too small" check
+ * before any quote. The quote at the press is what is charged.
+ */
+export const TAZAPAY_TYPICAL_FEE_CENTS = Object.freeze({ CN: 544, HK: 323 });
+
 export function tazapayRoute(account) {
   if (!account || account.method !== "bank") return null;
   return TAZAPAY_ROUTES[String(account.bank_country ?? "").trim().toUpperCase()] ?? null;
@@ -50,7 +57,7 @@ const isSwift = (value) => /^[A-Z0-9]{8}([A-Z0-9]{3})?$/.test(value.replace(/\s/
  *   account must be the company's, not an owner's or an agent's).
  * `companyRegistration` is the company's verified number, when there is one.
  */
-export function tazapayDetailsProblems(account, { companyRegistration = null } = {}) {
+export function tazapayDetailsProblems(account, { companyRegistration = null, registrationKnown = false } = {}) {
   const route = tazapayRoute(account);
   if (!route) return [{ field: "bank_country", problem: "not_tazapay" }];
   const problems = [];
@@ -71,6 +78,8 @@ export function tazapayDetailsProblems(account, { companyRegistration = null } =
   } else {
     const problem = registrationNumberProblem(country, registration);
     if (problem) need("registration_number", problem === "missing" ? "format" : problem);
+    // The payout needs the company's own registration on file to match (tazapay_account_check).
+    else if (country === "CN" && registrationKnown && !companyRegistration) need("registration_number", "not_on_file");
     else if (companyRegistration
       && normaliseRegistrationNumber(country, companyRegistration) !== normaliseRegistrationNumber(country, registration)) {
       need("registration_number", "not_the_company");
@@ -126,6 +135,7 @@ const PROBLEM_WORDS = {
   check_digit: " (its last character doesn't check out)",
   old_number: " (the current 18-character code, not the old 15-digit number)",
   not_the_company: " (it isn't the company's own)",
+  not_on_file: " (the company has no registration on file with TSC for it to match)",
   not_tazapay: "",
 };
 

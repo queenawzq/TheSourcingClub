@@ -47,7 +47,7 @@ import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
-import { tazapayDetailsProblems, tazapayProblemsSentence } from "../../shared/tazapay-payout.mjs";
+import { TAZAPAY_TYPICAL_FEE_CENTS, tazapayDetailsProblems, tazapayProblemsSentence } from "../../shared/tazapay-payout.mjs";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 
@@ -83,7 +83,36 @@ const tazapayProblemsOf = (row) => tazapayDetailsProblems({
   bank_code: row.payout_bank_code, swift: row.payout_swift, address_line1: row.payout_address_line1,
   address_city: row.payout_address_city, address_state: row.payout_address_state,
   number_changed_at: row.payout_has_number ? true : null,
-});
+}, { companyRegistration: row.company_registration_cn ?? null, registrationKnown: row.company_registration_read === true });
+/**
+ * The company's own Chinese registration, for the China rows Tazapay pays: the
+ * payout refuses an account whose number isn't it, or a company with none on
+ * file, so the board says so before anyone presses. Staff may read these.
+ */
+async function withCompanyRegistrations(board) {
+  const accountIds = [...new Set(board.filter((row) => paidByTazapay(row) && String(row.payout_country ?? "").trim().toUpperCase() === "CN")
+    .map((row) => row.payout_account_id))];
+  if (!accountIds.length) return board;
+  const accounts = await supabase.from("factory_payout_accounts").select("id, org_id").in("id", accountIds);
+  if (accounts.error) return board;
+  const orgOf = new Map(accounts.data.map((a) => [a.id, a.org_id]));
+  const registrations = await supabase.from("company_registrations").select("org_id, number, country_code").in("org_id", [...new Set(orgOf.values())]);
+  if (registrations.error) return board;
+  const numberOf = new Map(registrations.data.filter((r) => r.country_code === "CN").map((r) => [r.org_id, r.number]));
+  return board.map((row) => (orgOf.has(row.payout_account_id)
+    ? { ...row, company_registration_read: true, company_registration_cn: numberOf.get(orgOf.get(row.payout_account_id)) ?? null }
+    : row));
+}
+/**
+ * A step no bigger than Tazapay's usual fee for its country, refused on sight in
+ * the fee module's words (the quote decides at the press; this keeps the button
+ * honest on every load). Figures: TAZAPAY_TYPICAL_FEE_CENTS.
+ */
+const tazapayTooSmall = (row) => {
+  const typical = TAZAPAY_TYPICAL_FEE_CENTS[String(row.payout_country ?? "").trim().toUpperCase()];
+  if (!typical || Number(row.amount_cents) > typical) return null;
+  return withdrawalFee({ provider: "tazapay", amountCents: Number(row.amount_cents), currency: row.currency, quotedFeeCents: typical }).refused ?? null;
+};
 const tazapayBlock = (row) => tazapayProblemsSentence(tazapayProblemsOf(row));
 /** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
 const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
@@ -477,6 +506,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   // last press's (a cancelled attempt that ended on it).
   const feeBlocked = provider === "tazapay"
     ? feeRefusal ?? (attempt?.status === "cancelled" && attempt.provider_status === "fee_too_large" ? attempt.staff_sentence : null)
+      ?? tazapayTooSmall(row)
     : null;
   const detailsBlocked = provider === "tazapay" ? tazapayBlock(row) : null;
   const blocked = detailsBlocked ?? feeBlocked;
@@ -856,7 +886,8 @@ export default function AdminPayments() {
 
   const load = useCallback(async () => {
     try {
-      const [board, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
+      const [read, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
+      const board = await withCompanyRegistrations(read);
       setRows(board);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);

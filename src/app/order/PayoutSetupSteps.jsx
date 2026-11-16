@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
+import { registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
@@ -194,6 +195,7 @@ const TAZAPAY_WORDS = {
   notChinese: "Use Chinese characters, as your bank has the name",
   bankCodeFormat: "3 digits, for example 004",
   swiftFormat: "8 or 11 letters and digits, for example HSBCHKHH",
+  usccNotOnFile: "TSC pays this account only once this code matches your company's business registration on TSC. Add your business registration on your Profile if it isn't there.",
 };
 // Stored in English (Tazapay's address); labelled in the reader's language. The
 // language layer leaves a select's own text alone, so the options are drawn here.
@@ -228,7 +230,9 @@ export function TazapayBankStep({ row, country, busy, companyRegistration = null
     bank_name: v("bank_name") ? null : REQUIRED,
     account_name: !v("account_name") ? REQUIRED : isLatinName(v("account_name")) ? null : words.notLatin,
     holder_name_local: hk ? null : !v("holder_name_local") ? REQUIRED : /[㐀-鿿]/.test(v("holder_name_local")) && v("holder_name_local").length >= 2 && v("holder_name_local").length <= 140 ? null : words.notChinese,
-    registration_number: hk || companyRegistration ? null : v("registration_number") ? null : REQUIRED,
+    // The server refuses a bad number by a constraint; say why at the field instead.
+    registration_number: hk || companyRegistration ? null : !v("registration_number") ? REQUIRED
+      : registrationNumberProblem("CN", v("registration_number")) ? registrationProblemText("CN", registrationNumberProblem("CN", v("registration_number")), zh ? "zh" : "en") : null,
     bank_code: !hk ? null : !v("bank_code") ? REQUIRED : /^\d{3}$/.test(v("bank_code")) ? null : words.bankCodeFormat,
     swift: !hk ? null : !v("swift") ? REQUIRED : validSwift(v("swift")) ? null : words.swiftFormat,
     address_line1: v("address_line1") ? null : REQUIRED,
@@ -322,7 +326,11 @@ export function TazapayBankStep({ row, country, busy, companyRegistration = null
               <span>{words.uscc}</span>
               <span className="payout-readonly-value" data-field="tazapay_registration_number" style={{ overflowWrap: "anywhere" }}>{companyRegistration}</span>
             </label>
-          ) : field("registration_number", words.uscc, text("registration_number", { onBlur: upperOnBlur("registration_number") }))}
+          ) : <>
+            {field("registration_number", words.uscc, text("registration_number", { onBlur: upperOnBlur("registration_number") }))}
+            {/* No registration on file: Tazapay pays only an account in the company's own name, checked against it. */}
+            <small>{words.usccNotOnFile}</small>
+          </>}
           {numberFields}
           {field("address_line1", words.street, text("address_line1", { maxLength: 140 }))}
           {field("address_city", words.city, text("address_city", { maxLength: 80 }))}
