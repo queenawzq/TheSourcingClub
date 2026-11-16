@@ -46,6 +46,7 @@ import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
+import { tazapayDetailsProblems, tazapayProblemsSentence } from "../../shared/tazapay-payout.mjs";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 
@@ -74,6 +75,15 @@ const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
 /** A bank account in mainland China or Hong Kong that isn't Wise's: Tazapay pays it (src/shared/tazapay-payout.mjs). */
 const paidByTazapay = (row) => paidByBank(row) && !row.wise_recipient_type && Boolean(row.payout_account_id)
   && ["CN", "HK"].includes(String(row.payout_country ?? "").trim().toUpperCase());
+/** What Tazapay still needs on this row's account, in one sentence, or null when it can be paid (the server checks the company's USCC too). */
+const tazapayProblemsOf = (row) => tazapayDetailsProblems({
+  method: "bank", bank_country: String(row.payout_country ?? "").trim().toUpperCase(), account_name: row.payout_holder,
+  holder_name_local: row.payout_holder_local, registration_number: row.payout_registration, bank_name: row.payout_bank,
+  bank_code: row.payout_bank_code, swift: row.payout_swift, address_line1: row.payout_address_line1,
+  address_city: row.payout_address_city, address_state: row.payout_address_state,
+  number_changed_at: row.payout_has_number ? true : null,
+});
+const tazapayBlock = (row) => tazapayProblemsSentence(tazapayProblemsOf(row));
 /** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
 const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
 /**
@@ -445,18 +455,29 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     );
   }
 
+  // Tazapay can't pay an incomplete account: say what's missing before anyone presses.
+  const blocked = provider === "tazapay" ? tazapayBlock(row) : null;
+  const toldAlready = blocked && attempt?.status === "failed" && attempt.provider_status === "details_rejected" && !fixedSince;
+
   return (
     <>
       {said}
       {lastFailed}
+      {blocked && !lastFailed ? <span className="admin-error admin-row-message" data-testid="tazapay-blocked">{blocked}</span> : null}
+      {blocked && !toldAlready && !refusedDetails ? (
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, blocked, false, tazapayProblemsOf(row).map((p) => p.field)), () => "The factory was told what to fix.")}>
+          Tell the factory to fix its details
+        </button>
+      ) : null}
       {refusedDetails ? (
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
                 onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem?.message ?? attempt.staff_sentence, needsStatement, problem?.fields))}>
           Tell the factory to fix its details
         </button>
       ) : null}
-      <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number)} data-testid={`pay-with-${provider}`}
-              title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
+      <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number) || Boolean(blocked)} data-testid={`pay-with-${provider}`}
+              title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : blocked ?? undefined}
               onClick={() => {
                 setProblem(null);
                 if (provider === "paypal") { setPreview({}); setStep("confirm"); }

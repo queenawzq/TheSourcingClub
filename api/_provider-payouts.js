@@ -254,9 +254,12 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
 
 export async function tellFactoryDetails({ caller, db, paymentId, changedAt, which, cnyConfirmed, sentence, fields = [] }) {
   const named = (Array.isArray(fields) ? fields : []).filter(isFieldKey).slice(0, 10);
-  const claim = await must(caller.rpc("claim_provider_payout", {
-    target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
-  }));
+  // Tazapay's own claim refuses the incomplete account this tell is about.
+  const claim = await must(which === "tazapay"
+    ? caller.rpc("claim_provider_payout_to_tell", { target_payment: paymentId, paid_to_changed_at: changedAt })
+    : caller.rpc("claim_provider_payout", {
+      target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
+    }));
   // A live attempt may have gone. Failing it here would let the next press pay again.
   if (claim.resumed) {
     await record(db, claim.payout_id, { sentence: STILL_OPEN });
