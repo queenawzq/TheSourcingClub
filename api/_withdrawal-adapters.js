@@ -24,6 +24,10 @@ import { paypalFrom } from "./_paypal.js";
  *                                      payment: a press after a timeout finds the first one.
  *   status(client, ref)                { state: "sent" | "paid" | "failed" | "cancelled",
  *                                        raw, arrivesMinor, failure }
+ *   factoryQuote(client, ctx)          optional: the same shape as quote(), or null when it can't
+ *                                      give the exact figure, for the factory's own preview. Read-only: it may not create
+ *                                      anything at the provider (no recipient, no transfer).
+ *                                      Without it, the factory sees the fee line instead.
  *
  * ctx = { amountCents, currency, key, reference, account: { id, paypalEmail,
  *         wiseRecipientId, wiseCurrency }, caller, db, cnyConfirmed, feeFor }
@@ -77,6 +81,20 @@ export const wiseAdapter = {
       quote: { id: quote.id, recipientId },
     };
   },
+  /**
+   * Only for an account Wise already knows (a recipient made on an earlier
+   * payout). Wise prices without one too, but its fee depends on the recipient
+   * (sandbox: US$3.63 without, US$9.54 with, for the same CNY account), so a
+   * quote without one would show the factory the wrong fee. Creates nothing.
+   */
+  async factoryQuote(wise, ctx) {
+    if (!ctx.account.wiseRecipientId) return null;
+    const quote = await wise.quote({
+      sourceCurrency: ctx.currency, targetCurrency: ctx.account.wiseCurrency ?? wise.payoutCurrency,
+      amountCents: ctx.amountCents, recipientId: ctx.account.wiseRecipientId ?? undefined,
+    });
+    return { feeCents: quote.feeCents, leavesCents: quote.totalCents, receivesMinor: quote.arrivesCents, receivesCurrency: quote.arrivesCurrency, quote: null };
+  },
   async pay(wise, ctx, quote) {
     const transfer = await wise.createTransfer({
       recipientId: quote.quote.recipientId, quoteId: quote.quote.id, key: ctx.key, reference: ctx.reference,
@@ -116,6 +134,7 @@ export const paypalAdapter = {
     if (fee.refused) throw new PayoutFailure("too_small", fee.refused);
     return { feeCents: fee.feeCents, leavesCents: null, receivesMinor: fee.receivesCents, receivesCurrency: ctx.currency, quote: null };
   },
+  factoryQuote(paypal, ctx) { return paypalAdapter.quote(paypal, ctx); },
   async pay(paypal, ctx, quote) {
     const paid = await paypal.pay({
       key: ctx.key, email: ctx.account.paypalEmail, amountCents: quote.receivesMinor, currency: ctx.currency, reference: ctx.reference,

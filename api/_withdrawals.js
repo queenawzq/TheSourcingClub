@@ -101,6 +101,24 @@ export async function previewWithdrawal({ adapter, client, caller, db, row, cnyC
   return { shortByCents: shortBy, balanceCents: balance, feeCents: quote.feeCents, receivesMinor: quote.receivesMinor, receivesCurrency: quote.receivesCurrency, leavesCents: quote.leavesCents };
 }
 
+/**
+ * The factory's own preview before it asks: the exact fee and what arrives.
+ * Read-only: no claim, no lease, nothing created at the provider. Only an
+ * owner of the company, for one of its own accounts (checked by the route).
+ */
+export async function factoryQuote({ adapter, client, db, orgId, account, amountCents }) {
+  await loadFeeRule();
+  const ctx = contextFrom({
+    withdrawal_id: null, amount_cents: amountCents, currency: "USD", key: null,
+    account_id: account.id, paypal_email: account.paypal_email, wise_recipient_id: account.wise_recipient_id, wise_currency: account.wise_currency,
+  }, { caller: null, db, cnyConfirmed: false, country: await factoryCountry(db, orgId) });
+  const asked = await adapter.factoryQuote(client, ctx);
+  if (!asked) return { exact: false };
+  const quote = checkQuote(adapter, ctx, asked);
+  return {
+    exact: true, feeCents: quote.feeCents, receivesMinor: quote.receivesMinor, receivesCurrency: quote.receivesCurrency };
+}
+
 export async function approveWithdrawal({ adapter, client, caller, db, id, cnyConfirmed }) {
   await loadFeeRule();
   const claimed = await caller.rpc("claim_withdrawal", { target_withdrawal: id });
