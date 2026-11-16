@@ -17,7 +17,8 @@ const walk = (dir) => readdirSync(dir).flatMap((name) => {
 });
 const read = (path) => readFileSync(path, "utf8");
 
-const NUMBER_WORDS = /account_number(?!_last4)|payout_account_numbers|reveal_payout_account_number|save_bank_payout_account|save_wise_payout_account|payout_wise_recipient|decrypted_secrets/;
+// `invalid_account_number` is Stripe's failure code for a payout, not the number.
+const NUMBER_WORDS = /(?<!invalid_)account_number(?!_last4)|payout_account_numbers|reveal_payout_account_number|save_bank_payout_account|save_wise_payout_account|payout_wise_recipient|decrypted_secrets/;
 
 // The one exception: Wise needs the number to make a recipient, so this file
 // reads it with the staff member's token, sends it to Wise and keeps nothing.

@@ -1,3 +1,5 @@
+import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
+
 /** The step as earned, before any payout fee. */
 export const grossAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
 /** The provider's payout fee the factory paid on it (src/shared/withdrawal-fees.mjs), recorded before the money moved. */
@@ -91,6 +93,10 @@ export function earningsSummaryFor(earnings, client) {
   };
 }
 
+export const ADDED_TO_BALANCE = "Added to your balance";
+/** Earned and the factory's to withdraw or already sent: "Paid", or in its Stripe balance. */
+export const earningPaid = (row) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row));
+
 /**
  * Where one earning stands: Awaiting approval, Pending, Paid. The one word for
  * this money, on Payments and the factory's order page, whoever reads it: it
@@ -100,7 +106,9 @@ export function earningsSummaryFor(earnings, client) {
  */
 export function earningStatus(row) {
   if (heldOnCancelledOrder(row)) return "Order cancelled";
-  if (row.state === "released") return "Paid";
+  // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
+  // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
+  if (row.state === "released") return row.stripe_transfer_id ? ADDED_TO_BALANCE : "Paid";
   return row.release_requested_at ? "Pending" : "Awaiting approval";
 }
 
@@ -113,8 +121,14 @@ const FAILURE_NOTE = {
 export const waitingOnDetails = (attempt) => attempt.status === "processing" && Boolean(attempt.details_asked_at);
 const askFor = (attempt) => FAILURE_NOTE.details_rejected[attempt.provider];
 
-/** What a failed attempt asks of this person, or nothing they can do. */
-export const failureNote = (attempt) => attempt.asked_to_check ?? FAILURE_NOTE[attempt.failure_code]?.[attempt.provider] ?? "TSC will try again";
+/**
+ * What a failed attempt asks of this person: what staff asked it to check, else
+ * why the provider says it failed (src/shared/payout-failure-words.mjs), in a
+ * sentence the bell repeats. No trailing full stop, like the short asks.
+ */
+export const failureNote = (attempt) => attempt.asked_to_check
+  ?? (attempt.failure_detail ? null : FAILURE_NOTE[attempt.failure_code]?.[attempt.provider])
+  ?? payoutFailureSentence(attempt.provider, attempt.failure_detail).replace(/\.$/, "");
 
 /**
  * PayPal holds this payment for the address it was sent to, and the factory has

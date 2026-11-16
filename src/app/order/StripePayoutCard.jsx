@@ -66,6 +66,9 @@ function availableFrom(balance) {
     : null;
 }
 
+/** Why money already earned cannot be withdrawn yet: Stripe's date for it. */
+export const availableOnWords = (day) => `Available to withdraw on ${day}`;
+
 const endingIn = (name, last4) => `${name}${last4 ? ` ····${last4}` : ""}`;
 
 /** "Bank account ····2345", the name it was added under, wherever it is drawn. */
@@ -953,7 +956,7 @@ export default function StripePayoutCard({
             ? [
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. You can withdraw ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.` : null,
+              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
@@ -980,7 +983,7 @@ export default function StripePayoutCard({
           {isOwner ? account?.transfers_active ? (
             <>
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
-              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 ? `Nothing to withdraw yet${arrivesOn ? `. Available ${arrivesOn}` : ""}` : "Nothing to withdraw yet"} onClick={() => {
+              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 && arrivesOn ? availableOnWords(arrivesOn) : "Nothing to withdraw yet"} onClick={() => {
               setError(null);
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");

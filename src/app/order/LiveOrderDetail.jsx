@@ -161,7 +161,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
       if (!payment.release_requested_at) return "Funded: held by TSC";
       return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
-      return "Paid";
+      // The factory's word, as on Payments: a Stripe transfer is in its balance.
+      return isFactory ? earningStatus(payment) : "Paid";
     case "cancelled":
       // Held money that went back to the brand when the order was cancelled.
       return payment.refunded_at && !isFactory ? "Refunded" : "";

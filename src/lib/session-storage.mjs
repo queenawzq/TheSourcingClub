@@ -87,6 +87,16 @@ export function createSessionStorage(win) {
   }
 
   /**
+   * What the sign-in screen's box shows: this tab's saved choice. A tab that
+   * chose "only this tab", or was signed out, shows it unticked, so a shared
+   * computer's next person is not shown a choice they did not make. A tab
+   * with no choice yet shows the design's default, ticked.
+   */
+  function keepChoice() {
+    return safe(() => tab().getItem(KEEP_KEY)) !== "0";
+  }
+
+  /**
    * Called right before a sign-up, which has no checkbox. A new account is
    * kept, like a ticked sign-in, unless this browser already keeps another
    * sign-in: then it stays in this tab, because writing it over the shared
@@ -108,5 +118,5 @@ export function createSessionStorage(win) {
     return (stored?.access_token ?? null) === (session?.access_token ?? null);
   }
 
-  return { storage, setKeepSignedIn, keepNewAccount, isThisTabsSession };
+  return { storage, setKeepSignedIn, keepChoice, keepNewAccount, isThisTabsSession };
 }
