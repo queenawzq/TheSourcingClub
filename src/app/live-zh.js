@@ -151,6 +151,19 @@ const PATTERNS = [
   [/^Needs the (.+) permission$/, (m, inner) => `需要「${inner(m[1]).replace(/权限$/, "")}」权限`],
   [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (m, inner) => `你需要 ${m[2]} 的「${inner(m[1]).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
   [/^Add (.+) to strengthen this profile\.$/, (m) => profileTodo(m[1])],
+  // Withdrawing from the balance (src/app/order/WithdrawFromBalance.jsx); amounts and addresses kept.
+  [/^Withdrawal of (\S+) to (.+): Waiting for TSC\.$/, (m) => `提现 ${m[1]} 至 ${m[2]}：等待 TSC 处理。`],
+  [/^Withdrawal of (\S+) to (.+): TSC is sending it\.$/, (m) => `提现 ${m[1]} 至 ${m[2]}：TSC 正在发送。`],
+  [/^Withdrawal of (\S+) declined: (.+)$/, (m, inner) => `提现 ${m[1]} 被拒绝：${inner(m[2])}`, { free: true }],
+  [/^Withdrawal of (\S+) did not go through\. The amount is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。该金额已退回你的余额。`],
+  [/^Paid out (\S+) to (.+) \(fee (\S+); you receive (\S+)\)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}（手续费 ${m[3]}；你收到 ${m[4]}）。`],
+  [/^Paid out (\S+) to (.+)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}。`],
+  [/^Available: (\S+)$/, (m) => `可提现：${m[1]}`],
+  [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
+  [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
+  [/^Fee: (\S+), taken from the amount$/, (m) => `手续费：${m[1]}，从金额中扣除`],
+  [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
+  [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
 ];
 
 /**
