@@ -253,7 +253,7 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
 {
   // A step no bigger than Tazapay's fee: refused in words, nothing sent, the attempt ends.
   const w = world({ claim: { amount_cents: 544 } });
-  await assert.rejects(pay(w), (e) => e.kind === "refused" && /not more than the US\$5\.44 fee/.test(e.message));
+  await assert.rejects(pay(w), (e) => e.kind === "refused" && /the fee to send it is US\$5\.44, so nothing would arrive\. Nothing was sent\./.test(e.message));
   assert.equal(w.made().length, 0, "a payment the fee would swallow pays nothing");
   assert.equal(w.finishes[0]?.outcome, "cancelled");
 }
