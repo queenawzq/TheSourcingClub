@@ -1307,7 +1307,6 @@ const PROFILE_TODO_ZH = [
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 const factoryMainZhReplacements = [
-  [/Fee (\S+), taken from it: you receive (\S+?)\.(?=\s|$)/g, "手续费 $1，已从中扣除：你收到 $2。"],
   [/Current status:/g, "当前状态："],
   [/(\d+) day avg\. response/g, "平均 $1 天回复"],
   [/Best Fit/g, "最佳匹配"],
