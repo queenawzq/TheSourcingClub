@@ -223,7 +223,7 @@ export function TazapayBankStep({ row, country, busy, companyRegistration = null
   const errors = {
     bank_name: v("bank_name") ? null : REQUIRED,
     account_name: !v("account_name") ? REQUIRED : isLatinName(v("account_name")) ? null : words.notLatin,
-    holder_name_local: hk ? null : !v("holder_name_local") ? REQUIRED : /[㐀-鿿]/.test(v("holder_name_local")) ? null : words.notChinese,
+    holder_name_local: hk ? null : !v("holder_name_local") ? REQUIRED : /[㐀-鿿]/.test(v("holder_name_local")) && v("holder_name_local").length >= 2 && v("holder_name_local").length <= 140 ? null : words.notChinese,
     registration_number: hk || companyRegistration ? null : v("registration_number") ? null : REQUIRED,
     bank_code: !hk ? null : !v("bank_code") ? REQUIRED : /^\d{3}$/.test(v("bank_code")) ? null : words.bankCodeFormat,
     swift: !hk ? null : !v("swift") ? REQUIRED : validSwift(v("swift")) ? null : words.swiftFormat,
