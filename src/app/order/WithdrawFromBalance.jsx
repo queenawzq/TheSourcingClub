@@ -95,8 +95,9 @@ export function useWithdrawalBalance(orgId, enabled = true) {
 
 /**
  * While a withdrawal is open, only the owner's Cancel shows here: the
- * Transactions list already says what was asked and where it stands.
- * Declined and failed keep a sentence, because each carries something to act on.
+ * Transactions list already says what was asked, where it stands and what
+ * was paid. Declined and failed keep a sentence, because each carries
+ * something to act on.
  * Each line is one whole sentence, so the Chinese layer can read it
  * (src/app/live-zh.js patterns).
  */
@@ -114,11 +115,6 @@ export function WithdrawalStatus({ open, last, isOwner, onCancel, busy }) {
   }
   if (last?.status === "failed") {
     return <p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p>;
-  }
-  if (last?.status === "paid" && Date.now() - new Date(last.paid_at).getTime() < 7 * 86400000) {
-    const fee = last.fee_cents != null && last.receives_minor != null
-      ? ` (fee ${formatMoney(last.fee_cents, last.currency)}; you receive ${formatMoney(last.receives_minor, last.receives_currency ?? last.currency)})` : "";
-    return <p className="payout-balance-line" data-testid="withdrawal-paid">{`Paid out ${formatMoney(last.amount_cents, last.currency)} to ${last.paid_to}${fee}.`}</p>;
   }
   return null;
 }
