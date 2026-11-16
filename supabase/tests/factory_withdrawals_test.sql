@@ -155,5 +155,9 @@ select ok((select withdrawal_pool from public.order_payments where id = '16f0000
 select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 280000::bigint, 'and adds to it');
 select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000004'$$, '22023', null, 'it stays in the balance');
 
+-- Money in the balance cannot be stranded by moving to Stripe.
+select throws_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')$$,
+  '22023', 'Withdraw your balance first, then switch to Stripe.', 'no switch to Stripe while a balance is left');
+
 select * from finish();
 rollback;

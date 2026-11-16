@@ -772,3 +772,70 @@ end;
 $$;
 revoke all on function public.payout_wise_recipient(uuid) from public, anon;
 grant execute on function public.payout_wise_recipient(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- The overview's payments card (from 20261108309000): withdrawals waiting on staff
+-- count, steps in a factory's balance do not.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_overview_metrics()
+returns table (
+  profiles_awaiting_review integer,
+  rfqs_submitted_today     integer,
+  quotes_submitted_today   integer,
+  payments_awaiting_confirmation integer,
+  profiles_submitted_today integer
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'these metrics are limited to platform staff' using errcode = '42501';
+  end if;
+
+  return query
+  select
+    (select count(*)::integer from public.admin_verification_queue() q
+      where q.state in ('ready_for_review', 'in_review', 'needs_information')),
+    (select count(*)::integer from public.rfqs r
+      where r.published_at >= date_trunc('day', now())),
+    (select count(*)::integer from public.quotes q
+      where q.submitted_at >= date_trunc('day', now())),
+    (select count(*)::integer from public.order_payments p
+      join public.production_orders o on o.id = p.order_id
+      where (p.state = 'confirmed' and p.release_requested_at is not null and not p.withdrawal_pool)
+         or (p.state in ('confirmed', 'processing') and o.status = 'cancelled'
+             and p.refund_failed_at is not null))
+     -- New: a step in a factory's balance waits on the factory, not staff; its
+     -- request waits on staff.
+     + (select count(*)::integer from public.factory_withdrawals w where w.status in ('requested', 'paying')),
+    (select count(*)::integer from public.admin_verification_queue() q
+      where q.submitted_at >= date_trunc('day', now()));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- A balance is withdrawn the way it was earned: a factory with money in its
+-- balance, or a request open, cannot move to Stripe, which cannot pay it.
+-- ---------------------------------------------------------------------------
+create or replace function public.guard_route_with_balance()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.route = 'stripe' and (
+       public.factory_withdrawable(new.org_id) > 0
+       or exists (select 1 from public.factory_withdrawals w where w.org_id = new.org_id and w.status in ('requested', 'paying'))) then
+    raise exception 'Withdraw your balance first, then switch to Stripe.' using errcode = '22023', hint = 'withdrawal_balance_left';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.guard_route_with_balance() from public, anon, authenticated;
+
+create trigger factory_payout_preferences_guard_balance
+  before insert or update on public.factory_payout_preferences
+  for each row execute function public.guard_route_with_balance();
