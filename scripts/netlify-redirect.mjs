@@ -18,8 +18,10 @@
  * next Netlify production deploy serves the old pages again. Whoever has
  * Netlify access can also set TSC_NETLIFY_REDIRECT=off on the site.
  *
- * The redirects are 302 (temporary) on purpose: browsers do not cache them,
- * so turning this off, or changing TARGET, takes effect for everyone.
+ * The redirects to sourcing-club.com are 301 (permanent), so search engines
+ * replace the old Netlify address with sourcing-club.com in their results.
+ * Browsers cache a 301: turning this off later only reaches people who have
+ * not visited since, so treat the move as final.
  *
  * Nothing on Netlify is deleted: the pages stay in the deploy, they are just
  * not shown while the redirect is on.
@@ -52,7 +54,7 @@ export function redirectsFor(env, pages) {
 
   const lines = [
     "# Written by scripts/netlify-redirect.mjs (marketing site, production only).",
-    "# First match wins. `200!` keeps a path on Netlify; `302!` sends it to Vercel.",
+    "# First match wins. `200!` keeps a path on Netlify; `301!` sends it to Vercel.",
     "# `!` is needed because the files still exist here. Query strings are kept.",
     "",
     "/.netlify/*  /.netlify/:splat  200!",
@@ -66,15 +68,15 @@ export function redirectsFor(env, pages) {
   lines.push("");
   // Netlify serves /factories for factories.html; Vercel does not (cleanUrls
   // is off), so the extensionless forms go to the .html page there.
-  lines.push(`/index.html  ${TARGET}/  302!`);
-  lines.push(`/index  ${TARGET}/  302!`);
+  lines.push(`/index.html  ${TARGET}/  301!`);
+  lines.push(`/index  ${TARGET}/  301!`);
   for (const page of pages) {
     const name = page.replace(/\.html$/, "");
     if (name === "index" || KEEP.includes(name)) continue;
-    lines.push(`/${name}  ${TARGET}/${name}.html  302!`);
-    lines.push(`/${name}/  ${TARGET}/${name}.html  302!`);
+    lines.push(`/${name}  ${TARGET}/${name}.html  301!`);
+    lines.push(`/${name}/  ${TARGET}/${name}.html  301!`);
   }
-  lines.push(`/*  ${TARGET}/:splat  302!`);
+  lines.push(`/*  ${TARGET}/:splat  301!`);
   return lines.join("\n") + "\n";
 }
 
