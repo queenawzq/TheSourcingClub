@@ -69,9 +69,9 @@ const PROPOSED = /^(.+) proposed cancelling: (.*)$/;
 const YOU_PROPOSED = /^You proposed cancelling: (.*)$/;
 
 const PATTERNS = [
-  // The payout fee the factory paid, on its payments row (PayoutDetails), alone or after the row's other note.
-  [/^Fee (\S+), taken from it: you receive (\S+)\.$/, (m) => `手续费 ${m[1]}，已从中扣除：你收到 ${m[2]}。`],
-  [/^(.+\.) Fee (\S+), taken from it: you receive (\S+)\.$/, (m, inner) => `${inner(m[1])}手续费 ${m[2]}，已从中扣除：你收到 ${m[3]}。`, { free: true }],
+  // The payout fee the factory paid: its payments row (PayoutDetails) and the paid notification.
+  [/^Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `提现手续费 ${m[1]} 从该笔款项中扣除：你收到 ${m[2]}。`],
+  [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],

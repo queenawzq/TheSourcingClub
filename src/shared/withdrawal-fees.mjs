@@ -136,6 +136,15 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
   return { feeCents, receivesCents, basis };
 }
 
+/**
+ * The sentence the factory reads on its payments row; the paid notification's
+ * is the same words from public.payout_fee_sentence (migration 20261116100100).
+ */
+export function payoutFeeSentence(feeCents, receivesCents, currency = "USD") {
+  const money = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  return `Payout fee ${money(feeCents)} is taken from this payment: you receive ${money(receivesCents)}.`;
+}
+
 /** The chooser's fee line, per route and language. */
 const LINES = {
   stripe: {
