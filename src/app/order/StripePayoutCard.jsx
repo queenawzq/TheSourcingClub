@@ -221,7 +221,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{tazapay ? "Bank transfer (Tazapay)" : supported ? "Bank account" : words.bank}</strong></div><MethodLines method={tazapay ?? chooserMethod("bank", { supported })} /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{tazapay ? "Bank transfer (Tazapay)" : supported ? "Bank account" : words.bank}</strong></div><MethodLines method={tazapay ?? chooserMethod("bank", { supported, country })} /></div>
                   <button className="primary-btn compact-btn" type="button" data-testid={tazapay ? "payout-set-up-tazapay" : "payout-set-up-bank"} disabled={busy}
                           onClick={tazapay ? onTazapay : onBank}>{words.setUp}</button>
                 </article>
@@ -233,14 +233,14 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 {supported ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)}</strong></div><MethodLines method={chooserMethod("wise", { supported })} /></div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)}</strong></div><MethodLines method={chooserMethod("wise", { supported, country })} /></div>
                     <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
                             onClick={onWise}>{words.setUp}</button>
                   </article>
                 ) : null}
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported })} /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported, country })} /></div>
                   <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
                           onClick={onPaypal}>{words.setUp}</button>
                 </article>

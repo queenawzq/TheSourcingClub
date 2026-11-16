@@ -10,6 +10,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
@@ -194,12 +195,15 @@ const TAZAPAY_WORDS = {
   bankCodeFormat: "3 digits, for example 004",
   swiftFormat: "8 or 11 letters and digits, for example HSBCHKHH",
 };
-const HK_DISTRICTS = ["Hong Kong Island", "Kowloon", "New Territories"];
+// Stored in English (Tazapay's address); labelled in the reader's language. The
+// language layer leaves a select's own text alone, so the options are drawn here.
+const HK_DISTRICTS = [["Hong Kong Island", "香港岛"], ["Kowloon", "九龙"], ["New Territories", "新界"]];
 const isLatinName = (value) => /^[\x20-\x7EÀ-ɏ’]+$/.test(value) && /[A-Za-zÀ-ɏ]/.test(value);
 
 export function TazapayBankStep({ row, country, busy, companyRegistration = null, save, onBack, onClose }) {
   const words = TAZAPAY_WORDS;
   const hk = country === "HK";
+  const zh = useUiLanguage() === "zh";
   const [values, setValues] = useState(() => ({
     bank_name: row?.bank_name ?? "",
     account_name: row?.account_name ?? "",
@@ -307,7 +311,7 @@ export function TazapayBankStep({ row, country, busy, companyRegistration = null
           {field("address_state", words.district, (
             <select data-field="tazapay_address_state" value={values.address_state} onBlur={leave("address_state")} onChange={set("address_state")}>
               <option value="" />
-              {HK_DISTRICTS.map((name) => <option key={name} value={name}>{name}</option>)}
+              {HK_DISTRICTS.map(([name, nameZh]) => <option key={name} value={name}>{zh ? nameZh : name}</option>)}
             </select>
           ))}
         </> : <>

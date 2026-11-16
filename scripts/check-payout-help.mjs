@@ -18,18 +18,26 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 // Nov 12 call: each withdrawal method says its fee and its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
 const methodLines = {
-  stripe: ["No TSC fee per withdrawal", "Not instant: usually 1–4 business days after you withdraw"],
-  wise: ["No fee: TSC pays the transfer fee", "Not instant: sent once released, then a few business days to arrive"],
-  bank: ["No TSC fee; your bank may charge to receive a transfer", "Not instant: sent once released, then a few business days to arrive"],
-  // PayPal usually lands within minutes of staff sending it (Nov 13).
-  paypal: ["No TSC fee; PayPal may charge to convert or withdraw", "Not instant: sent once released"],
+  stripeUs: ["Fee: 0.25% + US$0.25 per payment, taken from it", "Not instant: usually 1–4 business days after you withdraw"],
+  stripe: ["Fee: 0.5% + US$0.25 per payment, taken from it; Stripe converts from US$ at its rate", "Not instant: usually 1–4 business days after you withdraw"],
+  wise: ["Fee: Wise's fee, quoted for each payment and taken from it, at the mid-market rate", "Not instant: sent once released, then a few business days to arrive"],
+  wiseUs: ["Fee: Wise's fee, quoted for each payment and taken from it", "Not instant: sent once released, then a few business days to arrive"],
+  bank: ["Fee: 0% from TSC; your bank may charge to receive it", "Not instant: sent once released, then a few business days to arrive"],
+  // PayPal usually lands within minutes of staff sending it.
+  paypal: ["Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$", "Not instant: sent once released"],
+  paypalUs: ["Fee: US$0.25 per payment, taken from it", "Not instant: sent once released"],
+  // Mainland China and Hong Kong where this deploy has Tazapay (src/shared/tazapay-payout.mjs).
+  tazapayCN: ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
+  tazapayHK: ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"],
 };
+assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
   assert.deepEqual(info.payoutMethodLines(method), lines, `${method} keeps its fee and timing lines`);
 }
-// The lines follow the route Set up takes. Only Stripe's "Bank account" is
-// certain; every other bank option may open staff's bank form (no Wise currency,
-// e.g. TW and KH, or Wise not set up), so it must never claim Wise's terms.
+for (const lines of Object.values(info.PAYOUT_METHOD_INFO)) assert.ok(!/No TSC fee|TSC pays/.test(lines.join(" ")), "no line says TSC pays the fee: the factory does");
+// The lines follow the route Set up takes: Stripe's "Bank account" in a Stripe
+// country; Wise's form wherever Wise has a currency for the country; staff's
+// bank form where it has none (TW, KH, a country not listed).
 const { PAYOUT_COUNTRIES } = await import("../src/shared/stripe-payout-countries.mjs");
 const { wiseCurrencyFor } = await import("../api/_wise-currencies.js");
 for (const country of ["TW", "KH"]) assert.equal(wiseCurrencyFor(country, "CNY"), null, `${country} has no Wise currency, so its bank option opens the staff form`);
@@ -39,20 +47,34 @@ const { chooseRecipientType } = await import("../api/_wise-requirements-shape.js
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "HK")?.type, "hongkong", "Hong Kong opens Wise's form");
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "chinese_local_business" }, { type: "hongkong" }], "CN")?.type, "chinese_local_business");
 assert.equal(chooseRecipientType([{ type: "hong_kong_fps" }, { type: "hongkong" }], "CN"), null, "a factory outside Hong Kong never gets the Hong Kong form");
-for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "other"]) {
+const everyCountry = new Set([...PAYOUT_COUNTRIES, ...info.WISE_COUNTRIES, "TW", "KH", "other"]);
+for (const country of everyCountry) assert.equal(info.WISE_COUNTRIES.has(country), Boolean(wiseCurrencyFor(country, "CNY")), `${country}: the browser's Wise list matches api/_wise-currencies.js`);
+for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", "other"]) {
   const supported = PAYOUT_COUNTRIES.has(country);
-  assert.equal(info.chooserMethod("bank", { supported }), supported ? "stripe" : "bank", `${country}: the recommended bank option's lines match its route`);
-  assert.equal(info.chooserMethod("wise", { supported }), "bank", `${country}: International bank transfer may open the staff form`);
-  assert.equal(info.chooserMethod("paypal", { supported }), "paypal");
+  const wise = Boolean(wiseCurrencyFor(country, "CNY"));
+  if (supported) assert.ok(wise, `${country}: International bank transfer (Wise) has a Wise currency`);
+  assert.equal(info.paidByWise(country), wise, `${country}: named Wise only where Wise has a currency`);
+  // A US factory is paid US$ to US$, so its lines say nothing about converting.
+  const us = country === "US";
+  assert.equal(info.chooserMethod("bank", { supported, country }), supported ? (us ? "stripeUs" : "stripe") : wise ? "wise" : "bank", `${country}: the recommended bank option's lines match its route`);
+  assert.equal(info.chooserMethod("wise", { supported, country }), wise ? (us ? "wiseUs" : "wise") : "bank", `${country}: International bank transfer draws Wise's lines`);
+  assert.equal(info.chooserMethod("paypal", { supported, country }), us ? "paypalUs" : "paypal", `${country}: PayPal's lines`);
+}
+for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), "bank", `${country}: staff's bank lines`);
+const factoryZh = read("src/factory-prototype/main.jsx");
+const { WITHDRAWAL_FEE_LINES_ZH } = await import("../src/shared/withdrawal-fees.mjs");
+assert.ok(factoryZh.includes("  ...WITHDRAWAL_FEE_LINES_ZH,"), "the factory dictionary takes the fee lines' Chinese from the fee module");
+for (const text of [...new Set(Object.values(info.PAYOUT_METHOD_INFO).flat()), "Bank account (Stripe)", "International bank transfer (Wise)", "Bank transfer (Wise)"]) {
+  assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`) || WITHDRAWAL_FEE_LINES_ZH[text], `the factory dictionary has Chinese for: ${text}`);
 }
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
 for (const option of ["wise", "paypal"]) {
-  assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported })} />`), `the ${option} option draws the lines of its route`);
+  assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country })} />`), `the ${option} option draws the lines of its route`);
 }
 // China and Hong Kong: Tazapay's lines where this deploy has Tazapay, the bank's otherwise.
-assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", { supported })} />`), "the bank option draws the lines of its route");
+assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", { supported, country })} />`), "the bank option draws the lines of its route");
 assert.equal(info.tazapayMethod("CN"), "tazapayCN");
 assert.equal(info.tazapayMethod("HK"), "tazapayHK");
 assert.equal(info.tazapayMethod("TW"), null, "Tazapay pays China and Hong Kong only");
