@@ -1100,6 +1100,11 @@ export const factoryMainZhText = {
   "Add your bank's SWIFT / BIC: TSC can't send an international transfer without it.": "请填写你银行的 SWIFT / BIC：没有它，TSC 无法发送国际转账。",
   "A SWIFT / BIC is 8 or 11 letters and digits.": "SWIFT / BIC 由 8 或 11 位字母和数字组成。",
   "In production": "生产中",
+  "From 0.25% fee, processed by Stripe": "费用低至 0.25%，由 Stripe 处理",
+  "From 0.23% fee, processed by Wise": "费用低至 0.23%，由 Wise 处理",
+  "Up to 2% fee": "费用最高为 2%",
+  "Full fee details": "完整费用详情",
+  "Usually processed within 3–7 business days": "通常在 3–7 个工作日内处理",
   // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
   "Bank account (Stripe)": "银行账户（Stripe）",
   "International bank transfer (Wise)": "国际银行转账（Wise）",
