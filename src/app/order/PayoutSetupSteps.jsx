@@ -15,7 +15,7 @@ import { registrationNumberProblem, registrationProblemText } from "../../shared
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, inEnglish, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
-import { PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
+import { OPERATIONS_EMAIL, PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
 /** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
@@ -195,7 +195,8 @@ const TAZAPAY_WORDS = {
   notChinese: "Use Chinese characters, as your bank has the name",
   bankCodeFormat: "3 digits, for example 004",
   swiftFormat: "8 or 11 letters and digits, for example HSBCHKHH",
-  usccNotOnFile: "TSC pays this account only once this code matches your company's business registration on TSC. Add your business registration on your Profile if it isn't there.",
+  // A function: StripePayoutCard imports this file, so its constant is read at render, not at load.
+  usccNotOnFile: () => `TSC pays this account only once this code matches your company's business registration on TSC. If TSC doesn't have it, contact TSC operations at ${OPERATIONS_EMAIL} to add it.`,
 };
 // Stored in English (Tazapay's address); labelled in the reader's language. The
 // language layer leaves a select's own text alone, so the options are drawn here.
@@ -329,7 +330,7 @@ export function TazapayBankStep({ row, country, busy, companyRegistration = null
           ) : <>
             {field("registration_number", words.uscc, text("registration_number", { onBlur: upperOnBlur("registration_number") }))}
             {/* No registration on file: Tazapay pays only an account in the company's own name, checked against it. */}
-            <small>{words.usccNotOnFile}</small>
+            <small>{words.usccNotOnFile()}</small>
           </>}
           {numberFields}
           {field("address_line1", words.street, text("address_line1", { maxLength: 140 }))}

@@ -28,7 +28,7 @@ const NOT_LISTED = "other";
 
 const countryName = (code) => (code && code !== NOT_LISTED ? names.of(code) ?? code : "");
 
-const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
+export const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
 
 /** A plain letter, not a provider's logo: using that needs their permission. */
 const LETTER_MARK = { paypal: <strong>P</strong> };
@@ -885,7 +885,7 @@ export default function StripePayoutCard({
   const tazapayMissing = (row) => tazapayProblemsFor(row).length > 0;
   /** What the saved Tazapay row still needs, in the owner's words. */
   const tazapayMissingLine = (row) => (tazapayProblemsFor(row).every((p) => p.problem === "not_on_file")
-    ? "Add your business registration on your Profile: TSC pays this account once its code matches."
+    ? `Contact TSC operations at ${OPERATIONS_EMAIL} to add your business registration: TSC pays this account once its code matches.`
     : "Add the missing bank details.");
   // A bank Wise pays says so, as in the chooser. Wise pays a bank row only with a
   // Wise recipient on it (the server's rule, 20261108163459); without one, staff
