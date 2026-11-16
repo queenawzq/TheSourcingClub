@@ -268,7 +268,40 @@ $$;
 revoke all on function public.factory_withdrawable(uuid) from public, anon, authenticated;
 grant execute on function public.factory_withdrawable(uuid) to service_role;
 
--- What the payouts page reads: the balance, and the open request.
+-- How much of each balance step paid withdrawals have taken, oldest first: the
+-- same order release_withdrawn_payments() releases them in. A step taken in
+-- part is still "confirmed"; the payouts page moves that part from Pending to
+-- Paid out, so no figure says a withdrawn amount is still owed.
+create or replace function public.withdrawn_by_payment(target_org uuid)
+returns table (payment_id uuid, withdrawn_cents bigint)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  left_over bigint;
+  r record;
+begin
+  select coalesce(sum(amount_cents), 0) into left_over from public.factory_withdrawals
+   where org_id = target_org and status = 'paid' and currency = 'USD';
+  for r in select p.id, p.amount_cents from public.order_payments p
+             join public.production_orders o on o.id = p.order_id
+            where o.factory_org_id = target_org and p.withdrawal_pool and p.currency = 'USD'
+              and p.state in ('confirmed', 'released')
+            order by p.release_requested_at, p.id
+  loop
+    exit when left_over <= 0;
+    payment_id := r.id;
+    withdrawn_cents := least(r.amount_cents, left_over);
+    left_over := left_over - withdrawn_cents;
+    return next;
+  end loop;
+end;
+$$;
+revoke all on function public.withdrawn_by_payment(uuid) from public, anon, authenticated;
+
+-- What the payouts page reads: the balance, and what withdrawals took from each step.
 create or replace function public.my_withdrawal_balance(target_org uuid)
 returns jsonb
 language plpgsql
@@ -284,7 +317,9 @@ begin
     'available_cents', greatest(public.factory_withdrawable(target_org), 0),
     'currency', 'USD',
     'pool', exists (select 1 from public.order_payments p join public.production_orders o on o.id = p.order_id
-                     where o.factory_org_id = target_org and p.withdrawal_pool)
+                     where o.factory_org_id = target_org and p.withdrawal_pool),
+    'withdrawn', coalesce((select jsonb_object_agg(w.payment_id, w.withdrawn_cents)
+                             from public.withdrawn_by_payment(target_org) w), '{}'::jsonb)
   );
 end;
 $$;

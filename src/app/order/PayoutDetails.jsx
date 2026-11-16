@@ -32,7 +32,8 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { askedWithdrawalRows, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import "./order.css";
 import "./payout.css";
 
@@ -154,6 +155,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // null until each read answers. Each source has its own error, so one that
   // fails does not hide what the others found.
   const [earnings, setEarnings] = useState(null);
+  // Withdrawals from the balance (Wise, PayPal, bank): the same source as its figure.
+  const fromBalance = useWithdrawalBalance(org.id, isFactory);
   const [earningsError, setEarningsError] = useState(null);
   const [credits, setCredits] = useState(null);
   const [creditsError, setCreditsError] = useState(null);
@@ -224,7 +227,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -289,7 +292,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     ? fundedEarnings
     : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
   const earningsShown = cardSettled || accountsError ? earnings : null;
-  const summary = earningsSummaryFor(earningsShown, client);
+  const summary = earningsSummaryFor(earningsShown, client, fromBalance.withdrawn);
   // Whether the withdrawals wait for Stripe at all, and if so, what to say
   // while they cannot be shown. Only an owner reads them.
   const needsStripe = stripeRelevant(earningsShown);
@@ -328,6 +331,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       amount: factoryAmount(row),
       currency: row.currency,
       available: earningStatus(row) === "Paid",
+    })),
+    // A withdrawal is across clients, so it is listed under All clients only.
+    ...(client === "All clients" ? askedWithdrawalRows(fromBalance.rows) : []).map((row) => ({
+      ...row,
+      type: "withdrawal",
+      available: !row.failed,
     })),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,

@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { approveWithdrawal, previewWithdrawal } from "../api/_withdrawals.js";
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
+import { askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
@@ -125,6 +126,20 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(quote.leavesCents <= 6500, `leaves ${quote.leavesCents}, never more than the amount`);
   assert.equal(quote.feeCents, 6500 - quotes.at(-1), "the fee is the amount less what is sent to the factory");
   assert.ok(quote.feeCents >= 300, "the factory carries Wise's fee");
+}
+
+// One figure: a $40 withdrawal of a $65 step moves $40 from Pending to Paid out.
+{
+  const step = { id: "p1", state: "confirmed", release_requested_at: "2026-11-16", amount_cents: 6500, currency: "USD", withdrawal_pool: true, order: { status: "active" } };
+  const summary = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]));
+  assert.deepEqual(summary.pending, [{ currency: "USD", amount: 2500 }]);
+  assert.deepEqual(summary.paid, [{ currency: "USD", amount: 4000 }]);
+  assert.deepEqual(summary.total, [{ currency: "USD", amount: 6500 }]);
+  // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
+  assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
+  const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].amount, -4000);
 }
 
 console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");

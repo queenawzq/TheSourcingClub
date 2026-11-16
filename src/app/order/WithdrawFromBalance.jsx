@@ -39,14 +39,14 @@ export const withdrawalTiming = (provider) => TIMING[provider] ?? TIMING.bank;
 
 /** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
 export function useWithdrawalBalance(orgId, enabled = true) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, last: null, error: null });
+  const [state, setState] = useState({ available: null, pool: false, open: null, last: null, rows: [], withdrawn: new Map(), error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const [balance, rows] = await Promise.all([
       supabase.rpc("my_withdrawal_balance", { target_org: orgId }),
       supabase.from("factory_withdrawals")
         .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, created_at, paid_at, updated_at")
-        .eq("org_id", orgId).order("created_at", { ascending: false }).limit(5),
+        .eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
     ]);
     if (balance.error || rows.error) {
       setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error) }));
@@ -58,6 +58,8 @@ export function useWithdrawalBalance(orgId, enabled = true) {
       pool: Boolean(balance.data?.pool) || list.length > 0,
       open: list.find((w) => ["requested", "paying"].includes(w.status)) ?? null,
       last: list[0] ?? null,
+      rows: list,
+      withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
       error: null,
     });
   }, [orgId, enabled]);

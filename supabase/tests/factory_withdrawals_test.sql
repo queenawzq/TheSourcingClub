@@ -129,6 +129,7 @@ select is((public.record_withdrawal((select id from public.factory_withdrawals w
 select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 180000::bigint, 'the remainder stays');
 select is((select state::text from public.order_payments where id = '16f00000-0000-0000-0000-000000000001'), 'released', 'the oldest step covered in full is released');
 select is((select state::text from public.order_payments where id = '16f00000-0000-0000-0000-000000000002'), 'confirmed', 'a step covered in part is not');
+select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->'withdrawn'->>'16f00000-0000-0000-0000-000000000002')::bigint, 20000::bigint, 'the page reads the part withdrawals took from it');
 
 -- The old per-step paths are closed for pool payments.
 select throws_ok($$select public.release_payment_to_factory('16f00000-0000-0000-0000-000000000002', 'REF 12345')$$, '22023', null, 'mark paid by bank refuses a pool payment');
