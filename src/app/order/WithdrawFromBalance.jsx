@@ -25,6 +25,7 @@ const REFUSALS = {
   withdrawal_over_balance: "That is more than your balance. Reload the page to see it.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
+  fee_too_large: "This amount is not more than the bank transfer fee, so nothing would arrive.",
 };
 const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301" || /JWT/i.test(error?.message ?? "")
   ? "Your sign-in expired. Sign in again."

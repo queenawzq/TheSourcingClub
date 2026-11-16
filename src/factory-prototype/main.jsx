@@ -1093,6 +1093,7 @@ export const factoryMainZhText = {
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
   "Completed": "已完成",
+  "Failed": "失败",
   "In production": "生产中",
   // Withdrawal methods (src/shared/payout-method-info.mjs): provider, fee, timing.
   "Bank account (Stripe)": "银行账户（Stripe）",
@@ -1124,6 +1125,7 @@ export const factoryMainZhText = {
   "That is more than your balance. Reload the page to see it.": "超出你的余额。请刷新页面查看。",
   "Choose one of your saved withdrawal methods, with its details complete.": "请选择一个已保存且信息完整的提现方式。",
   "TSC has already started sending this, so it can no longer be cancelled.": "TSC 已开始发送，无法再取消。",
+  "This amount is not more than the bank transfer fee, so nothing would arrive.": "该金额不超过银行转账手续费，到账金额为零。",
   "That didn't go through. Reload the page and try again.": "操作未成功。请刷新页面后重试。",
   "Your sign-in expired. Sign in again.": "登录已过期，请重新登录。",
   // Live screens (app.html): text the prototype never draws.

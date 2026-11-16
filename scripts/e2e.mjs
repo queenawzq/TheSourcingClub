@@ -2401,8 +2401,8 @@ async function main() {
     await page.locator('[data-testid="withdraw-balance"]').click();
     await waitFor(page, '[data-testid="withdraw-fee"]', 10000);
     const withdrawDialog = await page.locator(".payout-modal").innerText();
-    check(/Available: \$95\.00/.test(withdrawDialog) && /You receive: \$95\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
-      "the dialog offers all of it, says what arrives and when");
+    check(/Available: \$95\.00/.test(withdrawDialog) && /Fee: \$50\.00, taken from the amount/.test(withdrawDialog) && /You receive: \$45\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
+      "the dialog offers all of it, with the US$50 bank transfer fee taken from it, what arrives and when");
     await record(page, "Withdraw", "the whole balance, prefilled; the fee and the timing before it asks");
     await page.locator('[data-testid="withdraw-confirm"]').dblclick();
     await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
@@ -2443,11 +2443,11 @@ async function main() {
     check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
     const { data: paidWithdrawal } = await db.from("factory_withdrawals")
       .select("status, provider_ref, fee_cents, receives_minor").eq("org_id", factoryOrg.id).single();
-    check(paidWithdrawal?.status === "paid" && paidWithdrawal.provider_ref === `E2E-WIRE-${stamp}` && Number(paidWithdrawal.receives_minor) === 9500,
-      "the withdrawal is paid, with the reference, and the factory receives all of it");
+    check(paidWithdrawal?.status === "paid" && paidWithdrawal.provider_ref === `E2E-WIRE-${stamp}` && Number(paidWithdrawal.fee_cents) === 5000 && Number(paidWithdrawal.receives_minor) === 4500,
+      "the withdrawal is paid, with the reference: $95.00 less the US$50 wire fee, $45.00 to the factory");
     const { data: paidNotice } = await db.from("notifications")
       .select("body").eq("subject_id", asked[0].id).eq("kind", "funds_released").single();
-    check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`), "the factory reads the reference");
+    check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`) && paidNotice.body.includes("$45.00"), "the factory reads the reference, the fee and what it receives");
 
     // ================= WISE, PAYPAL, AND NOTHING SET UP =================
     // Needs the demo data (seed-demo.mjs). Nothing here calls Wise or PayPal:

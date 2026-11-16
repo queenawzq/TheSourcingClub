@@ -378,9 +378,9 @@ set local role authenticated;
 
 select lives_ok(
   $$select public.set_order_schedule((select order_id from p3),
-      '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":"5000","sort":"10"},
+      '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":"5100","sort":"10"},
         {"kind":"approval_and_payment","title":"PP sample","amount_cents":"7000","sort":"20"},
-        {"kind":"payment_only","title":"Bulk deposit","amount_cents":"5000","sort":"30"},
+        {"kind":"payment_only","title":"Bulk deposit","amount_cents":"4900","sort":"30"},
         {"kind":"progress_only","title":"Bulk production","sort":"40"},
         {"kind":"approval_only","title":"QC photos","sort":"50"},
         {"kind":"payment_only","title":"Final balance","amount_cents":"5001","sort":"60"}]'::jsonb)$$,
@@ -688,7 +688,8 @@ select is(
 
 select is(
   (select paid_cents from public.production_order_summary where id = (select order_id from p3)),
-  5000::bigint,
+  -- 5100: more than the US$50 bank transfer fee (20261116100200), so it can be marked paid by bank.
+  5100::bigint,
   'the header total moves because a payment row moved, not because anything was typed'
 );
 

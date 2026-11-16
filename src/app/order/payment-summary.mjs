@@ -1,4 +1,12 @@
-export const factoryAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
+/** The step as earned, before any payout fee. */
+export const grossAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
+/** The provider's payout fee the factory paid on it (src/shared/withdrawal-fees.mjs), recorded before the money moved. */
+export const payoutFee = (row) => Math.max(0, Number(row?.payout_fee_cents) || 0);
+/**
+ * What the factory receives for a payment: the step less the payout fee. The
+ * one figure for the row, the balance, the card and the summary tiles.
+ */
+export const factoryAmount = (row) => Number(grossAmount(row)) - payoutFee(row);
 
 /** Keep currencies separate: a converted bank withdrawal is not a USD total. */
 export function currencyTotals(rows) {
@@ -69,7 +77,7 @@ export function handPaidFigures(earnings) {
  * Stripe balance to its bank is a withdrawal, not a second kind of paid. Each is
  * undefined until the earnings answer.
  */
-export function earningsSummaryFor(earnings, client, withdrawn = new Map()) {
+export function earningsSummaryFor(earnings, client, withdrawn = new Map(), withdrawalFees = 0) {
   if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
   const all = client === "All clients";
   const selected = (row) => all || row?.order?.brand_org_id === client;
@@ -80,11 +88,15 @@ export function earningsSummaryFor(earnings, client, withdrawn = new Map()) {
   const taken = funded.filter((row) => toBeSent(row) && withdrawn.get(row.id) > 0)
     .map((row) => ({ amount: Math.min(Number(withdrawn.get(row.id)), factoryAmount(row)), currency: row.currency }));
   return {
-    total: amounts(funded),
+    total: currencyTotals([...funded.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
+      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
     approval: amounts(funded.filter(awaitingApproval)),
     pending: currencyTotals([...funded.filter(toBeSent).map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
       ...taken.map((part) => ({ ...part, amount: -part.amount }))]),
-    paid: currencyTotals([...funded.filter((row) => row.state === "released").map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken]),
+    // Net, like factoryAmount(): the fee a paid withdrawal took never reached the
+    // factory. Withdrawals span clients, so only All clients carries their fees.
+    paid: currencyTotals([...funded.filter((row) => row.state === "released").map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken,
+      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
   };
 }
 
@@ -105,7 +117,8 @@ export function askedWithdrawalRows(withdrawals = []) {
       : null,
     status: ASKED_STATUS[w.status] ?? w.status,
     failed: ["failed", "declined"].includes(w.status),
-    amount: -Number(w.amount_cents),
+    // What reached the factory, like the provider rows: the amount less its fee once paid.
+    amount: -(Number(w.amount_cents) - (w.status === "paid" ? Number(w.fee_cents ?? 0) : 0)),
   }));
 }
 
@@ -169,7 +182,8 @@ export function withdrawalRows(earnings, method = null) {
       note: attempt.status === "failed" ? (detailsChangedSince(attempt, method) ? null : failureNote(attempt)) : sentToOldAddress(attempt, method) ? WILL_RESEND : waitingOnDetails(attempt) ? askFor(attempt) : null,
       status: waitingOnDetails(attempt) ? "Waiting" : WITHDRAWAL_STATUS[attempt.status],
       failed: attempt.status === "failed",
-      amount: -Number(attempt.amount_cents),
+      // What left for the factory: the attempt less the payout fee taken from it.
+      amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
     // A balance step is paid by the withdrawal it was in, listed on its own.
     if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;

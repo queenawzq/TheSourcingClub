@@ -1457,7 +1457,7 @@ console.log("\nphase 3 — the order runs");
         const asked = await admin.from("factory_withdrawals").insert({
           org_id: winner.factory_org_id, provider: "bank", amount_cents: pooled.amount_cents, paid_to: "smoke bank",
         }).select("id").single();
-        released = asked.error ? asked : await admin.rpc("record_withdrawal", { target_withdrawal: asked.data.id, outcome: "paid", ref: "SMOKE-1", fee: 0, receives: pooled.amount_cents, receives_in: "USD" });
+        released = asked.error ? asked : await admin.rpc("record_withdrawal", { target_withdrawal: asked.data.id, outcome: "paid", ref: "SMOKE-1", fee: 5000, receives: pooled.amount_cents - 5000, receives_in: "USD" });
       } else {
         released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
       }

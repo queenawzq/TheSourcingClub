@@ -139,7 +139,10 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
   const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].amount, -4000);
+  assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
+  const net = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]), 79);
+  assert.deepEqual(net.paid, [{ currency: "USD", amount: 3921 }]);
+  assert.deepEqual(net.total, [{ currency: "USD", amount: 6421 }]);
 }
 
 console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");

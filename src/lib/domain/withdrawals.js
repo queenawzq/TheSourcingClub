@@ -13,7 +13,7 @@ const REFUSALS = {
   withdrawal_provider: "This one is paid through its provider: use Review and pay.",
   reference_required: "Enter the bank's reference for this transfer.",
   reference_holds_number: "The factory reads this, so it can't hold the account number.",
-  withdrawal_fee: "The bank's fee must be less than the amount.",
+  fee_too_large: "This withdrawal is not more than the bank transfer fee, so nothing would arrive. Decline it with a reason.",
   payout_own_company: "You belong to this company, so someone else on the staff must decide this.",
 };
 const said = (error) => new Error(REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");

@@ -156,6 +156,21 @@ select ok((select withdrawal_pool from public.order_payments where id = '16f0000
 select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 280000::bigint, 'and adds to it');
 select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000004'$$, '22023', null, 'it stays in the balance');
 
+-- A bank transfer staff send carries the fixed wire fee (bank_payout_fee_cents()).
+set local session_replication_role = replica;
+insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, swift, bank_country, is_primary, details_changed_at, number_changed_at)
+values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'HK', false, '2026-11-01 00:00:00+00', now());
+set local session_replication_role = origin;
+select pg_temp.act_as(1); set local role authenticated;
+select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 5000, '16a10000-0000-0000-0000-000000000004')$$,
+  '22023', 'this withdrawal is not more than the bank transfer fee, so nothing would arrive', 'a bank withdrawal no bigger than the wire fee is refused');
+select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, '16a10000-0000-0000-0000-000000000004')).provider, 'bank', 'a bank Wise cannot pay is a bank withdrawal');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested'), 'WIRE-116')).receives_minor, 15000::bigint,
+  'staff mark it paid: the factory receives the amount less the US$50 wire fee');
+reset role;
+select is((select fee_cents from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and provider_ref = 'WIRE-116'), public.bank_payout_fee_cents(), 'the fee recorded is the one source');
+
 -- Money in the balance cannot be stranded by moving to Stripe.
 select throws_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')$$,
   '22023', 'Withdraw your balance first, then switch to Stripe.', 'no switch to Stripe while a balance is left');

@@ -395,6 +395,12 @@ begin
      or (a.method = 'paypal' and nullif(btrim(a.paypal_email), '') is null) then
     raise exception 'Complete this withdrawal method first.' using errcode = '22023', hint = 'withdrawal_method';
   end if;
+  -- A bank transfer staff send carries the fixed wire fee the factory pays
+  -- (bank_payout_fee_cents(), the same figure as the fee module's "bank").
+  if which = 'bank' and amount <= public.bank_payout_fee_cents() then
+    raise exception 'this withdrawal is not more than the bank transfer fee, so nothing would arrive'
+      using errcode = '22023', hint = 'fee_too_large';
+  end if;
   insert into public.factory_withdrawals
     (org_id, account_id, provider, amount_cents, currency, paid_to, paid_to_changed_at, requested_by)
   values (target_org, a.id, which, amount, 'USD',
@@ -621,7 +627,7 @@ begin
     perform public.withdrawal_notice(w,
       format('%s paid out to you', public.format_money(w.amount_cents, w.currency)),
       case when w.fee_cents is not null and w.receives_minor is not null then
-        format('Sent to %s. Fee %s, taken from it: you receive %s.', w.paid_to, public.format_money(w.fee_cents, w.currency),
+        format('Sent to %s. Payout fee %s is taken from this payment: you receive %s.', w.paid_to, public.format_money(w.fee_cents, w.currency),
                public.format_money(w.receives_minor, coalesce(w.receives_currency, w.currency)))
       else format('Sent to %s.', w.paid_to) end);
   elsif outcome = 'failed' then
@@ -642,7 +648,7 @@ grant execute on function public.record_withdrawal(uuid, text, text, bigint, big
 
 -- The bank adapter: staff sent it by bank themselves and say so with the
 -- bank's reference. The factory reads the reference, so never a number.
-create or replace function public.mark_withdrawal_paid_by_bank(target_withdrawal uuid, reference text, fee bigint default 0)
+create or replace function public.mark_withdrawal_paid_by_bank(target_withdrawal uuid, reference text)
 returns public.factory_withdrawals
 language plpgsql
 security definer
@@ -672,26 +678,29 @@ begin
   if public.payout_text_holds_number(w.org_id, said) then
     raise exception 'the factory can read this, so it cannot hold the account number' using errcode = '22023', hint = 'reference_holds_number';
   end if;
-  if coalesce(fee, 0) < 0 or coalesce(fee, 0) >= w.amount_cents then
-    raise exception 'the fee must be less than the amount' using errcode = '22023', hint = 'withdrawal_fee';
+  -- The wire fee the factory pays, fixed (bank_payout_fee_cents()).
+  if w.amount_cents <= public.bank_payout_fee_cents() then
+    raise exception 'this withdrawal is not more than the bank transfer fee, so nothing would arrive'
+      using errcode = '22023', hint = 'fee_too_large';
   end if;
   if public.factory_withdrawable(w.org_id) < 0 then
     raise exception 'the factory''s balance no longer covers this' using errcode = '22023', hint = 'withdrawal_over_balance';
   end if;
   update public.factory_withdrawals
-     set status = 'paid', paid_at = now(), provider_ref = said, fee_cents = coalesce(fee, 0),
-         receives_minor = w.amount_cents - coalesce(fee, 0), receives_currency = w.currency,
+     set status = 'paid', paid_at = now(), provider_ref = said, fee_cents = public.bank_payout_fee_cents(),
+         receives_minor = w.amount_cents - public.bank_payout_fee_cents(), receives_currency = w.currency,
          decided_by = auth.uid(), decided_at = now(), updated_at = now()
    where id = w.id returning * into w;
   perform public.release_withdrawn_payments(w.org_id, auth.uid());
   perform public.withdrawal_notice(w,
     format('%s paid out to you', public.format_money(w.amount_cents, w.currency)),
-    format('Sent by bank transfer to %s. Reference: %s', w.paid_to, said));
+    format('Sent by bank transfer to %s. Payout fee %s is taken from this payment: you receive %s. Reference: %s',
+           w.paid_to, public.format_money(w.fee_cents, w.currency), public.format_money(w.receives_minor, w.currency), said));
   return w;
 end;
 $$;
-revoke all on function public.mark_withdrawal_paid_by_bank(uuid, text, bigint) from public, anon;
-grant execute on function public.mark_withdrawal_paid_by_bank(uuid, text, bigint) to authenticated;
+revoke all on function public.mark_withdrawal_paid_by_bank(uuid, text) from public, anon;
+grant execute on function public.mark_withdrawal_paid_by_bank(uuid, text) to authenticated;
 
 -- The board: open and recent withdrawals, each with its company's balance, and
 -- the pool payments the per-step list must leave out.

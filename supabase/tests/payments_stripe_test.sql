@@ -360,7 +360,7 @@ select ok(
   (select n.body from public.notifications n
     where n.org_id = '18b00000-0000-0000-0000-0000000000f1' and n.kind = 'funds_released'
       and n.subject_id = pg_temp.p18_pay('order_a', 'Fit sample'))
-  like (select '% Fee $0.50, taken from it: you receive ' || public.format_money(p.amount_cents - 50, p.currency) || '.'
+  like (select '% Payout fee $0.50 is taken from this payment: you receive ' || public.format_money(p.amount_cents - 50, p.currency) || '.'
           from public.order_payments p where p.id = pg_temp.p18_pay('order_a', 'Fit sample')),
   'the paid notification says the fee and what the factory receives');
 select public.record_payout_fee(pg_temp.p18_pay('order_a', 'Fit sample'), 99);

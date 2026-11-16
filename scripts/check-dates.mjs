@@ -120,7 +120,7 @@ const ZH_SAMPLES = [
   { kind: "funds_released", title: "$1,200.00 paid out to you", body: "Sent against TSC-1042." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by Payoneer against TSC-1042. Payoneer payment ID 88412." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by bank transfer against TSC-1042. TSC's note: Ref. 7781" },
-  { kind: "funds_released", title: "$65.00 paid out to you", body: "Sent to Ningbo Test Bank ending 1234. Fee $9.54, taken from it: you receive CNY 369.72." },
+  { kind: "funds_released", title: "$65.00 paid out to you", body: "Sent to Ningbo Test Bank ending 1234. Payout fee $9.54 is taken from this payment: you receive CNY 369.72." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 requested", body: "To a@b.com. TSC will send it after checking." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 cancelled", body: "The amount is back in your balance." },
   { kind: "withdrawal", title: "Withdrawal of $25.00 declined", body: "The amount is back in your balance. TSC's reason: Please confirm your PayPal address first." },

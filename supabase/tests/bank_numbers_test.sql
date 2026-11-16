@@ -15,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(129);
+select plan(130);
 
 set local session_replication_role = replica;
 
@@ -68,14 +68,14 @@ values
    '66b00000-0000-0000-0000-00000000000b', '66b00000-0000-0000-0000-0000000000f3', 1000, 1, 1000, 0, 1000, 50, 50, 'P66-3');
 
 insert into public.order_milestones (id, order_id, kind, title, amount_cents) values
-  ('66900000-0000-0000-0000-000000000001', '66f00000-0000-0000-0000-000000000001', 'payment_only', 'P66 one', 1000),
-  ('66900000-0000-0000-0000-000000000002', '66f00000-0000-0000-0000-000000000001', 'payment_only', 'P66 two', 1000),
-  ('66900000-0000-0000-0000-000000000003', '66f00000-0000-0000-0000-000000000003', 'payment_only', 'P66 stripe', 1000);
+  ('66900000-0000-0000-0000-000000000001', '66f00000-0000-0000-0000-000000000001', 'payment_only', 'P66 one', 10000),
+  ('66900000-0000-0000-0000-000000000002', '66f00000-0000-0000-0000-000000000001', 'payment_only', 'P66 two', 10000),
+  ('66900000-0000-0000-0000-000000000003', '66f00000-0000-0000-0000-000000000003', 'payment_only', 'P66 stripe', 10000);
 
 insert into public.order_payments (id, order_id, milestone_id, amount_cents, currency, state, confirmed_at, release_requested_at, stripe_charge_id, stripe_payment_intent_id) values
-  ('66800000-0000-0000-0000-000000000001', '66f00000-0000-0000-0000-000000000001', '66900000-0000-0000-0000-000000000001', 1000, 'USD', 'confirmed', now(), now(), null, null),
-  ('66800000-0000-0000-0000-000000000002', '66f00000-0000-0000-0000-000000000001', '66900000-0000-0000-0000-000000000002', 1000, 'USD', 'confirmed', now(), now(), null, null),
-  ('66800000-0000-0000-0000-000000000003', '66f00000-0000-0000-0000-000000000003', '66900000-0000-0000-0000-000000000003', 1000, 'USD', 'confirmed', now(), now(), 'ch_p66', 'pi_p66');
+  ('66800000-0000-0000-0000-000000000001', '66f00000-0000-0000-0000-000000000001', '66900000-0000-0000-0000-000000000001', 10000, 'USD', 'confirmed', now(), now(), null, null),
+  ('66800000-0000-0000-0000-000000000002', '66f00000-0000-0000-0000-000000000001', '66900000-0000-0000-0000-000000000002', 10000, 'USD', 'confirmed', now(), now(), null, null),
+  ('66800000-0000-0000-0000-000000000003', '66f00000-0000-0000-0000-000000000003', '66900000-0000-0000-0000-000000000003', 10000, 'USD', 'confirmed', now(), now(), 'ch_p66', 'pi_p66');
 
 set local session_replication_role = origin;
 
@@ -411,7 +411,9 @@ select lives_ok($$ select public.release_payment_to_factory('66800000-0000-0000-
 select throws_ok($$ select public.release_payment_to_factory('66800000-0000-0000-0000-000000000001', 'WIRE-REF-1') $$, '22023', 'that payout was already marked as paid', 'once');
 
 reset role;
-select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66 mill (P66-1). TSC''s note: WIRE-REF-1', 'the factory reads the reference');
+select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66 mill (P66-1). Payout fee $50.00 is taken from this payment: you receive $50.00. TSC''s note: WIRE-REF-1', 'the factory reads the reference');
+select is((select payout_fee_cents from public.order_payments where id = '66800000-0000-0000-0000-000000000001'), 5000::bigint,
+  'the bank transfer fee is recorded on the payment: the factory receives the amount less US$50');
 select is((select paid_to_holder || ' ' || paid_to_bank || ' ' || paid_to_last4 || ' ' || reference from public.bank_payouts where payment_id = '66800000-0000-0000-0000-000000000001'), 'P66 Mill Co Ltd P66 Bank 1234 WIRE-REF-1', 'and the record says where it went');
 
 select pg_temp.act_as(3); set local role authenticated;

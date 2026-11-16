@@ -148,6 +148,7 @@ const RELEASE_REFUSALS = {
   payout_own_company: "You belong to this company, so someone else on the staff must record its payout.",
   payout_stripe: "Stripe pays this factory now. Reload the board and retry the payout.",
   reference_required: "Enter the bank's reference for this transfer.",
+  fee_too_large: "This payment is not more than the US$50.00 bank transfer fee, so nothing would arrive. Nothing was marked paid.",
   reference_holds_number: "The factory and the brand can read this. Use the bank's reference, not the account number.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must pay it.",
   reveal_not_owed: "TSC doesn't owe this company a payout by hand, so its number stays hidden.",

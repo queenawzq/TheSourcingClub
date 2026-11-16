@@ -1444,7 +1444,7 @@ async function approveOpenStep(order, title, vendor = factory) {
 /**
  * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
  * its withdrawal balance, so the step is paid by a withdrawal staff sent by
- * bank, recorded as the server would.
+ * bank, recorded as the server would, less the US$50 wire fee (bank_payout_fee_cents()).
  */
 async function withdrawnByHand(org, payment, reference) {
   const withdrawal = must(await admin.from("factory_withdrawals").insert({
@@ -1452,7 +1452,7 @@ async function withdrawnByHand(org, payment, reference) {
     paid_to: "your bank account", decided_by: adminUser.id,
   }).select("id").single(), `a withdrawal for ${reference}`);
   must(await admin.rpc("record_withdrawal", {
-    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 0, receives: payment.amount_cents, receives_in: "USD",
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 5000, receives: payment.amount_cents - 5000, receives_in: "USD",
   }), `paid by hand: ${reference}`);
 }
 

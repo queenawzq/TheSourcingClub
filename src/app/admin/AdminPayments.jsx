@@ -41,6 +41,7 @@ import { useAuth } from "../../lib/auth.jsx";
 import {
   factoryStripeSetup, paymentBoard, releasePayment, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
+import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { cancelProviderPayout, payByProvider, previewProvider, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
@@ -450,6 +451,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
 }
 
 function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
+  // What the factory receives when staff pay it by bank: the wire fee comes out of it (src/shared/withdrawal-fees.mjs).
+  const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -502,11 +505,13 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
     ) : confirming ? (
       <>
         <span className="admin-sub admin-row-message" role="alert">
-          {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
+          {bankFee.refused
+            ? bankFee.refused
+            : `Sent ${formatMoney(bankFee.receivesCents, row.currency)} to ${row.factory_name} by bank? Bank transfer fee ${formatMoney(bankFee.feeCents, row.currency)}, paid by the factory, out of the ${formatMoney(row.amount_cents, row.currency)}: TSC pays ${formatMoney(row.amount_cents, row.currency)}, the amount.`}
           {row.payout_account_id ? ` To ${row.payout_holder || row.factory_name}, ${row.payout_bank}, ending ${row.payout_last4}.` : null}
           {` They will read: "${note.trim()}"`}
         </span>
-        <button type="button" className="admin-approve" disabled={busy}
+        <button type="button" className="admin-approve" disabled={busy || Boolean(bankFee.refused)}
                 data-testid="release-payment-confirm"
                 onClick={() => { setConfirming(null); onDecide(row, "release", note); }}>
           Yes, mark paid out

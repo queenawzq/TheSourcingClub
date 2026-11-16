@@ -2,7 +2,7 @@
 // quote wins over the formula, fees round up, and a payment no bigger than
 // its fee is refused. Run: node scripts/check-withdrawal-fees.mjs
 import assert from "node:assert/strict";
-import { withdrawalFee, withdrawalFeeLine, providerCharge } from "../src/shared/withdrawal-fees.mjs";
+import { FEE_FORMULAS, withdrawalFee, withdrawalFeeLine, providerCharge } from "../src/shared/withdrawal-fees.mjs";
 
 // What left TSC is the sent amount plus the provider's own charge on it.
 const leftTsc = (provider, country, amount) => {
@@ -10,7 +10,7 @@ const leftTsc = (provider, country, amount) => {
   return r.receivesCents + providerCharge(provider, country)(r.receivesCents);
 };
 
-for (const provider of ["stripe", "paypal"]) {
+for (const provider of ["stripe", "paypal", "bank"]) {
   for (const country of ["US", "DE", "GB"]) {
     for (const amount of [76, 100, 999, 10_000, 123_457, 1_000_000, 5_000_000, 100_000_000]) {
       const r = withdrawalFee({ provider, amountCents: amount, country });
@@ -42,7 +42,17 @@ assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000, quotedFe
 assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 10_000, quotedFeeCents: 543.2 }).feeCents, 544);
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 10_000, quotedFeeCents: 10 }).feeCents, 10, "a quote wins over the formula");
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000 }), { feeCents: null, receivesCents: null, basis: "quote_needed" });
-assert.deepEqual(withdrawalFee({ provider: "bank", amountCents: 10_000 }), { feeCents: 0, receivesCents: 10_000, basis: "none" });
+// The staff-paid bank wire: a fixed US$50, the same figure as the database's.
+assert.deepEqual(withdrawalFee({ provider: "bank", amountCents: 10_000 }), { feeCents: 5000, receivesCents: 5_000, basis: "formula" });
+assert.match(withdrawalFee({ provider: "bank", amountCents: 5000 }).refused, /too small: the fee to send it is US\$50\.00/);
+{
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const file = readdirSync("supabase/migrations").filter((name) => readFileSync(`supabase/migrations/${name}`, "utf8").includes("function public.bank_payout_fee_cents()")).sort().at(-1);
+  const sql = readFileSync(`supabase/migrations/${file}`, "utf8");
+  assert.ok(sql.includes(`select ${FEE_FORMULAS.bank.fixedCents}::bigint`), "public.bank_payout_fee_cents() is the module's bank fee");
+}
+// Stripe's cross-border fee is the highest it publishes (0.25%; see the header).
+assert.equal(FEE_FORMULAS.stripe.crossBorderBps, 25);
 
 // Too small: refused with a sentence.
 for (const r of [
