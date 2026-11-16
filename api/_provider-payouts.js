@@ -337,6 +337,19 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
 // ---------------------------------------------------------------------------
 
 const loadTazapayRules = () => import("../src/shared/tazapay-payout.mjs");
+const loadFees = () => import("../src/shared/withdrawal-fees.mjs");
+
+/**
+ * The factory pays Tazapay's fee (src/shared/withdrawal-fees.mjs, the one
+ * figure the board, the row and the notice show). Refused in words when
+ * nothing would arrive; nothing is sent then.
+ */
+async function tazapayFee({ quote, amountMinor, currency, country }) {
+  const { withdrawalFee } = await loadFees();
+  const fee = withdrawalFee({ provider: "tazapay", amountCents: Number(amountMinor), currency, country, quotedFeeCents: quote.feeMinor });
+  if (fee.refused) throw new PayoutFailure("refused", fee.refused);
+  return fee;
+}
 /** Tazapay remembers a key for 24 hours; past that, pressing again could pay twice. */
 export const TAZAPAY_KEY_MEMORY_MS = 23 * 3600 * 1000;
 const LOST_TAZAPAY_ANSWER = "Tazapay's answer to the first press was lost more than a day ago, so pressing again could pay twice. Check Tazapay for a payout with this payment's reference before doing anything else.";
@@ -369,8 +382,11 @@ export async function tazapayPreview({ tazapay, db, row }) {
     tazapay.quote({ holdingCurrency: row.currency, amountMinor: row.amount_cents, route }),
     tazapay.available(row.currency),
   ]);
+  const fee = await tazapayFee({ quote, amountMinor: row.amount_cents, currency: row.currency, country: route.country });
   return {
-    feeCents: quote.feeMinor,
+    feeCents: fee.feeCents,
+    receivesCents: fee.receivesCents,
+    feePaidBy: "factory",
     totalCents: quote.totalMinor,
     arrivesCents: quote.payoutMinor,
     arrivesCurrency: quote.payoutCurrency,
@@ -426,6 +442,7 @@ export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, no
         caller, db, tazapay, accountId: claim.account_id, existingId: claim.tazapay_beneficiary_id,
       });
       const quote = await tazapay.quote({ holdingCurrency: claim.currency, amountMinor: claim.amount_cents, route });
+      await tazapayFee({ quote, amountMinor: claim.amount_cents, currency: claim.currency, country: route.country });
       const available = await tazapay.available(claim.currency);
       if (available < quote.totalMinor) return await shortBalance(quote.totalMinor - available, claim.currency);
       await record(db, payoutId, {

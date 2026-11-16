@@ -424,7 +424,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
       <>
         {said}
         <span className="admin-sub admin-row-message" role="alert">
-          {provider === "wise" || provider === "tazapay"
+          {provider === "tazapay" && preview.receivesCents != null
+            // The factory pays Tazapay's fee: it comes out of the step, and TSC pays exactly the step.
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}, by Tazapay? Tazapay fee ${moneyIn(preview.feeCents, row.currency)}, taken from it: the factory receives ${moneyIn(preview.receivesCents, row.currency)}, arriving ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)} (${preview.arrivesCurrency}). TSC pays ${moneyIn(preview.totalCents, row.currency)} in total.`
+            : provider === "wise" || provider === "tazapay"
             ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}${provider === "tazapay" ? ", by Tazapay" : ""}?${preview.feeCents == null ? "" : ` ${name} fee ${moneyIn(preview.feeCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)} in total. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)} (${preview.arrivesCurrency}).`}`
             : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
         </span>

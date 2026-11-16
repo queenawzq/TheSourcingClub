@@ -56,8 +56,8 @@ assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", {
 assert.equal(info.tazapayMethod("CN"), "tazapayCN");
 assert.equal(info.tazapayMethod("HK"), "tazapayHK");
 assert.equal(info.tazapayMethod("TW"), null, "Tazapay pays China and Hong Kong only");
-assert.deepEqual(info.payoutMethodLines("tazapayCN"), ["Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
-assert.deepEqual(info.payoutMethodLines("tazapayHK"), ["Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
+assert.deepEqual(info.payoutMethodLines("tazapayCN"), ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in CNY at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
+assert.deepEqual(info.payoutMethodLines("tazapayHK"), ["Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in HKD at Tazapay's rate", "Not instant: sent once released, then usually the same or next business day"]);
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
 assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");

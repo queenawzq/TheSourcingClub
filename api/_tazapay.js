@@ -199,9 +199,12 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
     },
 
     /**
-     * TSC pays Tazapay's fee on top, so what arrives is the whole step converted
-     * at Tazapay's rate: the rate from a quote of the step, then a quote of that
-     * payout amount, whose holding amount is what leaves the balance, fee included.
+     * The factory pays Tazapay's fee: the step is what leaves TSC's balance,
+     * fee included (src/shared/withdrawal-fees.mjs). A quote with the holding
+     * amount set puts the fee inside it; the payout amount it gives is then
+     * quoted back, and lowered a minor unit at a time if Tazapay's rounding
+     * would take more than the step, so TSC never pays more than the step.
+     * totalMinor is what leaves the balance; feeMinor is Tazapay's fee in it.
      */
     async quote({ holdingCurrency, amountMinor, route }) {
       const ask = (info) => call("POST", "/v3/payout/quote", {
@@ -212,20 +215,31 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
           destination_info: { currency: route.currency, country: route.country },
         },
       });
-      const first = await ask({ holding: Number(amountMinor) });
+      const step = Number(amountMinor);
+      const tooSmall = () => new TazapayFailure("too_small", `This payment is not more than ${LABEL}'s fee to send it, so nothing would arrive. Nothing was sent.`);
+      let first;
+      try {
+        first = await ask({ holding: step });
+      } catch (failure) {
+        // Tazapay refuses a holding amount its fee would swallow (20003, "valid amount").
+        if (failure instanceof TazapayFailure && /20003/.test(failure.message)) throw tooSmall();
+        throw failure;
+      }
       const rate = Number(first?.exchange_rates?.holding_to_payout);
       if (!(rate > 0)) throw new TazapayFailure("quote_unavailable", `${LABEL} gave no rate for ${route.currency}. Try again in a minute.`);
-      const payoutMinor = Math.round(Number(amountMinor) * rate);
-      const second = await ask({ payout: payoutMinor });
-      const fixed = second?.fee_info?.fixed?.in_holding_currency ?? 0;
-      const variable = second?.fee_info?.variable?.in_holding_currency ?? 0;
-      return {
-        rate,
-        payoutMinor: Number(second?.payout_info?.amount ?? payoutMinor),
-        payoutCurrency: route.currency,
-        totalMinor: Number(second?.holding_info?.amount),
-        feeMinor: Number(fixed) + Number(variable),
-      };
+      const feeOf = (quote) => Number(quote?.fee_info?.fixed?.in_holding_currency ?? 0) + Number(quote?.fee_info?.variable?.in_holding_currency ?? 0);
+      let payoutMinor = Number(first?.payout_info?.amount);
+      if (!(payoutMinor > 0)) throw tooSmall();
+      for (let tries = 0; tries < 4; tries += 1) {
+        const back = await ask({ payout: payoutMinor });
+        const total = Number(back?.holding_info?.amount);
+        if (Number.isFinite(total) && total <= step) {
+          return { rate, payoutMinor, payoutCurrency: route.currency, totalMinor: total, feeMinor: feeOf(back) };
+        }
+        payoutMinor -= Math.max(1, Math.ceil((total - step) * rate));
+        if (payoutMinor <= 0) break;
+      }
+      throw new TazapayFailure("quote_unavailable", `${LABEL}'s quote didn't fit in the payment. Try again in a minute.`);
     },
 
     /**

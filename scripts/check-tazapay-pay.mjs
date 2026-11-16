@@ -193,7 +193,7 @@ function world({ claim = {}, account = ACCOUNT, registration = USCC, balance = 1
   const payouts = {};
   w.tazapay = {
     createBeneficiary: async (body, key) => { w.calls.push(["tz", "beneficiary", key]); assert(!("account_number" in body.destination_details.bank) || body.destination_details.bank.account_number); return { id: "bnf_made0001" }; },
-    quote: async ({ amountMinor, route }) => { w.calls.push(["tz", "quote", route.network]); return { rate: 6.4, payoutMinor: Math.round(amountMinor * 6.4), payoutCurrency: route.currency, totalMinor: amountMinor + 544, feeMinor: 544 }; },
+    quote: async ({ amountMinor, route }) => { w.calls.push(["tz", "quote", route.network]); return { rate: 6.4, payoutMinor: Math.round((amountMinor - 544) * 6.4), payoutCurrency: route.currency, totalMinor: amountMinor, feeMinor: 544 }; },
     available: async () => balance,
     uploadDocument: async ({ fileName, bytes }) => { w.uploads.push({ fileName, size: bytes.length }); return "https://s3.example/tazapay-temp-doc-sandbox/x.pdf"; },
     createPayout: async (body, key) => {
@@ -218,7 +218,7 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert.equal(made[3].reference_id, "tsc-pay-0000-1111", "the payment is in the reference, for tracing");
   assert.equal(made[3].purpose, "PYR031");
   assert.equal(made[3].local.fund_transfer_network, "cnaps");
-  assert.equal(made[3].amount, 64000, "the whole step arrives: TSC pays the fee on top");
+  assert.equal(made[3].amount, Math.round((10000 - 544) * 6.4), "the factory pays the fee: the step less Tazapay's fee arrives, and TSC pays only the step");
   assert.equal(made[3].holding_currency, "USD");
   assert.deepEqual(made[3].documents, [{ type: "invoice", url: "https://s3.example/tazapay-temp-doc-sandbox/x.pdf" }], "the invoice goes with it");
   assert.deepEqual(w.kept.map((k) => [k.bucket, k.path, k.type]), [["org-private", "00000000-0000-0000-0000-000000000000/tazapay-invoices/pay-0000-1111/11111111-2222-4333-8444-555555555555.pdf", "application/pdf"]], "TSC keeps the invoice in the private bucket");
@@ -251,10 +251,17 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert.equal(w.made().length, 0, "an account in another company's name is not paid");
 }
 {
+  // A step no bigger than Tazapay's fee: refused in words, nothing sent, the attempt ends.
+  const w = world({ claim: { amount_cents: 544 } });
+  await assert.rejects(pay(w), (e) => e.kind === "refused" && /not more than the US\$5\.44 fee/.test(e.message));
+  assert.equal(w.made().length, 0, "a payment the fee would swallow pays nothing");
+  assert.equal(w.finishes[0]?.outcome, "cancelled");
+}
+{
   const w = world({ balance: 5000 });
   const out = await pay(w);
   assert.equal(out.done, "short_balance");
-  assert.match(out.sentence, /short by \$55\.44, fee included/);
+  assert.match(out.sentence, /short by \$50\.00, fee included/);
   assert.equal(w.made().length, 0, "a short balance pays nothing");
   assert.equal(w.finishes[0]?.outcome, "cancelled");
 }

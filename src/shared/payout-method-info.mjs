@@ -1,3 +1,4 @@
+import { withdrawalFeeLine } from "./withdrawal-fees.mjs";
 /**
  * What each withdrawal method costs and how long it takes, in the two short
  * lines the chooser draws under its name (Nov 12 call: "like the Upwork
@@ -18,10 +19,10 @@
  *   bank    "Bank transfer" for a country not listed: staff pay it by bank
  *           ("Mark paid out by bank").
  *   tazapay "Bank transfer (Tazapay)" in mainland China (CNY over CNAPS) and Hong
- *           Kong (HKD over CHATS) (src/shared/tazapay-payout.mjs). TSC pays
- *           Tazapay's fee on top (about US$5.40 a payout, sandbox Nov 15), so
- *           the whole step is converted; Tazapay sets the rate (quote,
- *           api/_tazapay.js). China payouts run weekdays 9-5 China time, 3pm
+ *           Kong (HKD over CHATS) (src/shared/tazapay-payout.mjs). The factory
+ *           pays Tazapay's fee, quoted per payment and taken from it (about
+ *           US$5.44 to China, US$3.23 to Hong Kong, sandbox Nov 16); Tazapay
+ *           sets the rate (quote, api/_tazapay.js). China payouts run weekdays 9-5 China time, 3pm
  *           cut-off, and settle the same or next day.
  *   paypal  PayPal Payouts: the sender (TSC) pays the payout fee
  *           (developer.paypal.com/docs/payouts/standard/reference/fees/).
@@ -38,8 +39,9 @@ export const PAYOUT_METHOD_INFO = {
   wise: ["No fee: TSC pays the transfer fee", SENT_AFTER_RELEASE],
   bank: ["No TSC fee; your bank may charge to receive a transfer", SENT_AFTER_RELEASE],
   paypal: ["No TSC fee; PayPal may charge to convert or withdraw", "Not instant: sent once released"],
-  tazapayCN: ["Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate", TAZAPAY_TIMING],
-  tazapayHK: ["Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate", TAZAPAY_TIMING],
+  // The factory pays Tazapay's fee (src/shared/withdrawal-fees.mjs owns the fee line).
+  tazapayCN: [`${withdrawalFeeLine("tazapay")}; arrives in CNY at Tazapay's rate`, TAZAPAY_TIMING],
+  tazapayHK: [`${withdrawalFeeLine("tazapay")}; arrives in HKD at Tazapay's rate`, TAZAPAY_TIMING],
 };
 
 /** The chooser's Tazapay option for a country, or null where Tazapay doesn't pay. */

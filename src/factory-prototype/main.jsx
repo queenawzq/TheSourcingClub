@@ -304,8 +304,8 @@ export const nav = [
 
 export const factoryMainZhText = {
   "Bank transfer (Tazapay)": "银行转账（Tazapay）",
-  "Fee: 0% (TSC pays Tazapay's fee); arrives in CNY at Tazapay's rate": "手续费 0%（TSC 承担 Tazapay 费用）；按 Tazapay 汇率以人民币到账",
-  "Fee: 0% (TSC pays Tazapay's fee); arrives in HKD at Tazapay's rate": "手续费 0%（TSC 承担 Tazapay 费用）；按 Tazapay 汇率以港币到账",
+  "Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in CNY at Tazapay's rate": "手续费：Tazapay 费用，每笔单独报价，从该笔款项中扣除；按 Tazapay 汇率以人民币到账",
+  "Fee: Tazapay's fee, quoted for each payment and taken from it; arrives in HKD at Tazapay's rate": "手续费：Tazapay 费用，每笔单独报价，从该笔款项中扣除；按 Tazapay 汇率以港币到账",
   "Not instant: sent once released, then usually the same or next business day": "非即时到账：放款后发出，通常当天或下一个工作日到账",
   "Account holder name (English)": "账户名称（英文）",
   "Account holder name (Chinese)": "账户名称（中文）",
