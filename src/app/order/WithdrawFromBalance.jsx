@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
-import { FEE_FORMULAS, withdrawalFee, withdrawalFeeLine } from "../../shared/withdrawal-fees.mjs";
+import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
  * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
@@ -55,7 +55,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 }
 
 /** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
-export function useWithdrawalBalance(orgId, enabled = true) {
+export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
   const [state, setState] = useState({ available: null, pool: false, open: null, last: null, rows: [], withdrawn: new Map(), error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
@@ -88,26 +88,25 @@ export function useWithdrawalBalance(orgId, enabled = true) {
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [orgId, enabled, load]);
+  // Saving the first default method moves owed payments into the pool, even
+  // though no factory_withdrawals row changes yet. Re-read after that save.
+  }, [orgId, enabled, load, defaultMethodId]);
 
   return { ...state, load };
 }
 
-/**
- * While a withdrawal is open, only the owner's Cancel shows here: the
- * Transactions list already says what was asked, where it stands and what
- * was paid. Declined and failed keep a sentence, because each carries
- * something to act on.
- * Each line is one whole sentence, so the Chinese layer can read it
- * (src/app/live-zh.js patterns).
- */
+/** Pending withdrawal details and the owner’s cancellation action. */
 export function WithdrawalStatus({ open, last, isOwner, onCancel, busy }) {
   if (open) {
-    if (!(isOwner && open.status === "requested")) return null;
     return (
-      <p className="payout-balance-line" data-testid="withdrawal-open">
-        <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={onCancel}>Cancel withdrawal</button>
-      </p>
+      <div className="payout-pending-withdrawal" data-testid="withdrawal-open">
+        <div className="payout-pending-details">
+          <span className="payout-pending-label">Pending withdrawal</span>
+          <span className="payout-pending-amount">{formatMoney(open.amount_cents, open.currency)}</span>
+          <span className="payout-pending-destination">{open.provider === "paypal" ? "PayPal" : open.provider === "wise" ? "Wise bank transfer" : "Bank transfer"}{open.paid_to ? ` · ${open.paid_to}` : ""}</span>
+        </div>
+        {isOwner && open.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={onCancel}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
+      </div>
     );
   }
   if (last?.status === "declined") {
@@ -171,7 +170,7 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   // otherwise the fee line, and the exact figure comes when TSC sends it.
   const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee) && provider !== "bank");
   const asking = Boolean(fee) && provider !== "bank" && !exact;
-  const quoted = fee?.basis === "quote_needed" && !exact?.exact && !exact?.estimate;
+
 
   async function confirm() {
     if (busy || amountProblem || !method || !fee || fee.refused || exact?.refused) return;
@@ -187,47 +186,34 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
     : `${row.bank_name || "Bank account"}${row.wise_recipient_type ? " (Wise)" : ""} ending ${row.account_number_last4 ?? ""}`.trim());
 
   return (
-    <Modal title="Withdraw" onClose={onClose} actions={<>
+    <Modal title="Withdraw" className="withdraw-form-modal" onClose={onClose} actions={<>
       <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
       <button className="primary-btn" type="button" data-testid="withdraw-confirm" disabled={busy || asking || Boolean(amountProblem) || !fee || Boolean(fee?.refused) || Boolean(exact?.refused)} onClick={confirm}>
         {busy ? "Withdrawing…" : Number.isFinite(amountCents) && amountCents > 0 ? `Withdraw ${formatMoney(amountCents, "USD")}` : "Withdraw"}
       </button>
     </>}>
-      <div className="payout-form-grid">
-        <label>
-          <span>Amount (USD)</span>
-          <input name="Amount (USD)" inputMode="decimal" value={amountText} onChange={(event) => setAmountText(event.target.value)} aria-describedby="withdraw-available" />
+      <div className="withdraw-form-fields">
+        <label className="payout-country-field withdraw-method-field">
+          <span>Withdraw to</span>
+          <select name="Withdraw to" value={methodId} disabled={busy} onChange={(event) => setMethodId(event.target.value)}>
+            {choices.map((row) => <option key={row.id} value={row.id}>{label(row)}</option>)}
+          </select>
         </label>
+        <div className="withdraw-amount-field payout-form-grid">
+          <div className="withdraw-amount-heading">
+            <label htmlFor="withdraw-amount">Amount (USD)</label>
+            <button className="secondary-btn" type="button" disabled={busy} onClick={() => setAmountText((available / 100).toFixed(2))}>Withdraw full amount</button>
+          </div>
+          <input id="withdraw-amount" name="Amount (USD)" inputMode="decimal" value={amountText} disabled={busy}
+            onChange={(event) => {
+              const value = event.target.value;
+              setAmountText(Number(value) > available / 100 ? (available / 100).toFixed(2) : value);
+            }} aria-describedby="withdraw-available" />
+          <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
+        </div>
       </div>
-      <p id="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
       {amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
-      <label className="payout-country-field">
-        <span>Withdraw to</span>
-        <select name="Withdraw to" value={methodId} onChange={(event) => setMethodId(event.target.value)}>
-          {choices.map((row) => <option key={row.id} value={row.id}>{label(row)}</option>)}
-        </select>
-      </label>
-      {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : fee ? (
-        <ul data-testid="withdraw-fee">
-          {asking ? <li>Checking the fee…</li>
-            : exact?.exact ? <>
-              <li>{`Fee: ${formatMoney(exact.feeCents, "USD")} (${feeRate(provider, { country, feeCents: exact.feeCents, amountCents })}), taken from the amount`}</li>
-              <li>{`You receive: ${formatMoney(exact.receivesMinor, exact.receivesCurrency ?? "USD")}`}</li>
-            </> : exact?.estimate ? <>
-              <li>{`Fee: about ${formatMoney(exact.feeCents, "USD")} (${feeRate(provider, { country, feeCents: exact.feeCents, amountCents })}), taken from the amount`}</li>
-              <li>{`You receive: about ${formatMoney(exact.receivesMinor, exact.receivesCurrency ?? "USD")}`}</li>
-              <li>The exact fee is shown when TSC sends it.</li>
-            </> : quoted ? <>
-              {/* No figure from Wise: its line, without the provider's word for the rate. */}
-              <li>{withdrawalFeeLine(provider, { country: "US" })}</li>
-              <li>The exact fee is shown when TSC sends it.</li>
-            </> : <>
-              <li>{`Fee: ${formatMoney(fee.feeCents, "USD")} (${feeRate(provider, { country, feeCents: fee.feeCents, amountCents })}), taken from the amount`}</li>
-              <li>{`You receive: ${formatMoney(fee.receivesCents, "USD")}`}</li>
-            </>}
-          <li>{withdrawalTiming(provider)}</li>
-        </ul>
-      ) : null}
+      {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>
   );

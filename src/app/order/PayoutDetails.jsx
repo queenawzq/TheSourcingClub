@@ -159,7 +159,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // fails does not hide what the others found.
   const [earnings, setEarnings] = useState(null);
   // Withdrawals from the balance (Wise, PayPal, bank): the same source as its figure.
-  const fromBalance = useWithdrawalBalance(org.id, isFactory);
+  const fromBalance = useWithdrawalBalance(org.id, isFactory, payouts.primary?.id);
   const [earningsError, setEarningsError] = useState(null);
   const [credits, setCredits] = useState(null);
   const [creditsError, setCreditsError] = useState(null);
@@ -305,10 +305,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : !isOwner ? "owner" : "failed";
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
   const earningsSummary = [
-    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval; excludes unapproved funds held on cancelled orders."],
-    ["Awaiting approval", summary.approval, "Funds TSC holds until the brand approves the step. Once approved, they move to Pending until paid out."],
-    ["Pending", summary.pending, "Approved earnings not yet paid out, including transfers still processing."],
-    ["Paid out", summary.paid, "Step payments TSC has paid to your payout account. Withdrawals are listed below. Figures use estimated USD equivalents when another currency is involved."],
+    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
+    ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
+    ["Pending", summary.pending, "Pending payments become available to withdraw after processing."],
+    ["Paid out", summary.paid, "Money that has been paid out to you"],
   ];
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {

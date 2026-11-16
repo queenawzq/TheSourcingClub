@@ -339,7 +339,7 @@ export default function StripePayoutCard({
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
-  const fromBalance = useWithdrawalBalance(org.id, Boolean(handFigures) && renderCard);
+  const fromBalance = useWithdrawalBalance(org.id, Boolean(handFigures) && renderCard, manualAccount?.id);
   const [cancellingWithdrawal, setCancellingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState(null);
   // Remove and Add are TSC's own steps; Stripe's form does the last part,
@@ -949,13 +949,7 @@ export default function StripePayoutCard({
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
-            <WithdrawalStatus open={fromBalance.open} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async () => {
-              setCancellingWithdrawal(true);
-              setWithdrawalError(null);
-              try { await cancelWithdrawal(fromBalance.open.id); } catch (failure) { setWithdrawalError(failure.message); }
-              setCancellingWithdrawal(false);
-              fromBalance.load();
-            }} />
+
             {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           </> : <>
           <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
@@ -1028,6 +1022,13 @@ export default function StripePayoutCard({
             <button className={`${account?.transfers_active ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
+        {handPaid ? <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async () => {
+              setCancellingWithdrawal(true);
+              setWithdrawalError(null);
+              try { await cancelWithdrawal(fromBalance.open.id); } catch (failure) { setWithdrawalError(failure.message); }
+              setCancellingWithdrawal(false);
+              fromBalance.load();
+            }} /></div> : null}
       </section> : null}
 
       {modal === "withdraw-balance" && fromBalance.available != null ? (
@@ -1048,6 +1049,7 @@ export default function StripePayoutCard({
       {modal === "manage" ? (
         <PayoutModal
           title={cardWords.methods}
+          className="payout-methods-modal"
           onClose={closeModal}
           actions={<button className="secondary-btn" type="button" onClick={closeModal}>{cardWords.done}</button>}
         >
@@ -1087,7 +1089,7 @@ export default function StripePayoutCard({
             {manualAccounts.length ? manualAccounts.map((row) => (
               <article className="payout-method-row" key={row.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
-                  {LETTER_MARK[row.method] ?? BANK_ICON}
+                  {isPaypal(row) ? <img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /> : LETTER_MARK[row.method] ?? BANK_ICON}
                 </div>
                 <div className="payout-method-name">{isPaypal(row)
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
