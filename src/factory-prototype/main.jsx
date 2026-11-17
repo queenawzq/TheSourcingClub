@@ -1138,6 +1138,21 @@ export const factoryMainZhText = {
   "This amount is not more than the bank transfer fee, so nothing would arrive.": "该金额不超过银行转账手续费，到账金额为零。",
   "That didn't go through. Reload the page and try again.": "操作未成功。请刷新页面后重试。",
   "Your sign-in expired. Sign in again.": "登录已过期，请重新登录。",
+  // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
+  "Pending withdrawal": "待处理提现",
+  "Withdraw full amount": "提取全部金额",
+  "Cancelling…": "正在取消…",
+  "Nothing to withdraw yet": "暂无可提现金额",
+  "Wise bank transfer": "Wise 银行转账",
+  "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval.": "所选客户（或全部客户）已付款项中的收入，包括待审批的款项。",
+  "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance.": "等待品牌审批该里程碑的款项。审批后将转入你的可提现余额。",
+  "Pending payments become available to withdraw after processing.": "待处理款项处理完成后即可提现。",
+  "Money that has been paid out to you": "已支付给你的款项",
+  // Choosing which waiting withdrawals to cancel.
+  "Cancel withdrawals": "取消提现",
+  "Choose the withdrawals to cancel": "选择要取消的提现",
+  "Choose at least one withdrawal to cancel.": "请至少选择一笔要取消的提现。",
+  "Close": "关闭",
   // Live screens (app.html): text the prototype never draws.
   "Log out": "退出登录",
   "Language": "语言",

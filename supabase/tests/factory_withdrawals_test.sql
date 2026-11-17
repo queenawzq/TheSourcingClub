@@ -92,12 +92,10 @@ select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-000
 select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 0, '16a10000-0000-0000-0000-000000000001')$$, '22023', null, 'zero is refused');
 select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 1000, '16a10000-0000-0000-0000-000000000003')$$, '22023', null, 'another company''s account is refused');
 select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 300000, '16a10000-0000-0000-0000-000000000001')).provider, 'wise', 'owner withdraws everything; the database picks Wise from the account');
-select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 1, '16a10000-0000-0000-0000-000000000002')$$, '22023', 'You already have a withdrawal waiting.', 'a second open request is refused');
+select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 1, '16a10000-0000-0000-0000-000000000002')$$, '22023', 'That is more than your balance.', 'a second request beyond what is left is refused');
 select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 0::bigint, 'the request takes the balance');
 select is((select count(*)::int from public.notifications where org_id = '16b00000-0000-0000-0000-0000000000f1' and kind = 'withdrawal'), 1, 'the company is told');
 reset role;
-select throws_ok($$insert into public.factory_withdrawals (org_id, provider, amount_cents, paid_to) values ('16b00000-0000-0000-0000-0000000000f1', 'paypal', 1, 'x')$$,
-  '23505', null, 'the index refuses a second open request whatever the path');
 
 -- A factory cannot approve or record.
 select pg_temp.act_as(1); set local role authenticated;
@@ -107,6 +105,36 @@ select throws_ok($$select public.decline_withdrawal((select id from public.facto
 -- Cancel restores.
 select is((public.cancel_withdrawal((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested'))).status, 'cancelled', 'owner cancels a waiting request');
 select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 300000::bigint, 'cancelled: the balance is back');
+
+-- Several open at once, each taking its amount; cancelling a chosen set, all or none.
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 100000, '16a10000-0000-0000-0000-000000000002')$$, 'a first request, to the method that is not the default');
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 150000, '16a10000-0000-0000-0000-000000000001')$$, 'a second while the first waits');
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 50000, '16a10000-0000-0000-0000-000000000002')$$, 'a third takes what is left');
+select is((select count(*)::int from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested'), 3, 'three are open');
+select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 0::bigint, 'together they take the balance');
+select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 1, '16a10000-0000-0000-0000-000000000001')$$, '22023', 'That is more than your balance.', 'nothing more once open requests take it all');
+select is((select is_primary from public.factory_payout_accounts where id = '16a10000-0000-0000-0000-000000000001'), true, 'withdrawing to another method leaves the default where it was');
+select is((select is_primary from public.factory_payout_accounts where id = '16a10000-0000-0000-0000-000000000002'), false, 'and does not make the chosen method the default');
+select throws_ok($$select public.cancel_withdrawals('{}'::uuid[])$$, '22023', 'Choose at least one withdrawal to cancel.', 'cancelling none is refused');
+reset role; select pg_temp.act_as(2); set local role authenticated;
+select throws_ok($$select public.cancel_withdrawals(array(select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, '42501', null, 'a member cannot cancel several');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select is((select count(*)::int from public.cancel_withdrawals(array(select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested' and amount_cents in (100000, 50000))) c where c.status = 'cancelled'), 2, 'the owner cancels the two chosen');
+select is((select count(*)::int from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested'), 1, 'the one not chosen still waits');
+select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 150000::bigint, 'the two cancelled are back in the balance');
+-- All or none: one already being paid stops the whole set.
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 10000, '16a10000-0000-0000-0000-000000000002')$$, 'another request');
+reset role;
+update public.factory_withdrawals set status = 'paying', lease_until = now() + interval '90 seconds'
+ where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested' and amount_cents = 150000;
+select pg_temp.act_as(1); set local role authenticated;
+select throws_ok($$select public.cancel_withdrawals(array(select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status in ('requested','paying')))$$, '22023', 'TSC has already started sending this, so it can no longer be cancelled.', 'one being paid: nothing is cancelled');
+select is((select count(*)::int from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested' and amount_cents = 10000), 1, 'the waiting one is still open after the refusal');
+reset role;
+update public.factory_withdrawals set status = 'cancelled', lease_until = null
+ where org_id = '16b00000-0000-0000-0000-0000000000f1' and status in ('requested', 'paying');
+select pg_temp.act_as(1); set local role authenticated;
+select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 300000::bigint, 'back to the whole balance for the steps below');
 
 -- Part, then staff.
 select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 120000, '16a10000-0000-0000-0000-000000000002')).provider, 'paypal', 'owner withdraws part to PayPal');

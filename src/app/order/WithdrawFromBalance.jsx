@@ -25,6 +25,7 @@ const REFUSALS = {
   withdrawal_over_balance: "That is more than your balance. Reload the page to see it.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
+  withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
   fee_too_large: "This amount is not more than the bank transfer fee, so nothing would arrive.",
 };
 const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301" || /JWT/i.test(error?.message ?? "")
@@ -56,7 +57,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 
 /** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, last: null, rows: [], withdrawn: new Map(), error: null });
+  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const [balance, rows] = await Promise.all([
@@ -70,10 +71,13 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
       return;
     }
     const list = rows.data ?? [];
+    // Several can be open at once; each already took its amount from the balance.
+    const opens = list.filter((w) => ["requested", "paying"].includes(w.status));
     setState({
       available: Number(balance.data?.available_cents ?? 0),
       pool: Boolean(balance.data?.pool) || list.length > 0,
-      open: list.find((w) => ["requested", "paying"].includes(w.status)) ?? null,
+      open: opens[0] ?? null,
+      opens,
       last: list[0] ?? null,
       rows: list,
       withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
@@ -95,19 +99,26 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
   return { ...state, load };
 }
 
-/** Pending withdrawal details and the owner’s cancellation action. */
-export function WithdrawalStatus({ open, last, isOwner, onCancel, busy }) {
-  if (open) {
-    return (
-      <div className="payout-pending-withdrawal" data-testid="withdrawal-open">
+const destination = (w) => `${w.provider === "paypal" ? "PayPal" : w.provider === "wise" ? "Wise bank transfer" : "Bank transfer"}${w.paid_to ? ` · ${w.paid_to}` : ""}`;
+
+/**
+ * Pending withdrawal details and the owner’s cancellation action: one row per
+ * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
+ * choice of which to cancel when more than one is still waiting.
+ */
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy }) {
+  const list = opens?.length ? opens : open ? [open] : [];
+  if (list.length) {
+    return list.map((row) => (
+      <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
           <span className="payout-pending-label">Pending withdrawal</span>
-          <span className="payout-pending-amount">{formatMoney(open.amount_cents, open.currency)}</span>
-          <span className="payout-pending-destination">{open.provider === "paypal" ? "PayPal" : open.provider === "wise" ? "Wise bank transfer" : "Bank transfer"}{open.paid_to ? ` · ${open.paid_to}` : ""}</span>
+          <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
+          <span className="payout-pending-destination">{destination(row)}</span>
         </div>
-        {isOwner && open.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={onCancel}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
+        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
       </div>
-    );
+    ));
   }
   if (last?.status === "declined") {
     return <p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p>;
@@ -121,6 +132,66 @@ export function WithdrawalStatus({ open, last, isOwner, onCancel, busy }) {
 export async function cancelWithdrawal(id) {
   const { error } = await supabase.rpc("cancel_withdrawal", { target_withdrawal: id });
   if (error) throw new Error(sentence(error));
+}
+
+/** All or none: if one has started sending, none is cancelled. */
+export async function cancelWithdrawals(ids) {
+  const { error } = await supabase.rpc("cancel_withdrawals", { target_withdrawals: ids });
+  if (error) throw new Error(sentence(error));
+}
+
+/**
+ * The choice of which waiting withdrawals to cancel, in the payouts page's own
+ * PayoutModal. `first` is ticked to start with (the row whose Cancel was pressed).
+ */
+export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) {
+  const waiting = opens.filter((w) => w.status === "requested");
+  const [chosen, setChosen] = useState(() => new Set(first ? [first] : []));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const ticked = waiting.filter((w) => chosen.has(w.id));
+  const total = ticked.reduce((sum, w) => sum + Number(w.amount_cents), 0);
+  const toggle = (id) => setChosen((was) => {
+    const next = new Set(was);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  async function confirm() {
+    if (busy || !ticked.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelWithdrawals(ticked.map((w) => w.id));
+      setBusy(false);
+      onDone();
+    } catch (failure) {
+      setBusy(false);
+      setError(failure.message);
+    }
+  }
+
+  return (
+    <Modal title="Cancel withdrawals" className="withdraw-form-modal" onClose={onClose} actions={<>
+      <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Close</button>
+      <button className="primary-btn" type="button" data-testid="cancel-withdrawals-confirm" disabled={busy || !ticked.length} onClick={confirm}>
+        {busy ? "Cancelling…" : ticked.length > 1 ? `Cancel ${ticked.length} withdrawals` : "Cancel withdrawal"}
+      </button>
+    </>}>
+      <fieldset className="cancel-withdrawals-list">
+        <legend>Choose the withdrawals to cancel</legend>
+        {waiting.map((w) => (
+          <label className="cancel-withdrawals-option" key={w.id}>
+            <input type="checkbox" name="Cancel withdrawal" value={w.id} checked={chosen.has(w.id)} disabled={busy} onChange={() => toggle(w.id)} />
+            <span className="payout-pending-amount">{formatMoney(w.amount_cents, w.currency)}</span>
+            <span className="payout-pending-destination">{destination(w)}</span>
+          </label>
+        ))}
+      </fieldset>
+      {ticked.length ? <p className="cancel-withdrawals-total">{`Back to your balance: ${formatMoney(total, "USD")}`}</p> : null}
+      {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
+    </Modal>
+  );
 }
 
 /**
