@@ -614,3 +614,22 @@ export async function adjustCredits(orgId, amount, reason) {
     "adjust the credits",
   );
 }
+
+/**
+ * PayPal and Wise, switched on or off per region by staff (20261117200000).
+ * Rows are { provider, region, enabled, updated_at }.
+ */
+export async function listPayoutProviders() {
+  return unwrap(
+    await supabase.from("payout_provider_settings").select("provider, region, enabled, updated_at").order("provider").order("region"),
+    "load the payment providers",
+  ) ?? [];
+}
+
+/** Staff only: the database refuses anyone else. */
+export async function setPayoutProvider(provider, region, enabled) {
+  return unwrap(
+    await supabase.rpc("set_payout_provider", { provider, region, enabled }),
+    "change the payment provider",
+  );
+}

@@ -14,6 +14,7 @@ import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
+import { providerOn, usePayoutProviders } from "./payout-providers.js";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -47,6 +48,7 @@ const LIST_WORDS = {
   available: "Available",
   bankUnavailable: "A bank transfer isn't available right now. You can set up PayPal instead.",
   setUpPaypal: "Set up PayPal",
+  noneAvailable: "No withdrawal method is available for this country right now.",
 };
 
 const SLOW_BALANCE_MS = 8000;
@@ -213,11 +215,14 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
 const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, index) => <li key={line}>{line}{index === 0 && payoutMethodFeeUrl(method) ? <> · <a href={payoutMethodFeeUrl(method)} target="_blank" rel="noopener noreferrer">Full fee details</a></> : null}</li>)}</ul>;
 
 /** Presentation only; the live payout flow owns every setup action. */
-export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {
+export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, providers = null }) {
   const words = LIST_WORDS;
+  // Staff switch PayPal and Wise per region (usePayoutProviders); none passed is all on.
+  const paypalOn = providerOn(providers, "paypal");
+  const wiseOn = providerOn(providers, "wise");
   // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
   // nor Wise has a bank route, PayPal is the one option.
-  const bankRoute = supported || paidByWise(country);
+  const bankRoute = supported || (wiseOn && paidByWise(country));
   const paypalOption = (primary) => (
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
@@ -235,7 +240,9 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 <option value={NOT_LISTED}>Other / not listed</option>
               </select>
             </label>
-            {country && !bankRoute ? (
+            {country && !bankRoute && !paypalOn ? (
+              <p className="payout-modal-intro" data-testid="payout-none-available">{words.noneAvailable}</p>
+            ) : country && !bankRoute ? (
               <div className="payout-options-columns">
               <section className="payout-options-section">
               <h3 className="payout-recommended">{notListed ? words.available : words.recommended(countryName(country))}</h3>
@@ -257,10 +264,10 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 </article>
               </div>
               </section>
-              <section className="payout-options-section">
+              {(supported && wiseOn) || paypalOn ? <section className="payout-options-section">
               <h3 className="payout-recommended">Also available</h3>
               <div className="payout-method-options" role="group" aria-label="Also available">
-                {supported ? (
+                {supported && wiseOn ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
                     <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)} (Wise)</strong></div><MethodLines method={chooserMethod("wise", { supported, country })} /></div>
@@ -268,9 +275,9 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                             onClick={onWise}>{words.setUp}</button>
                   </article>
                 ) : null}
-                {paypalOption(false)}
+                {paypalOn ? paypalOption(false) : null}
               </div>
-              </section>
+              </section> : null}
               </div>
             </> : null}
   </>;
@@ -340,6 +347,8 @@ export default function StripePayoutCard({
   const [withdrawn, setWithdrawn] = useState(false);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
   const fromBalance = useWithdrawalBalance(org.id, Boolean(handFigures) && renderCard, manualAccount?.id);
+  // PayPal and Wise as staff have switched them for this company's region.
+  const providers = usePayoutProviders(org.id, isOwner);
   const [cancellingWithdrawal, setCancellingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState(null);
   const [cancelFirst, setCancelFirst] = useState(null);
@@ -1052,7 +1061,7 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "withdraw-balance" && fromBalance.available != null ? (
-        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id} country={country}
+        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id} country={country} providers={providers}
           Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); }} />
       ) : null}
 
@@ -1245,7 +1254,7 @@ export default function StripePayoutCard({
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
             <p className="payout-modal-intro">Choose where your company is registered. We’ll show the withdrawal methods available for that country. {supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
-            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
+            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} providers={providers} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
             {removeError && modal === "add" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           </PayoutModal>
         );

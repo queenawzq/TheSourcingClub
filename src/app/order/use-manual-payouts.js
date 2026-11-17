@@ -34,6 +34,7 @@ const SAVE_REFUSALS = {
   name_not_latin: "Enter the name on the account in English letters.",
   wise_form_invalid: "Couldn't save your bank details right now. Nothing changed. Try again.",
   payout_not_bank: "That withdrawal method is not a bank account.",
+  payout_provider_off: "This withdrawal method isn't available right now. Choose another one.",
 };
 
 export const blankPayout = (row) => ({

@@ -58,7 +58,7 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
 }
 // No staff-paid bank option: where neither Stripe nor Wise pays, PayPal alone.
 for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), null, `${country}: no bank option`);
-assert.ok(card.includes("const bankRoute = supported || paidByWise(country);") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
+assert.ok(card.includes("const bankRoute = supported || (wiseOn && paidByWise(country));") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
 assert.ok(card.includes('onUnavailable={() => setModal("bank-unavailable")}') && !card.includes('onUnavailable={() => setModal("setup-bank")}'), "Wise's form unavailable never falls back to the staff bank form");
 assert.ok(!card.includes('notListed ? "setup-bank"'), "the chooser never opens the staff bank form");
 const factoryZh = read("src/factory-prototype/main.jsx");

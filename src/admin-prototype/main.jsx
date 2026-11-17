@@ -1866,6 +1866,75 @@ function TestDataPanel() {
   );
 }
 
+/**
+ * PayPal and Wise, on or off per region (payout_provider_settings). Live
+ * only: the prototype's adapter has no `payoutProviders`, so nothing is
+ * drawn. Not in the design; built from the settings card. Each box saves as
+ * it is changed, then the switches are read again.
+ */
+const PAYOUT_PROVIDERS = [{ key: "paypal", label: "PayPal" }, { key: "wise", label: "Wise" }];
+const PAYOUT_REGIONS = [{ key: "china", label: "China and Hong Kong" }, { key: "elsewhere", label: "Everywhere else" }];
+
+function PayoutProvidersPanelIfLive() {
+  const actions = useActions();
+  return actions.payoutProviders ? <PayoutProvidersPanel /> : null;
+}
+
+function PayoutProvidersPanel() {
+  const actions = useActions();
+  const [rows, setRows] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [message, setMessage] = useState({ error: false, text: "" });
+
+  const load = async () => {
+    try {
+      setRows(await actions.payoutProviders.list());
+    } catch {
+      setMessage({ error: true, text: "Couldn't load the payment providers. Reload the page to try again." });
+    }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enabled = (provider, region) => rows?.find((row) => row.provider === provider && row.region === region)?.enabled ?? false;
+
+  const change = async (provider, region, on) => {
+    const name = `${PAYOUT_PROVIDERS.find((p) => p.key === provider).label} in ${PAYOUT_REGIONS.find((r) => r.key === region).label}`;
+    setSaving(`${provider}:${region}`);
+    setMessage({ error: false, text: "" });
+    try {
+      await actions.payoutProviders.set(provider, region, on);
+      await load();
+      setMessage({ error: false, text: `${name} is now ${on ? "on" : "off"}.` });
+    } catch (error) {
+      setMessage({ error: true, text: error?.cause?.code === "42501" ? "Only TSC staff can change payment providers." : `Couldn't change ${name}. Nothing changed. Try again.` });
+      await load();
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Panel title="Payment providers" className="admin-settings-card admin-payout-providers">
+      {rows ? PAYOUT_PROVIDERS.map((provider) => (
+        <div className="admin-payout-provider-row" key={provider.key}>
+          <strong>{provider.label}</strong>
+          <div className="admin-payout-provider-regions">
+            {PAYOUT_REGIONS.map((region) => (
+              <label className="admin-check" key={region.key}>
+                <input type="checkbox" name={`${provider.label} · ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
+                  checked={enabled(provider.key, region.key)} disabled={Boolean(saving)}
+                  onChange={(event) => change(provider.key, region.key, event.target.checked)} />
+                <span>{region.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )) : !message.error ? <p className="admin-assist-meta">Loading…</p> : null}
+      {message.text && <p className={message.error ? "admin-error" : "admin-test-email-status"} role={message.error ? "alert" : "status"}>{message.text}</p>}
+    </Panel>
+  );
+}
+
 // Test sites have no scheduled jobs, so staff run the daily one by hand.
 function DailyJobsPanel() {
   const actions = useActions();
@@ -2000,6 +2069,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
           </div>
         )}
       </Panel>
+      <PayoutProvidersPanelIfLive />
       <TestEmailPanel email={email} intro={testEmailsIntro} unavailable={testEmailsUnavailable} />
       <DailyJobsPanel />
       <TestDataPanelIfLive />

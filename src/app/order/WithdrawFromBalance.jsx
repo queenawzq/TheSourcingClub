@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
+import { providerOf, providerOn } from "./payout-providers.js";
 
 /**
  * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
@@ -27,6 +28,7 @@ const REFUSALS = {
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
   fee_too_large: "This amount is not more than the bank transfer fee, so nothing would arrive.",
+  withdrawal_provider_off: "This withdrawal method isn't available right now. Choose another one.",
 };
 const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301" || /JWT/i.test(error?.message ?? "")
   ? "Your sign-in expired. Sign in again."
@@ -228,8 +230,9 @@ function useExactQuote(orgId, accountId, amountCents, enabled) {
 }
 
 /** The dialog body and its Confirm, in the payouts page's own PayoutModal. */
-export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "" }) {
-  const choices = methods.filter(usable);
+export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null }) {
+  // A saved method whose provider staff switched off stays saved, but is not offered.
+  const choices = methods.filter((row) => usable(row) && providerOn(providers, providerOf(row)));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
   const [busy, setBusy] = useState(false);
@@ -237,6 +240,12 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   // click: this does, before the state update reaches the button.
   const sending = useRef(false);
   const [error, setError] = useState(null);
+  // A switch read or flipped after the dialog opened: move off a method no longer offered.
+  const offered = choices.map((m) => m.id).join(",");
+  useEffect(() => {
+    if (!choices.some((m) => m.id === methodId)) setMethodId((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offered]);
   const method = choices.find((m) => m.id === methodId) ?? null;
   const provider = PROVIDER_FOR(method);
   const amountCents = /^\d+(\.\d{0,2})?$/.test(amountText.trim()) ? Math.round(Number(amountText.trim()) * 100) : NaN;
@@ -291,6 +300,7 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
           <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
         </div>
       </div>
+      {!choices.length ? <p className="live-stripe-error" role="alert" data-testid="withdraw-no-method">Add another withdrawal method to withdraw.</p> : null}
       {amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
       {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
