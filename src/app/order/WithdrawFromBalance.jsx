@@ -59,7 +59,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
   return `${Math.round((feeCents / amountCents) * 1000) / 10}%`;
 }
 
-/** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
+/** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
   const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), stripeFees: 0, error: null });
   const load = useCallback(async () => {
@@ -99,6 +99,13 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
+      // A brand approving a step moves its payment into the balance
+      // (join_withdrawal_pool) with no factory_withdrawals row changing: the
+      // first such payment is what reveals Withdraw. order_payments has no org
+      // column to filter on; Realtime applies order_payments_read per
+      // subscriber, so only this company's orders are heard.
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   // Saving the first default method moves owed payments into the pool, even

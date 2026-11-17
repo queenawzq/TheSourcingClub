@@ -59,6 +59,33 @@ function profileTodo(list) {
   return `补充${found.join("、")}${/ and more$/.test(list) ? "等" : ""}，让资料更完整。`;
 }
 
+/**
+ * Country names for the withdrawal-method chooser (its country list and
+ * "Recommended for …"), hand-written rather than the browser's, which differ
+ * between browsers and run long ("中国香港特别行政区"). Keyed by ISO code.
+ */
+export const COUNTRY_NAMES_ZH = {
+  US: "美国", CA: "加拿大", GB: "英国", CH: "瑞士",
+  AT: "奥地利", BE: "比利时", BG: "保加利亚", HR: "克罗地亚", CY: "塞浦路斯", CZ: "捷克", DK: "丹麦",
+  EE: "爱沙尼亚", FI: "芬兰", FR: "法国", DE: "德国", GR: "希腊", HU: "匈牙利", IE: "爱尔兰", IT: "意大利",
+  LV: "拉脱维亚", LT: "立陶宛", LU: "卢森堡", MT: "马耳他", NL: "荷兰", PL: "波兰", PT: "葡萄牙",
+  RO: "罗马尼亚", SK: "斯洛伐克", SI: "斯洛文尼亚", ES: "西班牙", SE: "瑞典", IS: "冰岛", LI: "列支敦士登", NO: "挪威",
+  CN: "中国", HK: "中国香港", TW: "中国台湾", VN: "越南", IN: "印度", BD: "孟加拉国", PK: "巴基斯坦", TR: "土耳其",
+  ID: "印度尼西亚", TH: "泰国", KH: "柬埔寨", LK: "斯里兰卡", KR: "韩国", JP: "日本", MX: "墨西哥", BR: "巴西",
+  MA: "摩洛哥", EG: "埃及",
+};
+
+const englishRegion = new Intl.DisplayNames(["en"], { type: "region" });
+/** The same names by their English name, as the chooser draws it ("Hong Kong SAR China"). */
+const COUNTRY_BY_ENGLISH = new Map(Object.entries(COUNTRY_NAMES_ZH).map(([code, zh]) => [englishRegion.of(code) ?? code, zh]));
+
+/** A country's Chinese name by its code, or null when the list has none. */
+export const countryNameZh = (code) => COUNTRY_NAMES_ZH[code] ?? null;
+
+// Chinese beside Chinese runs on; beside a name, an email or digits it takes a space.
+const CJK = /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/;
+const spaced = (a, b) => `${a}${CJK.test(a.slice(-1)) && CJK.test(b.slice(0, 1)) ? "" : " "}${b}`;
+
 // A name or a step title inside a pattern: short, not a sentence.
 const titleLike = (text) => text.length <= 60 && !/[.!?](\s|$)|[。！？]/.test(text);
 
@@ -179,6 +206,17 @@ const PATTERNS = [
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
   [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
+  // Withdrawal methods (src/app/order/StripePayoutCard.jsx): the chooser's
+  // heading, a method's name with its last four digits, and removing one.
+  // Emails, bank names and digits stay as written.
+  [/^Recommended for (.+)$/, (m) => (COUNTRY_BY_ENGLISH.has(m[1]) ? `推荐方式（${COUNTRY_BY_ENGLISH.get(m[1])}）` : null)],
+  [/^(.+) ····(\d{4})(?: \((.+)\))?$/, (m, inner) => `${inner(m[1])} ····${m[2]}${m[3] ? `（${m[3]}）` : ""}`],
+  [/^Remove (PayPal \S+|.+ ····\d{4})\?$/, (m, inner) => `${spaced("删除", inner(m[1]))}？`],
+  [/^(PayPal \S+|.+ ····\d{4}|This account) can’t be removed( yet)?$/, (m, inner) => spaced(inner(m[1]), `${m[2] ? "暂时" : ""}无法删除`)],
+  [/^(.+) becomes your default\.$/, (m, inner) => spaced(inner(m[1]), "将成为你的默认提现方式。")],
+  [/^(.+) is now your default\.$/, (m, inner) => spaced(inner(m[1]), "已设为你的默认提现方式。")],
+  [/^TSC is about to pay (.+) to this account\. Remove it after that payment is sent\.$/,
+    (m) => `TSC 即将向该账户支付 ${m[1].replace(/ and /g, " 和 ")}。请在这笔款项付出后再删除。`],
 ];
 
 /**
