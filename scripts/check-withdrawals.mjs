@@ -11,7 +11,7 @@
  * replayed by the next press (it gets a new key: requeue).
  */
 import assert from "node:assert/strict";
-import { approveWithdrawal, previewWithdrawal } from "../api/_withdrawals.js";
+import { REFERENCE_MAX, approveWithdrawal, previewWithdrawal, withdrawalReference } from "../api/_withdrawals.js";
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
 import { askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
@@ -98,6 +98,21 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(w.recorded.at(-1).outcome, "requeue");
   await approveWithdrawal({ ...w, id: "w1" });
   assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-2"]);
+}
+
+// The reference fits every Wise route: GBP takes 18 characters, others fewer or
+// other characters. A 23-character one had Wise refuse every UK withdrawal.
+{
+  const id = "3f9c2b1e-7a4d-4c1b-9e2f-0123456789ab";
+  const reference = withdrawalReference(id);
+  assert.ok(reference.length <= REFERENCE_MAX && REFERENCE_MAX <= 10, `reference "${reference}" is at most 10 characters`);
+  assert.match(reference, /^[A-Za-z0-9-]+$/, "letters, digits and hyphens only");
+  assert.equal(reference, "TSCW3F9C2B", "traceable to the withdrawal's id");
+  const w = world();
+  const sent = [];
+  w.adapter.pay = async (_client, ctx) => (sent.push(ctx.reference), { ref: "ref-1" });
+  await approveWithdrawal({ ...w, id: "w1" });
+  assert.ok(sent[0].length <= REFERENCE_MAX, "the adapter is handed the short reference");
 }
 
 // Preview sends nothing.

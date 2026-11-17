@@ -52,12 +52,23 @@ async function loadFeeRule() {
   return withdrawalFee;
 }
 
+/**
+ * What the factory's bank statement and the provider's records show. Wise caps a
+ * transfer's reference per currency and route (sandbox transfer-requirements:
+ * GBP 18, CNY 35, HKD 50, EUR 140; letters, digits and hyphens are the only
+ * characters every route takes), so it is held to 10 of those, the length of
+ * an order number (TSC-000123), which the per-step payouts send. Traceable: the
+ * hex is the start of the withdrawal's id.
+ */
+export const REFERENCE_MAX = 10;
+export const withdrawalReference = (id) => `TSCW${String(id ?? "").replace(/[^0-9a-f]/gi, "").slice(0, 6).toUpperCase()}`;
+
 function contextFrom(claim, { caller, db, cnyConfirmed, country = "" }) {
   return {
     amountCents: Number(claim.amount_cents),
     currency: claim.currency,
     key: claim.key,
-    reference: `TSC withdrawal ${String(claim.withdrawal_id).slice(0, 8)}`,
+    reference: withdrawalReference(claim.withdrawal_id),
     account: { id: claim.account_id, paypalEmail: claim.paypal_email, wiseRecipientId: claim.wise_recipient_id, wiseCurrency: claim.wise_currency },
     caller, db, cnyConfirmed: Boolean(cnyConfirmed),
     country,
