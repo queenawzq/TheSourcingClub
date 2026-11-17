@@ -169,6 +169,8 @@ const PATTERNS = [
   [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
   [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
   [/^Cancel (\d+) withdrawals$/, (m) => `取消 ${m[1]} 笔提现`],
+  // A pending row's Cancel, named for screen readers by its amount.
+  [/^Cancel withdrawal of (\S+)$/, (m) => `取消 ${m[1]} 的提现`],
   [/^Back to your balance: (\S+)$/, (m) => `退回余额：${m[1]}`],
   [/^Fee: (\S+), taken from the amount$/, (m) => `手续费：${m[1]}，从金额中扣除`],
   [/^Fee: (about )?(\S+) \((?:([\d.]+%)|US\$([\d.]+) per payment)\), taken from the amount$/,
