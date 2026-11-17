@@ -615,6 +615,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
   const counterparty = {
     name: !isFactory && order.factory?.name ? vendorNames.node(order.factory_org_id, order.factory.name) : other ?? "",
+    // The same name as plain text, for the dialogs' sentences and placeholders.
+    nameText: other ?? "",
     initials: initials(other),
     location,
   };
