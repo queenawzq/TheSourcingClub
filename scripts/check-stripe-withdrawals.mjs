@@ -5,7 +5,7 @@
 // With a fake Stripe and a fake database. Run: node scripts/check-stripe-withdrawals.mjs
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, withdrawWithFee } from "../api/_stripe-withdrawals.js";
+import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, returnFeesOnFailedPayouts, withdrawWithFee } from "../api/_stripe-withdrawals.js";
 import { STRIPE_MINIMUM_PAYOUT, stripeWithdrawalFee, withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 const REQUEST = "b1f9fd8c-76bd-43a7-ad48-502ebed382b3";
@@ -25,6 +25,9 @@ function fakeDb() {
       update(fields) { patch = fields; return q; },
       eq(column, value) { filters.push((row) => row[column] === value); if (patch) for (const row of matches()) Object.assign(row, structuredClone(patch)); return q; },
       in(column, values) { filters.push((row) => values.includes(row[column])); return q; },
+      gte(column, value) { filters.push((row) => row[column] >= value); return q; },
+      order() { return q; },
+      limit() { return q; },
       async maybeSingle() { return { data: structuredClone(matches()[0] ?? null), error: null }; },
       then(resolve, reject) { return Promise.resolve({ data: structuredClone(matches()), error: null }).then(resolve, reject); },
     };
@@ -39,7 +42,7 @@ function fakeDb() {
         if (!row) {
           row = { id: randomUUID(), org_id: args.target_org, stripe_account_id: args.account, request_key: args.key, request_id: args.request,
             amount_minor: args.amount, currency: args.in_currency.toUpperCase(), destination: args.to_destination, fee_cents: null,
-            fee_local_minor: null, reversals: [], payout_id: null, payout_minor: null, state: "claimed", reason: null, lease_until: null };
+            fee_local_minor: null, reversals: [], payout_id: null, payout_minor: null, state: "claimed", reason: null, lease_until: null, created_at: new Date().toISOString() };
           rows.push(row);
         }
         if (["claimed", "fee_taken"].includes(row.state) && !leased(row)) {
@@ -68,6 +71,8 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
     platform: 0,
     balance: available,
     reads: 0,
+    payoutReads: 0,
+    slowPayouts: false,
     staleBalance: null,
     reversals: [],
     payouts: [],
@@ -118,6 +123,7 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
     refunds: { async retrieve(id) { const r = s.reversals.find((x) => x.destination_payment_refund === id); return { balance_transaction: { currency, amount: -r.local } }; } },
     payouts: {
       async list() { return { data: s.payouts }; },
+      async retrieve(id) { s.payoutReads += 1; if (s.slowPayouts) return new Promise(() => {}); return structuredClone(s.payouts.find((p) => p.id === id)); },
       async create(params, { idempotencyKey }) {
         const failure = payoutFails.shift();
         if (failure) throw failure;
@@ -365,6 +371,66 @@ assert.equal(usFee, 523);
   await assert.rejects(withdrawWithFee(args(s2, db2, { amount: whole })), upToNothing);
   assert.deepEqual([s2.reversals.length, s2.returned.length, s2.platform, s2.balance], [1, 1, 0, whole - fee], "the fee went back");
   assert.equal(db2.rows.find((row) => row.request_key !== "withdraw-other-tab").reason, "You can withdraw up to $0.00.");
+}
+
+// 14. A payout that fails or is cancelled with no webhook (unsubscribed, or
+// missed): the next balance read or withdrawal gives the fee back, once,
+// whichever of it and the webhook comes first. Stripe slow: the page waits no
+// longer than the budget. Older than 14 days, or still on its way: untouched.
+for (const status of ["failed", "canceled"]) {
+  for (const first of ["sweep", "webhook"]) {
+    const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+    const db = fakeDb();
+    const payout = await withdrawWithFee(args(s, db));
+    assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "a payout on its way keeps the fee");
+    assert.equal(s.returned.length, 0);
+    s.payouts[0].status = status;
+    s.balance += s.payouts[0].amount;
+    const event = { ...payout, id: s.payouts[0].id, status };
+    if (first === "sweep") {
+      assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 1, `${status}: the balance read gives the fee back`);
+      assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), false, `${status}: the late webhook gives nothing twice`);
+    } else {
+      assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), true);
+      assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, `${status}: the read after the webhook gives nothing twice`);
+    }
+    assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "and again: nothing");
+    assert.deepEqual([s.returned.length, s.platform, s.balance, db.rows[0].state], [1, 0, 100_000, "fee_returned"], `${status} (${first} first): whole again, once`);
+  }
+}
+{
+  // Both at the same moment: one transfer back.
+  const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+  const db = fakeDb();
+  const payout = await withdrawWithFee(args(s, db));
+  s.payouts[0].status = "failed";
+  await Promise.all([
+    returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }),
+    returnFeeOnFailedPayout({ stripe: s.api, db, payout: { ...payout, id: s.payouts[0].id, status: "failed" } }),
+  ]);
+  assert.deepEqual([s.returned.length, s.platform], [1, 0], "a webhook and a read together: one transfer back");
+}
+{
+  // Stripe never answers: the read goes on after the budget, with nothing changed.
+  const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+  const db = fakeDb();
+  await withdrawWithFee(args(s, db));
+  s.payouts[0].status = "failed";
+  s.slowPayouts = true;
+  const started = Date.now();
+  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us", budgetMs: 50 }), 0);
+  assert.ok(Date.now() - started < 1000, "the page is not held up");
+  assert.equal(db.rows[0].state, "paid_out", "tried again next time");
+  // Stripe erroring: the same, no throw.
+  s.slowPayouts = false;
+  s.api.payouts.retrieve = async () => { throw new Error("Stripe is down"); };
+  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0);
+  // Older than 14 days: not looked up.
+  s.api.payouts.retrieve = async (id) => structuredClone(s.payouts.find((p) => p.id === id));
+  db.rows[0].created_at = new Date(Date.now() - 15 * 86_400_000).toISOString();
+  s.payoutReads = 0;
+  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0);
+  assert.equal(db.rows[0].state, "paid_out");
 }
 
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small");

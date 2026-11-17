@@ -67,6 +67,8 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   // Older withdrawals left half-way first: what they took must be settled
   // before this one reads the balance.
   await settleAbandoned({ stripe, db, accountId, except: key });
+  // And a fee kept on a payout that failed since: back in the balance first.
+  await returnFeesOnFailedPayouts({ stripe, db, accountId });
 
   const claim = () => db.rpc("claim_stripe_withdrawal", {
     target_org: orgId, account: accountId, key, request: requestId, amount, in_currency: currency,
@@ -403,4 +405,39 @@ export async function returnFeeOnFailedPayout({ stripe, db, payout }) {
   if (row.state !== "paid_out") return false;
   await giveBack(stripe, db, row, Number(row.fee_cents ?? 0), null);
   return true;
+}
+
+/**
+ * The same, without the webhook: this account's paid-out withdrawals of the
+ * last `days` are looked up by payout id, and a payout that failed or was
+ * cancelled gives its fee back (returnFeeOnFailedPayout, so once, whichever
+ * arrives first). A missed or unsubscribed payout.failed would otherwise keep
+ * the fee for good. Never holds the caller up for more than `budgetMs`, and
+ * never throws: a lookup that is slow or fails is tried again on the next
+ * balance read or withdrawal. Returns how many fees went back in time.
+ */
+export async function returnFeesOnFailedPayouts({ stripe, db, accountId, days = 14, limit = 10, budgetMs = 2000 }) {
+  const work = (async () => {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data, error } = await db.from("stripe_withdrawals").select("payout_id")
+      .eq("stripe_account_id", accountId).eq("state", "paid_out").gte("created_at", since)
+      .order("created_at", { ascending: false }).limit(limit);
+    if (error) return 0;
+    const returned = await Promise.all((data ?? []).filter((row) => row.payout_id).map(async ({ payout_id: id }) => {
+      try {
+        const payout = await stripe.payouts.retrieve(id, {}, { stripeAccount: accountId });
+        return await returnFeeOnFailedPayout({ stripe, db, payout });
+      } catch {
+        return false;
+      }
+    }));
+    return returned.filter(Boolean).length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }

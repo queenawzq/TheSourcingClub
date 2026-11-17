@@ -8,7 +8,7 @@ import {
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -166,6 +166,8 @@ export default async function handler(request, response) {
       // A withdrawal left half-way (its call died) is finished or its fee given back first.
       await settleAbandoned({ stripe, db, accountId: existing.stripe_account_id })
         .catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
+      // A payout that failed or was cancelled gives its fee back even if its webhook never came.
+      await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const [balance, allocation, methods, onTheirWay, displayFx] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
