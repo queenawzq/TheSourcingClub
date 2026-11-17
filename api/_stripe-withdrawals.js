@@ -127,6 +127,30 @@ async function availableNow(stripe, accountId, currency) {
   return balance.available.find((b) => b.currency === currency)?.amount ?? 0;
 }
 
+/**
+ * What this withdrawal may take: the balance's available amount less what
+ * other withdrawals on the account, still being made by a live call, have yet
+ * to take from it (another tab's payout that has not gone). Read between
+ * another tab's fee and its payout, the balance alone overstates it.
+ */
+async function withdrawableNow(stripe, db, row, currency) {
+  const available = await availableNow(stripe, row.stripe_account_id, currency);
+  const { data, error } = await db.from("stripe_withdrawals")
+    .select("id, currency, amount_minor, fee_local_minor, reversals, state, lease_until")
+    .eq("stripe_account_id", row.stripe_account_id).in("state", ["claimed", "fee_taken"]);
+  if (error) throw new Error(error.message);
+  const now = Date.now();
+  let claimed = 0;
+  for (const other of data ?? []) {
+    if (other.id === row.id || other.currency?.toLowerCase() !== currency) continue;
+    if (!other.lease_until || Date.parse(other.lease_until) <= now) continue;
+    const taken = other.state === "fee_taken" ? Number(other.fee_local_minor ?? 0)
+      : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
+    claimed += Math.max(0, Number(other.amount_minor) - taken);
+  }
+  return Math.max(0, available - claimed);
+}
+
 /** The currency and rate a transfer landed at in the factory's balance. */
 async function landed(stripe, accountId, transfer) {
   const id = typeof transfer.destination_payment === "string" ? transfer.destination_payment : transfer.destination_payment?.id;
@@ -146,7 +170,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
   if (row.state === "claimed" && row.fee_cents == null) {
     // More than is available is refused before any fee is taken (the dialog
     // caps the amount; this is a teammate's withdrawal in between).
-    const available = await availableNow(stripe, accountId, currency);
+    const available = await withdrawableNow(stripe, db, row, currency);
     if (amount > available) await refuse(db, row, upToSentence(available, currency));
     const { stripeWithdrawalFee, stripeMinimumPayout, stripeMinimumWithdrawal, minimumWithdrawalSentence } = await feeModule();
     // The fee, and whether what is left is a payout Stripe will make, before
@@ -201,7 +225,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       // Stripe would not take (all of) the fee: give back any part it took.
       // Most often the balance went in the meantime (another tab's withdrawal).
       await giveBack(stripe, db, row, plan.filter((item) => item.reversal).reduce((sum, item) => sum + item.amount, 0), CANNOT_PROCESS);
-      const reason = await balanceShortSentence(stripe, accountId, currency, amount) ?? CANNOT_PROCESS;
+      const reason = await balanceShortSentence(stripe, db, row, currency, amount) ?? CANNOT_PROCESS;
       await update(db, row, { reason });
       throw new PayoutMethodRefusal(reason);
     }
@@ -230,7 +254,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
         // Refused: nothing left the balance, so neither does the fee.
         await giveBack(stripe, db, row, Number(row.fee_cents), failure instanceof PayoutMethodRefusal ? failure.message : null);
         // The balance went in the meantime (another tab's withdrawal): said in the dialog's words.
-        const short = await balanceShortSentence(stripe, accountId, currency, amount);
+        const short = await balanceShortSentence(stripe, db, row, currency, amount);
         if (short) {
           await update(db, row, { reason: short });
           throw new PayoutMethodRefusal(short);
@@ -246,9 +270,9 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
 }
 
 /** "You can withdraw up to …" when the balance is now under the amount, else null. Never throws: it only chooses words. */
-async function balanceShortSentence(stripe, accountId, currency, amount) {
+async function balanceShortSentence(stripe, db, row, currency, amount) {
   try {
-    const available = await availableNow(stripe, accountId, currency);
+    const available = await withdrawableNow(stripe, db, row, currency);
     return available < amount ? upToSentence(available, currency) : null;
   } catch {
     return null;
@@ -262,7 +286,8 @@ async function findOrReverse(stripe, row, item) {
   }
   return stripe.transfers.createReversal(item.transfer, {
     amount: item.amount,
-    description: "Withdrawal fee",
+    // Stripe keeps no description on a reversal (it accepts one and drops
+    // it): the metadata is what marks this as a withdrawal fee.
     metadata: { stripe_withdrawal_id: row.id },
   }, { idempotencyKey: `swr-${row.id}-${item.transfer}` });
 }

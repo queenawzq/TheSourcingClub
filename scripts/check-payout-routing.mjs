@@ -39,8 +39,12 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
   const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } }, accounts: { async update() {} },
     transfers: { list: async function* () {
       for (let i = 0; i < 100; i += 1) yield { id: `tr_other_${i}`, metadata: { payment_id: 'another-payment' } };
-      yield { id: 'tr_reversed', metadata: { payment_id: payment.id }, reversed: true };
+      // Taken back in full by staff in Stripe (no withdrawal metadata): undone.
+      yield { id: 'tr_reversed', amount: 100, amount_reversed: 100, metadata: { payment_id: payment.id }, reversed: true };
       yield { id: 'tr_past_the_first_page', metadata: { payment_id: payment.id } };
+    }, listReversals: async function* (id) {
+      assert.equal(id, 'tr_reversed');
+      yield { id: 'trr_staff', amount: 100, metadata: {} };
     }, async create() { assert.fail('a transfer already at Stripe must not be sent again'); } } };
   assert.deepEqual(await releasePayment({ db, stripe, paymentId: payment.id }), { released: true, reason: 'tr_past_the_first_page' });
   assert.deepEqual(rpcs.at(-1), ['record_payment_released', { target_payment: payment.id, transfer: 'tr_past_the_first_page' }]);
@@ -83,4 +87,32 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
   assert.deepEqual(await releasePayment({ db, stripe, paymentId: tiny.id }), { released: true, reason: 'tr_tiny' });
   assert.equal(sent[0].amount, 20, 'a 20-cent step is sent in full');
 }
-console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read');
+// A small step's transfer reversed in full by withdrawal fees still paid the
+// step: a release retried after a crash (and the factory withdrew in between)
+// records it rather than paying the step again, on both release paths.
+{
+  const small = { ...payment, amount_cents: 20, stripe_release_started: true, release_claimed_at: '2026-11-01T00:00:00Z' };
+  const feeReversed = { id: 'tr_small', amount: 20, amount_reversed: 20, reversed: true, metadata: { payment_id: small.id } };
+  const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } }, accounts: { async update() {} },
+    transfers: {
+      list: async function* () { yield { id: 'tr_other', metadata: { payment_id: 'another-payment' } }; yield feeReversed; },
+      listReversals: async function* (id) {
+        assert.equal(id, 'tr_small');
+        yield { id: 'trr_fee_1', amount: 12, metadata: { stripe_withdrawal_id: 'withdrawal-1' } };
+        yield { id: 'trr_fee_2', amount: 8, metadata: { stripe_withdrawal_id: 'withdrawal-2' } };
+      },
+      async create() { assert.fail('a step whose transfer withdrawal fees reversed must not be paid again'); } } };
+  for (const usesStripe of [true, false]) {
+    const rpcs = [];
+    const db = {
+      from(table) { const q = { select() { return q; }, eq() { return q; },
+        async maybeSingle() { return { data: table === 'order_payments' ? small : { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'US' } }; },
+        async single() { return { data: { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'US' } }; } }; return q; },
+      async rpc(name, args) { rpcs.push([name, args]); return { data: name === 'uses_stripe_payout' ? usesStripe : name === 'claim_payment_release' ? '2026-11-17T00:00:00Z' : null }; },
+    };
+    assert.deepEqual(await releasePayment({ db, stripe, paymentId: small.id }), { released: true, reason: 'tr_small' });
+    assert.deepEqual(rpcs.at(-1), ['record_payment_released', { target_payment: small.id, transfer: 'tr_small' }]);
+    assert.ok(!rpcs.some(([name]) => name === 'record_stripe_release_not_sent'), 'never unpinned as if nothing was sent');
+  }
+}
+console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read; a transfer reversed by withdrawal fees is never paid again');

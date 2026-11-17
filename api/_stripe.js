@@ -519,10 +519,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
-    let already;
-    for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
-      if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
-    }
+    const already = await paymentTransfer(stripe, payment);
     if (already) {
       await recordTransferFee(db, payment, already);
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
@@ -567,6 +564,27 @@ export async function releasePayment({ stripe, db, paymentId }) {
 }
 
 /**
+ * The transfer that paid this payment, found by its metadata, or null.
+ * Withdrawal fees are taken by reversing the factory's transfers
+ * (api/_stripe-withdrawals.js, metadata stripe_withdrawal_id), so a small
+ * step's transfer can be reversed in full by them: it still paid the step, and
+ * paying it again would pay twice. Only a transfer that other reversals (staff
+ * in Stripe) took back in full counts as undone.
+ */
+async function paymentTransfer(stripe, payment) {
+  for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
+    if (transfer.metadata?.payment_id !== payment.id) continue;
+    if (!transfer.reversed) return transfer;
+    let byWithdrawalFees = 0;
+    for await (const reversal of stripe.transfers.listReversals(transfer.id, { limit: 100 })) {
+      if (reversal.metadata?.stripe_withdrawal_id) byWithdrawalFees += Number(reversal.amount);
+    }
+    if (Number(transfer.amount_reversed) - byWithdrawalFees < Number(transfer.amount)) return transfer;
+  }
+  return null;
+}
+
+/**
  * What the factory paid on a transfer that went: the step less what was sent.
  * Zero since 2026-11-17 (the whole step is sent); a transfer made before then
  * held Stripe's payout fee back.
@@ -590,10 +608,7 @@ function stripeMadeNoTransfer(failure) {
 async function settleStartedRelease({ stripe, db, payment }) {
   if (!payment.stripe_release_started) return null;
   if (payment.release_claimed_at && Date.parse(payment.release_claimed_at) > Date.now() - 10 * 60 * 1000) return null;
-  let already;
-  for await (const transfer of stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 })) {
-    if (transfer.metadata?.payment_id === payment.id && !transfer.reversed) { already = transfer; break; }
-  }
+  const already = await paymentTransfer(stripe, payment);
   if (already) {
     await recordTransferFee(db, payment, already);
     await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
