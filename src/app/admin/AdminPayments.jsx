@@ -841,6 +841,30 @@ export default function AdminPayments() {
     return () => clearInterval(timer);
   }, [load]);
 
+  // A factory asking for or cancelling a withdrawal: staff cannot be notified, so
+  // the board hears it (factory_withdrawals is in supabase_realtime; staff read
+  // every row). Inserts and updates only: Realtime does not filter deletes, and
+  // a withdrawal is never deleted. The 30 s read above stays as the fallback.
+  useEffect(() => {
+    let active = true;
+    let timer;
+    const refresh = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (active) load(); }, 300);
+    };
+    const channel = supabase
+      .channel(`admin-withdrawals:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "factory_withdrawals" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "factory_withdrawals" }, refresh)
+      .subscribe();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
+
   // While money is on its way, keep reading: nobody else can tell staff.
   const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
     || withdrawals.withdrawals.some((row) => row.status === "paying");

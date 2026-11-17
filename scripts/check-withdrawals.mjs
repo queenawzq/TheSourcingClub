@@ -11,10 +11,11 @@
  * replayed by the next press (it gets a new key: requeue).
  */
 import assert from "node:assert/strict";
-import { approveWithdrawal, previewWithdrawal } from "../api/_withdrawals.js";
+import { BACK_IN_BALANCE, REFERENCE_MAX, approveWithdrawal, previewWithdrawal, withdrawalReference } from "../api/_withdrawals.js";
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
-import { askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
+import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
@@ -100,6 +101,38 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-2"]);
 }
 
+// The reference fits every Wise route: GBP takes 18 characters, others fewer or
+// other characters. A 23-character one had Wise refuse every UK withdrawal.
+{
+  const id = "3f9c2b1e-7a4d-4c1b-9e2f-0123456789ab";
+  const reference = withdrawalReference(id);
+  assert.ok(reference.length <= REFERENCE_MAX && REFERENCE_MAX <= 10, `reference "${reference}" is at most 10 characters`);
+  assert.match(reference, /^[A-Za-z0-9-]+$/, "letters, digits and hyphens only");
+  assert.equal(reference, "TSCW3F9C2B", "traceable to the withdrawal's id");
+  const w = world();
+  const sent = [];
+  w.adapter.pay = async (_client, ctx) => (sent.push(ctx.reference), { ref: "ref-1" });
+  await approveWithdrawal({ ...w, id: "w1" });
+  assert.ok(sent[0].length <= REFERENCE_MAX, "the adapter is handed the short reference");
+}
+
+// A failed withdrawal has no Pay again: staff read that the amount is back in the
+// factory's balance, never "pay again", and the factory's row says the same, without a fee.
+{
+  const w = world({ status: "failed" });
+  w.adapter.status = async () => ({ state: "failed", raw: "FAILED", failure: "PayPal couldn't pay this. Check the factory's PayPal address, then pay again." });
+  w.adapter.provider = "paypal";
+  assert.equal((await approveWithdrawal({ ...w, id: "w1" })).done, "failed");
+  const sentence = w.recorded.at(-1).sentence;
+  assert.equal(w.recorded.at(-1).outcome, "failed");
+  assert.doesNotMatch(sentence, /pay again/i, sentence);
+  assert.match(sentence, /PayPal address/);
+  assert.ok(sentence.endsWith(BACK_IN_BALANCE));
+  const [row] = askedWithdrawalRows([{ id: "f", status: "failed", amount_cents: 100, currency: "USD", provider: "paypal", fee_cents: 2, receives_minor: 98, reason: sentence }]);
+  assert.equal(row.note, WITHDRAWAL_FAILED_NOTE);
+  assert.doesNotMatch(row.note, /pay again|Fee/i);
+}
+
 // Preview sends nothing.
 {
   const w = world();
@@ -126,6 +159,18 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(quote.leavesCents <= 6500, `leaves ${quote.leavesCents}, never more than the amount`);
   assert.equal(quote.feeCents, 6500 - quotes.at(-1), "the fee is the amount less what is sent to the factory");
   assert.ok(quote.feeCents >= 300, "the factory carries Wise's fee");
+}
+
+// Under Wise's smallest amount for the route (the sandbox's answer for $5 to a
+// Chinese business account, by SWIFT from 9.25 USD): said as the amount, never as
+// TSC's balance, which was untouched.
+{
+  const body = { id: "q", rate: 7, paymentOptions: [{ payIn: "BALANCE", payOut: "SWIFT", disabled: true, sourceAmount: 5, targetAmount: 0, fee: { total: 9.24 },
+    disabledReason: { code: "error.quote.sourceAmount.min", message: "The smallest amount you can send is 9.25 USD.", path: "sourceAmount", arguments: [{ limit: "9.25 USD" }] } }] };
+  const wise = wiseFrom({ WISE_API_BASE: "https://api.wise-sandbox.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "7", WISE_PAYOUT_CURRENCY: "CNY" },
+    async () => new Response(JSON.stringify(body), { status: 200 }));
+  await assert.rejects(wise.quote({ sourceCurrency: "USD", targetCurrency: "CNY", amountCents: 500, recipientId: "r1" }), (failure) =>
+    failure.kind === "too_small" && /smallest transfer to this account is 9\.25 USD/.test(failure.message) && failure.message !== CANT_PAY_FROM_BALANCE);
 }
 
 // One figure: a $40 withdrawal of a $65 step moves $40 from Pending to Paid out.

@@ -52,12 +52,23 @@ async function loadFeeRule() {
   return withdrawalFee;
 }
 
+/**
+ * What the factory's bank statement and the provider's records show. Wise caps a
+ * transfer's reference per currency and route (sandbox transfer-requirements:
+ * GBP 18, CNY 35, HKD 50, EUR 140; letters, digits and hyphens are the only
+ * characters every route takes), so it is held to 10 of those, the length of
+ * an order number (TSC-000123), which the per-step payouts send. Traceable: the
+ * hex is the start of the withdrawal's id.
+ */
+export const REFERENCE_MAX = 10;
+export const withdrawalReference = (id) => `TSCW${String(id ?? "").replace(/[^0-9a-f]/gi, "").slice(0, 6).toUpperCase()}`;
+
 function contextFrom(claim, { caller, db, cnyConfirmed, country = "" }) {
   return {
     amountCents: Number(claim.amount_cents),
     currency: claim.currency,
     key: claim.key,
-    reference: `TSC withdrawal ${String(claim.withdrawal_id).slice(0, 8)}`,
+    reference: withdrawalReference(claim.withdrawal_id),
     account: { id: claim.account_id, paypalEmail: claim.paypal_email, wiseRecipientId: claim.wise_recipient_id, wiseCurrency: claim.wise_currency },
     caller, db, cnyConfirmed: Boolean(cnyConfirmed),
     country,
@@ -163,6 +174,29 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
   }
 }
 
+/**
+ * Why a withdrawal failed, for staff. Not the per-step payout's sentences: those
+ * end "then pay again", and a failed withdrawal has no Pay again. Its amount is
+ * back in the factory's balance and the factory asks again (record_withdrawal).
+ */
+const WITHDRAWAL_FAILED = {
+  paypal: {
+    FAILED: "PayPal couldn't pay this: check the factory's PayPal address.",
+    RETURNED: "PayPal returned this to TSC, so nothing arrived: check the factory's PayPal address.",
+    BLOCKED: "PayPal blocked this payment: check why in PayPal.",
+    REFUNDED: "This payment was refunded to TSC: check why in PayPal.",
+    REVERSED: "This payment was reversed: check why in PayPal.",
+  },
+  wise: {
+    bounced_back: "The factory's bank returned this transfer: check the bank details with the factory.",
+    funds_refunded: "Wise refunded this transfer to TSC's balance: check why in Wise.",
+    charged_back: "This transfer was charged back: check why in Wise.",
+  },
+};
+export const BACK_IN_BALANCE = "The amount is back in the factory's balance, so it can withdraw again.";
+export const withdrawalFailure = (adapter, raw) =>
+  `${WITHDRAWAL_FAILED[adapter.provider]?.[raw] ?? `${adapter.label} did not deliver this.`} ${BACK_IN_BALANCE}`;
+
 /** Ask the provider, and record only its own answer. */
 export async function readBack({ adapter, client, db, id, ref }) {
   const status = await adapter.status(client, ref);
@@ -171,7 +205,7 @@ export async function readBack({ adapter, client, db, id, ref }) {
     return "paid";
   }
   if (status.state === "failed" || status.state === "cancelled") {
-    await record(db, id, "failed", { sentence: status.failure ?? `${adapter.label} did not deliver this.` });
+    await record(db, id, "failed", { sentence: withdrawalFailure(adapter, status.raw) });
     return "failed";
   }
   if (status.waiting) await record(db, id, "sent", { sentence: status.waiting });

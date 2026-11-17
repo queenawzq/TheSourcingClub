@@ -139,13 +139,18 @@ update public.factory_withdrawals set status = 'cancelled', lease_until = null
 select pg_temp.act_as(1); set local role authenticated;
 select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 300000::bigint, 'back to the whole balance for the steps below');
 
--- Part, then staff.
+-- Part, then staff. Staff cannot be notified, so the overview's payments card
+-- is their prompt: it counts an open withdrawal.
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select set_config('tsc.test_owed_before', (select payments_awaiting_confirmation::text from public.admin_overview_metrics()), true);
+reset role; select pg_temp.act_as(1); set local role authenticated;
 select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 120000, '16a10000-0000-0000-0000-000000000002')).provider, 'paypal', 'owner withdraws part to PayPal');
 reset role; select pg_temp.act_as(2); set local role authenticated;
 select throws_ok($$select public.cancel_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, '42501', null, 'a member cannot cancel');
 reset role; select pg_temp.act_as(6); set local role authenticated;
 select throws_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, '42501', null, 'staff in the company cannot approve its withdrawal');
 reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((select payments_awaiting_confirmation from public.admin_overview_metrics()), current_setting('tsc.test_owed_before')::int + 1, 'the overview counts a withdrawal waiting on staff');
 select throws_ok($$select public.decline_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'), ' ')$$, '22023', null, 'a decline needs a reason');
 select is((public.claim_withdrawal((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested')))->>'provider', 'paypal', 'staff claim it');
 select throws_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='paying'))$$, '22023', 'this is already being paid', 'a second approve while the first runs is refused');

@@ -40,6 +40,14 @@ const WISE_FAILURES = {
 
 export const CANT_PAY_FROM_BALANCE = "Wise can't pay this from TSC's balance right now. Check the balance's currency in Wise.";
 const BALANCE_TOO_LOW = "error.payInmethod.disabled";
+const BELOW_MINIMUM = "error.quote.sourceAmount.min";
+/** Wise's own minimum, as it says it ("9.25 USD"), for staff and the factory alike. */
+export const belowMinimum = (reason) => {
+  const limit = reason?.arguments?.find((a) => a?.limit)?.limit;
+  return limit && /^[0-9.,]+ [A-Z]{3}$/.test(limit)
+    ? `Wise's smallest transfer to this account is ${limit}, so it can't send this amount.`
+    : "This amount is below Wise's smallest transfer to this account.";
+};
 
 export const WISE_ISSUE = "Wise has stopped this transfer until an issue is cleared. Open it in Wise to see what it needs.";
 
@@ -154,6 +162,12 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
       const unavailable = new PayoutFailure("quote_unavailable", CANT_PAY_FROM_BALANCE);
       const option = (body.paymentOptions ?? []).find((o) => o.payIn === "BALANCE");
       const balanceRefused = Boolean(option?.disabled) && option.disabledReason?.code === BALANCE_TOO_LOW;
+      // Under Wise's smallest amount for this route (sandbox: a Chinese business
+      // account goes by SWIFT, from 9.25 USD) Wise disables the balance route with
+      // the balance untouched: it is the amount, not TSC's balance.
+      if (option?.disabled && option.disabledReason?.code === BELOW_MINIMUM) {
+        throw new PayoutFailure("too_small", belowMinimum(option.disabledReason), { detail: BELOW_MINIMUM });
+      }
       if (!option || (option.disabled && !balanceRefused)) throw unavailable;
       const totalCents = cents(option.sourceAmount);
       // The fee is inside the amount: anything else would charge TSC more.
