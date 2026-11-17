@@ -299,7 +299,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
   const earningsShown = cardSettled || accountsError ? earnings : null;
   const summary = earningsSummaryFor(earningsShown, client, fromBalance.withdrawn,
-    fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0));
+    fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees);
   // Whether the withdrawals wait for Stripe at all, and if so, what to say
   // while they cannot be shown. Only an owner reads them.
   const needsStripe = stripeRelevant(earningsShown);

@@ -10,18 +10,23 @@
  *
  * Figures, checked 2026-11-16:
  *
- *   stripe   TSC-managed accounts keep fees.payer = application (Stripe needs
- *            it on an account with no Stripe dashboard), so Stripe bills TSC
- *            "0.25% + 25¢ per payout sent", and "Cross-border payout fee:
- *            starting at 0.25% of payout volume" for an account outside TSC's
- *            country (the US). https://stripe.com/connect/pricing,
- *            https://docs.stripe.com/connect/cross-border-payouts. TSC holds
- *            that back: the transfer is the most that, with Stripe's payout
- *            fee on it, fits in the amount; the factory's fee is the rest.
- *            Stripe's US$2 per monthly active account is not charged to
- *            factories (out of scope). Charged per payment, not per payout:
- *            a payout carrying several payments is charged once by Stripe, so
- *            this never leaves TSC short.
+ *   stripe   Checked 2026-11-17 on https://stripe.com/connect/pricing ("You
+ *            handle pricing"). TSC-managed accounts keep fees.payer =
+ *            application (Stripe needs it on an account with no Stripe
+ *            dashboard), so Stripe bills TSC, monthly, for each payout a
+ *            factory makes to its bank: "0.25% + 25¢ per payout", the
+ *            cross-border payout fee "starting at 0.25% of payout volume" for
+ *            an account outside TSC's country (the US;
+ *            https://docs.stripe.com/connect/cross-border-payouts), and funds
+ *            routing at "0.25% of payout volume". Stripe's page does not limit
+ *            funds routing to any country, so it is charged on EVERY payout,
+ *            US included: 0.50% + 25¢ in the US, 0.75% + 25¢ elsewhere.
+ *            Nothing is billed per transfer, so an approved step reaches the
+ *            factory's Stripe balance in full, and the fee is taken once per
+ *            withdrawal (api/_stripe-withdrawals.js: a partial reversal of the
+ *            factory's transfers, then the payout of the rest). TSC keeps
+ *            paying Stripe's US$2 per monthly active account: it is not
+ *            charged to factories.
  *   wise     Wise's fee depends on the route and the recipient, so it is the
  *            quote's (api/_wise.js quote(), asked with the amount as the
  *            source: the fee is inside it). https://wise.com/pricing/business
@@ -50,7 +55,7 @@
  *
  * Where a fee is uncertain, the HIGHEST published figure is charged, so TSC
  * is never short (decided 2026-11-16). Stripe's cross-border payout fee: the
- * Connect pricing page (https://stripe.com/connect/pricing, read 2026-11-16)
+ * Connect pricing page (https://stripe.com/connect/pricing, read 2026-11-17)
  * gives only "Starting at 0.25% of payout volume", with no per-country table,
  * no range and no higher figure, and its linked page
  * (https://docs.stripe.com/connect/cross-border-payouts) gives no other; so
@@ -67,7 +72,8 @@ const QUOTED = new Set(["wise", "tazapay"]);
 
 /** The published formulas, in basis points and cents. */
 export const FEE_FORMULAS = {
-  stripe: { bps: 25, fixedCents: 25, crossBorderBps: 25, home: "US" },
+  // Per payout: 0.25% + 25¢, funds routing 0.25% everywhere, cross-border 0.25% outside the US.
+  stripe: { bps: 25, fixedCents: 25, fundsRoutingBps: 25, crossBorderBps: 25, home: "US" },
   paypal: { domesticFixedCents: 25, bps: 200, internationalCapCents: 2000, home: "US" },
   bank: { fixedCents: 5000 },
 };
@@ -80,7 +86,7 @@ export function providerCharge(provider, country = "") {
   // An unknown country is charged as abroad: the larger fee, so TSC is never short.
   if (provider === "stripe") {
     const f = FEE_FORMULAS.stripe;
-    const bps = f.bps + (country !== f.home ? f.crossBorderBps : 0);
+    const bps = f.bps + f.fundsRoutingBps + (country !== f.home ? f.crossBorderBps : 0);
     return (x) => percentUp(x, bps) + f.fixedCents;
   }
   if (provider === "bank") return () => FEE_FORMULAS.bank.fixedCents;
@@ -141,14 +147,83 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
   if (receivesCents <= 0) {
     // The smallest fee the provider would take, not the whole amount.
     const least = basis === "formula" ? providerCharge(provider, country)(1) : feeCents;
-    return {
-      refused: `This payment of ${feeMoney(amount, currency)} is too small: the fee to send it is ${feeMoney(least, currency)}, so nothing would arrive. Nothing was sent.`,
-      feeCents,
-      basis,
-    };
+    return { refused: tooSmallSentence(amount, least, currency), feeCents, basis };
   }
   return { feeCents, receivesCents, basis };
 }
+
+const tooSmallSentence = (amount, least, currency) =>
+  `This payment of ${feeMoney(amount, currency)} is too small: the fee to send it is ${feeMoney(least, currency)}, so nothing would arrive. Nothing was sent.`;
+
+/**
+ * A withdrawal from a factory's Stripe balance: the fee TSC takes back (in
+ * US$, by reversing part of the factory's US$ transfers) for Stripe's bill on
+ * the payout. The balance may be in the account's own currency (GBP, EUR…):
+ * `localPerUsd` is how much of it one US$ bought on the factory's latest
+ * transfer (Stripe's exchange_rate), 1 for a US$ balance. Stripe bills on the
+ * payout converted to US$, so the formula runs on the amount in US$; the
+ * largest-send rule makes the fee cover Stripe's charge on what is paid out.
+ *
+ *   → { feeCents (US$), usdCents, feeLocalEstimate (balance currency, before Stripe converts) }
+ *   → { refused: "<sentence>" } (in the balance's currency) when nothing would arrive.
+ */
+export function stripeWithdrawalFee({ amountMinor, currency = "USD", country = "", localPerUsd = 1 } = {}) {
+  const amount = Number(amountMinor);
+  const rate = Number(localPerUsd);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { refused: "There is nothing to send: the amount must be more than zero." };
+  if (!(rate > 0)) throw new Error("A positive exchange rate is needed");
+  const code = String(currency).toUpperCase();
+  // Rounded up: a larger US$ figure gives the larger fee, so TSC is never short.
+  const usdCents = code === "USD" ? amount : Math.ceil(amount / rate);
+  const fee = withdrawalFee({ provider: "stripe", amountCents: usdCents, currency: "USD", country });
+  const inLocal = (usd) => (code === "USD" ? usd : Math.ceil(usd * rate));
+  // In the balance's own currency too: a converted fee can use up a tiny amount.
+  if (fee.refused || amount - inLocal(fee.feeCents) <= 0) {
+    return { refused: tooSmallSentence(amount, inLocal(providerCharge("stripe", country)(1)), code) };
+  }
+  return { feeCents: fee.feeCents, usdCents, feeLocalEstimate: inLocal(fee.feeCents) };
+}
+
+/**
+ * Stripe's smallest payout, per currency, in minor units. Stripe publishes it
+ * per country (https://docs.stripe.com/payouts#minimum-payout-amounts, read
+ * 2026-11-17) and has no API for it; these are the countries Stripe can pay
+ * out to for TSC (stripe-payout-countries.mjs). The EEA's EUR, GBP (GB, GI)
+ * and CHF (CH, LI) are the same in every country that lists them. A currency
+ * not listed is held to one whole unit, the most common published minimum.
+ */
+export const STRIPE_MINIMUM_PAYOUT = {
+  usd: 1, cad: 1, eur: 100, gbp: 100, chf: 500, dkk: 2000, nok: 2000, sek: 2000,
+  czk: 3000, huf: 36000, pln: 500, ron: 500,
+};
+export const stripeMinimumPayout = (currency) => STRIPE_MINIMUM_PAYOUT[String(currency).toLowerCase()] ?? 100;
+
+/**
+ * The smallest withdrawal whose payout, after the fee, is at least Stripe's
+ * minimum payout. The fee never goes down as X grows, so X = min + fee(X) is
+ * reached from below in a few steps.
+ */
+export function stripeMinimumWithdrawal({ currency = "USD", country = "", localPerUsd = 1 } = {}) {
+  const least = stripeMinimumPayout(currency);
+  const code = String(currency).toUpperCase();
+  const rate = Number(localPerUsd);
+  const feeLocal = (x) => {
+    const usdCents = code === "USD" ? x : Math.ceil(x / rate);
+    const { feeCents } = withdrawalFee({ provider: "stripe", amountCents: usdCents, currency: "USD", country });
+    return code === "USD" ? feeCents : Math.ceil(feeCents * rate);
+  };
+  let x = least;
+  for (;;) {
+    const fee = stripeWithdrawalFee({ amountMinor: x, currency, country, localPerUsd });
+    if (!fee.refused && x - fee.feeLocalEstimate >= least) return x;
+    const next = least + feeLocal(x);
+    x = next > x ? next : x + 1;
+  }
+}
+
+/** Said when the payout after the fee would be under Stripe's minimum. */
+export const minimumWithdrawalSentence = (minor, currency = "USD") =>
+  `The minimum withdrawal is ${new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency).toUpperCase(), minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100)}.`;
 
 /**
  * The sentence the factory reads on its payments row; the paid notification's

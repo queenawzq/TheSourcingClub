@@ -6,8 +6,8 @@ export async function holdPayouts(stripe, accountId) {
   });
 }
 
-/** Stripe enforces the available balance; retries use the same request key. */
-export async function withdrawBalance(stripe, accountId, { amount, currency, requestId, destination = null }) {
+/** The request's own checks, before anything moves: the amount, and a chosen account that can take it. */
+export async function checkWithdrawalRequest(stripe, accountId, { amount, currency, requestId, destination = null }) {
   if (!Number.isSafeInteger(amount) || amount <= 0 || !/^[a-z]{3}$/.test(currency ?? "")
     || !/^[0-9a-f-]{36}$/i.test(requestId ?? "")) {
     throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
@@ -21,12 +21,21 @@ export async function withdrawBalance(stripe, accountId, { amount, currency, req
     if (method.currency !== currency) throw new PayoutMethodRefusal(`That account takes ${String(method.currency).toUpperCase()}. Choose one that takes ${currency.toUpperCase()}.`);
     if (!(method.available_payout_methods ?? ["standard"]).includes("standard")) throw new PayoutMethodRefusal("That card takes only instant payouts. Choose a bank account.");
   }
+}
+
+/**
+ * Stripe enforces the available balance; retries use the same request key.
+ * The payout itself: the factory's fee is taken before it, in
+ * api/_stripe-withdrawals.js, which passes its own key and metadata.
+ */
+export async function withdrawBalance(stripe, accountId, { amount, currency, requestId, destination = null, idempotencyKey = null, metadata = null }) {
+  await checkWithdrawalRequest(stripe, accountId, { amount, currency, requestId, destination });
   await holdPayouts(stripe, accountId);
   // The amount and the account are in the key: Stripe answers a reused key
   // with its first answer, so a changed choice must not get the old one.
-  return stripe.payouts.create({ amount, currency, ...(destination ? { destination } : {}) }, {
+  return stripe.payouts.create({ amount, currency, ...(destination ? { destination } : {}), ...(metadata ? { metadata } : {}) }, {
     stripeAccount: accountId,
-    idempotencyKey: `withdraw-${accountId}-${requestId}-${amount}-${destination ?? "default"}`,
+    idempotencyKey: idempotencyKey ?? `withdraw-${accountId}-${requestId}-${amount}-${destination ?? "default"}`,
   });
 }
 
