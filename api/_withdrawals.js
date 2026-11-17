@@ -98,8 +98,23 @@ async function providerShort(adapter, client, ctx) {
   return balance < ctx.amountCents ? ctx.amountCents - balance : 0;
 }
 
+/**
+ * claim_withdrawal's payout_changed check, on the board row: the account it
+ * pays is gone, its details changed since the factory asked, or it is now
+ * paid another way (withdrawal_provider_for). Timestamps compare as the
+ * database wrote them.
+ */
+export function payoutChangedSinceAsked(row) {
+  const account = row.account;
+  if (!row.account_id || !account) return true;
+  const provider = account.method === "paypal" ? "paypal"
+    : account.method === "bank" ? (account.wise_recipient_type ? "wise" : "bank") : null;
+  return (account.details_changed_at ?? null) !== (row.paid_to_changed_at ?? null) || provider !== row.provider;
+}
+
 /** Staff's preview: the same claim checks as approve, through a read of the board row, and the quote. Sends nothing. */
 export async function previewWithdrawal({ adapter, client, caller, db, row, cnyConfirmed }) {
+  if (payoutChangedSinceAsked(row)) throw refusalFrom({ hint: "payout_changed" });
   await loadFeeRule();
   const ctx = contextFrom({
     withdrawal_id: row.id, amount_cents: row.amount_cents, currency: row.currency, key: null,
