@@ -119,6 +119,21 @@
 .admin-credits-lines li strong { flex: none; color: #0e1118; font-weight: 600; }
 .admin-credits-direction { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
+/* Live only (not in the design): a vendor's registration number, added or
+   changed by staff (RegistrationCard), laid out like the credits card. */
+.admin-registration-card > .secondary-btn { width: 100%; margin-top: 12px; }
+.admin-registration-card > .admin-assist-meta { margin: 10px 0 0; }
+.admin-registration-card .factory-detail-pair strong { overflow-wrap: anywhere; }
+.admin-registration-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0e1118;
+  font-size: 13px;
+  line-height: 18px;
+}
+.admin-registration-confirm input { width: 16px; height: 16px; margin: 0; flex: none; }
+
 /* Live only (not in the design): who the company's review email went to, and
    "Resend email" for one that failed or never went (ReviewEmailCard). Each
    person is a small block, address over status: an address beside its status

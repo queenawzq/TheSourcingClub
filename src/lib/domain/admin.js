@@ -10,6 +10,7 @@ import { getColourSplits, getRfq } from "./rfq.js";
 import { listQuotesForRfq } from "./quote.js";
 import { listLinks, listTermsByKind } from "./taxonomy.js";
 import { permissionLabel } from "./org.js";
+import { registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 /** True when the signed-in user is on the platform_admins table. */
 export async function isPlatformAdmin() {
@@ -613,6 +614,63 @@ export async function adjustCredits(orgId, amount, reason) {
     await supabase.rpc("admin_adjust_credits", { target_org: orgId, amount, reason }),
     "adjust the credits",
   );
+}
+
+/**
+ * A vendor's registration number on file and the country its profile names,
+ * for the staff card on the review page (20261117500000).
+ */
+export async function companyRegistration(orgId) {
+  const [registration, profile] = await Promise.all([
+    supabase.from("company_registrations").select("country_code, number, updated_at").eq("org_id", orgId).maybeSingle(),
+    supabase.from("factory_profiles").select("country_code").eq("org_id", orgId).maybeSingle(),
+  ]);
+  const saved = unwrap(registration, "load the registration number");
+  const claimed = unwrap(profile, "load the company's country");
+  return {
+    country: saved?.country_code || claimed?.country_code || "",
+    number: saved?.number || null,
+    updatedAt: saved?.updated_at || null,
+  };
+}
+
+/**
+ * Staff add or change a vendor's registration number, with a note the
+ * company reads in its notification. Refusals come back as sentences; a
+ * failed check digit outside China carries `code: "check_digit"`, so the
+ * card can ask staff to confirm the number.
+ */
+export async function saveCompanyRegistration(orgId, { country, number, note, confirmed = false }) {
+  const cc = String(country ?? "").trim().toUpperCase();
+  const said = String(note ?? "").trim();
+  const refuse = (sentence, code = null) => Object.assign(new Error(sentence), { code });
+  if (!/^[A-Z]{2}$/.test(cc)) throw refuse("Enter the country as a two-letter code, such as CN.");
+  if (said.length < 5 || said.length > 500) throw refuse("Enter a note of 5 to 500 characters.");
+  const problem = registrationNumberProblem(cc, number);
+  if (problem && !(problem === "check_digit" && confirmed && cc !== "CN")) {
+    throw refuse(`${registrationProblemText(cc, problem)}.`, problem === "check_digit" && cc !== "CN" ? "check_digit" : problem);
+  }
+  try {
+    return unwrap(
+      await supabase.rpc("admin_save_company_registration", {
+        target_org: orgId, country: cc, number, note: said, confirmed: Boolean(confirmed),
+      }),
+      "save the registration number",
+    );
+  } catch (failure) {
+    if (failure.noAnswer) throw failure;
+    const raw = String(failure.cause?.message ?? "");
+    const refused = /^registration number: (\w+)/.exec(raw)?.[1];
+    if (refused) throw refuse(`${registrationProblemText(cc, refused)}.`, refused);
+    if (failure.code === "42501") {
+      throw refuse(/belong to/.test(raw)
+        ? "You can't change the registration of a company you belong to."
+        : "Only TSC staff can add a company's registration number.");
+    }
+    if (failure.code === "P0002") throw refuse("This company could not be found.");
+    if (failure.code === "22023") throw refuse("Check the country, number and note, then save again.");
+    throw refuse("The registration number could not be saved. Try again.");
+  }
 }
 
 /**
