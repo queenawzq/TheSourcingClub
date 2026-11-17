@@ -239,3 +239,37 @@
 .admin-registry > * { min-width: 0; max-width: 100%; }
 .admin-signals-summary .project-status, .admin-registry-flags .project-status, .admin-registry-note .project-status { white-space: normal !important; max-width: 100%; height: auto; overflow-wrap: anywhere; }
 .admin-registry .project-status { display: inline-block; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; }
+
+/* Live only: Settings → Payment providers. One row per provider, a labelled
+   box per region; the regions wrap under the name on a phone. */
+.admin-payout-provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-payout-provider-row:first-child { padding-top: 4px; }
+.admin-payout-provider-row:last-of-type { border-bottom: 0; }
+.admin-payout-provider-row > strong { color: var(--text); font-size: 14px; }
+.admin-payout-provider-regions { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.admin-payout-providers .admin-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
+  cursor: pointer;
+}
+.admin-payout-providers .admin-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+@media (max-width: 600px) {
+  .admin-payout-provider-row { flex-direction: column; align-items: flex-start; }
+}

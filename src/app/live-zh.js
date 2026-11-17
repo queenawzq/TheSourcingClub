@@ -59,6 +59,33 @@ function profileTodo(list) {
   return `补充${found.join("、")}${/ and more$/.test(list) ? "等" : ""}，让资料更完整。`;
 }
 
+/**
+ * Country names for the withdrawal-method chooser (its country list and
+ * "Recommended for …"), hand-written rather than the browser's, which differ
+ * between browsers and run long ("中国香港特别行政区"). Keyed by ISO code.
+ */
+export const COUNTRY_NAMES_ZH = {
+  US: "美国", CA: "加拿大", GB: "英国", CH: "瑞士",
+  AT: "奥地利", BE: "比利时", BG: "保加利亚", HR: "克罗地亚", CY: "塞浦路斯", CZ: "捷克", DK: "丹麦",
+  EE: "爱沙尼亚", FI: "芬兰", FR: "法国", DE: "德国", GR: "希腊", HU: "匈牙利", IE: "爱尔兰", IT: "意大利",
+  LV: "拉脱维亚", LT: "立陶宛", LU: "卢森堡", MT: "马耳他", NL: "荷兰", PL: "波兰", PT: "葡萄牙",
+  RO: "罗马尼亚", SK: "斯洛伐克", SI: "斯洛文尼亚", ES: "西班牙", SE: "瑞典", IS: "冰岛", LI: "列支敦士登", NO: "挪威",
+  CN: "中国", HK: "中国香港", TW: "中国台湾", VN: "越南", IN: "印度", BD: "孟加拉国", PK: "巴基斯坦", TR: "土耳其",
+  ID: "印度尼西亚", TH: "泰国", KH: "柬埔寨", LK: "斯里兰卡", KR: "韩国", JP: "日本", MX: "墨西哥", BR: "巴西",
+  MA: "摩洛哥", EG: "埃及",
+};
+
+const englishRegion = new Intl.DisplayNames(["en"], { type: "region" });
+/** The same names by their English name, as the chooser draws it ("Hong Kong SAR China"). */
+const COUNTRY_BY_ENGLISH = new Map(Object.entries(COUNTRY_NAMES_ZH).map(([code, zh]) => [englishRegion.of(code) ?? code, zh]));
+
+/** A country's Chinese name by its code, or null when the list has none. */
+export const countryNameZh = (code) => COUNTRY_NAMES_ZH[code] ?? null;
+
+// Chinese beside Chinese runs on; beside a name, an email or digits it takes a space.
+const CJK = /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/;
+const spaced = (a, b) => `${a}${CJK.test(a.slice(-1)) && CJK.test(b.slice(0, 1)) ? "" : " "}${b}`;
+
 // A name or a step title inside a pattern: short, not a sentence.
 const titleLike = (text) => text.length <= 60 && !/[.!?](\s|$)|[。！？]/.test(text);
 
@@ -76,6 +103,8 @@ const PATTERNS = [
   // The payout fee the factory paid: its payments row (PayoutDetails) and the paid notification.
   [/^Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `提现手续费 ${m[1]} 从该笔款项中扣除：你收到 ${m[2]}。`],
   [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
+  // The Withdraw dialog's refusal when the fee would take everything (withdrawalFee, src/shared/withdrawal-fees.mjs).
+  [/^This payment of (\S+) is too small: the fee to send it is (\S+), so nothing would arrive\. Nothing was sent\.$/, (m) => `该笔款项 ${m[1]} 金额过低：转账手续费为 ${m[2]}，到账金额为零。未发送任何款项。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
@@ -86,6 +115,9 @@ const PATTERNS = [
   [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (.+)$/, (m, inner) => `周${DAYS[m[1]]}，${inner(m[2])}`],
   [/^(\d{1,2}):(\d{2}) (AM|PM)( [A-Z]{2,5})?$/, (m) => `${clock(m[1], m[2], m[3])}${m[4] ?? ""}`],
   [/^just now$/i, () => "刚刚"],
+  [/^(\$[\d,.]+) on its way$/, (m) => `${m[1]} 正在途中`],
+  // A bank and its last four digits on a withdrawal row: "Bank of China ending 5001".
+  [/^(.{1,80}) ending (\d{4})$/, (m) => `${m[1]} 尾号 ${m[2]}`],
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],
   [/^Last message (.+)$/, (m, inner) => `最新消息 ${inner(m[1])}`],
   [/^(\d+) (?:min|mins|minute|minutes) ago$/, (m) => `${m[1]} 分钟前`],
@@ -156,6 +188,37 @@ const PATTERNS = [
   [/^Needs the (.+) permission$/, (m, inner) => `需要「${inner(m[1]).replace(/权限$/, "")}」权限`],
   [/^You need the (.+) permission at (.+) for this\. An owner can give it to you in Settings\.$/, (m, inner) => `你需要 ${m[2]} 的「${inner(m[1]).replace(/权限$/, "")}」权限才能执行此操作。所有者可以在设置中为你开通。`],
   [/^Add (.+) to strengthen this profile\.$/, (m) => profileTodo(m[1])],
+  // Withdrawing from the balance (src/app/order/WithdrawFromBalance.jsx); amounts and addresses kept.
+  [/^Withdrawal of (\S+) declined: (.+)$/, (m, inner) => `提现 ${m[1]} 被拒绝：${inner(m[2])}`, { free: true }],
+  [/^Withdrawal of (\S+) did not go through\. The amount is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。该金额已退回你的余额。`],
+  [/^Paid out (\S+) to (.+) \(fee (\S+); you receive (\S+)\)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}（手续费 ${m[3]}；你收到 ${m[4]}）。`],
+  [/^Paid out (\S+) to (.+)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}。`],
+  [/^Available: (\S+)$/, (m) => `可提现：${m[1]}`],
+  [/^Amount \(([A-Z]{3})\)$/, (m) => `金额（${m[1]}）`],
+  [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
+  [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
+  [/^Cancel (\d+) withdrawals$/, (m) => `取消 ${m[1]} 笔提现`],
+  // A pending row's Cancel, named for screen readers by its amount.
+  [/^Cancel withdrawal of (\S+)$/, (m) => `取消 ${m[1]} 的提现`],
+  [/^Back to your balance: (\S+)$/, (m) => `退回余额：${m[1]}`],
+  [/^Fee: (\S+), taken from the amount$/, (m) => `手续费：${m[1]}，从金额中扣除`],
+  [/^Fee: (about )?(\S+) \((?:([\d.]+%)|US\$([\d.]+) per payment)\), taken from the amount$/,
+    (m) => `手续费：${m[1] ? "约 " : ""}${m[2]}（${m[3] ?? `每笔 ${m[4]} 美元`}），从金额中扣除`],
+  [/^You receive: about (\S+)$/, (m) => `你将收到：约 ${m[1]}`],
+  [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
+  [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
+  [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
+  // Withdrawal methods (src/app/order/StripePayoutCard.jsx): the chooser's
+  // heading, a method's name with its last four digits, and removing one.
+  // Emails, bank names and digits stay as written.
+  [/^Recommended for (.+)$/, (m) => (COUNTRY_BY_ENGLISH.has(m[1]) ? `推荐方式（${COUNTRY_BY_ENGLISH.get(m[1])}）` : null)],
+  [/^(.+) ····(\d{4})(?: \((.+)\))?$/, (m, inner) => `${inner(m[1])} ····${m[2]}${m[3] ? `（${m[3]}）` : ""}`],
+  [/^Remove (PayPal \S+|.+ ····\d{4})\?$/, (m, inner) => `${spaced("删除", inner(m[1]))}？`],
+  [/^(PayPal \S+|.+ ····\d{4}|This account) can’t be removed( yet)?$/, (m, inner) => spaced(inner(m[1]), `${m[2] ? "暂时" : ""}无法删除`)],
+  [/^(.+) becomes your default\.$/, (m, inner) => spaced(inner(m[1]), "将成为你的默认提现方式。")],
+  [/^(.+) is now your default\.$/, (m, inner) => spaced(inner(m[1]), "已设为你的默认提现方式。")],
+  [/^TSC is about to pay (.+) to this account\. Remove it after that payment is sent\.$/,
+    (m) => `TSC 即将向该账户支付 ${m[1].replace(/ and /g, " 和 ")}。请在这笔款项付出后再删除。`],
 ];
 
 /**

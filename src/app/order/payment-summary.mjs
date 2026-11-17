@@ -79,18 +79,53 @@ export function handPaidFigures(earnings) {
  * Stripe balance to its bank is a withdrawal, not a second kind of paid. Each is
  * undefined until the earnings answer.
  */
-export function earningsSummaryFor(earnings, client) {
+export function earningsSummaryFor(earnings, client, withdrawn = new Map(), withdrawalFees = 0) {
   if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
   const all = client === "All clients";
   const selected = (row) => all || row?.order?.brand_org_id === client;
   const funded = earnings.filter((row) => ["confirmed", "released"].includes(row.state) && !heldOnCancelledOrder(row) && selected(row));
   const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
+  // A step still owed that paid withdrawals have taken part of: that part is
+  // Paid out, not Pending (withdrawn_by_payment(), the balance's own source).
+  const taken = funded.filter((row) => toBeSent(row) && withdrawn.get(row.id) > 0)
+    .map((row) => ({ amount: Math.min(Number(withdrawn.get(row.id)), factoryAmount(row)), currency: row.currency }));
   return {
-    total: amounts(funded),
+    total: currencyTotals([...funded.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
+      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
     approval: amounts(funded.filter(awaitingApproval)),
-    pending: amounts(funded.filter(toBeSent)),
-    paid: amounts(funded.filter((row) => row.state === "released")),
+    pending: currencyTotals([...funded.filter(toBeSent).map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
+      ...taken.map((part) => ({ ...part, amount: -part.amount }))]),
+    // Net, like factoryAmount(): the fee a paid withdrawal took never reached the
+    // factory. Withdrawals span clients, so only All clients carries their fees.
+    paid: currencyTotals([...funded.filter((row) => row.state === "released").map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken,
+      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
   };
+}
+
+/** The bell's words for a failed withdrawal, as a row's note. No trailing full stop, like the short asks. */
+export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
+const ASKED_STATUS = { requested: "Waiting", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
+const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
+
+/** A withdrawal the factory asked for, as a Transactions row. A cancelled one never happened. */
+export function askedWithdrawalRows(withdrawals = []) {
+  return withdrawals.filter((w) => w.status !== "cancelled").map((w) => ({
+    brandOrgId: null,
+    currency: w.currency,
+    id: `asked-${w.id}`,
+    date: w.paid_at || w.created_at,
+    title: ASKED_TITLE[w.provider] ?? "Bank transfer",
+    meta: w.paid_to,
+    // A failed one took no fee: its amount is back in the balance (record_withdrawal).
+    note: w.status === "declined" ? w.reason
+      : w.status === "failed" ? WITHDRAWAL_FAILED_NOTE
+      : w.fee_cents != null && w.receives_minor != null ? `Fee ${(Number(w.fee_cents) / 100).toLocaleString("en-US", { style: "currency", currency: w.currency })}, taken from it`
+      : null,
+    status: ASKED_STATUS[w.status] ?? w.status,
+    failed: ["failed", "declined"].includes(w.status),
+    // What reached the factory, like the provider rows: the amount less its fee once paid.
+    amount: -(Number(w.amount_cents) - (w.status === "paid" ? Number(w.fee_cents ?? 0) : 0)),
+  }));
 }
 
 export const ADDED_TO_BALANCE = "Added to your balance";
@@ -168,7 +203,8 @@ export function withdrawalRows(earnings, method = null) {
       // What left for the factory: the attempt less the payout fee taken from it.
       amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
-    if (row.state !== "released" || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
+    // A balance step is paid by the withdrawal it was in, listed on its own.
+    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
     const bank = row.bank_payouts;
     const payoneer = row.payoneer_payouts;
     return [...tried, {

@@ -2132,6 +2132,13 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
     check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()),
       "where it cannot, a bank or PayPal, and Payoneer can no longer be chosen");
+    // Wise starts switched off (20261117200000): its bank option is not offered
+    // until staff turn it on, and the open chooser follows the switch.
+    check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0,
+      "with Wise switched off, the chooser offers no Wise bank transfer");
+    await db.from("payout_provider_settings").update({ enabled: true }).eq("provider", "wise");
+    await waitFor(page, '[data-testid="payout-set-up-bank"]', 15000);
+    check(true, "staff switch Wise on, and the open chooser offers it without a reload");
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
     await waitFor(page, '[data-field="payout_bank_name"]', 25000);
@@ -2141,7 +2148,9 @@ async function main() {
     // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
     // nor Wise has a bank route (Taiwan, a country not listed), PayPal alone.
     for (const where of ["TW", "__other__"]) {
-      await page.locator('[data-field="payout_country"]').selectOption(where === "__other__" ? { index: (await page.locator('[data-field="payout_country"] option').count()) - 1 } : where);
+      // Stagehand's selectOption takes a value, not { index }: "a country not listed" is the last option's.
+      const lastOption = await page.evaluate(() => [...document.querySelectorAll('[data-field="payout_country"] option')].at(-1)?.value);
+      await page.locator('[data-field="payout_country"]').selectOption(where === "__other__" ? lastOption : where);
       await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
       check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0 && !/US\$50/.test(await page.locator(".payout-modal").innerText()),
         `${where === "TW" ? "Taiwan" : "a country not listed"}: no bank transfer TSC pays by hand, PayPal is offered`);
@@ -2150,7 +2159,7 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     // Wise's form, or where it can't be had, a sentence and PayPal: never the form staff pay from by hand.
-    await waitFor(page, '[data-field="payout_bank_name"], [data-testid="bank-unavailable"]', 25000);
+    await waitFor(page, '[data-field="payout_bank_name"], [data-field^="wise_"], [data-testid="bank-unavailable"]', 25000);
     if (await page.locator('[data-testid="bank-unavailable"]').count()) {
       check((await page.locator('[data-testid="bank-unavailable-paypal"]').count()) === 1, "Wise's form unavailable: the card says so and offers PayPal");
     } else {
@@ -2404,70 +2413,81 @@ async function main() {
       .select("state").eq("id", secondStep.id).single();
     check(opened.state === "active", "the next step opened on the approval");
 
-    // ================= STAFF PAY THE FACTORY BY BANK =================
-    console.log("\nSTAFF PAY THE FACTORY BY BANK");
+    // ================= THE FACTORY WITHDRAWS; STAFF PAY IT BY BANK =================
+    // A factory paid by bank transfer, Wise or PayPal is not paid step by step:
+    // the approved step goes into its balance, and nothing leaves TSC until an
+    // owner asks (20261116200000). Its bank is outside Wise's reach, so staff
+    // send it themselves and mark it paid with the bank's reference.
+    console.log("\nTHE FACTORY WITHDRAWS; STAFF PAY IT BY BANK");
+    const { data: pooled } = await db.from("order_payments").select("withdrawal_pool").eq("id", dueNow.id).single();
+    check(pooled?.withdrawal_pool === true, "the approved step goes into the factory's balance");
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory withdrawing", "factory");
+    await page.goto(`${APP}/payout`);
+    await waitFor(page, '[data-testid="withdraw-balance"]', 25000);
+    const balanceShown = await within(page, async () => (await page.locator('[data-testid="payout-balance"]').innerText()).includes("$95.00"));
+    check(balanceShown !== null, "the factory's balance is the approved step");
+    await page.locator('[data-testid="withdraw-balance"]').click();
+    await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
+    const withdrawDialog = await page.locator(".payout-modal").innerText();
+    check(/Withdraw to/.test(withdrawDialog) && /Withdraw full amount/.test(withdrawDialog) && /Available: \$95\.00/.test(withdrawDialog)
+      && (await page.evaluate(() => document.querySelector('[name="Amount (USD)"]')?.value)) === "95.00",
+      "the dialog offers all of it: where it goes, the amount prefilled, and what is available");
+    await record(page, "Withdraw", "the whole balance, prefilled");
+    // Two presses in the same tick (Stagehand's locator has no dblclick).
+    await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
+    await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
+    check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()),
+      "the request waits for TSC: the owner can cancel it from the card");
+    const { data: asked } = await db.from("factory_withdrawals").select("id, status, provider").eq("org_id", factoryOrg.id);
+    check(asked.length === 1 && asked[0].status === "requested" && asked[0].provider === "bank", "a double click asks once, by bank");
+
     await signOutFully(page);
     await signIn(page, adminEmail, "Admin paying out");
     await page.goto(`${APP}/admin/payments`);
     await waitForHeading(page, "payments", 25000);
     const adminHeading = await page.locator("h1").first().innerText();
     check(/payment/i.test(adminHeading), `the payments board is its own page (${adminHeading})`);
-    // The heading is drawn while the board is still loading.
     await waitFor(page, '[data-section="payout"]', 25000);
-    const owedSection = await page.locator('[data-section="payout"]').innerText();
-    check(owedSection.includes(bornOrder.order_number),
-      "the approved payment is under \"Payout owed\", named by its order");
-    check(/bank transfer/i.test(owedSection) && /account holder/i.test(owedSection), "with the factory's bank details to pay it by hand");
-    check(await page.evaluate((orderNumber) => ![...document.querySelectorAll('[data-section="payout"] tr')]
-      .find((row) => row.innerText.includes(orderNumber))?.querySelector('[data-testid^="pay-with-"]'), bornOrder.order_number),
-      "and no Pay with Wise or PayPal: its method is neither");
-    await record(page, "The payments board", "a required step: staff have no org to notify");
-
-    // Marking it needs the bank's reference, typed into this order's row.
-    const referenceIndex = await page.evaluate((orderNumber) => [...document.querySelectorAll('[data-section="payout"] [data-testid="bank-reference"]')]
-      .findIndex((input) => input.closest("tr")?.innerText.includes(orderNumber)), bornOrder.order_number);
-    check(referenceIndex >= 0, "the row asks for the bank's reference");
-    const markBefore = await page.evaluate((orderNumber) => [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]
-      .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber))?.disabled, bornOrder.order_number);
-    check(markBefore === true, "and staff cannot mark it paid without one");
-    await page.locator('[data-section="payout"] [data-testid="bank-reference"]').nth(referenceIndex).fill(`E2E-WIRE-${stamp}`);
-    await page.waitForTimeout(300);
-    // This order's row: the board also holds the demo data's own rows.
-    const paidOwnRow = await page.evaluate((orderNumber) => {
-      const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]
-        .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
-      button?.click();
-      return Boolean(button);
-    }, bornOrder.order_number);
-    check(paidOwnRow, "staff mark it paid out by bank, from its row");
-    // It asks once, naming the amount and the factory, before marking it.
-    const confirmedRelease = await page.evaluate((orderNumber) => {
-      const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment-confirm"]')]
-        .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
-      button?.click();
-      return Boolean(button);
-    }, bornOrder.order_number);
-    check(confirmedRelease, "and confirm it when asked");
-    await page.waitForTimeout(3500);
+    check(!(await page.locator('[data-section="payout"]').innerText()).includes(bornOrder.order_number),
+      "a step in a balance is not under \"Payout owed\": the factory decides when it goes");
+    await page.locator('[data-tab="withdrawals"]').click();
+    await waitFor(page, '[data-section="withdrawals"]', 10000);
+    const askedRow = (attr) => page.evaluate(({ name, testid }) => {
+      const row = [...document.querySelectorAll('[data-section="withdrawals"] tbody tr')].find((tr) => tr.innerText.includes(name));
+      if (!testid) return row?.innerText ?? null;
+      const control = row?.querySelector(`[data-testid="${testid}"]`);
+      control?.click();
+      return Boolean(control);
+    }, { name: factoryName, testid: attr });
+    check(/\$95\.00/.test(await askedRow(null) ?? "") && /bank transfer/i.test(await askedRow(null) ?? ""), "the request is on the Withdrawals tab, with its amount and method");
+    await record(page, "Withdrawals", "what factories asked for: staff approve, pay or decline");
+    check(await askedRow("withdrawal-bank"), "staff open Paid by bank");
+    await page.locator('[data-section="withdrawals"] input').first().fill(`E2E-WIRE-${stamp}`);
+    check(await askedRow("withdrawal-bank-confirm"), "and mark it paid with the bank's reference");
+    await page.waitForTimeout(3000);
     await record(page, "Paid out by bank", "for a factory Stripe cannot pay");
 
     const { data: paidOut } = await db.from("order_payments")
       .select("state, released_by").eq("id", dueNow.id).single();
-    check(paidOut.state === "released", "the payment is paid out");
+    check(paidOut.state === "released", "the step is paid out");
     check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
-    const { data: paidWhere } = await db.from("bank_payouts")
-      .select("reference, paid_to_bank, paid_to_last4").eq("payment_id", dueNow.id).single();
-    check(paidWhere?.reference === `E2E-WIRE-${stamp}` && paidWhere?.paid_to_last4 === "4417",
-      "and the record says which account, and the reference");
+    const { data: paidWithdrawal } = await db.from("factory_withdrawals")
+      .select("status, provider_ref, fee_cents, receives_minor").eq("org_id", factoryOrg.id).single();
+    check(paidWithdrawal?.status === "paid" && paidWithdrawal.provider_ref === `E2E-WIRE-${stamp}` && Number(paidWithdrawal.fee_cents) === 5000 && Number(paidWithdrawal.receives_minor) === 4500,
+      "the withdrawal is paid, with the reference: $95.00 less the US$50 wire fee, $45.00 to the factory");
     const { data: paidNotice } = await db.from("notifications")
-      .select("body").eq("subject_id", dueNow.id).eq("kind", "funds_released").single();
-    check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`), "the factory reads the reference");
+      .select("body").eq("subject_id", asked[0].id).eq("kind", "funds_released").single();
+    check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`) && paidNotice.body.includes("$45.00"), "the factory reads the reference, the fee and what it receives");
 
     // ================= WISE, PAYPAL, AND NOTHING SET UP =================
     // Needs the demo data (seed-demo.mjs). Nothing here calls Wise or PayPal:
     // each stops at the step before the money moves (npm run check:provider-payouts
     // covers paying). A row is gone once paid, until the seed runs again.
     console.log("\nWISE, PAYPAL, AND NOTHING SET UP");
+    // Back from the Withdrawals tab to Payout owed.
+    await page.locator('[data-tab="payout"]').click();
+    await waitFor(page, '[data-section="payout"]', 10000);
     const owedRow = (words) => page.evaluate((text) => {
       const row = [...document.querySelectorAll('[data-section="payout"] tr')].find((candidate) => candidate.innerText.includes(text));
       return row ? {
@@ -2514,36 +2534,17 @@ async function main() {
       check(!Object.keys(nothingSetUp.buttons).some((name) => name.startsWith("pay-with-")), "and there is no provider to pay it through");
     }
 
+    // Kowloon Sourcing Partners is paid by PayPal: its approved fit sample is in
+    // its balance (seed-demo.mjs), so it has no row under Payout owed. Its owner
+    // asks, staff decline with a reason, and the factory reads it. Nothing calls
+    // PayPal here (npm run check:withdrawals covers paying).
     const kowloonEmail = "kowloon-payouts@example.com";
-    const paypalRow = await owedRow(kowloonEmail);
-    if (!paypalRow) {
-      console.log("  (no PayPal row on this board: skipped)");
+    check(await owedRow(kowloonEmail) === null, "a PayPal factory's approved step is not paid from Payout owed any more");
+    const { data: kowloonOrg } = await db.from("orgs").select("id").eq("name", "Kowloon Sourcing Partners").maybeSingle();
+    if (!kowloonOrg) {
+      console.log("  (no Kowloon demo company: skipped)");
     } else {
-      check(/paypal/i.test(paypalRow.text) && paypalRow.text.includes(kowloonEmail), "a PayPal factory's row says so, with its address");
-      check(paypalRow.buttons["pay-with-paypal"] === false, "and offers Pay with PayPal");
-      await pressInOwedRow(kowloonEmail, "pay-with-paypal");
-      const askedAfter = await owedRowShows(kowloonEmail, "provider-confirm");
-      const asked = await owedRow(kowloonEmail);
-      check(askedAfter !== null && new RegExp(`send \\$[\\d,.]+ to ${kowloonEmail} by paypal\\?`, "i").test(asked?.text ?? ""),
-        "it asks once first, naming the amount and the address");
-      await record(page, "Pay with PayPal", "asks once, naming the amount and the address");
-      await pressInOwedRow(kowloonEmail, "Cancel");
-      check(await owedRowShows(kowloonEmail, "pay-with-paypal") !== null, "Cancel goes back, and nothing moved");
-
-      // A PayPal factory has no bank details, so the board doesn't offer marking
-      // it paid by bank. The database still allows it: that's how the withdrawal
-      // row with its reference gets here for the factory's side below.
-      check((await owedRow(kowloonEmail)).buttons["release-payment"] === undefined, "a PayPal row doesn't offer Mark paid by bank: there are no bank details to send to");
-      const paidByHandReference = `E2E-PP-${stamp}`;
-      const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
-      await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
-      await staffClient.rpc("release_payment_to_factory", { target_payment: paypalRow.paymentId, note: paidByHandReference });
-      const { data: markedByHand } = await db.from("order_payments")
-        .select("state, released_note").eq("id", paypalRow.paymentId).single();
-      check(markedByHand?.state === "released" && markedByHand?.released_note === paidByHandReference,
-        "the payment is paid out, with the reference");
-      await record(page, "Marked paid out", "a PayPal factory paid another way: the reference is what it reads");
-
+      await db.from("factory_withdrawals").update({ status: "cancelled" }).eq("org_id", kowloonOrg.id).eq("status", "requested");
       await signOutFully(page);
       // A demo login, so the demo password rather than this run's.
       await page.goto(portalUrl("factory"));
@@ -2554,16 +2555,56 @@ async function main() {
       await page.waitForTimeout(4000);
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
-      const balanceAfter = await within(page, async () => /^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim()));
-      const howPaid = await page.locator('[data-testid="payout-how-paid"]').innerText();
-      check(balanceAfter !== null && /paypal/i.test(howPaid) && howPaid.includes(kowloonEmail),
-        `the factory's card shows its balance and says it is paid by PayPal (${howPaid})`);
-      const transactionsAfter = await within(page, async () => (await page.locator(".payout-transaction-table").first().innerText().catch(() => "")).includes(paidByHandReference));
+      const howPaid = await page.locator('[data-testid="payout-how-paid"]').count();
+      check(howPaid === 0, "the factory's card shows its balance, with no method line under it (the withdrawals say where money went)");
+      await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
+      // Two open at once, each taking its part; then cancel a chosen set.
+      // Withdraw waits for the provider's fee before it can be pressed.
+      const confirmReady = () => within(page, async () => page.evaluate(() => document.querySelector('[data-testid="withdraw-confirm"]')?.disabled === false), 15000);
+      const askPart = async (dollars) => {
+        await page.locator('[data-testid="withdraw-balance"]').click();
+        await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
+        await page.locator('[name="Amount (USD)"]').fill(dollars);
+        await page.waitForTimeout(500);
+        await confirmReady();
+        // Two presses in the same tick ask once.
+        await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
+        await page.waitForTimeout(2500);
+      };
+      await askPart("1.00");
+      check(await page.evaluate(() => document.querySelector('[data-testid="withdraw-balance"]')?.disabled === false), "Withdraw stays open while a request waits");
+      await askPart("2.00");
+      const { data: twoOpen } = await db.from("factory_withdrawals").select("id, amount_cents").eq("org_id", kowloonOrg.id).eq("status", "requested");
+      check((twoOpen ?? []).length === 2 && twoOpen.map((w) => w.amount_cents).sort().join() === "100,200", "two requests wait at once, and a double press asked once each");
+      check((await page.locator('[data-testid="withdrawal-open"]').count()) === 2, "the card lists both, each with its amount");
+      await page.locator('[data-testid="withdrawal-open"] button').first().click();
+      await waitFor(page, '[data-testid="cancel-withdrawals-confirm"]', 10000);
+      await page.evaluate(() => { for (const box of document.querySelectorAll('.cancel-withdrawals-list input[type="checkbox"]')) if (!box.checked) box.click(); });
+      check(/Cancel 2 withdrawals/.test(await page.locator('[data-testid="cancel-withdrawals-confirm"]').innerText()), "Cancel offers a choice of the waiting ones");
+      await record(page, "Cancel withdrawals", "the owner ticks which waiting requests to cancel");
+      await page.locator('[data-testid="cancel-withdrawals-confirm"]').click();
+      const noneOpen = await within(page, async () => (await page.locator('[data-testid="withdrawal-open"]').count()) === 0, 15000);
+      const { data: cancelledTwo } = await db.from("factory_withdrawals").select("id").eq("org_id", kowloonOrg.id).eq("status", "cancelled").in("id", (twoOpen ?? []).map((w) => w.id));
+      check(noneOpen !== null && (cancelledTwo ?? []).length === 2, "both chosen are cancelled, and the card no longer lists them");
+      await page.locator('[data-testid="withdraw-balance"]').click();
+      await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
+      await confirmReady();
+      await page.locator('[data-testid="withdraw-confirm"]').click();
+      await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
+      check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC: the owner can cancel it");
+
+      const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
+      await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
+      const { data: open } = await db.from("factory_withdrawals").select("id").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
+      const reason = `E2E: confirm your PayPal address ${stamp}`;
+      const declined = await staffClient.rpc("decline_withdrawal", { target_withdrawal: open.id, why: reason });
+      check(!declined.error, "staff decline it with a reason");
+      const reasonShown = await within(page, async () => (await page.locator('[data-testid="withdrawal-declined"]').innerText().catch(() => "")).includes(reason), 20000);
+      check(reasonShown !== null, "the factory reads the reason on its card, without reloading");
       const paypalEarnings = await page.locator(".payout-transaction-table").first().innerText();
-      check(transactionsAfter !== null, "its withdrawals name the reference");
-      check(/\bcompleted\b/i.test(paypalEarnings) && /\bpaid\b/i.test(paypalEarnings) && /awaiting approval/i.test(paypalEarnings),
-        "and each earning says where it stands: Paid once sent, Awaiting approval while the brand has not approved");
-      await record(page, "A factory's earnings", "Paid, Awaiting approval, and the withdrawal with its reference");
+      check(/\bcompleted\b/i.test(paypalEarnings) && /\bdeclined\b/i.test(paypalEarnings),
+        "its withdrawals are listed: the one paid by bank, Completed, and this one, Declined");
+      await record(page, "A factory's earnings", "the balance, a declined withdrawal with TSC's reason, and the paid one");
 
       // Another PayPal address; Payoneer is not among the choices.
       await page.locator('[data-testid="add-payout-method"]').click();
@@ -2584,7 +2625,7 @@ async function main() {
       await page.waitForTimeout(2500);
       const { data: added } = await db.from("factory_payout_accounts")
         .select("id, method, is_primary").eq("paypal_email", secondPaypal).single();
-      check(added?.method === "paypal" && added?.is_primary === true, "a new PayPal account becomes the one TSC pays");
+      check(added?.method === "paypal" && added?.is_primary === false, "a new PayPal account is added and the default stays");
       if (added?.id) await db.from("factory_payout_accounts").delete().eq("id", added.id);
 
       await signOutFully(page);

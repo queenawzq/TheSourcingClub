@@ -49,6 +49,8 @@ import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
+import WithdrawalsSection from "./AdminWithdrawals.jsx";
+import { adminWithdrawals, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
   const date = dateFrom(value);
@@ -82,6 +84,8 @@ const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_i
 /** Which provider the server pays this row through, if any. */
 const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
+/** The board's word once a press sent money: the row itself moves to Processing. */
+const SentContext = createContext(null);
 /** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
 const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
 /**
@@ -210,13 +214,13 @@ const FactoryContact = ({ row }) => <Contact label="Factory contact" parts={[row
 const BrandContact = ({ row }) => <Contact label="Brand contact" parts={[row.brand_name, row.brand_contact_name, row.brand_contact_phone]} email={row.brand_contact_email} />;
 
 /** Everything staff need to send the money, on the row. */
-function BankDetails({ row, onViewed, stripeSetup }) {
+function BankDetails({ row, onViewed, stripeSetup, withContact = true }) {
   if (stripeCantPay(row)) {
     return (
       <span className="admin-payout-details" data-testid="stripe-cant-pay">
         <span className="admin-error">Stripe can't pay this: the payment has no card charge. This factory is paid through Stripe, so there are no bank details here.</span>
         <span className="admin-sub">Ask the factory for a bank account, send the money, then mark it with the bank's reference.</span>
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
@@ -226,7 +230,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         {stripeSetup && !stripeSetup.transfers_active
           ? <span className="admin-error" data-testid="waits-on-stripe-setup">Waiting on the factory's Stripe setup. No other withdrawal method on file.</span>
           : <span className="admin-error">No withdrawal method on file. Ask the factory to add one on its Payments page.</span>}
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
@@ -252,7 +256,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         ? <AccountNumber row={row} onViewed={onViewed} />
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
       {row.payout_instructions ? <PayoutField label="Instructions"><span className="admin-payout-instructions">{row.payout_instructions}</span></PayoutField> : null}
-      <FactoryContact row={row} />
+      {withContact ? <FactoryContact row={row} /> : null}
     </span>
   );
 }
@@ -264,6 +268,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
 function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const provider = providerFor(row);
   const name = PROVIDER_NAME[provider];
+  const onSent = useContext(SentContext);
   const needsStatement = provider === "wise" && row.wise_currency === "CNY";
   const [step, setStep] = useState(null); // null | "statement" | "confirm"
   const [statement, setStatement] = useState(false);
@@ -420,7 +425,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
-                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => {
+                    if (answer?.done === "sent" || answer?.done === "paid") onSent?.(row, name, answer.done);
+                    return null;
+                  })}>
             {working ? "Paying…" : "Yes, pay"}
           </button>
         )}
@@ -760,13 +768,15 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
  * The board no longer shows bank-wire claims (`sent`) or payments refunded
  * after payout (`released`): John, Nov 7.
  */
-export function boardSections(rows, attempts = new Map()) {
+export function boardSections(rows, attempts = new Map(), pool = new Set()) {
   const cancelled = (row) => row.order_status === "cancelled";
   const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
+  // A step in a factory's withdrawal balance is paid when the factory asks (the Withdrawals tab).
+  const inBalance = (row) => pool.has(row.payment_id);
   const moving = (row) => underway(row, attempts.get(row.payment_id));
   const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {
-    payout: owed.filter((row) => !moving(row) && !refused(row)),
+    payout: owed.filter((row) => !moving(row) && !refused(row) && !inBalance(row)),
     // A cancelled order's held money is refunded automatically; only a refund
     // Stripe refused (20261108300000) needs a person.
     failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
@@ -792,10 +802,12 @@ export default function AdminPayments() {
   const [wise, setWise] = useState(null);
   const [paypal, setPaypal] = useState(null);
   const [setups, setSetups] = useState(() => new Map());
+  const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
 
   const load = useCallback(async () => {
     try {
-      const [board, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
+      const [board, tried, asked] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals()]);
+      setWithdrawals(asked);
       setRows(board);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
@@ -809,7 +821,8 @@ export default function AdminPayments() {
 
   /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
   const readBack = useCallback(async () => {
-    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
+    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal"),
+      syncWithdrawals("wise"), syncWithdrawals("paypal")]);
     if (fromWise.status === "fulfilled") {
       const answer = fromWise.value;
       setWise({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
@@ -828,8 +841,33 @@ export default function AdminPayments() {
     return () => clearInterval(timer);
   }, [load]);
 
+  // A factory asking for or cancelling a withdrawal: staff cannot be notified, so
+  // the board hears it (factory_withdrawals is in supabase_realtime; staff read
+  // every row). Inserts and updates only: Realtime does not filter deletes, and
+  // a withdrawal is never deleted. The 30 s read above stays as the fallback.
+  useEffect(() => {
+    let active = true;
+    let timer;
+    const refresh = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (active) load(); }, 300);
+    };
+    const channel = supabase
+      .channel(`admin-withdrawals:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "factory_withdrawals" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "factory_withdrawals" }, refresh)
+      .subscribe();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
+
   // While money is on its way, keep reading: nobody else can tell staff.
-  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing");
+  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
+    || withdrawals.withdrawals.some((row) => row.status === "paying");
   useEffect(() => {
     if (!anyLive) return undefined;
     const timer = setInterval(readBack, 30000);
@@ -869,7 +907,7 @@ export default function AdminPayments() {
   return (
     <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
-                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} />
+                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} withdrawals={withdrawals} />
     </AdminWorkspaceShell>
   );
 }
@@ -884,11 +922,18 @@ const TABS = [
  * rows. All four queues always have a tab.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map() }) {
+  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null }) {
   const [chosen, setChosen] = useState("payout");
-  const sections = boardSections(rows, attempts);
+  const [sentNotice, setSentNotice] = useState(null);
+  const onSent = useCallback((row, name, done) => {
+    setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
+      : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
+    if (done !== "paid") setChosen("clearing");
+  }, []);
+  const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
+  if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
-  const tabs = TABS;
+  const tabs = withdrawals ? [...TABS, ["withdrawals", "Withdrawals"]] : TABS;
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
@@ -902,6 +947,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   ) : null;
 
   return (
+    <SentContext.Provider value={onSent}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -917,6 +963,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
+      {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
@@ -928,7 +975,9 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} BankDetails={BankDetails} /> : null}
 
     </main>
+    </SentContext.Provider>
   );
 }

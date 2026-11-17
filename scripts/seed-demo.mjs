@@ -1441,6 +1441,21 @@ async function approveOpenStep(order, title, vendor = factory) {
   must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
 }
 
+/**
+ * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
+ * its withdrawal balance, so the step is paid by a withdrawal staff sent by
+ * bank, recorded as the server would, less the US$50 wire fee (bank_payout_fee_cents()).
+ */
+async function withdrawnByHand(org, payment, reference) {
+  const withdrawal = must(await admin.from("factory_withdrawals").insert({
+    org_id: org.id, provider: "bank", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
+    paid_to: "your bank account", decided_by: adminUser.id,
+  }).select("id").single(), `a withdrawal for ${reference}`);
+  must(await admin.rpc("record_withdrawal", {
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 5000, receives: payment.amount_cents - 5000, receives_in: "USD",
+  }), `paid by hand: ${reference}`);
+}
+
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
 //    by hand, as staff do for a factory with no Stripe account), then the
 //    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
@@ -1478,8 +1493,12 @@ await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme w
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
 //    fit sample is funded and approved, and waits on staff: "Pay with Wise",
 //    or by bank ("Payout owed" on the staff payments page). Saved through the
-//    form's own function; the number is plainly fake, in Vault.
-must(await secondFactory.client.rpc("save_wise_payout_account", {
+//    form's own function; the number is plainly fake, in Vault. Wise may be
+//    switched off for China (payout_provider_settings), which refuses a new
+//    Wise method; it is switched on for the save and put back as it was.
+const wiseChina = must(await admin.from("payout_provider_settings").select("enabled").eq("provider", "wise").eq("region", "china").single(), "the Wise switch for China");
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: true }).eq("provider", "wise").eq("region", "china"), "switch Wise on for the seed");
+const savedWise = await secondFactory.client.rpc("save_wise_payout_account", {
   target_org: secondFactoryOrg.id,
   bank_name: "Ningbo Test Bank",
   recipient_type: "chinese_local_business",
@@ -1490,7 +1509,9 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   },
   number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
-}), "the second factory's payout details");
+});
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: false }).eq("provider", "wise").eq("region", "china"), "switch Wise back off");
+must(savedWise, "the second factory's payout details");
 // A second method, so "Make default" has something to move to.
 must(await secondFactory.client.from("factory_payout_accounts").insert({
   org_id: secondFactoryOrg.id, method: "paypal", paypal_email: "ningbo-payouts@example.com", is_primary: false,
@@ -1524,9 +1545,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-must(await adminUser.client.rpc("release_payment_to_factory", {
-  target_payment: hopsackFit.id, note: "DEMO-20260001",
-}), "mark the blazer's fit sample paid");
+await withdrawnByHand(tradingOrg, hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,

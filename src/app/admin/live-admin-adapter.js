@@ -30,6 +30,8 @@ import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
+  listPayoutProviders,
+  setPayoutProvider,
   claimReview,
   companyCredits,
   decideReview,
@@ -498,6 +500,12 @@ export function createAdminAdapter({ user, signOut }) {
        */
       companyCredits,
       adjustCredits,
+
+      /**
+       * PayPal and Wise per region, switched by staff in Settings. Live
+       * only: the admin design draws no providers card.
+       */
+      payoutProviders: { list: listPayoutProviders, set: setPayoutProvider },
 
       /**
        * Clearing test data, on test builds only. A production build has no

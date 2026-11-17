@@ -396,6 +396,11 @@ select is((select iban from p66_iban), null, 'an IBAN is not on the row');
 select is(public.payout_number_plain((select id from p66_iban)), 'GB82WEST12345698765432', 'it is with the numbers');
 select is((select account_number_last4 from p66_iban), '5432', 'with its last four on the row');
 
+-- Paid step by step, the way a step approved before its factory withdrew from a
+-- balance still is (20261116200000): out of the withdrawal balance for this test.
+set local session_replication_role = replica;
+update public.order_payments set withdrawal_pool = false where id = '66800000-0000-0000-0000-000000000001';
+set local session_replication_role = origin;
 -- ---------------------- marking it paid -------------------------------------
 select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$ select public.release_payment_to_factory('66800000-0000-0000-0000-000000000001') $$, '22023', 'enter the bank''s reference for this transfer', 'no reference, no mark');
