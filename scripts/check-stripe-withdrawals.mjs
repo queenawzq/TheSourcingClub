@@ -333,4 +333,38 @@ assert.equal(usFee, 523);
   }
 }
 
+// 13. Two tabs withdraw the whole US$35.20: the losing tab is told what it can
+// still withdraw, not the balance read between the other tab's fee and its payout.
+{
+  const whole = 3520;
+  const fee = stripeWithdrawalFee({ amountMinor: whole, currency: "usd", country: "US", localPerUsd: 1 }).feeCents;
+  // The other tab's row: its fee taken, its payout of the rest still to go.
+  const otherTab = () => ({ id: randomUUID(), org_id: "org", stripe_account_id: "acct_us", request_key: "withdraw-other-tab", request_id: OTHER,
+    amount_minor: whole, currency: "USD", destination: null, fee_cents: fee, fee_local_minor: fee, reversals: [], payout_id: null,
+    payout_minor: null, state: "fee_taken", reason: null, lease_until: new Date(Date.now() + 60_000).toISOString() });
+  const upToNothing = /^Error: You can withdraw up to \$0\.00\.$/;
+
+  // Seen before this tab takes a fee, the other tab's fee taken or not yet: refused at once, nothing reversed.
+  for (const [state, balance] of [["claimed", whole], ["fee_taken", whole - fee]]) {
+    const s = fakeStripe({ transfers: [transfer("tr_a", 6500)], available: balance });
+    const db = fakeDb();
+    db.rows.push(state === "claimed" ? { ...otherTab(), state, fee_cents: null, fee_local_minor: null } : otherTab());
+    await assert.rejects(withdrawWithFee(args(s, db, { amount: whole })), upToNothing);
+    assert.deepEqual([s.reversals.length, s.payouts.length, s.platform], [0, 0, 0]);
+  }
+
+  // Seen only after this tab's fee went and its payout was refused: the fee goes back, and the words are the same.
+  const s2 = fakeStripe({ transfers: [transfer("tr_a", 6500)], available: whole - fee });
+  s2.staleBalance = whole;
+  const db2 = fakeDb();
+  const reverse = s2.api.transfers.createReversal;
+  s2.api.transfers.createReversal = async (...call) => {
+    if (!db2.rows.some((row) => row.request_key === "withdraw-other-tab")) db2.rows.push(otherTab());
+    return reverse(...call);
+  };
+  await assert.rejects(withdrawWithFee(args(s2, db2, { amount: whole })), upToNothing);
+  assert.deepEqual([s2.reversals.length, s2.returned.length, s2.platform, s2.balance], [1, 1, 0, whole - fee], "the fee went back");
+  assert.equal(db2.rows.find((row) => row.request_key !== "withdraw-other-tab").reason, "You can withdraw up to $0.00.");
+}
+
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small");
