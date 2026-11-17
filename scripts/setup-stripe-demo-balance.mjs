@@ -58,6 +58,13 @@ import Stripe from "stripe";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
+
+// --login <key> runs this for another factory login from demo-logins.mjs
+// (default: Demo Factory). The factory must have no PayPal or Wise method saved,
+// or Stripe pays it nothing.
+const loginArg = process.argv.indexOf("--login");
+const FACTORY = LOGINS[loginArg > -1 ? process.argv[loginArg + 1] : "factory"];
+if (!FACTORY) throw new Error(`no demo login "${process.argv[loginArg + 1]}" in demo-logins.mjs`);
 import { demoTarget } from "./demo-target.mjs";
 import { MANAGED_CONTROLLER, addPayoutMethod, holdPayouts, managedByTsc } from "../api/_stripe-payouts.js";
 import { releaseOwedTo, releasePayment, saveConnectAccount } from "../api/_stripe.js";
@@ -106,11 +113,11 @@ async function signIn({ email }) {
 }
 
 // Demo Factory: the factory its login started (the seed's create_org).
-const factoryUser = must(await db.from("user_profiles").select("id").eq("email", LOGINS.factory.email).maybeSingle(), "Demo Factory's login");
-if (!factoryUser) throw new Error(`${LOGINS.factory.email} does not exist here. Run \`npm run seed:demo\` first.`);
+const factoryUser = must(await db.from("user_profiles").select("id").eq("email", FACTORY.email).maybeSingle(), "Demo Factory's login");
+if (!factoryUser) throw new Error(`${FACTORY.email} does not exist here. Run \`npm run seed:demo\` first.`);
 const owned = must(await db.from("org_members").select("org_id, orgs!inner (id, name, type)")
-  .eq("user_id", factoryUser.id).eq("role", "owner").eq("orgs.type", "factory").eq("orgs.name", LOGINS.factory.name), "Demo Factory");
-if (owned.length !== 1) throw new Error(`expected one "${LOGINS.factory.name}" owned by ${LOGINS.factory.email}, found ${owned.length}. Run \`npm run seed:demo\` first.`);
+  .eq("user_id", factoryUser.id).eq("role", "owner").eq("orgs.type", "factory").eq("orgs.name", FACTORY.name), "Demo Factory");
+if (owned.length !== 1) throw new Error(`expected one "${FACTORY.name}" owned by ${FACTORY.email}, found ${owned.length}. Run \`npm run seed:demo\` first.`);
 const org = owned[0].orgs;
 console.log(`${org.name} (${org.id}) on ${DB_HOST}`);
 
@@ -132,10 +139,10 @@ if (row) {
   account = await stripe.accounts.create({
     controller: MANAGED_CONTROLLER,
     country: "US",
-    email: LOGINS.factory.email,
+    email: FACTORY.email,
     capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
     business_profile: { name: org.name },
-    metadata: { org_id: org.id, tsc_demo_setup: LOGINS.factory.email, tsc_demo_db: DB_HOST },
+    metadata: { org_id: org.id, tsc_demo_setup: FACTORY.email, tsc_demo_db: DB_HOST },
     settings: { payouts: { schedule: { interval: "manual" } } },
   });
   await saveConnectAccount(db, org.id, account);
@@ -145,7 +152,7 @@ if (row) {
 // Earlier runs' accounts for this database whose company the seed deleted.
 const inUse = new Set(must(await db.from("stripe_connect_accounts").select("stripe_account_id"), "accounts in use").map((r) => r.stripe_account_id));
 for await (const old of stripe.accounts.list({ limit: 100 })) {
-  if (old.metadata?.tsc_demo_setup !== LOGINS.factory.email || old.metadata?.tsc_demo_db !== DB_HOST) continue;
+  if (old.metadata?.tsc_demo_setup !== FACTORY.email || old.metadata?.tsc_demo_db !== DB_HOST) continue;
   if (old.id === account.id || inUse.has(old.id)) continue;
   await stripe.accounts.del(old.id);
   console.log(`account ${old.id}: deleted (an earlier run's; its company is gone)`);
@@ -157,7 +164,7 @@ if (!account.details_submitted || account.requirements?.currently_due?.some((r) 
     business_type: "individual",
     business_profile: { mcc: "5699", url: "https://sourcing-club.com", product_description: "Apparel manufacturing for brands on The Sourcing Club." },
     individual: {
-      first_name: "Demo", last_name: "Factory", email: LOGINS.factory.email, phone: "0000000000",
+      first_name: "Demo", last_name: "Factory", email: FACTORY.email, phone: "0000000000",
       dob: { day: 1, month: 1, year: 1901 }, id_number: "000000000", ssn_last_4: "0000",
       address: { line1: "address_full_match", city: "San Francisco", state: "CA", postal_code: "94111", country: "US" },
     },
@@ -235,7 +242,7 @@ if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
   // one is owed as soon as it is funded.
   const owedNow = must(await db.from("order_payments").select("release_requested_at").eq("id", payment.id).single(), "the payment").release_requested_at;
   if (!owedNow) {
-    const [factory, brand] = await Promise.all([signIn(LOGINS.factory), signIn(LOGINS.brand)]);
+    const [factory, brand] = await Promise.all([signIn(FACTORY), signIn(LOGINS.brand)]);
     must(await factory.rpc("post_milestone_update", {
       target_milestone: payment.milestone_id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
     }), "Demo Factory's update");
@@ -243,8 +250,10 @@ if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
     console.log("approved: Demo Factory posted an update and Demo Brand approved the step");
   }
   const released = await releasePayment({ stripe, db, paymentId: payment.id });
-  if (!released.released) throw new Error(`the step was funded but not paid out: ${released.reason}`);
-  console.log(`paid out to the factory: ${released.reason}`);
+  // A payment-only step is owed the moment it is funded, so the site's own
+  // webhook may have paid it out first: that is the same result.
+  if (!released.released && released.reason !== "already being paid") throw new Error(`the step was funded but not paid out: ${released.reason}`);
+  console.log(released.released ? `paid out to the factory: ${released.reason}` : "paid out to the factory by the site's webhook");
 }
 
 const after = await availableUsd();
@@ -258,4 +267,4 @@ ${org.name} is ready to withdraw through Stripe
   available  ${money(after)}
   pending    ${money(pending)}
   banks      ${banks.join("\n             ")}
-Sign in as ${LOGINS.factory.email} and open Payments.`);
+Sign in as ${FACTORY.email} and open Payments.`);
