@@ -47,7 +47,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country, amount, currency, requestId, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId, destination, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -134,7 +134,7 @@ export default async function handler(request, response) {
 
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
-      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId });
+      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId, destination: destination ?? null });
       return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
     }
 

@@ -165,6 +165,7 @@ const PATTERNS = [
   [/^Paid out (\S+) to (.+) \(fee (\S+); you receive (\S+)\)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}（手续费 ${m[3]}；你收到 ${m[4]}）。`],
   [/^Paid out (\S+) to (.+)\.$/, (m) => `已向 ${m[2]} 支付 ${m[1]}。`],
   [/^Available: (\S+)$/, (m) => `可提现：${m[1]}`],
+  [/^Amount \(([A-Z]{3})\)$/, (m) => `金额（${m[1]}）`],
   [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
   [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
   [/^Cancel (\d+) withdrawals$/, (m) => `取消 ${m[1]} 笔提现`],

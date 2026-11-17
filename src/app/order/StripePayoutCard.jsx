@@ -506,11 +506,13 @@ export default function StripePayoutCard({
   }, [balance, modal]);
 
   async function withdraw() {
-    if (busy || !withdrawal) return;
+    if (busy || !withdrawal || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max)) return;
     setBusy(true);
     setError(null);
     try {
-      await connectAction(org.id, withdrawal.previous ? "withdraw_previous" : "withdraw", withdrawal);
+      const { amount: sendAmount, currency: sendCurrency, requestId, destination } = withdrawal;
+      await connectAction(org.id, withdrawal.previous ? "withdraw_previous" : "withdraw",
+        { amount: sendAmount, currency: sendCurrency, requestId, ...(withdrawal.previous || !destination ? {} : { destination }) });
       setWithdrawal(null);
       setModal(null);
       setWithdrawn(true);
@@ -879,6 +881,10 @@ export default function StripePayoutCard({
     : null;
   // Removing the last manual method hands payouts back to the banks below it.
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
+  // Where a Stripe withdrawal can go this once: the account's own, in the balance's
+  // currency, taking standard payouts. Choosing one never changes the default.
+  const stripeWithdrawTargets = connectedMethods.filter((m) => m.id !== "connected-account"
+    && String(m.currency ?? "").toLowerCase() === currency.toLowerCase() && m.standard !== false);
   const nextProviderMethod = otherProviderMethods.find((method) => method.default && method.last4) ?? null;
   const manualLabel = (row) => (isPaypal(row) ? `PayPal ${row.paypal_email}` : endingIn(transferName(row.bank_country), row.account_number_last4));
   // A bank Wise pays says so, as in the chooser. Wise pays a bank row only with a
@@ -995,7 +1001,8 @@ export default function StripePayoutCard({
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
               title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 && arrivesOn ? availableOnWords(arrivesOn) : "Nothing to withdraw yet"} onClick={() => {
               setError(null);
-              setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
+              setWithdrawal({ amount: available, max: available, amountText: (available / 100).toFixed(2), currency: currency.toLowerCase(), requestId: crypto.randomUUID(),
+                destination: stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
               setModal("withdraw");
             }}>Withdraw to bank</button>
             {(account.payouts_enabled && !needsMore) || paused ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
@@ -1050,11 +1057,41 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "withdraw" && withdrawal ? (
-        <PayoutModal title="Withdraw to bank" onClose={closeModal} actions={<>
+        <PayoutModal title="Withdraw" className="withdraw-form-modal" onClose={closeModal} actions={<>
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
-          <button className="primary-btn" type="button" disabled={busy} onClick={withdraw}>{busy ? "Withdrawing…" : `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
+          <button className="primary-btn" type="button" data-testid="stripe-withdraw-confirm" disabled={busy || !(withdrawal.amount > 0)} onClick={withdraw}>{busy ? "Withdrawing…" : withdrawal.amount > 0 ? `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}` : "Withdraw"}</button>
         </>}>
-          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your {withdrawal.previous ? "previous account’s" : "default"} bank account. Bank processing time depends on your bank and country.</p>
+          {withdrawal.previous ? (
+            <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your previous account’s bank account. Bank processing time depends on your bank and country.</p>
+          ) : (
+            <div className="withdraw-form-fields">
+              {stripeWithdrawTargets.length ? (
+                <label className="payout-country-field withdraw-method-field">
+                  <span>Withdraw to</span>
+                  <select name="Withdraw to" value={withdrawal.destination ?? ""} disabled={busy}
+                    onChange={(event) => setWithdrawal((was) => ({ ...was, destination: event.target.value }))}>
+                    {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabel(method)}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <div className="withdraw-amount-field payout-form-grid">
+                <div className="withdraw-amount-heading">
+                  <label htmlFor="stripe-withdraw-amount">{`Amount (${withdrawal.currency.toUpperCase()})`}</label>
+                  <button className="secondary-btn" type="button" disabled={busy}
+                    onClick={() => setWithdrawal((was) => ({ ...was, amount: was.max, amountText: (was.max / 100).toFixed(2) }))}>Withdraw full amount</button>
+                </div>
+                <input id="stripe-withdraw-amount" name="Amount" inputMode="decimal" value={withdrawal.amountText} disabled={busy} aria-describedby="stripe-withdraw-available"
+                  onChange={(event) => {
+                    const typed = event.target.value;
+                    const text = Number(typed) > withdrawal.max / 100 ? (withdrawal.max / 100).toFixed(2) : typed;
+                    const cents = /^\d+(\.\d{0,2})?$/.test(text.trim()) ? Math.round(Number(text.trim()) * 100) : NaN;
+                    setWithdrawal((was) => ({ ...was, amountText: text, amount: Number.isFinite(cents) ? cents : 0 }));
+                  }} />
+                <p id="stripe-withdraw-available" className="withdraw-available">{`Available: ${formatMoney(withdrawal.max, withdrawal.currency)}`}</p>
+              </div>
+            </div>
+          )}
+          {!withdrawal.previous && withdrawal.amountText && !(withdrawal.amount > 0) ? <p className="live-stripe-error" role="alert">Enter an amount to withdraw.</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}

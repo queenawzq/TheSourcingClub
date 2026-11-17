@@ -7,15 +7,26 @@ export async function holdPayouts(stripe, accountId) {
 }
 
 /** Stripe enforces the available balance; retries use the same request key. */
-export async function withdrawBalance(stripe, accountId, { amount, currency, requestId }) {
+export async function withdrawBalance(stripe, accountId, { amount, currency, requestId, destination = null }) {
   if (!Number.isSafeInteger(amount) || amount <= 0 || !/^[a-z]{3}$/.test(currency ?? "")
     || !/^[0-9a-f-]{36}$/i.test(requestId ?? "")) {
     throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
   }
+  // A chosen account is paid this once; the default stays as it is. It must be
+  // the account's own, in the balance's currency, and take standard payouts.
+  if (destination != null) {
+    if (!/^(ba|card)_[A-Za-z0-9]+$/.test(String(destination))) throw new PayoutMethodRefusal("Choose one of your withdrawal methods.");
+    const method = await stripe.accounts.retrieveExternalAccount(accountId, destination).catch(() => null);
+    if (!method || method.deleted) throw new PayoutMethodRefusal("Choose one of your withdrawal methods.");
+    if (method.currency !== currency) throw new PayoutMethodRefusal(`That account takes ${String(method.currency).toUpperCase()}. Choose one that takes ${currency.toUpperCase()}.`);
+    if (!(method.available_payout_methods ?? ["standard"]).includes("standard")) throw new PayoutMethodRefusal("That card takes only instant payouts. Choose a bank account.");
+  }
   await holdPayouts(stripe, accountId);
-  return stripe.payouts.create({ amount, currency }, {
+  // The amount and the account are in the key: Stripe answers a reused key
+  // with its first answer, so a changed choice must not get the old one.
+  return stripe.payouts.create({ amount, currency, ...(destination ? { destination } : {}) }, {
     stripeAccount: accountId,
-    idempotencyKey: `withdraw-${accountId}-${requestId}`,
+    idempotencyKey: `withdraw-${accountId}-${requestId}-${amount}-${destination ?? "default"}`,
   });
 }
 
