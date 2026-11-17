@@ -6,7 +6,7 @@
 -- no wise_recipient_type was the old staff-paid setup; the chooser has not
 -- offered it since 20261117200000 and production holds none.
 --
--- request_withdrawal() (from 20261117200000) now refuses such a row with the
+-- request_withdrawal() (from 20261117360000) now refuses such a row with the
 -- existing "not available" refusal, and loses the bank wire-fee check that
 -- only it reached.
 --
@@ -69,7 +69,7 @@ begin
   values (target_org, a.id, which, amount, 'USD',
           case when a.method = 'paypal' then a.paypal_email
                else format('%s ending %s', coalesce(a.bank_name, 'Bank account'), a.account_number_last4) end,
-          a.details_changed_at, auth.uid())
+          a.payee_changed_at, auth.uid())
   returning * into w;
   perform public.withdrawal_notice(w,
     format('Withdrawal of %s requested', public.format_money(w.amount_cents, w.currency)),
