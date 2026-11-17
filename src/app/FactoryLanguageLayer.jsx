@@ -198,8 +198,15 @@ export default function FactoryLanguageLayer({ language }) {
 
     const pending = new Map();
     let frame = 0;
+    // A timer beside the frame: a tab in the background draws no frames, so
+    // text drawn there (a dialog's "Withdraw $1.00") stayed English until the
+    // tab was shown again, and a page read meanwhile saw it in English.
+    let timer = 0;
     const flush = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
       frame = 0;
+      timer = 0;
       for (const [node, attribute] of pending) {
         if (!node.isConnected) continue;
         if (attribute) attributes(node, [attribute]);
@@ -216,6 +223,7 @@ export default function FactoryLanguageLayer({ language }) {
     const queue = (node, attribute = null) => {
       if (!pending.has(node) || !attribute) pending.set(node, attribute);
       if (!frame) frame = window.requestAnimationFrame(flush);
+      if (!timer) timer = window.setTimeout(flush, 100);
     };
     const observer = new MutationObserver((records) => {
       for (const record of records) {
@@ -267,6 +275,7 @@ export default function FactoryLanguageLayer({ language }) {
       hiddenButtons.forEach((button) => { button.hidden = false; });
       observer.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
       // Back to English: every text this layer changed, unless the screen has
       // since drawn something else there.
       for (const { node, attribute, original, translated } of swapped.reverse()) {

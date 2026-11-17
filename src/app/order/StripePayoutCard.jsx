@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
-import { wholeEntry } from "../live-zh.js";
+import { countryNameZh, wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
@@ -222,6 +222,9 @@ const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, in
 /** Presentation only; the live payout flow owns every setup action. */
 export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, providers = null }) {
   const words = LIST_WORDS;
+  // The country list in the page's language: the language layer never rewrites a select.
+  const zh = useUiLanguage() === "zh";
+  const countries = zh ? COUNTRIES.map((item) => ({ ...item, name: countryNameZh(item.code) ?? item.name })).sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")) : COUNTRIES;
   // Staff switch PayPal and Wise per region (usePayoutProviders); none passed is all on.
   const paypalOn = providerOn(providers, "paypal");
   const wiseOn = providerOn(providers, "wise");
@@ -241,8 +244,8 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <span>{words.country}</span>
               <select data-field="payout_country" value={country} onChange={(event) => onCountryChange(event.target.value)}>
                 <option value="" />
-                {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
-                <option value={NOT_LISTED}>Other / not listed</option>
+                {countries.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
+                <option value={NOT_LISTED}>{zh ? "其他 / 未列出" : "Other / not listed"}</option>
               </select>
             </label>
             {country && !bankRoute && !paypalOn ? (

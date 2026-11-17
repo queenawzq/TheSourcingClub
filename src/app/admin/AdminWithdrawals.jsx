@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { formatMoney } from "../../lib/money.js";
-import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, previewWithdrawal } from "../../lib/domain/withdrawals.js";
+import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, previewWithdrawal, withdrawalBankAccount } from "../../lib/domain/withdrawals.js";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
@@ -15,7 +15,7 @@ const NAME = { wise: "Wise", paypal: "PayPal", bank: "Bank transfer", tazapay: "
 const STATUS = { requested: "Waiting", paying: "Sending", paid: "Paid", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
 const moneyIn = (minor, currency) => (minor == null ? "—" : formatMoney(Number(minor), currency ?? "USD"));
 
-function WithdrawalActions({ row, onChanged }) {
+function WithdrawalActions({ row, onChanged, BankDetails }) {
   const [step, setStep] = useState(null); // null | "review" | "decline" | "bank"
   const [preview, setPreview] = useState(null);
   const [text, setText] = useState("");
@@ -24,6 +24,17 @@ function WithdrawalActions({ row, onChanged }) {
   const [problem, setProblem] = useState(null);
   const [heard, setHeard] = useState(null);
   const cny = row.provider === "wise" && row.wise_currency === "CNY";
+  // The account this withdrawal pays, read when staff open "Paid by bank…".
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    if (step !== "bank") return undefined;
+    let current = true;
+    setAccount(null);
+    withdrawalBankAccount(row.id)
+      .then((found) => { if (current) setAccount(found); })
+      .catch((failure) => { if (current) setProblem(failure.message); });
+    return () => { current = false; };
+  }, [step, row.id]);
 
   async function run(work) {
     setWorking(true);
@@ -62,6 +73,7 @@ function WithdrawalActions({ row, onChanged }) {
     return (
       <div className="admin-actions">
         {said}
+        {!decline && account && BankDetails ? <BankDetails row={account} withContact={false} /> : null}
         <label className="admin-sub">{decline ? "Reason (the factory reads this)" : "Bank's reference"}
           <input value={text} onChange={(event) => setText(event.target.value)} maxLength={decline ? 300 : 200} />
         </label>
@@ -115,7 +127,7 @@ function WithdrawalActions({ row, onChanged }) {
   );
 }
 
-export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null }) {
+export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null, BankDetails = null }) {
   const open = withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const recent = withdrawals.filter((row) => !["requested", "paying"].includes(row.status)).slice(0, 20);
   const rows = [...open, ...recent];
@@ -134,7 +146,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                 const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: Number(row.amount_cents), currency: row.currency }) : null;
                 return (
                   <tr key={row.id} data-withdrawal={row.id}>
-                    <td><strong>{row.factory_name}</strong><span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span></td>
+                    <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
                       <strong>{moneyIn(row.amount_cents, row.currency)}</strong>
@@ -146,7 +158,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                       </span>
                     </td>
                     <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}</td>
-                    <td><WithdrawalActions row={row} onChanged={onChanged} /></td>
+                    <td><WithdrawalActions row={row} onChanged={onChanged} BankDetails={BankDetails} /></td>
                   </tr>
                 );
               })}
