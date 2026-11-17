@@ -2166,8 +2166,11 @@ async function main() {
       check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0 && !/US\$50/.test(await page.locator(".payout-modal").innerText()),
         `${where === "TW" ? "Taiwan" : "a country not listed"}: no bank transfer TSC pays by hand, PayPal is offered`);
     }
-    // The staff-paid account saved below is in Hong Kong; Wise's form is checked where Tazapay does not take the bank option.
-    const byHandCountry = "HK";
+    // The staff-paid account saved below is in Taiwan: neither Wise nor Tazapay pays
+    // there, so it stays a bank withdrawal. (In China or Hong Kong it would be
+    // Tazapay's, paid step by step: 20261116300100.) Wise's form is checked in
+    // Hong Kong, or in Vietnam where Tazapay takes Hong Kong's bank option.
+    const byHandCountry = "TW";
     await page.locator('[data-field="payout_country"]').selectOption(tazapayOn ? "VN" : "HK");
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
@@ -2189,7 +2192,7 @@ async function main() {
     );
     await ownerClient.auth.signInWithPassword({ email: `e2e-factory-${stamp}@example.com`, password: PASSWORD });
     const { error: savedBankError } = await ownerClient.rpc("save_bank_payout_account", {
-      target_org: factoryOrg.id, target_account: null, bank_name: "Banco de Porto", account_name: factoryName, bank_country: "HK",
+      target_org: factoryOrg.id, target_account: null, bank_name: "Banco de Porto", account_name: factoryName, bank_country: byHandCountry,
       swift: "BCOMPTPL", branch: "001 002", instructions: null,
       account_number: "0000000000004417", account_number_again: "0000000000004417", number_kind: "account",
     });
