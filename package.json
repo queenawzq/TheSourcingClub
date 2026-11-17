@@ -8,6 +8,7 @@
     "smoke": "node scripts/smoke-test.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "seed:demo:zh-factory": "node scripts/seed-demo-zh-factory.mjs",
+    "seed:demo:stripe": "node scripts/setup-stripe-demo-balance.mjs",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "taxonomy": "python3 scripts/build-taxonomy.py",
