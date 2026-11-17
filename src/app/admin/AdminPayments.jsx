@@ -84,6 +84,8 @@ const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_i
 /** Which provider the server pays this row through, if any. */
 const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
+/** The board's word once a press sent money: the row itself moves to Processing. */
+const SentContext = createContext(null);
 /** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
 const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
 /**
@@ -266,6 +268,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
 function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const provider = providerFor(row);
   const name = PROVIDER_NAME[provider];
+  const onSent = useContext(SentContext);
   const needsStatement = provider === "wise" && row.wise_currency === "CNY";
   const [step, setStep] = useState(null); // null | "statement" | "confirm"
   const [statement, setStatement] = useState(false);
@@ -422,7 +425,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
-                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => {
+                    if (answer?.done === "sent" || answer?.done === "paid") onSent?.(row, name, answer.done);
+                    return null;
+                  })}>
             {working ? "Paying…" : "Yes, pay"}
           </button>
         )}
@@ -894,6 +900,12 @@ const TABS = [
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
   attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null }) {
   const [chosen, setChosen] = useState("payout");
+  const [sentNotice, setSentNotice] = useState(null);
+  const onSent = useCallback((row, name, done) => {
+    setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
+      : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
+    if (done !== "paid") setChosen("clearing");
+  }, []);
   const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
   if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
@@ -911,6 +923,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   ) : null;
 
   return (
+    <SentContext.Provider value={onSent}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -926,6 +939,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
+      {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
@@ -940,5 +954,6 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} /> : null}
 
     </main>
+    </SentContext.Provider>
   );
 }
