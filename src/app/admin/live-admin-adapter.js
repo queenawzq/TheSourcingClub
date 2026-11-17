@@ -34,6 +34,7 @@ import {
   setPayoutProvider,
   claimReview,
   companyCredits,
+  companyRegistration,
   decideReview,
   resendReviewEmails,
   reviewEmailStatus,
@@ -48,6 +49,7 @@ import {
   rfqDetail,
   rfqQueue,
   runDailyJobs,
+  saveCompanyRegistration,
   sendTestEmail,
   setUserDisabled,
   suggestReviewRequest,
@@ -500,6 +502,14 @@ export function createAdminAdapter({ user, signOut }) {
        */
       companyCredits,
       adjustCredits,
+
+      /**
+       * A vendor's registration number, added or changed by staff with a
+       * note the company is notified of (20261117500000). Live only: the
+       * admin design draws no registration card.
+       */
+      companyRegistration,
+      saveCompanyRegistration,
 
       /**
        * PayPal and Wise per region, switched by staff in Settings. Live
