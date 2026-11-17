@@ -304,7 +304,10 @@ assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: 
   // and changes no payment. The one money it moves: a failed payout's Stripe
   // payout fee goes back to the factory's balance (api/_stripe-withdrawals.js).
   const payoutCases = route.match(/case "payout\.[a-z_.]+":/g) ?? [];
-  assert.deepEqual(payoutCases, ['case "payout.paid":', 'case "payout.failed":'], "payout events only say the bank's answer");
+  assert.deepEqual(payoutCases, ['case "payout.canceled":', 'case "payout.paid":', 'case "payout.failed":'], "payout events only say the bank's answer");
+  // A cancelled payout only gives its fee back: no bell, nothing else.
+  const canceledBlock = /case "payout\.canceled": \{([\s\S]*?)\n      \}/.exec(route)?.[1] ?? "";
+  assert.deepEqual(canceledBlock.match(/await [a-zA-Z]+\(/g), ["await returnFeeOnFailedPayout("], "a cancelled payout gives its fee back and does nothing else");
   const payoutBlock = /case "payout\.failed": \{([\s\S]*?)\n      \}/.exec(route)?.[1] ?? "";
   assert(/tellPayoutEvent/.test(payoutBlock) && !/\.rpc\(|releas|update\(/.test(payoutBlock), "and do nothing else");
   assert.equal((payoutBlock.match(/await [a-zA-Z]+\(/g) ?? []).filter((call) => !["await tellPayoutEvent(", "await sendDueNotificationEmails(", "await returnFeeOnFailedPayout("].includes(call)).length, 0,
