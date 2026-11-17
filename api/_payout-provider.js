@@ -30,6 +30,7 @@ export function withoutSecrets(text, env = process.env) {
   for (const name of ["WISE_API_TOKEN", "PAYPAL_CLIENT_SECRET", "PAYPAL_CLIENT_ID", "TAZAPAY_API_KEY", "TAZAPAY_API_SECRET", "TAZAPAY_WEBHOOK_SECRET"]) {
     if (env[name]) said = said.split(env[name]).join("[key]");
   }
+  // PayPal's token call sends its client id and secret as Basic auth.
   return said.replace(/(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/g, "$1 [key]");
 }
 

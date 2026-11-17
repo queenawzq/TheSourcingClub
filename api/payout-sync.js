@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { syncAttempts } from "./_provider-payouts.js";
+import { adapterFor, syncWithdrawals } from "./_withdrawals.js";
 import { withoutSecrets } from "./_payout-provider.js";
 import { paypalFrom } from "./_paypal.js";
 import { tazapayFrom } from "./_tazapay.js";
@@ -24,6 +25,8 @@ export async function sweepProviderPayouts(db, env = process.env) {
     try {
       const client = build(env);
       result[provider] = client ? await syncAttempts({ client, db }) : { configured: false };
+      // Withdrawals being paid, too: the factory sees Paid without staff opening the board.
+      if (client) result[provider].withdrawals = await syncWithdrawals({ adapter: adapterFor(provider), client, db });
     } catch (failure) {
       console.error(`payout sweep ${provider}:`, withoutSecrets(failure?.message));
       result[provider] = { error: failure?.kind ?? "failed" };

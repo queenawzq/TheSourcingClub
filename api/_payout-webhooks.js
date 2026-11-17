@@ -1,6 +1,7 @@
 import { createHmac, createVerify, timingSafeEqual } from "node:crypto";
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { readBackRef } from "./_provider-payouts.js";
+import { readBackWithdrawalRef } from "./_withdrawals.js";
 import { rawBody, reply, serviceClient } from "./_stripe.js";
 
 /**
@@ -169,7 +170,9 @@ export function webhookRoute({ provider, build, verify, identify }) {
     if (!claimed) return reply(response, 200, { received: true, duplicate: true });
 
     try {
-      const state = await readBackRef({ client, db, ref, key });
+      // A per-step payout, else a withdrawal (both carry the provider's reference).
+      const state = (await readBackRef({ client, db, ref, key }))
+        ?? (await readBackWithdrawalRef({ provider, client, db, ref }));
       await db.from("provider_events").update({ processed_at: new Date().toISOString() }).eq("id", eventId);
       // Null: not a payout of this database's (another site on the same account). Answered 200,
       // since a retry can't change that and an endpoint that keeps failing gets switched off.

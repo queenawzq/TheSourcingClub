@@ -188,3 +188,19 @@ export async function syncWithdrawals({ adapter, client, db }) {
 }
 
 export const adapterFor = (provider) => ADAPTERS[provider] ?? null;
+
+/**
+ * A provider's webhook about a withdrawal it is paying: read it back, so the
+ * factory sees Paid (or the amount back in its balance) without staff opening
+ * the board. Null when the reference is not a withdrawal of this database's.
+ */
+export async function readBackWithdrawalRef({ provider, client, db, ref }) {
+  const adapter = adapterFor(provider);
+  if (!adapter || !ref) return null;
+  const { data: row, error } = await db.from("factory_withdrawals").select("id, status, provider_ref")
+    .eq("provider", provider).eq("provider_ref", String(ref)).maybeSingle();
+  if (error) throw new PayoutFailure("database", "factory_withdrawals could not be read", { detail: error.code });
+  if (!row) return null;
+  if (row.status !== "paying") return row.status;
+  return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref });
+}
