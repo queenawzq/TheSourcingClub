@@ -8,6 +8,11 @@
  *   node scripts/fee-sandbox-proof.mjs paypal [amount cents]   (PayPal sandbox, PAYPAL_TEST_RECEIVER)
  *   node scripts/fee-sandbox-proof.mjs stripe [amount cents] [connected account id]   (Stripe test mode)
  *   node scripts/fee-sandbox-proof.mjs tiny                    (a payment smaller than its fee: refused, nothing sent)
+ *   node scripts/fee-sandbox-proof.mjs stripe-withdraw [US account] [non-US account]
+ *       (Stripe test mode, 2026-11-17 design: two steps transferred in full, one
+ *       smaller than its fee; one withdrawal through api/_stripe-withdrawals.js:
+ *       reversal = fee, payout = X - fee, TSC's balance up by the fee to the
+ *       cent; a withdrawal at or under the fee refused with nothing sent)
  *
  * Test script only: refuses any Wise/PayPal address without "sandbox" and any
  * Stripe key that is not sk_test_. Reads .env.local; prints no key.
@@ -18,6 +23,7 @@ import Stripe from "stripe";
 import { wiseFrom } from "../api/_wise.js";
 import { paypalFrom } from "../api/_paypal.js";
 import { withdrawalFee, providerCharge } from "../src/shared/withdrawal-fees.mjs";
+import { withdrawWithFee } from "../api/_stripe-withdrawals.js";
 
 if (existsSync(".env.local")) {
   for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -153,6 +159,103 @@ async function stripe(amount = 10000, accountId = null) {
   });
 }
 
+/** The stripe_withdrawals table, in memory: the proof runs without a database. */
+function memoryDb() {
+  const rows = [];
+  const q = (filters = [], patch = null) => {
+    const matches = () => rows.filter((row) => filters.every((f) => f(row)));
+    const self = {
+      select: () => self,
+      update: (fields) => q(filters, fields),
+      eq: (column, value) => { filters.push((row) => row[column] === value); if (patch) for (const row of matches()) Object.assign(row, structuredClone(patch)); return self; },
+      in: (column, values) => { filters.push((row) => values.includes(row[column])); return self; },
+      maybeSingle: async () => ({ data: structuredClone(matches()[0] ?? null), error: null }),
+      then: (resolve, reject) => Promise.resolve({ data: structuredClone(matches()), error: null }).then(resolve, reject),
+    };
+    return self;
+  };
+  return {
+    rows,
+    from: () => q(),
+    async rpc(name, args) {
+      if (name === "claim_abandoned_stripe_withdrawal") return { data: null, error: null };
+      let row = rows.find((r) => r.request_key === args.key);
+      if (!row) {
+        row = { id: randomUUID(), org_id: args.target_org, stripe_account_id: args.account, request_key: args.key, request_id: args.request,
+          amount_minor: args.amount, currency: args.in_currency.toUpperCase(), destination: null, fee_cents: null, fee_local_minor: null,
+          reversals: [], payout_id: null, payout_minor: null, state: "claimed", reason: null, lease_until: new Date(Date.now() + 120_000).toISOString() };
+        rows.push(row);
+        return { data: { claimed: true, row: structuredClone(row) }, error: null };
+      }
+      return { data: { claimed: false, row: structuredClone(row) }, error: null };
+    },
+  };
+}
+
+async function stripeWithdraw(usAccount = "acct_1UcSFOLbQyKIg1mL", abroadAccount = "acct_1UXTHkLeW1XOkYRe") {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key.startsWith("sk_test_")) throw new Error("Stripe test mode only");
+  const client = new Stripe(key);
+  const platformUsd = async () => (await client.balance.retrieve()).available.find((b) => b.currency === "usd")?.amount ?? 0;
+  const ownReversals = async (accountId) => {
+    let n = 0;
+    for await (const transfer of client.transfers.list({ destination: accountId, limit: 20 })) {
+      for await (const reversal of client.transfers.listReversals(transfer.id, { limit: 100 })) if (reversal.metadata?.stripe_withdrawal_id) n += 1;
+    }
+    return n;
+  };
+  const results = [];
+  for (const accountId of [usAccount, abroadAccount]) {
+    const account = await client.accounts.retrieve(accountId);
+    // Two approved steps, each released in full the way api/_stripe.js does it:
+    // a normal US$100.00 step, then a US$0.20 step, smaller than any payout fee.
+    const steps = [];
+    for (const step of [10_000, 20]) {
+      const intent = await client.paymentIntents.create({
+        amount: step + 1000, currency: "usd", payment_method: "pm_card_bypassPending", confirm: true,
+        automatic_payment_methods: { enabled: true, allow_redirects: "never" }, metadata: { purpose: "TSC withdrawal fee proof" },
+      });
+      const transfer = await client.transfers.create({ amount: step, currency: "usd", destination: accountId, source_transaction: intent.latest_charge, description: "TSC withdrawal fee proof: step" });
+      const landed = (await client.charges.retrieve(transfer.destination_payment, { expand: ["balance_transaction"] }, { stripeAccount: accountId })).balance_transaction;
+      steps.push({ step, transfer: transfer.id, sent: transfer.amount, landed: `${landed.currency.toUpperCase()} ${landed.amount}`, rate: landed.exchange_rate, landedMinor: landed.amount, currency: landed.currency });
+    }
+    console.log(`\n### ${account.country} (${accountId}, balance in ${account.default_currency.toUpperCase()})`);
+    for (const s of steps) console.log(`step US$${(s.step / 100).toFixed(2)} → transfer ${s.transfer}: sent ${s.sent}¢ (in full), landed ${s.landed}${s.rate ? ` at ${s.rate}` : ""}`);
+    const currency = steps[0].currency;
+    const db = memoryDb();
+    const args = { stripe: client, db, orgId: "proof", accountId, country: account.country, currency };
+
+    // At or under the fee: refused, nothing reversed, nothing paid out.
+    const tinyAmount = currency === "usd" ? 26 : 20;
+    const reversalsBefore = await ownReversals(accountId);
+    const platformBeforeTiny = await platformUsd();
+    let tinyRefusal = null;
+    try { await withdrawWithFee({ ...args, amount: tinyAmount, requestId: randomUUID() }); } catch (failure) { tinyRefusal = failure.message; }
+    const tinyClean = Boolean(tinyRefusal) && (await ownReversals(accountId)) === reversalsBefore && (await platformUsd()) === platformBeforeTiny;
+    console.log(`withdraw ${currency.toUpperCase()} ${(tinyAmount / 100).toFixed(2)}: ${tinyRefusal ?? "NOT REFUSED"} → nothing reversed, TSC unchanged: ${tinyClean ? "yes" : "NO"}`);
+
+    // The withdrawal: what the normal step landed as.
+    const amount = steps[0].landedMinor;
+    const before = await platformUsd();
+    const payout = await withdrawWithFee({ ...args, amount, requestId: randomUUID() });
+    const after = await platformUsd();
+    const row = db.rows.at(-1);
+    const reversed = row.reversals.reduce((sum, r) => sum + r.amount, 0);
+    const checks = {
+      reversalIsFee: reversed === row.fee_cents,
+      payoutIsXLessFee: payout.amount === amount - row.fee_local_minor,
+      tscGainsFee: after - before === row.fee_cents,
+      tinyRefused: tinyClean,
+    };
+    console.log(`withdraw ${currency.toUpperCase()} ${(amount / 100).toFixed(2)}: fee US$${(row.fee_cents / 100).toFixed(2)} by ${row.reversals.length} reversal(s): ${row.reversals.map((r) => `${r.reversal} ${r.amount}¢ of ${r.transfer} (−${r.local} ${currency.toUpperCase()} minor)`).join(", ")}; payout ${payout.id} ${currency.toUpperCase()} ${(payout.amount / 100).toFixed(2)}; TSC's available US$ ${before} → ${after} (+${after - before}¢)`);
+    console.log(`checks: ${JSON.stringify(checks)}`);
+    results.push({ country: account.country, ...checks });
+  }
+  const ok = results.every((r) => r.reversalIsFee && r.payoutIsXLessFee && r.tscGainsFee && r.tinyRefused);
+  console.log(`\n${ok ? "PROVED" : "NOT PROVED"}: ${JSON.stringify(results)}`);
+  if (!ok) process.exitCode = 1;
+}
+
 function tiny() {
   for (const args of [
     { provider: "stripe", amountCents: 25, country: "US" },
@@ -168,4 +271,5 @@ if (which === "wise") await wise(amount);
 else if (which === "paypal") await paypal(amount);
 else if (which === "stripe") await stripe(amount, accountArg);
 else if (which === "tiny") tiny();
-else throw new Error("usage: fee-sandbox-proof.mjs wise|paypal|stripe|tiny [amount cents]");
+else if (which === "stripe-withdraw") await stripeWithdraw(amountArg, accountArg);
+else throw new Error("usage: fee-sandbox-proof.mjs wise|paypal|stripe|stripe-withdraw|tiny [amount cents]");
