@@ -8732,7 +8732,7 @@ export function ProjectDetailScreen({
       {approveFundMilestone && createPortal((
         <ApproveFundModal
           milestone={approveFundMilestone}
-          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          live={isLive ? { counterparty: counterparty?.nameText ?? counterparty?.name, busy, error } : null}
           onClose={() => {
             setApproveFundMilestone(null);
             onDialogClose?.();
@@ -8750,7 +8750,7 @@ export function ProjectDetailScreen({
       {approvalMilestone && createPortal((
         <ApproveMilestoneModal
           milestone={approvalMilestone}
-          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          live={isLive ? { counterparty: counterparty?.nameText ?? counterparty?.name, busy, error } : null}
           onClose={() => {
             setApprovalMilestone(null);
             onDialogClose?.();
@@ -8768,7 +8768,7 @@ export function ProjectDetailScreen({
       {commentMilestone && createPortal((
         <MilestoneCommentModal
           milestone={commentMilestone}
-          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          live={isLive ? { counterparty: counterparty?.nameText ?? counterparty?.name, busy, error } : null}
           onClose={() => {
             setCommentMilestone(null);
             onDialogClose?.();
@@ -8786,7 +8786,7 @@ export function ProjectDetailScreen({
         <MilestoneCommentModal
           milestone={disputeMilestone}
           mode="dispute"
-          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          live={isLive ? { counterparty: counterparty?.nameText ?? counterparty?.name, busy, error } : null}
           onClose={() => {
             setDisputeMilestone(null);
             onDialogClose?.();
