@@ -195,8 +195,8 @@ select throws_ok($$update public.order_payments set withdrawal_pool = false wher
 -- A bank account staff would pay by hand (no Wise form) is no longer a way to
 -- withdraw (20261117500000): refused, whatever the amount.
 set local session_replication_role = replica;
-insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, swift, bank_country, is_primary, details_changed_at, number_changed_at)
-values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'HK', false, '2026-11-01 00:00:00+00', now());
+insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, swift, bank_country, is_primary, details_changed_at, payee_changed_at, number_changed_at)
+values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'HK', false, '2026-11-01 00:00:00+00', '2026-11-01 00:00:00+00', now());
 set local session_replication_role = origin;
 select pg_temp.act_as(1); set local role authenticated;
 select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 5000, '16a10000-0000-0000-0000-000000000004')$$,
@@ -236,8 +236,20 @@ reset role; select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$,
   '22023', null, 'no withdrawal to it: staff cannot read a non-default number');
 reset role; select pg_temp.act_as(1); set local role authenticated;
-select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)).provider, 'bank', 'owner withdraws to the non-default bank account');
-reset role; select pg_temp.act_as(5); set local role authenticated;
+select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$,
+  '22023', 'This withdrawal method is not available right now.', 'a new withdrawal to a bank account saved for paying by hand is refused');
+-- A bank withdrawal asked for before 20261117500000 still exists and still waits:
+-- made here as the row request_withdrawal() used to write.
+reset role;
+create function pg_temp.old_bank_withdrawal(amt bigint) returns uuid language sql as $f$
+  insert into public.factory_withdrawals (org_id, account_id, provider, amount_cents, currency, paid_to, paid_to_changed_at, requested_by)
+  select a.org_id, a.id, 'bank', amt, 'USD', format('%s ending %s', coalesce(a.bank_name, 'Bank account'), a.account_number_last4),
+         a.payee_changed_at, '16a00000-0000-0000-0000-000000000001'
+    from public.factory_payout_accounts a where a.id = current_setting('tsc.test_other_bank')::uuid
+  returning id;
+$f$;
+select isnt(pg_temp.old_bank_withdrawal(20000), null, 'a by-hand bank withdrawal asked for before the change waits');
+select pg_temp.act_as(5); set local role authenticated;
 select is((select account_number from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)), '0000000000003456', 'staff read the number of the account a waiting withdrawal pays');
 reset role;
 select is((select count(*)::int from public.payout_number_reveals where account_id = current_setting('tsc.test_other_bank')::uuid), 1, 'and the read is recorded');
@@ -253,14 +265,15 @@ select lives_ok($$select public.cancel_withdrawal((select id from public.factory
 reset role; select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '22023', null, 'cancelled: staff cannot read it');
 -- Paid: the same.
-reset role; select pg_temp.act_as(1); set local role authenticated;
-select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks again');
-reset role; select pg_temp.act_as(5); set local role authenticated;
+reset role;
+select lives_ok($$select pg_temp.old_bank_withdrawal(20000)$$, 'another one asked for before the change');
+select pg_temp.act_as(5); set local role authenticated;
 select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'WIRE-117')).status, 'paid', 'staff mark it paid by bank');
 select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '22023', null, 'paid: staff cannot read it');
 -- Changed after asking: refused, as Approve is.
-reset role; select pg_temp.act_as(1); set local role authenticated;
-select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks once more');
+reset role;
+select lives_ok($$select pg_temp.old_bank_withdrawal(20000)$$, 'one more asked for before the change');
+select pg_temp.act_as(1); set local role authenticated;
 select lives_ok($$select public.save_bank_payout_account(
   target_org => '16b00000-0000-0000-0000-0000000000f1', target_account => current_setting('tsc.test_other_bank')::uuid, bank_name => 'Bank of China',
   account_name => 'P116 MILL LTD', bank_country => 'CN', swift => 'BKCHCNBJ', branch => 'Shanghai branch')$$, 'then changes that account');
@@ -275,9 +288,8 @@ select is((select count(*)::int from public.factory_withdrawals where account_id
 -- still moves details_changed_at, which per-step payouts and the 14-day warning read.
 reset role; select pg_temp.act_as(5); set local role authenticated;
 select lives_ok($$select public.decline_withdrawal((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'Ask again with the new branch.')$$, 'staff decline the changed one');
-reset role; select pg_temp.act_as(1); set local role authenticated;
-select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks to the non-default bank account');
 reset role;
+select lives_ok($$select pg_temp.old_bank_withdrawal(20000)$$, 'a bank withdrawal to the non-default account, asked for before the change');
 select set_config('tsc.test_details_before', (select details_changed_at::text from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), true);
 select set_config('tsc.test_payee_before', (select payee_changed_at::text from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), true);
 select pg_temp.act_as(1); set local role authenticated;
