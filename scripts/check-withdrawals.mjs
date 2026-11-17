@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { REFERENCE_MAX, approveWithdrawal, previewWithdrawal, withdrawalReference } from "../api/_withdrawals.js";
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
+import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
 import { askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
@@ -141,6 +142,18 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(quote.leavesCents <= 6500, `leaves ${quote.leavesCents}, never more than the amount`);
   assert.equal(quote.feeCents, 6500 - quotes.at(-1), "the fee is the amount less what is sent to the factory");
   assert.ok(quote.feeCents >= 300, "the factory carries Wise's fee");
+}
+
+// Under Wise's smallest amount for the route (the sandbox's answer for $5 to a
+// Chinese business account, by SWIFT from 9.25 USD): said as the amount, never as
+// TSC's balance, which was untouched.
+{
+  const body = { id: "q", rate: 7, paymentOptions: [{ payIn: "BALANCE", payOut: "SWIFT", disabled: true, sourceAmount: 5, targetAmount: 0, fee: { total: 9.24 },
+    disabledReason: { code: "error.quote.sourceAmount.min", message: "The smallest amount you can send is 9.25 USD.", path: "sourceAmount", arguments: [{ limit: "9.25 USD" }] } }] };
+  const wise = wiseFrom({ WISE_API_BASE: "https://api.wise-sandbox.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "7", WISE_PAYOUT_CURRENCY: "CNY" },
+    async () => new Response(JSON.stringify(body), { status: 200 }));
+  await assert.rejects(wise.quote({ sourceCurrency: "USD", targetCurrency: "CNY", amountCents: 500, recipientId: "r1" }), (failure) =>
+    failure.kind === "too_small" && /smallest transfer to this account is 9\.25 USD/.test(failure.message) && failure.message !== CANT_PAY_FROM_BALANCE);
 }
 
 // One figure: a $40 withdrawal of a $65 step moves $40 from Pending to Paid out.
