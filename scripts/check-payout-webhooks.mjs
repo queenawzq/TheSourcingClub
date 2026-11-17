@@ -300,12 +300,18 @@ assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: 
 {
   const route = readFileSync("api/stripe-webhook.js", "utf8");
   for (const type of ["created", "updated", "deleted"]) assert(route.includes(`case "account.external_account.${type}"`), `the webhook handles ${type}`);
-  // A withdrawal landing or failing only rings the bell (api/_stripe-payout-events.js):
-  // it moves no money and changes no payment.
+  // A withdrawal landing or failing rings the bell (api/_stripe-payout-events.js)
+  // and changes no payment. The one money it moves: a failed payout's Stripe
+  // payout fee goes back to the factory's balance (api/_stripe-withdrawals.js).
   const payoutCases = route.match(/case "payout\.[a-z_.]+":/g) ?? [];
-  assert.deepEqual(payoutCases, ['case "payout.paid":', 'case "payout.failed":'], "payout events only say the bank's answer");
+  assert.deepEqual(payoutCases, ['case "payout.canceled":', 'case "payout.paid":', 'case "payout.failed":'], "payout events only say the bank's answer");
+  // A cancelled payout only gives its fee back: no bell, nothing else.
+  const canceledBlock = /case "payout\.canceled": \{([\s\S]*?)\n      \}/.exec(route)?.[1] ?? "";
+  assert.deepEqual(canceledBlock.match(/await [a-zA-Z]+\(/g), ["await returnFeeOnFailedPayout("], "a cancelled payout gives its fee back and does nothing else");
   const payoutBlock = /case "payout\.failed": \{([\s\S]*?)\n      \}/.exec(route)?.[1] ?? "";
   assert(/tellPayoutEvent/.test(payoutBlock) && !/\.rpc\(|releas|update\(/.test(payoutBlock), "and do nothing else");
+  assert.equal((payoutBlock.match(/await [a-zA-Z]+\(/g) ?? []).filter((call) => !["await tellPayoutEvent(", "await sendDueNotificationEmails(", "await returnFeeOnFailedPayout("].includes(call)).length, 0,
+    "beyond the bell, only a failed withdrawal's fee goes back");
 }
 
 console.log("check:payout-webhooks: webhooks and the sweep read payouts back with nobody on the board");

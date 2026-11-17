@@ -61,17 +61,20 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 
 /** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), error: null });
+  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), stripeFees: 0, error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
-    const [balance, rows] = await Promise.all([
+    const [balance, rows, stripeRows] = await Promise.all([
       supabase.rpc("my_withdrawal_balance", { target_org: orgId }),
       supabase.from("factory_withdrawals")
         .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, created_at, paid_at, updated_at")
         .eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
+      // Stripe's payout fee, paid once per withdrawal from the Stripe balance
+      // (api/_stripe-withdrawals.js), in US$. A fee given back is not counted.
+      supabase.from("stripe_withdrawals").select("fee_cents").eq("org_id", orgId).eq("state", "paid_out"),
     ]);
-    if (balance.error || rows.error) {
-      setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error) }));
+    if (balance.error || rows.error || stripeRows.error) {
+      setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error ?? stripeRows.error) }));
       return;
     }
     const list = rows.data ?? [];
@@ -85,6 +88,7 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
       last: list[0] ?? null,
       rows: list,
       withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
+      stripeFees: (stripeRows.data ?? []).reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0),
       error: null,
     });
   }, [orgId, enabled]);
@@ -94,6 +98,7 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     load();
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       // A brand approving a step moves its payment into the balance
       // (join_withdrawal_pool) with no factory_withdrawals row changing: the
       // first such payment is what reveals Withdraw. order_payments has no org

@@ -688,7 +688,7 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   assert.equal(zhNotificationBody(inserted.at(-1)), "已从你的余额提现。");
   assert.equal(await tellPayoutEvent(fakeDb, payoutEvent("payout.failed", { failure_code: "weird" }, "acct_other")), false, "an account TSC does not know writes nothing");
   assert.equal(inserted.length, 2);
-  assert.match(read("api/stripe-webhook.js"), /case "payout\.paid":\s*case "payout\.failed":\s*\{\s*if \(await tellPayoutEvent/, "the webhook says both");
+  assert.match(read("api/stripe-webhook.js"), /case "payout\.paid":\s*case "payout\.failed":\s*\{[\s\S]{0,300}?returnFeeOnFailedPayout[\s\S]{0,200}?if \(await tellPayoutEvent/, "the webhook says both, after a failed payout's fee goes back");
 
   // Hong Kong's Wise form names the bank in its own list: "Bank name" is asked once.
   const hk = [
