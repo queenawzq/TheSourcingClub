@@ -30,7 +30,8 @@ export function withoutSecrets(text, env = process.env) {
   for (const name of ["WISE_API_TOKEN", "PAYPAL_CLIENT_SECRET", "PAYPAL_CLIENT_ID"]) {
     if (env[name]) said = said.split(env[name]).join("[key]");
   }
-  return said.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, "Bearer [key]");
+  // PayPal's token call sends its client id and secret as Basic auth.
+  return said.replace(/(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/g, "$1 [key]");
 }
 
 /** A live account pays real money, so only production may hold one. */
