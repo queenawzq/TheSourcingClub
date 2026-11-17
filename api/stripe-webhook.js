@@ -14,7 +14,7 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
  * secret: one for TSC's own account (payment_intent.processing / succeeded /
  * payment_failed, charge.refunded, refund.updated / refund.failed /
  * charge.refund.updated for a cancelled order's refund that failed) and one for connected accounts
- * (account.updated, account.external_account.*, payout.paid, payout.failed). Locally,
+ * (account.updated, account.external_account.*, payout.paid, payout.failed, payout.canceled). Locally,
  * `stripe listen` forwards both with one secret.
  *
  * A PaymentIntent is either an order payment (metadata payment_id) or a
@@ -127,6 +127,12 @@ export default async function handler(request, response) {
         if (await tellExternalAccountEvent(db, event) && emailTransport()) {
           await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
         }
+        break;
+      }
+      case "payout.canceled": {
+        // Cancelled before it reached the bank: the money is back in the
+        // balance, and the fee with it. No bell: nothing failed at the bank.
+        await returnFeeOnFailedPayout({ stripe, db, payout: event.data.object });
         break;
       }
       case "payout.paid":

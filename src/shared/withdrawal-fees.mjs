@@ -190,6 +190,47 @@ export function stripeWithdrawalFee({ amountMinor, currency = "USD", country = "
 }
 
 /**
+ * Stripe's smallest payout, per currency, in minor units. Stripe publishes it
+ * per country (https://docs.stripe.com/payouts#minimum-payout-amounts, read
+ * 2026-11-17) and has no API for it; these are the countries Stripe can pay
+ * out to for TSC (stripe-payout-countries.mjs). The EEA's EUR, GBP (GB, GI)
+ * and CHF (CH, LI) are the same in every country that lists them. A currency
+ * not listed is held to one whole unit, the most common published minimum.
+ */
+export const STRIPE_MINIMUM_PAYOUT = {
+  usd: 1, cad: 1, eur: 100, gbp: 100, chf: 500, dkk: 2000, nok: 2000, sek: 2000,
+  czk: 3000, huf: 36000, pln: 500, ron: 500,
+};
+export const stripeMinimumPayout = (currency) => STRIPE_MINIMUM_PAYOUT[String(currency).toLowerCase()] ?? 100;
+
+/**
+ * The smallest withdrawal whose payout, after the fee, is at least Stripe's
+ * minimum payout. The fee never goes down as X grows, so X = min + fee(X) is
+ * reached from below in a few steps.
+ */
+export function stripeMinimumWithdrawal({ currency = "USD", country = "", localPerUsd = 1 } = {}) {
+  const least = stripeMinimumPayout(currency);
+  const code = String(currency).toUpperCase();
+  const rate = Number(localPerUsd);
+  const feeLocal = (x) => {
+    const usdCents = code === "USD" ? x : Math.ceil(x / rate);
+    const { feeCents } = withdrawalFee({ provider: "stripe", amountCents: usdCents, currency: "USD", country });
+    return code === "USD" ? feeCents : Math.ceil(feeCents * rate);
+  };
+  let x = least;
+  for (;;) {
+    const fee = stripeWithdrawalFee({ amountMinor: x, currency, country, localPerUsd });
+    if (!fee.refused && x - fee.feeLocalEstimate >= least) return x;
+    const next = least + feeLocal(x);
+    x = next > x ? next : x + 1;
+  }
+}
+
+/** Said when the payout after the fee would be under Stripe's minimum. */
+export const minimumWithdrawalSentence = (minor, currency = "USD") =>
+  `The minimum withdrawal is ${new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency).toUpperCase(), minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100)}.`;
+
+/**
  * The sentence the factory reads on its payments row; the paid notification's
  * is the same words from public.payout_fee_sentence (migration 20261116100100).
  */

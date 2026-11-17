@@ -4,8 +4,9 @@
 // refused or fails; never twice on a retry, a crash or a double press.
 // With a fake Stripe and a fake database. Run: node scripts/check-stripe-withdrawals.mjs
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, withdrawWithFee } from "../api/_stripe-withdrawals.js";
-import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
+import { STRIPE_MINIMUM_PAYOUT, stripeWithdrawalFee, withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 const REQUEST = "b1f9fd8c-76bd-43a7-ad48-502ebed382b3";
 const OTHER = "c2f9fd8c-76bd-43a7-ad48-502ebed382b4";
@@ -13,7 +14,6 @@ const OTHER = "c2f9fd8c-76bd-43a7-ad48-502ebed382b4";
 /** The stripe_withdrawals table and its two claim functions, in memory. */
 function fakeDb() {
   const rows = [];
-  let n = 0;
   const leased = (row) => row.lease_until && Date.parse(row.lease_until) > Date.now();
   const lease = () => new Date(Date.now() + 120_000).toISOString();
   function query() {
@@ -37,7 +37,7 @@ function fakeDb() {
       if (name === "claim_stripe_withdrawal") {
         let row = rows.find((r) => r.request_key === args.key);
         if (!row) {
-          row = { id: `w${(n += 1)}`, org_id: args.target_org, stripe_account_id: args.account, request_key: args.key, request_id: args.request,
+          row = { id: randomUUID(), org_id: args.target_org, stripe_account_id: args.account, request_key: args.key, request_id: args.request,
             amount_minor: args.amount, currency: args.in_currency.toUpperCase(), destination: args.to_destination, fee_cents: null,
             fee_local_minor: null, reversals: [], payout_id: null, payout_minor: null, state: "claimed", reason: null, lease_until: null };
           rows.push(row);
@@ -67,6 +67,8 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
   const s = {
     platform: 0,
     balance: available,
+    reads: 0,
+    staleBalance: null,
     reversals: [],
     payouts: [],
     returned: [],
@@ -76,7 +78,14 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
   const list = (items) => ({ async *[Symbol.asyncIterator]() { yield* items; } });
   s.api = {
     accounts: { async update() {}, async retrieveExternalAccount() { return null; } },
-    balance: { async retrieve() { return { available: [{ currency, amount: s.balance }] }; } },
+    balance: {
+      async retrieve() {
+        // staleBalance: what a second tab read before the first tab's withdrawal went.
+        const amount = s.staleBalance ?? s.balance;
+        s.staleBalance = null;
+        return { available: [{ currency, amount }] };
+      },
+    },
     transfers: {
       list: () => list([...transfers].reverse()),
       listReversals: (id) => list(s.reversals.filter((r) => r.transfer === id)),
@@ -84,8 +93,9 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
         return once(idempotencyKey, () => {
           const transfer = transfers.find((t) => t.id === id);
           assert.ok(transfer.amount - transfer.amount_reversed >= params.amount, "never more than the transfer has left");
-          transfer.amount_reversed += params.amount;
           const local = Math.round(params.amount * rate);
+          if (local > s.balance) throw Object.assign(new Error("Insufficient funds in the connected account"), { statusCode: 400, code: "balance_insufficient" });
+          transfer.amount_reversed += params.amount;
           s.balance -= local;
           s.platform += params.amount;
           const reversal = { id: `trr_${s.reversals.length + 1}`, transfer: id, amount: params.amount, metadata: params.metadata, destination_payment_refund: `pyr_${s.reversals.length + 1}`, local };
@@ -104,7 +114,7 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
         });
       },
     },
-    charges: { async retrieve() { return { balance_transaction: { currency, exchange_rate: currency === "usd" ? null : rate } }; } },
+    charges: { async retrieve() { s.reads += 1; return { balance_transaction: { currency, exchange_rate: currency === "usd" ? null : rate } }; } },
     refunds: { async retrieve(id) { const r = s.reversals.find((x) => x.destination_payment_refund === id); return { balance_transaction: { currency, amount: -r.local } }; } },
     payouts: {
       async list() { return { data: s.payouts }; },
@@ -112,7 +122,7 @@ function fakeStripe({ currency = "usd", rate = 1, transfers, available, payoutFa
         const failure = payoutFails.shift();
         if (failure) throw failure;
         return once(idempotencyKey, () => {
-          assert.ok(params.amount <= s.balance, "Stripe enforces the available balance");
+          if (params.amount > s.balance) throw Object.assign(new Error("Insufficient funds"), { statusCode: 400, code: "balance_insufficient" });
           s.balance -= params.amount;
           const payout = { id: `po_${s.payouts.length + 1}`, amount: params.amount, currency: params.currency, status: "pending", metadata: params.metadata };
           s.payouts.push(payout);
@@ -214,7 +224,7 @@ assert.equal(usFee, 523);
   assert.equal(second.reason?.message, IN_PROGRESS);
   assert.equal(s.reversals.length, 1);
   // A second tab asks for the whole balance again: refused before any fee.
-  await assert.rejects(withdrawWithFee(args(s, db, { requestId: OTHER })), /more than the available balance/);
+  await assert.rejects(withdrawWithFee(args(s, db, { requestId: OTHER })), /^Error: You can withdraw up to \$0\.00\.$/);
   assert.equal(s.reversals.length, 1);
   assert.equal(s.platform, usFee);
 }
@@ -237,6 +247,90 @@ assert.equal(usFee, 523);
   assert.equal(s.reversals[0].local, 584);
   assert.equal(payout.amount, 75_836 - 584, "the payout is X less the GBP the reversal took");
   assert.equal(s.balance, 151_673 - 75_836, "the factory's balance goes down by exactly X");
+}
+
+// 8. Many transfers: Stripe is read only as far back as the fee needs, newest first.
+{
+  const many = Array.from({ length: 300 }, (_, i) => transfer(`tr_${i}`, 100));
+  const s = fakeStripe({ transfers: many, available: 30_000 });
+  const db = fakeDb();
+  const payout = await withdrawWithFee(args(s, db, { amount: 30_000 }));
+  const fee = withdrawalFee({ provider: "stripe", amountCents: 30_000, country: "US" }).feeCents;
+  assert.equal(payout.amount, 30_000 - fee);
+  assert.equal(s.reads, Math.ceil(fee / 100), "one read per transfer the fee uses, not one per transfer");
+  assert.deepEqual(s.reversals.map((r) => r.transfer), ["tr_299", "tr_298", "tr_297", "tr_296"].slice(0, Math.ceil(fee / 100)));
+}
+
+// 9. Under Stripe's minimum payout once the fee is taken: refused before anything moves.
+{
+  const rate = 0.758366;
+  const s = fakeStripe({ currency: "gbp", rate, transfers: [transfer("tr_gb", 20_000)], available: 15_000 });
+  const db = fakeDb();
+  const gb = (amount, requestId = REQUEST) => args(s, db, { accountId: "acct_gb", country: "GB", amount, currency: "gbp", requestId });
+  for (const pence of [25, 30, 119]) {
+    await assert.rejects(withdrawWithFee(gb(pence, randomUUID())), /^Error: The minimum withdrawal is £1\.20\.$/);
+  }
+  assert.deepEqual([s.reversals.length, s.payouts.length, s.platform, s.reads], [0, 0, 0, 3], "nothing reversed or sent");
+  // £1.20 is the first amount that leaves Stripe's £1.00.
+  const fee = stripeWithdrawalFee({ amountMinor: 120, currency: "gbp", country: "GB", localPerUsd: rate });
+  assert.equal(120 - fee.feeLocalEstimate, STRIPE_MINIMUM_PAYOUT.gbp);
+  const payout = await withdrawWithFee(gb(120));
+  assert.equal(payout.amount, 100);
+}
+
+// 10. Two tabs, both read the whole balance before either went: the second is told the balance in the dialog's words, and keeps no fee.
+{
+  // The second tab's reversal finds the balance gone.
+  const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 0 });
+  s.staleBalance = 100_000;
+  const db = fakeDb();
+  await assert.rejects(withdrawWithFee(args(s, db)), /^Error: You can withdraw up to \$0\.00\.$/);
+  assert.deepEqual([s.reversals.length, s.platform], [0, 0]);
+  assert.equal(db.rows[0].reason, "You can withdraw up to $0.00.");
+  // The second tab's reversal goes, its payout finds the balance gone: the fee goes back.
+  const s2 = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 50_000 });
+  s2.staleBalance = 100_000;
+  const db2 = fakeDb();
+  await assert.rejects(withdrawWithFee(args(s2, db2)), /^Error: You can withdraw up to \$500\.00\.$/);
+  assert.deepEqual([s2.reversals.length, s2.returned.length, s2.platform, s2.balance], [1, 1, 0, 50_000], "the fee went back");
+  assert.equal(db2.rows[0].state, "fee_returned");
+}
+
+// 11. Pressed again in the same dialog after a refusal with no sentence: a fresh attempt, not the old answer.
+{
+  const refused = Object.assign(new Error("Payouts are temporarily paused"), { statusCode: 400, code: "payouts_not_allowed" });
+  const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000, payoutFails: [refused] });
+  const db = fakeDb();
+  await assert.rejects(withdrawWithFee(args(s, db)), /temporarily paused/);
+  assert.deepEqual([db.rows[0].state, db.rows[0].reason], ["fee_returned", null]);
+  const payout = await withdrawWithFee(args(s, db));
+  assert.equal(payout.amount, 100_000 - usFee);
+  assert.equal(db.rows.length, 2, "a new row, so new idempotency keys");
+  assert.equal(s.platform, usFee, "one fee kept: the first went back");
+  assert.equal((await withdrawWithFee(args(s, db))).id, payout.id, "and a resend after it went is the same payout");
+}
+
+// 12. A payout that fails (or is cancelled) before its row was marked paid out: the fee still goes back, once.
+{
+  for (const status of ["failed", "canceled"]) {
+    const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+    const db = fakeDb();
+    const payout = await withdrawWithFee(args(s, db));
+    // As if the call died between Stripe's payout and its own record of it.
+    Object.assign(db.rows[0], { state: "fee_taken", payout_id: null, payout_minor: null });
+    s.payouts[0].status = status;
+    const event = { ...s.payouts[0], status };
+    // Its call still holds it: Stripe is asked to send the event again.
+    db.rows[0].lease_until = new Date(Date.now() + 60_000).toISOString();
+    await assert.rejects(returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), /still being processed/);
+    assert.equal(s.returned.length, 0);
+    // The call died (lease lapsed): settled from the event.
+    db.rows[0].lease_until = new Date(Date.now() - 1000).toISOString();
+    assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), true);
+    assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), false, "once");
+    assert.deepEqual([s.returned.length, s.platform, db.rows[0].state], [1, 0, "fee_returned"]);
+    assert.equal(payout.amount, 100_000 - usFee);
+  }
 }
 
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small");

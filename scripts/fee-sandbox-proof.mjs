@@ -12,7 +12,11 @@
  *       (Stripe test mode, 2026-11-17 design: two steps transferred in full, one
  *       smaller than its fee; one withdrawal through api/_stripe-withdrawals.js:
  *       reversal = fee, payout = X - fee, TSC's balance up by the fee to the
- *       cent; a withdrawal at or under the fee refused with nothing sent)
+ *       cent; a withdrawal at or under the fee refused with nothing sent; the
+ *       payout followed to its final status: a failed one gives the fee back)
+ *   node scripts/fee-sandbox-proof.mjs stripe-return-fee <account> <payout>
+ *       (a failed or cancelled payout whose fee was kept because no webhook
+ *       reached the proof: the fee goes back through returnFeeOnFailedPayout)
  *
  * Test script only: refuses any Wise/PayPal address without "sandbox" and any
  * Stripe key that is not sk_test_. Reads .env.local; prints no key.
@@ -23,7 +27,7 @@ import Stripe from "stripe";
 import { wiseFrom } from "../api/_wise.js";
 import { paypalFrom } from "../api/_paypal.js";
 import { withdrawalFee, providerCharge } from "../src/shared/withdrawal-fees.mjs";
-import { withdrawWithFee } from "../api/_stripe-withdrawals.js";
+import { returnFeeOnFailedPayout, withdrawWithFee } from "../api/_stripe-withdrawals.js";
 
 if (existsSync(".env.local")) {
   for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -192,6 +196,68 @@ function memoryDb() {
   };
 }
 
+/** Stripe's test bank tokens that pay out (https://docs.stripe.com/connect/testing#account-numbers). */
+const SUCCEEDING_TEST_BANK = { US: "btok_us_verified" };
+
+/**
+ * The account's default bank in its currency must be one Stripe's test mode
+ * pays: a US test account set up with 000111111116 fails every payout later
+ * (no_account), and a proof that stops at "pending" never sees it.
+ */
+async function payingTestBank(client, account) {
+  const currency = account.default_currency;
+  const banks = await client.accounts.listExternalAccounts(account.id, { object: "bank_account", limit: 100 });
+  const current = banks.data.find((b) => b.currency === currency && b.default_for_currency);
+  if (current && current.status !== "errored" && current.last4 !== "1116") return current;
+  const token = SUCCEEDING_TEST_BANK[account.country];
+  if (!token) throw new Error(`${account.id}: its default ${currency} bank cannot be paid and there is no test token for ${account.country}`);
+  const added = await client.accounts.createExternalAccount(account.id, { external_account: token, default_for_currency: true });
+  console.log(`${account.id}: default ${currency.toUpperCase()} bank was ${current ? `${current.id} (…${current.last4}, ${current.status})` : "none"}; now ${added.id} (…${added.last4}, Stripe's succeeding test bank)`);
+  return added;
+}
+
+/** A payout followed to Stripe's final answer (test mode settles in seconds to a few minutes). */
+async function finalStatus(client, accountId, payoutId, { tries = 60, every = 5000 } = {}) {
+  let payout;
+  for (let i = 0; i < tries; i += 1) {
+    payout = await client.payouts.retrieve(payoutId, {}, { stripeAccount: accountId });
+    if (["paid", "failed", "canceled"].includes(payout.status)) return payout;
+    await wait(every);
+  }
+  return payout;
+}
+
+async function stripeReturnFee(accountId, payoutId) {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key.startsWith("sk_test_")) throw new Error("Stripe test mode only");
+  if (!accountId || !payoutId) throw new Error("usage: stripe-return-fee <account> <payout>");
+  const client = new Stripe(key);
+  const payout = await client.payouts.retrieve(payoutId, {}, { stripeAccount: accountId });
+  const rowId = payout.metadata?.stripe_withdrawal_id;
+  if (!rowId) throw new Error(`${payoutId} was not made by a withdrawal`);
+  // The proof's row was in memory: rebuilt from what Stripe holds, the
+  // reversals that carry its id being the fee it took.
+  const reversals = [];
+  for await (const transfer of client.transfers.list({ destination: accountId, limit: 100 })) {
+    for await (const reversal of client.transfers.listReversals(transfer.id, { limit: 100 })) {
+      if (reversal.metadata?.stripe_withdrawal_id === rowId) reversals.push({ transfer: transfer.id, amount: reversal.amount, reversal: reversal.id });
+    }
+  }
+  const fee = reversals.reduce((sum, r) => sum + r.amount, 0);
+  const db = memoryDb();
+  db.rows.push({ id: rowId, stripe_account_id: accountId, state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
+    currency: payout.currency.toUpperCase(), fee_cents: fee, reversals, reason: null, lease_until: null });
+  const platformBefore = (await client.balance.retrieve()).available.find((b) => b.currency === "usd")?.amount ?? 0;
+  const returned = await returnFeeOnFailedPayout({ stripe: client, db, payout });
+  const again = await returnFeeOnFailedPayout({ stripe: client, db, payout });
+  const platformAfter = (await client.balance.retrieve()).available.find((b) => b.currency === "usd")?.amount ?? 0;
+  const row = db.rows[0];
+  console.log(`payout ${payout.id} ${payout.currency.toUpperCase()} ${(payout.amount / 100).toFixed(2)}: ${payout.status}${payout.failure_code ? ` (${payout.failure_code})` : ""}; withdrawal ${rowId}`);
+  console.log(`fee taken: US$${(fee / 100).toFixed(2)} by ${reversals.map((r) => `${r.reversal} ${r.amount}¢ of ${r.transfer}`).join(", ")}`);
+  console.log(`returnFeeOnFailedPayout: ${returned} (again: ${again}); state ${row.state}; fee returned by transfer ${row.fee_return_transfer_id}; TSC's available US$ ${platformBefore} → ${platformAfter} (${platformAfter - platformBefore}¢)`);
+  if (!returned || again || row.state !== "fee_returned") process.exitCode = 1;
+}
+
 async function stripeWithdraw(usAccount = "acct_1UcSFOLbQyKIg1mL", abroadAccount = "acct_1UXTHkLeW1XOkYRe") {
   const key = process.env.STRIPE_SECRET_KEY ?? "";
   if (!key.startsWith("sk_test_")) throw new Error("Stripe test mode only");
@@ -207,6 +273,7 @@ async function stripeWithdraw(usAccount = "acct_1UcSFOLbQyKIg1mL", abroadAccount
   const results = [];
   for (const accountId of [usAccount, abroadAccount]) {
     const account = await client.accounts.retrieve(accountId);
+    const bank = await payingTestBank(client, account);
     // Two approved steps, each released in full the way api/_stripe.js does it:
     // a normal US$100.00 step, then a US$0.20 step, smaller than any payout fee.
     const steps = [];
@@ -234,6 +301,16 @@ async function stripeWithdraw(usAccount = "acct_1UcSFOLbQyKIg1mL", abroadAccount
     const tinyClean = Boolean(tinyRefusal) && (await ownReversals(accountId)) === reversalsBefore && (await platformUsd()) === platformBeforeTiny;
     console.log(`withdraw ${currency.toUpperCase()} ${(tinyAmount / 100).toFixed(2)}: ${tinyRefusal ?? "NOT REFUSED"} → nothing reversed, TSC unchanged: ${tinyClean ? "yes" : "NO"}`);
 
+    // Over the fee, but what is left is under Stripe's minimum payout (£1.00, €1.00…; US$0.01 in the US, where the fee refusal comes first).
+    let minimumClean = true;
+    if (currency !== "usd") {
+      const underMinimum = 30;
+      let minimumRefusal = null;
+      try { await withdrawWithFee({ ...args, amount: underMinimum, requestId: randomUUID() }); } catch (failure) { minimumRefusal = failure.message; }
+      minimumClean = /^The minimum withdrawal is /.test(minimumRefusal ?? "") && (await ownReversals(accountId)) === reversalsBefore && (await platformUsd()) === platformBeforeTiny;
+      console.log(`withdraw ${currency.toUpperCase()} ${(underMinimum / 100).toFixed(2)}: ${minimumRefusal ?? "NOT REFUSED"} → nothing reversed, TSC unchanged: ${minimumClean ? "yes" : "NO"}`);
+    }
+
     // The withdrawal: what the normal step landed as.
     const amount = steps[0].landedMinor;
     const before = await platformUsd();
@@ -241,17 +318,28 @@ async function stripeWithdraw(usAccount = "acct_1UcSFOLbQyKIg1mL", abroadAccount
     const after = await platformUsd();
     const row = db.rows.at(-1);
     const reversed = row.reversals.reduce((sum, r) => sum + r.amount, 0);
+    // Followed to the bank's answer: a failed payout gives the fee back here,
+    // as the payout.failed webhook does on the site.
+    const settled = await finalStatus(client, accountId, payout.id);
+    let returnedBy = null;
+    if (["failed", "canceled"].includes(settled.status)) {
+      await returnFeeOnFailedPayout({ stripe: client, db, payout: settled });
+      returnedBy = db.rows.at(-1).fee_return_transfer_id;
+    }
     const checks = {
       reversalIsFee: reversed === row.fee_cents,
       payoutIsXLessFee: payout.amount === amount - row.fee_local_minor,
       tscGainsFee: after - before === row.fee_cents,
       tinyRefused: tinyClean,
+      underMinimumRefused: minimumClean,
+      payoutPaid: settled.status === "paid",
     };
+    console.log(`payout ${payout.id} to ${bank.id} (…${bank.last4}): ${settled.status}${settled.failure_code ? ` (${settled.failure_code}); fee returned by ${returnedBy}` : ""}`);
     console.log(`withdraw ${currency.toUpperCase()} ${(amount / 100).toFixed(2)}: fee US$${(row.fee_cents / 100).toFixed(2)} by ${row.reversals.length} reversal(s): ${row.reversals.map((r) => `${r.reversal} ${r.amount}¢ of ${r.transfer} (−${r.local} ${currency.toUpperCase()} minor)`).join(", ")}; payout ${payout.id} ${currency.toUpperCase()} ${(payout.amount / 100).toFixed(2)}; TSC's available US$ ${before} → ${after} (+${after - before}¢)`);
     console.log(`checks: ${JSON.stringify(checks)}`);
     results.push({ country: account.country, ...checks });
   }
-  const ok = results.every((r) => r.reversalIsFee && r.payoutIsXLessFee && r.tscGainsFee && r.tinyRefused);
+  const ok = results.every((r) => r.reversalIsFee && r.payoutIsXLessFee && r.tscGainsFee && r.tinyRefused && r.underMinimumRefused && r.payoutPaid);
   console.log(`\n${ok ? "PROVED" : "NOT PROVED"}: ${JSON.stringify(results)}`);
   if (!ok) process.exitCode = 1;
 }
@@ -272,4 +360,5 @@ else if (which === "paypal") await paypal(amount);
 else if (which === "stripe") await stripe(amount, accountArg);
 else if (which === "tiny") tiny();
 else if (which === "stripe-withdraw") await stripeWithdraw(amountArg, accountArg);
+else if (which === "stripe-return-fee") await stripeReturnFee(amountArg, accountArg);
 else throw new Error("usage: fee-sandbox-proof.mjs wise|paypal|stripe|stripe-withdraw|tiny [amount cents]");
