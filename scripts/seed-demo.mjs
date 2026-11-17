@@ -1526,6 +1526,22 @@ must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
   org_id: otherDomainOrg.id, method: "paypal",
   paypal_email: process.env.PAYPAL_TEST_RECEIVER?.trim().toLowerCase() || "lakeside-payouts@example.net", is_primary: true,
 }), "Lakeside's PayPal account");
+// And a bank account in mainland China that Tazapay pays, saved through the
+// factory's own form, with the company's USCC on file (Tazapay pays only an
+// account in the company's own name): its balance (the silk blouse below) can
+// be withdrawn through Tazapay. The number is the Tazapay sandbox's test
+// account. The Tazapay switch is put back as it was, like Wise's above.
+must(await admin.from("company_registrations").upsert({ org_id: otherDomainOrg.id, country_code: "CN", number: "91320500MA1X7L2C85" }), "Lakeside's registration");
+const tazapayChina = must(await admin.from("payout_provider_settings").select("enabled").eq("provider", "tazapay").eq("region", "china").single(), "the Tazapay switch");
+if (!tazapayChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: true }).eq("provider", "tazapay").eq("region", "china"), "switch Tazapay on for the seed");
+const savedTazapay = await otherDomainFactory.client.rpc("save_tazapay_payout_account", {
+  target_org: otherDomainOrg.id, bank_country: "CN", bank_name: "Bank of China", account_name: "Lakeside Mills Suzhou Co Ltd",
+  holder_name_local: "苏州湖畔毛纺有限公司", registration_number: "91320500MA1X7L2C85", bank_code: "104305000017",
+  address_line1: "18 Suhong Road", address_city: "Suzhou", address_state: "Jiangsu",
+  account_number: "0000000062178500001", account_number_again: "0000000062178500001",
+});
+if (!tazapayChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: false }).eq("provider", "tazapay").eq("region", "china"), "switch Tazapay back off");
+must(savedTazapay, "Lakeside's Tazapay bank account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,

@@ -908,7 +908,7 @@ export default function AdminPayments() {
   /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
   const readBack = useCallback(async () => {
     const [fromWise, fromPaypal, fromTazapay] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal"), syncProvider("tazapay"),
-      syncWithdrawals("wise"), syncWithdrawals("paypal")]);
+      syncWithdrawals("wise"), syncWithdrawals("paypal"), syncWithdrawals("tazapay")]);
     if (fromTazapay.status === "fulfilled") {
       const answer = fromTazapay.value;
       setTazapay({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });

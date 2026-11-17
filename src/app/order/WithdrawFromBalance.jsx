@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
-import { providerOf, providerOn } from "./payout-providers.js";
+import { providerOf, providerOn, tazapayPays } from "./payout-providers.js";
 
 /**
  * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
@@ -14,7 +14,7 @@ import { providerOf, providerOn } from "./payout-providers.js";
  * the provider's own quote where it gives one.
  */
 
-const PROVIDER_FOR = (row) => (row?.method === "paypal" ? "paypal" : row?.wise_recipient_type ? "wise" : "bank");
+const PROVIDER_FOR = (row) => (row?.method === "paypal" ? "paypal" : row?.wise_recipient_type ? "wise" : tazapayPays(row) ? "tazapay" : "bank");
 const usable = (row) => row?.method === "paypal"
   ? Boolean(row.paypal_email)
   : row?.method === "bank" && Boolean(row.account_name?.trim() && row.number_changed_at);
@@ -38,6 +38,7 @@ const TIMING = {
   wise: "Sent by Wise after TSC approves it; usually 1–2 business days to arrive.",
   paypal: "Sent by PayPal after TSC approves it; usually reaches your PayPal balance within minutes.",
   bank: "Sent by bank transfer after TSC approves it; a few business days to arrive.",
+  tazapay: "Sent by Tazapay after TSC approves it.",
 };
 export const withdrawalTiming = (provider) => TIMING[provider] ?? TIMING.bank;
 
@@ -101,7 +102,7 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
   return { ...state, load };
 }
 
-const destination = (w) => `${w.provider === "paypal" ? "PayPal" : w.provider === "wise" ? "Wise bank transfer" : "Bank transfer"}${w.paid_to ? ` · ${w.paid_to}` : ""}`;
+const destination = (w) => `${w.provider === "paypal" ? "PayPal" : w.provider === "wise" ? "Wise bank transfer" : w.provider === "tazapay" ? "Tazapay bank transfer" : "Bank transfer"}${w.paid_to ? ` · ${w.paid_to}` : ""}`;
 
 /**
  * Pending withdrawal details and the owner’s cancellation action: one row per

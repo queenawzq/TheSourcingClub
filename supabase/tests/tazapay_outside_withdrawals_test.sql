@@ -1,13 +1,18 @@
 -- ============================================================================
--- A factory Tazapay pays stays on the per-step path (20261116300100), while a
--- Wise or PayPal factory's approved step still joins its withdrawal balance.
+-- A Wise or PayPal factory's approved step joins its withdrawal balance, and is
+-- paid only by a withdrawal.
+--
+-- 20261116300100 kept a factory Tazapay pays on the per-step path; this file
+-- asserted that carve-out. 20261117510000 retired it (such a factory now
+-- withdraws through Tazapay), so those assertions moved, reversed, to
+-- tazapay_withdrawals_test.sql. What still holds stays here.
 -- `pgtap-c3-` slugs, c3a…/c3b… ids, every number plainly fake.
 -- ============================================================================
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(4);
 
 set local session_replication_role = replica;
 
@@ -87,31 +92,15 @@ update public.order_payments set release_requested_at = now()
  where id in ('c3f00000-0000-0000-0000-000000000001', 'c3f00000-0000-0000-0000-000000000002',
               'c3f00000-0000-0000-0000-000000000003', 'c3f00000-0000-0000-0000-000000000004');
 
-select ok(not (select withdrawal_pool from public.order_payments where id = 'c3f00000-0000-0000-0000-000000000001'),
-  'a mainland China factory Tazapay pays: its approved step is not put in a balance');
-select ok(not (select withdrawal_pool from public.order_payments where id = 'c3f00000-0000-0000-0000-000000000002'),
-  'a Hong Kong factory Tazapay pays: nor is its step');
 select ok((select withdrawal_pool from public.order_payments where id = 'c3f00000-0000-0000-0000-000000000003'),
   'a PayPal factory''s approved step still joins its balance');
 select ok((select withdrawal_pool from public.order_payments where id = 'c3f00000-0000-0000-0000-000000000004'),
   'a Chinese account Wise pays still joins its balance');
-select is(public.factory_withdrawable('c3b00000-0000-0000-0000-0000000000f1'), 0::bigint, 'the Tazapay factory has nothing to withdraw');
 select is(public.factory_withdrawable('c3b00000-0000-0000-0000-0000000000f3'), 6500::bigint, 'the PayPal factory has its step to withdraw');
 
--- Saving the default again (what a factory does when it edits its account) does not pool what it is owed.
-update public.factory_payout_accounts set is_primary = true where id = 'c3a10000-0000-0000-0000-000000000001';
-select ok(not (select withdrawal_pool from public.order_payments where id = 'c3f00000-0000-0000-0000-000000000001'),
-  'and saving its account again leaves the step to be paid on its own');
-
--- Staff pay the Tazapay factory's step on its own.
+-- Staff cannot pay a step in the balance on its own.
 select set_config('request.jwt.claims', json_build_object('sub', 'c3a00000-0000-0000-0000-000000000005', 'role', 'authenticated')::text, true);
 set local role authenticated;
-select ok((public.claim_provider_payout('c3f00000-0000-0000-0000-000000000001', 'tazapay',
-  (select details_changed_at from public.factory_payout_accounts where id = 'c3a10000-0000-0000-0000-000000000001'), false)) ->> 'key' is not null,
-  'staff can Pay with Tazapay on the China step');
-select ok((public.claim_provider_payout('c3f00000-0000-0000-0000-000000000002', 'tazapay',
-  (select details_changed_at from public.factory_payout_accounts where id = 'c3a10000-0000-0000-0000-000000000002'), false)) ->> 'key' is not null,
-  'and on the Hong Kong step');
 select throws_ok($$ select public.claim_provider_payout('c3f00000-0000-0000-0000-000000000003', 'paypal', '2026-11-01 00:00:00+00', false) $$,
   '22023', null, 'the PayPal factory''s step is paid only by a withdrawal');
 reset role;

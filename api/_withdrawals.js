@@ -175,6 +175,11 @@ export async function readBack({ adapter, client, db, id, ref }) {
   }
   if (status.state === "failed" || status.state === "cancelled") {
     await record(db, id, "failed", { sentence: status.failure ?? `${adapter.label} did not deliver this.` });
+    // The provider's code, for staff only (the database refuses anything but a code).
+    if (status.code) {
+      const kept = await db.rpc("record_withdrawal_failure_code", { target_withdrawal: id, failure_code: String(status.code) });
+      if (kept.error) log("record_withdrawal_failure_code", kept.error, { id });
+    }
     return "failed";
   }
   if (status.waiting) await record(db, id, "sent", { sentence: status.waiting });

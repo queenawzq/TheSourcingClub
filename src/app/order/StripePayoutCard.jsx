@@ -222,7 +222,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
   const paypalOn = providerOn(providers, "paypal");
   const wiseOn = providerOn(providers, "wise");
   // Tazapay replaces the bank option where it pays (China, Hong Kong), only when this deploy has it set up.
-  const tazapay = tazapayEnabled && onTazapay && !supported && !notListed ? tazapayMethod(country) : null;
+  const tazapay = tazapayEnabled && onTazapay && !supported && !notListed && providerOn(providers, "tazapay") ? tazapayMethod(country) : null;
   // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
   // nor Wise has a bank route, PayPal is the one option.
   const bankRoute = supported || Boolean(tazapay) || (wiseOn && paidByWise(country));

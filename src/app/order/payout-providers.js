@@ -15,7 +15,7 @@ export function usePayoutProviders(orgId, enabled = true) {
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const { data, error } = await supabase.rpc("payout_providers_for", { target_org: orgId });
-    if (!error && data) setProviders({ paypal: data.paypal !== false, wise: data.wise !== false });
+    if (!error && data) setProviders({ paypal: data.paypal !== false, wise: data.wise !== false, tazapay: data.tazapay !== false });
   }, [orgId, enabled]);
 
   useEffect(() => {
@@ -30,8 +30,13 @@ export function usePayoutProviders(orgId, enabled = true) {
   return providers;
 }
 
-/** The provider that pays a saved method, as request_withdrawal() decides it. */
-export const providerOf = (row) => (row?.method === "paypal" ? "paypal" : row?.method === "bank" && row.wise_recipient_type ? "wise" : "bank");
+/** A bank account in mainland China or Hong Kong with no Wise recipient: Tazapay pays it (tazapay_pays_account()). */
+export const tazapayPays = (row) => row?.method === "bank" && !row.wise_recipient_type
+  && ["CN", "HK"].includes(String(row.bank_country ?? "").trim().toUpperCase());
+
+/** The provider that pays a saved method, as request_withdrawal() decides it (withdrawal_provider_for()). */
+export const providerOf = (row) => (row?.method === "paypal" ? "paypal" : row?.method === "bank" && row.wise_recipient_type ? "wise"
+  : tazapayPays(row) ? "tazapay" : "bank");
 
 /** Whether a provider is on; unknown switches count as on. */
 export const providerOn = (providers, provider) => !providers || providers[provider] !== false;

@@ -75,9 +75,9 @@ $f$;
 grant execute on function pg_temp.act_as(int) to authenticated, anon, service_role;
 
 -- The migration's starting state.
-select is((select count(*)::int from public.payout_provider_settings), 4, 'four switches');
+select is((select count(*)::int from public.payout_provider_settings), 5, 'five switches (Tazapay has one, 20261117510000)');
 select is((select string_agg(provider || ':' || region || ':' || enabled, ',' order by provider, region) from public.payout_provider_settings),
-  'paypal:china:true,paypal:elsewhere:true,wise:china:false,wise:elsewhere:false', 'PayPal on and Wise off, in both regions');
+  'paypal:china:true,paypal:elsewhere:true,tazapay:china:true,wise:china:false,wise:elsewhere:false', 'PayPal on and Wise off, in both regions; Tazapay on');
 
 -- Nobody but staff switches, and nobody writes the table.
 set local role anon;
@@ -91,8 +91,8 @@ select throws_ok($$insert into public.payout_provider_settings (provider, region
 select throws_ok($$delete from public.payout_provider_settings$$, '42501', null, 'a factory owner cannot delete');
 select throws_ok($$select public.payout_region('5b000000-0000-0000-0000-0000000000c1')$$, '42501', null, 'the region rule is not callable');
 select throws_ok($$select public.payout_provider_enabled('5b000000-0000-0000-0000-0000000000c1', 'paypal')$$, '42501', null, 'the internal check is not callable');
-select is((select count(*)::int from public.payout_provider_settings), 4, 'a factory reads the switches');
-select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1'), '{"region":"china","paypal":true,"wise":false}'::jsonb, 'a factory reads its own providers');
+select is((select count(*)::int from public.payout_provider_settings), 5, 'a factory reads the switches');
+select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1'), '{"region":"china","paypal":true,"wise":false,"tazapay":true}'::jsonb, 'a factory reads its own providers');
 select throws_ok($$select public.payout_providers_for('5b000000-0000-0000-0000-0000000000e1')$$, '42501', null, 'not another company''s');
 reset role; select pg_temp.act_as(3); set local role authenticated;
 select throws_ok($$select public.set_payout_provider('wise', 'elsewhere', true)$$, '42501', null, 'a brand cannot switch');

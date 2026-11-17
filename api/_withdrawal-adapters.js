@@ -4,7 +4,7 @@ import { CANT_PAY_FROM_BALANCE, wiseFrom } from "./_wise.js";
 import { paypalFrom } from "./_paypal.js";
 import { tazapayFrom } from "./_tazapay.js";
 import { ensureTazapayBeneficiary } from "./_tazapay-beneficiary.js";
-import { withdrawalInvoicePath, withdrawalInvoicePdf, withdrawalSteps } from "./_tazapay-invoice.js";
+import { withdrawalInvoicePath, withdrawalInvoicePdf } from "./_tazapay-invoice.js";
 import {
   TAZAPAY_KEY_MEMORY_MS, invoiceKeptAt, keepAndUploadInvoice, payoutBody, quoteTazapayPayout, tazapayAccountProblems,
 } from "./_tazapay-pay.js";
@@ -176,31 +176,20 @@ const TAZAPAY_FAILED = {
 const LOST_TAZAPAY_WITHDRAWAL = "Tazapay's answer to the first approval was lost more than a day ago, so approving again could pay twice. Check Tazapay for a payout with this withdrawal's reference before doing anything else.";
 const NOT_USD = (currency) => `Tazapay pays from TSC's USD balance, and this withdrawal is in ${currency}.`;
 
-/** The steps this withdrawal pays, oldest first after the withdrawals before it, for its invoice. */
+/**
+ * The steps this withdrawal pays, for its invoice: the database's own list
+ * (withdrawal_invoice_steps(), the order release_withdrawn_payments() releases
+ * them in), so with several withdrawals open the invoice names what is released.
+ */
 async function tazapayWithdrawalSteps(db, ctx) {
-  const [payments, withdrawals] = await Promise.all([
-    db.from("order_payments").select("id, amount_cents, release_requested_at, milestone_id, production_orders!inner (order_number, factory_org_id)")
-      .eq("withdrawal_pool", true).eq("currency", ctx.currency).in("state", ["confirmed", "released"])
-      .eq("production_orders.factory_org_id", ctx.orgId),
-    db.from("factory_withdrawals").select("id, amount_cents, status, created_at")
-      .eq("org_id", ctx.orgId).eq("currency", ctx.currency).in("status", ["paid", "paying"]),
-  ]);
   const unlisted = new PayoutFailure("invoice", "The order steps this withdrawal pays couldn't be listed for its invoice, so nothing was sent. Reload the board and approve again.");
-  if (payments.error || withdrawals.error) throw unlisted;
-  const mine = (withdrawals.data ?? []).find((w) => w.id === ctx.withdrawalId);
-  const offset = (withdrawals.data ?? []).filter((w) => w.id !== ctx.withdrawalId
-    && (w.status === "paid" || (mine && new Date(w.created_at) < new Date(mine.created_at))))
-    .reduce((sum, w) => sum + Number(w.amount_cents), 0);
-  const ids = [...new Set((payments.data ?? []).map((p) => p.milestone_id).filter(Boolean))];
-  const milestones = ids.length ? await db.from("order_milestones").select("id, title").in("id", ids) : { data: [] };
-  if (milestones.error) throw unlisted;
-  const titles = new Map((milestones.data ?? []).map((m) => [m.id, m.title]));
-  const pool = (payments.data ?? [])
-    .map((p) => ({ id: p.id, at: p.release_requested_at, orderNumber: p.production_orders?.order_number ?? "", stepTitle: titles.get(p.milestone_id) ?? "", amountMinor: Number(p.amount_cents) }))
-    // The database's order: release_requested_at (nulls last), then id.
-    .sort((a, b) => (a.at && b.at ? (a.at < b.at ? -1 : a.at > b.at ? 1 : 0) : a.at ? -1 : b.at ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const steps = withdrawalSteps(pool, offset, ctx.amountCents);
-  if (!steps?.length) throw unlisted;
+  const listed = await db.rpc("withdrawal_invoice_steps", { target_withdrawal: ctx.withdrawalId });
+  if (listed.error) throw unlisted;
+  const steps = (listed.data ?? []).map((row) => ({
+    id: row.payment_id, orderNumber: row.order_number ?? "", stepTitle: row.step_title ?? "", amountMinor: Number(row.amount_cents),
+  }));
+  // An invoice that doesn't add up to the withdrawal is never sent.
+  if (!steps.length || steps.reduce((sum, step) => sum + step.amountMinor, 0) !== ctx.amountCents) throw unlisted;
   return steps;
 }
 

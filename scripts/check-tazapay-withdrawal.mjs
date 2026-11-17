@@ -78,7 +78,7 @@ const POOL = [
   { id: "p-c", amount_cents: 40000, release_requested_at: "2026-11-03T00:00:00Z", milestone_id: "m-c", production_orders: { order_number: "PO-1002", factory_org_id: "org-f" } },
 ];
 
-function world({ amount = 60000, account = ACCOUNT, withdrawals = null, resumed = false, keptAt = null, balance = 10_000_000, fee = 544, create = null } = {}) {
+function world({ amount = 60000, account = ACCOUNT, withdrawals = null, resumed = false, keptAt = null, balance = 10_000_000, fee = 544, create = null, invoiceSteps = null } = {}) {
   const w = { calls: [], recorded: [], kept: [], logged: [] };
   let claim = { withdrawal_id: "wd-0000-1111", key: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", resumed, provider: "tazapay", provider_ref: null, amount_cents: amount, currency: "USD", org_id: "org-f", account_id: "acct-1" };
   const rows = withdrawals ?? [{ id: "wd-old", amount_cents: 20000, status: "paid", created_at: "2026-11-10T00:00:00Z" }, { id: "wd-0000-1111", amount_cents: amount, status: "paying", created_at: "2026-11-16T00:00:00Z" }];
@@ -97,6 +97,17 @@ function world({ amount = 60000, account = ACCOUNT, withdrawals = null, resumed 
     rpc: async (name, args) => {
       if (name === "record_withdrawal") { w.recorded.push(args); if (args.ref) claim = { ...claim, provider_ref: args.ref }; return { data: {}, error: null }; }
       if (name === "set_tazapay_beneficiary") return { data: true, error: null };
+      if (name === "withdrawal_invoice_steps") {
+        // A stand-in for the database's list (pgTAP checks the real one): the paid withdrawals ahead, then the pool's order.
+        w.calls.push(["db-rpc", name, args.target_withdrawal]);
+        if (invoiceSteps) return { data: invoiceSteps, error: null };
+        const titles = new Map(data.order_milestones.map((m) => [m.id, m.title]));
+        const ahead = rows.filter((r) => r.id !== args.target_withdrawal && r.status === "paid").reduce((sum, r) => sum + r.amount_cents, 0);
+        const pool = POOL.map((p) => ({ id: p.id, orderNumber: p.production_orders.order_number, stepTitle: titles.get(p.milestone_id), amountMinor: p.amount_cents }));
+        const steps = withdrawalSteps(pool, ahead, amount) ?? [];
+        return { data: steps.map((s) => ({ payment_id: s.id, order_number: s.orderNumber, step_title: s.stepTitle, amount_cents: s.amountMinor })), error: null };
+      }
+      if (name === "record_withdrawal_failure_code") { w.codes = [...(w.codes ?? []), args]; return { data: true, error: null }; }
       throw new Error(`unexpected rpc ${name}`);
     },
     storage: { from: (bucket) => ({
@@ -166,6 +177,13 @@ const approve = (w) => approveWithdrawal({ adapter: tazapayAdapter, client: w.ta
   assert(!/Shipped/.test(pdf), "a step this withdrawal doesn't reach isn't on it");
   assert.match(pdf, /Total: USD 600\.00/, "the lines add up to the withdrawal");
   assert(!pdf.includes(ACCOUNT_NUMBER), "no bank number on the invoice");
+  assert(w.calls.some((c) => c[0] === "db-rpc" && c[1] === "withdrawal_invoice_steps" && c[2] === "wd-0000-1111"), "the steps are the database's list for this withdrawal");
+}
+{
+  // The database's list doesn't add up to the withdrawal: nothing is sent.
+  const w = world({ invoiceSteps: [{ payment_id: "p-a", order_number: "PO-1001", step_title: "Deposit", amount_cents: 30000 }] });
+  await assert.rejects(approve(w), (e) => e.kind === "invoice");
+  assert.equal(w.made().length, 0, "no payout with an invoice that doesn't match");
 }
 {
   // Tazapay's fee above the placeholder (the sandbox's US$5.44): TSC carries the 44 cents, so it isn't refused as fee_on_top.
@@ -316,6 +334,22 @@ const approve = (w) => approveWithdrawal({ adapter: tazapayAdapter, client: w.ta
   assert(!JSON.stringify(seen).includes(ACCOUNT_NUMBER), "the account number in the body is never written");
   assert(!errors.join("").includes(ACCOUNT_NUMBER), "nor logged");
   assert.deepEqual(Object.keys(seen.find(([, n]) => n === "claim_provider_event")[2]).sort(), ["event_id", "event_type"], "only the event's id and type are kept");
+}
+{
+  // A failed payout: the factory's sentence on the withdrawal, Tazapay's code kept for staff only.
+  const seen = [];
+  const row = { id: "wd-2", status: "paying", provider_ref: "pot_bank" };
+  const db = {
+    from: () => { const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: row, error: null }) }; return q; },
+    rpc: async (name, args) => { seen.push([name, args]); return { data: {}, error: null }; },
+  };
+  const client = { status: async () => ({ state: "failed", raw: "failed", route: "details", code: "PF020106" }) };
+  assert.equal(await readBackWithdrawalRef({ provider: "tazapay", client, db, ref: "pot_bank" }), "failed");
+  const failed = seen.find(([name, args]) => name === "record_withdrawal" && args.outcome === "failed");
+  assert.match(failed[1].sentence, /Check your bank details/);
+  assert(!/PF0/.test(failed[1].sentence), "the code is not in the factory's sentence");
+  assert.deepEqual(seen.find(([name]) => name === "record_withdrawal_failure_code")?.[1], { target_withdrawal: "wd-2", failure_code: "PF020106" },
+    "the code is kept for staff, after the failure is recorded");
 }
 {
   // Not a withdrawal of this database's: null, nothing recorded.

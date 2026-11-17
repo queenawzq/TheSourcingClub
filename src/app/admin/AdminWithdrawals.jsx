@@ -145,7 +145,8 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                           : estimate?.basis === "quote_needed" ? "Fee: quoted on Approve" : ""}
                       </span>
                     </td>
-                    <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}</td>
+                    <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}
+                      {row.failure_code ? <span className="admin-sub" data-testid="withdrawal-failure-code">{`${NAME[row.provider] ?? row.provider} code: ${row.failure_code}`}</span> : null}</td>
                     <td><WithdrawalActions row={row} onChanged={onChanged} /></td>
                   </tr>
                 );

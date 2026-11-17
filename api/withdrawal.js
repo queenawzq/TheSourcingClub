@@ -72,10 +72,12 @@ async function quoteForFactory(request, response, { db, caller }) {
   if (tokenRefused(owner)) return reply(response, 401, { error: "Your sign-in expired. Sign in again." });
   if (owner.error || owner.data !== true) return reply(response, 403, { error: "Only a company owner can withdraw." });
   const found = await db.from("factory_payout_accounts")
-    .select("id, org_id, method, paypal_email, wise_recipient_type, wise_recipient_id, wise_currency").eq("id", accountId).eq("org_id", orgId).maybeSingle();
+    .select("id, org_id, method, paypal_email, wise_recipient_type, wise_recipient_id, wise_currency, bank_country").eq("id", accountId).eq("org_id", orgId).maybeSingle();
   if (found.error || !found.data) return reply(response, 404, { error: "Choose one of your saved withdrawal methods." });
   const account = found.data;
-  const provider = account.method === "paypal" ? "paypal" : account.wise_recipient_type ? "wise" : "bank";
+  // withdrawal_provider_for(): a bank in mainland China or Hong Kong with no Wise recipient is Tazapay's.
+  const tazapay = account.method === "bank" && ["CN", "HK"].includes(String(account.bank_country ?? "").trim().toUpperCase());
+  const provider = account.method === "paypal" ? "paypal" : account.wise_recipient_type ? "wise" : tazapay ? "tazapay" : "bank";
   const adapter = adapterFor(provider);
   if (!adapter || adapter.manual || typeof adapter.factoryQuote !== "function") return reply(response, 200, { exact: false });
   try {

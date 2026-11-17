@@ -1954,7 +1954,8 @@ function TestDataPanel() {
  * drawn. Not in the design; built from the settings card. Each box saves as
  * it is changed, then the switches are read again.
  */
-const PAYOUT_PROVIDERS = [{ key: "paypal", label: "PayPal" }, { key: "wise", label: "Wise" }];
+// Tazapay pays only bank accounts in mainland China and Hong Kong: one switch.
+const PAYOUT_PROVIDERS = [{ key: "paypal", label: "PayPal" }, { key: "wise", label: "Wise" }, { key: "tazapay", label: "Tazapay", regions: ["china"] }];
 const PAYOUT_REGIONS = [{ key: "china", label: "China and Hong Kong" }, { key: "elsewhere", label: "Everywhere else" }];
 
 function PayoutProvidersPanelIfLive() {
@@ -2001,7 +2002,7 @@ function PayoutProvidersPanel() {
         <div className="admin-payout-provider-row" key={provider.key}>
           <strong>{provider.label}</strong>
           <div className="admin-payout-provider-regions">
-            {PAYOUT_REGIONS.map((region) => (
+            {PAYOUT_REGIONS.filter((region) => !provider.regions || provider.regions.includes(region.key)).map((region) => (
               <label className="admin-check" key={region.key}>
                 <input type="checkbox" name={`${provider.label} · ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
                   checked={enabled(provider.key, region.key)} disabled={Boolean(saving)}

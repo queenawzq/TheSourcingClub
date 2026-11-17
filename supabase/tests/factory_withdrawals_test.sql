@@ -190,7 +190,7 @@ select throws_ok($$update public.order_payments set withdrawal_pool = false wher
 -- A bank transfer staff send carries the fixed wire fee (bank_payout_fee_cents()).
 set local session_replication_role = replica;
 insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, swift, bank_country, is_primary, details_changed_at, number_changed_at)
-values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'HK', false, '2026-11-01 00:00:00+00', now());
+values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'PT', false, '2026-11-01 00:00:00+00', now());
 set local session_replication_role = origin;
 select pg_temp.act_as(1); set local role authenticated;
 select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 5000, '16a10000-0000-0000-0000-000000000004')$$,
