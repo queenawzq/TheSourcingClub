@@ -4,6 +4,8 @@ import { isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
+import { countryNameZh, wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
@@ -84,6 +86,10 @@ function methodLabel(method) {
 function listLabel(method) {
   return method.type === "card" ? methodLabel(method) : endingIn("Bank account (Stripe)", method.last4);
 }
+
+/** The same in the page's language, for the Withdraw dialog's options: the language layer never rewrites a select. */
+const listLabelIn = (method, language) => (language !== "zh" ? listLabel(method)
+  : endingIn(method.type === "card" ? "借记卡" : wholeEntry("Bank account (Stripe)") ?? "Bank account (Stripe)", method.last4));
 
 /** Where a country has two bank options, this one needs telling from "Bank account". */
 // A US bank is paid US$ to US$ at home: a bank transfer, not an international one.
@@ -218,6 +224,9 @@ const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, in
 /** Presentation only; the live payout flow owns every setup action. */
 export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, providers = null, tazapayEnabled = false, onTazapay }) {
   const words = LIST_WORDS;
+  // The country list in the page's language: the language layer never rewrites a select.
+  const zh = useUiLanguage() === "zh";
+  const countries = zh ? COUNTRIES.map((item) => ({ ...item, name: countryNameZh(item.code) ?? item.name })).sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")) : COUNTRIES;
   // Staff switch PayPal and Wise per region (usePayoutProviders); none passed is all on.
   const paypalOn = providerOn(providers, "paypal");
   const wiseOn = providerOn(providers, "wise");
@@ -239,8 +248,8 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <span>{words.country}</span>
               <select data-field="payout_country" value={country} onChange={(event) => onCountryChange(event.target.value)}>
                 <option value="" />
-                {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
-                <option value={NOT_LISTED}>Other / not listed</option>
+                {countries.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
+                <option value={NOT_LISTED}>{zh ? "其他 / 未列出" : "Other / not listed"}</option>
               </select>
             </label>
             {country && !bankRoute && !paypalOn ? (
@@ -337,6 +346,7 @@ export default function StripePayoutCard({
 }) {
   const [account, setAccount] = useState(undefined);
   const [balance, setBalance] = useState(null);
+  const uiLanguage = useUiLanguage();
   // Where reading Stripe's balance stands: "loading", "slow" (still loading
   // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
   // (not an owner, no active Stripe account). The card said "We could not
@@ -394,12 +404,10 @@ export default function StripePayoutCard({
   const [removingManual, setRemovingManual] = useState(null);
   const [manualError, setManualError] = useState(null);
   const handledInitialAction = useRef(false);
-  // A new method is becoming the default: the dialog waits for the answer.
-  const takingOver = useRef(false);
   const accountKnown = useRef(false);
 
   useEffect(() => {
-    if (manualSaved && !takingOver.current) {
+    if (manualSaved) {
       setModal(null);
       onFlowClose?.();
     }
@@ -799,17 +807,15 @@ export default function StripePayoutCard({
   };
 
   // A new account is in (and, for a Replace, the old one out: the server
-  // does both in one request).
-  async function methodAdded(result) {
-    const added = result.methods?.find((method) => method.default && !connectedMethods.some((old) => old.id === method.id));
-    applyMethods(result);
+  // does both in one request). Adding never changes the default: the factory
+  // chooses one with Make default.
+  function methodAdded(result) {
+    // Stripe's first bank is Stripe's default, but TSC still pays the saved
+    // method the factory chose, so the notice must not call it the default.
+    applyMethods(payoutRoute === "manual" && result.notice
+      ? { ...result, notice: result.notice.replace(" and is now the default.", ".") } : result);
     setReplacing(null);
     setModal("manage");
-    // Added as the default while TSC pays a saved method: it takes over too.
-    if (!added || replacing || payoutRoute !== "manual") return;
-    const chosen = await supabase.rpc("choose_payout_method", { target_org: org.id, target_account: null });
-    if (chosen.error) setMethodNotice(`${methodLabel(added)} is saved but isn't your default yet. ${chosen.error.code === "22023" ? "Make it your default once the current payout finishes." : "Try Make default."}`);
-    else setPayoutRoute("stripe");
   }
 
   const startAdd = () => {
@@ -857,34 +863,11 @@ export default function StripePayoutCard({
   async function saveManual(details) {
     setManualError(null);
     try {
-      await savingNewMethod(() => onSaveManual?.(details));
+      // Saving adds the method and leaves the default where it is: only the
+      // first method a factory saves becomes its default (the database's rule).
+      await onSaveManual?.(details);
     } catch (failure) {
       setManualError(failure);
-    }
-  }
-
-  // A method added beside another takes over, however the factory is paid now
-  // (John, Nov 8): adding one and still being paid elsewhere was the bug.
-  async function savingNewMethod(save) {
-    const takesOver = !manualEditingId && (payoutRoute === "stripe" || manualAccounts.some((row) => row.is_primary));
-    takingOver.current = takesOver;
-    try {
-      const row = await save();
-      if (!takesOver || !row?.id) return;
-      try {
-        await onMakePrimaryManual?.(row);
-        setPayoutRoute("manual");
-        load().catch(setError);
-        setMethodNotice(`${manualLabel(row)} is now your default.`);
-        setModal(null);
-        onFlowClose?.();
-      } catch (failure) {
-        // Saved all the same, so the form's Save must not be pressed again.
-        setMethodNotice(`${manualLabel(row)} is saved but isn't your default yet. ${failure?.cause?.code === "22023" ? "Make it your default once the current payout finishes." : "Try Make default."}`);
-        setModal("manage");
-      }
-    } finally {
-      takingOver.current = false;
     }
   }
 
@@ -1112,7 +1095,7 @@ export default function StripePayoutCard({
                   <span>Withdraw to</span>
                   <select name="Withdraw to" value={withdrawal.destination ?? ""} disabled={busy}
                     onChange={(event) => setWithdrawal((was) => ({ ...was, destination: event.target.value }))}>
-                    {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabel(method)}</option>)}
+                    {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabelIn(method, uiLanguage)}</option>)}
                   </select>
                 </label>
               ) : null}
@@ -1295,7 +1278,7 @@ export default function StripePayoutCard({
       })() : null}
 
       {modal === "setup-wise" ? (
-        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => savingNewMethod(() => onSaveWise?.(details))} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("bank-unavailable")} />
+        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => onSaveWise?.(details)} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("bank-unavailable")} />
       ) : null}
 
       {modal === "bank-unavailable" ? (
@@ -1315,7 +1298,7 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "setup-paypal" && manualForm ? (
-        <PaypalStep row={stepRow} country={stepRow?.bank_country ?? country} form={manualForm} busy={manualBusy} onField={onManualFieldChange} savePaypal={() => savingNewMethod(() => onSavePaypal?.())} onBack={backFromStep} onClose={closeModal} />
+        <PaypalStep row={stepRow} country={stepRow?.bank_country ?? country} form={manualForm} busy={manualBusy} onField={onManualFieldChange} savePaypal={() => onSavePaypal?.()} onBack={backFromStep} onClose={closeModal} />
       ) : null}
 
       {modal === "setup-bank" ? (

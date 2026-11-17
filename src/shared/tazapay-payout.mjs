@@ -38,6 +38,23 @@ export const TAZAPAY_ROUTES = Object.freeze({
  */
 export const TAZAPAY_TYPICAL_FEE_CENTS = Object.freeze({ CN: 544, HK: 323 });
 
+/**
+ * The database's tazapay_pays_account(): a bank account in mainland China or
+ * Hong Kong with no Wise recipient. Tazapay pays it.
+ */
+export const tazapayPaysAccount = (account) => account?.method === "bank" && !account.wise_recipient_type
+  && ["CN", "HK"].includes(String(account.bank_country ?? "").trim().toUpperCase());
+
+/**
+ * The database's withdrawal_provider_for() (20261117510000): the provider that
+ * pays a saved method. The factory's Withdraw dialog and the staff board's
+ * "changed where it is paid" check both read it.
+ */
+export const withdrawalProviderFor = (account) => (account?.method === "paypal" ? "paypal"
+  : account?.method === "bank" && account.wise_recipient_type ? "wise"
+  : tazapayPaysAccount(account) ? "tazapay"
+  : account?.method === "bank" ? "bank" : null);
+
 export function tazapayRoute(account) {
   if (!account || account.method !== "bank") return null;
   return TAZAPAY_ROUTES[String(account.bank_country ?? "").trim().toUpperCase()] ?? null;

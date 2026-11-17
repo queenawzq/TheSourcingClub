@@ -258,13 +258,13 @@ const FactoryContact = ({ row }) => <Contact label="Factory contact" parts={[row
 const BrandContact = ({ row }) => <Contact label="Brand contact" parts={[row.brand_name, row.brand_contact_name, row.brand_contact_phone]} email={row.brand_contact_email} />;
 
 /** Everything staff need to send the money, on the row. */
-function BankDetails({ row, onViewed, stripeSetup }) {
+function BankDetails({ row, onViewed, stripeSetup, withContact = true }) {
   if (stripeCantPay(row)) {
     return (
       <span className="admin-payout-details" data-testid="stripe-cant-pay">
         <span className="admin-error">Stripe can't pay this: the payment has no card charge. This factory is paid through Stripe, so there are no bank details here.</span>
         <span className="admin-sub">Ask the factory for a bank account, send the money, then mark it with the bank's reference.</span>
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
@@ -274,7 +274,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         {stripeSetup && !stripeSetup.transfers_active
           ? <span className="admin-error" data-testid="waits-on-stripe-setup">Waiting on the factory's Stripe setup. No other withdrawal method on file.</span>
           : <span className="admin-error">No withdrawal method on file. Ask the factory to add one on its Payments page.</span>}
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
@@ -304,7 +304,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         ? <AccountNumber row={row} onViewed={onViewed} />
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
       {row.payout_instructions ? <PayoutField label="Instructions"><span className="admin-payout-instructions">{row.payout_instructions}</span></PayoutField> : null}
-      <FactoryContact row={row} />
+      {withContact ? <FactoryContact row={row} /> : null}
     </span>
   );
 }
@@ -933,6 +933,30 @@ export default function AdminPayments() {
     return () => clearInterval(timer);
   }, [load]);
 
+  // A factory asking for or cancelling a withdrawal: staff cannot be notified, so
+  // the board hears it (factory_withdrawals is in supabase_realtime; staff read
+  // every row). Inserts and updates only: Realtime does not filter deletes, and
+  // a withdrawal is never deleted. The 30 s read above stays as the fallback.
+  useEffect(() => {
+    let active = true;
+    let timer;
+    const refresh = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (active) load(); }, 300);
+    };
+    const channel = supabase
+      .channel(`admin-withdrawals:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "factory_withdrawals" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "factory_withdrawals" }, refresh)
+      .subscribe();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
+
   // While money is on its way, keep reading: nobody else can tell staff.
   const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
     || withdrawals.withdrawals.some((row) => row.status === "paying");
@@ -1054,7 +1078,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
-      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} BankDetails={BankDetails} /> : null}
 
     </main>
     </SentContext.Provider>

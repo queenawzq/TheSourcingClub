@@ -386,6 +386,8 @@
 .payout-withdrawal-status-row .payout-pending-label { grid-column: 1; }
 .payout-withdrawal-status-row .payout-pending-amount { grid-column: 1; grid-row: 2; }
 .payout-withdrawal-status-row .payout-pending-destination { grid-column: 2; grid-row: 1 / span 2; }
+/* Several pending rows: the same space above and below each divider. */
+.payout-withdrawal-status-row .payout-pending-withdrawal + .payout-pending-withdrawal { margin-top: 16px; }
 @media (max-width: 600px) {
   .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: minmax(0, 1fr); }
   .payout-withdrawal-status-row .payout-pending-destination { grid-column: 1; grid-row: 3; }
@@ -393,12 +395,13 @@
 
 /* Choosing which waiting withdrawals to cancel (CancelWithdrawalsForm). */
 .cancel-withdrawals-list { display: grid; gap: 0; margin: 0; padding: 0; border: 0; min-width: 0; }
-.cancel-withdrawals-list legend { margin-bottom: 8px; padding: 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.cancel-withdrawals-list legend { margin-bottom: 8px; padding: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; font-weight: 500; }
 .cancel-withdrawals-option { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 12px; min-height: 42px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
 .cancel-withdrawals-option:first-of-type { border-top: 0; }
-.cancel-withdrawals-option input { width: 16px; height: 16px; margin: 0; }
-.cancel-withdrawals-total { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
-@media (max-width: 600px) {
+.cancel-withdrawals-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+.cancel-withdrawals-option .payout-pending-amount { font-size: 17px; line-height: 22px; }
+.cancel-withdrawals-total { margin: -8px 0 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+@media (max-width: 760px) {
   .cancel-withdrawals-option { grid-template-columns: auto minmax(0, 1fr); }
   .cancel-withdrawals-option .payout-pending-destination { grid-column: 2; }
 }

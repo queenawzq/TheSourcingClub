@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
+import { dateFrom } from "../../lib/dates.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { providerOf, providerOn, tazapayPays } from "./payout-providers.js";
 
@@ -58,7 +60,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
   return `${Math.round((feeCents / amountCents) * 1000) / 10}%`;
 }
 
-/** The balance and the latest withdrawal, re-read when staff or a teammate change them. */
+/** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
   const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), error: null });
   const load = useCallback(async () => {
@@ -93,6 +95,13 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     load();
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
+      // A brand approving a step moves its payment into the balance
+      // (join_withdrawal_pool) with no factory_withdrawals row changing: the
+      // first such payment is what reveals Withdraw. order_payments has no org
+      // column to filter on; Realtime applies order_payments_read per
+      // subscriber, so only this company's orders are heard.
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   // Saving the first default method moves owed payments into the pool, even
@@ -102,7 +111,27 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
   return { ...state, load };
 }
 
-const destination = (w) => `${w.provider === "paypal" ? "PayPal" : w.provider === "wise" ? "Wise bank transfer" : w.provider === "tazapay" ? "Tazapay bank transfer" : "Bank transfer"}${w.paid_to ? ` · ${w.paid_to}` : ""}`;
+// The day it was asked for, in the reader's zone: two requests of the same
+// amount to the same place are told apart by it.
+const ASKED_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+const askedOn = (w) => {
+  const day = dateFrom(w.created_at);
+  return day ? ` · ${ASKED_DAY.format(day)}` : "";
+};
+const destination = (w) => `${w.provider === "paypal" ? "PayPal" : w.provider === "wise" ? "Wise bank transfer" : w.provider === "tazapay" ? "Tazapay bank transfer" : "Bank transfer"}${w.paid_to ? ` · ${w.paid_to}` : ""}${askedOn(w)}`;
+
+/**
+ * A saved method in the "Withdraw to" list, in the page's language: the
+ * language layer never rewrites a select's options. Names, emails and digits
+ * stay as written.
+ */
+export const withdrawOptionLabel = (row, language = "en") => {
+  const zh = language === "zh";
+  if (row.method === "paypal") return zh ? `PayPal（${row.paypal_email}）` : `PayPal (${row.paypal_email})`;
+  const name = row.bank_name || (zh ? "银行账户" : "Bank account");
+  const wise = row.wise_recipient_type ? (zh ? "（Wise）" : " (Wise)") : "";
+  return `${name}${wise}${zh ? " 尾号 " : " ending "}${row.account_number_last4 ?? ""}`.trim();
+};
 
 /**
  * Pending withdrawal details and the owner’s cancellation action: one row per
@@ -119,7 +148,7 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy })
           <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
           <span className="payout-pending-destination">{destination(row)}</span>
         </div>
-        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
+        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
       </div>
     ));
   }
@@ -271,8 +300,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
     onDone();
   }
 
-  const label = (row) => (row.method === "paypal" ? `PayPal (${row.paypal_email})`
-    : `${row.bank_name || "Bank account"}${row.wise_recipient_type ? " (Wise)" : ""} ending ${row.account_number_last4 ?? ""}`.trim());
+  const language = useUiLanguage();
+  const label = (row) => withdrawOptionLabel(row, language);
 
   return (
     <Modal title="Withdraw" className="withdraw-form-modal" onClose={onClose} actions={<>
@@ -281,6 +310,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
         {busy ? "Withdrawing…" : Number.isFinite(amountCents) && amountCents > 0 ? `Withdraw ${formatMoney(amountCents, "USD")}` : "Withdraw"}
       </button>
     </>}>
+      {/* Every saved method switched off by staff: nothing to choose, nothing to fill in. */}
+      {!choices.length ? <p className="payout-modal-intro" data-testid="withdraw-no-method">Add another withdrawal method to withdraw.</p> : (
       <div className="withdraw-form-fields">
         <label className="payout-country-field withdraw-method-field">
           <span>Withdraw to</span>
@@ -301,8 +332,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
           <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
         </div>
       </div>
-      {!choices.length ? <p className="live-stripe-error" role="alert" data-testid="withdraw-no-method">Add another withdrawal method to withdraw.</p> : null}
-      {amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+      )}
+      {choices.length > 0 && amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
       {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>

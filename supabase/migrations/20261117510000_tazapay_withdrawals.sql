@@ -8,8 +8,9 @@
 --
 --  1. withdrawal_provider_for() names 'tazapay' for such an account. Before,
 --     it said 'bank' (staff sent it by hand). A 'bank' withdrawal already
---     asked to such an account is still marked paid by bank by staff
---     (mark_withdrawal_paid_by_bank reads only the withdrawal's provider).
+--     asked to such an account is still marked paid by bank by staff:
+--     mark_withdrawal_paid_by_bank is 20261117350000's, whose "changed where
+--     it is paid" check accepts this one switch (section 10).
 --  2. withdraws_from_balance() drops the carve-out: #115's rule again.
 --  3. What such factories are owed joins their balance (join_owed_to_pool:
 --     confirmed, approved, not started). A step with a per-step payout
@@ -38,6 +39,11 @@
 --     Never the webhook body, never an account number.
 --  9. withdrawal_invoice_steps(): the steps a withdrawal pays, as the database
 --     releases them, for the Tazapay invoice. Server only.
+--
+-- 10. mark_withdrawal_paid_by_bank(): 20261117350000's body, unchanged but for
+--     its provider check, which also lets a 'bank' withdrawal asked before this
+--     migration to a CN/HK account (now Tazapay's) be paid by hand. A changed
+--     or removed account is still refused.
 --
 -- Safe with the live site while applied: replaces functions with the same
 -- signatures, adds a check value, a switch row, a staff-only table and two
@@ -422,3 +428,69 @@ end;
 $$;
 revoke all on function public.withdrawal_invoice_steps(uuid) from public, anon, authenticated;
 grant execute on function public.withdrawal_invoice_steps(uuid) to service_role;
+
+-- 10. Paid by bank: 20261117350000, with the provider check above.
+create or replace function public.mark_withdrawal_paid_by_bank(target_withdrawal uuid, reference text)
+returns public.factory_withdrawals
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  w public.factory_withdrawals;
+  said text := nullif(btrim(coalesce(reference, '')), '');
+  a public.factory_payout_accounts;
+begin
+  if not public.is_platform_admin() then
+    raise exception 'paying a factory is limited to platform staff' using errcode = '42501';
+  end if;
+  select * into w from public.factory_withdrawals where id = target_withdrawal for update;
+  if not found then
+    raise exception 'withdrawal not found' using errcode = 'P0002';
+  end if;
+  perform public.payout_staff_check(w.org_id);
+  if w.status <> 'requested' then
+    raise exception 'only a waiting withdrawal can be marked paid' using errcode = '22023', hint = 'withdrawal_not_waiting';
+  end if;
+  if w.provider <> 'bank' then
+    raise exception 'this withdrawal is paid through its provider' using errcode = '22023', hint = 'withdrawal_provider';
+  end if;
+  -- New: claim_withdrawal's check. The account staff would send to is gone, or
+  -- its details changed since the factory asked: decline, so it asks again.
+  select * into a from public.factory_payout_accounts x where x.id = w.account_id;
+  -- A 'bank' withdrawal asked before 20261117510000 to an account Tazapay now
+  -- pays is still sent by hand: the account did not change, the rule did.
+  if not found or a.details_changed_at is distinct from w.paid_to_changed_at
+     or (public.withdrawal_provider_for(a) is distinct from w.provider
+         and not (w.provider = 'bank' and public.tazapay_pays_account(a))) then
+    raise exception 'this factory changed where it is paid' using errcode = '22023', hint = 'payout_changed';
+  end if;
+  if said is null or length(said) < 3 or length(said) > 200 or said !~ '[[:alnum:]]' then
+    raise exception 'enter the bank''s reference for this transfer' using errcode = '22023', hint = 'reference_required';
+  end if;
+  if public.payout_text_holds_number(w.org_id, said) then
+    raise exception 'the factory can read this, so it cannot hold the account number' using errcode = '22023', hint = 'reference_holds_number';
+  end if;
+  -- The wire fee the factory pays, fixed (bank_payout_fee_cents()).
+  if w.amount_cents <= public.bank_payout_fee_cents() then
+    raise exception 'this withdrawal is not more than the bank transfer fee, so nothing would arrive'
+      using errcode = '22023', hint = 'fee_too_large';
+  end if;
+  if public.factory_withdrawable(w.org_id) < 0 then
+    raise exception 'the factory''s balance no longer covers this' using errcode = '22023', hint = 'withdrawal_over_balance';
+  end if;
+  update public.factory_withdrawals
+     set status = 'paid', paid_at = now(), provider_ref = said, fee_cents = public.bank_payout_fee_cents(),
+         receives_minor = w.amount_cents - public.bank_payout_fee_cents(), receives_currency = w.currency,
+         decided_by = auth.uid(), decided_at = now(), updated_at = now()
+   where id = w.id returning * into w;
+  perform public.release_withdrawn_payments(w.org_id, auth.uid());
+  perform public.withdrawal_notice(w,
+    format('%s paid out to you', public.format_money(w.amount_cents, w.currency)),
+    format('Sent by bank transfer to %s. Payout fee %s is taken from this payment: you receive %s. Reference: %s',
+           w.paid_to, public.format_money(w.fee_cents, w.currency), public.format_money(w.receives_minor, w.currency), said));
+  return w;
+end;
+$$;
+revoke all on function public.mark_withdrawal_paid_by_bank(uuid, text) from public, anon;
+grant execute on function public.mark_withdrawal_paid_by_bank(uuid, text) to authenticated;

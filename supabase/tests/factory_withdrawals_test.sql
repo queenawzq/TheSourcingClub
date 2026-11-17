@@ -139,13 +139,18 @@ update public.factory_withdrawals set status = 'cancelled', lease_until = null
 select pg_temp.act_as(1); set local role authenticated;
 select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->>'available_cents')::bigint, 300000::bigint, 'back to the whole balance for the steps below');
 
--- Part, then staff.
+-- Part, then staff. Staff cannot be notified, so the overview's payments card
+-- is their prompt: it counts an open withdrawal.
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select set_config('tsc.test_owed_before', (select payments_awaiting_confirmation::text from public.admin_overview_metrics()), true);
+reset role; select pg_temp.act_as(1); set local role authenticated;
 select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 120000, '16a10000-0000-0000-0000-000000000002')).provider, 'paypal', 'owner withdraws part to PayPal');
 reset role; select pg_temp.act_as(2); set local role authenticated;
 select throws_ok($$select public.cancel_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, '42501', null, 'a member cannot cancel');
 reset role; select pg_temp.act_as(6); set local role authenticated;
 select throws_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, '42501', null, 'staff in the company cannot approve its withdrawal');
 reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((select payments_awaiting_confirmation from public.admin_overview_metrics()), current_setting('tsc.test_owed_before')::int + 1, 'the overview counts a withdrawal waiting on staff');
 select throws_ok($$select public.decline_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'), ' ')$$, '22023', null, 'a decline needs a reason');
 select is((public.claim_withdrawal((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested')))->>'provider', 'paypal', 'staff claim it');
 select throws_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='paying'))$$, '22023', 'this is already being paid', 'a second approve while the first runs is refused');
@@ -205,6 +210,53 @@ select is((select fee_cents from public.factory_withdrawals where org_id = '16b0
 -- Money in the balance cannot be stranded by moving to Stripe.
 select throws_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')$$,
   '22023', 'Withdraw your balance first, then switch to Stripe.', 'no switch to Stripe while a balance is left');
+
+-- Paying a bank withdrawal by hand (20261117350000): staff read the number of the
+-- account the withdrawal pays, even one that is not the default, and only while
+-- it waits; and "mark paid by bank" refuses once the factory changed that account.
+-- In Taiwan: a CN or HK bank with no Wise recipient is Tazapay's (20261117510000).
+select pg_temp.act_as(1); set local role authenticated;
+select set_config('tsc.test_other_bank', (public.save_bank_payout_account(
+  target_org => '16b00000-0000-0000-0000-0000000000f1', bank_name => 'Bank of Taiwan', account_name => 'P116 MILL LTD',
+  bank_country => 'TW', swift => 'BKTWTWTP', account_number => '0000000000003456', account_number_again => '0000000000003456')).id::text, true);
+select is((select is_primary from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), false, 'a second bank account is not the default');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$,
+  '22023', null, 'no withdrawal to it: staff cannot read a non-default number');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)).provider, 'bank', 'owner withdraws to the non-default bank account');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((select account_number from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)), '0000000000003456', 'staff read the number of the account a waiting withdrawal pays');
+reset role;
+select is((select count(*)::int from public.payout_number_reveals where account_id = current_setting('tsc.test_other_bank')::uuid), 1, 'and the read is recorded');
+select pg_temp.act_as(2); set local role authenticated;
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '42501', null, 'a factory member still cannot read it');
+reset role; select pg_temp.act_as(4); set local role authenticated;
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '42501', null, 'nor the brand');
+reset role; select pg_temp.act_as(6); set local role authenticated;
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '42501', null, 'nor staff who belong to the factory');
+-- Cancelled: nothing owed to it any more.
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.cancel_withdrawal((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'))$$, 'owner cancels it');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '22023', null, 'cancelled: staff cannot read it');
+-- Paid: the same.
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks again');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'WIRE-117')).status, 'paid', 'staff mark it paid by bank');
+select throws_ok($$select * from public.reveal_payout_account_number(current_setting('tsc.test_other_bank')::uuid)$$, '22023', null, 'paid: staff cannot read it');
+-- Changed after asking: refused, as Approve is.
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks once more');
+select lives_ok($$select public.save_bank_payout_account(
+  target_org => '16b00000-0000-0000-0000-0000000000f1', target_account => current_setting('tsc.test_other_bank')::uuid, bank_name => 'Bank of Taiwan',
+  account_name => 'P116 MILL LTD', bank_country => 'TW', swift => 'BKTWTWTP', branch => 'Taipei branch')$$, 'then changes that account');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select throws_ok($$select public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'WIRE-118')$$,
+  '22023', 'this factory changed where it is paid', 'changed since it asked: mark paid by bank is refused');
+reset role;
+select is((select count(*)::int from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 1, 'and it still waits, for staff to decline');
 
 select * from finish();
 rollback;

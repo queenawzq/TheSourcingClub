@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
+import { tazapayPaysAccount, withdrawalProviderFor } from "../../shared/tazapay-payout.mjs";
 
 export function usePayoutProviders(orgId, enabled = true) {
   const [providers, setProviders] = useState(null);
@@ -31,12 +32,10 @@ export function usePayoutProviders(orgId, enabled = true) {
 }
 
 /** A bank account in mainland China or Hong Kong with no Wise recipient: Tazapay pays it (tazapay_pays_account()). */
-export const tazapayPays = (row) => row?.method === "bank" && !row.wise_recipient_type
-  && ["CN", "HK"].includes(String(row.bank_country ?? "").trim().toUpperCase());
+export const tazapayPays = tazapayPaysAccount;
 
 /** The provider that pays a saved method, as request_withdrawal() decides it (withdrawal_provider_for()). */
-export const providerOf = (row) => (row?.method === "paypal" ? "paypal" : row?.method === "bank" && row.wise_recipient_type ? "wise"
-  : tazapayPays(row) ? "tazapay" : "bank");
+export const providerOf = (row) => withdrawalProviderFor(row) ?? "bank";
 
 /** Whether a provider is on; unknown switches count as on. */
 export const providerOn = (providers, provider) => !providers || providers[provider] !== false;
