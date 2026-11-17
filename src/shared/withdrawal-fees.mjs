@@ -35,10 +35,10 @@
  *              through the Payouts API (the sandbox's payout_item_fee on a
  *              US$98.03 payout was 0.25; a published table of PayPal's US fees
  *              lists "When using the Payouts API $0.25").
- *            - anywhere else: 2% of the payout, at most US$100 (PayPal's
- *              "typically 2%"; the cap is the larger one PayPal publishes for
- *              international payouts, so TSC is never short). NOT yet seen in
- *              the sandbox: check the first international payout's fee.
+ *            - anywhere else: 2% of the payout, at most US$20 (PayPal's
+ *              "typically 2%"; capped at US$20 per payout for USD, as PayPal's
+ *              Payouts fee page and the chooser say). NOT yet seen in the
+ *              sandbox: check the first international payout's fee.
  *            PayPal deducts it from TSC's balance on top of the item, so TSC
  *            sends the most that, with PayPal's fee on it, fits in the amount.
  *   bank     Staff pay it by bank wire ("Mark paid out by bank"), and TSC's bank
@@ -68,7 +68,7 @@ const QUOTED = new Set(["wise", "tazapay"]);
 /** The published formulas, in basis points and cents. */
 export const FEE_FORMULAS = {
   stripe: { bps: 25, fixedCents: 25, crossBorderBps: 25, home: "US" },
-  paypal: { domesticFixedCents: 25, bps: 200, internationalCapCents: 10000, home: "US" },
+  paypal: { domesticFixedCents: 25, bps: 200, internationalCapCents: 2000, home: "US" },
   bank: { fixedCents: 5000 },
 };
 
@@ -184,10 +184,10 @@ const LINES = {
   paypal: {
     en: ({ us }) => (us
       ? "Fee: US$0.25 per payment, taken from it"
-      : "Fee: 2% (at most US$100) per payment, taken from it; PayPal may charge about 3–4% to convert US$"),
+      : "Fee: 2% (at most US$20) per payment, taken from it; PayPal may charge about 3–4% to convert US$"),
     zh: ({ us }) => (us
       ? "手续费：每笔 0.25 美元，从该笔款项中扣除"
-      : "手续费：每笔 2%（最多 100 美元），从该笔款项中扣除；PayPal 换汇美元可能收取约 3–4%"),
+      : "手续费：每笔 2%（最多 20 美元），从该笔款项中扣除；PayPal 换汇美元可能收取约 3–4%"),
   },
   bank: {
     en: () => "Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it",

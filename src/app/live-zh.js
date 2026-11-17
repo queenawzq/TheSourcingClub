@@ -168,6 +168,8 @@ const PATTERNS = [
   [/^Available: (\S+)$/, (m) => `可提现：${m[1]}`],
   [/^You can withdraw up to (\S+)\.$/, (m) => `最多可提现 ${m[1]}。`],
   [/^Withdraw (\$[\d,.]+)$/, (m) => `提现 ${m[1]}`],
+  [/^Cancel (\d+) withdrawals$/, (m) => `取消 ${m[1]} 笔提现`],
+  [/^Back to your balance: (\S+)$/, (m) => `退回余额：${m[1]}`],
   [/^Fee: (\S+), taken from the amount$/, (m) => `手续费：${m[1]}，从金额中扣除`],
   [/^Fee: (about )?(\S+) \((?:([\d.]+%)|US\$([\d.]+) per payment)\), taken from the amount$/,
     (m) => `手续费：${m[1] ? "约 " : ""}${m[2]}（${m[3] ?? `每笔 ${m[4]} 美元`}），从金额中扣除`],

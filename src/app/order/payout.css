@@ -390,3 +390,15 @@
   .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: minmax(0, 1fr); }
   .payout-withdrawal-status-row .payout-pending-destination { grid-column: 1; grid-row: 3; }
 }
+
+/* Choosing which waiting withdrawals to cancel (CancelWithdrawalsForm). */
+.cancel-withdrawals-list { display: grid; gap: 0; margin: 0; padding: 0; border: 0; min-width: 0; }
+.cancel-withdrawals-list legend { margin-bottom: 8px; padding: 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.cancel-withdrawals-option { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 12px; min-height: 42px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.cancel-withdrawals-option:first-of-type { border-top: 0; }
+.cancel-withdrawals-option input { width: 16px; height: 16px; margin: 0; }
+.cancel-withdrawals-total { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+@media (max-width: 600px) {
+  .cancel-withdrawals-option { grid-template-columns: auto minmax(0, 1fr); }
+  .cancel-withdrawals-option .payout-pending-destination { grid-column: 2; }
+}

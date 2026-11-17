@@ -13,7 +13,7 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, TazapayBankStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
-import { WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
+import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { tazapayDetailsProblems } from "../../shared/tazapay-payout.mjs";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
@@ -363,6 +363,7 @@ export default function StripePayoutCard({
   const fromBalance = useWithdrawalBalance(org.id, Boolean(handFigures) && renderCard, manualAccount?.id);
   const [cancellingWithdrawal, setCancellingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState(null);
+  const [cancelFirst, setCancelFirst] = useState(null);
   // Remove and Add are TSC's own steps; Stripe's form does the last part,
   // since TSC cannot change an Express account's bank accounts itself.
   // `handover` remembers what the factory went there to do, so closing the
@@ -1042,8 +1043,8 @@ export default function StripePayoutCard({
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Add account number</button>
           ) : handPaid && fromBalance.pool && savedMethod ? (
             <>
-            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || Boolean(fromBalance.open) || !(fromBalance.available > 0)}
-              title={fromBalance.open ? "You already have a withdrawal waiting" : fromBalance.available > 0 ? undefined : "Nothing to withdraw yet"}
+            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !(fromBalance.available > 0)}
+              title={fromBalance.available > 0 ? undefined : "Nothing to withdraw yet"}
               onClick={() => { setWithdrawalError(null); setModal("withdraw-balance"); }}>Withdraw</button>
             <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={openManage}>{cardWords.methods}</button>
             </>
@@ -1056,14 +1057,25 @@ export default function StripePayoutCard({
             <button className={`${account?.transfers_active ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
-        {handPaid ? <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async () => {
-              setCancellingWithdrawal(true);
+        {handPaid ? <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async (row) => {
               setWithdrawalError(null);
-              try { await cancelWithdrawal(fromBalance.open.id); } catch (failure) { setWithdrawalError(failure.message); }
+              // More than one waiting: choose which to cancel.
+              if (fromBalance.opens.filter((w) => w.status === "requested").length > 1) {
+                setCancelFirst(row.id);
+                setModal("cancel-withdrawals");
+                return;
+              }
+              setCancellingWithdrawal(true);
+              try { await cancelWithdrawal(row.id); } catch (failure) { setWithdrawalError(failure.message); }
               setCancellingWithdrawal(false);
               fromBalance.load();
             }} /></div> : null}
       </section> : null}
+
+      {modal === "cancel-withdrawals" ? (
+        <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} Modal={PayoutModal} onClose={closeModal}
+          onDone={() => { closeModal(); fromBalance.load(); }} />
+      ) : null}
 
       {modal === "withdraw-balance" && fromBalance.available != null ? (
         <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id} country={country}
