@@ -2419,11 +2419,12 @@ async function main() {
     const balanceShown = await within(page, async () => (await page.locator('[data-testid="payout-balance"]').innerText()).includes("$95.00"));
     check(balanceShown !== null, "the factory's balance is the approved step");
     await page.locator('[data-testid="withdraw-balance"]').click();
-    await waitFor(page, '[data-testid="withdraw-fee"]', 10000);
+    await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
     const withdrawDialog = await page.locator(".payout-modal").innerText();
-    check(/Available: \$95\.00/.test(withdrawDialog) && /Fee: \$50\.00( \([^)]*\))?, taken from the amount/.test(withdrawDialog) && /You receive: \$45\.00/.test(withdrawDialog) && /bank transfer after TSC approves it/i.test(withdrawDialog),
-      "the dialog offers all of it, with the US$50 bank transfer fee taken from it, what arrives and when");
-    await record(page, "Withdraw", "the whole balance, prefilled; the fee and the timing before it asks");
+    check(/Withdraw to/.test(withdrawDialog) && /Withdraw full amount/.test(withdrawDialog) && /Available: \$95\.00/.test(withdrawDialog)
+      && (await page.evaluate(() => document.querySelector('[name="Amount (USD)"]')?.value)) === "95.00",
+      "the dialog offers all of it: where it goes, the amount prefilled, and what is available");
+    await record(page, "Withdraw", "the whole balance, prefilled");
     // Two presses in the same tick (Stagehand's locator has no dblclick).
     await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
     await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
@@ -2548,14 +2549,36 @@ async function main() {
       const howPaid = await page.locator('[data-testid="payout-how-paid"]').count();
       check(howPaid === 0, "the factory's card shows its balance, with no method line under it (the withdrawals say where money went)");
       await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
+      // Two open at once, each taking its part; then cancel a chosen set.
+      const askPart = async (dollars) => {
+        await page.locator('[data-testid="withdraw-balance"]').click();
+        await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
+        await page.locator('[name="Amount (USD)"]').fill(dollars);
+        await page.waitForTimeout(800);
+        // Two presses in the same tick ask once.
+        await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
+        await page.waitForTimeout(2500);
+      };
+      await askPart("1.00");
+      check(await page.evaluate(() => document.querySelector('[data-testid="withdraw-balance"]')?.disabled === false), "Withdraw stays open while a request waits");
+      await askPart("2.00");
+      const { data: twoOpen } = await db.from("factory_withdrawals").select("id, amount_cents").eq("org_id", kowloonOrg.id).eq("status", "requested");
+      check((twoOpen ?? []).length === 2 && twoOpen.map((w) => w.amount_cents).sort().join() === "100,200", "two requests wait at once, and a double press asked once each");
+      check((await page.locator('[data-testid="withdrawal-open"]').count()) === 2, "the card lists both, each with its amount");
+      await page.locator('[data-testid="withdrawal-open"] button').first().click();
+      await waitFor(page, '[data-testid="cancel-withdrawals-confirm"]', 10000);
+      await page.evaluate(() => { for (const box of document.querySelectorAll('.cancel-withdrawals-list input[type="checkbox"]')) if (!box.checked) box.click(); });
+      check(/Cancel 2 withdrawals/.test(await page.locator('[data-testid="cancel-withdrawals-confirm"]').innerText()), "Cancel offers a choice of the waiting ones");
+      await record(page, "Cancel withdrawals", "the owner ticks which waiting requests to cancel");
+      await page.locator('[data-testid="cancel-withdrawals-confirm"]').click();
+      const noneOpen = await within(page, async () => (await page.locator('[data-testid="withdrawal-open"]').count()) === 0, 15000);
+      const { data: cancelledTwo } = await db.from("factory_withdrawals").select("id").eq("org_id", kowloonOrg.id).eq("status", "cancelled").in("id", (twoOpen ?? []).map((w) => w.id));
+      check(noneOpen !== null && (cancelledTwo ?? []).length === 2, "both chosen are cancelled, and the card no longer lists them");
       await page.locator('[data-testid="withdraw-balance"]').click();
-      await waitFor(page, '[data-testid="withdraw-fee"]', 10000);
-      const feeShown = await within(page, async () => /Fee: \$[\d.]+( \([^)]*\))?, taken from the amount/.test(await page.locator('[data-testid="withdraw-fee"]').innerText()));
-      check(feeShown !== null, "PayPal's fee is said before the factory asks");
+      await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
       await page.locator('[data-testid="withdraw-confirm"]').click();
       await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
       check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC: the owner can cancel it");
-      check(await page.evaluate(() => document.querySelector('[data-testid="withdraw-balance"]')?.disabled === true), "and a second can't be asked while it waits");
 
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
       await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });

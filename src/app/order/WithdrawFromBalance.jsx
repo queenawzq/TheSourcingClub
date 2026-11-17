@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
@@ -148,6 +148,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
   const waiting = opens.filter((w) => w.status === "requested");
   const [chosen, setChosen] = useState(() => new Set(first ? [first] : []));
   const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
   const [error, setError] = useState(null);
   const ticked = waiting.filter((w) => chosen.has(w.id));
   const total = ticked.reduce((sum, w) => sum + Number(w.amount_cents), 0);
@@ -158,16 +159,18 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
   });
 
   async function confirm() {
-    if (busy || !ticked.length) return;
+    if (sending.current || busy || !ticked.length) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     try {
       await cancelWithdrawals(ticked.map((w) => w.id));
-      setBusy(false);
       onDone();
     } catch (failure) {
-      setBusy(false);
       setError(failure.message);
+    } finally {
+      sending.current = false;
+      setBusy(false);
     }
   }
 
@@ -230,6 +233,9 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
   const [busy, setBusy] = useState(false);
+  // Several withdrawals may be open, so the database no longer stops a double
+  // click: this does, before the state update reaches the button.
+  const sending = useRef(false);
   const [error, setError] = useState(null);
   const method = choices.find((m) => m.id === methodId) ?? null;
   const provider = PROVIDER_FOR(method);
@@ -244,10 +250,12 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
 
 
   async function confirm() {
-    if (busy || amountProblem || !method || !fee || fee.refused || exact?.refused) return;
+    if (sending.current || busy || amountProblem || !method || !fee || fee.refused || exact?.refused) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     const { error: refused } = await supabase.rpc("request_withdrawal", { target_org: orgId, amount: amountCents, target_account: method.id });
+    sending.current = false;
     setBusy(false);
     if (refused) return setError(sentence(refused));
     onDone();
