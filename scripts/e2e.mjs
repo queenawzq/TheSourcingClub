@@ -2132,6 +2132,13 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
     check(!/payoneer/i.test(await page.locator(".payout-modal").innerText()),
       "where it cannot, a bank or PayPal, and Payoneer can no longer be chosen");
+    // Wise starts switched off (20261117200000): its bank option is not offered
+    // until staff turn it on, and the open chooser follows the switch.
+    check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0,
+      "with Wise switched off, the chooser offers no Wise bank transfer");
+    await db.from("payout_provider_settings").update({ enabled: true }).eq("provider", "wise");
+    await waitFor(page, '[data-testid="payout-set-up-bank"]', 15000);
+    check(true, "staff switch Wise on, and the open chooser offers it without a reload");
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     // Wise's fields, or the snapshot of them where Wise cannot be reached: never blank.
     await waitFor(page, '[data-field="payout_bank_name"]', 25000);
