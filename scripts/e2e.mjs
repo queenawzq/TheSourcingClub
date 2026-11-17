@@ -2545,8 +2545,8 @@ async function main() {
       await page.waitForTimeout(4000);
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
-      const howPaid = await page.locator('[data-testid="payout-how-paid"]').innerText();
-      check(/paypal/i.test(howPaid) && howPaid.includes(kowloonEmail), `the factory's card says it is paid by PayPal (${howPaid})`);
+      const howPaid = await page.locator('[data-testid="payout-how-paid"]').count();
+      check(howPaid === 0, "the factory's card shows its balance, with no method line under it (the withdrawals say where money went)");
       await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
       await page.locator('[data-testid="withdraw-balance"]').click();
       await waitFor(page, '[data-testid="withdraw-fee"]', 10000);

@@ -924,8 +924,9 @@ export default function StripePayoutCard({
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
     ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : ""
+    // A saved method needs no line: the withdrawals below say where money went.
     : savedMethod
-      ? manualListLabel(manualAccount)
+      ? ""
       : verifying
         ? "Verification in progress"
         : account
