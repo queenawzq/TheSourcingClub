@@ -495,6 +495,9 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Knitwear, small runs.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
   trust_tier: "verified", published_at: new Date().toISOString(),
 }), "the new China factory's profile");
+// Its USCC on file, as verification leaves it: Tazapay pays only an account in the company's own name,
+// so the bank form shows this number rather than asking for it.
+must(await admin.from("company_registrations").upsert({ org_id: chinaNewOrg.id, country_code: "CN", number: "91330109MA2B7Q3K5Y" }), "the new China factory's registration");
 must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
   subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
 })))), "the new China factory's tags");
@@ -1441,6 +1444,21 @@ async function approveOpenStep(order, title, vendor = factory) {
   must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
 }
 
+/**
+ * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
+ * its withdrawal balance, so the step is paid by a withdrawal staff sent by
+ * bank, recorded as the server would, less the US$50 wire fee (bank_payout_fee_cents()).
+ */
+async function withdrawnByHand(org, payment, reference) {
+  const withdrawal = must(await admin.from("factory_withdrawals").insert({
+    org_id: org.id, provider: "bank", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
+    paid_to: "your bank account", decided_by: adminUser.id,
+  }).select("id").single(), `a withdrawal for ${reference}`);
+  must(await admin.rpc("record_withdrawal", {
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 5000, receives: payment.amount_cents - 5000, receives_in: "USD",
+  }), `paid by hand: ${reference}`);
+}
+
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
 //    by hand, as staff do for a factory with no Stripe account), then the
 //    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
@@ -1478,8 +1496,12 @@ await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme w
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
 //    fit sample is funded and approved, and waits on staff: "Pay with Wise",
 //    or by bank ("Payout owed" on the staff payments page). Saved through the
-//    form's own function; the number is plainly fake, in Vault.
-must(await secondFactory.client.rpc("save_wise_payout_account", {
+//    form's own function; the number is plainly fake, in Vault. Wise may be
+//    switched off for China (payout_provider_settings), which refuses a new
+//    Wise method; it is switched on for the save and put back as it was.
+const wiseChina = must(await admin.from("payout_provider_settings").select("enabled").eq("provider", "wise").eq("region", "china").single(), "the Wise switch for China");
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: true }).eq("provider", "wise").eq("region", "china"), "switch Wise on for the seed");
+const savedWise = await secondFactory.client.rpc("save_wise_payout_account", {
   target_org: secondFactoryOrg.id,
   bank_name: "Ningbo Test Bank",
   recipient_type: "chinese_local_business",
@@ -1490,7 +1512,9 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   },
   number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
-}), "the second factory's payout details");
+});
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: false }).eq("provider", "wise").eq("region", "china"), "switch Wise back off");
+must(savedWise, "the second factory's payout details");
 // A second method, so "Make default" has something to move to.
 must(await secondFactory.client.from("factory_payout_accounts").insert({
   org_id: secondFactoryOrg.id, method: "paypal", paypal_email: "ningbo-payouts@example.com", is_primary: false,
@@ -1502,6 +1526,22 @@ must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
   org_id: otherDomainOrg.id, method: "paypal",
   paypal_email: process.env.PAYPAL_TEST_RECEIVER?.trim().toLowerCase() || "lakeside-payouts@example.net", is_primary: true,
 }), "Lakeside's PayPal account");
+// And a bank account in mainland China that Tazapay pays, saved through the
+// factory's own form, with the company's USCC on file (Tazapay pays only an
+// account in the company's own name): its balance (the silk blouse below) can
+// be withdrawn through Tazapay. The number is the Tazapay sandbox's test
+// account. The Tazapay switch is put back as it was, like Wise's above.
+must(await admin.from("company_registrations").upsert({ org_id: otherDomainOrg.id, country_code: "CN", number: "91320500MA1X7L2C85" }), "Lakeside's registration");
+const tazapayChina = must(await admin.from("payout_provider_settings").select("enabled").eq("provider", "tazapay").eq("region", "china").single(), "the Tazapay switch");
+if (!tazapayChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: true }).eq("provider", "tazapay").eq("region", "china"), "switch Tazapay on for the seed");
+const savedTazapay = await otherDomainFactory.client.rpc("save_tazapay_payout_account", {
+  target_org: otherDomainOrg.id, bank_country: "CN", bank_name: "Bank of China", account_name: "Lakeside Mills Suzhou Co Ltd",
+  holder_name_local: "苏州湖畔毛纺有限公司", registration_number: "91320500MA1X7L2C85", bank_code: "104305000017",
+  address_line1: "18 Suhong Road", address_city: "Suzhou", address_state: "Jiangsu",
+  account_number: "0000000062178500001", account_number_again: "0000000062178500001",
+});
+if (!tazapayChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: false }).eq("provider", "tazapay").eq("region", "china"), "switch Tazapay back off");
+must(savedTazapay, "Lakeside's Tazapay bank account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,
@@ -1524,9 +1564,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-must(await adminUser.client.rpc("release_payment_to_factory", {
-  target_payment: hopsackFit.id, note: "DEMO-20260001",
-}), "mark the blazer's fit sample paid");
+await withdrawnByHand(tradingOrg, hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,

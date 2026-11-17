@@ -47,8 +47,11 @@ import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
+import { TAZAPAY_TYPICAL_FEE_CENTS, tazapayDetailsProblems, tazapayProblemsSentence } from "../../shared/tazapay-payout.mjs";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
+import WithdrawalsSection from "./AdminWithdrawals.jsx";
+import { adminWithdrawals, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
   const date = dateFrom(value);
@@ -72,6 +75,47 @@ const paidByStripe = (row) => (row.factory_stripe_ready || row.stripe_release_st
 const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
 const paidByBank = (row) => !paidByStripe(row) && !paidByPaypal(row);
 const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
+/** A bank account in mainland China or Hong Kong that isn't Wise's: Tazapay pays it (src/shared/tazapay-payout.mjs). */
+const paidByTazapay = (row) => paidByBank(row) && !row.wise_recipient_type && Boolean(row.payout_account_id)
+  && ["CN", "HK"].includes(String(row.payout_country ?? "").trim().toUpperCase());
+/** What Tazapay still needs on this row's account, in one sentence, or null when it can be paid (the server checks the company's USCC too). */
+const tazapayProblemsOf = (row) => tazapayDetailsProblems({
+  method: "bank", bank_country: String(row.payout_country ?? "").trim().toUpperCase(), account_name: row.payout_holder,
+  holder_name_local: row.payout_holder_local, registration_number: row.payout_registration, bank_name: row.payout_bank,
+  bank_code: row.payout_bank_code, swift: row.payout_swift, address_line1: row.payout_address_line1,
+  address_city: row.payout_address_city, address_state: row.payout_address_state,
+  number_changed_at: row.payout_has_number ? true : null,
+}, { companyRegistration: row.company_registration_cn ?? null, registrationKnown: row.company_registration_read === true });
+/**
+ * The company's own Chinese registration, for the China rows Tazapay pays: the
+ * payout refuses an account whose number isn't it, or a company with none on
+ * file, so the board says so before anyone presses. Staff may read these.
+ */
+async function withCompanyRegistrations(board) {
+  const accountIds = [...new Set(board.filter((row) => paidByTazapay(row) && String(row.payout_country ?? "").trim().toUpperCase() === "CN")
+    .map((row) => row.payout_account_id))];
+  if (!accountIds.length) return board;
+  const accounts = await supabase.from("factory_payout_accounts").select("id, org_id").in("id", accountIds);
+  if (accounts.error) return board;
+  const orgOf = new Map(accounts.data.map((a) => [a.id, a.org_id]));
+  const registrations = await supabase.from("company_registrations").select("org_id, number, country_code").in("org_id", [...new Set(orgOf.values())]);
+  if (registrations.error) return board;
+  const numberOf = new Map(registrations.data.filter((r) => r.country_code === "CN").map((r) => [r.org_id, r.number]));
+  return board.map((row) => (orgOf.has(row.payout_account_id)
+    ? { ...row, company_registration_read: true, company_registration_cn: numberOf.get(orgOf.get(row.payout_account_id)) ?? null }
+    : row));
+}
+/**
+ * A step no bigger than Tazapay's usual fee for its country, refused on sight in
+ * the fee module's words (the quote decides at the press; this keeps the button
+ * honest on every load). Figures: TAZAPAY_TYPICAL_FEE_CENTS.
+ */
+const tazapayTooSmall = (row) => {
+  const typical = TAZAPAY_TYPICAL_FEE_CENTS[String(row.payout_country ?? "").trim().toUpperCase()];
+  if (!typical || Number(row.amount_cents) > typical) return null;
+  return withdrawalFee({ provider: "tazapay", amountCents: Number(row.amount_cents), currency: row.currency, quotedFeeCents: typical }).refused ?? null;
+};
+const tazapayBlock = (row) => tazapayProblemsSentence(tazapayProblemsOf(row));
 /** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
 const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
 /**
@@ -80,8 +124,12 @@ const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !r
  */
 const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_id) && row.payout_has_number) || stripeCantPay(row));
 /** Which provider the server pays this row through, if any. */
-const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
-const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
+const providerFor = (row) => (paidByWise(row) ? "wise" : paidByTazapay(row) ? "tazapay" : paidByPaypal(row) ? "paypal" : null);
+const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal", tazapay: "Tazapay" };
+/** Tazapay's balance and dashboard, from the board's read-back. */
+const TazapayContext = createContext(null);
+/** The board's word once a press sent money: the row itself moves to Processing. */
+const SentContext = createContext(null);
 /** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
 const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
 /**
@@ -210,13 +258,13 @@ const FactoryContact = ({ row }) => <Contact label="Factory contact" parts={[row
 const BrandContact = ({ row }) => <Contact label="Brand contact" parts={[row.brand_name, row.brand_contact_name, row.brand_contact_phone]} email={row.brand_contact_email} />;
 
 /** Everything staff need to send the money, on the row. */
-function BankDetails({ row, onViewed, stripeSetup }) {
+function BankDetails({ row, onViewed, stripeSetup, withContact = true }) {
   if (stripeCantPay(row)) {
     return (
       <span className="admin-payout-details" data-testid="stripe-cant-pay">
         <span className="admin-error">Stripe can't pay this: the payment has no card charge. This factory is paid through Stripe, so there are no bank details here.</span>
         <span className="admin-sub">Ask the factory for a bank account, send the money, then mark it with the bank's reference.</span>
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
@@ -226,22 +274,26 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         {stripeSetup && !stripeSetup.transfers_active
           ? <span className="admin-error" data-testid="waits-on-stripe-setup">Waiting on the factory's Stripe setup. No other withdrawal method on file.</span>
           : <span className="admin-error">No withdrawal method on file. Ask the factory to add one on its Payments page.</span>}
-        <FactoryContact row={row} />
+        {withContact ? <FactoryContact row={row} /> : null}
       </span>
     );
   }
   const country = row.payout_country ? bankCountry.of(row.payout_country.trim()) : null;
   return (
     <span className="admin-payout-details">
-      <strong className="payout-method-heading">{row.wise_recipient_type ? "Wise or bank transfer" : "Bank transfer"}</strong>
+      <strong className="payout-method-heading">{row.wise_recipient_type ? "Wise or bank transfer" : paidByTazapay(row) ? "Tazapay or bank transfer" : "Bank transfer"}</strong>
       {row.factory_stripe_ready ? <span className="admin-sub" data-testid="no-stripe-charge">No card charge on this payment, so Stripe can't pay it. Pay by bank and mark it.</span> : null}
       {row.payout_changed_recently ? (
         <span className="shared-card-status warning payout-change-status" data-testid="payout-changed">{`Bank details updated ${agoWords(row.payout_changed_at)}. Verify before sending.`}</span>
       ) : null}
       <PayoutField label="Account holder">{row.payout_holder || "Not provided"}</PayoutField>
       <PayoutField label="Bank">{`${row.payout_bank || "Not provided"}${country ? `, ${country}` : ""}`}</PayoutField>
+      {row.payout_holder_local ? <PayoutField label="Name in Chinese">{row.payout_holder_local}</PayoutField> : null}
+      {row.payout_registration ? <PayoutField label="Registration number">{row.payout_registration}</PayoutField> : null}
+      {row.payout_bank_code ? <PayoutField label="Bank code">{row.payout_bank_code}</PayoutField> : null}
+      {row.payout_address_line1 ? <PayoutField label="Address">{[row.payout_address_line1, row.payout_address_city, row.payout_address_state].filter(Boolean).join(", ")}</PayoutField> : null}
       {row.payout_branch ? <PayoutField label="Branch">{row.payout_branch}</PayoutField> : null}
-      {row.payout_swift || !row.wise_recipient_type ? (
+      {row.payout_swift || (!row.wise_recipient_type && !paidByTazapay(row)) ? (
         row.payout_swift || row.payout_country?.trim() === "US"
           ? <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField>
           // An international wire cannot go without it.
@@ -252,7 +304,7 @@ function BankDetails({ row, onViewed, stripeSetup }) {
         ? <AccountNumber row={row} onViewed={onViewed} />
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
       {row.payout_instructions ? <PayoutField label="Instructions"><span className="admin-payout-instructions">{row.payout_instructions}</span></PayoutField> : null}
-      <FactoryContact row={row} />
+      {withContact ? <FactoryContact row={row} /> : null}
     </span>
   );
 }
@@ -264,6 +316,8 @@ function BankDetails({ row, onViewed, stripeSetup }) {
 function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const provider = providerFor(row);
   const name = PROVIDER_NAME[provider];
+  const tazapay = useContext(TazapayContext);
+  const onSent = useContext(SentContext);
   const needsStatement = provider === "wise" && row.wise_currency === "CNY";
   const [step, setStep] = useState(null); // null | "statement" | "confirm"
   const [statement, setStatement] = useState(false);
@@ -272,6 +326,8 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const [problem, setProblem] = useState(null);
   // What the last press found, when the row itself would look unchanged.
   const [heard, setHeard] = useState(null);
+  // The last quote's "too small for the fee", kept after Cancel.
+  const [feeRefusal, setFeeRefusal] = useState(null);
   // A double click lands before the button can grey out. The database would
   // refuse the second press anyway, but its refusal would then sit on the row.
   const running = useRef(false);
@@ -304,7 +360,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     setWorking(true);
     setProblem(null);
     try {
-      setPreview(await previewProvider(provider, row.payment_id, statement));
+      const quoted = await previewProvider(provider, row.payment_id, statement);
+      setPreview(quoted);
+      // Too small for the fee: Pay stays disabled with that reason once the confirm is closed.
+      if (provider === "tazapay") setFeeRefusal(quoted?.refused ?? null);
       setStep("confirm");
     } catch (failure) {
       setProblem(failure);
@@ -329,6 +388,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   if (live) {
     const transferUrl = provider === "wise" && attempt.provider_ref && wise?.appUrl
       ? `${wise.appUrl}/transactions/activities/by-resource/TRANSFER/${attempt.provider_ref}` : null;
+    const tazapayUrl = provider === "tazapay" && attempt.provider_ref ? tazapay?.appUrl ?? null : null;
     const pending = attempt.stage === "claimed";
     const waiting = attempt.stage === "awaiting_funding";
     const unclaimed = attempt.provider_status === "UNCLAIMED";
@@ -348,6 +408,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}.${attempt.fee_minor != null ? ` ${name} fee ${moneyIn(attempt.fee_minor, row.currency)}.` : ""}`}</span>
           : null}
         {transferUrl ? <a className="admin-sub" href={transferUrl} target="_blank" rel="noreferrer" data-testid="open-in-wise">Open in Wise</a> : null}
+        {tazapayUrl ? <a className="admin-sub" href={tazapayUrl} target="_blank" rel="noreferrer" data-testid="open-in-tazapay">{`Open Tazapay · payout ${attempt.provider_ref}`}</a> : null}
         {unclaimed && paypal?.appUrl ? <a className="admin-sub" href={paypal.appUrl} target="_blank" rel="noreferrer" data-testid="open-in-paypal">Open PayPal</a> : null}
         {waiting || (pending && !attempt.in_progress) ? (
           <button type="button" className="admin-approve" disabled={working || attempt.in_progress} data-testid="provider-press-again"
@@ -358,7 +419,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           </button>
         ) : null}
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider), () => `Checked at ${clock()}.`)}>{working ? "Checking…" : "Refresh"}</button>
-        {(waiting || unclaimed || (pending && !attempt.in_progress && provider !== "paypal") || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
+        {provider !== "tazapay" && (waiting || unclaimed || (pending && !attempt.in_progress && provider !== "paypal") || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
           <button type="button" className="admin-reject" disabled={working || attempt.in_progress} data-testid="provider-cancel"
                   onClick={() => run(() => cancelProviderPayout(provider, row.payment_id))}>
             {provider === "wise" ? "Cancel transfer" : "Cancel payment"}
@@ -405,14 +466,24 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
       <>
         {said}
         <span className="admin-sub admin-row-message" role="alert">
-          {provider === "wise"
+          {provider === "tazapay" && preview.refused
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}, by Tazapay?`
+            : provider === "tazapay" && preview.receivesCents != null
+            // The factory pays Tazapay's fee: it comes out of the step, and TSC pays exactly the step.
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}, by Tazapay? Tazapay fee ${moneyIn(preview.feeCents, row.currency)}, taken from it: the factory receives ${moneyIn(preview.receivesCents, row.currency)}, arriving ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)} (${preview.arrivesCurrency}). TSC pays ${moneyIn(preview.totalCents, row.currency)} in total.`
+            : provider === "wise"
             ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null || preview.refused ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}, arriving as ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`
             : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?${preview.feeCents == null || preview.refused ? "" : ` PayPal fee ${moneyIn(preview.feeCents, row.currency)}, paid by the factory: it receives ${moneyIn(preview.receivesCents, row.currency)}. TSC pays ${moneyIn(preview.totalCents, row.currency)}, the amount.`}`}
         </span>
+        {provider === "tazapay" && preview.country === "CN" ? (
+          <span className="admin-sub admin-row-message">China payouts go out weekdays 9–5 China time. After 3pm, they go the next business day.</span>
+        ) : null}
         {short ? (
           <span className="admin-error admin-row-message" data-testid="wise-short">
-            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}${preview.feeCents == null ? " before Wise's fee" : ""}. Top up TSC's Wise balance, then press Check again. `}
-            <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
+            {provider === "tazapay"
+              ? `TSC's Tazapay balance is short by ${moneyIn(preview.shortByCents, row.currency)}, fee included. Top up the balance in Tazapay, then pay again. `
+              : `Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}${preview.feeCents == null ? " before Wise's fee" : ""}. Top up TSC's Wise balance, then press Check again. `}
+            <a href={preview.balancesUrl} target="_blank" rel="noreferrer">{`Open ${name}`}</a>
           </span>
         ) : null}
         {preview.refused ? <span className="admin-error admin-row-message" data-testid="provider-fee-refused">{preview.refused}</span> : null}
@@ -420,7 +491,10 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
         ) : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
-                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => {
+                    if (answer?.done === "sent" || answer?.done === "paid") onSent?.(row, name, answer.done);
+                    return null;
+                  })}>
             {working ? "Paying…" : "Yes, pay"}
           </button>
         )}
@@ -429,18 +503,36 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     );
   }
 
+  // Tazapay can't pay an incomplete account, or a step no bigger than its fee:
+  // say why before anyone presses. The fee refusal is the last quote's, or the
+  // last press's (a cancelled attempt that ended on it).
+  const feeBlocked = provider === "tazapay"
+    ? feeRefusal ?? (attempt?.status === "cancelled" && attempt.provider_status === "fee_too_large" ? attempt.staff_sentence : null)
+      ?? tazapayTooSmall(row)
+    : null;
+  const detailsBlocked = provider === "tazapay" ? tazapayBlock(row) : null;
+  const blocked = detailsBlocked ?? feeBlocked;
+  const toldAlready = blocked && attempt?.status === "failed" && attempt.provider_status === "details_rejected" && !fixedSince;
+
   return (
     <>
       {said}
       {lastFailed}
+      {blocked && !lastFailed ? <span className="admin-error admin-row-message" data-testid="tazapay-blocked">{blocked}</span> : null}
+      {detailsBlocked && !toldAlready && !refusedDetails ? (
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, detailsBlocked, false, tazapayProblemsOf(row).map((p) => p.field)), () => "The factory was told what to fix.")}>
+          Tell the factory to fix its details
+        </button>
+      ) : null}
       {refusedDetails ? (
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
                 onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem?.message ?? attempt.staff_sentence, needsStatement, problem?.fields))}>
           Tell the factory to fix its details
         </button>
       ) : null}
-      <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number)} data-testid={`pay-with-${provider}`}
-              title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
+      <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number) || Boolean(blocked)} data-testid={`pay-with-${provider}`}
+              title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : blocked ?? undefined}
               onClick={() => {
                 setProblem(null);
                 if (provider === "paypal") review();
@@ -704,7 +796,7 @@ function providerCounts(rows, attempts) {
     const name = underway(row, attempts?.get(row.payment_id)) ? PROVIDER_NAME[providerFor(row)] : "Stripe";
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
-  return ["Stripe", "Wise", "PayPal"].filter((name) => counts.get(name)).map((name) => `${name} ${counts.get(name)}`).join(" · ");
+  return ["Stripe", "Wise", "Tazapay", "PayPal"].filter((name) => counts.get(name)).map((name) => `${name} ${counts.get(name)}`).join(" · ");
 }
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
@@ -760,13 +852,15 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
  * The board no longer shows bank-wire claims (`sent`) or payments refunded
  * after payout (`released`): John, Nov 7.
  */
-export function boardSections(rows, attempts = new Map()) {
+export function boardSections(rows, attempts = new Map(), pool = new Set()) {
   const cancelled = (row) => row.order_status === "cancelled";
   const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
+  // A step in a factory's withdrawal balance is paid when the factory asks (the Withdrawals tab).
+  const inBalance = (row) => pool.has(row.payment_id);
   const moving = (row) => underway(row, attempts.get(row.payment_id));
   const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {
-    payout: owed.filter((row) => !moving(row) && !refused(row)),
+    payout: owed.filter((row) => !moving(row) && !refused(row) && !inBalance(row)),
     // A cancelled order's held money is refunded automatically; only a refund
     // Stripe refused (20261108300000) needs a person.
     failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
@@ -791,11 +885,15 @@ export default function AdminPayments() {
   // TSC's Wise balance, or why there isn't one to show.
   const [wise, setWise] = useState(null);
   const [paypal, setPaypal] = useState(null);
+  const [tazapay, setTazapay] = useState(null);
   const [setups, setSetups] = useState(() => new Map());
+  const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
 
   const load = useCallback(async () => {
     try {
-      const [board, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
+      const [read, tried, asked] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals()]);
+      const board = await withCompanyRegistrations(read);
+      setWithdrawals(asked);
       setRows(board);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
@@ -809,7 +907,14 @@ export default function AdminPayments() {
 
   /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
   const readBack = useCallback(async () => {
-    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
+    const [fromWise, fromPaypal, fromTazapay] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal"), syncProvider("tazapay"),
+      syncWithdrawals("wise"), syncWithdrawals("paypal"), syncWithdrawals("tazapay")]);
+    if (fromTazapay.status === "fulfilled") {
+      const answer = fromTazapay.value;
+      setTazapay({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
+    } else if (fromTazapay.reason?.kind !== "not_set_up") {
+      setTazapay({ problem: fromTazapay.reason.message });
+    }
     if (fromWise.status === "fulfilled") {
       const answer = fromWise.value;
       setWise({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
@@ -828,8 +933,33 @@ export default function AdminPayments() {
     return () => clearInterval(timer);
   }, [load]);
 
+  // A factory asking for or cancelling a withdrawal: staff cannot be notified, so
+  // the board hears it (factory_withdrawals is in supabase_realtime; staff read
+  // every row). Inserts and updates only: Realtime does not filter deletes, and
+  // a withdrawal is never deleted. The 30 s read above stays as the fallback.
+  useEffect(() => {
+    let active = true;
+    let timer;
+    const refresh = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (active) load(); }, 300);
+    };
+    const channel = supabase
+      .channel(`admin-withdrawals:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "factory_withdrawals" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "factory_withdrawals" }, refresh)
+      .subscribe();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [load]);
+
   // While money is on its way, keep reading: nobody else can tell staff.
-  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing");
+  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
+    || withdrawals.withdrawals.some((row) => row.status === "paying");
   useEffect(() => {
     if (!anyLive) return undefined;
     const timer = setInterval(readBack, 30000);
@@ -869,7 +999,7 @@ export default function AdminPayments() {
   return (
     <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
-                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} />
+                     load={load} attempts={attempts} wise={wise} paypal={paypal} tazapay={tazapay} onChanged={readBack} setups={setups} withdrawals={withdrawals} />
     </AdminWorkspaceShell>
   );
 }
@@ -884,11 +1014,18 @@ const TABS = [
  * rows. All four queues always have a tab.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map() }) {
+  attempts = new Map(), wise = null, paypal = null, tazapay = null, onChanged = load, setups = new Map(), withdrawals = null }) {
   const [chosen, setChosen] = useState("payout");
-  const sections = boardSections(rows, attempts);
+  const [sentNotice, setSentNotice] = useState(null);
+  const onSent = useCallback((row, name, done) => {
+    setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
+      : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
+    if (done !== "paid") setChosen("clearing");
+  }, []);
+  const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
+  if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
-  const tabs = TABS;
+  const tabs = withdrawals ? [...TABS, ["withdrawals", "Withdrawals"]] : TABS;
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
@@ -900,8 +1037,20 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {wise.balancesUrl ? <a href={wise.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a> : null}
     </p>
   ) : null;
+  const owedByTazapay = [...sections.payout, ...sections.failed].filter((row) => paidByTazapay(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
+    .reduce((sum, row) => sum + Number(row.amount_cents), 0);
+  const tazapayShort = tazapay?.balanceCents != null ? Math.max(0, owedByTazapay - tazapay.balanceCents) : 0;
+  const tazapayLine = tazapay ? (
+    <p className={tazapay.problem || tazapayShort ? "admin-error" : "admin-sub"} data-testid="tazapay-balance">
+      {tazapay.problem ?? `Tazapay balance: ${moneyIn(tazapay.balanceCents, tazapay.currency)}.`}
+      {tazapayShort ? ` Short by ${moneyIn(tazapayShort, tazapay.currency)} for what's owed, before Tazapay's fees. Top up TSC's Tazapay balance. ` : " "}
+      {tazapay.balancesUrl ? <a href={tazapay.balancesUrl} target="_blank" rel="noreferrer">Open Tazapay</a> : null}
+    </p>
+  ) : null;
 
   return (
+    <TazapayContext.Provider value={tazapay}>
+    <SentContext.Provider value={onSent}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -917,9 +1066,10 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
+      {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
       {active === "payout" ? (
-        <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
+        <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine || tazapayLine ? <>{wiseLine}{tazapayLine}</> : null}
                  empty="Every approved payment has been paid out." />
       ) : null}
       {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
@@ -928,7 +1078,10 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} BankDetails={BankDetails} /> : null}
 
     </main>
+    </SentContext.Provider>
+    </TazapayContext.Provider>
   );
 }

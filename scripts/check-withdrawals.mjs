@@ -1,0 +1,266 @@
+/**
+ * A factory's withdrawal is paid once, never more than asked, and TSC pays no
+ * fee. Runs the real core (api/_withdrawals.js) and the real Wise adapter's
+ * quote against a pretend provider and a pretend database: no stack, no keys.
+ * What the database refuses (owner only, balance, one open request, staff
+ * only) is in supabase/tests/factory_withdrawals_test.sql.
+ *
+ * The evasions, written before the code: TSC's provider balance short; a
+ * provider that adds its fee on top; a fee as large as the amount; a timeout
+ * after the provider took it (press again: same key); a certain refusal
+ * replayed by the next press (it gets a new key: requeue).
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { BACK_IN_BALANCE, REFERENCE_MAX, approveWithdrawal, payoutChangedSinceAsked, previewWithdrawal, readBack, withdrawalFailureSentence, withdrawalReference } from "../api/_withdrawals.js";
+import { withdrawalProviderFor } from "../src/shared/tazapay-payout.mjs";
+import { wiseAdapter } from "../api/_withdrawal-adapters.js";
+import { PayoutFailure } from "../api/_payout-provider.js";
+import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
+import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+
+function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
+  const recorded = [];
+  const paid = [];
+  let claim = { withdrawal_id: "w1", key: "key-1", resumed: false, provider: "paypal", provider_ref: null, amount_cents: 6500, currency: "USD", account_id: "a1", paypal_email: "f@example.com" };
+  const db = {
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "CN" }, error: null }) }) }) }),
+    rpc: async (name, args) => {
+      assert.equal(name, "record_withdrawal");
+      recorded.push(args);
+      if (args.ref) claim = { ...claim, provider_ref: args.ref };
+      if (args.outcome === "requeue") claim = { ...claim, key: `key-${recorded.filter((r) => r.outcome === "requeue").length + 1}` };
+      return { data: {}, error: null };
+    },
+  };
+  const caller = { rpc: async (name) => (assert.equal(name, "claim_withdrawal"), { data: claim, error: null }) };
+  const adapter = {
+    provider: "paypal", label: "Fake",
+    balance: async () => balance,
+    quote: async (_client, ctx) => ({ feeCents: fee, leavesCents: feeOnTop ? ctx.amountCents + fee : ctx.amountCents, receivesMinor: ctx.amountCents - fee, receivesCurrency: "USD", quote: null }),
+    pay: async (_client, ctx, quote) => {
+      paid.push({ key: ctx.key, amount: quote.receivesMinor });
+      if (payFails) { const failure = payFails; payFails = null; throw failure; }
+      return { ref: "ref-1" };
+    },
+    status: async () => ({ state: status, raw: status }),
+  };
+  return { db, caller, adapter, recorded, paid, client: {} };
+}
+
+// Short of money: nothing is sent, the request waits again with a sentence.
+{
+  const w = world({ balance: 1000 });
+  const result = await approveWithdrawal({ ...w, id: "w1" });
+  assert.equal(result.done, "short_balance");
+  assert.match(result.sentence, /short by \$55\.00/);
+  assert.equal(w.paid.length, 0, "nothing paid when the provider is short");
+  assert.equal(w.recorded.at(-1).outcome, "requeue");
+}
+
+// Paid: the factory gets the amount less the fee, and it is recorded paid.
+{
+  const w = world();
+  const result = await approveWithdrawal({ ...w, id: "w1" });
+  assert.equal(result.done, "paid");
+  assert.deepEqual(w.paid, [{ key: "key-1", amount: 6420 }]);
+  assert.equal(w.recorded[0].outcome, "sent");
+  assert.equal(w.recorded[0].fee, 80, "the fee is recorded before the provider is asked");
+  assert.equal(w.recorded[0].ref, undefined);
+  assert.equal(w.recorded.at(-1).outcome, "paid");
+}
+
+// A provider that would add its fee on top: refused, nothing sent.
+{
+  const w = world({ feeOnTop: true });
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), /more than the amount/);
+  assert.equal(w.paid.length, 0);
+  assert.equal(w.recorded.at(-1).outcome, "requeue");
+}
+
+// A fee as large as the amount: refused in a sentence, nothing sent.
+{
+  const w = world({ fee: 6500 });
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure && failure.kind === "too_small");
+  assert.equal(w.paid.length, 0);
+}
+
+// Timeout after the provider took it: stays paying; the next press uses the same key.
+{
+  const w = world({ payFails: new PayoutFailure("timeout", "Fake didn't answer.", { unsure: true }) });
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), /didn't answer/);
+  assert.equal(w.recorded.at(-1).outcome, "sent", "an unsure failure never goes back to waiting");
+  await approveWithdrawal({ ...w, id: "w1" });
+  assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-1"], "same key: the provider answers with the first payment");
+}
+
+// A certain refusal: back to waiting under a new key, so it is never replayed.
+{
+  const w = world({ payFails: new PayoutFailure("refused", "Fake refused this payment. Nothing was sent.") });
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), /refused/);
+  assert.equal(w.recorded.at(-1).outcome, "requeue");
+  await approveWithdrawal({ ...w, id: "w1" });
+  assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-2"]);
+}
+
+// The reference fits every Wise route: GBP takes 18 characters, others fewer or
+// other characters. A 23-character one had Wise refuse every UK withdrawal.
+{
+  const id = "3f9c2b1e-7a4d-4c1b-9e2f-0123456789ab";
+  const reference = withdrawalReference(id);
+  assert.ok(reference.length <= REFERENCE_MAX && REFERENCE_MAX <= 10, `reference "${reference}" is at most 10 characters`);
+  assert.match(reference, /^[A-Za-z0-9-]+$/, "letters, digits and hyphens only");
+  assert.equal(reference, "TSCW3F9C2B", "traceable to the withdrawal's id");
+  const w = world();
+  const sent = [];
+  w.adapter.pay = async (_client, ctx) => (sent.push(ctx.reference), { ref: "ref-1" });
+  await approveWithdrawal({ ...w, id: "w1" });
+  assert.ok(sent[0].length <= REFERENCE_MAX, "the adapter is handed the short reference");
+}
+
+// A failed withdrawal has no Pay again: staff read that the amount is back in the
+// factory's balance, never "pay again", and the factory's row says the same, without a fee.
+{
+  const w = world({ status: "failed" });
+  w.adapter.status = async () => ({ state: "failed", raw: "FAILED", failure: "PayPal couldn't pay this. Check the factory's PayPal address, then pay again." });
+  w.adapter.provider = "paypal";
+  assert.equal((await approveWithdrawal({ ...w, id: "w1" })).done, "failed");
+  const sentence = w.recorded.at(-1).sentence;
+  assert.equal(w.recorded.at(-1).outcome, "failed");
+  assert.doesNotMatch(sentence, /pay again/i, sentence);
+  assert.match(sentence, /PayPal address/);
+  assert.ok(sentence.endsWith(BACK_IN_BALANCE));
+  const [row] = askedWithdrawalRows([{ id: "f", status: "failed", amount_cents: 100, currency: "USD", provider: "paypal", fee_cents: 2, receives_minor: 98, reason: sentence }]);
+  assert.equal(row.note, WITHDRAWAL_FAILED_NOTE);
+  assert.doesNotMatch(row.note, /pay again|Fee/i);
+}
+
+// Preview sends nothing.
+const asked = "2026-11-17T10:00:00.123456+00:00";
+const previewRow = (account, extra = {}) => ({ id: "w1", provider: "paypal", amount_cents: 6500, currency: "USD", account_id: "a1", paid_to_changed_at: asked,
+  account: account === null ? null : { method: "paypal", wise_recipient_type: null, payee_changed_at: asked, details_changed_at: asked, ...account }, ...extra });
+{
+  const w = world();
+  const seen = await previewWithdrawal({ ...w, row: previewRow({}) });
+  assert.equal(seen.feeCents, 80);
+  assert.equal(seen.receivesMinor, 6420);
+  assert.equal(w.paid.length, 0);
+}
+
+// Made the default after asking: only details_changed_at moves (20261117360000),
+// and where a withdrawal goes is its own account, so preview still quotes it.
+{
+  const w = world();
+  const seen = await previewWithdrawal({ ...w, row: previewRow({ details_changed_at: "2026-11-17T11:00:00+00:00" }) });
+  assert.equal(seen.feeCents, 80, "made the default after asking");
+  assert.equal(w.paid.length, 0);
+}
+
+// Preview runs claim_withdrawal's payout_changed check, so staff read it before
+// Pay: the account removed, its details changed, or now paid another way.
+for (const [why, row] of [
+  ["account removed", previewRow(null, { account_id: null })],
+  ["payee details changed", previewRow({ payee_changed_at: "2026-11-17T11:00:00+00:00", details_changed_at: "2026-11-17T11:00:00+00:00" })],
+  ["now paid by Wise", previewRow({ method: "bank", wise_recipient_type: "swift_code" })],
+]) {
+  const w = world();
+  await assert.rejects(previewWithdrawal({ ...w, row }), (failure) => {
+    assert.equal(failure.message, "This factory changed where it is paid since it asked. Decline it, so it can ask again.", why);
+    return true;
+  });
+  assert.equal(w.paid.length, 0, why);
+}
+
+// A Tazapay withdrawal (a CN or HK bank with no Wise recipient) is not "changed":
+// the board's check is withdrawal_provider_for() (20261117510000), Tazapay included.
+for (const country of ["CN", "HK", " hk "]) {
+  const w = world();
+  w.adapter.provider = "tazapay";
+  const row = previewRow({ method: "bank", bank_country: country }, { provider: "tazapay" });
+  assert.equal(await payoutChangedSinceAsked(row), false, `Tazapay to ${country}`);
+  assert.equal((await previewWithdrawal({ ...w, row })).feeCents, 500, `Tazapay to ${country} previews, at the US$5 placeholder fee`);
+}
+for (const [why, account, provider] of [
+  ["a Tazapay ask now paid by Wise", { method: "bank", bank_country: "CN", wise_recipient_type: "chinese_local" }, "tazapay"],
+  ["a Tazapay ask whose bank moved out of China", { method: "bank", bank_country: "PT" }, "tazapay"],
+  ["a bank ask now paid by Tazapay", { method: "bank", bank_country: "HK" }, "bank"],
+  ["a bank ask with no country read", { method: "bank" }, "tazapay"],
+]) assert.equal(await payoutChangedSinceAsked(previewRow(account, { provider })), true, why);
+for (const [account, provider] of [
+  [{ method: "paypal" }, "paypal"], [{ method: "bank", wise_recipient_type: "iban" }, "wise"],
+  [{ method: "bank", bank_country: "PT" }, "bank"], [{ method: "bank", bank_country: "CN" }, "tazapay"],
+]) assert.equal(withdrawalProviderFor(account), provider, `${JSON.stringify(account)} is paid by ${provider}`);
+// The factory's screen reads the same rule.
+{
+  const screen = readFileSync(new URL("../src/app/order/payout-providers.js", import.meta.url), "utf8");
+  assert.match(screen, /providerOf = \(row\) => withdrawalProviderFor\(row\)/, "payout-providers.js uses the shared rule");
+}
+
+// A failed Tazapay withdrawal keeps Tazapay's own sentence (who must act, and
+// whether the factory can withdraw again) and its code for staff; PayPal and Wise use the map.
+{
+  const tazapay = { provider: "tazapay", label: "Tazapay" };
+  const said = "Your bank didn't accept this payout. Check your bank details, then withdraw again.";
+  assert.equal(withdrawalFailureSentence(tazapay, { state: "failed", raw: "failed", failure: said }), said);
+  assert.match(withdrawalFailureSentence(tazapay, { state: "failed", raw: "failed" }), /Tazapay did not deliver this/);
+  assert.match(withdrawalFailureSentence({ provider: "paypal", label: "PayPal" }, { raw: "FAILED", failure: "then pay again" }), /PayPal address/);
+  const w = world({ status: "failed" });
+  const calls = [];
+  const rpc = w.db.rpc;
+  w.db.rpc = async (name, args) => (name === "record_withdrawal_failure_code" ? (calls.push(args), { data: null, error: null }) : rpc(name, args));
+  w.adapter.provider = "tazapay";
+  w.adapter.status = async () => ({ state: "failed", raw: "failed", failure: said, code: "20298" });
+  assert.equal(await readBack({ adapter: w.adapter, client: {}, db: w.db, id: "w1", ref: "pot_1" }), "failed");
+  assert.equal(w.recorded.at(-1).sentence, said);
+  assert.deepEqual(calls, [{ target_withdrawal: "w1", failure_code: "20298" }]);
+}
+
+// The Wise adapter keeps Wise's fee inside the amount: Wise quotes with its fee on
+// top, so it steps down until what leaves TSC's balance fits.
+{
+  const quotes = [];
+  const wise = {
+    payoutCurrency: "CNY",
+    quote: async ({ amountCents }) => {
+      quotes.push(amountCents);
+      const fee = 300 + Math.ceil(amountCents * 0.005);
+      return { id: `q${quotes.length}`, feeCents: fee, totalCents: amountCents + fee, arrivesCents: amountCents * 7, arrivesCurrency: "CNY", balanceRefused: false };
+    },
+  };
+  const ctx = { amountCents: 6500, currency: "USD", account: { id: "a1", wiseRecipientId: "r1", wiseCurrency: "CNY" }, caller: null, db: null };
+  const quote = await wiseAdapter.quote(wise, ctx);
+  assert.ok(quote.leavesCents <= 6500, `leaves ${quote.leavesCents}, never more than the amount`);
+  assert.equal(quote.feeCents, 6500 - quotes.at(-1), "the fee is the amount less what is sent to the factory");
+  assert.ok(quote.feeCents >= 300, "the factory carries Wise's fee");
+}
+
+// Under Wise's smallest amount for the route (the sandbox's answer for $5 to a
+// Chinese business account, by SWIFT from 9.25 USD): said as the amount, never as
+// TSC's balance, which was untouched.
+{
+  const body = { id: "q", rate: 7, paymentOptions: [{ payIn: "BALANCE", payOut: "SWIFT", disabled: true, sourceAmount: 5, targetAmount: 0, fee: { total: 9.24 },
+    disabledReason: { code: "error.quote.sourceAmount.min", message: "The smallest amount you can send is 9.25 USD.", path: "sourceAmount", arguments: [{ limit: "9.25 USD" }] } }] };
+  const wise = wiseFrom({ WISE_API_BASE: "https://api.wise-sandbox.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "7", WISE_PAYOUT_CURRENCY: "CNY" },
+    async () => new Response(JSON.stringify(body), { status: 200 }));
+  await assert.rejects(wise.quote({ sourceCurrency: "USD", targetCurrency: "CNY", amountCents: 500, recipientId: "r1" }), (failure) =>
+    failure.kind === "too_small" && /smallest transfer to this account is 9\.25 USD/.test(failure.message) && failure.message !== CANT_PAY_FROM_BALANCE);
+}
+
+// One figure: a $40 withdrawal of a $65 step moves $40 from Pending to Paid out.
+{
+  const step = { id: "p1", state: "confirmed", release_requested_at: "2026-11-16", amount_cents: 6500, currency: "USD", withdrawal_pool: true, order: { status: "active" } };
+  const summary = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]));
+  assert.deepEqual(summary.pending, [{ currency: "USD", amount: 2500 }]);
+  assert.deepEqual(summary.paid, [{ currency: "USD", amount: 4000 }]);
+  assert.deepEqual(summary.total, [{ currency: "USD", amount: 6500 }]);
+  // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
+  assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
+  const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
+  const net = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]), 79);
+  assert.deepEqual(net.paid, [{ currency: "USD", amount: 3921 }]);
+  assert.deepEqual(net.total, [{ currency: "USD", amount: 6421 }]);
+}
+
+console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");

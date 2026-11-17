@@ -147,9 +147,9 @@ select is(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_plain|decrypted_secrets|vault\.'),
-  array['guard_payout_account_fields', 'payout_number_forget_secret', 'payout_number_plain',
+  array['guard_payout_account_fields', 'payout_number_forget_secret', 'payout_number_plain', 'payout_tazapay_beneficiary',
         'payout_text_holds_number', 'payout_wise_recipient', 'reveal_payout_account_number',
-        'save_bank_payout_account', 'save_wise_payout_account'],
+        'save_bank_payout_account', 'save_tazapay_payout_account', 'save_wise_payout_account'],
   'only these functions decrypt or touch Vault: a new one fails here'
 );
 select is(
@@ -157,7 +157,7 @@ select is(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_reveals'),
-  array['admin_payment_board', 'payout_number_reveal_log', 'payout_wise_recipient', 'reveal_payout_account_number'],
+  array['admin_payment_board', 'payout_number_reveal_log', 'payout_tazapay_beneficiary', 'payout_wise_recipient', 'reveal_payout_account_number'],
   'only these read or write the record of who looked'
 );
 select ok(not has_function_privilege('authenticated', 'public.payout_number_plain(uuid)', 'execute'), 'nobody signed in may call the decrypting function');
@@ -396,6 +396,11 @@ select is((select iban from p66_iban), null, 'an IBAN is not on the row');
 select is(public.payout_number_plain((select id from p66_iban)), 'GB82WEST12345698765432', 'it is with the numbers');
 select is((select account_number_last4 from p66_iban), '5432', 'with its last four on the row');
 
+-- Paid step by step, the way a step approved before its factory withdrew from a
+-- balance still is (20261116200000): out of the withdrawal balance for this test.
+set local session_replication_role = replica;
+update public.order_payments set withdrawal_pool = false where id = '66800000-0000-0000-0000-000000000001';
+set local session_replication_role = origin;
 -- ---------------------- marking it paid -------------------------------------
 select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$ select public.release_payment_to_factory('66800000-0000-0000-0000-000000000001') $$, '22023', 'enter the bank''s reference for this transfer', 'no reference, no mark');

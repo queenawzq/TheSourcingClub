@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## How we work
 
+**Payout UI/copy freeze (John, Nov 16):** Read and follow `src/app/order/AGENTS.md` before editing payout code. The withdrawal dialogs, balance/pending layout, four earnings tooltips and client dropdown were explicitly reviewed by John. Preserve them through backend work, cleanups and merges unless the user explicitly requests the particular UI/text change. Do not restore removed fee/timing prose or older tooltip copy.
+
 John's rule (Nov 12): Queena owns the UI and UX, and her changes must not be overwritten by an agent.
 
 - **Change no existing UI unless the task explicitly asks for that exact change.** No adding back or removing explainer text, no restyling, no moving things. If new functionality needs UI, add the minimum in the existing style and say so in the PR, so Queena can restyle it.

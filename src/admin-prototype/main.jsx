@@ -1016,6 +1016,87 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
+// Not in the admin design: a vendor's registration number, added or changed
+// by staff with a note the company is notified of. Drawn like the credits
+// card, with the review page's own side card and modal classes. Live only.
+function RegistrationCard({ orgId }) {
+  const actions = useActions();
+  const [registration, setRegistration] = useState(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [country, setCountry] = useState("");
+  const [number, setNumber] = useState("");
+  const [note, setNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const [notice, setNotice] = useState("");
+
+  const load = () => actions.companyRegistration(orgId).then(setRegistration).catch((failure) => setError(failure.message));
+  useEffect(() => { setRegistration(null); setError(""); setNotice(""); load(); }, [orgId]);
+
+  const begin = () => {
+    setCountry(registration?.country || "");
+    setNumber(registration?.number || "");
+    setNote("");
+    setConfirmed(false);
+    setRefusal(null);
+    setNotice("");
+    setOpen(true);
+  };
+  const close = () => { setOpen(false); setRefusal(null); };
+  const valid = /^[A-Za-z]{2}$/.test(country.trim()) && number.trim() && note.trim().length >= 5;
+  const save = async () => {
+    setBusy(true);
+    setRefusal(null);
+    try {
+      await actions.saveCompanyRegistration(orgId, { country, number, note, confirmed });
+      setOpen(false);
+      setNotice("Registration number saved. The company has been notified.");
+      await load();
+    } catch (failure) {
+      setRefusal({ message: failure.message, code: failure.code, country, number });
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Confirming a failed check digit is offered only for the number it failed on.
+  const askConfirm = refusal?.code === "check_digit" && refusal.country === country && refusal.number === number;
+
+  return (
+    <section className="factory-profile-card admin-review-meta admin-registration-card">
+      <h2>Business registration</h2>
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!registration && !error && <p className="admin-assist-meta">Loading registration…</p>}
+      {registration && (
+        <>
+          <ProfileDetailPair label="Registration number" value={registration.number || "Not on file"} />
+          <ProfileDetailPair label="Country" value={registration.country || "Not set"} />
+          {notice && <p className="admin-assist-meta" role="status">{notice}</p>}
+          <button className="secondary-btn" type="button" onClick={begin}>{registration.number ? "Change registration number" : "Add registration number"}</button>
+        </>
+      )}
+      {open && (
+        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="company-registration-title">
+            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={close}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+            <header><div><span>Business registration</span><h2 id="company-registration-title">{registration?.number ? "Change registration number" : "Add registration number"}</h2></div></header>
+            <p className="admin-assist-meta">The company is notified and sees your note.</p>
+            <label className="factory-onboarding-field"><span>Country</span><input value={country} maxLength={2} autoCapitalize="characters" onChange={(event) => setCountry(event.target.value.toUpperCase())} placeholder="CN" /></label>
+            <label className="factory-onboarding-field"><span>Registration number</span><input value={number} autoComplete="off" spellCheck={false} onChange={(event) => { setNumber(event.target.value); setConfirmed(false); }} placeholder="As printed on the business licence" /></label>
+            <label className="factory-onboarding-field"><span>Note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="For example: Taken from the business licence on file" /></label>
+            {askConfirm && (
+              <label className="admin-registration-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> <span>The number matches the document</span></label>
+            )}
+            {refusal && <p className="admin-error" role="alert">{refusal.message}</p>}
+            <footer><button className="secondary-btn" type="button" onClick={close}>Cancel</button><button className="primary-btn" type="button" disabled={!valid || busy || (askConfirm && !confirmed)} onClick={save}>{busy ? "Saving…" : "Save"}</button></footer>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Live only (the prototype has no outbox): who the company's current review
 // email went to, and "Resend email" for one that failed or never went.
 const REVIEW_EMAIL_DECISION = {
@@ -1417,6 +1498,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
             {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
+            {actions.companyRegistration && profile.entityType !== "Brand" && <RegistrationCard orgId={profile.id} />}
             {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>
@@ -1866,6 +1948,77 @@ function TestDataPanel() {
   );
 }
 
+/**
+ * PayPal and Wise, on or off per region (payout_provider_settings). Live
+ * only: the prototype's adapter has no `payoutProviders`, so nothing is
+ * drawn. Not in the design; built from the settings card. Each box saves as
+ * it is changed, then the switches are read again.
+ */
+// Tazapay pays only bank accounts in mainland China and Hong Kong: one switch.
+const PAYOUT_PROVIDERS = [{ key: "paypal", label: "PayPal" }, { key: "wise", label: "Wise" }, { key: "tazapay", label: "Tazapay", regions: ["china"] }];
+const PAYOUT_REGIONS = [{ key: "china", label: "China and Hong Kong" }, { key: "elsewhere", label: "Everywhere else" }];
+
+function PayoutProvidersPanelIfLive() {
+  const actions = useActions();
+  return actions.payoutProviders ? <PayoutProvidersPanel /> : null;
+}
+
+function PayoutProvidersPanel() {
+  const actions = useActions();
+  const [rows, setRows] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [message, setMessage] = useState({ error: false, text: "" });
+
+  const load = async () => {
+    try {
+      setRows(await actions.payoutProviders.list());
+    } catch {
+      setMessage({ error: true, text: "Couldn't load the payment providers. Reload the page to try again." });
+    }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enabled = (provider, region) => rows?.find((row) => row.provider === provider && row.region === region)?.enabled ?? false;
+
+  const change = async (provider, region, on) => {
+    const name = `${PAYOUT_PROVIDERS.find((p) => p.key === provider).label} in ${PAYOUT_REGIONS.find((r) => r.key === region).label}`;
+    setSaving(`${provider}:${region}`);
+    setMessage({ error: false, text: "" });
+    try {
+      await actions.payoutProviders.set(provider, region, on);
+      await load();
+      setMessage({ error: false, text: `${name} is now ${on ? "on" : "off"}.` });
+    } catch (error) {
+      setMessage({ error: true, text: error?.cause?.code === "42501" ? "Only TSC staff can change payment providers." : `Couldn't change ${name}. Nothing changed. Try again.` });
+      await load();
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Panel title="Payment providers" className="admin-settings-card admin-payout-providers">
+      {rows ? PAYOUT_PROVIDERS.map((provider) => (
+        // A group named by its provider, so each box is heard as "PayPal: China and Hong Kong".
+        <div className="admin-payout-provider-row" role="group" aria-labelledby={`payout-provider-${provider.key}`} key={provider.key}>
+          <strong id={`payout-provider-${provider.key}`}>{provider.label}</strong>
+          <div className="admin-payout-provider-regions">
+            {PAYOUT_REGIONS.filter((region) => !provider.regions || provider.regions.includes(region.key)).map((region) => (
+              <label className="admin-check" key={region.key}>
+                <input type="checkbox" name={`${provider.label} · ${region.label}`} aria-label={`${provider.label}: ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
+                  checked={enabled(provider.key, region.key)} disabled={Boolean(saving)}
+                  onChange={(event) => change(provider.key, region.key, event.target.checked)} />
+                <span>{region.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )) : !message.error ? <p className="admin-assist-meta">Loading…</p> : null}
+      {message.text && <p className={message.error ? "admin-error" : "admin-test-email-status"} role={message.error ? "alert" : "status"}>{message.text}</p>}
+    </Panel>
+  );
+}
+
 // Test sites have no scheduled jobs, so staff run the daily one by hand.
 function DailyJobsPanel() {
   const actions = useActions();
@@ -2000,6 +2153,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
           </div>
         )}
       </Panel>
+      <PayoutProvidersPanelIfLive />
       <TestEmailPanel email={email} intro={testEmailsIntro} unavailable={testEmailsUnavailable} />
       <DailyJobsPanel />
       <TestDataPanelIfLive />

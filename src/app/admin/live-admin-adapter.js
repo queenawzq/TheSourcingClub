@@ -30,8 +30,11 @@ import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
   adjustCredits,
+  listPayoutProviders,
+  setPayoutProvider,
   claimReview,
   companyCredits,
+  companyRegistration,
   decideReview,
   resendReviewEmails,
   reviewEmailStatus,
@@ -46,6 +49,7 @@ import {
   rfqDetail,
   rfqQueue,
   runDailyJobs,
+  saveCompanyRegistration,
   sendTestEmail,
   setUserDisabled,
   suggestReviewRequest,
@@ -498,6 +502,20 @@ export function createAdminAdapter({ user, signOut }) {
        */
       companyCredits,
       adjustCredits,
+
+      /**
+       * A vendor's registration number, added or changed by staff with a
+       * note the company is notified of (20261117530000). Live only: the
+       * admin design draws no registration card.
+       */
+      companyRegistration,
+      saveCompanyRegistration,
+
+      /**
+       * PayPal and Wise per region, switched by staff in Settings. Live
+       * only: the admin design draws no providers card.
+       */
+      payoutProviders: { list: listPayoutProviders, set: setPayoutProvider },
 
       /**
        * Clearing test data, on test builds only. A production build has no

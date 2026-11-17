@@ -30,16 +30,25 @@ assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: 
 // PayPal to a US account: US$0.25 a payout (what the sandbox charged).
 assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "US" }), { feeCents: 25, receivesCents: 9_975, basis: "formula" });
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "US" }).feeCents, 25);
-// Abroad: 2%, at most US$100: US$100.00 → sends 98.03, PayPal charges 1.97 (rounded up).
+// Abroad: 2%, at most US$20: US$100.00 → sends 98.03, PayPal charges 1.97 (rounded up).
 assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "DE" }), { feeCents: 197, receivesCents: 9_803, basis: "formula" });
-assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "DE" }).feeCents, 10_000);
+assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "DE" }).feeCents, 2_000);
 // An unknown country pays the larger fee, never less than TSC is charged.
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 10_000 }).feeCents, 197);
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000 }).feeCents, 523);
 
-// A quote wins, rounded up; Wise/Tazapay without a quote decide nothing.
+// A quote wins, rounded up; Wise without a quote decides nothing.
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000, quotedFeeCents: 412 }), { feeCents: 412, receivesCents: 9_588, basis: "quote" });
-assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 10_000, quotedFeeCents: 543.2 }).feeCents, 544);
+// Tazapay: a fixed US$5.00 per local payout, a placeholder at the top of its
+// published range (US$2-5) until TSC's live account. Its quote does not change it.
+assert.equal(FEE_FORMULAS.tazapay.localFixedCents, 500);
+assert.deepEqual(withdrawalFee({ provider: "tazapay", amountCents: 10_000 }), { feeCents: 500, receivesCents: 9_500, basis: "formula" });
+for (const quoted of [323, 544, 543.2, 900]) {
+  assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 10_000, quotedFeeCents: quoted }).feeCents, 500, `a Tazapay quote of ${quoted} leaves the fixed fee`);
+}
+assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 9_999_999 }).feeCents, 500, "fixed, whatever the amount");
+assert.match(withdrawalFee({ provider: "tazapay", amountCents: 500 }).refused, /too small: the fee to send it is US\$5\.00/);
+assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 501 }).receivesCents, 1);
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 10_000, quotedFeeCents: 10 }).feeCents, 10, "a quote wins over the formula");
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000 }), { feeCents: null, receivesCents: null, basis: "quote_needed" });
 // The staff-paid bank wire: a fixed US$50, the same figure as the database's.
@@ -58,7 +67,7 @@ assert.equal(FEE_FORMULAS.stripe.crossBorderBps, 25);
 for (const r of [
   withdrawalFee({ provider: "stripe", amountCents: 25, country: "US" }),
   withdrawalFee({ provider: "wise", amountCents: 300, quotedFeeCents: 300 }),
-  withdrawalFee({ provider: "tazapay", amountCents: 500, quotedFeeCents: 544 }),
+  withdrawalFee({ provider: "tazapay", amountCents: 500 }),
   withdrawalFee({ provider: "paypal", amountCents: 0 }),
 ]) assert.match(r.refused ?? "", /^[A-Z].*\.$/, "a refusal is a sentence");
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 27, country: "US" }).receivesCents, 1);

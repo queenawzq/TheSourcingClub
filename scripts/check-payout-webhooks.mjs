@@ -31,8 +31,8 @@ assert.equal(wisePublicKey({ WISE_API_BASE: "https://api.wise-sandbox.com" }), W
 assert.equal(wisePublicKey({ WISE_API_BASE: "https://api.wise.com" }), WISE_PUBLIC_KEYS.production, "live base, live key");
 
 // --- A pretend database: payouts by ref, one claim per delivery ---------------
-function fakeDb(payouts) {
-  const db = { payouts, events: new Map(), finished: [], recorded: [] };
+function fakeDb(payouts, withdrawals = []) {
+  const db = { payouts, withdrawals, events: new Map(), finished: [], recorded: [], withdrawalsRecorded: [] };
   const query = (table) => {
     const filters = {};
     const q = {
@@ -45,7 +45,8 @@ function fakeDb(payouts) {
           const p = db.payouts.find((x) => x.key === filters.attempt_key);
           return { data: p ? { payout_id: p.id } : null };
         }
-        const p = db.payouts.find((x) => Object.entries(filters).every(([k, v]) => String(x[k]) === String(v)));
+        const rows = table === "factory_withdrawals" ? db.withdrawals : db.payouts;
+        const p = rows.find((x) => Object.entries(filters).every(([k, v]) => String(x[k]) === String(v)));
         return { data: p ? { ...p } : null };
       },
     };
@@ -63,6 +64,11 @@ function fakeDb(payouts) {
       const p = db.payouts.find((x) => x.id === args.target_payout);
       if (args.outcome === "paid" && p.status !== "processing") return {};
       p.status = args.outcome; db.finished.push(args); return {};
+    }
+    if (name === "record_withdrawal") {
+      const w = db.withdrawals.find((x) => x.id === args.target_withdrawal);
+      if (args.outcome === "paid" || args.outcome === "failed") w.status = args.outcome;
+      db.withdrawalsRecorded.push(args); return { data: w };
     }
     if (name === "record_provider_attempt") {
       const p = db.payouts.find((x) => x.id === args.target_payout);
@@ -157,6 +163,22 @@ const wiseEvent = (id, state = "outgoing_payment_sent") => JSON.stringify({
   assert.match(db.finished[0].tell_factory, /bank details/, "the factory is asked to check its bank details");
 }
 {
+  // A factory's withdrawal Wise is paying: the webhook settles it, with nobody on the board.
+  const db = fakeDb([], [{ id: "w1", provider: "wise", provider_ref: "5101", status: "paying" }]);
+  const wise = fakeWise({ 5101: "outgoing_payment_sent" });
+  const body = wiseEvent(5101);
+  const out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "dw1" }, body, deps: { db, client: wise.client } });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.state, "paid");
+  assert.equal(db.withdrawals[0].status, "paid", "the withdrawal is paid from Wise's webhook");
+  assert.equal(db.withdrawalsRecorded[0].outcome, "paid");
+  // One already settled is only reported, never recorded again.
+  const settled = fakeDb([], [{ id: "w2", provider: "wise", provider_ref: "5102", status: "paid" }]);
+  const again = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(wiseEvent(5102)), "x-delivery-id": "dw2" }, body: wiseEvent(5102), deps: { db: settled, client: fakeWise({ 5102: "outgoing_payment_sent" }).client } });
+  assert.equal(again.body.state, "paid");
+  assert.equal(settled.withdrawalsRecorded.length, 0, "a settled withdrawal is not recorded again");
+}
+{
   // Another site's transfer on the same Wise account: 200, so Wise doesn't give up on the endpoint.
   const db = fakeDb([]);
   const wise = fakeWise({});
@@ -231,7 +253,9 @@ assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: 
 // --- The sweep -------------------------------------------------------------------
 {
   const swept = await sweepProviderPayouts({}, {});
-  assert.deepEqual(swept, { wise: { configured: false }, paypal: { configured: false } }, "no settings, nothing swept, nothing thrown");
+  assert.deepEqual(swept, { wise: { configured: false }, paypal: { configured: false }, tazapay: { configured: false } }, "no settings, nothing swept, nothing thrown");
+  const liveTazapay = await sweepProviderPayouts({}, { TAZAPAY_BASE_URL: "https://service.tazapay.com", TAZAPAY_API_KEY: "k", TAZAPAY_API_SECRET: "s" });
+  assert.equal(liveTazapay.tazapay.error, "live_elsewhere", "a live Tazapay account away from production is refused, not thrown");
   const live = await sweepProviderPayouts({}, { WISE_API_BASE: "https://api.wise.com", WISE_API_TOKEN: "t", WISE_PROFILE_ID: "1", WISE_PAYOUT_CURRENCY: "CNY" });
   assert.equal(live.wise.error, "live_elsewhere", "a live Wise account away from production is refused, not thrown");
 }

@@ -25,6 +25,9 @@ const methodLines = {
   wiseUs: ["From 0.23% fee, processed by Wise", "Usually processed within 3–7 business days"],
   paypal: ["Up to 2% fee", "Usually processed within 3–7 business days"],
   paypalUs: ["Up to 2% fee", "Usually processed within 3–7 business days"],
+  // Mainland China and Hong Kong where this deploy has Tazapay (src/shared/tazapay-payout.mjs).
+  tazapayCN: ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"],
+  tazapayHK: ["From US$5 fee, processed by Tazapay", "Usually processed within 3–7 business days"],
 };
 assert.deepEqual(Object.keys(info.PAYOUT_METHOD_INFO).sort(), Object.keys(methodLines).sort(), "every route's lines are pinned here");
 for (const [method, lines] of Object.entries(methodLines)) {
@@ -58,7 +61,7 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
 }
 // No staff-paid bank option: where neither Stripe nor Wise pays, PayPal alone.
 for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), null, `${country}: no bank option`);
-assert.ok(card.includes("const bankRoute = supported || paidByWise(country);") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
+assert.ok(card.includes("const bankRoute = supported || Boolean(tazapay) || (wiseOn && paidByWise(country));") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
 assert.ok(card.includes('onUnavailable={() => setModal("bank-unavailable")}') && !card.includes('onUnavailable={() => setModal("setup-bank")}'), "Wise's form unavailable never falls back to the staff bank form");
 assert.ok(!card.includes('notListed ? "setup-bank"'), "the chooser never opens the staff bank form");
 const factoryZh = read("src/factory-prototype/main.jsx");
@@ -72,13 +75,18 @@ assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferNa
 // A US factory's Wise option, its dialog and its saved row say "Bank transfer": US$ to US$ is not international.
 assert.ok(card.includes('export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) && country !== "US" ? "International bank transfer" : LIST_WORDS.bank);'), "a US bank transfer is not called international");
 // "(Wise)" on a saved bank row only where the server pays it through Wise: a Wise recipient on the row (20261108163459).
-assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? ') && card.includes("? manualListLabel(manualAccount)"), "the saved list and the balance card say (Wise) only on a row Wise pays");
+assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? '), "the saved list says (Wise) only on a row Wise pays (the balance card has no method line)");
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
-for (const option of ["bank", "wise", "paypal"]) {
+for (const option of ["wise", "paypal"]) {
   assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country })} />`), `the ${option} option draws the lines of its route`);
 }
+// China and Hong Kong: Tazapay's lines where this deploy has Tazapay, the bank's otherwise.
+assert.ok(card.includes(`<MethodLines method={tazapay ?? chooserMethod("bank", { supported, country })} />`), "the bank option draws the lines of its route");
+assert.equal(info.tazapayMethod("CN"), "tazapayCN");
+assert.equal(info.tazapayMethod("HK"), "tazapayHK");
+assert.equal(info.tazapayMethod("TW"), null, "Tazapay pays China and Hong Kong only");
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
 assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");

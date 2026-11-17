@@ -11,6 +11,9 @@ create extension if not exists pgtap with schema extensions;
 
 select plan(33);
 
+-- These rules are tested with Wise switched on (20261117200000 starts it off).
+update public.payout_provider_settings set enabled = true where provider = 'wise';
+
 set local session_replication_role = replica;
 
 insert into auth.users (id, email) values

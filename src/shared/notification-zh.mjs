@@ -99,6 +99,7 @@ const DETAILS = {
   "account holder's name": "账户持有人姓名",
   address: "地址",
   "bank name": "银行名称",
+  "company registration number": "公司注册号",
 };
 const details = (list) => {
   const named = String(list).split(/, | and /).map((each) => DETAILS[each.trim()]);
@@ -130,6 +131,9 @@ const TITLES = [
   ["verification_reopened", /^Your legal name changed: TSC will verify it again$/, () => "你的法定名称已变更：TSC 将重新验证"],
   ["verification_reopened", /^Your company name changed: TSC will verify it again$/, () => "你的公司名称已变更：TSC 将重新验证"],
   ["verification_reopened", /^Your registration number changed: TSC will verify it again$/, () => "你的注册号已变更：TSC 将重新验证"],
+  ["registration_number_set", /^TSC added your registration number$/, () => "TSC 已添加你的注册号"],
+  ["registration_number_set", /^TSC changed your registration number$/, () => "TSC 已更改你的注册号"],
+  ["registration_number_set", /^TSC updated your registration number$/, () => "TSC 已更新你的注册号"],
   ["order_completed", /^(.+) is complete$/, (order) => `${order} 已完成`],
   ["payment_due", amountRe("^AMT is due on (.+)$"), (amount, order) => `${order} 有一笔 ${amount} 待付款`],
   ["schedule_agreed", /^The factory agreed the production steps on (.+)$/, (order) => `工厂已同意 ${order} 的生产步骤`],
@@ -170,6 +174,10 @@ const TITLES = [
   ["payment_sent", /^(.+) says a payment is on its way$/, (who) => `${who} 表示付款已在途中`],
   ["funds_released", amountRe("^AMT released to you$"), (amount) => `${amount} 已打款给你`],
   ["funds_released", amountRe("^AMT paid out to you$"), (amount) => `${amount} 已支付给你`],
+  ["withdrawal", amountRe("^Withdrawal of AMT requested$"), (amount) => `已申请提现 ${amount}`],
+  ["withdrawal", amountRe("^Withdrawal of AMT cancelled$"), (amount) => `提现 ${amount} 已取消`],
+  ["withdrawal", amountRe("^Withdrawal of AMT declined$"), (amount) => `提现 ${amount} 被拒绝`],
+  ["withdrawal", amountRe("^Withdrawal of AMT did not go through$"), (amount) => `提现 ${amount} 未成功`],
   ["funds_released", amountRe("^AMT added to your balance$"), (amount) => `${amount} 已计入你的余额`],
   ["funds_released", amountRe("^AMT paid out to your bank$"), (amount) => `${amount} 已付至你的银行账户`],
   ["payout_method_changed", /^A payment to you did not go through$/, () => PAYOUT_WORDS_ZH["A payment to you did not go through"]],
@@ -293,6 +301,13 @@ const SENTENCES = [
   [/^Payoneer payment ID (.+)\.$/, (id) => `Payoneer 付款编号：${id}。`],
   [/^Sent by bank transfer against (.+)\.$/, (order) => `已通过银行转账支付，对应订单 ${order}。`],
   [/^Sent against (.+)\.$/, (order) => `对应订单 ${order}。`],
+  // Withdrawals
+  [/^To (.+)\.$/, (to) => `转至 ${bank(to)}。`],
+  [/^TSC will send it after checking\.$/, () => "TSC 审核后将发送。"],
+  [/^The amount is back in your balance\.$/, () => "该金额已退回你的余额。"],
+  [/^Check your withdrawal method, then withdraw again\.$/, () => "请检查你的提现方式，然后重新提现。"],
+  [/^Sent by bank transfer to (.+)\.$/, (to) => `已通过银行转账转入 ${bank(to)}。`],
+  [/^Sent to (.+)\.$/, (to) => `已转入 ${bank(to)}。`],
   [amountRe("^Payout fee AMT is taken from this payment: you receive AMT\\.$"), (fee, receives) => `提现手续费 ${fee} 从该笔款项中扣除：你收到 ${receives}。`],
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
   [amountRe("^Your payment of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 款项未成功。`],
@@ -411,6 +426,8 @@ export function zhPayoutWords(text) {
 const TYPED_TAILS = [
   [" Their note: ", "品牌备注："],
   [" TSC's note: ", "TSC 备注："],
+  [" TSC's reason: ", "TSC 的理由："],
+  [" Reference: ", "参考号："],
 ];
 
 /** Sentences end at ". ", "? " or the end; a dot inside an address or an amount does not end one. */

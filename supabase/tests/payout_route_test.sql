@@ -85,6 +85,11 @@ select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-00
 select is((select route from public.factory_payout_preferences where org_id='96b00000-0000-0000-0000-0000000000f1'),'manual','selection persisted');
 reset role;
 select ok(not public.uses_stripe_payout('96b00000-0000-0000-0000-0000000000f1'),'manual default overrides ready Stripe account');
+-- Paid step by step, the way a step approved before its factory withdrew from a
+-- balance still is (20261116200000): out of the withdrawal balance for this test.
+set local session_replication_role = replica;
+update public.order_payments set withdrawal_pool = false where order_id = '96d00000-0000-0000-0000-000000000001';
+set local session_replication_role = origin;
 select is(public.claim_payment_release('96f00000-0000-0000-0000-000000000001'),null::timestamptz,'Stripe cannot claim manual payout');
 select pg_temp.act_as(5); set local role authenticated;
 select lives_ok($$select public.claim_provider_payout('96f00000-0000-0000-0000-000000000001','wise','2026-11-01 00:00:00+00',true)$$,'staff can pay Wise despite active Stripe');
@@ -127,6 +132,9 @@ set local session_replication_role=origin;
 select pg_temp.act_as(1); set local role authenticated;
 select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1','96a10000-0000-0000-0000-000000000002')$$,'owner switches active Stripe factory to PayPal');
 reset role;
+set local session_replication_role = replica;
+update public.order_payments set withdrawal_pool = false where order_id = '96d00000-0000-0000-0000-000000000001';
+set local session_replication_role = origin;
 select is((select stripe_transfer_id from public.order_payments where id='96f00000-0000-0000-0000-000000000003'),'tr_existing_route_test','existing Stripe transfer is not rewritten');
 select is(public.claim_payment_release('96f00000-0000-0000-0000-000000000001'),null::timestamptz,'Stripe cannot claim PayPal default');
 select pg_temp.act_as(5); set local role authenticated;

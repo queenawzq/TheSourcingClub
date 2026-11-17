@@ -1,0 +1,172 @@
+import React, { useEffect, useState } from "react";
+import { formatMoney } from "../../lib/money.js";
+import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, previewWithdrawal, withdrawalBankAccount } from "../../lib/domain/withdrawals.js";
+import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
+
+/**
+ * The board's Withdrawals tab: what factories asked for. Hand-built like the
+ * rest of AdminPayments (no design draws a payments board). Approve reviews
+ * first (the provider's quote and TSC's balance there), then pays; Decline
+ * needs a reason the company reads; a bank transfer is sent by staff and
+ * marked paid with the bank's reference.
+ */
+
+const NAME = { wise: "Wise", paypal: "PayPal", bank: "Bank transfer", tazapay: "Tazapay" };
+const STATUS = { requested: "Waiting", paying: "Sending", paid: "Paid", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
+const moneyIn = (minor, currency) => (minor == null ? "—" : formatMoney(Number(minor), currency ?? "USD"));
+
+function WithdrawalActions({ row, onChanged, BankDetails }) {
+  const [step, setStep] = useState(null); // null | "review" | "decline" | "bank"
+  const [preview, setPreview] = useState(null);
+  const [text, setText] = useState("");
+  const [statement, setStatement] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [heard, setHeard] = useState(null);
+  const cny = row.provider === "wise" && row.wise_currency === "CNY";
+  // The account this withdrawal pays, read when staff open "Paid by bank…".
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    if (step !== "bank") return undefined;
+    let current = true;
+    setAccount(null);
+    withdrawalBankAccount(row.id)
+      .then((found) => { if (current) setAccount(found); })
+      .catch((failure) => { if (current) setProblem(failure.message); });
+    return () => { current = false; };
+  }, [step, row.id]);
+
+  async function run(work) {
+    setWorking(true);
+    setProblem(null);
+    try {
+      await work();
+    } catch (failure) {
+      setProblem(failure.message);
+    } finally {
+      setWorking(false);
+      onChanged();
+    }
+  }
+  const review = () => run(async () => {
+    setPreview(await previewWithdrawal(row.id, statement));
+    setStep("review");
+  });
+  const pay = () => run(async () => {
+    const result = await approveWithdrawal(row.id, statement);
+    setHeard(result.done === "paid" ? "Paid." : result.done === "short_balance" ? result.sentence : "Sent. Waiting for the provider to confirm.");
+    setStep(null);
+  });
+
+  if (!["requested", "paying"].includes(row.status)) return null;
+  const said = <>
+    {problem ? <span className="admin-error admin-row-message" role="alert" data-testid="withdrawal-refusal">{problem}</span> : null}
+    {heard ? <span className="admin-sub admin-row-message" role="status">{heard}</span> : null}
+    {row.staff_sentence && !heard ? <span className="admin-sub admin-row-message">{row.staff_sentence}</span> : null}
+  </>;
+
+  if (row.status === "paying") {
+    return <div className="admin-actions">{said}<button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button></div>;
+  }
+  if (step === "decline" || step === "bank") {
+    const decline = step === "decline";
+    return (
+      <div className="admin-actions">
+        {said}
+        {!decline && account && BankDetails ? <BankDetails row={account} withContact={false} /> : null}
+        <label className="admin-sub">{decline ? "Reason (the factory reads this)" : "Bank's reference"}
+          <input value={text} onChange={(event) => setText(event.target.value)} maxLength={decline ? 300 : 200} />
+        </label>
+        <button type="button" className={decline ? "admin-reject" : "admin-approve"} disabled={working || text.trim().length < 3}
+          data-testid={decline ? "withdrawal-decline-confirm" : "withdrawal-bank-confirm"}
+          onClick={() => run(async () => {
+            if (decline) await declineWithdrawal(row.id, text.trim());
+            else await markWithdrawalPaidByBank(row.id, text.trim());
+            setStep(null);
+          })}>{decline ? "Decline" : "Mark paid by bank"}</button>
+        <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setText(""); }}>Back</button>
+      </div>
+    );
+  }
+  if (step === "review" && preview) {
+    return (
+      <div className="admin-actions">
+        {said}
+        {preview.shortByCents ? (
+          <span className="admin-error admin-row-message" data-testid="withdrawal-short">
+            {`${NAME[row.provider]} balance is short by ${moneyIn(preview.shortByCents, row.currency)}. Top up TSC's ${NAME[row.provider]} balance first.`}
+          </span>
+        ) : (
+          <span className="admin-sub admin-row-message" data-testid="withdrawal-quote">
+            {`Amount ${moneyIn(row.amount_cents, row.currency)} · fee ${moneyIn(preview.feeCents, row.currency)} · factory receives ${moneyIn(preview.receivesMinor, preview.receivesCurrency)}`}
+            {preview.leavesCents != null ? ` · leaves TSC's balance ${moneyIn(preview.leavesCents, row.currency)}` : ""}
+            {preview.balanceCents != null ? ` · ${NAME[row.provider]} balance ${moneyIn(preview.balanceCents, row.currency)}` : ""}
+          </span>
+        )}
+        <button type="button" className="admin-approve" disabled={working || Boolean(preview.shortByCents)} data-testid="withdrawal-pay" onClick={pay}>
+          {working ? "Paying…" : `Pay ${moneyIn(row.amount_cents, row.currency)}`}
+        </button>
+        <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setPreview(null); }}>Cancel</button>
+      </div>
+    );
+  }
+  return (
+    <div className="admin-actions">
+      {said}
+      {cny ? (
+        <label className="admin-check admin-row-message">
+          <input type="checkbox" checked={statement} onChange={(event) => setStatement(event.target.checked)} />
+          <span>The contract and invoice are denominated in CNY (Wise asks this for a Chinese bank account).</span>
+        </label>
+      ) : null}
+      {row.provider === "bank"
+        ? <button type="button" className="admin-approve" disabled={working} data-testid="withdrawal-bank" onClick={() => setStep("bank")}>Paid by bank…</button>
+        : <button type="button" className="admin-approve" disabled={working || (cny && !statement)} data-testid="withdrawal-review" onClick={review}>Approve…</button>}
+      <button type="button" className="admin-reject" disabled={working} data-testid="withdrawal-decline" onClick={() => setStep("decline")}>Decline…</button>
+    </div>
+  );
+}
+
+export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null, BankDetails = null }) {
+  const open = withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
+  const recent = withdrawals.filter((row) => !["requested", "paying"].includes(row.status)).slice(0, 20);
+  const rows = [...open, ...recent];
+  return (
+    <section className="payments-queue" data-section="withdrawals">
+      <h2>Withdrawals ({open.length})</h2>
+      {providerLine}
+      {rows.length === 0 ? (
+        <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">No factory has asked to withdraw.</p></div>
+      ) : (
+        <div className="admin-scroll">
+          <table>
+            <thead><tr><th>Company</th><th>To</th><th>Amount</th><th>Status</th><th className="payments-action-heading">Actions</th></tr></thead>
+            <tbody>
+              {rows.map((row) => {
+                const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: Number(row.amount_cents), currency: row.currency }) : null;
+                return (
+                  <tr key={row.id} data-withdrawal={row.id}>
+                    <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}</td>
+                    <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
+                    <td>
+                      <strong>{moneyIn(row.amount_cents, row.currency)}</strong>
+                      <span className="admin-sub">
+                        {row.fee_cents != null
+                          ? `Fee ${moneyIn(row.fee_cents, row.currency)} · receives ${moneyIn(row.receives_minor, row.receives_currency ?? row.currency)}`
+                          : estimate?.feeCents != null ? `Fee about ${moneyIn(estimate.feeCents, row.currency)} · receives about ${moneyIn(estimate.receivesCents, row.currency)}`
+                          : estimate?.basis === "quote_needed" ? "Fee: quoted on Approve" : ""}
+                      </span>
+                    </td>
+                    <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}
+                      {row.failure_code ? <span className="admin-sub" data-testid="withdrawal-failure-code">{`${NAME[row.provider] ?? row.provider} code: ${row.failure_code}`}</span> : null}</td>
+                    <td><WithdrawalActions row={row} onChanged={onChanged} BankDetails={BankDetails} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}

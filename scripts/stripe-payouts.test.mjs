@@ -18,9 +18,34 @@ test("withdrawal uses the owner's connected account and a stable retry key", asy
   await withdrawBalance(stripe, "acct_factory", request);
   assert.equal(calls[0], "hold");
   assert.deepEqual(calls[1], [{ amount: 100, currency: "usd" }, {
-    stripeAccount: "acct_factory", idempotencyKey: `withdraw-acct_factory-${request.requestId}`,
+    stripeAccount: "acct_factory", idempotencyKey: `withdraw-acct_factory-${request.requestId}-100-default`,
   }]);
   assert.deepEqual(calls[1], calls[3]);
+});
+test("a withdrawal to a chosen account pays it once, without changing the default", async () => {
+  const calls = [];
+  const accounts = {
+    ba_eur: { id: "ba_eur", currency: "eur" },
+    card_instant: { id: "card_instant", currency: "usd", available_payout_methods: ["instant"] },
+    ba_usd: { id: "ba_usd", currency: "usd", available_payout_methods: ["standard", "instant"] },
+  };
+  const stripe = {
+    accounts: {
+      update: async (...args) => calls.push(["update", ...args]),
+      retrieveExternalAccount: async (_account, id) => { if (!accounts[id]) throw Error("No such external account"); return accounts[id]; },
+    },
+    payouts: { create: async (...args) => { calls.push(["payout", ...args]); return { id: "po_chosen" }; } },
+  };
+  assert.equal((await withdrawBalance(stripe, "acct_factory", { ...request, destination: "ba_usd" })).id, "po_chosen");
+  assert.deepEqual(calls.at(-1), ["payout", { amount: 100, currency: "usd", destination: "ba_usd" }, {
+    stripeAccount: "acct_factory", idempotencyKey: `withdraw-acct_factory-${request.requestId}-100-ba_usd`,
+  }]);
+  // Only the payout hold touches the account: nothing sets a default.
+  assert.ok(calls.filter(([kind]) => kind === "update").every(([, , body]) => !("default_for_currency" in (body ?? {}))));
+  await assert.rejects(withdrawBalance(stripe, "acct_factory", { ...request, destination: "ba_eur" }), /takes EUR/);
+  await assert.rejects(withdrawBalance(stripe, "acct_factory", { ...request, destination: "card_instant" }), /only instant/);
+  await assert.rejects(withdrawBalance(stripe, "acct_factory", { ...request, destination: "ba_other" }), /Choose one of your withdrawal methods/);
+  await assert.rejects(withdrawBalance(stripe, "acct_factory", { ...request, destination: "acct_x; drop" }), /Choose one of your withdrawal methods/);
 });
 test("invalid withdrawals and failure to disable autopayouts never move money", async () => {
   for (const invalid of [{ amount: 0 }, { amount: -1 }, { amount: 1.5 }, { currency: "USD" }, { requestId: "" }]) {
