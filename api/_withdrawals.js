@@ -106,15 +106,16 @@ async function providerShort(adapter, client, ctx) {
 
 /**
  * claim_withdrawal's payout_changed check, on the board row: the account it
- * pays is gone, its details changed since the factory asked, or it is now
- * paid another way (withdrawal_provider_for). Timestamps compare as the
- * database wrote them.
+ * pays is gone, its payee details changed since the factory asked, or it is
+ * now paid another way (withdrawal_provider_for). payee_changed_at, not
+ * details_changed_at: becoming the default does not change where a withdrawal
+ * goes (20261117360000). Timestamps compare as the database wrote them.
  */
 export async function payoutChangedSinceAsked(row) {
   const account = row.account;
   if (!row.account_id || !account) return true;
   const { withdrawalProviderFor } = await loadProviderRule();
-  return (account.details_changed_at ?? null) !== (row.paid_to_changed_at ?? null) || withdrawalProviderFor(account) !== row.provider;
+  return (account.payee_changed_at ?? null) !== (row.paid_to_changed_at ?? null) || withdrawalProviderFor(account) !== row.provider;
 }
 
 /** Staff's preview: the same claim checks as approve, through a read of the board row, and the quote. Sends nothing. */

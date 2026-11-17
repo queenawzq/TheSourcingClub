@@ -505,7 +505,7 @@ export function createAdminAdapter({ user, signOut }) {
 
       /**
        * A vendor's registration number, added or changed by staff with a
-       * note the company is notified of (20261117500000). Live only: the
+       * note the company is notified of (20261117530000). Live only: the
        * admin design draws no registration card.
        */
       companyRegistration,

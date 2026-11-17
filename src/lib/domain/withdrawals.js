@@ -66,7 +66,7 @@ export async function withdrawalBankAccount(withdrawalId) {
   if (!withdrawal?.account_id) return { payout_account_id: null };
   const { data: account, error: accountError } = await supabase
     .from("factory_payout_accounts")
-    .select("id, account_name, bank_name, branch, bank_country, swift, instructions, account_number_last4, number_changed_at, details_changed_at, wise_recipient_type, wise_details")
+    .select("id, account_name, bank_name, branch, bank_country, swift, instructions, account_number_last4, number_changed_at, details_changed_at, payee_changed_at, wise_recipient_type, wise_details")
     .eq("id", withdrawal.account_id)
     .maybeSingle();
   if (accountError) throw new Error("The board couldn't read this withdrawal's bank details. Reload the page.");
@@ -82,8 +82,10 @@ export async function withdrawalBankAccount(withdrawalId) {
     payout_last4: account.account_number_last4,
     payout_has_number: account.number_changed_at != null,
     payout_changed_at: account.details_changed_at,
-    // Same 14 days as admin_payment_board().
-    payout_changed_recently: Date.now() - new Date(account.details_changed_at).getTime() < 14 * 86400000,
+    // Same 14 days as admin_payment_board(), from the payee details only: becoming
+    // the default does not change where a withdrawal goes (20261117360000).
+    // payout_changed_at stays details_changed_at, which Show number compares.
+    payout_changed_recently: Date.now() - new Date(account.payee_changed_at ?? account.details_changed_at).getTime() < 14 * 86400000,
     wise_recipient_type: account.wise_recipient_type,
     wise_details: account.wise_details,
   };

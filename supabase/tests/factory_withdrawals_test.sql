@@ -258,5 +258,41 @@ select throws_ok($$select public.mark_withdrawal_paid_by_bank((select id from pu
 reset role;
 select is((select count(*)::int from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 1, 'and it still waits, for staff to decline');
 
+-- Made the default after asking (20261117360000): where a withdrawal goes is its
+-- own account, so becoming the default does not refuse it. Becoming the default
+-- still moves details_changed_at, which per-step payouts and the 14-day warning read.
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select lives_ok($$select public.decline_withdrawal((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'Ask again with the new branch.')$$, 'staff decline the changed one');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, current_setting('tsc.test_other_bank')::uuid)$$, 'owner asks to the non-default bank account');
+reset role;
+select set_config('tsc.test_details_before', (select details_changed_at::text from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), true);
+select set_config('tsc.test_payee_before', (select payee_changed_at::text from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), true);
+select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.set_primary_payout_account(current_setting('tsc.test_other_bank')::uuid)$$, 'then only makes it the default');
+reset role;
+select ok((select details_changed_at > current_setting('tsc.test_details_before')::timestamptz from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid),
+  'becoming the default still moves details_changed_at, as per-step payouts need');
+select is((select payee_changed_at from public.factory_payout_accounts where id = current_setting('tsc.test_other_bank')::uuid), current_setting('tsc.test_payee_before')::timestamptz,
+  'but not payee_changed_at');
+select pg_temp.act_as(5); set local role authenticated;
+select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where account_id = current_setting('tsc.test_other_bank')::uuid and status = 'requested'), 'WIRE-119')).status, 'paid',
+  'made the default after asking: mark paid by bank still pays it');
+
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, '16a10000-0000-0000-0000-000000000002')$$, 'owner asks to PayPal');
+select lives_ok($$select public.set_primary_payout_account('16a10000-0000-0000-0000-000000000002')$$, 'then only makes PayPal the default');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((public.claim_withdrawal((select id from public.factory_withdrawals where account_id = '16a10000-0000-0000-0000-000000000002' and status = 'requested')))->>'provider', 'paypal',
+  'made the default after asking: Approve still claims it');
+reset role;
+select is((public.record_withdrawal((select id from public.factory_withdrawals where account_id = '16a10000-0000-0000-0000-000000000002' and status = 'paying'), 'requeue', sentence => 'short')).status, 'requested', 'nothing sent: back to waiting');
+-- A payee field changed after asking is still refused.
+update public.factory_payout_accounts set paypal_email = 'p116-new@example.com' where id = '16a10000-0000-0000-0000-000000000002';
+select pg_temp.act_as(5); set local role authenticated;
+select throws_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where account_id = '16a10000-0000-0000-0000-000000000002' and status = 'requested'))$$,
+  '22023', 'this factory changed where it is paid', 'PayPal address changed since it asked: Approve is refused');
+reset role;
+
 select * from finish();
 rollback;

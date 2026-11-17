@@ -618,7 +618,7 @@ export async function adjustCredits(orgId, amount, reason) {
 
 /**
  * A vendor's registration number on file and the country its profile names,
- * for the staff card on the review page (20261117500000).
+ * for the staff card on the review page (20261117530000).
  */
 export async function companyRegistration(orgId) {
   const [registration, profile] = await Promise.all([
