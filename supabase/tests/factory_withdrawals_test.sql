@@ -211,7 +211,7 @@ select is((select fee_cents from public.factory_withdrawals where org_id = '16b0
 select throws_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')$$,
   '22023', 'Withdraw your balance first, then switch to Stripe.', 'no switch to Stripe while a balance is left');
 
--- Paying a bank withdrawal by hand (20261117400000): staff read the number of the
+-- Paying a bank withdrawal by hand (20261117350000): staff read the number of the
 -- account the withdrawal pays, even one that is not the default, and only while
 -- it waits; and "mark paid by bank" refuses once the factory changed that account.
 select pg_temp.act_as(1); set local role authenticated;
