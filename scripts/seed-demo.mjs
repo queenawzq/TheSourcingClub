@@ -1496,8 +1496,12 @@ await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme w
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
 //    fit sample is funded and approved, and waits on staff: "Pay with Wise",
 //    or by bank ("Payout owed" on the staff payments page). Saved through the
-//    form's own function; the number is plainly fake, in Vault.
-must(await secondFactory.client.rpc("save_wise_payout_account", {
+//    form's own function; the number is plainly fake, in Vault. Wise may be
+//    switched off for China (payout_provider_settings), which refuses a new
+//    Wise method; it is switched on for the save and put back as it was.
+const wiseChina = must(await admin.from("payout_provider_settings").select("enabled").eq("provider", "wise").eq("region", "china").single(), "the Wise switch for China");
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: true }).eq("provider", "wise").eq("region", "china"), "switch Wise on for the seed");
+const savedWise = await secondFactory.client.rpc("save_wise_payout_account", {
   target_org: secondFactoryOrg.id,
   bank_name: "Ningbo Test Bank",
   recipient_type: "chinese_local_business",
@@ -1508,7 +1512,9 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   },
   number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
-}), "the second factory's payout details");
+});
+if (!wiseChina.enabled) must(await admin.from("payout_provider_settings").update({ enabled: false }).eq("provider", "wise").eq("region", "china"), "switch Wise back off");
+must(savedWise, "the second factory's payout details");
 // A second method, so "Make default" has something to move to.
 must(await secondFactory.client.from("factory_payout_accounts").insert({
   org_id: secondFactoryOrg.id, method: "paypal", paypal_email: "ningbo-payouts@example.com", is_primary: false,

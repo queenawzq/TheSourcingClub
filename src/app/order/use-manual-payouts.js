@@ -35,6 +35,7 @@ const SAVE_REFUSALS = {
   wise_form_invalid: "Couldn't save your bank details right now. Nothing changed. Try again.",
   payout_not_bank: "That withdrawal method is not a bank account.",
   tazapay_not_set_up: "Tazapay pays bank accounts in mainland China and Hong Kong only.",
+  payout_provider_off: "This withdrawal method isn't available right now. Choose another one.",
 };
 
 export const blankPayout = (row) => ({

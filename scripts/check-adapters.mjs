@@ -49,6 +49,8 @@ const ALLOWED_ABSENT = {
   "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
+  // Payment providers are switched on the live database; the prototype has none.
+  "admin:payoutProviders:mock": "live only; Settings draws no payment-providers card without it",
   "admin:deleteBrand:mock": "live only; brand deletion is hidden without the deletion action",
   "admin:deleteFactory:mock": "live only; factory deletion is hidden when the adapter has no deletion action",
   // The request and quote pages keep the design's constants with no detail;

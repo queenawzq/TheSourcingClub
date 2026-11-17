@@ -1196,6 +1196,10 @@ export const factoryMainZhText = {
   "Cancel withdrawals": "取消提现",
   "Choose the withdrawals to cancel": "选择要取消的提现",
   "Choose at least one withdrawal to cancel.": "请至少选择一笔要取消的提现。",
+  // Providers staff have switched off (src/app/order/payout-providers.js).
+  "Add another withdrawal method to withdraw.": "请添加其他提现方式后再提现。",
+  "This withdrawal method isn't available right now. Choose another one.": "该提现方式暂不可用，请选择其他方式。",
+  "No withdrawal method is available for this country right now.": "该国家/地区暂无可用的提现方式。",
   "Close": "关闭",
   // Live screens (app.html): text the prototype never draws.
   "Log out": "退出登录",
