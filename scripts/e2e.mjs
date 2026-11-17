@@ -2141,7 +2141,9 @@ async function main() {
     // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
     // nor Wise has a bank route (Taiwan, a country not listed), PayPal alone.
     for (const where of ["TW", "__other__"]) {
-      await page.locator('[data-field="payout_country"]').selectOption(where === "__other__" ? { index: (await page.locator('[data-field="payout_country"] option').count()) - 1 } : where);
+      // Stagehand's selectOption takes a value, not { index }: "a country not listed" is the last option's.
+      const lastOption = await page.evaluate(() => [...document.querySelectorAll('[data-field="payout_country"] option')].at(-1)?.value);
+      await page.locator('[data-field="payout_country"]').selectOption(where === "__other__" ? lastOption : where);
       await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
       check((await page.locator('[data-testid="payout-set-up-bank"]').count()) === 0 && !/US\$50/.test(await page.locator(".payout-modal").innerText()),
         `${where === "TW" ? "Taiwan" : "a country not listed"}: no bank transfer TSC pays by hand, PayPal is offered`);
@@ -2150,7 +2152,7 @@ async function main() {
     await waitFor(page, '[data-testid="payout-set-up-bank"]', 10000);
     await page.locator('[data-testid="payout-set-up-bank"]').click();
     // Wise's form, or where it can't be had, a sentence and PayPal: never the form staff pay from by hand.
-    await waitFor(page, '[data-field="payout_bank_name"], [data-testid="bank-unavailable"]', 25000);
+    await waitFor(page, '[data-field="payout_bank_name"], [data-field^="wise_"], [data-testid="bank-unavailable"]', 25000);
     if (await page.locator('[data-testid="bank-unavailable"]').count()) {
       check((await page.locator('[data-testid="bank-unavailable-paypal"]').count()) === 1, "Wise's form unavailable: the card says so and offers PayPal");
     } else {
