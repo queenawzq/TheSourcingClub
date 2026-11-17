@@ -136,7 +136,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
 // Preview sends nothing.
 const asked = "2026-11-17T10:00:00.123456+00:00";
 const previewRow = (account, extra = {}) => ({ id: "w1", provider: "paypal", amount_cents: 6500, currency: "USD", account_id: "a1", paid_to_changed_at: asked,
-  account: account === null ? null : { method: "paypal", wise_recipient_type: null, details_changed_at: asked, ...account }, ...extra });
+  account: account === null ? null : { method: "paypal", wise_recipient_type: null, payee_changed_at: asked, details_changed_at: asked, ...account }, ...extra });
 {
   const w = world();
   const seen = await previewWithdrawal({ ...w, row: previewRow({}) });
@@ -145,11 +145,20 @@ const previewRow = (account, extra = {}) => ({ id: "w1", provider: "paypal", amo
   assert.equal(w.paid.length, 0);
 }
 
+// Made the default after asking: only details_changed_at moves (20261117360000),
+// and where a withdrawal goes is its own account, so preview still quotes it.
+{
+  const w = world();
+  const seen = await previewWithdrawal({ ...w, row: previewRow({ details_changed_at: "2026-11-17T11:00:00+00:00" }) });
+  assert.equal(seen.feeCents, 80, "made the default after asking");
+  assert.equal(w.paid.length, 0);
+}
+
 // Preview runs claim_withdrawal's payout_changed check, so staff read it before
 // Pay: the account removed, its details changed, or now paid another way.
 for (const [why, row] of [
   ["account removed", previewRow(null, { account_id: null })],
-  ["details changed", previewRow({ details_changed_at: "2026-11-17T11:00:00+00:00" })],
+  ["payee details changed", previewRow({ payee_changed_at: "2026-11-17T11:00:00+00:00", details_changed_at: "2026-11-17T11:00:00+00:00" })],
   ["now paid by Wise", previewRow({ method: "bank", wise_recipient_type: "swift_code" })],
 ]) {
   const w = world();

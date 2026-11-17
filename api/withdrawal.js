@@ -27,7 +27,7 @@ export default async function handler(request, response) {
       adapter = adapterFor(asked);
     } else {
       const found = await db.from("factory_withdrawals")
-        .select("id, org_id, provider, status, amount_cents, currency, account_id, paid_to_changed_at, factory_payout_accounts (method, paypal_email, wise_recipient_id, wise_recipient_type, wise_currency, details_changed_at)")
+        .select("id, org_id, provider, status, amount_cents, currency, account_id, paid_to_changed_at, factory_payout_accounts (method, paypal_email, wise_recipient_id, wise_recipient_type, wise_currency, payee_changed_at)")
         .eq("id", withdrawalId).maybeSingle();
       if (found.error || !found.data) return reply(response, 404, { error: "That withdrawal isn't on the board any more. Reload the page." });
       const account = found.data.factory_payout_accounts ?? {};
