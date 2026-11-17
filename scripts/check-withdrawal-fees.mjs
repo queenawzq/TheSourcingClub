@@ -2,7 +2,7 @@
 // quote wins over the formula, fees round up, and a payment no bigger than
 // its fee is refused. Run: node scripts/check-withdrawal-fees.mjs
 import assert from "node:assert/strict";
-import { FEE_FORMULAS, withdrawalFee, withdrawalFeeLine, providerCharge } from "../src/shared/withdrawal-fees.mjs";
+import { FEE_FORMULAS, withdrawalFee, withdrawalFeeLine, providerCharge, stripeWithdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 // What left TSC is the sent amount plus the provider's own charge on it.
 const leftTsc = (provider, country, amount) => {
@@ -23,10 +23,14 @@ for (const provider of ["stripe", "paypal", "bank"]) {
   }
 }
 
-// Stripe US, US$1,000.00: sends T with T + ceil(0.25% T) + 25 <= 100000.
-assert.deepEqual(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "US" }), { feeCents: 275, receivesCents: 99_725, basis: "formula" });
-// Stripe DE adds the 0.25% cross-border fee.
-assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "DE" }).feeCents, 523);
+// Stripe US, US$1,000.00: pays out T with T + ceil(0.50% T) + 25 <= 100000
+// (0.25% + 25¢ per payout, 0.25% funds routing on every payout, 2026-11-17).
+assert.deepEqual(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "US" }), { feeCents: 523, receivesCents: 99_477, basis: "formula" });
+assert.equal(providerCharge("stripe", "US")(99_477), 498 + 25, "US: 0.50% + 25¢ on what is paid out");
+// Stripe DE adds the 0.25% cross-border fee: 0.75% + 25¢.
+assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000, country: "DE" }).feeCents, 770);
+assert.equal(providerCharge("stripe", "DE")(99_230), 745 + 25);
+assert.equal(FEE_FORMULAS.stripe.fundsRoutingBps, 25, "funds routing is charged on every payout, US included");
 // PayPal to a US account: US$0.25 a payout (what the sandbox charged).
 assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, country: "US" }), { feeCents: 25, receivesCents: 9_975, basis: "formula" });
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "US" }).feeCents, 25);
@@ -35,7 +39,7 @@ assert.deepEqual(withdrawalFee({ provider: "paypal", amountCents: 10_000, countr
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 5_000_000, country: "DE" }).feeCents, 10_000);
 // An unknown country pays the larger fee, never less than TSC is charged.
 assert.equal(withdrawalFee({ provider: "paypal", amountCents: 10_000 }).feeCents, 197);
-assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000 }).feeCents, 523);
+assert.equal(withdrawalFee({ provider: "stripe", amountCents: 100_000 }).feeCents, 770);
 
 // A quote wins, rounded up; Wise/Tazapay without a quote decide nothing.
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000, quotedFeeCents: 412 }), { feeCents: 412, receivesCents: 9_588, basis: "quote" });
@@ -73,4 +77,14 @@ for (const provider of ["stripe", "wise", "paypal", "tazapay", "bank"]) {
     assert.notEqual(en, zh);
   }
 }
+// A withdrawal from a Stripe balance: the fee in US$, on the amount in US$.
+assert.deepEqual(stripeWithdrawalFee({ amountMinor: 100_000, currency: "usd", country: "US" }), { feeCents: 523, usdCents: 100_000, feeLocalEstimate: 523 });
+// A GBP balance at 0.758366 GBP per US$ (the sandbox's rate on 2026-11-17):
+// £758.36 is US$1,000.00 (rounded up), so the fee is the DE/GB US$7.70, about £5.84.
+assert.deepEqual(stripeWithdrawalFee({ amountMinor: 75_836, currency: "gbp", country: "GB", localPerUsd: 0.758366 }), { feeCents: 770, usdCents: 100_000, feeLocalEstimate: 584 });
+// At or under the fee: refused with the module's sentence, in the balance's currency.
+assert.match(stripeWithdrawalFee({ amountMinor: 26, currency: "usd", country: "US" }).refused, /^This payment of US\$0\.26 is too small: the fee to send it is US\$0\.26, so nothing would arrive\. Nothing was sent\.$/);
+assert.equal(stripeWithdrawalFee({ amountMinor: 27, currency: "usd", country: "US" }).feeCents, 26);
+assert.match(stripeWithdrawalFee({ amountMinor: 20, currency: "gbp", country: "GB", localPerUsd: 0.758366 }).refused, /^This payment of GBP 0\.20 is too small: the fee to send it is GBP 0\.20/);
+assert.match(stripeWithdrawalFee({ amountMinor: 0, currency: "usd" }).refused, /more than zero/);
 console.log("withdrawal fees: all checks passed");

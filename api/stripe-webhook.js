@@ -3,6 +3,7 @@ import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
 import { tellPayoutEvent } from "./_stripe-payout-events.js";
+import { returnFeeOnFailedPayout } from "./_stripe-withdrawals.js";
 import { emailTransport, sendDueNotificationEmails } from "./_notification-sender.js";
 import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
@@ -130,6 +131,9 @@ export default async function handler(request, response) {
       }
       case "payout.paid":
       case "payout.failed": {
+        // A failed payout puts the money back in the balance, and the fee with
+        // it. First: it is safe to repeat, the bell below is not.
+        if (event.type === "payout.failed") await returnFeeOnFailedPayout({ stripe, db, payout: event.data.object });
         if (await tellPayoutEvent(db, event) && emailTransport()) {
           await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
         }

@@ -61,10 +61,26 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
     transfers: { list: async function* () {}, async create(args) { sent.push(args); return { id: 'tr_step_only' }; } } };
   assert.deepEqual(await releasePayment({ db, stripe, paymentId: charged.id }), { released: true, reason: 'tr_step_only' });
   assert.equal(sent.length, 1);
-  // Less Stripe's payout fee, which the factory pays (src/shared/withdrawal-fees.mjs):
-  // US: 0.25% + 25 cents on what is sent, so 49,850 + 125 + 25 = the step.
-  assert.equal(sent[0].amount, 49850, 'the factory is sent the $500.00 step less the payout fee, not the $551.29 the brand was charged');
-  assert.deepEqual(fees, [150], 'the fee is recorded before the transfer');
-  assert.equal(sent[0].metadata.payout_fee_cents, '150');
+  // The whole step, however small: Stripe bills nothing per transfer, and its
+  // payout fee is taken once, when the factory withdraws (api/_stripe-withdrawals.js).
+  assert.equal(sent[0].amount, 50000, 'the factory is sent the $500.00 step in full, not the $551.29 the brand was charged');
+  assert.deepEqual(fees, [], 'no per-step payout fee is recorded');
+  assert.equal(sent[0].metadata.payout_fee_cents, undefined);
+}
+// A step smaller than Stripe's payout fee is no longer refused: it waits, in
+// full, in the factory's Stripe balance until a withdrawal.
+{
+  const tiny = { ...payment, amount_cents: 20, charged_cents: null };
+  const sent = [];
+  const db = {
+    from(table) { const q = { select() { return q; }, eq() { return q; },
+      async maybeSingle() { return { data: table === 'order_payments' ? tiny : { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'DE' } }; },
+      async single() { return { data: { stripe_account_id: 'acct_route_fake', transfers_active: true, country: 'DE' } }; } }; return q; },
+    async rpc(name) { assert.notEqual(name, 'record_payout_fee'); return { data: name === 'uses_stripe_payout' ? true : name === 'claim_payment_release' ? '2026-11-17T00:00:00Z' : null }; },
+  };
+  const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } }, accounts: { async update() {} },
+    transfers: { list: async function* () {}, async create(args) { sent.push(args); return { id: 'tr_tiny' }; } } };
+  assert.deepEqual(await releasePayment({ db, stripe, paymentId: tiny.id }), { released: true, reason: 'tr_tiny' });
+  assert.equal(sent[0].amount, 20, 'a 20-cent step is sent in full');
 }
 console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read');

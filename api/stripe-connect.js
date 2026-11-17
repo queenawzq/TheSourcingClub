@@ -5,9 +5,10 @@ import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadi
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
-  managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod, withdrawBalance,
+  managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
+import { settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -22,6 +23,9 @@ import { payoutAllocationFor } from "./_payout-allocation.js";
  *              pays out anything already owed once transfers are on
  *   dashboard  a one-time link to the factory's Express dashboard
  *   balance    the factory's live balances and recent bank payouts
+ *   withdraw, withdraw_previous
+ *              a payout to the bank, Stripe's payout fee taken first
+ *              (api/_stripe-withdrawals.js)
  *   add_method, default_method, remove_method
  *              the factory's payout accounts, changed by TSC on an account
  *              TSC manages (see managedByTsc); each tells the company
@@ -128,14 +132,17 @@ export default async function handler(request, response) {
       if (!upgrade?.completed_at) return reply(response, 409, { error: "No previous payout account is available." });
       const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
       if (!previous.payouts_enabled) return reply(response, 422, { error: "Contact TSC operations to recover funds from your previous payout account." });
-      const payout = await withdrawBalance(stripe, upgrade.old_account_id, { amount, currency, requestId });
-      return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
+      // The factory pays Stripe's payout fee once, taken back before the payout (api/_stripe-withdrawals.js).
+      const payout = await withdrawWithFee({ stripe, db, orgId, accountId: upgrade.old_account_id, country: previous.country ?? "",
+        amount, currency, requestId, userId: auth?.user?.id ?? null });
+      return reply(response, 200, { payout });
     }
 
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
-      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId, destination: destination ?? null });
-      return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
+      const payout = await withdrawWithFee({ stripe, db, orgId, accountId: existing.stripe_account_id, country: existing.country ?? "",
+        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? null });
+      return reply(response, 200, { payout });
     }
 
     // Also applies to accounts created before manual withdrawals were added.
@@ -156,6 +163,9 @@ export default async function handler(request, response) {
     }
 
     if (action === "balance") {
+      // A withdrawal left half-way (its call died) is finished or its fee given back first.
+      await settleAbandoned({ stripe, db, accountId: existing.stripe_account_id })
+        .catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const [balance, allocation, methods, onTheirWay, displayFx] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
