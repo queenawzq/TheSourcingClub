@@ -458,8 +458,11 @@ select is(
 select is(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()),
   (select count(*)::integer from public.admin_payment_board() b
-    where (b.state = 'confirmed' and b.release_requested_at is not null)
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)),
+    -- A payment in a factory's withdrawal balance is not owed by staff: the
+    -- factory withdraws it (20261116200000), and the board leaves it out too.
+    where not exists (select 1 from public.order_payments p where p.id = b.payment_id and p.withdrawal_pool)
+      and ((b.state = 'confirmed' and b.release_requested_at is not null)
+       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null))),
   'the overview counts every payment waiting on staff, payouts owed included');
 select ok(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
