@@ -1,6 +1,9 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { ensureTazapayBeneficiary } from "./_tazapay-beneficiary.js";
-import { INVOICE_BUCKET, invoicePath, invoicePdf } from "./_tazapay-invoice.js";
+import { invoicePath, invoicePdf } from "./_tazapay-invoice.js";
+import { TAZAPAY_KEY_MEMORY_MS, keepAndUploadInvoice, payoutBody, quoteTazapayPayout, tazapayAccountProblems } from "./_tazapay-pay.js";
+
+export { TAZAPAY_KEY_MEMORY_MS };
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
@@ -381,41 +384,7 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
 // Tazapay
 // ---------------------------------------------------------------------------
 
-const loadTazapayRules = () => import("../src/shared/tazapay-payout.mjs");
-const loadFees = () => import("../src/shared/withdrawal-fees.mjs");
-
-/**
- * The factory pays Tazapay's fee (src/shared/withdrawal-fees.mjs, the one
- * figure the board, the row and the notice show). Refused in words when
- * nothing would arrive; nothing is sent then.
- */
-async function tazapayFee({ quote, amountMinor, currency, country }) {
-  const { withdrawalFee } = await loadFees();
-  const fee = withdrawalFee({ provider: "tazapay", amountCents: Number(amountMinor), currency, country, quotedFeeCents: quote.feeMinor });
-  if (fee.refused) return fee;
-  // Tazapay found it too small even though the module did not: still nothing is sent.
-  if (quote.tooSmall) return { ...fee, refused: `This payment is too small for Tazapay to send once its ${money(quote.feeMinor, currency)} fee is taken. Nothing was sent.` };
-  return fee;
-}
-/** Tazapay remembers a key for 24 hours; past that, pressing again could pay twice. */
-export const TAZAPAY_KEY_MEMORY_MS = 23 * 3600 * 1000;
 const LOST_TAZAPAY_ANSWER = "Tazapay's answer to the first press was lost more than a day ago, so pressing again could pay twice. Check Tazapay for a payout with this payment's reference before doing anything else.";
-// Columns the checks read. Never the number: that stays in Vault.
-const ACCOUNT_COLUMNS = "id, org_id, method, bank_country, account_name, holder_name_local, registration_number, bank_name, bank_code, swift, address_line1, address_city, address_state, address_postal_code, number_changed_at";
-
-/** The account's details and what still stops a payout, read with the server's key (never the number). */
-async function tazapayAccountProblems(db, accountId) {
-  const { tazapayDetailsProblems, tazapayProblemsSentence, tazapayRoute } = await loadTazapayRules();
-  const read = await db.from("factory_payout_accounts").select(ACCOUNT_COLUMNS).eq("id", accountId).maybeSingle();
-  if (read.error || !read.data) throw new PayoutFailure("database", "This factory's bank account couldn't be read. Reload the page.");
-  const account = read.data;
-  const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
-  const problems = tazapayDetailsProblems(account, {
-    companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
-    registrationKnown: !registered.error,
-  });
-  return { account, problems, sentence: tazapayProblemsSentence(problems), route: tazapayRoute(account) };
-}
 
 /**
  * What a press would send, before anyone commits: the fee, the total, what
@@ -426,20 +395,21 @@ export async function tazapayPreview({ tazapay, db, row }) {
   const { problems, sentence, route } = await tazapayAccountProblems(db, row.payout_account_id);
   if (problems.length) throw new PayoutFailure("details_rejected", sentence, { fields: problems.map((p) => p.field) });
   if (row.currency !== "USD") throw new PayoutFailure("refused", `Tazapay pays from TSC's USD balance, and this payment is in ${row.currency}.`);
-  const [quote, available] = await Promise.all([
-    tazapay.quote({ holdingCurrency: row.currency, amountMinor: row.amount_cents, route }),
+  const [asked, available] = await Promise.all([
+    quoteTazapayPayout({ tazapay, amountMinor: row.amount_cents, currency: row.currency, route, country: route.country }),
     tazapay.available(row.currency),
   ]);
-  const fee = await tazapayFee({ quote, amountMinor: row.amount_cents, currency: row.currency, country: route.country });
+  const { quote, fee } = asked;
+  const totalCents = quote?.totalMinor ?? Number(row.amount_cents);
   return {
-    refused: fee.refused ?? null,
-    feeCents: fee.feeCents ?? quote.feeMinor,
-    receivesCents: fee.receivesCents,
+    refused: asked.refused ?? null,
+    feeCents: fee.feeCents ?? null,
+    receivesCents: fee.receivesCents ?? null,
     feePaidBy: "factory",
-    totalCents: quote.totalMinor,
-    arrivesCents: quote.payoutMinor,
-    arrivesCurrency: quote.payoutCurrency,
-    shortByCents: Math.max(0, quote.totalMinor - available),
+    totalCents,
+    arrivesCents: quote?.payoutMinor ?? 0,
+    arrivesCurrency: quote?.payoutCurrency ?? route.currency,
+    shortByCents: Math.max(0, totalCents - available),
     balanceCents: available,
     balanceCurrency: row.currency,
     balancesUrl: tazapay.appUrl,
@@ -473,17 +443,8 @@ export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, no
       if (claim.resumed && now() - new Date(claim.attempt_started_at) > TAZAPAY_KEY_MEMORY_MS) {
         throw new PayoutFailure("key_expired", LOST_TAZAPAY_ANSWER, { unsure: true });
       }
-      const { tazapayDetailsProblems, tazapayProblemsSentence, tazapayRoute } = await loadTazapayRules();
-      const read = await db.from("factory_payout_accounts").select(ACCOUNT_COLUMNS).eq("id", claim.account_id).maybeSingle();
-      if (read.error || !read.data) throw new PayoutFailure("database", "This factory's bank account couldn't be read. Reload the page.");
-      const account = read.data;
-      const registered = await db.from("company_registrations").select("number, country_code").eq("org_id", account.org_id).maybeSingle();
-      const problems = tazapayDetailsProblems(account, {
-        companyRegistration: registered.data?.country_code === account.bank_country ? registered.data?.number ?? null : null,
-        registrationKnown: !registered.error,
-      });
-      if (problems.length) throw new PayoutFailure("details_missing", tazapayProblemsSentence(problems), { fields: problems.map((p) => p.field) });
-      const route = tazapayRoute(account);
+      const { account, problems, sentence, route } = await tazapayAccountProblems(db, claim.account_id);
+      if (problems.length) throw new PayoutFailure("details_missing", sentence, { fields: problems.map((p) => p.field) });
       if (claim.currency !== "USD") {
         throw new PayoutFailure("refused", `Tazapay pays from TSC's USD balance, and this payment is in ${claim.currency}.`);
       }
@@ -491,9 +452,9 @@ export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, no
       const beneficiary = await ensureTazapayBeneficiary({
         caller, db, tazapay, accountId: claim.account_id, existingId: claim.tazapay_beneficiary_id,
       });
-      const quote = await tazapay.quote({ holdingCurrency: claim.currency, amountMinor: claim.amount_cents, route });
-      const fee = await tazapayFee({ quote, amountMinor: claim.amount_cents, currency: claim.currency, country: route.country });
-      if (fee.refused) throw new PayoutFailure("fee_too_large", fee.refused);
+      const asked = await quoteTazapayPayout({ tazapay, amountMinor: claim.amount_cents, currency: claim.currency, route, country: route.country });
+      if (asked.refused) throw new PayoutFailure(asked.kind === "too_large" ? "too_large" : "fee_too_large", asked.refused);
+      const { quote, fee } = asked;
       const available = await tazapay.available(claim.currency);
       if (available < quote.totalMinor) return await shortBalance(quote.totalMinor - available, claim.currency);
       // The factory's row, its bell and the board read this one figure, recorded before money moves.
@@ -516,23 +477,14 @@ export async function tazapayPay({ tazapay, caller, db, paymentId, changedAt, no
         payoutCurrency: quote.payoutCurrency,
         rate: quote.rate,
       });
-      const kept = await db.storage.from(INVOICE_BUCKET).upload(invoicePath(paymentId, claim.key), bytes, { contentType: "application/pdf", upsert: true });
-      if (kept.error) throw new PayoutFailure("invoice", "The invoice couldn't be saved, so nothing was sent. Press again.");
-      const documentUrl = await tazapay.uploadDocument({ fileName: `${reference}.pdf`, bytes });
+      const documentUrl = await keepAndUploadInvoice({ db, tazapay, path: invoicePath(paymentId, claim.key), fileName: `${reference}.pdf`, bytes });
 
-      const payout = await tazapay.createPayout({
-        beneficiary,
-        amount: quote.payoutMinor,
-        currency: quote.payoutCurrency,
-        holding_currency: claim.currency,
-        type: route.type,
-        local: { fund_transfer_network: route.network },
-        purpose: route.purpose,
-        reference_id: `tsc-${paymentId}`,
-        transaction_description: `Advance payment for goods, production order ${claim.order_number}`.slice(0, 140),
-        statement_descriptor: `TSC ${claim.order_number}`.slice(0, 22),
-        documents: [{ type: "invoice", url: documentUrl }],
-      }, `tsc-${claim.key}`);
+      const payout = await tazapay.createPayout(payoutBody({
+        beneficiary, quote, route, currency: claim.currency, documentUrl,
+        referenceId: `tsc-${paymentId}`,
+        description: `Advance payment for goods, production order ${claim.order_number}`,
+        descriptor: `TSC ${claim.order_number}`,
+      }), `tsc-${claim.key}`);
       if (!payout?.id) throw new PayoutFailure("unknown", "Tazapay answered without a payout. Press again: it can't pay twice.", { unsure: true });
       payoutRef = payout.id;
       await record(db, payoutId, {

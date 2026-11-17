@@ -25,8 +25,21 @@
  *   wise     Wise's fee depends on the route and the recipient, so it is the
  *            quote's (api/_wise.js quote(), asked with the amount as the
  *            source: the fee is inside it). https://wise.com/pricing/business
- *   tazapay  The quote's fee, as for Wise (about US$5.44 to China in the
- *            sandbox).
+ *   tazapay  A FIXED US$5.00 per local payout (CN over CNAPS, HK over CHATS),
+ *            whatever the amount. A PLACEHOLDER, decided 2026-11-17: TSC has no
+ *            live Tazapay account yet, and the sandbox's fees (US$5.44 to China,
+ *            US$3.23 to Hong Kong) are not live pricing. It is the top of
+ *            Tazapay's published pricing, as read on 2026-11-17 (Tazapay's
+ *            pricing page; it refuses automated reading, so not re-read here):
+ *            "Payouts — Local payouts: USD 2 - 5; SWIFT: USD 5 to USD 35". The SWIFT figure would be US$35 (the top of
+ *            that range), but no Tazapay route here is SWIFT, so it is a note,
+ *            not a formula. TSC sends amount − US$5.00 and Tazapay's own fee
+ *            comes out of TSC's balance on top: inside the published range it
+ *            is at most US$5.00, so TSC pays nothing; a fee above it (the
+ *            sandbox's US$5.44 to China) is TSC's. BEFORE GOING LIVE this must
+ *            switch to deducting Tazapay's own per-payout quote (the fee in
+ *            api/_tazapay.js quote()), checked against the live account's
+ *            pricing.
  *   paypal   "The sender pays payout fees", capped per currency, domestic and
  *            international differ (https://developer.paypal.com/payouts/fees).
  *            PayPal's own fee pages refuse automated reading, so the figures
@@ -59,17 +72,20 @@
  * charged to factories (decided 2026-11-16).
  *
  * withdrawalFee() never decides alone where a provider gives a figure: a
- * quoted fee (quotedFeeCents) always wins over the formula.
+ * quoted fee (quotedFeeCents) always wins over the formula. Except Tazapay,
+ * whose fixed placeholder (above) wins over its quote until it goes live.
  */
 
 const PROVIDERS = new Set(["stripe", "wise", "paypal", "tazapay", "bank"]);
-const QUOTED = new Set(["wise", "tazapay"]);
+const QUOTED = new Set(["wise"]);
 
 /** The published formulas, in basis points and cents. */
 export const FEE_FORMULAS = {
   stripe: { bps: 25, fixedCents: 25, crossBorderBps: 25, home: "US" },
   paypal: { domesticFixedCents: 25, bps: 200, internationalCapCents: 10000, home: "US" },
   bank: { fixedCents: 5000 },
+  // Placeholder until TSC's live Tazapay account (see the header). SWIFT, if a route ever uses it: 3500.
+  tazapay: { localFixedCents: 500 },
 };
 
 /** ceil(amount × bps / 10000), in whole integers so no float decides a cent. */
@@ -84,6 +100,7 @@ export function providerCharge(provider, country = "") {
     return (x) => percentUp(x, bps) + f.fixedCents;
   }
   if (provider === "bank") return () => FEE_FORMULAS.bank.fixedCents;
+  if (provider === "tazapay") return () => FEE_FORMULAS.tazapay.localFixedCents;
   const f = FEE_FORMULAS.paypal;
   if (country === f.home) return () => f.domesticFixedCents;
   return (x) => Math.min(percentUp(x, f.bps), f.internationalCapCents);
@@ -112,7 +129,7 @@ export const feeMoney = (cents, currency = "USD") => {
  *   → { refused: "<sentence>" } when nothing would arrive.
  *
  * basis: "quote" (the provider's own figure), "formula" (published, or the bank wire's fixed fee)
- * or "quote_needed" (Wise/Tazapay with no quote yet:
+ * or "quote_needed" (Wise with no quote yet:
  * feeCents and receivesCents are null, and nothing may be sent on it).
  */
 export function withdrawalFee({ provider, amountCents, currency = "USD", country = "", quotedFeeCents = null } = {}) {
@@ -122,7 +139,7 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
 
   let feeCents;
   let basis;
-  if (quotedFeeCents != null && Number.isFinite(Number(quotedFeeCents))) {
+  if (provider !== "tazapay" && quotedFeeCents != null && Number.isFinite(Number(quotedFeeCents))) {
     feeCents = Math.ceil(Number(quotedFeeCents));
     basis = "quote";
   } else if (QUOTED.has(provider)) {

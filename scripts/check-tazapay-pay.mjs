@@ -74,6 +74,10 @@ function fakeTazapay(payouts, transactions = {}) {
     pot_aml: { id: "pot_aml", status: "failed", failure: { code: "PF040000", description: "Payout is flagged for compliance" }, balance_transaction: "btr_d2", reversal_balance_transaction: "btr_c2" },
     pot_rev: { id: "pot_rev", status: "reversed", status_description: "PR1001", balance_transaction: "btr_d3", reversal_balance_transaction: "btr_c3" },
     pot_early: { id: "pot_early", status: "failed", failure: { code: "PF030100" }, balance_transaction: "btr_d1" },
+    pot_name: { id: "pot_name", status: "failed", failure: { code: "PF020201", description: "name mismatch" }, balance_transaction: "btr_d1", reversal_balance_transaction: "btr_c1" },
+    pot_cut: { id: "pot_cut", status: "failed", failure: { code: "PF030500", description: "cut off" }, balance_transaction: "btr_d1", reversal_balance_transaction: "btr_c1" },
+    pot_rate: { id: "pot_rate", status: "failed", failure: { code: "PF010300" }, balance_transaction: "btr_d1", reversal_balance_transaction: "btr_c1" },
+    pot_rfi: { id: "pot_rfi", status: "failed", failure: { code: "PF060400" }, balance_transaction: "btr_d1", reversal_balance_transaction: "btr_c1" },
   }, {
     btr_d1: { net: { amount: -31796, currency: "USD" } }, btr_c1: { net: { amount: 31796, currency: "USD" } },
     btr_d2: { net: { amount: -63049, currency: "USD" } }, btr_c2: { net: { amount: 63049, currency: "USD" } },
@@ -97,6 +101,18 @@ function fakeTazapay(payouts, transactions = {}) {
   const early = await tz.status("pot_early");
   assert.equal(early.state, "sent", "failed, but the money isn't back yet: it stays open, so the payment isn't owed twice and staff see where the money is");
   assert.match(early.waiting, /isn't back in TSC's Tazapay balance yet/);
+  const name = await tz.status("pot_name");
+  assert.equal(name.tellFactory, true, "a name the bank doesn't match (PF02) is the factory's to fix");
+  assert.equal(name.route, "details");
+  for (const id of ["pot_cut", "pot_rate"]) {
+    const r = await tz.status(id);
+    assert.equal(r.tellFactory, false, `${id}: a cut-off or a revised rate is not the factory's details`);
+    assert.equal(r.route, "retry");
+    assert.match(r.failure, /Nothing reached the factory.*Pay again when ready/);
+  }
+  const rfi = await tz.status("pot_rfi");
+  assert.equal(rfi.tellFactory, false, "a refused request for information stays with staff");
+  assert.equal(rfi.route, "staff");
   for (const [raw, state] of Object.entries({ succeeded: "paid", failed: "failed", reversed: "failed", cancelled: "cancelled", processing: "sent", compliance_hold: "sent" })) {
     assert.equal(TAZAPAY_STATES[raw], state, raw);
   }
@@ -219,7 +235,7 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert.equal(made[3].reference_id, "tsc-pay-0000-1111", "the payment is in the reference, for tracing");
   assert.equal(made[3].purpose, "PYR031");
   assert.equal(made[3].local.fund_transfer_network, "cnaps");
-  assert.equal(made[3].amount, Math.round((10000 - 544) * 6.4), "the factory pays the fee: the step less Tazapay's fee arrives, and TSC pays only the step");
+  assert.equal(made[3].amount, Math.round((10000 - 500) * 6.4), "the factory pays the fixed US$5.00: the step less US$5.00 arrives, at Tazapay's rate");
   assert.equal(made[3].holding_currency, "USD");
   assert.deepEqual(made[3].documents, [{ type: "invoice", url: "https://s3.example/tazapay-temp-doc-sandbox/x.pdf" }], "the invoice goes with it");
   assert.deepEqual(w.kept.map((k) => [k.bucket, k.path, k.type]), [["org-private", "00000000-0000-0000-0000-000000000000/tazapay-invoices/pay-0000-1111/11111111-2222-4333-8444-555555555555.pdf", "application/pdf"]], "TSC keeps the invoice in the private bucket");
@@ -227,7 +243,7 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert(w.records.some((r) => r.new_ref === "pot_new" && r.new_stage === "sent"), "the payout's id is kept the moment it exists");
   assert.equal(w.finishes.length, 0, "nothing finished yet");
   const feeAt = w.calls.findIndex((c) => c[0] === "db" && c[1] === "fee");
-  assert(feeAt >= 0 && w.calls[feeAt][2] === 544, "Tazapay's quoted fee is recorded on the payment (record_payout_fee)");
+  assert(feeAt >= 0 && w.calls[feeAt][2] === 500, "the factory's fixed US$5.00 is recorded on the payment (record_payout_fee), not Tazapay's quote");
   assert(feeAt < w.calls.findIndex((c) => c[1] === "payout"), "and recorded before any money moves");
 }
 {
@@ -255,9 +271,10 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   assert.equal(w.made().length, 0, "an account in another company's name is not paid");
 }
 {
-  // A step no bigger than Tazapay's fee: refused in words, nothing sent, the attempt ends.
-  const w = world({ claim: { amount_cents: 544 } });
-  await assert.rejects(pay(w), (e) => e.kind === "fee_too_large" && /the fee to send it is US\$5\.44, so nothing would arrive\. Nothing was sent\./.test(e.message));
+  // A step no bigger than the fee: refused in words, nothing sent, the attempt ends.
+  const w = world({ claim: { amount_cents: 500 } });
+  await assert.rejects(pay(w), (e) => e.kind === "fee_too_large" && /the fee to send it is US\$5\.00, so nothing would arrive\. Nothing was sent\./.test(e.message));
+  assert.equal(w.calls.filter((c) => c[1] === "quote").length, 0, "refused before Tazapay is asked");
   assert.equal(w.made().length, 0, "a payment the fee would swallow pays nothing");
   assert.equal(w.finishes[0]?.outcome, "cancelled");
 }
@@ -265,7 +282,8 @@ const pay = (w, extra = {}) => tazapayPay({ tazapay: w.tazapay, caller: w.caller
   const w = world({ balance: 5000 });
   const out = await pay(w);
   assert.equal(out.done, "short_balance");
-  assert.match(out.sentence, /short by \$50\.00, fee included/);
+  // What leaves TSC is the step less US$5.00 plus Tazapay's own fee (US$5.44 here): US$100.44.
+  assert.match(out.sentence, /short by \$50\.44, fee included/);
   assert.equal(w.made().length, 0, "a short balance pays nothing");
   assert.equal(w.finishes[0]?.outcome, "cancelled");
 }

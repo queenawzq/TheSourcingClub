@@ -32,8 +32,9 @@ export const TAZAPAY_ROUTES = Object.freeze({
 /** The route Tazapay would pay this account by, or null when Tazapay doesn't pay it. */
 /**
  * Tazapay's usual fee per payout, in US cents, from its sandbox quotes
- * (Nov 16): the chooser's "about" figure, and the board's "too small" check
- * before any quote. The quote at the press is what is charged.
+ * (Nov 16): the board's "too small" check before any quote. What the factory
+ * is charged is the fixed placeholder in src/shared/withdrawal-fees.mjs (from
+ * 2026-11-17), which withdrawalFee() applies whatever figure is passed.
  */
 export const TAZAPAY_TYPICAL_FEE_CENTS = Object.freeze({ CN: 544, HK: 323 });
 

@@ -2,6 +2,12 @@ import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "./_wise.js";
 import { paypalFrom } from "./_paypal.js";
+import { tazapayFrom } from "./_tazapay.js";
+import { ensureTazapayBeneficiary } from "./_tazapay-beneficiary.js";
+import { withdrawalInvoicePath, withdrawalInvoicePdf, withdrawalSteps } from "./_tazapay-invoice.js";
+import {
+  TAZAPAY_KEY_MEMORY_MS, invoiceKeptAt, keepAndUploadInvoice, payoutBody, quoteTazapayPayout, tazapayAccountProblems,
+} from "./_tazapay-pay.js";
 
 /**
  * One adapter per way a withdrawal leaves TSC. The core (api/_withdrawals.js)
@@ -29,8 +35,9 @@ import { paypalFrom } from "./_paypal.js";
  *                                      anything at the provider (no recipient, no transfer).
  *                                      Without it, the factory sees the fee line instead.
  *
- * ctx = { amountCents, currency, key, reference, account: { id, paypalEmail,
- *         wiseRecipientId, wiseCurrency }, caller, db, cnyConfirmed, feeFor }
+ * ctx = { amountCents, currency, key, reference, withdrawalId, orgId, resumed,
+ *         account: { id, paypalEmail, wiseRecipientId, wiseCurrency }, caller, db,
+ *         cnyConfirmed, feeFor }
  * `feeFor({ provider, quotedFeeCents })` is the one fee rule
  * (src/shared/withdrawal-fees.mjs); an adapter with no quote asks it.
  *
@@ -147,6 +154,134 @@ export const paypalAdapter = {
   },
 };
 
+/**
+ * Tazapay: factories banking in mainland China (CNY over CNAPS) and Hong Kong
+ * (HKD over CHATS). One payout per withdrawal, with one invoice listing every
+ * order step it pays. Shares the account check, the quote, the invoice and the
+ * payout's body with Pay with Tazapay (api/_tazapay-pay.js).
+ *
+ * The factory's fee is the fixed placeholder (src/shared/withdrawal-fees.mjs):
+ * the payout carries amount − US$5.00, and Tazapay's own fee leaves TSC's
+ * balance on top. A Tazapay fee above US$5.00 (the sandbox's US$5.44 to China)
+ * is TSC's until the fee switches to Tazapay's quote before going live, so this
+ * adapter may leave a little more than the amount (`placeholderFee`).
+ */
+const TAZAPAY_FAILED = {
+  details: "Your bank didn't accept this payout. Check your bank details, then withdraw again.",
+  retry: "This payout couldn't be completed, and nothing reached your bank. You can withdraw again.",
+  staff: "This payout couldn't be completed, and nothing reached your bank. Contact TSC support before withdrawing again.",
+  cancelled: "This payout was cancelled before it was sent, and nothing reached your bank.",
+  reversed: "This payout was returned after it was sent. Contact TSC support before withdrawing again.",
+};
+const LOST_TAZAPAY_WITHDRAWAL = "Tazapay's answer to the first approval was lost more than a day ago, so approving again could pay twice. Check Tazapay for a payout with this withdrawal's reference before doing anything else.";
+const NOT_USD = (currency) => `Tazapay pays from TSC's USD balance, and this withdrawal is in ${currency}.`;
+
+/** The steps this withdrawal pays, oldest first after the withdrawals before it, for its invoice. */
+async function tazapayWithdrawalSteps(db, ctx) {
+  const [payments, withdrawals] = await Promise.all([
+    db.from("order_payments").select("id, amount_cents, release_requested_at, milestone_id, production_orders!inner (order_number, factory_org_id)")
+      .eq("withdrawal_pool", true).eq("currency", ctx.currency).in("state", ["confirmed", "released"])
+      .eq("production_orders.factory_org_id", ctx.orgId),
+    db.from("factory_withdrawals").select("id, amount_cents, status, created_at")
+      .eq("org_id", ctx.orgId).eq("currency", ctx.currency).in("status", ["paid", "paying"]),
+  ]);
+  const unlisted = new PayoutFailure("invoice", "The order steps this withdrawal pays couldn't be listed for its invoice, so nothing was sent. Reload the board and approve again.");
+  if (payments.error || withdrawals.error) throw unlisted;
+  const mine = (withdrawals.data ?? []).find((w) => w.id === ctx.withdrawalId);
+  const offset = (withdrawals.data ?? []).filter((w) => w.id !== ctx.withdrawalId
+    && (w.status === "paid" || (mine && new Date(w.created_at) < new Date(mine.created_at))))
+    .reduce((sum, w) => sum + Number(w.amount_cents), 0);
+  const ids = [...new Set((payments.data ?? []).map((p) => p.milestone_id).filter(Boolean))];
+  const milestones = ids.length ? await db.from("order_milestones").select("id, title").in("id", ids) : { data: [] };
+  if (milestones.error) throw unlisted;
+  const titles = new Map((milestones.data ?? []).map((m) => [m.id, m.title]));
+  const pool = (payments.data ?? [])
+    .map((p) => ({ id: p.id, at: p.release_requested_at, orderNumber: p.production_orders?.order_number ?? "", stepTitle: titles.get(p.milestone_id) ?? "", amountMinor: Number(p.amount_cents) }))
+    // The database's order: release_requested_at (nulls last), then id.
+    .sort((a, b) => (a.at && b.at ? (a.at < b.at ? -1 : a.at > b.at ? 1 : 0) : a.at ? -1 : b.at ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const steps = withdrawalSteps(pool, offset, ctx.amountCents);
+  if (!steps?.length) throw unlisted;
+  return steps;
+}
+
+function tazapayShape(ctx, asked, extra) {
+  if (asked.refused) throw new PayoutFailure(asked.kind, asked.refused);
+  const { quote, fee } = asked;
+  return {
+    feeCents: fee.feeCents,
+    leavesCents: quote.totalMinor,
+    receivesMinor: quote.payoutMinor,
+    receivesCurrency: quote.payoutCurrency,
+    quote: { ...extra, tazapay: quote },
+  };
+}
+
+export const tazapayAdapter = {
+  provider: "tazapay",
+  label: "Tazapay",
+  settings: "TAZAPAY_BASE_URL, TAZAPAY_API_KEY and TAZAPAY_API_SECRET",
+  placeholderFee: true,
+  build: (env = process.env) => tazapayFrom(env),
+  async balance(tazapay, currency) {
+    return tazapay.available(currency);
+  },
+  async quote(tazapay, ctx) {
+    if (ctx.currency !== "USD") throw new PayoutFailure("refused", NOT_USD(ctx.currency));
+    const { account, problems, sentence, route } = await tazapayAccountProblems(ctx.db, ctx.account.id, ", tazapay_beneficiary_id");
+    if (problems.length) throw new PayoutFailure("details_missing", sentence, { fields: problems.map((p) => p.field) });
+    const beneficiary = await ensureTazapayBeneficiary({
+      caller: ctx.caller, db: ctx.db, tazapay, accountId: account.id, existingId: account.tazapay_beneficiary_id,
+    });
+    const asked = await quoteTazapayPayout({ tazapay, amountMinor: ctx.amountCents, currency: ctx.currency, route, country: route.country });
+    return tazapayShape(ctx, asked, { beneficiary, route, payeeName: account.account_name });
+  },
+  /** Read-only: no payee, no payout. Null (the fee line instead) when the account can't be paid yet. */
+  async factoryQuote(tazapay, ctx) {
+    if (ctx.currency !== "USD") return null;
+    const { problems, route } = await tazapayAccountProblems(ctx.db, ctx.account.id);
+    if (problems.length) return null;
+    const asked = await quoteTazapayPayout({ tazapay, amountMinor: ctx.amountCents, currency: ctx.currency, route, country: route.country });
+    return { ...tazapayShape(ctx, asked, {}), quote: null, estimate: false };
+  },
+  async pay(tazapay, ctx, quote, { now = () => new Date() } = {}) {
+    const { beneficiary, route, payeeName, tazapay: q } = quote.quote;
+    const path = withdrawalInvoicePath(ctx.withdrawalId, ctx.key);
+    // A press after one whose answer was lost: the same key finds its payout, but
+    // only while Tazapay remembers the key. The invoice was kept at the first press.
+    if (ctx.resumed) {
+      const first = await invoiceKeptAt(ctx.db, path);
+      if (first && now() - first > TAZAPAY_KEY_MEMORY_MS) throw new PayoutFailure("key_expired", LOST_TAZAPAY_WITHDRAWAL, { unsure: true });
+    }
+    const steps = await tazapayWithdrawalSteps(ctx.db, ctx);
+    const short = String(ctx.withdrawalId).slice(0, 8);
+    const reference = `TSC-W-${short}`;
+    const bytes = withdrawalInvoicePdf({
+      reference, issuedOn: now().toISOString().slice(0, 10), payeeName, steps,
+      amountMinor: ctx.amountCents, currency: ctx.currency, payoutMinor: q.payoutMinor, payoutCurrency: q.payoutCurrency, rate: q.rate,
+    });
+    const documentUrl = await keepAndUploadInvoice({ db: ctx.db, tazapay, path, fileName: `${reference}.pdf`, bytes });
+    const orders = [...new Set(steps.map((s) => s.orderNumber).filter(Boolean))];
+    const payout = await tazapay.createPayout(payoutBody({
+      beneficiary, quote: q, route, currency: ctx.currency, documentUrl,
+      referenceId: `tsc-w-${ctx.withdrawalId}`,
+      description: `Advance payment for goods, production order${orders.length > 1 ? "s" : ""} ${orders.join(", ")}`,
+      descriptor: `TSC ${reference.slice(4)}`,
+    }), `tsc-${ctx.key}`);
+    if (!payout?.id) throw new PayoutFailure("unknown", "Tazapay answered without a payout. Press again: it can't pay twice.", { unsure: true });
+    return { ref: payout.id };
+  },
+  /** What the factory reads on a failure is TSC's sentence by who must act, never Tazapay's. */
+  async status(tazapay, ref) {
+    const s = await tazapay.status(ref);
+    if (s.state === "paid") return { state: "paid", raw: s.raw, arrivesMinor: s.arrivesCents, failure: null };
+    if (s.state === "failed" || s.state === "cancelled") {
+      const which = s.raw === "cancelled" ? "cancelled" : s.raw === "reversed" ? "reversed" : s.route ?? "staff";
+      return { state: s.state, raw: s.raw, arrivesMinor: null, failure: TAZAPAY_FAILED[which] ?? TAZAPAY_FAILED.staff, code: s.code ?? null };
+    }
+    return { state: "sent", raw: s.raw, arrivesMinor: null, failure: null, waiting: s.waiting ?? null };
+  },
+};
+
 /** Staff send it by bank themselves, then mark it paid with the bank's reference (an RPC). */
 export const bankAdapter = {
   provider: "bank",
@@ -156,5 +291,5 @@ export const bankAdapter = {
   build: () => null,
 };
 
-export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter, bank: bankAdapter };
+export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter, tazapay: tazapayAdapter, bank: bankAdapter };
 export const registerAdapter = (adapter) => { ADAPTERS[adapter.provider] = adapter; };

@@ -87,8 +87,32 @@ const WAITING = {
   requires_confirmation: "This payout waits for confirmation in Tazapay. Open it there.",
 };
 
-/** A bank's refusal is the factory's to fix; everything else stays with staff. */
-const BANK_REFUSED = /^PF03/;
+/**
+ * Who a failed payout is for, by Tazapay's failure code (Payout Failure
+ * Reasons, read 2026-11-17):
+ *   details  the factory's to fix: every PF02 code (details invalid, a name or
+ *            tax id that doesn't match, a closed or unsupported account), and
+ *            the bank refusing or returning the money (PF030100, PF030300).
+ *   retry    nothing reached the factory and nothing is wrong with its details:
+ *            network downtime (PF000200), not funded or approved in time, or the
+ *            rate revised after creation (PF0101-PF0103), the network refusing
+ *            it, the bank's technical issue or cut-off (PF030200, PF030400,
+ *            PF030500). Staff pay again.
+ *   staff    the rest: compliance (PF04), Tazapay's requests for information
+ *            (PF06), TSC's own sender details (PF07), the receiving bank's
+ *            policy (PF030101-PF030104), and any code TSC doesn't know. Staff
+ *            ask Tazapay; the factory isn't told to change anything.
+ */
+export function tazapayFailureRoute(code) {
+  const c = String(code ?? "").toUpperCase();
+  if (/^PF02\d{4}$/.test(c) || c === "PF030100" || c === "PF030300") return "details";
+  if (["PF000200", "PF010100", "PF010200", "PF010300", "PF030200", "PF030400", "PF030500"].includes(c)) return "retry";
+  return "staff";
+}
+
+/** Tazapay's two "out of range" refusals of a quote: the holding side too small (20003), and the payout side outside its limits (20298). */
+const OUT_OF_RANGE = [20003, 20298];
+const outOfRange = (failure) => failure instanceof TazapayFailure && failure.codes.some((c) => OUT_OF_RANGE.includes(Number(c)));
 
 const usd = (minor, currency = "USD") => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(minor) / 100);
 
@@ -218,17 +242,26 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
       const step = Number(amountMinor);
       const feeOf = (quote) => Number(quote?.fee_info?.fixed?.in_holding_currency ?? 0) + Number(quote?.fee_info?.variable?.in_holding_currency ?? 0);
       // Too small to send: the fee, read from a quote of a larger amount, so the
-      // refusal can name it (withdrawalFee() words it). Nothing is sent.
+      // refusal can name it (withdrawalFee() words it). Nothing is sent. If the
+      // larger amount is out of range too, the amount is above Tazapay's maximum
+      // for one payout (tooLarge): refused, never split.
       const tooSmall = async () => {
-        const probe = await ask({ holding: step + 10000 });
+        let probe;
+        try {
+          probe = await ask({ holding: step + 10000 });
+        } catch (failure) {
+          if (outOfRange(failure)) return { tooLarge: true, rate: null, payoutMinor: 0, payoutCurrency: route.currency, totalMinor: step, feeMinor: null };
+          throw failure;
+        }
         return { tooSmall: true, rate: Number(probe?.exchange_rates?.holding_to_payout) || null, payoutMinor: 0, payoutCurrency: route.currency, totalMinor: step, feeMinor: feeOf(probe) };
       };
       let first;
       try {
         first = await ask({ holding: step });
       } catch (failure) {
-        // Tazapay refuses a holding amount its fee would swallow (20003, "valid amount").
-        if (failure instanceof TazapayFailure && /20003/.test(failure.message)) return await tooSmall();
+        // Out of range: 20003 ("valid amount", a holding amount the fee would
+        // swallow) or 20298 (the payout side under its minimum or over its maximum).
+        if (outOfRange(failure)) return await tooSmall();
         throw failure;
       }
       const rate = Number(first?.exchange_rates?.holding_to_payout);
@@ -236,7 +269,13 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
       let payoutMinor = Number(first?.payout_info?.amount);
       if (!(payoutMinor > 0)) return await tooSmall();
       for (let tries = 0; tries < 4; tries += 1) {
-        const back = await ask({ payout: payoutMinor });
+        let back;
+        try {
+          back = await ask({ payout: payoutMinor });
+        } catch (failure) {
+          if (outOfRange(failure)) return await tooSmall();
+          throw failure;
+        }
         const total = Number(back?.holding_info?.amount);
         if (Number.isFinite(total) && total <= step) {
           return { rate, payoutMinor, payoutCurrency: route.currency, totalMinor: total, feeMinor: feeOf(back) };
@@ -279,7 +318,7 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
       const state = known ? TAZAPAY_STATES[raw] : "sent";
       const arrivesCents = Number.isFinite(Number(payout?.amount)) ? Number(payout.amount) : null;
       const result = {
-        state, raw, arrivesCents, arrivesCurrency: payout?.currency ?? null, failure: null, tellFactory: false,
+        state, raw, arrivesCents, arrivesCurrency: payout?.currency ?? null, failure: null, tellFactory: false, route: null, code: null,
         // A status Tazapay adds later stays open, and staff are told to look, never guessed at.
         waiting: WAITING[raw] ?? (known ? null : `Tazapay reports this payout as "${raw.slice(0, 40) || "no status"}", which TSC doesn't know yet. Check it in Tazapay.`),
       };
@@ -302,13 +341,17 @@ export function tazapayFrom(env = process.env, fetchImpl = fetch) {
         result.failure = `Tazapay cancelled this payout before it was paid${said ? ` (${said})` : ""}. Nothing reached the factory.${back ? money : ""} The payment is still owed: pay again when ready.`;
       } else if (raw === "reversed") {
         result.failure = `Tazapay paid this, then the payout was reversed${said ? ` (${said})` : ""}.${money} The payment is owed again: check with the factory before paying again.`;
-      } else if (code && BANK_REFUSED.test(code)) {
+      } else if (tazapayFailureRoute(code) === "details") {
         result.failure = `The factory's bank refused this payout (${code}${said ? `: ${said}` : ""}).${money} The factory was asked to check its bank details.`;
         result.tellFactory = true;
+      } else if (tazapayFailureRoute(code) === "retry") {
+        result.failure = `Tazapay couldn't complete this payout (${code}). Nothing reached the factory.${money} Pay again when ready; the factory wasn't told.`;
       } else {
         result.failure = `Tazapay didn't pay this${code ? ` (${code}${said ? `: ${said}` : ""})` : ""}.${money} Ask Tazapay why before paying again; the factory wasn't told.`;
       }
       result.moneyBack = back;
+      result.code = code;
+      result.route = raw === "failed" ? tazapayFailureRoute(code) : raw;
       return result;
     },
 

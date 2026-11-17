@@ -58,6 +58,7 @@ function contextFrom(claim, { caller, db, cnyConfirmed, country = "" }) {
     currency: claim.currency,
     key: claim.key,
     reference: `TSC withdrawal ${String(claim.withdrawal_id).slice(0, 8)}`,
+    withdrawalId: claim.withdrawal_id, orgId: claim.org_id ?? null, resumed: Boolean(claim.resumed),
     account: { id: claim.account_id, paypalEmail: claim.paypal_email, wiseRecipientId: claim.wise_recipient_id, wiseCurrency: claim.wise_currency },
     caller, db, cnyConfirmed: Boolean(cnyConfirmed),
     country,
@@ -69,7 +70,9 @@ function contextFrom(claim, { caller, db, cnyConfirmed, country = "" }) {
 function checkQuote(adapter, ctx, quote) {
   const rule = withdrawalFee({ provider: adapter.provider, amountCents: ctx.amountCents, currency: ctx.currency, country: ctx.country, quotedFeeCents: quote.feeCents });
   if (rule.refused) throw new PayoutFailure("too_small", rule.refused);
-  if (quote.leavesCents != null && quote.leavesCents > ctx.amountCents) {
+  // A provider on a placeholder fee (Tazapay, src/shared/withdrawal-fees.mjs) may
+  // leave a little more than the amount: TSC carries its fee above the placeholder.
+  if (quote.leavesCents != null && quote.leavesCents > ctx.amountCents && !adapter.placeholderFee) {
     throw new PayoutFailure("fee_on_top", `${adapter.label} would take more than the amount from TSC's balance. Nothing was sent.`);
   }
   return { ...quote, feeCents: rule.feeCents };
@@ -91,7 +94,7 @@ async function providerShort(adapter, client, ctx) {
 export async function previewWithdrawal({ adapter, client, caller, db, row, cnyConfirmed }) {
   await loadFeeRule();
   const ctx = contextFrom({
-    withdrawal_id: row.id, amount_cents: row.amount_cents, currency: row.currency, key: null,
+    withdrawal_id: row.id, org_id: row.org_id, amount_cents: row.amount_cents, currency: row.currency, key: null,
     account_id: row.account_id, paypal_email: row.paypal_email, wise_recipient_id: row.wise_recipient_id, wise_currency: row.wise_currency,
   }, { caller, db, cnyConfirmed, country: await factoryCountry(db, row.org_id) });
   const balance = await adapter.balance(client, ctx.currency);
@@ -109,7 +112,7 @@ export async function previewWithdrawal({ adapter, client, caller, db, row, cnyC
 export async function factoryQuote({ adapter, client, db, orgId, account, amountCents }) {
   await loadFeeRule();
   const ctx = contextFrom({
-    withdrawal_id: null, amount_cents: amountCents, currency: "USD", key: null,
+    withdrawal_id: null, org_id: orgId, amount_cents: amountCents, currency: "USD", key: null,
     account_id: account.id, paypal_email: account.paypal_email, wise_recipient_id: account.wise_recipient_id, wise_currency: account.wise_currency,
   }, { caller: null, db, cnyConfirmed: false, country: await factoryCountry(db, orgId) });
   const asked = await adapter.factoryQuote(client, ctx);
