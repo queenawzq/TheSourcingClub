@@ -96,7 +96,6 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
   }
   const [values, setValues] = useState({});
   const [holder, setHolder] = useState(org.name ?? "");
-  const [makeDefault, setMakeDefault] = useState(true);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
   const ready = supported && holder.trim() && fields.every(([key, , , pattern]) => pattern.test(clean(values[key])));
@@ -108,7 +107,9 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
     try {
       const { token, error } = await stripe.createToken("bank_account", tokenDetails(country, currency, values, holder));
       if (error) throw new Error(error.message);
-      onAdded(await connectAction(org.id, "add_method", { token: token.id, makeDefault: isFirst || makeDefault, replaceId }));
+      // Adding never changes the default: only the first account is one (and a
+      // Replace takes the replaced one's place). Make default chooses another.
+      onAdded(await connectAction(org.id, "add_method", { token: token.id, makeDefault: isFirst, replaceId }));
     } catch (failure) {
       setProblem(failure.message || "The bank account could not be added.");
       setBusy(false);
@@ -155,12 +156,6 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
             </label>
           ))}
         </div>
-        {isFirst ? null : (
-          <label className="payout-default-choice">
-            <input type="checkbox" checked={makeDefault} onChange={(event) => setMakeDefault(event.target.checked)} />
-            <span>Make default</span>
-          </label>
-        )}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
     </PayoutModal>
