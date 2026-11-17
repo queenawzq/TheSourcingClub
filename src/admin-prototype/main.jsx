@@ -1916,12 +1916,13 @@ function PayoutProvidersPanel() {
   return (
     <Panel title="Payment providers" className="admin-settings-card admin-payout-providers">
       {rows ? PAYOUT_PROVIDERS.map((provider) => (
-        <div className="admin-payout-provider-row" key={provider.key}>
-          <strong>{provider.label}</strong>
+        // A group named by its provider, so each box is heard as "PayPal: China and Hong Kong".
+        <div className="admin-payout-provider-row" role="group" aria-labelledby={`payout-provider-${provider.key}`} key={provider.key}>
+          <strong id={`payout-provider-${provider.key}`}>{provider.label}</strong>
           <div className="admin-payout-provider-regions">
             {PAYOUT_REGIONS.map((region) => (
               <label className="admin-check" key={region.key}>
-                <input type="checkbox" name={`${provider.label} · ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
+                <input type="checkbox" name={`${provider.label} · ${region.label}`} aria-label={`${provider.label}: ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
                   checked={enabled(provider.key, region.key)} disabled={Boolean(saving)}
                   onChange={(event) => change(provider.key, region.key, event.target.checked)} />
                 <span>{region.label}</span>

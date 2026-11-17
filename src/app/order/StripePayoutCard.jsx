@@ -4,6 +4,8 @@ import { isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
+import { wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
@@ -83,6 +85,10 @@ function methodLabel(method) {
 function listLabel(method) {
   return method.type === "card" ? methodLabel(method) : endingIn("Bank account (Stripe)", method.last4);
 }
+
+/** The same in the page's language, for the Withdraw dialog's options: the language layer never rewrites a select. */
+const listLabelIn = (method, language) => (language !== "zh" ? listLabel(method)
+  : endingIn(method.type === "card" ? "借记卡" : wholeEntry("Bank account (Stripe)") ?? "Bank account (Stripe)", method.last4));
 
 /** Where a country has two bank options, this one needs telling from "Bank account". */
 // A US bank is paid US$ to US$ at home: a bank transfer, not an international one.
@@ -332,6 +338,7 @@ export default function StripePayoutCard({
 }) {
   const [account, setAccount] = useState(undefined);
   const [balance, setBalance] = useState(null);
+  const uiLanguage = useUiLanguage();
   // Where reading Stripe's balance stands: "loading", "slow" (still loading
   // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
   // (not an owner, no active Stripe account). The card said "We could not
@@ -1079,7 +1086,7 @@ export default function StripePayoutCard({
                   <span>Withdraw to</span>
                   <select name="Withdraw to" value={withdrawal.destination ?? ""} disabled={busy}
                     onChange={(event) => setWithdrawal((was) => ({ ...was, destination: event.target.value }))}>
-                    {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabel(method)}</option>)}
+                    {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabelIn(method, uiLanguage)}</option>)}
                   </select>
                 </label>
               ) : null}
