@@ -1,8 +1,8 @@
 /**
  * A factory's payout methods where Stripe cannot pay out (mainland China, Hong
  * Kong…), in factory_payout_accounts. The one marked is_primary is "the one TSC
- * pays": a bank account (through Wise when it was set up on Wise's form, by
- * staff otherwise) or a PayPal address.
+ * pays": a bank account set up on Wise's form, or a PayPal address. TSC no
+ * longer pays a bank by hand (20261117500000).
  *
  * A factory may keep more than one (John, 2026-10-29): Add always saves a new
  * row, never overwriting another; the first one saved is the one TSC pays,
@@ -15,7 +15,6 @@
 import { useCallback, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
-import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
 
@@ -100,45 +99,6 @@ export function useManualPayouts(orgId) {
     if (failure?.cause?.code === "42501") return new Error(SAVE_REFUSALS.payout_owner_only);
     return otherwise ?? new Error("Couldn't save your bank details right now. Nothing changed. Try again.");
   };
-
-  // The staff-paid bank form, where Wise's form does not apply. The card passes
-  // the payout country it was set up for, which the form has no field for.
-  // Throws, for the card to say in its dialog.
-  async function save(details = {}) {
-    const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
-    if (!form.bank_name.trim() || !form.account_name.trim()) throw new Error(SAVE_REFUSALS.bank_details_missing);
-    if (!form.swift.trim()) throw new Error(SAVE_REFUSALS.swift_missing);
-    if (!validSwift(form.swift)) throw new Error(SAVE_REFUSALS.swift_format);
-    const typed = normalBankNumber(form.account_number);
-    if (typed !== normalBankNumber(form.account_number_again)) throw new Error(SAVE_REFUSALS.number_mismatch);
-    if (typed ? !validBankNumber(typed) : !editing?.number_changed_at) throw new Error(typed ? SAVE_REFUSALS.number_format : SAVE_REFUSALS.number_required);
-    setBusy(true);
-    try {
-      const bank_country = "bank_country" in details ? details.bank_country : editing?.bank_country ?? null;
-      // The number goes to the database and nowhere else; the page keeps only what comes back.
-      const row = unwrap(await supabase.rpc("save_bank_payout_account", {
-        target_org: orgId,
-        target_account: editing?.id ?? null,
-        bank_name: form.bank_name,
-        account_name: form.account_name,
-        bank_country,
-        swift: form.swift,
-        branch: form.branch,
-        instructions: form.instructions,
-        account_number: form.account_number,
-        account_number_again: form.account_number_again,
-        number_kind: bankFieldsFor(bank_country).numberKind,
-      }), "save your payout account");
-      setForm((current) => ({ ...current, account_number: "", account_number_again: "" }));
-      await load();
-      setSaved(true);
-      return row;
-    } catch (failure) {
-      throw inWords(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   // Wise's form (PayoutSetupSteps): the fields, and the number apart from them.
   async function saveWise({ bankName, type, currency, details, numberKey, number, numberAgain }) {
@@ -227,7 +187,6 @@ export function useManualPayouts(orgId) {
     load,
     startEdit,
     setField,
-    save,
     saveWise,
     savePaypal,
     remove,

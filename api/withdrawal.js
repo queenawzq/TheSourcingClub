@@ -35,7 +35,6 @@ export default async function handler(request, response) {
       adapter = adapterFor(row.provider);
     }
     if (!adapter) return reply(response, 400, { error: "This withdrawal has no way to be paid yet. Decline it with a reason." });
-    if (adapter.manual) return reply(response, 400, { error: "Send this by bank yourself, then mark it paid with the bank's reference." });
     let client;
     try {
       client = adapter.build();
@@ -75,9 +74,9 @@ async function quoteForFactory(request, response, { db, caller }) {
     .select("id, org_id, method, paypal_email, wise_recipient_type, wise_recipient_id, wise_currency").eq("id", accountId).eq("org_id", orgId).maybeSingle();
   if (found.error || !found.data) return reply(response, 404, { error: "Choose one of your saved withdrawal methods." });
   const account = found.data;
-  const provider = account.method === "paypal" ? "paypal" : account.wise_recipient_type ? "wise" : "bank";
+  const provider = account.method === "paypal" ? "paypal" : account.wise_recipient_type ? "wise" : null;
   const adapter = adapterFor(provider);
-  if (!adapter || adapter.manual || typeof adapter.factoryQuote !== "function") return reply(response, 200, { exact: false });
+  if (!adapter || typeof adapter.factoryQuote !== "function") return reply(response, 200, { exact: false });
   try {
     const client = adapter.build();
     if (!client) return reply(response, 200, { exact: false });

@@ -46,8 +46,13 @@
  *              first international payout's fee.
  *            PayPal deducts it from TSC's balance on top of the item, so TSC
  *            sends the most that, with PayPal's fee on it, fits in the amount.
- *   bank     Staff pay it by bank wire ("Mark paid out by bank"), and TSC's bank
- *            charges TSC for the outgoing international wire. A fixed US$50:
+ *   bank     Not a withdrawal method: a factory can no longer withdraw to a bank
+ *            staff pay by hand (20261117500000). It is the fee of the staff
+ *            fallback on the per-step board ("Mark paid out by bank", for a Wise
+ *            bank account or a factory Stripe cannot pay), and of a bank
+ *            withdrawal asked for before that change. Staff pay it by bank
+ *            wire, and TSC's bank charges TSC for the outgoing international
+ *            wire. A fixed US$50:
  *            the highest common outgoing international wire fee of a US
  *            business bank (TO CONFIRM WITH JOHN: TSC's own bank's figure).
  *            Copied in public.bank_payout_fee_cents() (migration
@@ -193,7 +198,7 @@ export function payoutFeeSentence(feeCents, receivesCents, currency = "USD") {
   return `Payout fee ${money(feeCents)} is taken from this payment: you receive ${money(receivesCents)}.`;
 }
 
-/** The chooser's fee line, per route and language. */
+/** The chooser's fee line, per route and language. No bank line: TSC no longer pays a bank by hand. */
 const LINES = {
   stripe: {
     en: ({ us }) => (us
@@ -222,10 +227,6 @@ const LINES = {
     zh: ({ us }) => (us
       ? "手续费：每笔 0.25 美元，从该笔款项中扣除"
       : "手续费：每笔 2%（最多 20 美元），从该笔款项中扣除；PayPal 换汇美元可能收取约 3–4%"),
-  },
-  bank: {
-    en: () => "Fee: US$50 per payment for the bank transfer, taken from it; your bank may charge to receive it",
-    zh: () => "手续费：每笔银行转账 50 美元，从该笔款项中扣除；你的银行可能收取入账费",
   },
 };
 

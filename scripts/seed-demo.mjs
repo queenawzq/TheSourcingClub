@@ -43,6 +43,7 @@ import { checkCallText } from "../api/screen-call-text.js";
 import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
+import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 // The local stack, or a test database named with --remote; never production.
 const { URL, ANON, SERVICE, isLocal } = demoTarget();
@@ -1442,18 +1443,20 @@ async function approveOpenStep(order, title, vendor = factory) {
 }
 
 /**
- * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
- * its withdrawal balance, so the step is paid by a withdrawal staff sent by
- * bank, recorded as the server would, less the US$50 wire fee (bank_payout_fee_cents()).
+ * For a factory paid by PayPal or Wise: its approved steps are its withdrawal
+ * balance, so the step is paid by a withdrawal, recorded as the server would
+ * after PayPal paid it, less PayPal's fee (src/shared/withdrawal-fees.mjs).
+ * Never by bank: TSC no longer pays a bank by hand (20261117500000).
  */
-async function withdrawnByHand(org, payment, reference) {
+async function withdrawnByPaypal(org, account, country, payment, reference) {
+  const fee = withdrawalFee({ provider: "paypal", amountCents: Number(payment.amount_cents), currency: payment.currency ?? "USD", country });
   const withdrawal = must(await admin.from("factory_withdrawals").insert({
-    org_id: org.id, provider: "bank", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
-    paid_to: "your bank account", decided_by: adminUser.id,
+    org_id: org.id, account_id: account.id, provider: "paypal", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
+    paid_to: account.paypal_email, decided_by: adminUser.id,
   }).select("id").single(), `a withdrawal for ${reference}`);
   must(await admin.rpc("record_withdrawal", {
-    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 5000, receives: payment.amount_cents - 5000, receives_in: "USD",
-  }), `paid by hand: ${reference}`);
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: fee.feeCents, receives: fee.receivesCents, receives_in: "USD",
+  }), `paid by PayPal: ${reference}`);
 }
 
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
@@ -1531,12 +1534,12 @@ const seersucker = await runningOrder({
 await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 // 7. Kowloon Sourcing Partners is in Hong Kong and paid through PayPal: one fit
-//    sample marked paid by staff, one approved and waiting on staff ("Payout
+//    sample paid out by PayPal, one approved and waiting on staff ("Payout
 //    owed"), and one funded and waiting for the brand, so its card shows
 //    balance and Awaiting approval.
-must(await tradingCompany.client.from("factory_payout_accounts").insert({
+const kowloonPaypal = must(await tradingCompany.client.from("factory_payout_accounts").insert({
   org_id: tradingOrg.id, method: "paypal", paypal_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
-}), "the trading company's PayPal account");
+}).select("id, paypal_email").single(), "the trading company's PayPal account");
 const hopsackTitle = "Linen hopsack blazer, AW27";
 const hopsack = await runningOrder({
   title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
@@ -1545,7 +1548,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-await withdrawnByHand(tradingOrg, hopsackFit, "DEMO-20260001");
+await withdrawnByPaypal(tradingOrg, kowloonPaypal, "HK", hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,

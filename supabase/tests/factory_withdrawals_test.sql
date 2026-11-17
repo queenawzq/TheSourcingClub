@@ -192,18 +192,31 @@ select ok((select withdrawal_pool from public.order_payments where id = '16f0000
 select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 280000::bigint, 'and adds to it');
 select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000004'$$, '22023', null, 'it stays in the balance');
 
--- A bank transfer staff send carries the fixed wire fee (bank_payout_fee_cents()).
+-- A bank account staff would pay by hand (no Wise form) is no longer a way to
+-- withdraw (20261117500000): refused, whatever the amount.
 set local session_replication_role = replica;
 insert into public.factory_payout_accounts (id, org_id, method, bank_name, account_name, account_number_last4, swift, bank_country, is_primary, details_changed_at, number_changed_at)
 values ('16a10000-0000-0000-0000-000000000004', '16b00000-0000-0000-0000-0000000000f1', 'bank', 'Porto Bank', 'P116 MILL LTD', '4417', 'BCOMPTPL', 'HK', false, '2026-11-01 00:00:00+00', now());
 set local session_replication_role = origin;
 select pg_temp.act_as(1); set local role authenticated;
 select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 5000, '16a10000-0000-0000-0000-000000000004')$$,
-  '22023', 'this withdrawal is not more than the bank transfer fee, so nothing would arrive', 'a bank withdrawal no bigger than the wire fee is refused');
-select is((public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, '16a10000-0000-0000-0000-000000000004')).provider, 'bank', 'a bank Wise cannot pay is a bank withdrawal');
-reset role; select pg_temp.act_as(5); set local role authenticated;
-select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'requested'), 'WIRE-116')).receives_minor, 15000::bigint,
-  'staff mark it paid: the factory receives the amount less the US$50 wire fee');
+  '22023', 'This withdrawal method is not available right now.', 'a withdrawal to a bank staff would pay by hand is refused');
+select throws_ok($$select public.request_withdrawal('16b00000-0000-0000-0000-0000000000f1', 20000, '16a10000-0000-0000-0000-000000000004')$$,
+  '22023', 'This withdrawal method is not available right now.', 'at any amount: there is no wire-fee check left to reach');
+reset role;
+select ok(position('bank_payout_fee_cents' in (select prosrc from pg_proc where oid = 'public.request_withdrawal(uuid, bigint, uuid)'::regprocedure)) = 0,
+  'request_withdrawal no longer reads the bank wire fee');
+
+-- Kept: the wire fee "Mark paid out by bank" charges (the fallback for a Wise
+-- bank account), and marking a bank withdrawal asked for before the change.
+select is(public.bank_payout_fee_cents(), 5000::bigint, 'the bank wire fee is still there');
+select ok(position('bank_payout_fee_cents' in (select prosrc from pg_proc where oid = 'public.release_payment_to_factory(uuid, text, timestamptz)'::regprocedure)) > 0,
+  'Mark paid out by bank still charges it');
+insert into public.factory_withdrawals (org_id, account_id, provider, amount_cents, currency, paid_to, paid_to_changed_at)
+values ('16b00000-0000-0000-0000-0000000000f1', '16a10000-0000-0000-0000-000000000004', 'bank', 20000, 'USD', 'Porto Bank ending 4417', '2026-11-01 00:00:00+00');
+select pg_temp.act_as(5); set local role authenticated;
+select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and provider = 'bank' and status = 'requested'), 'WIRE-116')).receives_minor, 15000::bigint,
+  'a bank withdrawal asked for before the change is still marked paid: the amount less the US$50 wire fee');
 reset role;
 select is((select fee_cents from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and provider_ref = 'WIRE-116'), public.bank_payout_fee_cents(), 'the fee recorded is the one source');
 

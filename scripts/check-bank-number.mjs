@@ -55,7 +55,9 @@ const board = read("src/app/admin/AdminPayments.jsx");
 assert(!/localStorage|sessionStorage/.test(board), "the board must not store anything: the number passes through it");
 assert(/setTimeout\(hide, REVEAL_SHOWN_MS\)/.test(board), "a shown number hides itself");
 const hook = read("src/app/order/use-manual-payouts.js");
-assert(/account_number: "", account_number_again: ""/.test(hook), "the form forgets the number once saved");
+// The staff-paid form that kept a typed number in the hook is gone (20261117500000):
+// a number is typed only in Wise's step, which holds it itself.
+assert(!/form\.account_number/.test(hook), "the hook never holds a typed number");
 
 // Plainly fake: at least eight zeros in a row, or the documentation's own IBAN.
 const FAKE = /^(0{8,}\d*|GB82WEST12345698765(432|433))$/;

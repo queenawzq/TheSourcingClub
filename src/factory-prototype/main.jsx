@@ -1129,13 +1129,11 @@ export const factoryMainZhText = {
   "Enter an amount to withdraw.": "请输入提现金额。",
   "Sent by Wise after TSC approves it; usually 1–2 business days to arrive.": "TSC 批准后由 Wise 发出；通常 1–2 个工作日到账。",
   "Sent by PayPal after TSC approves it; usually reaches your PayPal balance within minutes.": "TSC 批准后由 PayPal 发出；通常几分钟内到达你的 PayPal 余额。",
-  "Sent by bank transfer after TSC approves it; a few business days to arrive.": "TSC 批准后通过银行转账发出；需几个工作日到账。",
   "Only a company owner can withdraw.": "只有公司所有者可以提现。",
   "You already have a withdrawal waiting. Cancel it first to ask for a different amount.": "你已有一笔提现在等待处理。如需改为其他金额，请先取消。",
   "That is more than your balance. Reload the page to see it.": "超出你的余额。请刷新页面查看。",
   "Choose one of your saved withdrawal methods, with its details complete.": "请选择一个已保存且信息完整的提现方式。",
   "TSC has already started sending this, so it can no longer be cancelled.": "TSC 已开始发送，无法再取消。",
-  "This amount is not more than the bank transfer fee, so nothing would arrive.": "该金额不超过银行转账手续费，到账金额为零。",
   "That didn't go through. Reload the page and try again.": "操作未成功。请刷新页面后重试。",
   "Your sign-in expired. Sign in again.": "登录已过期，请重新登录。",
   // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
