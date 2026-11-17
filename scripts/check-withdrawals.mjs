@@ -11,11 +11,11 @@
  * replayed by the next press (it gets a new key: requeue).
  */
 import assert from "node:assert/strict";
-import { REFERENCE_MAX, approveWithdrawal, previewWithdrawal, withdrawalReference } from "../api/_withdrawals.js";
+import { BACK_IN_BALANCE, REFERENCE_MAX, approveWithdrawal, previewWithdrawal, withdrawalReference } from "../api/_withdrawals.js";
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
-import { askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
@@ -114,6 +114,23 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   w.adapter.pay = async (_client, ctx) => (sent.push(ctx.reference), { ref: "ref-1" });
   await approveWithdrawal({ ...w, id: "w1" });
   assert.ok(sent[0].length <= REFERENCE_MAX, "the adapter is handed the short reference");
+}
+
+// A failed withdrawal has no Pay again: staff read that the amount is back in the
+// factory's balance, never "pay again", and the factory's row says the same, without a fee.
+{
+  const w = world({ status: "failed" });
+  w.adapter.status = async () => ({ state: "failed", raw: "FAILED", failure: "PayPal couldn't pay this. Check the factory's PayPal address, then pay again." });
+  w.adapter.provider = "paypal";
+  assert.equal((await approveWithdrawal({ ...w, id: "w1" })).done, "failed");
+  const sentence = w.recorded.at(-1).sentence;
+  assert.equal(w.recorded.at(-1).outcome, "failed");
+  assert.doesNotMatch(sentence, /pay again/i, sentence);
+  assert.match(sentence, /PayPal address/);
+  assert.ok(sentence.endsWith(BACK_IN_BALANCE));
+  const [row] = askedWithdrawalRows([{ id: "f", status: "failed", amount_cents: 100, currency: "USD", provider: "paypal", fee_cents: 2, receives_minor: 98, reason: sentence }]);
+  assert.equal(row.note, WITHDRAWAL_FAILED_NOTE);
+  assert.doesNotMatch(row.note, /pay again|Fee/i);
 }
 
 // Preview sends nothing.

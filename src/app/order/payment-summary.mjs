@@ -102,6 +102,8 @@ export function earningsSummaryFor(earnings, client, withdrawn = new Map(), with
   };
 }
 
+/** The bell's words for a failed withdrawal, as a row's note. No trailing full stop, like the short asks. */
+export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
 const ASKED_STATUS = { requested: "Waiting", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
@@ -114,7 +116,9 @@ export function askedWithdrawalRows(withdrawals = []) {
     date: w.paid_at || w.created_at,
     title: ASKED_TITLE[w.provider] ?? "Bank transfer",
     meta: w.paid_to,
+    // A failed one took no fee: its amount is back in the balance (record_withdrawal).
     note: w.status === "declined" ? w.reason
+      : w.status === "failed" ? WITHDRAWAL_FAILED_NOTE
       : w.fee_cents != null && w.receives_minor != null ? `Fee ${(Number(w.fee_cents) / 100).toLocaleString("en-US", { style: "currency", currency: w.currency })}, taken from it`
       : null,
     status: ASKED_STATUS[w.status] ?? w.status,

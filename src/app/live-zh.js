@@ -176,6 +176,7 @@ const PATTERNS = [
   [/^You receive: about (\S+)$/, (m) => `你将收到：约 ${m[1]}`],
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
+  [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
 ];
 
 /**
