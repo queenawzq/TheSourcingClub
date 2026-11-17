@@ -2552,11 +2552,14 @@ async function main() {
       check(howPaid === 0, "the factory's card shows its balance, with no method line under it (the withdrawals say where money went)");
       await waitFor(page, '[data-testid="withdraw-balance"]', 15000);
       // Two open at once, each taking its part; then cancel a chosen set.
+      // Withdraw waits for the provider's fee before it can be pressed.
+      const confirmReady = () => within(page, async () => page.evaluate(() => document.querySelector('[data-testid="withdraw-confirm"]')?.disabled === false), 15000);
       const askPart = async (dollars) => {
         await page.locator('[data-testid="withdraw-balance"]').click();
         await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
         await page.locator('[name="Amount (USD)"]').fill(dollars);
-        await page.waitForTimeout(800);
+        await page.waitForTimeout(500);
+        await confirmReady();
         // Two presses in the same tick ask once.
         await page.evaluate(() => { const button = document.querySelector('[data-testid="withdraw-confirm"]'); button.click(); button.click(); });
         await page.waitForTimeout(2500);
@@ -2578,6 +2581,7 @@ async function main() {
       check(noneOpen !== null && (cancelledTwo ?? []).length === 2, "both chosen are cancelled, and the card no longer lists them");
       await page.locator('[data-testid="withdraw-balance"]').click();
       await waitFor(page, '[data-testid="withdraw-confirm"]', 10000);
+      await confirmReady();
       await page.locator('[data-testid="withdraw-confirm"]').click();
       await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
       check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC: the owner can cancel it");
