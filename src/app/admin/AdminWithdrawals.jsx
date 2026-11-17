@@ -134,7 +134,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                 const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: Number(row.amount_cents), currency: row.currency }) : null;
                 return (
                   <tr key={row.id} data-withdrawal={row.id}>
-                    <td><strong>{row.factory_name}</strong><span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span></td>
+                    <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
                       <strong>{moneyIn(row.amount_cents, row.currency)}</strong>
