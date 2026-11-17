@@ -15,6 +15,8 @@ const REFUSALS = {
   reference_holds_number: "The factory reads this, so it can't hold the account number.",
   fee_too_large: "This withdrawal is not more than the bank transfer fee, so nothing would arrive. Decline it with a reason.",
   payout_own_company: "You belong to this company, so someone else on the staff must decide this.",
+  // The same sentence api/_withdrawals.js gives for claim_withdrawal's refusal.
+  payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
 };
 const said = (error) => new Error(REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
 
