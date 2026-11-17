@@ -25,6 +25,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { can } from "../../lib/domain/org.js";
+import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
 import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
@@ -136,6 +137,8 @@ function showTabInAddress(key) {
 }
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
+  // A select's options are not reached by the language layer, so "All clients" is drawn here.
+  const uiLanguage = useUiLanguage();
   // Payouts stay with owners; cards and credits are Settings access.
   const canSettings = can(org, "settingsAccess");
   const [tab, setTab] = useState(() => {
@@ -446,7 +449,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <label className="payments-client-filter">
             <span>Filter by client</span>
             <select aria-label="Filter by client" value={client} disabled={!earningsShown} onChange={(event) => setClient(event.target.value)}>
-              <option value="All clients">All clients</option>
+              <option value="All clients">{uiLanguage === "zh" ? "所有客户" : "All clients"}</option>
               {clients.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
             </select>
           </label>

@@ -86,6 +86,9 @@ const PATTERNS = [
   [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (.+)$/, (m, inner) => `周${DAYS[m[1]]}，${inner(m[2])}`],
   [/^(\d{1,2}):(\d{2}) (AM|PM)( [A-Z]{2,5})?$/, (m) => `${clock(m[1], m[2], m[3])}${m[4] ?? ""}`],
   [/^just now$/i, () => "刚刚"],
+  [/^(\$[\d,.]+) on its way$/, (m) => `${m[1]} 正在途中`],
+  // A bank and its last four digits on a withdrawal row: "Bank of China ending 5001".
+  [/^(.{1,80}) ending (\d{4})$/, (m) => `${m[1]} 尾号 ${m[2]}`],
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],
   [/^Last message (.+)$/, (m, inner) => `最新消息 ${inner(m[1])}`],
   [/^(\d+) (?:min|mins|minute|minutes) ago$/, (m) => `${m[1]} 分钟前`],
