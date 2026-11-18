@@ -129,7 +129,7 @@ function reviewDecisionEmail({
   companyName = "your company",
   recipientName = "",
   locale = "en",
-  loginUrl = "https://the-sourcing-club.vercel.app/app.html",
+  loginUrl = "https://sourcing-club.com/app.html",
   logoUrl = "https://sourcing-club.com/assets/logo.png",
   supportEmail = "operations@contact.sourcing-club.com",
   companyAddress = "New York, USA",
@@ -247,14 +247,14 @@ if (isDirectRun) {
     recipientName: "Queena Wang",
     companyName: "Wonder Lab",
     logoUrl: "../assets/logo.png",
-    loginUrl: "https://the-sourcing-club.vercel.app/app.html",
+    loginUrl: "https://sourcing-club.com/app.html",
   });
   await writeFile(path.join(outputDir, "account-approved.html"), sample.html);
   const needsInformationSample = needsInformationEmail({
     recipientName: "Queena Wang",
     companyName: "Wonder Lab",
     logoUrl: "../assets/logo.png",
-    loginUrl: "https://the-sourcing-club.vercel.app/app.html",
+    loginUrl: "https://sourcing-club.com/app.html",
     note: "Your profile is nearly complete, but we could not confirm your registration.\n\n- A current business registration certificate showing your company name and address\n- Your company website, so we can match the legal name\n\nWe look forward to receiving these.",
   });
   await writeFile(path.join(outputDir, "more-information-needed.html"), needsInformationSample.html);

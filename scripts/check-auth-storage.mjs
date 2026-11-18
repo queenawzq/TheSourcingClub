@@ -12,6 +12,8 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
+import { forgetReturn, isSignInLinkLanding, linkCannotFinishHere, rememberReturn, restoreReturn, withoutLinkError } from "../src/lib/return-after-link.mjs";
+import { reopensSummary } from "../src/app/onboarding/resubmit.mjs";
 import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
 const KEY = "sb-test-auth-token";
@@ -264,6 +266,208 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(pickActiveOrg([], "brand") === null, "no companies, no workspace");
   const auth = readFileSync("src/lib/auth.jsx", "utf8");
   check(!/localStorage\.(get|set|remove)Item\("tscActiveOrg"/.test(auth), "AuthProvider keeps the company only through the per-tab store");
+}
+
+// A review email's link, opened in a new tab while the browser keeps another
+// sign-in (Nov 18): the new tab reads the remembered one, so the link screen
+// offers "Log in with another account", for that tab only.
+{
+  const kept = openTab();
+  signIn(kept, "kept-plus-2", true);
+  const signup = openTab();
+  signUp(signup, "new-factory");
+  check(signup.shown === "new-factory" && kept.shown === "kept-plus-2", "a sign-up beside a kept sign-in stays in its own tab");
+  const link = openTab();
+  check(link.shown === "kept-plus-2", "the email's new tab reads the remembered sign-in (the cause)");
+  // logInAnotherAccountHere: no sign-out is sent (Supabase revokes even a
+  // "local" one on the server), the tab drops the shared sign-in and reloads.
+  check(link.leaveSharedSignIn(KEY) === true, "leaving the remembered sign-in is done in this tab");
+  check(reload(link) === null, "after the reload this tab is signed out");
+  check(JSON.parse(browser.localStorage.getItem(KEY)).user === "kept-plus-2" && reload(kept) === "kept-plus-2",
+    "and every other tab keeps the remembered sign-in");
+  check(link.keepChoice() === false, "its sign-in box starts unticked, so the next sign-in stays in this tab");
+  signIn(link, "new-factory", link.keepChoice());
+  check(link.shown === "new-factory" && reload(link) === "new-factory", "signing in there lands on the right account");
+  check(reload(kept) === "kept-plus-2" && reload(signup) === "new-factory", "the other two tabs are untouched");
+  check(link.leaveSharedSignIn(KEY) === false, "a tab signed in on its own signs out the ordinary way instead");
+  signOut(link);
+  check(reload(kept) === "kept-plus-2", "and that sign-out leaves the remembered sign-in alone");
+  signOut(kept);
+  signOut(signup);
+}
+const linkSource = readFileSync("src/app/main.jsx", "utf8");
+check(/logInAnotherAccountHere\(\)/.test(linkSource) && !/Log out and continue/.test(linkSource),
+  "the link screen switches this tab only, never a sign-out of every tab");
+
+// The code email's link lands on app.html alone, in a new tab; the review
+// link's portal, company and language come back with it, and so does the sign-in
+// box's choice (src/lib/return-after-link.mjs).
+{
+  const local = new MemoryStorage();
+  const at = (search, session = new MemoryStorage()) => ({ location: { search }, localStorage: local, sessionStorage: session });
+  rememberReturn(at("?portal=factory&review=0200dc8a-a693-4e53-a87e-6b1699cab266&mode=login"), {}, 1000);
+  check(restoreReturn(at(""), 2000) === null, "a page that is not a link landing leaves it waiting");
+  check(restoreReturn(at("?code=abc"), 2000) === "?code=abc&portal=factory&review=0200dc8a-a693-4e53-a87e-6b1699cab266",
+    "the link landing gets back portal and review, nothing else");
+  check(restoreReturn(at("?code=abc"), 3000) === null, "used once");
+  rememberReturn(at("?review=x"), {}, 0);
+  check(restoreReturn(at("?code=abc"), 61 * 60 * 1000) === null, "and only within the hour");
+  rememberReturn(at("?portal=factory&review=r"), {}, 0);
+  check(restoreReturn(at("?code=abc&portal=factory"), 1) === "?code=abc&portal=factory&review=r",
+    "a link carrying the vendor portal gets back only the company it lacks");
+  rememberReturn(at("?portal=factory&review=r"), {}, 0);
+  check(restoreReturn(at("?code=abc&review=y"), 1) === "?code=abc&review=y&portal=factory", "and what a link carries itself wins");
+  rememberReturn(at(""), {}, 0);
+  check(local.getItem("tscReturnAfterLink") === null, "a code asked from a plain page, box ticked, remembers nothing");
+
+  // Box unticked: the new tab the link opens keeps the session to itself, so
+  // the browser's remembered sign-in (other tabs) is not replaced.
+  const landing = new MemoryStorage();
+  rememberReturn(at("?portal=factory&review=r1"), { keepSignedIn: false }, 0);
+  restoreReturn(at("?code=abc", landing), 1);
+  check(landing.getItem("tscKeepSignedIn") === "0", "asked with the box unticked, the link's tab keeps the sign-in to itself");
+  const plain = new MemoryStorage();
+  rememberReturn(at(""), { keepSignedIn: false }, 0);
+  check(restoreReturn(at("?code=abc", plain), 1) === null && plain.getItem("tscKeepSignedIn") === "0",
+    "also from a plain page");
+  rememberReturn(at("?review=typed"), { keepSignedIn: false }, 0);
+  forgetReturn(at(""));
+  check(restoreReturn(at("?code=later"), 1) === null, "a code typed in (or a password) clears it, so a later link starts clean");
+  check(/forgetReturn\(window\);[\s\S]*forgetReturn\(window\);/.test(readFileSync("src/lib/auth.jsx", "utf8")), "both sign-ins in AuthProvider clear it");
+  const ticked = new MemoryStorage();
+  rememberReturn(at("?review=r2"), { keepSignedIn: true }, 0);
+  restoreReturn(at("?code=abc", ticked), 1);
+  check(ticked.getItem("tscKeepSignedIn") === null, "ticked, the link's tab keeps it as before");
+}
+for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
+  check(/sendEmailCode\(email, \{ createUser: false, keepSignedIn \}\)/.test(readFileSync(file, "utf8")),
+    `${file} sends the box's choice with the code`);
+}
+
+// The marketing pages hand a sign-in link's `?code=` to the app (script.js):
+// Supabase's fallback lands on the home address, which cannot finish it.
+{
+  const source = readFileSync("script.js", "utf8");
+  const guard = source.slice(0, source.indexOf("})();") + 5);
+  const visit = (pathname, search) => {
+    let went = null;
+    const window = { location: { pathname, search, hash: "", replace: (to) => { went = to; } } };
+    new Function("window", "URLSearchParams", guard)(window, URLSearchParams);
+    return went;
+  };
+  const code = "6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+  check(visit("/", `?code=${code}`) === `/app.html?code=${code}`, "the home page hands a sign-in code to the app");
+  check(visit("/factories.html", `?code=${code}&lang=zh`) === `/app.html?code=${code}&lang=zh`, "any marketing page does, with the rest of the query");
+  check(visit("/", "?code=not-a-code") === null && visit("/", "?lang=zh") === null && visit("/", "") === null,
+    "nothing else is forwarded");
+  check(visit("/app.html", `?code=${code}`) === null, "and the app itself is never forwarded (no loop)");
+  check(visit("/", "?error=access_denied&error_code=otp_expired&error_description=x") === "/app.html?error=access_denied&error_code=otp_expired&error_description=x",
+    "a refused sign-in link is handed to the app too, which says what went wrong");
+  check(visit("/", "?error_code=<b>") === null, "but not an error code that isn't Supabase's shape");
+}
+
+// The marketing header says "Dashboard" only when this tab would open the app
+// signed in (script.js hasAppSession, the same rule as session-storage.mjs).
+{
+  const source = readFileSync("script.js", "utf8");
+  const fn = source.slice(source.indexOf("function hasAppSession"), source.indexOf("function showSignedInHeader"));
+  const asStore = (entries) => {
+    const map = new Map(Object.entries(entries));
+    return new Proxy({ getItem: (k) => (map.has(k) ? map.get(k) : null) }, {
+      ownKeys: () => [...map.keys()],
+      getOwnPropertyDescriptor: (target, key) => (map.has(key) ? { enumerable: true, configurable: true, value: map.get(key) } : Object.getOwnPropertyDescriptor(target, key)),
+    });
+  };
+  const session = JSON.stringify({ access_token: "a", refresh_token: "r", user: { id: "u" } });
+  const signedIn = (local, tab) => new Function("localStorage", "sessionStorage", `${fn}; return hasAppSession();`)(asStore(local), asStore(tab));
+  check(signedIn({ [KEY]: session }, {}) === true, "a remembered sign-in shows Dashboard");
+  check(signedIn({}, { [KEY]: session, tscKeepSignedIn: "0" }) === true, "so does a sign-in kept to this tab");
+  check(signedIn({ [KEY]: session }, { tscKeepSignedIn: "0" }) === false, "a tab signed out on its own shows Log in, whatever the browser remembers");
+  check(signedIn({ "sb-test-auth-token-code-verifier": "x" }, {}) === false, "a code verifier alone is not a sign-in");
+  check(signedIn({}, {}) === false, "signed out shows Log in");
+}
+
+// Sending the profile back from a review link must not bounce to the summary
+// (src/app/onboarding/resubmit.mjs): the finish card opens before the profile
+// is re-read, while the answered request still says "needs_information".
+{
+  const request = { state: "needs_information", message: "Please upload…" };
+  check(reopensSummary({ review: request, step: 10, lastStep: 10, answered: null }) === true, "a request arriving on the finish card opens the summary");
+  check(reopensSummary({ review: request, step: 10, lastStep: 10, answered: request }) === false, "the request just answered does not send the factory back to the summary");
+  check(reopensSummary({ review: { ...request }, step: 10, lastStep: 10, answered: request }) === true, "a new request from staff after that still does");
+  check(reopensSummary({ review: { state: "pending" }, step: 10, lastStep: 10, answered: null }) === false, "nothing to answer, nothing reopens");
+  check(reopensSummary({ review: request, step: 8, lastStep: 10, answered: null }) === false, "and it never moves someone mid-steps");
+  const live = readFileSync("src/app/onboarding/LiveFactoryOnboarding.jsx", "utf8");
+  check((live.match(/await resubmitForReview\(org\.id\);\s*setAnswered\(review\);/g) ?? []).length === 2, "both ways of sending the profile back record the answered request");
+}
+
+// The code email's link keeps the vendor portal, and a link that signs nobody
+// in says so (src/lib/auth.jsx, src/lib/supabase.js).
+{
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/emailRedirectTo:[^\n]*\n[^\n]*"\?portal=factory"/.test(auth), "the code email's link keeps the vendor portal");
+  check(/const words = [^\n]*"sign_in_link_used"[\s\S]{0,900}if \(failed && !data\.session\) \{\s*setError\(authFailure\(words\)\)/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
+}
+
+// A review link's company wins over the "keep the company valid" fallback
+// (src/lib/auth.jsx): the link's selectOrg runs first, in the same commit.
+{
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/selectOrg\(orgId[^)]*\) \{\s*latestOrgChoice\.current = orgId;/.test(auth)
+    && /if \(orgs\.some\(\(org\) => org\.id === latestOrgChoice\.current\)\) return;/.test(auth),
+    "a company chosen by a review link is not replaced by the first company");
+}
+
+// A link Supabase refused (already used, expired) lands with ?error_code=, not
+// ?code=; it still counts as a link landing, and its error words are removed.
+{
+  const page = (search, hash = "") => ({ location: { search, hash } });
+  check(isSignInLinkLanding(page("?code=abc")) && isSignInLinkLanding(page("?error=access_denied&error_code=otp_expired&portal=factory")),
+    "a working link and a refused link are both link landings");
+  check(isSignInLinkLanding(page("", "#error=access_denied&error_code=otp_expired")), "also when the error is only in the fragment");
+  check(!isSignInLinkLanding(page("?portal=factory")) && !isSignInLinkLanding(page("?code=abc&reset=1")), "a plain page or a reset link is not");
+  check(withoutLinkError(page("?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid&portal=factory")) === "?portal=factory",
+    "the refusal's words leave the address, the portal stays");
+  check(withoutLinkError(page("?portal=factory")) === null, "an ordinary address is left alone");
+}
+
+// A sign-in link that fails in a tab where the browser keeps someone else must
+// not open that account without a word (src/lib/auth.jsx): the tab drops it,
+// reloads signed out and says why; the other tabs keep it.
+{
+  const kept = openTab();
+  signIn(kept, "kept-other", true);
+  const linkTab = openTab();
+  check(linkTab.shown === "kept-other", "a new tab would open the remembered account");
+  linkTab.dropSignInHere(KEY);
+  check(reload(linkTab) === null && linkTab.keepChoice() === false, "after a failed link the tab reloads signed out, box unticked");
+  check(reload(kept) === "kept-other", "and the other tab keeps the remembered sign-in");
+  const own = openTab();
+  signIn(own, "own-tab", false);
+  own.dropSignInHere(KEY);
+  check(reload(own) === null && reload(kept) === "kept-other", "a tab with its own sign-in drops only that one");
+  signOut(kept);
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/failed && data\.session && !new URLSearchParams\(window\.location\.search\)\.has\("review"\)[\s\S]{0,500}dropSignInHere\(\)[\s\S]{0,400}LINK_FAILED_KEY/.test(auth),
+    "a failed link with someone else kept drops it here and flags the message (a review link goes to its card instead)");
+  check(/getItem\(LINK_FAILED_KEY\)[\s\S]{0,200}"sign_in_link_used"/.test(auth), "after the reload the sign-in screen shows the existing message");
+}
+
+// A link opened in a browser that never asked for the code: Supabase ignores
+// the ?code= silently (no code verifier), so the app checks it itself.
+{
+  const browserWith = (entries, search) => {
+    const local = new MemoryStorage();
+    for (const [k, v] of Object.entries(entries)) local.setItem(k, v);
+    local.keys = () => [...local.map.keys()];
+    return { location: { search }, localStorage: new Proxy(local, { ownKeys: () => [...local.map.keys()], getOwnPropertyDescriptor: (t, k) => (local.map.has(k) ? { enumerable: true, configurable: true, value: local.map.get(k) } : undefined) }) };
+  };
+  check(linkCannotFinishHere(browserWith({}, "?code=abc")) === true, "a code with no verifier in this browser cannot finish here");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-code-verifier": "\"v/magiclink\"" }, "?code=abc")) === false, "the browser that asked can finish it");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-flow-abcdefgh12-code-verifier": "v" }, "?code=abc&sb_flow_id=abcdefgh12")) === false, "including by its flow's own verifier");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-flow-otherflow99-code-verifier": "v" }, "?code=abc&sb_flow_id=abcdefgh12")) === true, "another flow's verifier does not count");
+  check(linkCannotFinishHere(browserWith({}, "?portal=factory")) === false, "no code, nothing to finish");
+  check(/const failed = linkRefusedInAddress \|\| linkCannotFinish \|\|/.test(readFileSync("src/lib/auth.jsx", "utf8")), "the app treats such a link as failed");
 }
 
 if (failures) {

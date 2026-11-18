@@ -1,3 +1,23 @@
+// A sign-in link Supabase could not send back to the page it was asked from
+// lands on the site's home address with `?code=` (its fallback), or with
+// `?error_code=` when the link was refused. Only the app can finish that
+// sign-in or say what went wrong, so hand the same query to it. Nothing else is
+// forwarded, and app.html never loads this file, so it cannot loop.
+(() => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const isCode = Boolean(code) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code);
+    // A link Supabase refused (used or expired) lands with its error code instead.
+    const refused = /^[a-z_]+$/.test(params.get('error_code') || '');
+    if (!isCode && !refused) return;
+    if (/\/(app|admin|call)\.html/.test(window.location.pathname)) return;
+    window.location.replace(`/app.html${window.location.search}${window.location.hash}`);
+  } catch {
+    // An old browser without URLSearchParams keeps the page as it is.
+  }
+})();
+
 const modal = document.querySelector('#waitlistModal');
 const openButtons = document.querySelectorAll('.js-open-modal');
 const closeButtons = document.querySelectorAll('.js-close-modal');
@@ -28,6 +48,7 @@ const factoryTranslations = {
     'nav.brands': 'For Brands',
     'nav.signin': 'Sign in',
     'cta.join': 'Join us',
+    'cta.dashboard': 'Dashboard',
     'cta.apply': 'Sign up',
     'hero.eyebrow': 'For factories',
     'hero.title1': 'Grow with',
@@ -152,6 +173,7 @@ const factoryTranslations = {
     'nav.brands': '品牌页面',
     'nav.signin': '登录',
     'cta.join': '加入我们',
+    'cta.dashboard': '控制台',
     'cta.apply': '注册',
     'hero.eyebrow': '工厂合作',
     'hero.title1': '对接',
@@ -306,6 +328,45 @@ function applyFactoryLanguage(lang) {
     langToggle.setAttribute('aria-label', lang === 'zh' ? 'Switch to English' : '切换到中文');
   }
 }
+
+// Signed in, the header offers the dashboard instead of "Log in" and "Join us".
+// The sign-in this tab would use: one kept to itself when its "Keep me logged
+// in" was unticked (sessionStorage), otherwise the browser's remembered one
+// (localStorage). Same rule as src/lib/session-storage.mjs.
+function hasAppSession() {
+  try {
+    const isToken = (key) => /^sb-.+-auth-token$/.test(key);
+    const tabOnly = sessionStorage.getItem('tscKeepSignedIn') === '0'
+      || Object.keys(sessionStorage).some(isToken);
+    const store = tabOnly ? sessionStorage : localStorage;
+    const key = Object.keys(store).find(isToken);
+    const session = key ? JSON.parse(store.getItem(key) || 'null') : null;
+    return Boolean(session && (session.refresh_token || session.access_token) && session.user);
+  } catch {
+    return false;
+  }
+}
+
+function showSignedInHeader() {
+  const actions = document.querySelector('.site-header .header-actions');
+  if (!actions || !hasAppSession()) return;
+  const join = actions.querySelector('a.button-small');
+  const forFactories = Boolean(join && /portal=factory/.test(join.getAttribute('href') || ''));
+  const href = forFactories ? './app.html?portal=factory' : './app.html';
+  let login = actions.querySelector('a.header-login');
+  if (!login) {
+    login = document.createElement('a');
+    login.className = 'header-login';
+    if (join) actions.insertBefore(login, join);
+    else actions.append(login);
+  }
+  login.setAttribute('href', href);
+  login.dataset.i18n = 'cta.dashboard';
+  login.textContent = 'Dashboard';
+  if (join) join.style.display = 'none';
+}
+
+showSignedInHeader();
 
 if (langToggle) {
   applyFactoryLanguage(currentLang);

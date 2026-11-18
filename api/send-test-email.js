@@ -31,7 +31,7 @@ function appUrl() {
   if (configured) return configured.replace(/\/$/, "");
   const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (productionHost) return `https://${productionHost.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  return "https://the-sourcing-club.vercel.app";
+  return "https://sourcing-club.com";
 }
 
 const SAMPLE_NOTE = "This is a sample note from a reviewer. In a real email it is whatever the reviewer wrote.";

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * The registration number rules (src/shared/registration-number.mjs), pinned:
  * China's GB 32100 check character, Portugal's mod-11 check digit, Turkey's
@@ -225,7 +226,25 @@ check("v3.1 B2: authorisation", () => {
   assert.equal(authorisationCheck({ readable: true, handwrittenText: "", hasRedSeal: true, sealText: "宁波明纬服饰制造有限公司" }, { names: name, now }, helpers).level, "high");
   assert.equal(authorisationCheck({ readable: true, handwrittenText: "", hasRedSeal: true, sealText: "义乌市恒越进出口贸易有限公司" }, { names: name, now }, helpers).level, "low");
   assert.equal(authorisationCheck({ readable: true, handwrittenText: "hello", hasRedSeal: false }, { names: name, now }, helpers).level, "medium");
-  assert.equal(authorisationCheck(null, {}, helpers).level, "unknown");
+  // Onboarding no longer asks for an authorisation (Nov 18): without an upload
+  // nothing is checked or stored, and no hint ever asks staff to request one.
+  assert.equal(authorisationCheck(null, {}, helpers), null);
+  const cases = [
+    { readable: true, handwrittenText: "The Sourcing Club 2025.01.10", handwrittenDate: "2025.01.10", hasRedSeal: false },
+    { readable: true, handwrittenText: "hello", hasRedSeal: false },
+    { readable: true, handwrittenText: "", hasRedSeal: false, looksEdited: true, editedReason: "pasted" },
+    { readable: true, handwrittenText: "", hasRedSeal: true, sealText: "" },
+  ];
+  for (const fields of cases) {
+    const settle = authorisationCheck(fields, { names: name, now }, helpers).details?.settle ?? "";
+    assert.ok(!/^ask for|licence photo with|today's date/i.test(settle), `no hint asks for an authorisation: "${settle}"`);
+  }
+});
+check("v3.1 B2: a reading stores nothing about authorisation without an upload", () => {
+  const source = readFileSync("api/registry-assist.js", "utf8");
+  assert.ok(/function authorisationFrom\(\{ file, fields, failure \}[^)]*\) \{\s*if \(!file\) return null;/.test(source));
+  assert.ok(/\.\.\.\(authorisation \? \{ authorisation \} : \{\}\)/.test(source));
+  assert.ok(/carried\?\.details\?\.fileId/.test(source));
 });
 check("public licences: a misread number or one CJK character is unsure, not differs", () => {
   const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };

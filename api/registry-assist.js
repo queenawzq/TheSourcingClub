@@ -620,7 +620,9 @@ const plainText = (text) => String(text ?? "").normalize("NFKC").toLowerCase().r
 export function authorisationCheck(fields, { names = [], uploadedAt = null, legalRepresentative = "", now = new Date() } = {}, { companyNamesMatch } = {}) {
   const checkedAt = now.toISOString();
   const base = { key: "authorisation", checkedAt };
-  if (!fields) return { ...base, level: "unknown", reasons: ["No authorisation uploaded"], details: { settle: "Ask for the licence photo with \"The Sourcing Club\" and today's date written on it by hand, or a letter with the company seal" } };
+  // Onboarding no longer asks for one (Nov 18): with no upload there is nothing
+  // to check and nothing is stored. An upload made before that is still read.
+  if (!fields) return null;
   if (fields.readable === false) return { ...base, level: "unknown", reasons: ["The authorisation could not be read"], details: { ...fields, settle: "Open the file yourself" } };
   const reasons = [];
   const written = plainText(fields.handwrittenText);
@@ -640,7 +642,6 @@ export function authorisationCheck(fields, { names = [], uploadedAt = null, lega
   if (fields.looksEdited === true) {
     level = "medium";
     reasons.push(`Looks edited: ${String(fields.editedReason ?? "").trim() || "the note or seal may be pasted in"}`);
-    settle = "Ask for a new photo, or check it on a video call";
   } else if (namesTsc && writtenOn && daysOff <= 14) {
     level = "high";
     reasons.push(`"The Sourcing Club" and ${writtenOn} written by hand`);
@@ -653,13 +654,11 @@ export function authorisationCheck(fields, { names = [], uploadedAt = null, lega
     settle = "Ask why the seal is another company's";
   } else if (namesTsc) {
     reasons.push(writtenOn ? `Handwritten date ${writtenOn} is ${Math.round(daysOff)} days from the upload` : "\"The Sourcing Club\" written by hand, with no date");
-    settle = "Ask for the note again with today's date";
   } else if (fields.hasRedSeal === true) {
     reasons.push("A red seal, but its name can't be read");
     settle = "Compare the seal with the company name yourself";
   } else {
     reasons.push("Neither \"The Sourcing Club\" written by hand nor a company seal");
-    settle = "Ask for the licence photo with \"The Sourcing Club\" and today's date written on it by hand, or a letter with the company seal";
   }
   return { ...base, level, reasons, details: { ...fields, handwrittenOn: writtenOn, legalRepresentative: legalRepresentative || "", ...(settle ? { settle } : {}) } };
 }
@@ -704,7 +703,7 @@ async function readAuthorisationFields({ asServer, storage, orgId }) {
 }
 
 function authorisationFrom({ file, fields, failure }, { names, legalRepresentative }, helpers) {
-  if (!file) return authorisationCheck(null, {}, helpers);
+  if (!file) return null;
   const about = { fileId: file.id, fileName: file.name };
   if (failure || !fields) return { key: "authorisation", level: "unknown", reasons: [failure || "The authorisation could not be read"], details: about, checkedAt: new Date().toISOString() };
   const check = authorisationCheck(fields, { names, uploadedAt: file.createdAt, legalRepresentative }, helpers);
@@ -798,15 +797,17 @@ async function finishReading({ orgId, detail, signals, file, fields, model, auth
   const scope = tradingScope(extracted.businessScope, extracted.activityCodes);
   const foundedOn = isoDateFrom(extracted.foundingDate);
   const authorisationAnswer = await authorisationRead;
+  // Carried over only when it came from an uploaded file (an older reading may
+  // hold a "No authorisation uploaded" line from before Nov 18).
   const authorisation = authorisationAnswer && "carried" in authorisationAnswer
-    ? authorisationAnswer.carried
+    ? (authorisationAnswer.carried?.details?.fileId ? authorisationAnswer.carried : null)
     : authorisationFrom(authorisationAnswer, {
       legalRepresentative: extracted.legalRepresentative, names: [extracted.legalName, extracted.legalNameEnglish, detail?.title],
     }, helpers);
   // A reading holds for the number and name it was compared with: the
   // database ignores it once either changes (registry_reading_differs).
   const details = {
-    extracted, differences, unsure, tradingScope: scope, warnings: look.warnings, overruled: look.overruled, numberCheck, foundedOn, authorisation,
+    extracted, differences, unsure, tradingScope: scope, warnings: look.warnings, overruled: look.overruled, numberCheck, foundedOn, ...(authorisation ? { authorisation } : {}),
     model, fileId: file.id, fileName: file.name, numberAtReading: registration.number ?? null, titleAtReading: detail?.title ?? null,
     ...(extraDetails ?? {}),
   };
