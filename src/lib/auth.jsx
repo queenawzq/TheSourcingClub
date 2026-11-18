@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink, linkRefusedInAddress, dropSignInHere } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
@@ -73,6 +73,9 @@ function reportNoAnswer(stage, authError, portal) {
 
 const LAST_ORG_KIND = "tscLastOrgKind";
 /** The kind of company this person was last working in on this browser, or null. */
+/** sessionStorage: a sign-in link just failed in this tab (see the restore below). */
+const LINK_FAILED_KEY = "tscSignInLinkFailed";
+
 export const lastCompanyKind = (userId) => (userId ? window.localStorage.getItem(`${LAST_ORG_KIND}:${userId}`) : null);
 
 const alreadyRegistered = (authError) =>
@@ -195,6 +198,16 @@ export function AuthProvider({ children }) {
     // (src/lib/recovery-link.mjs). Verifying it is a fetch, so it goes direct
     // or through our own host like everything else; the restore waits for it,
     // since a slow route can take longer than the usual restore allows.
+    // A sign-in link failed in this tab while the browser kept someone else:
+    // the tab reloaded signed out, and the sign-in screen says why.
+    try {
+      const failedLink = window.sessionStorage.getItem(LINK_FAILED_KEY);
+      if (failedLink) {
+        window.sessionStorage.removeItem(LINK_FAILED_KEY);
+        setError(authFailure(failedLink === "network" ? "network" : "sign_in_link_used"));
+      }
+    } catch { /* storage blocked: nothing was flagged */ }
+
     const recoveryToken = takeRecoveryToken(window);
     const recovered = recoveryToken === null
       ? Promise.resolve()
@@ -219,16 +232,33 @@ export function AuthProvider({ children }) {
         setStatus("error");
         return;
       }
+      if (!landedFromSignInLink) {
+        finishRestore(data.session);
+        return;
+      }
       // An emailed sign-in link that signed nobody in: already used (the code
       // was typed, or a mail scanner opened it), expired, or opened in another
       // browser. Say so on the sign-in screen rather than showing it bare.
-      if (!data.session && landedFromSignInLink) {
-        supabase.auth.initialize().then(({ error: linkError } = {}) => {
-          if (cancelled) return;
-          setError(authFailure(linkError && isNoAnswer(linkError) ? "network" : "sign_in_link_used"));
-        }, () => {});
-      }
-      finishRestore(data.session);
+      supabase.auth.initialize().then(({ error: linkError } = {}) => {
+        if (cancelled) return;
+        const failed = linkRefusedInAddress || Boolean(linkError);
+        const words = linkError && isNoAnswer(linkError) ? "network" : "sign_in_link_used";
+        if (failed && data.session && !new URLSearchParams(window.location.search).has("review")) {
+          // The browser keeps someone else: opening their account here
+          // without a word looked like being signed in as the wrong person.
+          // This tab drops it (the other tabs keep it) and says why. A link
+          // about a company goes on to ReviewLinkGate, which explains itself.
+          dropSignInHere();
+          activeOrgStore.clear();
+          try { window.sessionStorage.setItem(LINK_FAILED_KEY, words); } catch { /* the reload just shows the sign-in */ }
+          const url = new URL(window.location.href);
+          url.searchParams.delete("code");
+          window.location.replace(url.toString());
+          return;
+        }
+        if (failed && !data.session) setError(authFailure(words));
+        finishRestore(data.session);
+      }, () => { if (!cancelled) finishRestore(data.session); });
     }).catch((sessionError) => {
       if (cancelled || restored) return;
       restored = true;

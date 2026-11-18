@@ -37,6 +37,9 @@ export const supabaseUrl = url ?? "";
 // reads and removes `?code=`.
 /** This page load is an emailed sign-in link landing, read before the client removes it. */
 export const landedFromSignInLink = Boolean(globalThis.window) && isSignInLinkLanding(window);
+/** The link landed refused by Supabase (`error_code`), before the words are removed below. */
+export const linkRefusedInAddress = Boolean(globalThis.window)
+  && /(^|[?&#])error_code=/.test(`${window.location.search}${window.location.hash}`);
 const returnSearch = globalThis.window ? restoreReturn(globalThis.window) : null;
 if (returnSearch) {
   window.history.replaceState(window.history.state, "", `${window.location.pathname}${returnSearch}${window.location.hash}`);
@@ -58,6 +61,8 @@ export const keepChoice = sessionStore.keepChoice;
 export const keepNewAccount = () => sessionStore.keepNewAccount(supabase.auth.storageKey);
 /** See leaveSharedSignIn in session-storage.mjs. */
 export const leaveSharedSignIn = () => sessionStore.leaveSharedSignIn(supabase.auth.storageKey);
+/** See dropSignInHere in session-storage.mjs. */
+export const dropSignInHere = () => sessionStore.dropSignInHere(supabase.auth.storageKey);
 
 /** Whether an auth event's session is this tab's own, not one broadcast from another tab. */
 export function isThisTabsSession(session) {

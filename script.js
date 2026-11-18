@@ -1,12 +1,16 @@
 // A sign-in link Supabase could not send back to the page it was asked from
-// lands on the site's home address with `?code=` (its fallback). Only the app
-// can finish that sign-in, so hand the same query to it. Nothing else is
+// lands on the site's home address with `?code=` (its fallback), or with
+// `?error_code=` when the link was refused. Only the app can finish that
+// sign-in or say what went wrong, so hand the same query to it. Nothing else is
 // forwarded, and app.html never loads this file, so it cannot loop.
 (() => {
   try {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    if (!code || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code)) return;
+    const isCode = Boolean(code) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(code);
+    // A link Supabase refused (used or expired) lands with its error code instead.
+    const refused = /^[a-z_]+$/.test(params.get('error_code') || '');
+    if (!isCode && !refused) return;
     if (/\/(app|admin|call)\.html/.test(window.location.pathname)) return;
     window.location.replace(`/app.html${window.location.search}${window.location.hash}`);
   } catch {

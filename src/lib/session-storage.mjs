@@ -137,5 +137,17 @@ export function createSessionStorage(win) {
     return true;
   }
 
-  return { storage, setKeepSignedIn, keepChoice, keepNewAccount, isThisTabsSession, leaveSharedSignIn };
+  /**
+   * Sign nobody in here: this tab keeps its own (empty) store from now on,
+   * whether it held its own sign-in or the browser's remembered one. No
+   * sign-out is sent, so the remembered sign-in stays in every other tab.
+   * Used when an emailed sign-in link failed in a tab that would otherwise
+   * open someone else's account without a word.
+   */
+  function dropSignInHere(storageKey) {
+    setKeepSignedIn(false);
+    safe(() => tab().removeItem(storageKey));
+  }
+
+  return { storage, setKeepSignedIn, keepChoice, keepNewAccount, isThisTabsSession, leaveSharedSignIn, dropSignInHere };
 }

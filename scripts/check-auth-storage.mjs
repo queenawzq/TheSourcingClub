@@ -361,6 +361,9 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(visit("/", "?code=not-a-code") === null && visit("/", "?lang=zh") === null && visit("/", "") === null,
     "nothing else is forwarded");
   check(visit("/app.html", `?code=${code}`) === null, "and the app itself is never forwarded (no loop)");
+  check(visit("/", "?error=access_denied&error_code=otp_expired&error_description=x") === "/app.html?error=access_denied&error_code=otp_expired&error_description=x",
+    "a refused sign-in link is handed to the app too, which says what went wrong");
+  check(visit("/", "?error_code=<b>") === null, "but not an error code that isn't Supabase's shape");
 }
 
 // The marketing header says "Dashboard" only when this tab would open the app
@@ -403,7 +406,7 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
 {
   const auth = readFileSync("src/lib/auth.jsx", "utf8");
   check(/emailRedirectTo:[^\n]*\n[^\n]*"\?portal=factory"/.test(auth), "the code email's link keeps the vendor portal");
-  check(/!data\.session && landedFromSignInLink[\s\S]{0,300}"sign_in_link_used"/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
+  check(/const words = [^\n]*"sign_in_link_used"[\s\S]{0,900}if \(failed && !data\.session\) setError\(authFailure\(words\)\)/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
 }
 
 // A review link's company wins over the "keep the company valid" fallback
@@ -426,6 +429,28 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(withoutLinkError(page("?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid&portal=factory")) === "?portal=factory",
     "the refusal's words leave the address, the portal stays");
   check(withoutLinkError(page("?portal=factory")) === null, "an ordinary address is left alone");
+}
+
+// A sign-in link that fails in a tab where the browser keeps someone else must
+// not open that account without a word (src/lib/auth.jsx): the tab drops it,
+// reloads signed out and says why; the other tabs keep it.
+{
+  const kept = openTab();
+  signIn(kept, "kept-other", true);
+  const linkTab = openTab();
+  check(linkTab.shown === "kept-other", "a new tab would open the remembered account");
+  linkTab.dropSignInHere(KEY);
+  check(reload(linkTab) === null && linkTab.keepChoice() === false, "after a failed link the tab reloads signed out, box unticked");
+  check(reload(kept) === "kept-other", "and the other tab keeps the remembered sign-in");
+  const own = openTab();
+  signIn(own, "own-tab", false);
+  own.dropSignInHere(KEY);
+  check(reload(own) === null && reload(kept) === "kept-other", "a tab with its own sign-in drops only that one");
+  signOut(kept);
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/failed && data\.session && !new URLSearchParams\(window\.location\.search\)\.has\("review"\)[\s\S]{0,500}dropSignInHere\(\)[\s\S]{0,400}LINK_FAILED_KEY/.test(auth),
+    "a failed link with someone else kept drops it here and flags the message (a review link goes to its card instead)");
+  check(/getItem\(LINK_FAILED_KEY\)[\s\S]{0,200}"sign_in_link_used"/.test(auth), "after the reload the sign-in screen shows the existing message");
 }
 
 if (failures) {
