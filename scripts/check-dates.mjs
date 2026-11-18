@@ -283,9 +283,10 @@ async function formatters() {
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",
       formatCapacityWindow({ capacity_window_start: "2026-11-01", capacity_window_end: "2026-11-30" }, new Date(2026, 9, 1)),
-      "Nov 1 - Nov 30");
+      "Nov 2026");
 
-    // What the form takes as a window is read back whole; anything else is refused.
+    // What the form takes as a window is read back whole; anything else is
+    // refused, by reason (scripts/check-capacity-window.mjs has the full list).
     const nov = new Date(2026, 10, 6);
     for (const [typed, start, end, units] of [
       ["Jan 5 - Mar 1, 2027", "2027-01-05", "2027-03-01", null],
@@ -297,6 +298,11 @@ async function formatters() {
       ["12月12日至30日", "2026-12-12", "2026-12-30", null],
       ["12月12日-1月3日，４２０件", "2026-12-12", "2027-01-03", 420],
       ["２０２７年１月５日到２０２７年３月１日", "2027-01-05", "2027-03-01", null],
+      ["Jan to Feb 2027", "2027-01-01", "2027-02-28", null],
+      ["2027年1月至2月", "2027-01-01", "2027-02-28", null],
+      ["Q1 2027", "2027-01-01", "2027-03-31", null],
+      ["1.12 - 15.1", "2026-12-01", "2027-01-15", null],
+      ["12/1 - 1/15", "2026-12-01", "2027-01-15", null],
     ]) {
       expect(`window kept: ${typed}`, capacityWindowProblem(typed, nov), null);
       const parsed = parseCapacityWindow(typed, nov);
@@ -306,22 +312,19 @@ async function formatters() {
       expect(`window reads back: ${back}`, [again.capacity_window_start, again.capacity_window_end, again.capacity_window_units].join(), [start, end, units].join());
     }
     for (const [typed, why] of [
-      ["Jan to Feb 2027", "format"],
-      ["1月到2月", "format"],
-      ["2027年1月至2月", "format"],
-      ["Q1 2027", "format"],
+      ["1月到2月", "past"],
       ["soon", "format"],
       ["300 units", "format"],
-      ["Dec 12-30 · partner confirmed", "format"],
-      ["Dec 12 - Dec 30 maybe later", "format"],
-      ["Dec 1, Dec 5, Dec 9", "format"],
-      ["Feb 30 - Mar 3, 2027", "format"],
+      ["Dec 12-30 · partner confirmed", "words"],
+      ["Dec 12 - Dec 30 maybe later", "words"],
+      ["Dec 1, Dec 5, Dec 9", "many"],
+      ["Feb 30 - Mar 3, 2027", "invalid"],
       ["13月5日", "format"],
       ["", "format"],
       ["Jan 5 - Mar 1", "past"],
       ["1月5日至3月1日", "past"],
     ]) {
-      expect(`window refused: ${typed}`, capacityWindowProblem(typed, nov), why);
+      expect(`window refused: ${typed}`, capacityWindowProblem(typed, nov)?.code, why);
     }
 
     // The daily job runs at 07:00 UTC and wrote "in 3 days" for a step due

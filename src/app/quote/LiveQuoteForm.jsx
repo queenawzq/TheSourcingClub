@@ -115,16 +115,29 @@ function depositPctFrom(slug) {
 /** "2 months" has no fixed number of days, and read as a figure it stored 2 days. */
 const IN_MONTHS = /\d\s*(?:months?\b|mos?\b|个月|個月)/i;
 
-const WINDOW_EXAMPLE = "“Jan 5 - Mar 1, 2027 · 300 units”";
+const WINDOW_EXAMPLE = "“Dec 1 - Jan 15”";
 
-/** The sentence for a window that cannot be kept; the form's words for it name the field. */
+/**
+ * The sentence for a window that cannot be kept: the field, what to fix, and
+ * an example. Any readable dates are kept, so this is only for text that is
+ * not dates, or dates that are not real or already over.
+ */
 function windowRefusal(values, companyType) {
   const problem = capacityWindowProblem(values.capacityWindow);
   if (!problem) return null;
   const field = companyType === "trading" ? "partner production window" : "open capacity window";
-  return problem === "past"
-    ? `${field} (those dates have passed; write the year, like ${WINDOW_EXAMPLE})`
-    : `${field} (write the first and last day, like ${WINDOW_EXAMPLE})`;
+  switch (problem.code) {
+    case "past":
+      return `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
+    case "invalid":
+      return `${field} (“${problem.piece}” is not a date; check the day and month, like ${WINDOW_EXAMPLE})`;
+    case "words":
+      return `${field} (enter dates only, like ${WINDOW_EXAMPLE})`;
+    case "many":
+      return `${field} (enter a first and last date, like ${WINDOW_EXAMPLE})`;
+    default:
+      return `${field} (enter dates, like ${WINDOW_EXAMPLE})`;
+  }
 }
 
 function missingQuoteFields(values, terms, companyType) {
