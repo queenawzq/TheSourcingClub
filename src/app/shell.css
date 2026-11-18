@@ -821,3 +821,12 @@ body {
   border-color: #8db7ff;
   box-shadow: 0 0 0 3px rgba(26, 77, 242, 0.12);
 }
+
+/* "This link is for another account" (ReviewLinkGate, src/app/main.jsx): the
+   app's sign-in card with Staff sign-in's centred status block. The admin CSS
+   is not loaded in app.html, so its numbers are restated here. */
+.review-link-gate { margin: 0 auto; width: min(100%, 440px); }
+.review-link-gate-status { display: grid; justify-items: center; gap: 12px; margin-bottom: 22px; text-align: center; }
+.review-link-gate-status img { width: 42px; height: 42px; }
+.review-link-gate-status h1 { margin: 0; color: #0b1020; font-size: 20px; font-weight: 700; line-height: 26px; }
+.review-link-gate-status p { margin: 0; color: #5a6b87; font-size: 13px; font-weight: 500; line-height: 18px; overflow-wrap: anywhere; }
