@@ -1497,8 +1497,8 @@ await failed(chinoFit, "Your card was declined.");
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
-//    fit sample is funded and approved, and waits on staff: "Pay with Wise"
-//    ("Payout owed" on the staff payments page). Saved through the
+//    fit sample is funded and approved. Its default method is Wise, so the
+//    step goes into its balance until an owner asks to withdraw. Saved through the
 //    form's own function; the number is plainly fake, in Vault. Wise may be
 //    switched off for China (payout_provider_settings), which refuses a new
 //    Wise method; it is switched on for the save and put back as it was.
@@ -1699,7 +1699,7 @@ done. Every login uses the password "${PASSWORD}".
     - "Stretch chino, AW27": fit sample card declined, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
     - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
-      Stripe cannot pay (China): staff pay it with Wise from the admin's Payments page
+      Stripe cannot pay (China): it is in Ningbo's balance until Ningbo asks to withdraw
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   Settings → Notifications: "Payment and approval requests" emails are off; the others are on.
