@@ -26,6 +26,7 @@
 .payment-help { display: inline-flex; flex: 0 0 12px; align-items: center; justify-content: center; width: 12px; height: 12px; margin: 0; padding: 0; border: 1px solid var(--text-muted); border-radius: 50%; background: transparent; color: var(--text-muted); font: 700 8px/1 Satoshi, sans-serif; cursor: help; vertical-align: middle; }
 .payment-help:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .payment-help-tooltip { position: fixed; z-index: 10000; box-sizing: border-box; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--text); color: white; font: 500 13px/19px Satoshi, sans-serif; box-shadow: 0 4px 16px rgb(0 0 0 / 15%); text-align: left; }
+.payout-balance-line .payment-help { vertical-align: 2px; }
 .live-payout-balance .payment-provider-note { font-size: 11px; }
 .payment-allocation-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
 .live-stripe-error { color: var(--danger) !important; }
@@ -91,7 +92,9 @@
 .brand-profile-modal.payout-modal:focus { outline: none; }
 .payout-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -28px; padding-left: 28px !important; padding-right: 28px !important; }
 /* The row's menu has room in the dialog instead of being cut off by its scroll. */
-.payout-modal-body:has(.payout-method-popover) { padding-bottom: 104px; }
+/* The last method's menu opens upward, over the row above, so opening it never
+   makes the dialog taller (it used to add 104px under the list). */
+.payout-method-list > .payout-method-row:last-child .payout-method-popover { top: auto; bottom: calc(100% + 7px); }
 .payout-amount-failed { color: var(--text-muted); text-decoration: line-through; }
 .payout-recommended { margin: 0; color: var(--text); font-size: 15px; font-weight: 700; line-height: 21px; }
 .payout-back { justify-self: start; }
@@ -278,13 +281,15 @@
 .payout-balance-placeholder-lines span:first-child { width: min(100%, 360px); }
 .payout-balance-placeholder-lines span:last-child { width: min(70%, 240px); }
 /* The sentence under a Stripe balance runs to two lines (three on a narrow
-   desktop, four when the card stacks); its space is kept from the start, so it never pushes the page. */
-.live-stripe-payout-card .payout-balance-line { min-height: 36px; box-sizing: border-box; }
+   desktop, four when the card stacks); its space is kept while it loads, so it
+   never pushes the page. Once shown, it takes only the lines it needs, so no
+   empty line is left under it. */
+.live-stripe-payout-card .payout-balance-placeholder-lines { min-height: 36px; box-sizing: border-box; }
 @media (max-width: 900px) {
-  .live-stripe-payout-card .payout-balance-line { min-height: 54px; }
+  .live-stripe-payout-card .payout-balance-placeholder-lines { min-height: 54px; }
 }
 @media (max-width: 760px) {
-  .live-stripe-payout-card .payout-balance-line { min-height: 72px; }
+  .live-stripe-payout-card .payout-balance-placeholder-lines { min-height: 72px; }
 }
 /* The rest of the page while it loads, the same grey: a bar the size of each
    figure, and rows the height of the rows they stand in for. */
@@ -361,6 +366,9 @@
 .payout-methods-modal .payout-method-row > .payout-bank-icon { grid-column: 1; grid-row: 1 / span 2; border-radius: 8px; }
 .payout-methods-modal .payout-method-name { grid-column: 2; grid-row: 1; align-self: center; }
 .payout-methods-modal .payout-method-name span { overflow-wrap: anywhere; }
+/* A method with no Default tag has one line: centred with its icon and menu,
+   not at the top of a two-row grid. */
+.payout-methods-modal .payout-method-row:not(:has(> .payout-method-default)) > .payout-method-name { grid-row: 1 / span 2; }
 .payout-methods-modal .payout-method-default { grid-column: 2; grid-row: 2; text-transform: none; background: var(--tag-fill, #ecf1f6); color: var(--text-muted); }
 .payout-methods-modal .payout-method-menu { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
 .payout-methods-modal .payout-method-row > button { grid-column: 3; grid-row: 1 / span 2; }
@@ -405,3 +413,14 @@
   .cancel-withdrawals-option { grid-template-columns: auto minmax(0, 1fr); }
   .cancel-withdrawals-option .payout-pending-destination { grid-column: 2; }
 }
+
+/* An error in a payout dialog: at the top, in TSC's error box (the same as a
+   failed onboarding save). */
+.payout-modal-error { margin: 0; padding: 10px 12px; border: 1px solid #f3bcaa; border-radius: 10px; background: #fff2ec; color: #a8330f; font-size: 13px; line-height: 1.45; }
+/* Withdrawal methods: 24px at every outer edge (top to title, title to
+   content, content to the footer line, around Done), 20px between items, and
+   the close button centred on the title. The dialog's own 20px gap sits
+   between header, body and footer, so the body adds 4px each side. */
+.payout-methods-modal .payout-modal-body { padding-top: 4px; padding-bottom: 4px; }
+.payout-methods-modal .payout-modal-actions { min-height: 0; padding-top: 24px; padding-bottom: 24px; }
+.payout-methods-modal > .brand-profile-modal-close { top: 23px; }

@@ -6420,6 +6420,16 @@ body:has(.factory-onboarding-page) {
   width: 176px;
 }
 
+/* Live, with no match to show: the actions alone, at the top, no divider. */
+.project-fit-card:has(> .factory-side-actions:first-child) {
+  align-content: start;
+}
+
+.project-fit-card > .factory-side-actions:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
 .factory-client-row {
   display: flex;
   align-items: center;
@@ -7761,6 +7771,11 @@ body:has(.factory-onboarding-page) {
 
 .factory-submit-section:nth-of-type(5) {
   min-height: 228px;
+}
+
+/* The sample plan fits its rows: no room kept for rows that aren't there. */
+.factory-submit-section:has(> .factory-submit-sample-rows) {
+  min-height: 0;
 }
 
 .factory-submit-section:nth-of-type(6) {
@@ -11470,3 +11485,90 @@ button.sort-button {
   color: #5b6577;
 }
 
+
+/* Request details between phone and laptop: three side cards are too narrow
+   for their buttons and facts, so two columns, with the activity card below. */
+@media (min-width: 761px) and (max-width: 1000px) {
+  .factory-detail-top-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-detail-top-side > .activity-card {
+    grid-column: 1 / -1;
+  }
+
+  .factory-detail-top-side .factory-side-actions .primary-btn,
+  .factory-detail-top-side .factory-side-actions .secondary-btn {
+    max-width: 100%;
+  }
+}
+
+/* 761–1180px: the side nav is 78px wide whether or not it is collapsed, so the
+   bottom bar starts its Back button the same distance after it. */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .factory-flow .factory-submit-bottom-bar {
+    padding-left: calc(var(--nav-collapsed-page-offset) + 70px);
+  }
+}
+
+/* Phones: no side nav, so Back sits at the left edge, as Send does at the
+   right. Specific enough to beat the collapsed-nav rule above. */
+@media (max-width: 760px) {
+  .app-shell.factory-flow > .factory-submit-page > .factory-submit-bottom-bar.factory-submit-bottom-bar {
+    left: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* A quote section with only its heading and description (read back with
+   nothing entered) keeps no room for content it doesn't have. */
+.factory-submit-section:not(:has(> :nth-child(3))) {
+  min-height: 0;
+}
+
+/* Quote sent: the design's two fixed columns (740px + 246px) only fit a wide
+   screen. Narrower, the card takes the full width with the side cards below. */
+.factory-sent-layout {
+  grid-template-columns: minmax(0, 740px) 246px;
+}
+
+@media (max-width: 1180px) {
+  .factory-sent-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .factory-sent-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-sent-card {
+    min-height: 0;
+    padding: 24px 20px;
+  }
+
+  .factory-sent-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 12px;
+    padding: 20px 12px;
+  }
+
+  .factory-sent-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factory-sent-card .success-actions {
+    display: grid;
+    gap: 10px;
+  }
+
+  .factory-sent-card .success-actions .primary-btn,
+  .factory-sent-card .success-actions .secondary-btn {
+    width: 100%;
+    min-width: 0;
+  }
+}

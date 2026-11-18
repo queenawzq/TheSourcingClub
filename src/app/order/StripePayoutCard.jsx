@@ -964,13 +964,13 @@ export default function StripePayoutCard({
             ? [
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}` : null,
+              // Its "?" sits right after it, not on a line of its own.
+              pending > 0 ? <>{`${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
-            ].filter(Boolean).join(" · ")
+            ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)
             : payoutSetupLine}</p>}
-          {balance && pending > 0 ? <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp> : null}
           </>}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
             <p>Your previous payout account still has funds.</p>
@@ -1095,6 +1095,9 @@ export default function StripePayoutCard({
           onClose={closeModal}
           actions={<button className="secondary-btn" type="button" onClick={closeModal}>{cardWords.done}</button>}
         >
+          {/* Errors first, in TSC's error box, where they are seen at once. */}
+          {removeError ? <p className="payout-modal-error" role="alert">{removeError.message}</p> : null}
+          {manualError ? <p className="payout-modal-error" role="alert">{manualError.message}</p> : null}
           <div className="payout-methods-heading">
             {/* Add always adds: a new method sits beside the others. */}
             <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ {cardWords.add}</button>
@@ -1157,9 +1160,7 @@ export default function StripePayoutCard({
               {" "}<button className="secondary-btn compact-btn" type="button" onClick={() => setModal("upgrade")}>Continue</button>
             </p></div>
           ) : null}
-          {removeError && modal === "manage" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           {methodNotice && modal === "manage" ? <p className="live-payment-notice" role="status">{methodNotice}</p> : null}
-          {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
 

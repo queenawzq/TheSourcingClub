@@ -29,6 +29,7 @@ import {
   getRfq,
   isRequestSaved,
   lastBrandView,
+  matchScoresForRfq,
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
@@ -53,7 +54,9 @@ import { sourcingChoiceLabel } from "./resume-fields.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
-import { matchFit } from "./match-fit.js";
+import { matchFit, matchReason } from "./match-fit.js";
+import { getFactoryProfile } from "../../lib/domain/profile.js";
+import { getCapacity } from "../../lib/domain/capacity-store.js";
 import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
@@ -169,20 +172,31 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     if (!rfq || !org?.id) return undefined;
     let cancelled = false;
     Promise.all([
+      matchScoresForRfq(rfq.id, [org.id]).catch(() => new Map()),
       rfq.brand_org_id ? brandSummary(rfq.brand_org_id).catch(() => null) : null,
       lastBrandView(rfq.id),
       getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
       isRequestSaved(org.id, rfq.id).catch(() => false),
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
+      // What the match sentence can name: this factory's own facts and the
+      // request's, the same ones match_score_rfq() compares.
+      Promise.all([
+        getFactoryProfile(org.id),
+        getCapacity(org.id),
+        listLinks("factory_profile", org.id),
+        listLinks("rfq", rfq.id),
+        listTermsByKind(["product_category", "production_type"]),
+      ]).catch(() => null),
     ])
-      .then(([summary, viewed, documents, savedAlready, profile]) => {
+      .then(([scores, summary, viewed, documents, savedAlready, profile, facts]) => {
         if (cancelled) return;
         setExtras({
-          // No fit label to a factory about itself (Nov 7): a brand that
-          // invited it has answered "is it a fit?", and below 60 the band
-          // says "Not a fit" to nearly every vendor on a plain request.
-          match: null,
+          // The factory's own score for this request (Nov 17, replacing the
+          // Nov 7 rule of none). Shown only with a fit band: below 60, or with
+          // no score, the card keeps just its actions.
+          match: scores.get(org.id) ?? null,
+          matchFacts: facts,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: documents.files ?? [],
@@ -342,10 +356,10 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           capabilities={[]}
           // Nothing to show still passes an object: with none the design draws
           // its own "Strong fit".
-          match={extras.match === null ? { summary: "", label: "", tone: "" } : {
-            summary: `${extras.match}% match`,
-            label: fit?.label ?? "",
-            tone: fit?.tone ?? "",
+          match={!fit || fit.score < 60 ? { summary: "", label: "", tone: "" } : {
+            summary: matchSentence(extras.matchFacts, rfq, getUiLanguage()),
+            label: fit.label,
+            tone: fit.tone,
           }}
           // Always an object: with none (the summary still loading, or failed
           // to load) the design draws its own "Maison Rue" and its facts.
@@ -542,4 +556,22 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       />
     </>
   );
+}
+
+/** The match card's sentence: which of the factory's facts fit this request. */
+function matchSentence(facts, rfq, language) {
+  const [profile, capacity, factoryTermIds, rfqTermIds, terms] = facts ?? [];
+  const locale = language === "zh" ? "zh" : "en";
+  const shared = (kind) => (terms?.[kind] ?? [])
+    .filter((term) => factoryTermIds?.includes(term.id) && rfqTermIds?.includes(term.id))
+    .map((term) => termLabel(term, locale));
+  const month = rfq.target_delivery_month ? dateFrom(rfq.target_delivery_month) : null;
+  return matchReason({
+    month,
+    capacityLevel: month ? capacity?.months?.[rfq.target_delivery_month] : null,
+    moq: profile?.moq ?? null,
+    quantity: rfq.quantity_total ?? null,
+    productionTypes: shared("production_type"),
+    categories: shared("product_category"),
+  }, language);
 }
