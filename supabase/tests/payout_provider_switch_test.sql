@@ -92,7 +92,11 @@ select throws_ok($$delete from public.payout_provider_settings$$, '42501', null,
 select throws_ok($$select public.payout_region('5b000000-0000-0000-0000-0000000000c1')$$, '42501', null, 'the region rule is not callable');
 select throws_ok($$select public.payout_provider_enabled('5b000000-0000-0000-0000-0000000000c1', 'paypal')$$, '42501', null, 'the internal check is not callable');
 select is((select count(*)::int from public.payout_provider_settings), 4, 'a factory reads the switches');
-select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1'), '{"region":"china","paypal":true,"wise":false}'::jsonb, 'a factory reads its own providers');
+select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1') - 'byRegion' - 'chinaCountries', '{"region":"china","paypal":true,"wise":false}'::jsonb, 'a factory reads its own providers');
+select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1') -> 'byRegion',
+  '{"china":{"paypal":true,"wise":false},"elsewhere":{"paypal":true,"wise":false}}'::jsonb, 'and every region''s switches');
+select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000c1') -> 'chinaCountries', '["CN","HK"]'::jsonb, 'and which countries are China');
+select throws_ok($$select public.payout_region_of('CN')$$, '42501', null, 'the country rule is not callable');
 select throws_ok($$select public.payout_providers_for('5b000000-0000-0000-0000-0000000000e1')$$, '42501', null, 'not another company''s');
 reset role; select pg_temp.act_as(3); set local role authenticated;
 select throws_ok($$select public.set_payout_provider('wise', 'elsewhere', true)$$, '42501', null, 'a brand cannot switch');
@@ -159,6 +163,86 @@ select lives_ok($$select public.save_wise_payout_account('5b000000-0000-0000-000
     'accountNumber', '0000 0000 0000 5678', '0000 0000 0000 5678')$$, 'Wise on for China: a new Wise method is saved');
 reset role; select pg_temp.act_as(2); set local role authenticated;
 select is(public.payout_providers_for('5b000000-0000-0000-0000-0000000000e1')->>'wise', 'false', 'Wise stays off elsewhere');
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 20261118600000: the country picked for a method decides its switch.
+-- ---------------------------------------------------------------------------
+-- Start: PayPal on for China, off elsewhere; Wise on for China (above), off elsewhere.
+select pg_temp.act_as(4); set local role authenticated;
+select lives_ok($$select public.set_payout_provider('paypal', 'elsewhere', false)$$, 'staff switch PayPal off elsewhere');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+-- 1. A Chinese company picking Germany is checked by Germany's switch, not China's.
+select throws_ok($$insert into public.factory_payout_accounts (org_id, method, paypal_email, is_primary, payout_country) values ('5b000000-0000-0000-0000-0000000000c1', 'paypal', 'pgtap-sw-de@example.com', false, 'DE')$$,
+  '22023', null, 'a Chinese company cannot add PayPal for Germany while it is off elsewhere');
+-- 5. Not listed is elsewhere; a lowercase code is refused by the column.
+select throws_ok($$insert into public.factory_payout_accounts (org_id, method, paypal_email, is_primary, payout_country) values ('5b000000-0000-0000-0000-0000000000c1', 'paypal', 'pgtap-sw-zz@example.com', false, 'ZZ')$$,
+  '22023', null, '"Other / not listed" is elsewhere, so it is refused too');
+select throws_ok($$insert into public.factory_payout_accounts (org_id, method, paypal_email, is_primary, payout_country) values ('5b000000-0000-0000-0000-0000000000c1', 'paypal', 'pgtap-sw-lc@example.com', false, 'cn')$$,
+  '23514', null, 'a country code must be two capital letters');
+select lives_ok($$insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, payout_country) values ('5a100000-0000-0000-0000-0000000000c5', '5b000000-0000-0000-0000-0000000000c1', 'paypal', 'pgtap-sw-cn5@example.com', false, 'CN')$$,
+  'PayPal for China, which is on, is saved');
+-- 7. A row saved before the column (null) is read by the company's country.
+select lives_ok($$select public.request_withdrawal('5b000000-0000-0000-0000-0000000000c1', 1000, '5a100000-0000-0000-0000-0000000000c1')$$,
+  'an older PayPal row with no country is read by the company''s country (China, on)');
+reset role; select pg_temp.act_as(2); set local role authenticated;
+-- 2. A British company picking Hong Kong is checked by China's switch.
+select lives_ok($$insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, payout_country) values ('5a100000-0000-0000-0000-0000000000e5', '5b000000-0000-0000-0000-0000000000e1', 'paypal', 'pgtap-sw-hk@example.com', false, 'HK')$$,
+  'a British company can add PayPal for Hong Kong while it is on for China');
+select throws_ok($$insert into public.factory_payout_accounts (org_id, method, paypal_email, is_primary, payout_country) values ('5b000000-0000-0000-0000-0000000000e1', 'paypal', 'pgtap-sw-gb3@example.com', false, 'GB')$$,
+  '22023', null, 'and cannot add it for Britain while it is off elsewhere');
+select throws_ok($$select public.request_withdrawal('5b000000-0000-0000-0000-0000000000e1', 1000, '5a100000-0000-0000-0000-0000000000e1')$$,
+  '22023', 'This withdrawal method is not available right now.', 'its older PayPal row (no country, Britain) is refused while PayPal is off elsewhere');
+select lives_ok($$select public.request_withdrawal('5b000000-0000-0000-0000-0000000000e1', 1000, '5a100000-0000-0000-0000-0000000000e5')$$,
+  'its Hong Kong PayPal row still withdraws');
+reset role; select pg_temp.act_as(4); set local role authenticated;
+select lives_ok($$select public.set_payout_provider('paypal', 'china', false)$$, 'staff switch PayPal off for China too');
+reset role; select pg_temp.act_as(2); set local role authenticated;
+-- 6. A withdrawal to an account whose region is off is refused.
+select throws_ok($$select public.request_withdrawal('5b000000-0000-0000-0000-0000000000e1', 1000, '5a100000-0000-0000-0000-0000000000e5')$$,
+  '22023', 'This withdrawal method is not available right now.', 'the Hong Kong row is refused once China is off');
+reset role; select pg_temp.act_as(4); set local role authenticated;
+-- ... and one asked for before still finishes.
+select is((public.claim_withdrawal((select id from public.factory_withdrawals where account_id = '5a100000-0000-0000-0000-0000000000e5' and status = 'requested')))->>'provider',
+  'paypal', 'a withdrawal asked for before the switch is still approved');
+select lives_ok($$select public.set_payout_provider('paypal', 'elsewhere', true)$$, 'staff switch PayPal back on elsewhere');
+reset role; select pg_temp.act_as(2); set local role authenticated;
+-- 4. Moving a method from a country that is on to one that is off is refused.
+select lives_ok($$insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, payout_country) values ('5a100000-0000-0000-0000-0000000000e6', '5b000000-0000-0000-0000-0000000000e1', 'paypal', 'pgtap-sw-de2@example.com', false, 'DE')$$,
+  'PayPal for Germany, on again, is saved');
+select throws_ok($$update public.factory_payout_accounts set payout_country = 'CN' where id = '5a100000-0000-0000-0000-0000000000e6'$$,
+  '22023', null, 'and cannot be moved to China, where PayPal is off');
+select lives_ok($$update public.factory_payout_accounts set payout_country = 'FR' where id = '5a100000-0000-0000-0000-0000000000e6'$$,
+  'moving it within the same region is fine');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+-- 9. The Wise save takes the picked country: China on, elsewhere off.
+select throws_ok($$select public.save_wise_payout_account('5b000000-0000-0000-0000-0000000000c1', null, 'SW Bank', 'sort_code', 'GBP',
+    '{"legalType":"BUSINESS","accountHolderName":"SW CHINA LTD","sortCode":"040004","address.country":"GB","address.city":"London","address.firstLine":"1 Road"}'::jsonb,
+    'accountNumber', '87654321', '87654321', 'GB')$$,
+  '22023', null, 'a Chinese company cannot add Wise for Britain while Wise is off elsewhere');
+select throws_ok($$select public.save_wise_payout_account('5b000000-0000-0000-0000-0000000000c1', null, 'SW Bank', 'sort_code', 'GBP',
+    '{"legalType":"BUSINESS","accountHolderName":"SW CHINA LTD","sortCode":"040004","address.country":"GB","address.city":"London","address.firstLine":"1 Road"}'::jsonb,
+    'accountNumber', '87654321', '87654321', 'Britain')$$,
+  '22023', null, 'a picked country must be a country code');
+select is((public.save_wise_payout_account('5b000000-0000-0000-0000-0000000000c1', null, 'SW Bank', 'chinese_local_business', 'CNY',
+    '{"legalType":"BUSINESS","accountHolderName":"SW CHINA LTD","swiftCode":"BKCHCNBJ","address.country":"CN","address.city":"Ningbo","address.firstLine":"1 Road"}'::jsonb,
+    'accountNumber', '0000 0000 0000 9999', '0000 0000 0000 9999', 'cn')).payout_country,
+  'CN', 'Wise for China is saved, with the country kept');
+reset role; select pg_temp.act_as(2); set local role authenticated;
+select throws_ok($$select public.save_wise_payout_account('5b000000-0000-0000-0000-0000000000e1', null, 'SW Bank', 'sort_code', 'GBP',
+    '{"legalType":"BUSINESS","accountHolderName":"SW BRITAIN LTD","sortCode":"040004","address.country":"GB","address.city":"London","address.firstLine":"1 Road"}'::jsonb,
+    'accountNumber', '12345678', '12345678')$$,
+  '22023', null, 'called without a country, the company''s country (Britain, Wise off) decides');
+reset role;
+
+-- 8. Staff who own a factory are checked like anyone for their factory's methods.
+set local session_replication_role = replica;
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('5b000000-0000-0000-0000-0000000000a1', '5a000000-0000-0000-0000-000000000004', 'owner', '{}');
+set local session_replication_role = origin;
+select pg_temp.act_as(4); set local role authenticated;
+select throws_ok($$insert into public.factory_payout_accounts (org_id, method, paypal_email, is_primary, payout_country) values ('5b000000-0000-0000-0000-0000000000a1', 'paypal', 'pgtap-sw-staff@example.com', false, 'HK')$$,
+  '22023', null, 'staff who own a factory cannot add a method that is off for its country');
 reset role;
 
 select * from finish();

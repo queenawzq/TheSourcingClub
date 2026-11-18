@@ -4,7 +4,7 @@ import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
-import { providerOf, providerOn } from "./payout-providers.js";
+import { methodProviderOn, providerOf } from "./payout-providers.js";
 
 /**
  * A factory paid by Wise or PayPal withdraws from its balance:
@@ -263,7 +263,7 @@ function useExactQuote(orgId, accountId, amountCents, enabled) {
 /** The dialog body and its Confirm, in the payouts page's own PayoutModal. */
 export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null }) {
   // A saved method whose provider staff switched off stays saved, but is not offered.
-  const choices = methods.filter((row) => usable(row) && providerOn(providers, providerOf(row)));
+  const choices = methods.filter((row) => usable(row) && methodProviderOn(providers, row));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
   const [busy, setBusy] = useState(false);
@@ -271,10 +271,12 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   // click: this does, before the state update reaches the button.
   const sending = useRef(false);
   const [error, setError] = useState(null);
-  // A switch read or flipped after the dialog opened: move off a method no longer offered.
+  // A switch read or flipped after the dialog opened: the chosen method is no
+  // longer offered. Never move to another one by itself: the choice is
+  // cleared, and Withdraw stays off until the person chooses again.
   const offered = choices.map((m) => m.id).join(",");
   useEffect(() => {
-    if (!choices.some((m) => m.id === methodId)) setMethodId((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
+    if (methodId && !choices.some((m) => m.id === methodId)) setMethodId("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offered]);
   const method = choices.find((m) => m.id === methodId) ?? null;
@@ -307,7 +309,7 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   return (
     <Modal title="Withdraw" className="withdraw-form-modal" onClose={onClose} actions={<>
       <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
-      <button className="primary-btn" type="button" data-testid="withdraw-confirm" disabled={busy || asking || Boolean(amountProblem) || !fee || Boolean(fee?.refused) || Boolean(exact?.refused)} onClick={confirm}>
+      <button className="primary-btn" type="button" data-testid="withdraw-confirm" disabled={busy || asking || !method || Boolean(amountProblem) || !fee || Boolean(fee?.refused) || Boolean(exact?.refused)} onClick={confirm}>
         {busy ? "Withdrawing…" : Number.isFinite(amountCents) && amountCents > 0 ? `Withdraw ${formatMoney(amountCents, "USD")}` : "Withdraw"}
       </button>
     </>}>
@@ -317,6 +319,7 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
         <label className="payout-country-field withdraw-method-field">
           <span>Withdraw to</span>
           <select name="Withdraw to" value={methodId} disabled={busy} onChange={(event) => setMethodId(event.target.value)}>
+            {methodId ? null : <option value="" />}
             {choices.map((row) => <option key={row.id} value={row.id}>{label(row)}</option>)}
           </select>
         </label>

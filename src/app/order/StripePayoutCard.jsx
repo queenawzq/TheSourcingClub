@@ -11,12 +11,13 @@ import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import { chooserMethod, paidByWise, payoutMethodLines, payoutMethodFeeUrl } from "../../shared/payout-method-info.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
+import { forgetStripeConnect } from "../../lib/stripe-connect-embed.js";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
-import { providerOn, usePayoutProviders } from "./payout-providers.js";
+import { providerOnFor, usePayoutProviders } from "./payout-providers.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -29,6 +30,8 @@ const COUNTRIES = [...new Set([...PAYOUT_COUNTRIES, ...OTHER_COUNTRIES])]
 const NOT_LISTED = "other";
 
 const countryName = (code) => (code && code !== NOT_LISTED ? names.of(code) ?? code : "");
+// What a new method saves as its country: "ZZ" (ISO's unknown) for not listed.
+const savedCountry = (code) => (code === NOT_LISTED ? "ZZ" : code || null);
 
 const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
 
@@ -37,6 +40,8 @@ const LETTER_MARK = { paypal: <strong>P</strong> };
 
 const isPaypal = (row) => row?.method === "paypal";
 const manualComplete = (row) => isPaypal(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
+/** A list's rows, its default first; the others keep their order (sort is stable). */
+const defaultFirst = (entries) => [...entries].sort((a, b) => Number(b.isDefault) - Number(a.isDefault)).map((entry) => entry.node);
 const BANK_ICON = <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>;
 
 /** The words for the list of withdrawal methods. The factory's screens are English, so these are too. */
@@ -236,16 +241,25 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
   // The country list in the page's language: the language layer never rewrites a select.
   const zh = useUiLanguage() === "zh";
   const countries = zh ? COUNTRIES.map((item) => ({ ...item, name: countryNameZh(item.code) ?? item.name })).sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")) : COUNTRIES;
-  // Staff switch PayPal and Wise per region (usePayoutProviders); none passed is all on.
-  const paypalOn = providerOn(providers, "paypal");
-  const wiseOn = providerOn(providers, "wise");
+  // Staff switch PayPal and Wise per region; the picked country decides the
+  // region (usePayoutProviders). None passed is all on.
+  const paypalOnFor = (code) => providerOnFor(providers, "paypal", savedCountry(code));
+  const wiseOnFor = (code) => providerOnFor(providers, "wise", savedCountry(code));
+  // A country is listed only while some method can pay there.
+  const listed = (code) => PAYOUT_COUNTRIES.has(code) || (wiseOnFor(code) && paidByWise(code)) || paypalOnFor(code);
+  const shownCountries = countries.filter((item) => listed(item.code));
+  const otherListed = listed(NOT_LISTED);
+  // A saved or company country no longer listed starts blank.
+  const picked = country && listed(country) ? country : "";
+  const paypalOn = paypalOnFor(picked);
+  const wiseOn = wiseOnFor(picked);
   // TSC pays only through Stripe, Wise, PayPal or Tazapay: where neither Stripe
   // nor Wise has a bank route, PayPal is the one option.
-  const bankRoute = supported || (wiseOn && paidByWise(country));
+  const bankRoute = supported || (wiseOn && paidByWise(picked));
   const paypalOption = (primary) => (
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported, country })} /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><MethodLines method={chooserMethod("paypal", { supported, country: picked })} /></div>
                   <button className={`${primary ? "primary-btn" : "secondary-btn"} compact-btn`} type="button" data-testid="payout-set-up-paypal" disabled={busy}
                           onClick={onPaypal}>{words.setUp}</button>
                 </article>
@@ -253,31 +267,31 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
   return <>
             <label className="payout-country-field">
               <span>{words.country}</span>
-              <select data-field="payout_country" value={country} onChange={(event) => onCountryChange(event.target.value)}>
+              <select data-field="payout_country" value={picked} onChange={(event) => onCountryChange(event.target.value)}>
                 <option value="" />
-                {countries.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
-                <option value={NOT_LISTED}>{zh ? "其他 / 未列出" : "Other / not listed"}</option>
+                {shownCountries.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
+                {otherListed ? <option value={NOT_LISTED}>{zh ? "其他 / 未列出" : "Other / not listed"}</option> : null}
               </select>
             </label>
-            {country && !bankRoute && !paypalOn ? (
+            {picked && !bankRoute && !paypalOn ? (
               <p className="payout-modal-intro" data-testid="payout-none-available">{words.noneAvailable}</p>
-            ) : country && !bankRoute ? (
+            ) : picked && !bankRoute ? (
               <div className="payout-options-columns">
               <section className="payout-options-section">
-              <h3 className="payout-recommended">{notListed ? words.available : words.recommended(countryName(country))}</h3>
-              <div className="payout-method-options" role="group" aria-label={notListed ? words.available : words.recommended(countryName(country))}>
+              <h3 className="payout-recommended">{notListed ? words.available : words.recommended(countryName(picked))}</h3>
+              <div className="payout-method-options" role="group" aria-label={notListed ? words.available : words.recommended(countryName(picked))}>
                 {paypalOption(true)}
               </div>
               </section>
               </div>
-            ) : country ? <>
+            ) : picked ? <>
               <div className="payout-options-columns">
               <section className="payout-options-section">
-              <h3 className="payout-recommended">{notListed ? words.bank : words.recommended(countryName(country))}</h3>
-              <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
+              <h3 className="payout-recommended">{notListed ? words.bank : words.recommended(countryName(picked))}</h3>
+              <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(picked))}>
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account (Stripe)" : paidByWise(country) ? `${words.bank} (Wise)` : words.bank}</strong></div><MethodLines method={chooserMethod("bank", { supported, country })} /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account (Stripe)" : paidByWise(picked) ? `${words.bank} (Wise)` : words.bank}</strong></div><MethodLines method={chooserMethod("bank", { supported, country: picked })} /></div>
                   <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
                           onClick={onBank}>{words.setUp}</button>
                 </article>
@@ -289,7 +303,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 {supported && wiseOn ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(country)} (Wise)</strong></div><MethodLines method={chooserMethod("wise", { supported, country })} /></div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{transferName(picked)} (Wise)</strong></div><MethodLines method={chooserMethod("wise", { supported, country: picked })} /></div>
                     <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
                             onClick={onWise}>{words.setUp}</button>
                   </article>
@@ -362,6 +376,8 @@ export default function StripePayoutCard({
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [methodMenu, setMethodMenu] = useState(null);
+  // A notice said in Withdrawal methods only (a new default), not on the card.
+  const shownInDialogOnly = useRef(null);
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
@@ -731,7 +747,8 @@ export default function StripePayoutCard({
       if (result.error) throw result.error;
       setPayoutRoute("stripe");
       await load().catch(setError);
-      setMethodNotice(`${methodLabel(method)} is now your default.`);
+      shownInDialogOnly.current = `${methodLabel(method)} is now your default.`;
+      setMethodNotice(shownInDialogOnly.current);
     } catch (failure) { setRemoveError(defaultRefusal(failure)); }
     finally { setMethodBusy(false); }
   };
@@ -754,6 +771,34 @@ export default function StripePayoutCard({
     if (managed) setModal("add-bank");
     else handOver("add");
   };
+
+  // Bank account (Stripe), chosen under Add. An active account with nothing
+  // due adds a bank; any other opens Stripe's form where the setup was left,
+  // which asks only for what is still needed. A setup left halfway for
+  // another country is replaced first if it was never used (stripe-connect
+  // `restart`); otherwise the server says to choose another method.
+  async function chooseStripeBank() {
+    setManualError(null);
+    setRemoveError(null);
+    onStartManual?.(null);
+    if (account?.transfers_active && (paused || (account.payouts_enabled && !needsMore))) { startAdd(); return; }
+    if (account && !account.transfers_active && String(account.country ?? "").toUpperCase() !== country) {
+      setBusy(true);
+      try {
+        const { restarted } = await connectAction(org.id, "restart", { country });
+        if (restarted) {
+          forgetStripeConnect(org.id);
+          await load();
+        }
+      } catch (failure) {
+        setRemoveError(failure);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    setModal("onboarding-chosen");
+  }
 
   async function startUpgrade() {
     setBusy(true);
@@ -796,7 +841,8 @@ export default function StripePayoutCard({
       await onMakePrimaryManual?.(row);
       setPayoutRoute("manual");
       await load().catch(setError);
-      setMethodNotice(`${manualLabel(row)} is now your default.`);
+      shownInDialogOnly.current = `${manualLabel(row)} is now your default.`;
+      setMethodNotice(shownInDialogOnly.current);
     } catch (failure) {
       setManualError(defaultRefusal(failure));
     }
@@ -870,9 +916,8 @@ export default function StripePayoutCard({
       ? ""
       : verifying
         ? "Verification in progress"
-        : account
-          ? isOwner ? "Finish setup to receive earnings." : ""
-          : manualAccount
+        // A setup left halfway starts again under Add, so it reads as none.
+        : manualAccount
             ? isOwner ? "Add your full account number." : ""
             : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
@@ -922,11 +967,10 @@ export default function StripePayoutCard({
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {/* Not in the balance above, which is what the bank account holds. */}
-          {account?.transfers_active && payoutRoute === "manual" && payoutUsdTotal(handFigures?.balance ?? []) > 0 ? <p className="payout-balance-line">Awaiting payout: {formatMoney(payoutUsdTotal(handFigures.balance), "USD")}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
-          {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
+          {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
+          {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
@@ -939,13 +983,7 @@ export default function StripePayoutCard({
                 destination: stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
               setModal("withdraw");
             }}>Withdraw to bank</button>
-            {(account.payouts_enabled && !needsMore) || paused ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
-            </>
-          ) : account && !savedMethod ? (
-            <>
-            <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
-            <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-method" disabled={busy} onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
             </>
           ) : manualAccount && !savedMethod ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Add account number</button>
@@ -1047,14 +1085,16 @@ export default function StripePayoutCard({
             <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ {cardWords.add}</button>
           </div>
           <div className="payout-method-list">
-            {account && !account.transfers_active ? (
+            {/* A setup left halfway is not listed: it starts again under Add. */}
+            {account && !account.transfers_active && verifying ? (
               <article className="payout-method-row" data-testid="payout-unfinished-bank">
                 <div className="payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                <div className="payout-method-name"><strong>Bank account (Stripe)</strong><span>{verifying ? "Verification in progress" : "Not finished"}</span></div>
-                {verifying ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
+                <div className="payout-method-name"><strong>Bank account (Stripe)</strong><span>Verification in progress</span></div>
               </article>
             ) : null}
-            {account ? providerMethodRows.map((method) => (
+            {/* The default first, the rest in their usual order. */}
+            {defaultFirst([
+            ...(account ? providerMethodRows.map((method) => ({ isDefault: Boolean(method.default && payoutRoute === "stripe"), node: (
               <article className="payout-method-row" key={method.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
                   {BANK_ICON}
@@ -1074,8 +1114,8 @@ export default function StripePayoutCard({
                   ) : null}
                 </div>
               </article>
-            )) : null}
-            {manualAccounts.length ? manualAccounts.map((row) => (
+            ) })) : []),
+            ...manualAccounts.map((row) => ({ isDefault: Boolean(row.is_primary && payoutRoute === "manual"), node: (
               <article className="payout-method-row" key={row.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
                   {isPaypal(row) ? <img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /> : LETTER_MARK[row.method] ?? BANK_ICON}
@@ -1095,7 +1135,9 @@ export default function StripePayoutCard({
                   ) : null}
                 </div>
               </article>
-            )) : !account ? <div className="payout-empty-guidance">No withdrawal method yet.</div> : null}
+            ) })),
+            ])}
+            {!manualAccounts.length && (!account || (!account.transfers_active && !verifying)) ? <div className="payout-empty-guidance">No withdrawal method yet.</div> : null}
           </div>
           {/* Only one already started, which must finish: nobody starts one here. */}
           {account && balance?.upgrade && !managed ? (
@@ -1180,19 +1222,21 @@ export default function StripePayoutCard({
         return (
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
-            {removeError && modal === "add" ? <ModalMessage>{removeError.message}</ModalMessage> : null}
-            <p className="payout-modal-intro">Choose where your company is registered. We’ll show the withdrawal methods available for that country. {supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
-            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} providers={providers} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
+            {removeError && (modal === "add" || modal === "setup") ? <ModalMessage>{removeError.message}</ModalMessage> : null}
+            <p className="payout-modal-intro">{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
+            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} providers={providers} onBank={() => { if (supported) { chooseStripeBank(); return; } setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
           </PayoutModal>
         );
       })() : null}
 
       {modal === "setup-wise" ? (
-        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => onSaveWise?.(details)} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("bank-unavailable")} />
+        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={(details) => onSaveWise?.({ ...details, payoutCountry: stepRow ? null : savedCountry(country) })} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("bank-unavailable")} />
       ) : null}
 
       {modal === "bank-unavailable" ? (
-        // Wise's form could not be had: TSC no longer pays by hand, so PayPal is offered.
+        // Wise's form could not be had: TSC no longer pays by hand, so PayPal is
+        // offered, only while staff have it on for the picked country.
+        providerOnFor(providers, "paypal", savedCountry(country)) ? (
         <PayoutModal title={LIST_WORDS.title} onClose={closeModal} actions={<>
           <button className="secondary-btn" type="button" onClick={backFromStep}>{LIST_WORDS.back}</button>
           <button className="primary-btn" type="button" data-testid="bank-unavailable-paypal" disabled={busy}
@@ -1200,10 +1244,17 @@ export default function StripePayoutCard({
         </>}>
           <p className="payout-modal-intro" data-testid="bank-unavailable">{LIST_WORDS.bankUnavailable}</p>
         </PayoutModal>
+        ) : (
+        <PayoutModal title={LIST_WORDS.title} onClose={closeModal} actions={
+          <button className="secondary-btn" type="button" onClick={backFromStep}>{LIST_WORDS.back}</button>
+        }>
+          <p className="payout-modal-intro" data-testid="payout-none-available">{LIST_WORDS.noneAvailable}</p>
+        </PayoutModal>
+        )
       ) : null}
 
       {modal === "setup-paypal" && manualForm ? (
-        <PaypalStep row={stepRow} country={stepRow?.bank_country ?? country} form={manualForm} busy={manualBusy} onField={onManualFieldChange} savePaypal={() => onSavePaypal?.()} onBack={backFromStep} onClose={closeModal} />
+        <PaypalStep row={stepRow} country={stepRow?.bank_country ?? country} form={manualForm} busy={manualBusy} onField={onManualFieldChange} savePaypal={() => onSavePaypal?.(stepRow ? null : savedCountry(country))} onBack={backFromStep} onClose={closeModal} />
       ) : null}
 
 

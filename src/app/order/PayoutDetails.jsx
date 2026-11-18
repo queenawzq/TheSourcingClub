@@ -34,7 +34,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { askedWithdrawalRows, earningPaid, earningStatus, earningsSummaryFor, factoryAmount, grossAmount, handPaidFigures, payoutFee, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { askedWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, earningsSummaryFor, factoryAmount, grossAmount, handPaidFigures, payoutFee, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -298,8 +298,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     ? fundedEarnings
     : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
   const earningsShown = cardSettled || accountsError ? earnings : null;
-  const summary = earningsSummaryFor(earningsShown, client, fromBalance.withdrawn,
-    fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees);
   // Whether the withdrawals wait for Stripe at all, and if so, what to say
   // while they cannot be shown. Only an owner reads them.
   const needsStripe = stripeRelevant(earningsShown);
@@ -307,6 +305,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : stripeBalance === undefined ? (stripeStatus === "slow" ? "slow" : "loading")
     : !isOwner ? "owner" : "failed";
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
+  // Stripe earnings still clearing (owner only): Pending on their rows and in
+  // the Pending figure, from the same read, so the two always agree.
+  const clearing = clearingFor(stripeBalance);
+  // The figures wait with the rows for Stripe, so they never jump.
+  const summary = earningsSummaryFor(transactionsReady ? earningsShown : null, client, fromBalance.withdrawn,
+    fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees, clearing);
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
@@ -329,16 +333,18 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       // A brand pays the step plus TSC's fee; the factory earns the step.
       note: [
+        // "Available Nov 19": when Stripe lets it be withdrawn.
+        clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
         // With a payout fee the amount is what the factory received, so the step is said here.
         payoutFee(row) > 0
           ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`
           : row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
-      status: earningStatus(row),
+      status: earningStatus(row, clearing),
       amount: factoryAmount(row),
       currency: row.currency,
-      available: earningPaid(row),
+      available: earningPaid(row, clearing),
     })),
     // A withdrawal is across clients, so it is listed under All clients only.
     ...(client === "All clients" ? askedWithdrawalRows(fromBalance.rows) : []).map((row) => ({

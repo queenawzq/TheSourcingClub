@@ -1,8 +1,10 @@
 /**
- * Which withdrawal providers staff have switched on for this company's region
- * (payout_provider_settings, 20261117200000). The region is the database's
- * rule (payout_region: the company's country, CN or HK is China), so the
- * screen never decides it. Re-read when staff change a switch.
+ * Which withdrawal providers staff have switched on, per region
+ * (payout_provider_settings, 20261117200000). Since 20261118600000 the country
+ * picked for a method decides its region (payout_region_of); the database
+ * sends which countries are China, so the screen never owns the rule. A method
+ * saved before then has no country and goes by the company's region, as the
+ * database does. Re-read when staff change a switch.
  *
  * `null` until known, or when it cannot be read: the screens then offer what
  * they always did, and the database still refuses a provider that is off.
@@ -15,7 +17,14 @@ export function usePayoutProviders(orgId, enabled = true) {
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const { data, error } = await supabase.rpc("payout_providers_for", { target_org: orgId });
-    if (!error && data) setProviders({ paypal: data.paypal !== false, wise: data.wise !== false });
+    if (!error && data) {
+      setProviders({
+        paypal: data.paypal !== false,
+        wise: data.wise !== false,
+        byRegion: data.byRegion ?? null,
+        chinaCountries: Array.isArray(data.chinaCountries) ? data.chinaCountries : null,
+      });
+    }
   }, [orgId, enabled]);
 
   useEffect(() => {
@@ -35,3 +44,23 @@ export const providerOf = (row) => (row?.method === "paypal" ? "paypal" : row?.m
 
 /** Whether a provider is on; unknown switches count as on. */
 export const providerOn = (providers, provider) => !providers || providers[provider] !== false;
+
+/** The region a country is in, by the database's list; null when not known. */
+const regionOf = (providers, country) => {
+  if (!providers?.byRegion || !providers.chinaCountries || !country) return null;
+  return providers.chinaCountries.includes(String(country).trim().toUpperCase()) ? "china" : "elsewhere";
+};
+
+/**
+ * Whether a provider is on for a picked country ("ZZ" for not listed is
+ * elsewhere). With no country, or before the regions are known, the company's
+ * region decides, as for a method saved before countries were kept.
+ */
+export const providerOnFor = (providers, provider, country) => {
+  const region = regionOf(providers, country);
+  if (!region) return providerOn(providers, provider);
+  return providers.byRegion[region]?.[provider] !== false;
+};
+
+/** Whether a saved method's provider is on, by the country it was added for. */
+export const methodProviderOn = (providers, row) => providerOnFor(providers, providerOf(row), row?.payout_country);

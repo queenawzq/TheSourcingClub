@@ -18,7 +18,7 @@ export function connectNeedsNotice(before, account) {
   const payoutsStopped = Boolean(before?.payouts_enabled) && !account.payouts_enabled;
   if (!newlyDue && !transfersStopped && !payoutsStopped) return null;
   // Stopped with nothing for the factory to give (Stripe is reviewing the
-  // account): Finish setup would open a form with nothing to do in it.
+  // account): Stripe's form would have nothing to ask.
   if (!due.length) {
     return {
       kind: "payout_method_changed",
@@ -32,6 +32,9 @@ export function connectNeedsNotice(before, account) {
   return {
     kind: "payout_method_changed",
     title: transfers ? "Finish setup to withdraw" : "Finish setup to receive earnings",
-    body: "We need a few more details for your withdrawal account. Open Payments and choose Finish setup.",
+    // Stripe's form opens from Add withdrawal method, on the account already
+    // started; that button is on the card, or in Withdrawal methods once a
+    // method is saved, so the path names neither.
+    body: "We need a few more details for your withdrawal account. Open Payments and add a withdrawal method.",
   };
 }

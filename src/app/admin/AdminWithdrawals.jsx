@@ -65,8 +65,11 @@ function WithdrawalActions({ row, onChanged, BankDetails }) {
     {row.staff_sentence && !heard ? <span className="admin-sub admin-row-message">{row.staff_sentence}</span> : null}
   </>;
 
+  // The provider has it: its answer is read back every 30 s, nothing to press.
+  // Only a send that never reached the provider (no reference) is pressed
+  // again, with the same key, so it cannot pay twice.
   if (row.status === "paying") {
-    return <div className="admin-actions">{said}<button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button></div>;
+    return <div className="admin-actions">{said}{row.provider_ref ? null : <button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button>}</div>;
   }
   if (step === "decline" || step === "bank") {
     const decline = step === "decline";

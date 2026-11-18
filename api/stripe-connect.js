@@ -19,6 +19,10 @@ import { returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_
  *              onboarding and account management forms. The session can edit
  *              the company's identity and bank details, hence owners only
  *   onboard    the same, as a link to Stripe's hosted onboarding (older flow)
+ *   restart    a setup left halfway, chosen again for another country: Stripe
+ *              cannot change an account's country, so an account that was
+ *              never used (see neverUsed) is deleted, and the next session
+ *              creates one in the country chosen
  *   refresh    read the account back after onboarding and save its status;
  *              pays out anything already owed once transfers are on
  *   dashboard  a one-time link to the factory's Express dashboard
@@ -33,6 +37,28 @@ import { returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_
  * Owners only: where a company's money goes is the highest-value thing in
  * this system (the same rule as factory_payout_accounts).
  */
+/**
+ * Whether a company's Stripe account was never used, so deleting it loses
+ * nothing: transfers never turned on, no upgrade under way, no withdrawal
+ * asked for, no transfer ever made to it, and nothing in its balance. Any
+ * read that fails counts as used.
+ */
+async function neverUsed({ stripe, db, orgId, existing, upgrade }) {
+  if (existing.transfers_active || upgrade) return false;
+  const accountId = existing.stripe_account_id;
+  const [account, transfers, balance, withdrawals] = await Promise.all([
+    stripe.accounts.retrieve(accountId),
+    stripe.transfers.list({ destination: accountId, limit: 1 }),
+    stripe.balance.retrieve({}, { stripeAccount: accountId }),
+    db.from("stripe_withdrawals").select("id").eq("org_id", orgId).limit(1),
+  ]);
+  if (withdrawals.error || withdrawals.data?.length) return false;
+  if (account.capabilities?.transfers === "active") return false;
+  if (transfers.data?.length) return false;
+  const held = [...(balance.available ?? []), ...(balance.pending ?? []), ...(balance.instant_available ?? [])];
+  return held.every((row) => row.amount === 0);
+}
+
 /** "Bank account ending in 2345", as the factory's list says it. */
 const describe = (method) => `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`;
 
@@ -73,6 +99,28 @@ export default async function handler(request, response) {
       const current = await stripe.accounts.retrieve(existing.stripe_account_id);
       await beginConnectUpgrade({ stripe, db, org, current, email: auth?.user?.email });
       return reply(response, 200, { started: true });
+    }
+
+    if (action === "restart") {
+      const code = String(country ?? "").toUpperCase();
+      if (!PAYOUT_COUNTRIES.has(code)) {
+        return reply(response, 422, { error: "Choose another withdrawal method for this country." });
+      }
+      // Nothing started, or started for this country: the same account carries on.
+      if (!existing || String(existing.country ?? "").toUpperCase() === code) return reply(response, 200, { restarted: false });
+      let unused = false;
+      try {
+        unused = await neverUsed({ stripe, db, orgId, existing, upgrade });
+      } catch (failure) {
+        logStripeFailure("stripe-connect restart check", failure);
+        unused = false;
+      }
+      if (!unused) return reply(response, 409, { error: "Choose another withdrawal method for this country." });
+      await stripe.accounts.del(existing.stripe_account_id);
+      const { error: forgetError } = await db.from("stripe_connect_accounts").delete()
+        .eq("org_id", orgId).eq("stripe_account_id", existing.stripe_account_id);
+      if (forgetError) throw new Error(forgetError.message);
+      return reply(response, 200, { restarted: true });
     }
 
     if (action === "onboard" || action === "session") {
