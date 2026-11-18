@@ -12,7 +12,6 @@ import { paypalFrom } from "./_paypal.js";
  *   provider        the factory_withdrawals.provider value it pays
  *   label           the name staff read ("Wise")
  *   settings        the env names, said when it is not set up
- *   manual          true: staff send it themselves and mark it paid (no client)
  *   build(env)      the provider's client, or null when not set up. Throws
  *                   PayoutFailure("live_elsewhere") for a live key off production.
  *   balance(client, currency)          TSC's balance there, in minor units
@@ -147,14 +146,7 @@ export const paypalAdapter = {
   },
 };
 
-/** Staff send it by bank themselves, then mark it paid with the bank's reference (an RPC). */
-export const bankAdapter = {
-  provider: "bank",
-  label: "Bank transfer",
-  manual: true,
-  settings: "",
-  build: () => null,
-};
-
-export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter, bank: bankAdapter };
+// No "bank" adapter: TSC no longer pays a bank by hand (20261117500000). A bank
+// withdrawal asked for before that is marked paid by staff (mark_withdrawal_paid_by_bank).
+export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter };
 export const registerAdapter = (adapter) => { ADAPTERS[adapter.provider] = adapter; };

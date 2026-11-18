@@ -43,6 +43,7 @@ import { checkCallText } from "../api/screen-call-text.js";
 import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
+import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 // The local stack, or a test database named with --remote; never production.
 const { URL, ANON, SERVICE, isLocal } = demoTarget();
@@ -1442,31 +1443,36 @@ async function approveOpenStep(order, title, vendor = factory) {
 }
 
 /**
- * Paid by hand, for a factory paid by PayPal or Wise: its approved steps are
- * its withdrawal balance, so the step is paid by a withdrawal staff sent by
- * bank, recorded as the server would, less the US$50 wire fee (bank_payout_fee_cents()).
+ * For a factory paid by PayPal or Wise: its approved steps are its withdrawal
+ * balance, so the step is paid by a withdrawal, recorded as the server would
+ * after PayPal paid it, less PayPal's fee (src/shared/withdrawal-fees.mjs).
+ * Never by bank: TSC no longer pays a bank by hand (20261117500000).
  */
-async function withdrawnByHand(org, payment, reference) {
+async function withdrawnByPaypal(org, account, country, payment, reference) {
+  const fee = withdrawalFee({ provider: "paypal", amountCents: Number(payment.amount_cents), currency: payment.currency ?? "USD", country });
   const withdrawal = must(await admin.from("factory_withdrawals").insert({
-    org_id: org.id, provider: "bank", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
-    paid_to: "your bank account", decided_by: adminUser.id,
+    org_id: org.id, account_id: account.id, provider: "paypal", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
+    paid_to: account.paypal_email, decided_by: adminUser.id,
   }).select("id").single(), `a withdrawal for ${reference}`);
   must(await admin.rpc("record_withdrawal", {
-    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: 5000, receives: payment.amount_cents - 5000, receives_in: "USD",
-  }), `paid by hand: ${reference}`);
+    target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: fee.feeCents, receives: fee.receivesCents, receives_in: "USD",
+  }), `paid by PayPal: ${reference}`);
 }
 
-// 1. Fit sample funded by card, approved and paid to the factory ("Paid";
-//    by hand, as staff do for a factory with no Stripe account), then the
-//    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
-//    factory at once and waits on staff ("Funded", payout pending).
+// 1. Fit sample funded by card (a real test charge) and the factory's update
+//    posted: it waits for the brand to approve ("Funded"). Not approved here:
+//    Demo Factory has no payout method in the seed, so an approved step would
+//    wait on staff to pay it by bank, which TSC no longer does (20261117500000).
 const poplinTitle = "Organic poplin shirt, AW27";
 const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
-const poplinFit = await dueNow(poplin, poplinTitle);
-await funded(poplinFit, CARD);
-await approveOpenStep(poplin, poplinTitle);
-must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
+{
+  const step = must(await admin.from("order_milestones").select("id")
+    .eq("order_id", poplin.id).eq("state", "active").order("sort").limit(1).single(), `open step: ${poplinTitle}`);
+  must(await factory.client.rpc("post_milestone_update", {
+    target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
+  }), `factory update: ${poplinTitle}`);
+}
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
@@ -1491,8 +1497,8 @@ await failed(chinoFit, "Your card was declined.");
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
-//    fit sample is funded and approved, and waits on staff: "Pay with Wise",
-//    or by bank ("Payout owed" on the staff payments page). Saved through the
+//    fit sample is funded and approved. Its default method is Wise, so the
+//    step goes into its balance until an owner asks to withdraw. Saved through the
 //    form's own function; the number is plainly fake, in Vault. Wise may be
 //    switched off for China (payout_provider_settings), which refuses a new
 //    Wise method; it is switched on for the save and put back as it was.
@@ -1531,12 +1537,12 @@ const seersucker = await runningOrder({
 await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 // 7. Kowloon Sourcing Partners is in Hong Kong and paid through PayPal: one fit
-//    sample marked paid by staff, one approved and waiting on staff ("Payout
+//    sample paid out by PayPal, one approved and waiting on staff ("Payout
 //    owed"), and one funded and waiting for the brand, so its card shows
 //    balance and Awaiting approval.
-must(await tradingCompany.client.from("factory_payout_accounts").insert({
+const kowloonPaypal = must(await tradingCompany.client.from("factory_payout_accounts").insert({
   org_id: tradingOrg.id, method: "paypal", paypal_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
-}), "the trading company's PayPal account");
+}).select("id, paypal_email").single(), "the trading company's PayPal account");
 const hopsackTitle = "Linen hopsack blazer, AW27";
 const hopsack = await runningOrder({
   title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
@@ -1545,7 +1551,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-await withdrawnByHand(tradingOrg, hopsackFit, "DEMO-20260001");
+await withdrawnByPaypal(tradingOrg, kowloonPaypal, "HK", hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,
@@ -1687,13 +1693,13 @@ done. Every login uses the password "${PASSWORD}".
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
-    - "Organic poplin shirt, AW27": fit sample paid out, bulk deposit held and owed to the factory
+    - "Organic poplin shirt, AW27": fit sample funded by card, the factory's update waiting for approval
     - "Cotton twill overshirt, AW27": fit sample funded by card, held while the factory works
     - "Merino rib tank, AW27": fit sample paid by bank, clearing
     - "Stretch chino, AW27": fit sample card declined, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
     - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
-      Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
+      Stripe cannot pay (China): it is in Ningbo's balance until Ningbo asks to withdraw
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   Settings → Notifications: "Payment and approval requests" emails are off; the others are on.
