@@ -288,3 +288,32 @@ export function formatCapacityWindow(quote, now = new Date()) {
     : [start, end].filter(Boolean).map(day).join(" - ");
   return [span, units].filter(Boolean).join(" · ");
 }
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A window read by the model (api/parse-capacity-window.js), kept only when
+ * it passes every rule a typed window does: real days, start before end, not
+ * over, at most 12 months. It is read back through the parser itself, so the
+ * two can never disagree. Returns `{ start, end }` (end null for one day) or
+ * null for anything else: a made-up past date, a year-long guess, garbage.
+ */
+export function acceptModelWindow(answer, now = new Date()) {
+  const start = typeof answer?.start === "string" ? answer.start.trim() : null;
+  const end = typeof answer?.end === "string" && answer.end.trim() ? answer.end.trim() : null;
+  if (!start || !ISO_DAY.test(start) || (end && !ISO_DAY.test(end))) return null;
+  const typed = end && end !== start ? `${start} - ${end}` : start;
+  const reading = read(typed, now);
+  if (reading.problem || reading.start !== start || reading.end !== (end && end !== start ? end : null)) return null;
+  return { start: reading.start, end: reading.end };
+}
+
+/** Whether the parser's refusal is one the model may be asked about: no readable dates, or words beside them. */
+export function windowNeedsReading(problem) {
+  return problem?.code === "format" || problem?.code === "words";
+}
+
+/** The units written in a window, refused or not ("mid December · 300 units" → 300), so a reading keeps them. */
+export function windowUnits(text) {
+  return read(text, new Date()).units ?? null;
+}

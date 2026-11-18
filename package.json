@@ -16,6 +16,7 @@
     "check:api-load": "node scripts/check-api-load.mjs",
     "check:dates": "node scripts/check-dates.mjs",
     "check:capacity-window": "node scripts/check-capacity-window.mjs",
+    "check:capacity-window-ai": "node scripts/check-capacity-window-ai.mjs",
     "check:adapters": "node scripts/check-adapters.mjs",
     "check:prototype": "node scripts/check-prototype.mjs",
     "check:levels": "node scripts/check-verification-levels.mjs",

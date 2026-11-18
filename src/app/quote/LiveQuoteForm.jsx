@@ -42,6 +42,8 @@ import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
+import { fetchApi } from "../../lib/supabase.js";
+import { acceptModelWindow, windowNeedsReading, windowUnits } from "../../lib/domain/capacity-window.mjs";
 
 const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
@@ -144,6 +146,60 @@ function windowRefusal(values, companyType) {
     default:
       return `${field} (enter dates, like ${WINDOW_EXAMPLE})`;
   }
+}
+
+/**
+ * A window the parser could not read (no readable dates, or words beside
+ * them), read by the server's model (api/parse-capacity-window.js) and kept
+ * only when it passes the same rules. The field then holds the reading, so
+ * Review, the draft and the stored dates all come from it, and the vendor can
+ * still change it. Any failure leaves the values as typed, and the form says
+ * what it says without the model.
+ */
+async function withWindowReading(values) {
+  const typed = String(values.capacityWindow ?? "").trim();
+  if (!typed || !windowNeedsReading(capacityWindowProblem(typed))) return values;
+  let answer = null;
+  try {
+    const response = await fetchApi("/api/parse-capacity-window", {
+      text: typed,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    const body = response.ok ? await response.json().catch(() => ({})) : {};
+    answer = acceptModelWindow(body?.window);
+  } catch {
+    answer = null;
+  }
+  if (!answer) return values;
+  const reading = formatCapacityWindow({
+    capacity_window_start: answer.start,
+    capacity_window_end: answer.end,
+    capacity_window_units: windowUnits(typed),
+  });
+  if (capacityWindowProblem(reading)) return values;
+  showWindowReading(reading);
+  return { ...values, capacityWindow: reading };
+}
+
+/** The reading into the field as an edit, so the browser's undo brings the vendor's own words back. */
+function showWindowReading(reading) {
+  const field = document.querySelector('[data-quote-field="capacityWindow"]');
+  if (!field) return;
+  let replaced = false;
+  try {
+    field.focus();
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    replaced = document.execCommand("insertText", false, reading);
+    selection.removeAllRanges();
+    field.blur();
+  } catch {
+    replaced = false;
+  }
+  if (!replaced || field.textContent.trim() !== reading) field.textContent = reading;
 }
 
 function missingQuoteFields(values, terms, companyType) {
@@ -323,15 +379,17 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
    * where the vendor sees the computed total and what sending costs before it
    * is charged. Submitting straight from the form skipped both.
    */
-  async function saveAndReview(values) {
+  async function saveAndReview(typedValues) {
     if (busy || !quote) return;
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
+    setBusy(true);
+    const values = await withWindowReading(typedValues);
     const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
       setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+      setBusy(false);
       return;
     }
-    setBusy(true);
     setError(null);
 
     try {
@@ -345,10 +403,11 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   }
 
   /** The design's "Save draft": keep the card and stay on it. */
-  async function saveDraft(values) {
+  async function saveDraft(typedValues) {
     if (busy || !quote || draftState === "saving") return;
     setDraftState("saving");
     setError(null);
+    const values = await withWindowReading(typedValues);
     try {
       await persist(values);
       setDraftState("saved");
