@@ -61,6 +61,7 @@ select is_empty(
         ('cancellation_withdrawn', 'payments'), ('cancellation_declined', 'payments'),
         ('message', 'messages'), ('call_proposed', 'messages'), ('call_accepted', 'messages'),
         ('call_declined', 'messages'), ('call_countered', 'messages'), ('call_cancelled', 'messages'),
+        ('call_started', 'messages'),
         ('payout_method_changed', 'account')
       ) as map(kind, expected)
      where public.notification_email_category(kind) is distinct from expected$$,

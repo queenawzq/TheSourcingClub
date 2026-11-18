@@ -18,10 +18,14 @@
 const CHANNEL = "tsc-calls";
 const CLOSED_CHECK_MS = 1000;
 
-/** call.html for a call: `popup` when it opens in its own window. */
-export function callPageUrl(call, { popup = false } = {}) {
+/**
+ * call.html for a call: `popup` when it opens in its own window; `answer`
+ * when joining is also answering a call started now (the page accepts it
+ * before it joins, so the window can still open in the click).
+ */
+export function callPageUrl(call, { popup = false, answer = false } = {}) {
   const back = `/app.html/messages/${call.thread_id}`;
-  return `/call.html?call=${encodeURIComponent(call.id)}&back=${encodeURIComponent(back)}${popup ? "&popup=1" : ""}`;
+  return `/call.html?call=${encodeURIComponent(call.id)}&back=${encodeURIComponent(back)}${popup ? "&popup=1" : ""}${answer ? "&answer=1" : ""}`;
 }
 
 /** Phones and tablets: the call takes the page instead of a window. */
@@ -67,15 +71,20 @@ function listen() {
  * Must run inside the click: a browser blocks a popup opened later.
  * Returns where the call is: { blocked } when the browser refused the window.
  */
-export function openCallWindow(call) {
+export function openCallWindow(call, { answer = false } = {}) {
   listen();
   if (current?.call.id === call.id && current.handle && !current.handle.closed) {
     current.handle.focus();
     return current;
   }
   if (current && current.call.id !== call.id) leaveCallWindow();
-  const handle = window.open(callPageUrl(call, { popup: true }), `tsc-call-${call.id}`, "popup,width=1200,height=800");
-  current = { call, handle, blocked: !handle, joinUrl: null, joined: false };
+  const handle = window.open(callPageUrl(call, { popup: true, answer }), `tsc-call-${call.id}`, "popup,width=1200,height=800");
+  track(call, handle, { answer });
+  return current;
+}
+
+function track(call, handle, { answer = false } = {}) {
+  current = { call, handle, blocked: !handle, joinUrl: null, joined: false, answer };
   clearInterval(closedTimer);
   if (handle) {
     closedTimer = setInterval(() => {
@@ -83,7 +92,28 @@ export function openCallWindow(call) {
     }, CLOSED_CHECK_MS);
   }
   notify();
-  return current;
+}
+
+/**
+ * For a call that does not exist yet (starting one now): the window opens in
+ * the click, empty, and goes to the call once `start` gives it. A failed
+ * start closes it again and throws, leaving any call already open as it was.
+ */
+export async function openCallWindowFor(start) {
+  listen();
+  const handle = window.open("", "tsc-call-new", "popup,width=1200,height=800");
+  let call;
+  try {
+    call = await start();
+  } catch (failure) {
+    // Refused (a call is already on, say): the call the person is in stays.
+    try { handle?.close(); } catch { /* Already gone. */ }
+    throw failure;
+  }
+  if (current) leaveCallWindow();
+  if (handle && !handle.closed) handle.location.href = callPageUrl(call, { popup: true });
+  track(call, handle && !handle.closed ? handle : null);
+  return call;
 }
 
 /** The blocked window was opened from the link instead. */

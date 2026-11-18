@@ -265,7 +265,7 @@ function SignIn({ invitation = null }) {
   async function sendCode(email) {
     setBusy(true);
     setNotice(null);
-    const ok = await sendEmailCode(email, { createUser: false });
+    const ok = await sendEmailCode(email, { createUser: false, keepSignedIn });
     setBusy(false);
     if (ok) {
       setResetFor(null);
@@ -1619,7 +1619,7 @@ function NeedsPermission({ org, perm }) {
  * It only explains: what the person can read is still up to the database.
  */
 function ReviewLinkGate({ children }) {
-  const { orgs, selectOrg, signOut, user } = useAuth();
+  const { orgs, selectOrg, logInAnotherAccountHere, user } = useAuth();
   const [target, setTarget] = useState(reviewOrgFromUrl);
   const member = Boolean(target && orgs.some((org) => org.id === target));
 
@@ -1638,16 +1638,19 @@ function ReviewLinkGate({ children }) {
       <header className="brand-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
       </header>
-      <section className="brand-onboarding-card complete" aria-label="This link is for another account">
-        <div className="brand-onboarding-complete">
-          <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/circle-warning.svg" alt="" />
+      <section className="auth-card review-link-gate" aria-label="This link is for another account">
+        <div className="review-link-gate-status">
+          <img src="/assets/prototype-icons/circle-warning.svg" alt="" />
           <h1>This link is for another account</h1>
-          <p>It was sent to a company you are not signed in to. You are signed in as {user?.email}.</p>
+          <p>You're signed in as {user?.email}.</p>
         </div>
-        <footer className="brand-onboarding-actions">
-          <button className="secondary-btn" type="button" onClick={() => { clearReviewOrgFromUrl(); setTarget(null); }}>Stay signed in as me</button>
-          <button className="primary-btn" type="button" onClick={() => signOutInto(portalFromUrl(), signOut)}>Log out and continue</button>
-        </footer>
+        {/* This tab only: a new tab reads the browser's remembered sign-in,
+            which may not be the account the email was sent to, and every
+            other tab keeps it. The link stays in the address. */}
+        <button className="auth-submit" type="button" onClick={() => logInAnotherAccountHere()}>Log in with another account</button>
+        <p className="auth-alt-signin">
+          <button type="button" onClick={() => { clearReviewOrgFromUrl(); setTarget(null); }}>Stay signed in as me</button>
+        </p>
       </section>
     </main>
   );

@@ -13,7 +13,7 @@ import { supabase } from "../../lib/supabase.js";
 import { WISE_FORM_SNAPSHOT } from "../../shared/wise-form-snapshot.mjs";
 import { REQUIRED, chosenBankName, inEnglish, wiseBankList, wiseFieldError } from "../../shared/wise-form-check.mjs";
 import { normalBankNumber, validBankNumber } from "../../shared/bank-fields.mjs";
-import { PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
+import { ModalMessage, PayoutModal, reEnter, transferName } from "./StripePayoutCard.jsx";
 import { paypalEmail, validPaypalEmail } from "./use-manual-payouts.js";
 
 /** The factory's screens are English, so the form is too: Wise's English labels, never both languages side by side. */
@@ -128,11 +128,11 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
       title={!row ? transferName(country) : row.number_changed_at ? words.titleEdit : words.titleFinish}
       onClose={onClose}
       actions={<>
-        {problem ? <p className="live-stripe-error payout-modal-refusal" role="alert">{problem.message}</p> : null}
         <button className="secondary-btn" type="button" disabled={busy} onClick={onBack}>{words.back}</button>
         <button className="primary-btn" type="button" data-testid="save-payout" disabled={busy || !form} onClick={save}>{busy ? words.saving : words.save}</button>
       </>}
     >
+      {problem ? <ModalMessage>{problem.message}</ModalMessage> : null}
       {!form ? <p className="payout-modal-intro" role="status">{words.loading}</p> : (
         <div className="payout-form-stack">
           {bankList ? null : <label>
@@ -206,11 +206,11 @@ export function PaypalStep({ row, country, form, busy, onField, savePaypal, onBa
       title={row ? words.titleEdit : words.title}
       onClose={onClose}
       actions={<>
-        {problem ? <p className="live-stripe-error payout-modal-refusal" role="alert">{problem.message}</p> : null}
         <button className="secondary-btn" type="button" disabled={busy} onClick={onBack}>{words.back}</button>
         <button className="primary-btn" type="button" data-testid="save-payout" disabled={busy} onClick={save}>{busy ? words.saving : words.save}</button>
       </>}
     >
+      {problem ? <ModalMessage>{problem.message}</ModalMessage> : null}
       <div className="payout-form-stack">
         <label>
           <span>{words.email} *</span>

@@ -28,6 +28,7 @@ import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.
 import { completeOnboarding, getSelectedTerms, resubmitForReview, saveBrandProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import { useUploadOnce } from "./upload-once.js";
+import { useOnboardingStep } from "./onboarding-step.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
@@ -75,7 +76,9 @@ const MAKE_STEP = 3;
 const REVIEW_STEP = 7;
 
 export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, review = null }) {
-  const [step, setStep] = useState(initialStep);
+  // A brand still onboarding resumes at its saved step after a refresh, and
+  // its dots reach every step it has been to (onboarding-step.js).
+  const [step, setStep, furthestStep] = useOnboardingStep(org.id, initialStep, { lastStep: LAST_STEP, resume: initialStep === 0 });
   // True from "Update my profile" until the profile is sent back to staff.
   const [resubmitting, setResubmitting] = useState(false);
   const [reviewEditStep, setReviewEditStep] = useState(null);
@@ -259,7 +262,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
     }
   }
 
-  async function next(submitted = {}) {
+  /**
+   * Next, or a step dot ahead of this one (`target`): either way the card is
+   * checked and saved first. A dot then goes to its step; it never finishes
+   * or sends the profile back, which only Next does.
+   */
+  async function next(submitted = {}, target = null) {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -293,6 +301,13 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
           const address = String(email).trim().toLowerCase();
           if (address.includes("@") && !already.has(address)) await inviteMember(org.id, address);
         }
+      }
+
+      if (typeof target === "number" && target > step && target <= furthestStep) {
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
       }
 
       if (reviewEditStep !== null) {
@@ -348,6 +363,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
     <BrandOnboarding
       extra={step === REVIEW_STEP ? <MatchingProfile org={org} subjectType="brand_profile" /> : null}
       step={step}
+      furthestStep={furthestStep}
       isReviewEdit={reviewEditStep !== null}
       onBack={() => {
         if (reviewEditStep !== null) {

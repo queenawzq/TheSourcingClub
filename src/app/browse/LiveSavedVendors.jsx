@@ -16,6 +16,7 @@ import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadVendorDirectory } from "../profile/load-profile.js";
 import { filterVendors, emptyFilters, vendorCard } from "./vendor-directory-view.js";
 import { useVendorNames } from "../vendor-names.jsx";
+import { inEnglish, useVendorTranslations } from "./useVendorTranslations.js";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
 
@@ -62,7 +63,10 @@ export default function LiveSavedVendors({ org }) {
       return { card: found ? vendorCard(found.parts) : unlistedCard(row), recent, rank: found ? found.rank : Infinity };
     });
   }, [state.rows, state.directory]);
-  const vendorNames = useVendorNames(cards.map((item) => item.card));
+  const originalCards = useMemo(() => cards.map((item) => item.card), [cards]);
+  const vendorNames = useVendorNames(originalCards);
+  // Location, intro and product names in English, as on Browse (useVendorTranslations).
+  const english = new Map(useVendorTranslations(originalCards, org.id).map((card) => [card.id, inEnglish(card)]));
 
   if (state.error) {
     return <main className="rfqs-page"><p className="live-profile-error" role="alert">Couldn't load your saved vendors: {state.error.message}</p></main>;
@@ -72,7 +76,7 @@ export default function LiveSavedVendors({ org }) {
   }
 
   const ordered = [...cards].sort((a, b) => (sort === "fit" ? a.rank - b.rank || a.recent - b.recent : a.recent - b.recent));
-  const shown = filterVendors(ordered.map((item) => vendorNames.card(item.card)), emptyFilters(), query);
+  const shown = filterVendors(ordered.map((item) => vendorNames.card(english.get(item.card.id) ?? item.card)), emptyFilters(), query);
   const threads = state.directory?.threads ?? [];
 
   return (

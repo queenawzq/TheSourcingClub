@@ -120,7 +120,7 @@ function AdminLogin() {
       return;
     }
     setBusy(true);
-    const sent = await sendEmailCode(email, { createUser: false });
+    const sent = await sendEmailCode(email, { createUser: false, keepSignedIn });
     setBusy(false);
     if (sent) setCodeFor(email);
   }

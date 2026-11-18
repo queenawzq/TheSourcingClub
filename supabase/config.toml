@@ -156,7 +156,7 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "https://the-sourcing-club.vercel.app"
+site_url = "https://sourcing-club.com"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
@@ -165,10 +165,12 @@ additional_redirect_urls = [
   "http://localhost:5173",
   "http://127.0.0.1:5173/app.html",
   "http://localhost:5173/app.html",
-  # Where "forgot password" lands. An exact match is required, so the query
-  # string the reset link carries is listed rather than assumed.
+  # Where "forgot password" and a vendor's emailed sign-in link land. An exact
+  # match is required, so the query string each carries is listed.
   "http://127.0.0.1:5173/app.html?reset=1",
+  "http://127.0.0.1:5173/app.html?portal=factory",
   "http://localhost:5173/app.html?reset=1",
+  "http://localhost:5173/app.html?portal=factory",
   "http://127.0.0.1:5212",
   "http://127.0.0.1:5212/app.html",
   "http://127.0.0.1:5212/app.html?reset=1",
@@ -178,6 +180,13 @@ additional_redirect_urls = [
   "https://the-sourcing-club.vercel.app",
   "https://the-sourcing-club.vercel.app/app.html",
   "https://the-sourcing-club.vercel.app/app.html?reset=1",
+  "https://the-sourcing-club.vercel.app/app.html?portal=factory",
+  # The live site's own domain: the address in every email. Not pushed from
+  # here; production's list is set in the Supabase dashboard.
+  "https://sourcing-club.com",
+  "https://sourcing-club.com/app.html",
+  "https://sourcing-club.com/app.html?reset=1",
+  "https://sourcing-club.com/app.html?portal=factory",
   # Vercel gives every preview deploy its own hostname.
   "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]

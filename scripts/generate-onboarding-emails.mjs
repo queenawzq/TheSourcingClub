@@ -312,7 +312,7 @@ export function onboardingEmail(key, variables = {}) {
   const data = frame(zh ? variantsZh[key] : variants[key]);
 
   const companyName = variables.companyName || (zh ? "你的公司" : key === "brand" ? "your brand" : "your company");
-  const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
+  const dashboardUrl = variables.dashboardUrl || "https://sourcing-club.com/app.html";
   const logoUrl = variables.logoUrl || "https://sourcing-club.com/assets/logo.png";
   const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
   const companyAddress = variables.companyAddress || "New York, USA";
