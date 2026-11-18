@@ -254,6 +254,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const mayQuote = can(org, "rfqFlow");
   const isTrading = profile?.vendor_kind === "trading_company";
   const fit = matchFit(extras.match);
+  // A band only from 60 up, on every page that shows one: never "Not a fit".
+  const shownFit = fit && fit.score >= 60 ? fit : null;
   const quoteUnitMax = myQuote?.unit_price_max_cents ?? myQuote?.unit_price_cents;
   const quoteProductionMin = myQuote?.unit_price_cents && myQuote?.production_quantity
     ? myQuote.unit_price_cents * myQuote.production_quantity
@@ -282,7 +284,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     tags: [],
     certifications: certificationTags,
     services: serviceTags,
-    capacity: fit ? [fit.label] : [],
+    capacity: shownFit ? [shownFit.label] : [],
     images: extras.images,
     files: extras.files.map((file) => file.file_name),
     onDownloadFiles: extras.files.length > 0 ? async () => {
@@ -303,7 +305,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         link.remove();
       });
     } : undefined,
-    fitTone: fit?.tone ?? "",
+    fitTone: shownFit?.tone ?? "",
     insight: [],
   };
 
@@ -356,10 +358,10 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           capabilities={[]}
           // Nothing to show still passes an object: with none the design draws
           // its own "Strong fit".
-          match={!fit || fit.score < 60 ? { summary: "", label: "", tone: "" } : {
+          match={!shownFit ? { summary: "", label: "", tone: "" } : {
             summary: matchSentence(extras.matchFacts, rfq, getUiLanguage()),
-            label: fit.label,
-            tone: fit.tone,
+            label: shownFit.label,
+            tone: shownFit.tone,
           }}
           // Always an object: with none (the summary still loading, or failed
           // to load) the design draws its own "Maison Rue" and its facts.

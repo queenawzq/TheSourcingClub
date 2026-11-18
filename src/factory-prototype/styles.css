@@ -11511,6 +11511,15 @@ button.sort-button {
   }
 }
 
+/* Nav collapsed, wider than a phone: the bar starts at the page's left edge,
+   as it does with the nav open, so its padding counts the nav once and Back
+   keeps the same inset from the cards at every width. */
+@media (min-width: 761px) {
+  .app-shell.factory-flow.nav-collapsed > .factory-submit-page > .factory-submit-bottom-bar {
+    left: 0;
+  }
+}
+
 /* Phones: no side nav, so Back sits at the left edge, as Send does at the
    right. Specific enough to beat the collapsed-nav rule above. */
 @media (max-width: 760px) {
