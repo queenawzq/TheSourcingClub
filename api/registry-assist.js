@@ -620,7 +620,8 @@ const plainText = (text) => String(text ?? "").normalize("NFKC").toLowerCase().r
 export function authorisationCheck(fields, { names = [], uploadedAt = null, legalRepresentative = "", now = new Date() } = {}, { companyNamesMatch } = {}) {
   const checkedAt = now.toISOString();
   const base = { key: "authorisation", checkedAt };
-  if (!fields) return { ...base, level: "unknown", reasons: ["No authorisation uploaded"], details: { settle: "Ask for the licence photo with \"The Sourcing Club\" and today's date written on it by hand, or a letter with the company seal" } };
+  // Onboarding no longer asks for one: only an upload made before that is read.
+  if (!fields) return { ...base, level: "unknown", reasons: ["No authorisation uploaded"], details: {} };
   if (fields.readable === false) return { ...base, level: "unknown", reasons: ["The authorisation could not be read"], details: { ...fields, settle: "Open the file yourself" } };
   const reasons = [];
   const written = plainText(fields.handwrittenText);
