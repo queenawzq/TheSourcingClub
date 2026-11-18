@@ -109,7 +109,7 @@ const REFUSED = [
   ["12-1", "format"],
   ["12-1 - 1-15", "format"],
   ["138 0013 8000", "format"],
-  ["Dec 1 - Jan 15 call me", "words"],
+  ["Dec 1 - Jan 15 to be confirmed", "words"],
   ["Aug 12-30 · partner confirmed", "words"],
   ["early December", "words"],
   ["the market is open in Dec", "words"],
