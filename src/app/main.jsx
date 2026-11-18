@@ -265,7 +265,7 @@ function SignIn({ invitation = null }) {
   async function sendCode(email) {
     setBusy(true);
     setNotice(null);
-    const ok = await sendEmailCode(email, { createUser: false });
+    const ok = await sendEmailCode(email, { createUser: false, keepSignedIn });
     setBusy(false);
     if (ok) {
       setResetFor(null);
@@ -1619,7 +1619,7 @@ function NeedsPermission({ org, perm }) {
  * It only explains: what the person can read is still up to the database.
  */
 function ReviewLinkGate({ children }) {
-  const { orgs, selectOrg, signOut, user } = useAuth();
+  const { orgs, selectOrg, logInAnotherAccountHere, user } = useAuth();
   const [target, setTarget] = useState(reviewOrgFromUrl);
   const member = Boolean(target && orgs.some((org) => org.id === target));
 
@@ -1646,7 +1646,10 @@ function ReviewLinkGate({ children }) {
         </div>
         <footer className="brand-onboarding-actions">
           <button className="secondary-btn" type="button" onClick={() => { clearReviewOrgFromUrl(); setTarget(null); }}>Stay signed in as me</button>
-          <button className="primary-btn" type="button" onClick={() => signOutInto(portalFromUrl(), signOut)}>Log out and continue</button>
+          {/* This tab only: a new tab reads the browser's remembered sign-in,
+              which may not be the account the email was sent to, and every
+              other tab keeps it. The link stays in the address. */}
+          <button className="primary-btn" type="button" onClick={() => logInAnotherAccountHere()}>Log in with another account</button>
         </footer>
       </section>
     </main>

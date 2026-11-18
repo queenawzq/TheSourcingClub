@@ -13,6 +13,7 @@ import { createSessionStorage } from "./session-storage.mjs";
 import { createRoute, proxyPathFor } from "./supabase-route.mjs";
 import { AUTH_MESSAGES, isNoAnswer } from "../shared/auth-messages.mjs";
 import { fillOlderBrowsers } from "./older-browsers.mjs";
+import { restoreReturn } from "./return-after-link.mjs";
 
 fillOlderBrowsers();
 
@@ -31,6 +32,14 @@ export const isConfigured = Boolean(url && publishableKey);
 /** The database this build talks to. The demo sign-in hides itself on production's. */
 export const supabaseUrl = url ?? "";
 
+// An emailed sign-in link lands on the page alone: put back the portal, review
+// and language it was asked from (return-after-link.mjs), before the client
+// reads and removes `?code=`.
+const returnSearch = globalThis.window ? restoreReturn(globalThis.window) : null;
+if (returnSearch) {
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${returnSearch}${window.location.hash}`);
+}
+
 // "Keep me logged in": where the session is kept, per tab. See session-storage.mjs.
 const sessionStore = createSessionStorage(globalThis);
 
@@ -39,6 +48,8 @@ export const keepChoice = sessionStore.keepChoice;
 
 /** Before a sign-up: kept, unless the browser already keeps someone else. */
 export const keepNewAccount = () => sessionStore.keepNewAccount(supabase.auth.storageKey);
+/** See leaveSharedSignIn in session-storage.mjs. */
+export const leaveSharedSignIn = () => sessionStore.leaveSharedSignIn(supabase.auth.storageKey);
 
 /** Whether an auth event's session is this tab's own, not one broadcast from another tab. */
 export function isThisTabsSession(session) {

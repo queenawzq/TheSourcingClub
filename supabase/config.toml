@@ -178,6 +178,11 @@ additional_redirect_urls = [
   "https://the-sourcing-club.vercel.app",
   "https://the-sourcing-club.vercel.app/app.html",
   "https://the-sourcing-club.vercel.app/app.html?reset=1",
+  # The live site's own domain: the address in every email. Not pushed from
+  # here; production's list is set in the Supabase dashboard.
+  "https://sourcing-club.com",
+  "https://sourcing-club.com/app.html",
+  "https://sourcing-club.com/app.html?reset=1",
   # Vercel gives every preview deploy its own hostname.
   "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]

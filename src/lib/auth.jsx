@@ -18,13 +18,14 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 import { takeRecoveryToken } from "./recovery-link.mjs";
 import { createActiveOrgStorage, pickActiveOrg } from "./active-org-storage.mjs";
+import { rememberReturn } from "./return-after-link.mjs";
 
 // The company each tab works in belongs to that tab. See active-org-storage.mjs.
 const activeOrgStore = createActiveOrgStorage(window);
@@ -378,7 +379,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => {
     const activeOrg = pickActiveOrg(orgs, activeOrgId);
 
-    return {
+    const api = {
       status: creatingOrg && status === "no-org" ? "loading" : status,
       error,
       session,
@@ -597,8 +598,11 @@ export function AuthProvider({ children }) {
        * whichever is easier works — the code matters most on a preview deploy
        * behind SSO, where following the link lands somewhere useless.
        */
-      async sendEmailCode(email, { createUser = false } = {}) {
+      async sendEmailCode(email, { createUser = false, keepSignedIn = true } = {}) {
         setError(null);
+        // The email's link lands on the page alone, in a new tab: remember
+        // what it was for and the sign-in box's choice.
+        rememberReturn(window, { keepSignedIn });
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: email.trim().toLowerCase(),
           options: {
@@ -677,8 +681,24 @@ export function AuthProvider({ children }) {
         await supabase.auth.signOut();
       },
 
+      /**
+       * Another account, in this tab only (the review link's screen). A tab
+       * on the browser's remembered sign-in drops it here alone and reloads
+       * signed out, with the link still in the address; every other tab keeps
+       * that sign-in. A tab signed in on its own just signs out.
+       */
+      async logInAnotherAccountHere() {
+        if (leaveSharedSignIn()) {
+          activeOrgStore.clear();
+          window.location.reload();
+          return;
+        }
+        await api.signOut();
+      },
+
       refreshOrgs: reloadOrgs,
     };
+    return api;
   }, [status, creatingOrg, error, session, orgs, activeOrgId, reloadOrgs, lostAccess]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

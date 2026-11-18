@@ -118,5 +118,24 @@ export function createSessionStorage(win) {
     return (stored?.access_token ?? null) === (session?.access_token ?? null);
   }
 
-  return { storage, setKeepSignedIn, keepChoice, keepNewAccount, isThisTabsSession };
+  /**
+   * Leave the sign-in this tab shares with the browser, in this tab only, so
+   * another account can sign in here (a review email's link opened while the
+   * browser keeps someone else, Nov 18).
+   *
+   * Returns false when the tab holds a sign-in of its own: an ordinary sign-out
+   * ends that one and touches nobody else. Returns true when it was the shared,
+   * remembered sign-in: the tab now reads only its own (empty) store, and the
+   * caller reloads it. No sign-out is sent, because Supabase revokes a session
+   * on the server even for a "local" sign-out, and every other tab keeping that
+   * sign-in would lose it.
+   */
+  function leaveSharedSignIn(storageKey) {
+    if (tabOnly(storageKey)) return false;
+    setKeepSignedIn(false);
+    safe(() => tab().removeItem(storageKey));
+    return true;
+  }
+
+  return { storage, setKeepSignedIn, keepChoice, keepNewAccount, isThisTabsSession, leaveSharedSignIn };
 }

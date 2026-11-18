@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
+import { rememberReturn, restoreReturn } from "../src/lib/return-after-link.mjs";
 import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
 const KEY = "sb-test-auth-token";
@@ -264,6 +265,75 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(pickActiveOrg([], "brand") === null, "no companies, no workspace");
   const auth = readFileSync("src/lib/auth.jsx", "utf8");
   check(!/localStorage\.(get|set|remove)Item\("tscActiveOrg"/.test(auth), "AuthProvider keeps the company only through the per-tab store");
+}
+
+// A review email's link, opened in a new tab while the browser keeps another
+// sign-in (Nov 18): the new tab reads the remembered one, so the link screen
+// offers "Log in with another account", for that tab only.
+{
+  const kept = openTab();
+  signIn(kept, "kept-plus-2", true);
+  const signup = openTab();
+  signUp(signup, "new-factory");
+  check(signup.shown === "new-factory" && kept.shown === "kept-plus-2", "a sign-up beside a kept sign-in stays in its own tab");
+  const link = openTab();
+  check(link.shown === "kept-plus-2", "the email's new tab reads the remembered sign-in (the cause)");
+  // logInAnotherAccountHere: no sign-out is sent (Supabase revokes even a
+  // "local" one on the server), the tab drops the shared sign-in and reloads.
+  check(link.leaveSharedSignIn(KEY) === true, "leaving the remembered sign-in is done in this tab");
+  check(reload(link) === null, "after the reload this tab is signed out");
+  check(JSON.parse(browser.localStorage.getItem(KEY)).user === "kept-plus-2" && reload(kept) === "kept-plus-2",
+    "and every other tab keeps the remembered sign-in");
+  check(link.keepChoice() === false, "its sign-in box starts unticked, so the next sign-in stays in this tab");
+  signIn(link, "new-factory", link.keepChoice());
+  check(link.shown === "new-factory" && reload(link) === "new-factory", "signing in there lands on the right account");
+  check(reload(kept) === "kept-plus-2" && reload(signup) === "new-factory", "the other two tabs are untouched");
+  check(link.leaveSharedSignIn(KEY) === false, "a tab signed in on its own signs out the ordinary way instead");
+  signOut(link);
+  check(reload(kept) === "kept-plus-2", "and that sign-out leaves the remembered sign-in alone");
+  signOut(kept);
+  signOut(signup);
+}
+const linkSource = readFileSync("src/app/main.jsx", "utf8");
+check(/logInAnotherAccountHere\(\)/.test(linkSource) && !/Log out and continue/.test(linkSource),
+  "the link screen switches this tab only, never a sign-out of every tab");
+
+// The code email's link lands on app.html alone, in a new tab; the review
+// link's portal, company and language come back with it, and so does the sign-in
+// box's choice (src/lib/return-after-link.mjs).
+{
+  const local = new MemoryStorage();
+  const at = (search, session = new MemoryStorage()) => ({ location: { search }, localStorage: local, sessionStorage: session });
+  rememberReturn(at("?portal=factory&review=0200dc8a-a693-4e53-a87e-6b1699cab266&mode=login"), {}, 1000);
+  check(restoreReturn(at(""), 2000) === null, "a page that is not a link landing leaves it waiting");
+  check(restoreReturn(at("?code=abc"), 2000) === "?code=abc&portal=factory&review=0200dc8a-a693-4e53-a87e-6b1699cab266",
+    "the link landing gets back portal and review, nothing else");
+  check(restoreReturn(at("?code=abc"), 3000) === null, "used once");
+  rememberReturn(at("?review=x"), {}, 0);
+  check(restoreReturn(at("?code=abc"), 61 * 60 * 1000) === null, "and only within the hour");
+  rememberReturn(at("?portal=factory"), {}, 0);
+  check(restoreReturn(at("?code=abc&review=y"), 1) === null, "a link that carries its own parameters keeps them");
+  rememberReturn(at(""), {}, 0);
+  check(local.getItem("tscReturnAfterLink") === null, "a code asked from a plain page, box ticked, remembers nothing");
+
+  // Box unticked: the new tab the link opens keeps the session to itself, so
+  // the browser's remembered sign-in (other tabs) is not replaced.
+  const landing = new MemoryStorage();
+  rememberReturn(at("?portal=factory&review=r1"), { keepSignedIn: false }, 0);
+  restoreReturn(at("?code=abc", landing), 1);
+  check(landing.getItem("tscKeepSignedIn") === "0", "asked with the box unticked, the link's tab keeps the sign-in to itself");
+  const plain = new MemoryStorage();
+  rememberReturn(at(""), { keepSignedIn: false }, 0);
+  check(restoreReturn(at("?code=abc", plain), 1) === null && plain.getItem("tscKeepSignedIn") === "0",
+    "also from a plain page");
+  const ticked = new MemoryStorage();
+  rememberReturn(at("?review=r2"), { keepSignedIn: true }, 0);
+  restoreReturn(at("?code=abc", ticked), 1);
+  check(ticked.getItem("tscKeepSignedIn") === null, "ticked, the link's tab keeps it as before");
+}
+for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
+  check(/sendEmailCode\(email, \{ createUser: false, keepSignedIn \}\)/.test(readFileSync(file, "utf8")),
+    `${file} sends the box's choice with the code`);
 }
 
 if (failures) {
