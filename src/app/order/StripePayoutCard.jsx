@@ -677,7 +677,8 @@ export default function StripePayoutCard({
   };
   const stepRow = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
   // Settings opens a removal straight from its own row, with no list behind it.
-  const backToList = () => (renderCard ? setModal("manage") : closeModal());
+  // A failure belongs to the step that had it: going back leaves it behind.
+  const backToList = () => { setRemoveError(null); setManualError(null); return renderCard ? setModal("manage") : closeModal(); };
 
   const manualFieldsContent = manualForm ? (
     <div className="payout-manual-fields">
@@ -784,6 +785,7 @@ export default function StripePayoutCard({
   const makeStripeDefault = async (method) => {
     setMethodBusy(true);
     setRemoveError(null);
+    setManualError(null);
     try {
       if (!method.default && !await changeMethod("default_method", { methodId: method.id })) return;
       const result = await supabase.rpc("choose_payout_method", { target_org: org.id, target_account: null });
@@ -862,6 +864,7 @@ export default function StripePayoutCard({
 
   async function makePrimary(row) {
     setManualError(null);
+    setRemoveError(null);
     try {
       await onMakePrimaryManual?.(row);
       setPayoutRoute("manual");
