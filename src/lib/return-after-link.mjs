@@ -65,3 +65,8 @@ export function restoreReturn(win, now = Date.now()) {
   }
   return `?${current.toString()}`;
 }
+
+/** Signed in another way (the code typed in, a password): the link is no longer needed. */
+export function forgetReturn(win) {
+  safe(() => win.localStorage.removeItem(KEY));
+}

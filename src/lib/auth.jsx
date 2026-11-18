@@ -25,7 +25,7 @@ import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 import { takeRecoveryToken } from "./recovery-link.mjs";
 import { createActiveOrgStorage, pickActiveOrg } from "./active-org-storage.mjs";
-import { rememberReturn } from "./return-after-link.mjs";
+import { forgetReturn, rememberReturn } from "./return-after-link.mjs";
 
 // The company each tab works in belongs to that tab. See active-org-storage.mjs.
 const activeOrgStore = createActiveOrgStorage(window);
@@ -532,6 +532,7 @@ export function AuthProvider({ children }) {
           setError(readable(signInError));
           return false;
         }
+        forgetReturn(window);
         return true;
       },
 
@@ -637,6 +638,8 @@ export function AuthProvider({ children }) {
           setError(readable(verifyError));
           return false;
         }
+        // Signed in with the code: the email's link must not reuse the page later.
+        forgetReturn(window);
         return true;
       },
 

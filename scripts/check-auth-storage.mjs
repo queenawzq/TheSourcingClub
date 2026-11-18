@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
-import { rememberReturn, restoreReturn } from "../src/lib/return-after-link.mjs";
+import { forgetReturn, rememberReturn, restoreReturn } from "../src/lib/return-after-link.mjs";
 import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
 const KEY = "sb-test-auth-token";
@@ -326,6 +326,10 @@ check(/logInAnotherAccountHere\(\)/.test(linkSource) && !/Log out and continue/.
   rememberReturn(at(""), { keepSignedIn: false }, 0);
   check(restoreReturn(at("?code=abc", plain), 1) === null && plain.getItem("tscKeepSignedIn") === "0",
     "also from a plain page");
+  rememberReturn(at("?review=typed"), { keepSignedIn: false }, 0);
+  forgetReturn(at(""));
+  check(restoreReturn(at("?code=later"), 1) === null, "a code typed in (or a password) clears it, so a later link starts clean");
+  check(/forgetReturn\(window\);[\s\S]*forgetReturn\(window\);/.test(readFileSync("src/lib/auth.jsx", "utf8")), "both sign-ins in AuthProvider clear it");
   const ticked = new MemoryStorage();
   rememberReturn(at("?review=r2"), { keepSignedIn: true }, 0);
   restoreReturn(at("?code=abc", ticked), 1);

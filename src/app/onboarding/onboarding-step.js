@@ -41,7 +41,7 @@ export function forgetOnboardingStep(orgId) {
  * @param {number} initialStep where this mount starts when nothing is saved
  * @param {{ lastStep: number, resume: boolean }} options `resume` is true for
  *   a company still onboarding, false for one sent back by staff.
- * @returns {[number, (next: number | ((current: number) => number)) => void, number]}
+ * @returns {[number, (next: number | ((current: number) => number)) => void, number, () => void]}
  */
 export function useOnboardingStep(orgId, initialStep, { lastStep, resume }) {
   const [state, setState] = useState(() => {
@@ -69,5 +69,10 @@ export function useOnboardingStep(orgId, initialStep, { lastStep, resume }) {
     }
   }, [orgId, resume, lastStep, state]);
 
-  return [state.step, setStep, state.furthest];
+  /** The steps ahead no longer apply (the company type changed): only the current one counts as reached. */
+  const forgetAhead = useCallback(() => {
+    setState((current) => ({ step: current.step, furthest: current.step }));
+  }, []);
+
+  return [state.step, setStep, state.furthest, forgetAhead];
 }

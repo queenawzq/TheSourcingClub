@@ -158,7 +158,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const askedForMore = review?.state === "needs_information";
   // A company still onboarding resumes at its saved step after a refresh, and
   // its dots reach every step it has been to (onboarding-step.js).
-  const [step, setStep, furthestStep] = useOnboardingStep(
+  const [step, setStep, furthestStep, forgetStepsAhead] = useOnboardingStep(
     org.id,
     askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep,
     { lastStep: LAST_STEP, resume: initialStep === 0 },
@@ -729,7 +729,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       furthestStep={furthestStep}
       isReviewEdit={reviewEditStep !== null}
       onLanguageChange={(next) => { setLanguage(next); chooseUiLanguage(user?.id, next).catch(() => {}); }}
-      onCompanyTypeChange={setCompanyType}
+      onCompanyTypeChange={(next) => {
+        // A factory and a trading company have different steps: the ones
+        // reached as the other kind are not reached as this one.
+        if (next !== companyType) forgetStepsAhead();
+        setCompanyType(next);
+      }}
       onBack={() => {
         if (reviewEditStep !== null) {
           setReviewEditStep(null);
