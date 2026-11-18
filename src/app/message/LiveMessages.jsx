@@ -17,7 +17,7 @@ import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
-import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, nextRescreenAt, openOrderThread, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 import { acceptCall, browserTimeZone, callState, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, startCallNow, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard, withConversationEvents } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
@@ -272,22 +272,27 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   }, [reload, org.id]);
 
   /**
-   * Your own messages the screen has not decided: ask it again, on a back-off,
-   * for as long as the page is open. Only asking once, on the send, left a
+   * Your own messages the screen has not decided: ask it again, on a back-off
+   * and then once a minute, for as long as the page is open. Only asking once, on the send, left a
    * message whose screen failed in `checking` for good while its sender
    * looked at it as sent.
    */
   const attempts = useRef({});
   const [screenRound, setScreenRound] = useState(0);
   useEffect(() => {
+    // Every one of your messages still being checked, for as long as the
+    // page is open: quickly at first, then once a minute (nextRescreenAt).
     const waiting = Object.values(messagesByThread)
-      .flatMap((rows) => awaitingScreen(rows, user.id))
-      .filter((message) => (attempts.current[message.id] ?? 0) < RESCREEN_AFTER_MS.length);
+      .flatMap((rows) => awaitingScreen(rows, user.id));
     if (!waiting.length) return undefined;
-    const dueAt = (message) => Date.parse(message.created_at) + RESCREEN_AFTER_MS[attempts.current[message.id] ?? 0];
+    const dueAt = (message) => {
+      const asked = attempts.current[message.id];
+      return nextRescreenAt(message.created_at, asked?.n ?? 0, asked?.at ?? null);
+    };
     const timer = setTimeout(async () => {
-      const due = waiting.filter((message) => dueAt(message) <= Date.now());
-      for (const message of due) attempts.current[message.id] = (attempts.current[message.id] ?? 0) + 1;
+      const now = Date.now();
+      const due = waiting.filter((message) => dueAt(message) <= now);
+      for (const message of due) attempts.current[message.id] = { n: (attempts.current[message.id]?.n ?? 0) + 1, at: now };
       if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
         for (const threadId of new Set(due.map((message) => message.thread_id))) {
           const rows = await listMessages(threadId, org.id).catch(() => null);
@@ -664,6 +669,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   // while nobody has answered.
   const videoCall = video ? calls.find((call) => call.id === video.call.id) ?? video.call : null;
   const videoCalling = videoCall ? callState(videoCall, org.id, now) === "calling" : false;
+  const ringingHere = calls.some((call) => call.thread_id === activeId && !deletedCallCards.includes(call.id)
+    && callState(call, org.id, now) === "ringing");
   const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
   const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name && vendorNames.text(dialogThread.factory_org_id, dialogThread.factory_name)) ?? "" : "";
 
@@ -671,7 +678,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     <>
       <MessagesScreen
         calls={callCards}
-        instantCall={{ onOpen: () => activeId && setInstantConfirm({ threadId: activeId, busy: false, error: null }) }}
+        // Hidden while the other side's call rings for this company here: the
+        // card's Join call is the way in, and a second call would be refused.
+        instantCall={ringingHere ? undefined : { onOpen: () => activeId && setInstantConfirm({ threadId: activeId, busy: false, error: null }) }}
         video={instantConfirm && instantConfirm.threadId === activeId ? {
           title: `Ready to call ${activeOther}`,
           text: instantConfirm.error ?? `${activeOther} will be notified to join.`,

@@ -287,11 +287,12 @@ export async function screenMessage(messageId) {
 
 /**
  * How long one of your own messages may sit in `checking` before the page
- * asks the screen again, attempt by attempt. A screen that did not answer —
- * a page closed mid-send, a 504, a sign-in the auth server refused — would
- * otherwise leave it there with nobody told.
+ * asks the screen again, attempt by attempt (src/shared/rescreen.mjs). A
+ * screen that did not answer — a page closed mid-send, a 504, a sign-in the
+ * auth server refused — would otherwise leave it there with nobody told.
  */
-export const RESCREEN_AFTER_MS = [5000, 15000, 30000, 60000];
+import { RESCREEN_AFTER_MS } from "../../shared/rescreen.mjs";
+export { RESCREEN_AFTER_MS, RESCREEN_EVERY_MS, nextRescreenAt } from "../../shared/rescreen.mjs";
 
 /** Your own messages still waiting on the screen. */
 export const awaitingScreen = (messages, userId) =>
