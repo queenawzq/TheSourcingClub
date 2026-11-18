@@ -216,6 +216,17 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
   );
 }
 
+/**
+ * A message in a payout dialog: first in its body, in TSC's box (red for an
+ * error; blue for a success or information), scrolled into view when it
+ * appears, since a form can be taller than its dialog.
+ */
+export function ModalMessage({ tone = "error", children, ...rest }) {
+  const box = useRef(null);
+  useEffect(() => { box.current?.scrollIntoView?.({ block: "nearest" }); }, [children]);
+  return <div ref={box} className={tone === "error" ? "payout-modal-error" : "payout-modal-notice"} role={tone === "error" ? "alert" : "status"} {...rest}>{children}</div>;
+}
+
 /** A method's fee and timing, under its name (src/shared/payout-method-info.mjs). */
 const MethodLines = ({ method }) => <ul>{payoutMethodLines(method).map((line, index) => <li key={line}>{line}{index === 0 && payoutMethodFeeUrl(method) ? <> · <a href={payoutMethodFeeUrl(method)} target="_blank" rel="noopener noreferrer">Full fee details</a></> : null}</li>)}</ul>;
 
@@ -644,7 +655,8 @@ export default function StripePayoutCard({
   };
   const stepRow = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
   // Settings opens a removal straight from its own row, with no list behind it.
-  const backToList = () => (renderCard ? setModal("manage") : closeModal());
+  // A failure belongs to the step that had it: going back leaves it behind.
+  const backToList = () => { setRemoveError(null); setManualError(null); return renderCard ? setModal("manage") : closeModal(); };
 
 
   // An account still being set up pays nobody: it has its own row, to finish it.
@@ -712,6 +724,7 @@ export default function StripePayoutCard({
   const makeStripeDefault = async (method) => {
     setMethodBusy(true);
     setRemoveError(null);
+    setManualError(null);
     try {
       if (!method.default && !await changeMethod("default_method", { methodId: method.id })) return;
       const result = await supabase.rpc("choose_payout_method", { target_org: org.id, target_account: null });
@@ -778,6 +791,7 @@ export default function StripePayoutCard({
 
   async function makePrimary(row) {
     setManualError(null);
+    setRemoveError(null);
     try {
       await onMakePrimaryManual?.(row);
       setPayoutRoute("manual");
@@ -826,7 +840,8 @@ export default function StripePayoutCard({
     setRemoveError(null);
     try {
       await onDeleteManual?.(removingManual, manualSuccessor);
-      setModal(null);
+      // Back to the list, as a Stripe method's removal does: the message is said there.
+      setModal(renderCard ? "manage" : null);
       setMethodNotice(LIST_WORDS.removed);
     } catch (failure) {
       // Said in the dialog, where the factory is looking.
@@ -891,13 +906,13 @@ export default function StripePayoutCard({
             ? [
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}` : null,
+              // Its "?" sits right after it, not on a line of its own.
+              pending > 0 ? <>{`${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
-            ].filter(Boolean).join(" · ")
+            ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)
             : payoutSetupLine}</p>}
-          {balance && pending > 0 ? <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp> : null}
           </>}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
             <p>Your previous payout account still has funds.</p>
@@ -1022,6 +1037,11 @@ export default function StripePayoutCard({
           onClose={closeModal}
           actions={<button className="secondary-btn" type="button" onClick={closeModal}>{cardWords.done}</button>}
         >
+          {/* Messages first, in TSC's box, where they are seen at once. */}
+          {removeError ? <ModalMessage>{removeError.message}</ModalMessage> : null}
+          {manualError ? <ModalMessage>{manualError.message}</ModalMessage> : null}
+          {/* A failure after a success replaces it: never both at once. */}
+          {methodNotice && !removeError && !manualError ? <ModalMessage tone="notice">{methodNotice}</ModalMessage> : null}
           <div className="payout-methods-heading">
             {/* Add always adds: a new method sits beside the others. */}
             <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ {cardWords.add}</button>
@@ -1084,9 +1104,6 @@ export default function StripePayoutCard({
               {" "}<button className="secondary-btn compact-btn" type="button" onClick={() => setModal("upgrade")}>Continue</button>
             </p></div>
           ) : null}
-          {removeError && modal === "manage" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
-          {methodNotice && modal === "manage" ? <p className="live-payment-notice" role="status">{methodNotice}</p> : null}
-          {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
@@ -1112,6 +1129,7 @@ export default function StripePayoutCard({
             ? <button className="secondary-btn" type="button" onClick={backToList}>Back</button>
             : <><button className="secondary-btn" type="button" onClick={backToList}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={manualBusy} onClick={removeManualMethod}>{manualBusy ? "Removing…" : "Remove method"}</button></>}
         >
+          {removeError ? <ModalMessage>{removeError.message}</ModalMessage> : null}
           {manualRemovalLine ? <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalLine}</p> : null}
           {!manualRemovalRefusal && otherManual.length > 1 && removingManual.is_primary ? (
             <label className="payout-country-field">
@@ -1121,7 +1139,6 @@ export default function StripePayoutCard({
               </select>
             </label>
           ) : null}
-          {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
@@ -1140,6 +1157,7 @@ export default function StripePayoutCard({
                   {managed ? (methodBusy ? "Removing…" : "Remove method") : "Continue"}
                 </button></>}
         >
+          {removeError ? <ModalMessage>{removeError.message}</ModalMessage> : null}
           <p className="payout-modal-intro" data-testid="payout-remove-reason">{!balance
             ? "Loading…"
             : removalRefusal
@@ -1154,7 +1172,6 @@ export default function StripePayoutCard({
               </select>
             </label>
           ) : null}
-          {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
@@ -1163,9 +1180,9 @@ export default function StripePayoutCard({
         return (
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
+            {removeError && modal === "add" ? <ModalMessage>{removeError.message}</ModalMessage> : null}
             <p className="payout-modal-intro">Choose where your company is registered. We’ll show the withdrawal methods available for that country. {supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
             <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} providers={providers} onBank={() => { if (account?.transfers_active && supported) { startAdd(); return; } setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding-chosen" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
-            {removeError && modal === "add" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           </PayoutModal>
         );
       })() : null}
@@ -1205,10 +1222,10 @@ export default function StripePayoutCard({
           actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Not now</button>
             <button className="primary-btn" type="button" disabled={busy} onClick={startUpgrade}>{busy ? "Starting…" : "Continue verification"}</button>
             <button className="secondary-btn" type="button" disabled={busy} onClick={finishUpgrade}>Check and finish</button></>}>
+          {removeError ? <ModalMessage>{removeError.message}</ModalMessage> : null}
+          {balance?.upgrade ? <ModalMessage tone="notice">{balance.upgrade.verified ? "Replacement account verified." : "Complete verification for the replacement account."} {balance.upgrade.unsettled ? "Your old account still has funds or a withdrawal settling. Withdraw what's available, then check again." : "The old account is settled."}</ModalMessage> : null}
           <p className="payout-modal-intro">After a one-time verification, add, replace and remove bank accounts directly on TSC. Confirm your business and bank details again and accept the payment partner’s agreement.</p>
           <p className="payout-security-copy">Your existing balance stays in your current account. New earnings are held by TSC until verification finishes. Withdraw any remaining balance and wait for it to arrive. Your payout history is kept.</p>
-          {balance?.upgrade ? <p role="status">{balance.upgrade.verified ? "Replacement account verified." : "Complete verification for the replacement account."} {balance.upgrade.unsettled ? "Your old account still has funds or a withdrawal settling. Withdraw what's available, then check again." : "The old account is settled."}</p> : null}
-          {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
         </PayoutModal>
       ) : null}
       {modal === "upgrade-onboarding" ? (

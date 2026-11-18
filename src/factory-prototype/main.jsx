@@ -11127,6 +11127,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           </div>
         </section>
         )}
+        {/* Read back with nothing entered: no empty "Factory includes". */}
+        {!(values && readOnly && !values.sourcingIncludes) && (
         <div className="factory-sourcing-input-grid">
           <QuoteField
             name="sourcingIncludes"
@@ -11135,6 +11137,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             {...reviewFieldProps}
           />
         </div>
+        )}
         <div className="factory-material-cost-heading">
           <div>
             <h3>Material cost breakdown</h3>
@@ -11221,6 +11224,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             <p data-no-translate>{values.brandAdditionalDetails}</p>
           </section>
         )}
+        {/* Read back with no notes: the section keeps only its heading. */}
+        {!(values && readOnly && !values.factoryNotes) && (
         <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
           ? (companyType === "trading"
               ? "技术包确认后，合作工厂即可开始试身样。生产窗口已确认至 8 月 30 日。"
@@ -11228,6 +11233,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           : (companyType === "trading"
               ? "Our partner factory can start the fit sample after tech pack confirmation. The production window is confirmed through Aug 30."
               : "We can start fit sample immediately after tech pack confirmation. Bulk capacity is held through Aug 30.")))} />
+        )}
       </SubmitSection>
     </>
   );
