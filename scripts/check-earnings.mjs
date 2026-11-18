@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
+  awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
   refundPendingWord, staffBankNote, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 
@@ -162,6 +162,53 @@ assert.equal(usd(answered.pending), 0, "paid through Stripe is not Pending");
 assert.equal(usd(answered.paid), 5, "it is Paid out, the word on its row, with no answer from Stripe");
 assert.equal(earningStatus(transferred[0]), "Added to your balance", "the same word as the order page: in its Stripe balance, not its bank");
 assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8"), /case "released":\s*\/\/[^\n]*\n\s*return isFactory \? earningStatus\(payment\)/, "the order page uses that word for the factory");
+
+// Stripe money still clearing, on the owner's page (Nov 18): its row says
+// "Pending · Available Nov 19" and it is counted in the Pending figure, from
+// the one read (clearingFor), so the rows and the figures always agree. Total
+// is the same with or without it; a non-owner, who can't read Stripe, sees the
+// figures as before.
+{
+  const brand2 = { brand_org_id: "brand-2", status: "active" };
+  const stripeEarnings = [
+    pay("s-clearing", 21000, "released", { ...APPROVED, stripe_transfer_id: "tr_1" }),
+    pay("s-clearing-2", 9000, "released", { ...APPROVED, stripe_transfer_id: "tr_2", order: brand2 }),
+    pay("s-available", 5000, "released", { ...APPROVED, stripe_transfer_id: "tr_3" }),
+    pay("s-awaiting", 7000, "confirmed"),
+    pay("s-owed", 124800, "confirmed", APPROVED),
+  ];
+  // Midnight UTC on Nov 19, 2026, as Stripe gives it.
+  const nov19 = Date.UTC(2026, 10, 19) / 1000;
+  const balance = { pendingEarnings: [{ paymentId: "s-clearing", available_on: nov19 }, { paymentId: "s-clearing-2", available_on: nov19 }] };
+  const clearing = clearingFor(balance);
+  assert.equal(clearingFor(undefined).size, 0, "no Stripe read, nothing clearing");
+  for (const client of ["All clients", "brand-1", "brand-2"]) {
+    const shown = stripeEarnings.filter((row) => client === "All clients" || row.order.brand_org_id === client);
+    const owner = earningsSummaryFor(stripeEarnings, client, new Map(), 0, clearing);
+    const member = earningsSummaryFor(stripeEarnings, client);
+    const before = earningsSummaryFor(stripeEarnings, client, new Map(), 0, null);
+    const sumOf = (word) => shown.filter((row) => earningStatus(row, clearing) === word).reduce((sum, row) => sum + factoryAmount(row), 0);
+    assert.equal(usd(owner.pending), sumOf("Pending"), `${client}: the rows that say Pending add up to the Pending figure`);
+    assert.equal(usd(owner.approval), sumOf("Awaiting approval"), `${client}: and Awaiting approval to its figure`);
+    assert.equal(usd(owner.paid), sumOf("Added to your balance") + sumOf("Paid"), `${client}: and Paid out to its figure`);
+    assert.equal(usd(owner.total), usd(member.total), `${client}: Total earnings is the same with money clearing`);
+    assert.equal(usd(owner.approval) + usd(owner.pending) + usd(owner.paid), usd(owner.total), `${client}: the three add up to Total`);
+    assert.deepEqual(member, before, `${client}: someone who can't read Stripe sees the figures as before`);
+  }
+  assert.equal(earningStatus(stripeEarnings[0], clearing), "Pending", "a clearing earning reads Pending");
+  assert.equal(earningStatus(stripeEarnings[0]), "Added to your balance", "without the read, it reads as before");
+  assert.equal(earningStatus(stripeEarnings[2], clearing), "Added to your balance", "one Stripe has made available reads as before");
+  assert.equal(earningPaid(stripeEarnings[0], clearing), false, "a clearing earning is not drawn as paid");
+  assert.equal(clearingNote(stripeEarnings[0], clearing), "Available Nov 19", "its note says the day, read in UTC");
+  assert.equal(clearingNote(stripeEarnings[2], clearing), null, "no note once available");
+  assert.equal(usd(earningsSummaryFor(stripeEarnings, "All clients", new Map(), 0, clearing).pending), 124800 + 21000 + 9000,
+    "Pending is what is owed plus what Stripe is clearing");
+  // The page builds both from the same map.
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes("const clearing = clearingFor(stripeBalance);")
+    && /earningsSummaryFor\([^;]*clearing\);/.test(page)
+    && page.includes("status: earningStatus(row, clearing)"), "the page feeds the rows and the figures the same clearing map");
+}
 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");

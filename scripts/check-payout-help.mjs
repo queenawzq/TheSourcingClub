@@ -12,9 +12,12 @@ assert.ok(page.includes('<PaymentHelp label={label}>{help}</PaymentHelp>'), "sum
 for (const label of ["Balance", "Available balance", "Pending balance"]) {
   assert.ok(card.includes(`<PaymentHelp label="${label}">`), `${label} keeps its help button`);
 }
-for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies", "Choose where your company is registered."]) {
+for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies"]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
+// Removed on request (Nov 18): the country picked now decides the methods, so
+// the chooser no longer asks for the country of registration.
+assert.ok(!card.includes("Choose where your company is registered."), "the chooser does not ask for the country of registration");
 // Each withdrawal method names its provider, says its fee as a percentage and
 // its timing, and none promises instant.
 const info = await import("../src/shared/payout-method-info.mjs");
@@ -58,7 +61,8 @@ for (const country of [...PAYOUT_COUNTRIES, "CN", "TW", "KH", "HK", "VN", "IN", 
 }
 // No staff-paid bank option: where neither Stripe nor Wise pays, PayPal alone.
 for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("bank", { country }), null, `${country}: no bank option`);
-assert.ok(card.includes("const bankRoute = supported || (wiseOn && paidByWise(country));") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
+// The options follow the country picked, once it is listed (Nov 18: the picked country decides the switches).
+assert.ok(card.includes("const bankRoute = supported || (wiseOn && paidByWise(picked));") && card.includes("picked && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
 assert.ok(card.includes('onUnavailable={() => setModal("bank-unavailable")}') && !card.includes('onUnavailable={() => setModal("setup-bank")}'), "Wise's form unavailable never falls back to the staff bank form");
 assert.ok(!card.includes('notListed ? "setup-bank"'), "the chooser never opens the staff bank form");
 // TSC no longer pays a bank by hand (20261117500000): the staff-paid form and its save are gone.
@@ -71,7 +75,7 @@ for (const text of [...new Set(Object.values(info.PAYOUT_METHOD_INFO).flat()), "
   assert.ok(factoryZh.includes(`  ${JSON.stringify(text)}: "`) || WITHDRAWAL_FEE_LINES_ZH[text], `the factory dictionary has Chinese for: ${text}`);
 }
 assert.ok(card.includes("<strong>{listLabel(method)}</strong>") && card.includes("<strong>{manualListLabel(row)}</strong>") && card.includes("(Wise)`, row.account_number_last4)"), "the saved methods list names the provider as the chooser does");
-assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferName(country)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");
+assert.ok(card.includes('"Bank account (Stripe)"') && card.includes("{transferName(picked)} (Wise)") && card.includes("`${words.bank} (Wise)`"), "each bank option names its provider");
 // A US factory's Wise option, its dialog and its saved row say "Bank transfer": US$ to US$ is not international.
 assert.ok(card.includes('export const transferName = (country) => (PAYOUT_COUNTRIES.has(country) && country !== "US" ? "International bank transfer" : LIST_WORDS.bank);'), "a US bank transfer is not called international");
 // "(Wise)" on a saved bank row only where the server pays it through Wise: a Wise recipient on the row (20261108163459).
@@ -80,7 +84,7 @@ assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank
 // withdraws, so the chooser's intro says so where that option is offered.
 assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
 for (const option of ["bank", "wise", "paypal"]) {
-  assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country })} />`), `the ${option} option draws the lines of its route`);
+  assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country: picked })} />`), `the ${option} option draws the lines of its route`);
 }
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");

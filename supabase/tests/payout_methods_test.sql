@@ -127,7 +127,7 @@ select pg_temp.as_user('77a00000-0000-0000-0000-000000000005');
 select throws_ok($$ select * from public.payout_wise_recipient((select id from p77)) $$, '22023', null, 'staff cannot read it while nothing is owed');
 
 reset role;
-select ok(not has_function_privilege('anon', 'public.save_wise_payout_account(uuid, uuid, text, text, text, jsonb, text, text, text)', 'execute'), 'a signed-out visitor cannot save one');
+select ok(not has_function_privilege('anon', 'public.save_wise_payout_account(uuid, uuid, text, text, text, jsonb, text, text, text, text)', 'execute'), 'a signed-out visitor cannot save one');
 select ok(not has_function_privilege('authenticated', 'public.set_wise_recipient(uuid, text, timestamptz)', 'execute'), 'set_wise_recipient is the server''s');
 select ok(not has_table_privilege('authenticated', 'public.provider_payouts', 'insert,update,delete'), 'provider_payouts is select-only');
 select ok(has_function_privilege('service_role', 'public.set_wise_recipient(uuid, text, timestamptz)', 'execute'), 'the server can call it');

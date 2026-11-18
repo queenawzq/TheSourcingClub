@@ -16,7 +16,7 @@ import { useCallback, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
 
-const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
+const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, payout_country, created_at";
 
 // The database's refusals, in the owner's words. No raise there carries a value.
 const SAVE_REFUSALS = {
@@ -101,7 +101,9 @@ export function useManualPayouts(orgId) {
   };
 
   // Wise's form (PayoutSetupSteps): the fields, and the number apart from them.
-  async function saveWise({ bankName, type, currency, details, numberKey, number, numberAgain }) {
+  // payoutCountry: the country picked in the chooser for a new method (ZZ for
+  // not listed); it decides which provider switch applies. Null keeps the saved one.
+  async function saveWise({ bankName, type, currency, details, numberKey, number, numberAgain, payoutCountry = null }) {
     setBusy(true);
     try {
       const row = unwrap(await supabase.rpc("save_wise_payout_account", {
@@ -114,6 +116,7 @@ export function useManualPayouts(orgId) {
         number_key: numberKey,
         account_number: number,
         account_number_again: numberAgain,
+        payout_country: payoutCountry || null,
       }), "save your payout account");
       await load();
       setSaved(true);
@@ -125,7 +128,7 @@ export function useManualPayouts(orgId) {
     }
   }
 
-  async function savePaypal() {
+  async function savePaypal(payoutCountry = null) {
     const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
     const email = paypalEmail(form.paypal_email);
     if (!validPaypalEmail(email)) throw new Error("Enter a valid PayPal email address.");
@@ -136,7 +139,7 @@ export function useManualPayouts(orgId) {
         ? await supabase.from("factory_payout_accounts").update({ paypal_email: email }).eq("id", editing.id).select().single()
         // The one TSC pays only if there is none yet.
         : await supabase.from("factory_payout_accounts")
-          .insert({ org_id: orgId, method: "paypal", paypal_email: email, is_primary: !(accounts ?? []).some((account) => account.is_primary) })
+          .insert({ org_id: orgId, method: "paypal", paypal_email: email, payout_country: payoutCountry || null, is_primary: !(accounts ?? []).some((account) => account.is_primary) })
           .select().single(),
       "save your payout account");
       await load();

@@ -72,14 +72,35 @@ export function handPaidFigures(earnings) {
 }
 
 /**
+ * Stripe earnings still clearing: payment id → the day Stripe makes them
+ * available (its available_on, a day at midnight UTC, in seconds). From the
+ * owner's balance read (stripe-connect `balance`, pendingEarnings), the one
+ * source for both a row's "Pending" and the Pending figure. Empty when Stripe
+ * was not read: only an owner can.
+ */
+export const clearingFor = (stripeBalance) => new Map((stripeBalance?.pendingEarnings ?? [])
+  .filter((entry) => entry?.paymentId).map((entry) => [entry.paymentId, Number(entry.available_on) || null]));
+/** Paid through Stripe and not yet withdrawable there. */
+export const isClearing = (row, clearing) => clearing instanceof Map && row?.state === "released" && Boolean(row.stripe_transfer_id) && clearing.has(row.id);
+/** "Available Nov 19": Stripe's day, read in UTC (in New York it would be the day before). */
+export function clearingNote(row, clearing) {
+  const day = isClearing(row, clearing) ? clearing.get(row.id) : null;
+  return day ? `Available ${new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : null;
+}
+
+/**
  * The four figures over the Transactions list: each earning in exactly one of
  * Awaiting approval, Pending and Paid out, by the word on its own row, so they
  * add up to Total earnings for whoever reads them. All from the payments, in the
  * orders' currency, never from Stripe: what a factory later moved from its
  * Stripe balance to its bank is a withdrawal, not a second kind of paid. Each is
  * undefined until the earnings answer.
+ *
+ * `clearing` (clearingFor(), the owner's Stripe balance) moves a Stripe earning
+ * still clearing from Paid out to Pending, as its row says; Total is the same
+ * with or without it. Nobody else can read Stripe, so they pass none.
  */
-export function earningsSummaryFor(earnings, client, withdrawn = new Map(), withdrawalFees = 0) {
+export function earningsSummaryFor(earnings, client, withdrawn = new Map(), withdrawalFees = 0, clearing = null) {
   if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
   const all = client === "All clients";
   const selected = (row) => all || row?.order?.brand_org_id === client;
@@ -93,11 +114,11 @@ export function earningsSummaryFor(earnings, client, withdrawn = new Map(), with
     total: currencyTotals([...funded.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
       ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
     approval: amounts(funded.filter(awaitingApproval)),
-    pending: currencyTotals([...funded.filter(toBeSent).map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
+    pending: currencyTotals([...funded.filter((row) => toBeSent(row) || isClearing(row, clearing)).map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
       ...taken.map((part) => ({ ...part, amount: -part.amount }))]),
     // Net, like factoryAmount(): the fee a paid withdrawal took never reached the
     // factory. Withdrawals span clients, so only All clients carries their fees.
-    paid: currencyTotals([...funded.filter((row) => row.state === "released").map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken,
+    paid: currencyTotals([...funded.filter((row) => row.state === "released" && !isClearing(row, clearing)).map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken,
       ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
   };
 }
@@ -130,17 +151,20 @@ export function askedWithdrawalRows(withdrawals = []) {
 
 export const ADDED_TO_BALANCE = "Added to your balance";
 /** Earned and the factory's to withdraw or already sent: "Paid", or in its Stripe balance. */
-export const earningPaid = (row) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row));
+export const earningPaid = (row, clearing = null) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row, clearing));
 
 /**
  * Where one earning stands: Awaiting approval, Pending, Paid. The one word for
  * this money, on Payments and the factory's order page, whoever reads it: it
  * comes from the payment alone, never from Stripe's answer, which only an owner
- * can read. Money Stripe is still clearing is Paid here and on the strip; the
- * card says when it can be withdrawn. How it was sent is on its withdrawal row.
+ * can read. Money Stripe is still clearing is Paid here and on the order page;
+ * on the owner's Payments page, which reads Stripe, `clearing` (clearingFor())
+ * makes it Pending until Stripe makes it available. How it was sent is on its
+ * withdrawal row.
  */
-export function earningStatus(row) {
+export function earningStatus(row, clearing = null) {
   if (heldOnCancelledOrder(row)) return "Order cancelled";
+  if (isClearing(row, clearing)) return "Pending";
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
   // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
   if (row.state === "released") return row.stripe_transfer_id ? ADDED_TO_BALANCE : "Paid";

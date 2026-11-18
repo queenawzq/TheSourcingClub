@@ -4,7 +4,7 @@ import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
-import { providerOf, providerOn } from "./payout-providers.js";
+import { methodProviderOn, providerOf } from "./payout-providers.js";
 
 /**
  * A factory paid by Wise or PayPal withdraws from its balance:
@@ -263,7 +263,7 @@ function useExactQuote(orgId, accountId, amountCents, enabled) {
 /** The dialog body and its Confirm, in the payouts page's own PayoutModal. */
 export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null }) {
   // A saved method whose provider staff switched off stays saved, but is not offered.
-  const choices = methods.filter((row) => usable(row) && providerOn(providers, providerOf(row)));
+  const choices = methods.filter((row) => usable(row) && methodProviderOn(providers, row));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
   const [busy, setBusy] = useState(false);

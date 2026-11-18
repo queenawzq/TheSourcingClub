@@ -322,6 +322,17 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   // A refusal is about the details it was given: once they change, it's over.
   useEffect(() => { setProblem(null); setHeard(null); }, [row.payout_changed_at]);
 
+  // Short on Wise: the quote is asked again every 30 s while it is open, so a
+  // top-up shows by itself. Not while the tab is hidden.
+  const reviewNow = useRef(review);
+  reviewNow.current = review;
+  const shortOpen = step === "confirm" && preview?.shortByCents > 0 && !preview?.refused;
+  useEffect(() => {
+    if (!shortOpen) return undefined;
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") reviewNow.current(); }, 30000);
+    return () => clearInterval(timer);
+  }, [shortOpen]);
+
   const clock = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const said = (
     <>
@@ -416,14 +427,12 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
         </span>
         {short ? (
           <span className="admin-error admin-row-message" data-testid="wise-short">
-            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}${preview.feeCents == null ? " before Wise's fee" : ""}. Top up TSC's Wise balance, then press Check again. `}
+            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}${preview.feeCents == null ? " before Wise's fee" : ""}. Top up TSC's Wise balance. `}
             <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
           </span>
         ) : null}
         {preview.refused ? <span className="admin-error admin-row-message" data-testid="provider-fee-refused">{preview.refused}</span> : null}
-        {preview.refused ? null : short ? (
-          <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
-        ) : (
+        {preview.refused || short ? null : (
           <button type="button" className="admin-approve" disabled={working} data-testid="provider-confirm"
                   onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => {
                     if (answer?.done === "sent" || answer?.done === "paid") onSent?.(row, name, answer.done);
@@ -868,10 +877,16 @@ export default function AdminPayments() {
   // While money is on its way, keep reading: nobody else can tell staff.
   const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing")
     || withdrawals.withdrawals.some((row) => row.status === "paying");
+  // Skipped while the tab is hidden, and read once when it is shown again.
   useEffect(() => {
     if (!anyLive) return undefined;
-    const timer = setInterval(readBack, 30000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => { if (document.visibilityState !== "hidden") readBack(); }, 30000);
+    const shown = () => { if (document.visibilityState === "visible") readBack(); };
+    document.addEventListener("visibilitychange", shown);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", shown);
+    };
   }, [anyLive, readBack]);
 
   async function decide(row, decision, note) {

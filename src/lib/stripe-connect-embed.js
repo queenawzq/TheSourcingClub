@@ -74,3 +74,16 @@ export function logoutStripeConnect() {
   }
   instances.clear();
 }
+
+/**
+ * Forget a company's instance after its Stripe account was replaced
+ * (stripe-connect `restart`), so the next form asks for a session for the new
+ * one. Its sessions were for an account that no longer exists.
+ */
+export function forgetStripeConnect(orgId) {
+  const key = `${orgId}:current`;
+  const entry = instances.get(key);
+  if (!entry) return;
+  instances.delete(key);
+  Promise.resolve().then(() => entry.instance.logout()).catch(() => {});
+}
