@@ -2638,15 +2638,18 @@ async function main() {
       await signIn(page, adminEmail, "Admin paying out");
     }
 
-    // ================= AND THE FACTORY SEES IT PAID =================
-    console.log("\nAND THE FACTORY SEES IT PAID");
+    // ================= AND THE FACTORY SEES IT DONE =================
+    // Staff declined its withdrawal above (no bank is paid by hand any more),
+    // so the step is done and its money is still in the factory's balance.
+    console.log("\nAND THE FACTORY SEES IT DONE");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory paid", "factory");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory done", "factory");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    check(/\bpaid\b/i.test(await page.locator('[data-testid="milestone-row"]').first().innerText()),
-      "the factory's order says the step was paid");
-    await record(page, "Paid out", "the step done and the money with the factory");
+    const doneRow = await page.locator('[data-testid="milestone-row"]').first().innerText();
+    check(/\bDone\b/.test(doneRow) && !/\bPaid\b(?! release)/.test(doneRow),
+      `the factory's order says the step is done, not yet paid out (${doneRow.replace(/\s+/g, " ").slice(0, 160)})`);
+    await record(page, "Step done", "the step approved, its money in the factory's balance");
 
     // ================= THEY TALK =================
     // Both prototypes design a messaging screen and neither one works: Send is
