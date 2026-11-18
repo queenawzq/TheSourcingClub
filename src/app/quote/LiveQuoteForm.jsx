@@ -131,6 +131,8 @@ function windowRefusal(values, companyType) {
       return problem.yearWritten
         ? `${field} (those dates have passed; check the dates, like ${WINDOW_EXAMPLE})`
         : `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
+    case "long":
+      return `${field} (longer than 12 months; check the dates, like ${WINDOW_EXAMPLE})`;
     case "order":
       return `${field} (the first date is after the last; check the dates, like ${WINDOW_EXAMPLE})`;
     case "invalid":

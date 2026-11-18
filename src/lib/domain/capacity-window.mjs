@@ -219,6 +219,16 @@ function read(text, now) {
 
   const startDay = calendarDay(first(start));
   const endDay = end ? calendarDay(last(end)) : null;
+  // At most 12 months, up to the same day a year on. A longer window is
+  // almost always a misread year: "12.1.2026 - 15.1.2027" read day first is
+  // Jan 12, 2026 - Jan 15, 2027. A window already open is kept ("Nov 1 -
+  // Jan 15" in November: capacity open now).
+  if (endDay) {
+    const from = first(start);
+    const yearOn = new Date(from.year + 1, from.month, from.day);
+    const limit = calendarDay({ year: yearOn.getFullYear(), month: yearOn.getMonth(), day: yearOn.getDate() });
+    if (endDay > limit) return refuse({ code: "long" });
+  }
   if ((endDay ?? startDay) < todayOf(now)) {
     return { start: startDay, end: endDay, units, problem: { code: "past", yearWritten: startYearWritten || endYearWritten } };
   }
@@ -242,7 +252,7 @@ export function parseCapacityWindow(text, now = new Date()) {
 
 /**
  * Why this window cannot be kept as typed, or null when it can:
- * `{ code: "format" | "words" | "many" | "invalid" | "order" | "past", piece?, yearWritten? }`.
+ * `{ code: "format" | "words" | "many" | "invalid" | "order" | "long" | "past", piece?, yearWritten? }`.
  * "words": text besides dates and units, which would be dropped. "past": with
  * no year written, "Jan 5 - Mar 1" in November means this year's, which is not
  * what the vendor meant, so it is refused rather than guessed forward.
