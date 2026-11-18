@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, useStripe } from "@stripe/react-stripe-js";
 import { STRIPE_PUBLISHABLE_KEY, connectAction } from "../../lib/domain/stripe.js";
-import { PayoutModal } from "./StripePayoutCard.jsx";
+import { ModalMessage, PayoutModal } from "./StripePayoutCard.jsx";
 
 /**
  * TSC's own forms for adding a payout account to a Stripe account TSC
@@ -128,6 +128,8 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
+      {problem ? <ModalMessage>{problem}</ModalMessage> : null}
+      {optionsError ? <ModalMessage>{optionsError} <button type="button" className="secondary-btn compact-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button></ModalMessage> : null}
       <p className="payout-modal-intro">Use a bank account in your company’s name. Your bank details go directly to our payment partner; TSC keeps only the last four digits.</p>
       <div className="payout-manual-fields">
         <label className="payout-country-field">
@@ -144,7 +146,6 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
           </select>
         </label> : null}
         {!options && !optionsError ? <p className="payout-security-copy" role="status">Loading…</p> : null}
-        {optionsError ? <p className="live-stripe-error" role="alert">{optionsError} <button type="button" className="secondary-btn compact-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
         <div className="payout-form-grid">
           <label>
             <span>Account holder name</span>
@@ -165,7 +166,6 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
           </label>
         )}
       </div>
-      {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
     </PayoutModal>
   );
 }
@@ -175,7 +175,7 @@ export default function AddPayoutMethodForm(props) {
   if (!STRIPE_PUBLISHABLE_KEY) {
     return (
       <PayoutModal title="Add a withdrawal method" onClose={props.onClose} actions={<button className="secondary-btn" type="button" onClick={props.onClose}>Close</button>}>
-        <p className="live-stripe-error" role="alert">Withdrawals are not set up on this site yet.</p>
+        <ModalMessage>Withdrawals are not set up on this site yet.</ModalMessage>
       </PayoutModal>
     );
   }
