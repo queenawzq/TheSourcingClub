@@ -33,7 +33,7 @@ export function useDashboardCalls(orgId) {
       setCalls(rows);
       setNow(serverNow());
       const threads = [...new Set(rows
-        .filter((call) => ["invite", "upcoming", "live"].includes(callState(call, orgId, serverNow())))
+        .filter((call) => ["invite", "upcoming", "live", "ringing"].includes(callState(call, orgId, serverNow())))
         .map((call) => call.thread_id))];
       // Asked again on every load: the other side may have moved time zone.
       const found = await Promise.all(threads.map((id) => counterpartyTimeZone(id)));

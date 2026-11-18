@@ -51,13 +51,20 @@ export default async function handler(request, response) {
   // Not a party, or no such call: the same answer, so this cannot be used to
   // ask whether a call exists.
   if (!call || !call.is_party) return json(response, 404, { error: "that call is not yours to join" });
-  if (call.status !== "accepted") return json(response, 409, { error: "this call is not confirmed" });
-
   const now = Date.now();
+  // A call started now (start_call_now) rings for 15 minutes: the caller may
+  // be in its meeting while it rings; the other side joins by accepting it.
+  const ringing = call.instant && call.status === "proposed";
+  if (ringing && now >= new Date(call.rings_until).getTime()) return json(response, 409, { error: "this call has ended" });
+  if (!(call.status === "accepted" || (ringing && call.is_caller))) return json(response, 409, { error: "this call is not confirmed" });
+
   if (now >= new Date(call.closes_at).getTime()) return json(response, 409, { error: "this call has ended" });
 
   if (!zoomConfigured()) {
-    return json(response, 503, { error: "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
+    // A call that only rings is not confirmed for anyone yet.
+    return json(response, 503, { error: ringing
+      ? "video isn't set up on this site yet, so the call can't be joined here"
+      : "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
   }
 
   // The meeting: reuse it, wait for the request creating it, or create it.

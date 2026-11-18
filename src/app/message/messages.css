@@ -3,7 +3,6 @@
  * The designed bubble has no such state, so it is drawn as the bubble muted,
  * with a note under the text in the bubble's own type sizes.
  */
-.message-bubble.message-bubble-checking,
 .message-bubble.message-bubble-held,
 .message-bubble.message-bubble-blocked,
 .message-bubble.message-bubble-rejected {
@@ -11,7 +10,6 @@
   background: #f7f8fa;
 }
 
-.message-bubble.message-bubble-checking > p,
 .message-bubble.message-bubble-held > p,
 .message-bubble.message-bubble-blocked > p,
 .message-bubble.message-bubble-rejected > p {
@@ -30,10 +28,6 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 16px;
-}
-
-.message-bubble-checking .message-status-note strong {
-  color: #33415c;
 }
 
 .message-bubble-blocked .message-status-note strong,

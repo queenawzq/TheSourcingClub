@@ -18,8 +18,8 @@
  * says so, and closes itself on leaving: Zoom sends it to `left=1`.
  */
 import "./call.css";
-import { supabase, isConfigured } from "../lib/supabase.js";
-import { joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
+import { supabase, isConfigured, kickNotificationEmails } from "../lib/supabase.js";
+import { acceptCall, cancelCall, joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
 import { callWindowChannel } from "../app/message/call-window.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -114,15 +114,51 @@ async function leave() {
   }
 }
 
+/**
+ * Leaving a call started now that nobody has answered yet ends it, as closing
+ * its window does on a computer: nobody answers into an empty call. Only the
+ * caller's side can end it (the database refuses anyone else, and anything but
+ * a call that still rings), so a refusal is simply nothing to do.
+ */
+async function endIfStillRinging() {
+  try {
+    const { data: call } = await supabase.from("calls").select("instant, status").eq("id", callId).maybeSingle();
+    if (call?.instant && call.status === "proposed") await cancelCall(callId);
+  } catch {
+    // Already answered, declined, missed or ended.
+  }
+}
+
 async function start() {
   if (signedOut) return;
   if (params.get("left") === "1") {
-    finished();
+    if (isConfigured && callId) await endIfStillRinging();
+    if (popup) finished();
+    else window.location.replace(back);
     return;
   }
   if (!isConfigured || !callId) {
     show("This call can't be opened from this link.");
     return;
+  }
+  // On a phone the conversation hands over to this page right after starting
+  // a call, before its own email send runs: send the other side's notice
+  // from here, while the call still rings.
+  kickNotificationEmails();
+  // Joining a call started now is answering it: accepted here, so the window
+  // could open in the click. Already accepted (a teammate, or a second
+  // press) is fine.
+  if (params.get("answer") === "1") {
+    try {
+      await acceptCall(callId);
+    } catch (failure) {
+      if (!/accepted already/.test(failure.message)) {
+        show(/has ended/.test(failure.message) ? "This call has ended."
+          : /other side answers/.test(failure.message) ? "You started this call, so you can't answer it."
+          : failure.noAnswer ? failure.message : "The call couldn't be opened. Try again.");
+        return;
+      }
+    }
   }
   const answer = await joinCall(callId);
   if (signedOut) return;
@@ -146,9 +182,9 @@ async function start() {
   zoom = ZoomMtg;
   // In a window, Zoom's Leave (or the host ending the meeting) lands on this
   // page again as `left=1`, which closes it.
-  const leaveUrl = popup
-    ? `${window.location.origin}/call.html?call=${encodeURIComponent(callId)}&popup=1&left=1&back=${encodeURIComponent(backPath)}`
-    : back;
+  // Zoom's Leave lands on this page again as `left=1` (in a window or on a
+  // phone), so a call that still rings can be ended before going back.
+  const leaveUrl = `${window.location.origin}/call.html?call=${encodeURIComponent(callId)}${popup ? "&popup=1" : ""}&left=1&back=${encodeURIComponent(backPath)}`;
   ZoomMtg.init({
     leaveUrl,
     patchJsMedia: true,

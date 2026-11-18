@@ -198,6 +198,8 @@ const TITLES = [
   ["call_countered", /^(.+) proposed another time for your call about (.+)$/, (who, about) => `${who} 为关于${inner(about)}的通话提议了新时间`],
   ["call_cancelled", /^(.+) withdrew the invite to a call about (.+)$/, (who, about) => `${who} 撤回了关于${inner(about)}的通话邀请`],
   ["call_cancelled", /^(.+) cancelled the call about (.+)$/, (who, about) => `${who} 取消了关于${inner(about)}的通话`],
+  ["call_cancelled", /^(.+) ended the call about (.+)$/, (who, about) => `${who} 结束了关于${inner(about)}的通话`],
+  ["call_started", /^(.+) started a call about (.+)$/, (who, about) => `${who} 发起了关于${inner(about)}的通话`],
 ];
 
 /**

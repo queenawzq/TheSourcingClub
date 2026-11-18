@@ -4,11 +4,12 @@
  * `MessagesScreen` is imported from src/prototype/main.jsx and mounted here
  * with live threads behind it. This file is the seam.
  *
- * Calls are live: "Schedule call" opens the designed dialog, and the
- * conversation's calls are the designed cards in the "Scheduled call" panel
- * (see live-calls.js). Two things the design draws still have nothing behind
- * them, presence and "usually replies in 2h", and an instant "Live video
- * chat" needs presence, so all three stay absent here; the prototype keeps
+ * Calls are live: "Schedule call" opens the designed dialog, "Live video
+ * chat" starts a call now (it rings the other company for 15 minutes; the
+ * design's video panel asks first), and the conversation's calls are the
+ * designed cards in the "Scheduled call" panel (see live-calls.js). Two
+ * things the design draws still have nothing behind them, presence and
+ * "usually replies in 2h", so both stay absent here; the prototype keeps
  * them.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -16,11 +17,11 @@ import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
-import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
-import { callsForPanel, panelCard } from "./live-calls.js";
+import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, nextRescreenAt, openOrderThread, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { acceptCall, browserTimeZone, callState, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, startCallNow, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { callsForPanel, panelCard, withConversationEvents } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
-import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
+import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openCallWindowFor, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 import MessageGuidelinesDialog from "./MessageGuidelinesDialog.jsx";
@@ -40,20 +41,14 @@ const initialsOf = (name) =>
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
 
-/** After this long still being checked, a message says so even before the screen has been asked again. */
-const SAY_CHECKING_AFTER_MS = 15 * 1000;
-
 const BLOCKED_OUTSIDE = "TSC doesn't allow arranging to talk or pay outside TSC. Repeated attempts may restrict your account. See the";
 
 /**
  * What the sender is told about a message that has not reached the other side.
- * Nothing in the first seconds of being checked: that is how long a check
- * takes, and saying so on every message would make every message look
- * suspect. Once the screen has answered without a verdict, or it has been a
- * while, it says so: a message that looks sent and never arrives is the worst
- * of both.
+ * A message still being checked shows as sent: the page keeps asking the
+ * screen in the background, and it is delivered once it passes.
  */
-function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
+function deliveryStatus(message, { onGuidelines } = {}) {
   if (message.failed) {
     return {
       kind: "rejected",
@@ -76,18 +71,24 @@ function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
       ),
     };
   }
-  if (message.delivery === "checking" && !String(message.id).startsWith("outgoing-")
-      && (unscreened || Date.now() - Date.parse(message.created_at) > SAY_CHECKING_AFTER_MS)) {
-    return {
-      kind: "checking",
-      label: "Checking before it is sent",
-      note: "It has not reached them yet. This page keeps trying.",
-    };
-  }
   if (message.delivery === "rejected") {
     return { kind: "rejected", label: "Not delivered", note: message.review_note || null };
   }
   return null;
+}
+
+/**
+ * What a call function's refusal says on the card. The database's words for
+ * a call started now are put in ours; anything else is said as before.
+ */
+function callFailure(failure, otherwise = null) {
+  const text = String(failure?.message ?? "");
+  if (/already a call/.test(text)) return "There's already a call in this conversation.";
+  if (/has ended/.test(text)) return "This call has ended.";
+  // A person in both companies answering the call they started themselves.
+  if (/other side answers/.test(text)) return "You started this call, so you can't answer it.";
+  if (otherwise && !failure?.noAnswer) return otherwise;
+  return text;
 }
 
 /**
@@ -172,6 +173,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
   const [confirmCall, setConfirmCall] = useState(null);
+  // "Live video chat" pressed: the design's video panel asks before the call
+  // starts ({ threadId, busy, error }).
+  const [instantConfirm, setInstantConfirm] = useState(null);
   // The call open in its own window (call-window.js), or null. The designed
   // video panel says so in that call's conversation.
   const [video, setVideo] = useState(() => currentCallWindow());
@@ -268,25 +272,27 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   }, [reload, org.id]);
 
   /**
-   * Your own messages the screen has not decided: ask it again, on a back-off,
-   * for as long as the page is open. Only asking once, on the send, left a
+   * Your own messages the screen has not decided: ask it again, on a back-off
+   * and then once a minute, for as long as the page is open. Only asking once, on the send, left a
    * message whose screen failed in `checking` for good while its sender
-   * looked at it as sent. `unscreened` is the ones the screen was asked about
-   * and did not decide, which then say so.
+   * looked at it as sent.
    */
-  const [unscreened, setUnscreened] = useState(() => new Set());
   const attempts = useRef({});
   const [screenRound, setScreenRound] = useState(0);
   useEffect(() => {
+    // Every one of your messages still being checked, for as long as the
+    // page is open: quickly at first, then once a minute (nextRescreenAt).
     const waiting = Object.values(messagesByThread)
-      .flatMap((rows) => awaitingScreen(rows, user.id))
-      .filter((message) => (attempts.current[message.id] ?? 0) < RESCREEN_AFTER_MS.length);
+      .flatMap((rows) => awaitingScreen(rows, user.id));
     if (!waiting.length) return undefined;
-    const dueAt = (message) => Date.parse(message.created_at) + RESCREEN_AFTER_MS[attempts.current[message.id] ?? 0];
+    const dueAt = (message) => {
+      const asked = attempts.current[message.id];
+      return nextRescreenAt(message.created_at, asked?.n ?? 0, asked?.at ?? null);
+    };
     const timer = setTimeout(async () => {
-      const due = waiting.filter((message) => dueAt(message) <= Date.now());
-      for (const message of due) attempts.current[message.id] = (attempts.current[message.id] ?? 0) + 1;
-      setUnscreened((current) => new Set([...current, ...due.map((message) => message.id)]));
+      const now = Date.now();
+      const due = waiting.filter((message) => dueAt(message) <= now);
+      for (const message of due) attempts.current[message.id] = { n: (attempts.current[message.id]?.n ?? 0) + 1, at: now };
       if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
         for (const threadId of new Set(due.map((message) => message.thread_id))) {
           const rows = await listMessages(threadId, org.id).catch(() => null);
@@ -405,8 +411,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         dropDraft();
       },
     })
-      .then(({ message, failed, delivery }) => {
-        if (delivery === "checking") setUnscreened((current) => new Set([...current, message.id]));
+      .then(({ message, failed }) => {
         setUploading((current) => {
           const next = { ...current };
           delete next[message.id];
@@ -431,9 +436,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       await change();
       await reloadCalls();
     } catch (failure) {
-      setCallNotes((current) => ({ ...current, [call.id]: { text: failure.message, error: true } }));
+      setCallNotes((current) => ({ ...current, [call.id]: { text: callFailure(failure), error: true } }));
     } finally {
       setCallBusy(null);
+    }
+  }
+
+  // A call started now: the window opens in this click (empty until the call
+  // exists), or on a phone the call takes the page once it is started.
+  async function startInstantCall() {
+    const { threadId: target } = instantConfirm;
+    setInstantConfirm((current) => current && { ...current, busy: true, error: null });
+    try {
+      if (joinsInPage()) {
+        const call = await startCallNow(target, ownZone);
+        window.location.assign(callPageUrl(call));
+        return;
+      }
+      await openCallWindowFor(() => startCallNow(target, ownZone));
+      setInstantConfirm(null);
+      await reloadCalls();
+    } catch (failure) {
+      setInstantConfirm((current) => current && { ...current, busy: false, error: callFailure(failure, "The call couldn't be started. Try again.") });
     }
   }
 
@@ -446,18 +470,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     }),
     accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
     // Each closes the call for both sides and cannot be undone: asked first.
-    decline: (call) => setConfirmCall({ call, mode: "decline" }),
+    // A call started now is answered at once, as a phone call is: declining
+    // it, or ending your own while it rings, asks nothing.
+    decline: (call) => (call.instant
+      ? changeCall(call, () => declineCall(call.id))
+      : setConfirmCall({ call, mode: "decline" })),
+    // Ended, the call's window closes by itself (the effect below).
+    end: (call) => changeCall(call, () => cancelCall(call.id)),
+    callAgain: (call) => setInstantConfirm({ threadId: call.thread_id, busy: false, error: null }),
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     // In the click: a browser blocks a window opened any later. Phones and
     // tablets join on the page itself, which comes back here on leaving.
+    // Joining a call started now that rings for us answers it (call.html
+    // accepts it first).
     join: (call) => {
       setCallNotes((current) => ({ ...current, [call.id]: null }));
+      const answer = callState(call, org.id, serverNow()) === "ringing";
       if (joinsInPage()) {
-        window.location.assign(callPageUrl(call));
+        window.location.assign(callPageUrl(call, { answer }));
         return;
       }
-      openCallWindow(call);
+      openCallWindow(call, { answer });
     },
   };
 
@@ -478,16 +512,43 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     joinOnOpen.current = null;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     const call = calls.find((candidate) => candidate.id === id);
-    if (call && canJoinCall(call, serverNow())) callHandlers.join(call);
+    if (call && (canJoinCall(call, serverNow(), org.id) || callState(call, org.id, serverNow()) === "ringing")) callHandlers.join(call);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 
   // The call's window joining, leaving or closing: the panel follows it, and
   // the calls are read again so the card says where the call stands.
+  // The caller closing the window of a call that still rings ends it, so
+  // nobody answers into an empty call (the database refuses this once the
+  // call was answered, declined or missed).
+  const videoRef = useRef(video);
   useEffect(() => watchCallWindow((next) => {
+    const left = videoRef.current;
+    videoRef.current = next;
     setVideo(next);
+    if (!next && left?.call.instant && left.call.proposer_org_id === org.id) {
+      cancelCall(left.call.id).catch(() => {}).finally(() => reloadCallsRef.current());
+      return;
+    }
     if (!next) reloadCallsRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+
+  // Call again / Call back on a card lower down: the panel asking first is at
+  // the top of the conversation, so it is brought into view.
+  const confirmingIn = instantConfirm?.threadId ?? null;
+  useEffect(() => {
+    if (!confirmingIn) return;
+    requestAnimationFrame(() => document.querySelector(".video-call-panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }, [confirmingIn]);
+
+  // A call started now that was declined, ended or missed: nobody is coming,
+  // so the caller's window leaves the meeting.
+  useEffect(() => {
+    if (!video?.call.instant) return;
+    const call = calls.find((candidate) => candidate.id === video.call.id);
+    if (call && ["declined", "cancelled", "missed"].includes(callState(call, org.id, now))) leaveCallWindow();
+  }, [video, calls, now, org.id]);
 
   async function submitSchedule({ startsAt, timeZone, title, agenda }) {
     setDialog((current) => ({ ...current, busy: true, error: null }));
@@ -580,7 +641,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
-          status: deliveryStatus(message, { unscreened: unscreened.has(message.id), onGuidelines: () => setGuidelinesOpen(true) }),
+          status: deliveryStatus(message, { onGuidelines: () => setGuidelinesOpen(true) }),
           ...readerTranslation(message, { own: mine }),
           attachments: files.length ? files : undefined,
         };
@@ -592,7 +653,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const callCards = {};
   for (const thread of threads) {
     const theirs = calls.filter((call) => call.thread_id === thread.id && !deletedCallCards.includes(call.id));
-    callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
+    callCards[thread.id] = withConversationEvents(callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
       now,
       orgId: org.id,
       ownZone,
@@ -600,8 +661,16 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       handlers: callHandlers,
       busyId: callBusy,
       notes: callNotes,
-    }));
+    })));
   }
+  const activeThreadRow = threads.find((thread) => thread.id === activeId);
+  const activeOther = activeThreadRow ? (isFactory ? activeThreadRow.brand_name : activeThreadRow.factory_name && vendorNames.text(activeThreadRow.factory_org_id, activeThreadRow.factory_name)) ?? "" : "";
+  // The call in the window, as it stands now: ringing for the other side
+  // while nobody has answered.
+  const videoCall = video ? calls.find((call) => call.id === video.call.id) ?? video.call : null;
+  const videoCalling = videoCall ? callState(videoCall, org.id, now) === "calling" : false;
+  const ringingHere = calls.some((call) => call.thread_id === activeId && !deletedCallCards.includes(call.id)
+    && callState(call, org.id, now) === "ringing");
   const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
   const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name && vendorNames.text(dialogThread.factory_org_id, dialogThread.factory_name)) ?? "" : "";
 
@@ -609,8 +678,18 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     <>
       <MessagesScreen
         calls={callCards}
-        video={video && video.call.thread_id === activeId ? {
-          title: video.call.title,
+        // Hidden while the other side's call rings for this company here: the
+        // card's Join call is the way in, and a second call would be refused.
+        instantCall={ringingHere ? undefined : { onOpen: () => activeId && setInstantConfirm({ threadId: activeId, busy: false, error: null }) }}
+        video={instantConfirm && instantConfirm.threadId === activeId ? {
+          title: `Ready to call ${activeOther}`,
+          text: instantConfirm.error ?? `${activeOther} will be notified to join.`,
+          actions: [
+            { label: "Start call", onClick: startInstantCall, disabled: instantConfirm.busy },
+            { label: "Cancel", onClick: () => setInstantConfirm(null), disabled: instantConfirm.busy },
+          ],
+        } : video && video.call.thread_id === activeId ? {
+          title: videoCalling ? `Calling ${activeOther}…` : video.call.title,
           text: video.inApp
             ? "You're in the call in the Zoom app."
             : video.blocked
@@ -619,7 +698,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
                 ? "You're in the call, in its own window."
                 : "The call is opening in its own window…",
           // A blocked window opens from a link: a click on a link is allowed.
-          openUrl: video.blocked ? callPageUrl(video.call, { popup: true }) : null,
+          openUrl: video.blocked ? callPageUrl(video.call, { popup: true, answer: video.answer }) : null,
           onOpenLink: openedFromLink,
           onShow: video.blocked || video.inApp ? null : showCallWindow,
           // The Zoom app instead: leave the window first, or the person is in
@@ -628,7 +707,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           joinUrl: video.joinUrl,
           onOpenApp: openedInZoomApp,
           failed: Boolean(video.inApp),
-          onLeave: leaveCallWindow,
+          // While it rings for the other side, the caller's End call ends it.
+          leaveLabel: videoCalling ? "End call" : undefined,
+          onLeave: videoCalling ? () => callHandlers.end(videoCall) : leaveCallWindow,
         } : null}
         scheduling={{
           open: Boolean(dialog),

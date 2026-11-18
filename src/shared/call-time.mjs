@@ -123,20 +123,38 @@ export function sameClock(date, zone, otherZone) {
 export const JOIN_OPENS_MINUTES = 10;
 export const JOIN_CLOSES_AFTER_END_MINUTES = 30;
 
+/** How long a call started now waits for the other side (instant_call_rings_until). */
+export const INSTANT_RING_MINUTES = 15;
+
 export const startOf = (call) => new Date(call.starts_at);
 export const endOf = (call) => new Date(startOf(call).getTime() + call.duration_minutes * 60000);
+export const ringsUntil = (call) => startOf(call).getTime() + INSTANT_RING_MINUTES * 60000;
 
-/** Confirmed participants may join at any time before the call expires. */
-export function canJoinCall(call, now = Date.now()) {
+/**
+ * Confirmed participants may join at any time before the call expires. A
+ * call started now may be joined by its caller (`orgId`) while it rings; the
+ * other side joins by answering it.
+ */
+export function canJoinCall(call, now = Date.now(), orgId = null) {
+  if (call?.instant && call.status === "proposed") {
+    return Boolean(orgId) && call.proposer_org_id === orgId && now < ringsUntil(call);
+  }
   return call?.status === "accepted" && now < endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000;
 }
 
 /**
  * Where a call stands for this company: "invite" (theirs, waiting on us),
  * "waiting" (ours, waiting on them), "upcoming", "live", or "past" — plus the
- * closed states as they are.
+ * closed states as they are. A call started now is "calling", "ringing" or
+ * "missed" until it is answered.
  */
 export function callState(call, orgId, now = Date.now()) {
+  // A call started now: "calling" (ours) or "ringing" (theirs) for 15
+  // minutes, then "missed".
+  if (call.status === "proposed" && call.instant) {
+    if (now >= ringsUntil(call)) return "missed";
+    return call.proposer_org_id === orgId ? "calling" : "ringing";
+  }
   if (call.status === "proposed") {
     if (startOf(call).getTime() <= now) return "expired";
     return call.proposer_org_id === orgId ? "waiting" : "invite";
@@ -164,7 +182,7 @@ export function nextCallChange(calls, now = Date.now()) {
   for (const call of calls) {
     const start = startOf(call).getTime();
     const moments = call.status === "proposed"
-      ? [start]
+      ? [call.instant ? ringsUntil(call) : start]
       : call.status === "accepted"
         ? [start - JOIN_OPENS_MINUTES * 60000, start, endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000]
         : [];
