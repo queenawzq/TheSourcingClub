@@ -187,7 +187,9 @@ function read(text, now) {
 
   const refuse = (problem) => ({ ...empty, units, problem });
   if (!points.length || /\d/.test(leftover)) return refuse({ code: "format" });
-  if (leftover) return refuse({ code: "words" });
+  // Words beside the dates are checked last: a window that is wrong whatever
+  // the words (past, backwards, an impossible day) keeps its own sentence, so
+  // adding "approx" never sends it to the model to be guessed forward.
   if (points.length > 2 || unitMatches.length > 1) return refuse({ code: "many" });
   const impossible = points.find((point) => point.day != null && !isReal(point.year, point.month, point.day));
   if (impossible) return refuse({ code: "invalid", piece: impossible.text });
@@ -232,6 +234,7 @@ function read(text, now) {
   if ((endDay ?? startDay) < todayOf(now)) {
     return { start: startDay, end: endDay, units, problem: { code: "past", yearWritten: startYearWritten || endYearWritten } };
   }
+  if (leftover) return refuse({ code: "words" });
   return { start: startDay, end: endDay, units, problem: null };
 }
 
@@ -305,6 +308,10 @@ export function acceptModelWindow(answer, now = new Date()) {
   const typed = end && end !== start ? `${start} - ${end}` : start;
   const reading = read(typed, now);
   if (reading.problem || reading.start !== start || reading.end !== (end && end !== start ? end : null)) return null;
+  // A guess may not start more than a year out ("2099-12-11" is a wrong
+  // year, not a window); a vendor can still type a later one itself.
+  const yearOn = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+  if (reading.start > calendarDay({ year: yearOn.getFullYear(), month: yearOn.getMonth(), day: yearOn.getDate() })) return null;
   return { start: reading.start, end: reading.end };
 }
 

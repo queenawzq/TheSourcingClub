@@ -177,6 +177,11 @@ async function withWindowReading(values) {
     capacity_window_units: windowUnits(typed),
   });
   if (capacityWindowProblem(reading)) return values;
+  // Typed over while the reading was on its way: what is there now wins, and
+  // is read by the form's own rules like any other text.
+  const field = document.querySelector('[data-quote-field="capacityWindow"]');
+  const now = field ? field.textContent.trim() : typed;
+  if (now !== typed) return { ...values, capacityWindow: now };
   showWindowReading(reading);
   return { ...values, capacityWindow: reading };
 }
@@ -380,7 +385,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
    * is charged. Submitting straight from the form skipped both.
    */
   async function saveAndReview(typedValues) {
-    if (busy || !quote) return;
+    // Not while Save draft is still saving (or still waiting on a reading).
+    if (busy || !quote || draftState === "saving") return;
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
     setBusy(true);
     const values = await withWindowReading(typedValues);

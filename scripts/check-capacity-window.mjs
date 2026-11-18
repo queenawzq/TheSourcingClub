@@ -128,7 +128,15 @@ const REFUSED = [
   ["12-1 - 1-15", "format"],
   ["138 0013 8000", "format"],
   ["Dec 1 - Jan 15 to be confirmed", "words"],
-  ["Aug 12-30 · partner confirmed", "words"],
+  ["Aug 12-30 · partner confirmed", "past"],
+  ["Dec 12-30 · partner confirmed", "words"],
+  // Extra words never hide what is wrong with the dates themselves
+  ["Jan 5 - Mar 1 tentative", "past"],
+  ["Feb 30 - Mar 15 approx", "invalid"],
+  ["Dec 1 2026 - Jan 15 2026 approx", "order"],
+  ["12.1.2026 - 15.1.2027 approx", "long"],
+  ["Dec 1, Dec 5, Jan 15 maybe", "many"],
+  ["late Dec · 300 units · 400 units", "many"],
   ["early December", "words"],
   ["the market is open in Dec", "words"],
   ["Dec 1, Dec 15 and Jan 15", "many"],
@@ -220,6 +228,9 @@ const MODEL_ANSWERS = [
   [{ start: "2026-02-30", end: null }, null], // not a day
   [{ start: "Dec 1", end: "Jan 15" }, null], // not the shape asked for
   [{ start: "2026-12-1", end: null }, null],
+  [{ start: "2099-12-11", end: "2099-12-20" }, null], // a wrong year, however valid
+  [{ start: "2027-11-18", end: "2027-11-30" }, { start: "2027-11-18", end: "2027-11-30" }], // a year out, the edge
+  [{ start: "2027-11-19", end: "2027-11-30" }, null],
   [{ start: null, end: null }, null],
   [{ start: null, end: "2026-12-20" }, null],
   [null, null],
@@ -234,6 +245,7 @@ for (const [typed, asks] of [
   ["mid December", true], ["12月中旬", true], ["TBC", true], ["Dec 1 - Jan 15 partner confirmed", true],
   ["Feb 30 - Mar 15", false], ["Jan 5 - Mar 1", false], ["12.1.2026 - 15.1.2027", false],
   ["Dec 1 2026 - Jan 15 2026", false], ["Dec 1, Dec 15 and Jan 15", false], ["Dec 1 - Jan 15", false],
+  ["Jan 5 - Mar 1 tentative", false], ["Feb 30 - Mar 15 approx", false], ["12.1.2026 - 15.1.2027 approx", false],
 ]) {
   if (windowNeedsReading(capacityWindowProblem(typed, NOW)) !== asks) fail(`${JSON.stringify(typed)} ${asks ? "should" : "should not"} be sent to the model`);
 }
@@ -246,8 +258,18 @@ if (!process.env.CAPACITY_WINDOW_ZONE_RUN) await checkRoute();
 
 async function checkRoute() {
   const env = { ...process.env };
-  Object.assign(process.env, { VITE_SUPABASE_URL: "http://db.test", VITE_SUPABASE_ANON_KEY: "anon-test", OPENROUTER_API_KEY: "sk-or-test", CAPACITY_WINDOW_MODEL_TIMEOUT_MS: "300" });
-  delete process.env.VERCEL_ENV;
+  // Every name supabaseServerEnv() reads points at the stub: Vercel sets
+  // SUPABASE_URL, which wins over the VITE_ names, and the build then reached
+  // the real project and failed.
+  for (const key of ["VERCEL_ENV", "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) delete process.env[key];
+  Object.assign(process.env, {
+    SUPABASE_URL: "http://db.test",
+    SUPABASE_ANON_KEY: "anon-test",
+    VITE_SUPABASE_URL: "http://db.test",
+    VITE_SUPABASE_ANON_KEY: "anon-test",
+    OPENROUTER_API_KEY: "sk-or-test",
+    CAPACITY_WINDOW_MODEL_TIMEOUT_MS: "300",
+  });
   const realFetch = globalThis.fetch;
   let membership = [{ orgs: { type: "factory" } }];
   let model = () => ({ start: "2026-12-11", end: "2026-12-20" });
