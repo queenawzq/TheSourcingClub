@@ -63,6 +63,13 @@ const KEPT = [
   ["12/1 - 1/15", "2026-12-01", "2027-01-15", null],
   ["12/01/2026-01/15/2027", "2026-12-01", "2027-01-15", null],
   ["15/12 - 20/1", "2026-12-15", "2027-01-20", null],
+  // One order for the whole window, never date by date
+  ["12.1-12.31", "2026-12-01", "2026-12-31", null],
+  ["1/12-31/12", "2026-12-01", "2026-12-31", null],
+  ["11.20-12.10", "2026-11-20", "2026-12-10", null],
+  ["1/12 - 15/1", "2026-12-01", "2027-01-15", null],
+  ["1/12/2026 - 15/1/2027", "2026-12-01", "2027-01-15", null],
+  ["12/20/2026 - 1/5/2027", "2026-12-20", "2027-01-05", null],
   // Year first, any separator
   ["2026-12-01 to 2027-01-15", "2026-12-01", "2027-01-15", null],
   ["2026/12/01 - 2027/01/15", "2026-12-01", "2027-01-15", null],
@@ -83,6 +90,7 @@ const KEPT = [
   ["Dec 1 - Jan 15, 420 pcs", "2026-12-01", "2027-01-15", 420],
   ["1.12-15.1 1,200 pieces", "2026-12-01", "2027-01-15", 1200],
   ["Dec 2026 · 500 units", "2026-12-01", "2026-12-31", 500],
+  ["Dec 1 - Dec 15 · 0 units", "2026-12-01", "2026-12-15", 0],
   // Chinese keyboards
   ["12月1日至1月15日", "2026-12-01", "2027-01-15", null],
   ["2026年12月1日-2027年1月15日 300件", "2026-12-01", "2027-01-15", 300],
@@ -123,6 +131,9 @@ const REFUSED = [
   ["2026-13-01 - 2027-01-15", "invalid"],
   ["Dec 32", "invalid"],
   ["Dec 1 2020 - Jan 15 2021", "past"],
+  ["12-1-2026", "past"],
+  ["Dec 1 2026 - Jan 15 2026", "order"],
+  ["15.1.2027 - 1.12.2026", "order"],
   ["Jan 5 - Mar 1", "past"],
   ["8月12日至30日", "past"],
   ["Q5 2027", "format"],
@@ -156,12 +167,20 @@ for (const [typed, reason] of REFUSED) {
   const problem = capacityWindowProblem(typed, NOW);
   if (problem?.code !== reason) fail(`${JSON.stringify(typed)} gave ${problem?.code ?? "no refusal"}, not ${reason}`);
 }
+// A window already over is not stored: the form says it was not kept.
+if (parseCapacityWindow("Jan 5 - Mar 1", NOW).capacity_window_start !== null) fail("a past window is not stored");
+// Whether a year was typed decides the advice for a past window.
+if (capacityWindowProblem("Jan 5 - Mar 1", NOW)?.yearWritten !== false) fail("a past window with no year says so");
+if (capacityWindowProblem("12-1-2026", NOW)?.yearWritten !== true) fail("a past window with a year says so");
 // The refused piece is named, so the sentence says what to fix.
 if (capacityWindowProblem("Feb 30 - Mar 15", NOW)?.piece !== "Feb 30") fail("an impossible day names the piece typed");
 
 /** [stored, shown] */
 const SHOWN = [
-  [{ capacity_window_start: "2026-12-01", capacity_window_end: "2027-01-15" }, "Dec 1 - Jan 15, 2027"],
+  [{ capacity_window_start: "2026-12-01", capacity_window_end: "2027-01-15" }, "Dec 1, 2026 - Jan 15, 2027"],
+  [{ capacity_window_start: "2026-01-12", capacity_window_end: "2027-01-15" }, "Jan 12, 2026 - Jan 15, 2027"],
+  [{ capacity_window_start: "2027-01-12", capacity_window_end: "2027-01-15" }, "Jan 12, 2027 - Jan 15, 2027"],
+  [{ capacity_window_start: "2026-12-01", capacity_window_end: "2026-12-15", capacity_window_units: 0 }, "Dec 1 - Dec 15 · 0 units"],
   [{ capacity_window_start: "2026-12-01", capacity_window_end: "2026-12-31" }, "Dec 2026"],
   [{ capacity_window_start: "2026-12-01", capacity_window_end: "2027-01-31" }, "Dec 2026 - Jan 2027"],
   [{ capacity_window_start: "2026-12-01", capacity_window_end: "2026-12-15", capacity_window_units: 300 }, "Dec 1 - Dec 15 · 300 units"],

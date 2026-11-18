@@ -119,9 +119,17 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
 
   async function send() {
     // The form refuses this, but an older draft can still arrive here without one.
+    const field = profile?.vendor_kind === "trading_company" ? "partner production window" : "open capacity window";
     if (!quote.capacity_window_start) {
-      const field = profile?.vendor_kind === "trading_company" ? "partner production window" : "open capacity window";
       setError(new Error(`Go back and add the ${field} before sending, like “Dec 1 - Jan 15”.`));
+      return;
+    }
+    // An older draft can also carry a window that has since passed. Both are
+    // calendar days, compared as the stored YYYY-MM-DD.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    if ((quote.capacity_window_end ?? quote.capacity_window_start) < today) {
+      setError(new Error(`Go back and update the ${field} before sending; those dates have passed.`));
       return;
     }
     if (busy) return;

@@ -87,16 +87,25 @@ const isReal = (year, month, day) => {
 };
 const lastDay = (year, month) => new Date(year, month + 1, 0).getDate();
 
+/** A number pair as a day, either way round. */
+const asDay = ({ raw: [a, b] }, dayFirst) => (dayFirst ? { day: a, month: b - 1 } : { day: b, month: a - 1 });
+
 /**
- * Day then month, or month then day, whichever the separator prefers; the
- * other order only when the preferred one is not a date and the other is.
+ * One order for every number pair in the window: the one each separator
+ * prefers (dots and dashes day first, slashes month first), or the other one
+ * when only that makes every date real. Deciding date by date read "12.1-12.31"
+ * (Dec 1-31 written month first) as Jan 12 - Dec 31.
  */
-function numericDay(first, second, separator, year, swap = true) {
-  const [a, b] = [Number(first), Number(second)];
-  const [day, month] = separator === "/" ? [b, a] : [a, b];
-  if (isReal(year, month - 1, day)) return { day, month: month - 1 };
-  if (swap && isReal(year, day - 1, month)) return { day: month, month: day - 1 };
-  return { day, month: month - 1 };
+function orient(points) {
+  const pairs = points.filter((point) => point.raw);
+  const fits = (dayFirst) => pairs.every((point) => {
+    const { day, month } = asDay(point, dayFirst(point));
+    return isReal(point.year, month, day);
+  });
+  const preferred = (point) => point.dayFirst;
+  const other = (point) => !point.dayFirst;
+  const choice = fits(preferred) ? preferred : fits(other) ? other : preferred;
+  return points.map((point) => (point.raw ? { ...point, ...asDay(point, choice(point)) } : point));
 }
 
 /**
@@ -117,16 +126,16 @@ function readDates(said) {
     switch (PATTERNS[index].kind) {
       case "ymd": {
         const year = Number(g[0]);
-        points.push({ year, ...numericDay(g[3], g[2], ".", year, false), text });
+        points.push({ year, month: Number(g[2]) - 1, day: Number(g[3]), text });
         break;
       }
       case "numeric-year": {
         const year = fullYear(g[3]);
-        points.push({ year, ...numericDay(g[0], g[2], g[1], year), text });
+        points.push({ year, raw: [Number(g[0]), Number(g[2])], dayFirst: g[1] !== "/", text });
         break;
       }
       case "numeric":
-        points.push({ year: null, ...numericDay(g[0], g[2], g[1], null), text });
+        points.push({ year: null, raw: [Number(g[0]), Number(g[2])], dayFirst: g[1] !== "/", text });
         break;
       case "month-day": {
         const year = fullYear(g[4]);
@@ -152,7 +161,7 @@ function readDates(said) {
         points.push({ year: fullYear(g[1]), month: monthIndex(g[0]), day: null, text });
     }
   }
-  return points;
+  return orient(points);
 }
 
 const calendarDay = ({ year, month, day }) =>
@@ -190,8 +199,9 @@ function read(text, now) {
   const endYearWritten = end ? end.year != null : false;
 
   // A missing year is the year of the other date, or this year. An end that
-  // would fall before its start is in the next year ("Dec 20 - Jan 15"); two
-  // dates both given a year are put in order.
+  // would fall before its start is in the next year ("Dec 20 - Jan 15"). Two
+  // dates both given a year and written backwards are refused, not reordered:
+  // "Dec 1 2026 - Jan 15 2026" is a mistyped year, not an 11-month window.
   if (start.year == null) start = { ...start, year: end?.year ?? now.getFullYear() };
   if (end && end.year == null) end = { ...end, year: start.year };
   const first = (point) => ({ ...point, day: point.day ?? 1 });
@@ -200,7 +210,7 @@ function read(text, now) {
     const before = calendarDay(last(end)) < calendarDay(first(start));
     if (before && !endYearWritten) end = { ...end, year: end.year + 1 };
     else if (before && !startYearWritten) start = { ...start, year: start.year - 1 };
-    else if (before) [start, end] = [end, start];
+    else if (before) return refuse({ code: "order" });
   }
   // Feb 29 is real only in a leap year, which is known only now.
   for (const point of [start, end].filter(Boolean)) {
@@ -209,7 +219,9 @@ function read(text, now) {
 
   const startDay = calendarDay(first(start));
   const endDay = end ? calendarDay(last(end)) : null;
-  if ((endDay ?? startDay) < todayOf(now)) return { start: startDay, end: endDay, units, problem: { code: "past" } };
+  if ((endDay ?? startDay) < todayOf(now)) {
+    return { start: startDay, end: endDay, units, problem: { code: "past", yearWritten: startYearWritten || endYearWritten } };
+  }
   return { start: startDay, end: endDay, units, problem: null };
 }
 
@@ -219,7 +231,8 @@ function read(text, now) {
  */
 export function parseCapacityWindow(text, now = new Date()) {
   const { start, end, units, problem } = read(text, now);
-  const kept = !problem || problem.code === "past";
+  // A window already over is not kept either: the form says so when it saves.
+  const kept = !problem;
   return {
     capacity_window_start: kept ? start : null,
     capacity_window_end: kept ? end : null,
@@ -229,7 +242,7 @@ export function parseCapacityWindow(text, now = new Date()) {
 
 /**
  * Why this window cannot be kept as typed, or null when it can:
- * `{ code: "format" | "words" | "many" | "invalid" | "past", piece? }`.
+ * `{ code: "format" | "words" | "many" | "invalid" | "order" | "past", piece?, yearWritten? }`.
  * "words": text besides dates and units, which would be dropped. "past": with
  * no year written, "Jan 5 - Mar 1" in November means this year's, which is not
  * what the vendor meant, so it is refused rather than guessed forward.
@@ -240,21 +253,25 @@ export function capacityWindowProblem(text, now = new Date()) {
 
 /**
  * The window read back. Whole months read as months with their year ("Dec
- * 2026", "Dec 2026 - Jan 2027"); days as "Dec 1 - Jan 15", a day outside this
- * year carrying its year, so saving the form again reads back the same days.
+ * 2026", "Dec 2026 - Jan 2027"); days as "Dec 1 - Dec 15", each day carrying
+ * its year when it is not this year or the window crosses a year ("Dec 1, 2026
+ * - Jan 15, 2027"), so saving the form again reads back the same days.
  */
 export function formatCapacityWindow(quote, now = new Date()) {
   if (!quote) return "";
   const start = dateFrom(quote.capacity_window_start);
   const end = dateFrom(quote.capacity_window_end);
-  const units = quote.capacity_window_units ? `${quote.capacity_window_units} units` : "";
+  const units = quote.capacity_window_units != null ? `${quote.capacity_window_units} units` : "";
   const wholeMonths = start && end && start.getDate() === 1
     && end.getDate() === lastDay(end.getFullYear(), end.getMonth());
+  const crossesYear = Boolean(start && end && start.getFullYear() !== end.getFullYear());
   const monthOf = (at) => `${MONTH_NAMES[at.getMonth()]} ${at.getFullYear()}`;
   const day = (at) => at.toLocaleDateString("en", {
     month: "short",
     day: "numeric",
-    ...(at.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+    // Both ends carry their year when the window crosses one: "Jan 12 - Jan
+    // 15, 2027" read back as a three-day window, and saved again it was one.
+    ...(at.getFullYear() === now.getFullYear() && !crossesYear ? {} : { year: "numeric" }),
   });
   const span = wholeMonths
     ? [...new Set([monthOf(start), monthOf(end)])].join(" - ")

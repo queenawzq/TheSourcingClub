@@ -128,7 +128,11 @@ function windowRefusal(values, companyType) {
   const field = companyType === "trading" ? "partner production window" : "open capacity window";
   switch (problem.code) {
     case "past":
-      return `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
+      return problem.yearWritten
+        ? `${field} (those dates have passed; check the dates, like ${WINDOW_EXAMPLE})`
+        : `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
+    case "order":
+      return `${field} (the first date is after the last; check the dates, like ${WINDOW_EXAMPLE})`;
     case "invalid":
       return `${field} (“${problem.piece}” is not a date; check the day and month, like ${WINDOW_EXAMPLE})`;
     case "words":
