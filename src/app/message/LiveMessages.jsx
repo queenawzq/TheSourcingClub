@@ -83,7 +83,7 @@ function deliveryStatus(message, { onGuidelines } = {}) {
  */
 function callFailure(failure, otherwise = null) {
   const text = String(failure?.message ?? "");
-  if (/already a call/.test(text)) return "There's already a call waiting in this conversation.";
+  if (/already a call/.test(text)) return "There's already a call in this conversation.";
   if (/has ended/.test(text)) return "This call has ended.";
   if (otherwise && !failure?.noAnswer) return otherwise;
   return text;
@@ -468,10 +468,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     decline: (call) => (call.instant
       ? changeCall(call, () => declineCall(call.id))
       : setConfirmCall({ call, mode: "decline" })),
-    end: (call) => {
-      if (currentCallWindow()?.call.id === call.id) leaveCallWindow();
-      changeCall(call, () => cancelCall(call.id));
-    },
+    // Ended, the call's window closes by itself (the effect below).
+    end: (call) => changeCall(call, () => cancelCall(call.id)),
     callAgain: (call) => setInstantConfirm({ threadId: call.thread_id, busy: false, error: null }),
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
@@ -513,10 +511,29 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   // The call's window joining, leaving or closing: the panel follows it, and
   // the calls are read again so the card says where the call stands.
+  // The caller closing the window of a call that still rings ends it, so
+  // nobody answers into an empty call (the database refuses this once the
+  // call was answered, declined or missed).
+  const videoRef = useRef(video);
   useEffect(() => watchCallWindow((next) => {
+    const left = videoRef.current;
+    videoRef.current = next;
     setVideo(next);
+    if (!next && left?.call.instant && left.call.proposer_org_id === org.id) {
+      cancelCall(left.call.id).catch(() => {}).finally(() => reloadCallsRef.current());
+      return;
+    }
     if (!next) reloadCallsRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+
+  // Call again / Call back on a card lower down: the panel asking first is at
+  // the top of the conversation, so it is brought into view.
+  const confirmingIn = instantConfirm?.threadId ?? null;
+  useEffect(() => {
+    if (!confirmingIn) return;
+    requestAnimationFrame(() => document.querySelector(".video-call-panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }, [confirmingIn]);
 
   // A call started now that was declined, ended or missed: nobody is coming,
   // so the caller's window leaves the meeting.

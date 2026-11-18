@@ -44,3 +44,19 @@ export function useVendorTranslations(cards, orgId) {
     };
   });
 }
+
+/**
+ * A card with its translated words put into the fields, for the designed
+ * cards that draw the fields as given and have no "See original" of their
+ * own (Saved, the directory list). The marketplace card swaps them itself.
+ */
+export function inEnglish(card) {
+  const english = (value) => card.translations?.[value] ?? value;
+  return {
+    ...card,
+    location: english(card.location),
+    notes: (card.notes ?? []).map(english),
+    insight: (card.insight ?? []).map(english),
+    products: (card.products ?? []).map((product) => ({ ...product, name: english(product.name) })),
+  };
+}

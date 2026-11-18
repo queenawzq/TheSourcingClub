@@ -18,7 +18,7 @@
  * says so, and closes itself on leaving: Zoom sends it to `left=1`.
  */
 import "./call.css";
-import { supabase, isConfigured } from "../lib/supabase.js";
+import { supabase, isConfigured, kickNotificationEmails } from "../lib/supabase.js";
 import { acceptCall, joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
 import { callWindowChannel } from "../app/message/call-window.js";
 
@@ -124,6 +124,10 @@ async function start() {
     show("This call can't be opened from this link.");
     return;
   }
+  // On a phone the conversation hands over to this page right after starting
+  // a call, before its own email send runs: send the other side's notice
+  // from here, while the call still rings.
+  kickNotificationEmails();
   // Joining a call started now is answering it: accepted here, so the window
   // could open in the click. Already accepted (a teammate, or a second
   // press) is fine.

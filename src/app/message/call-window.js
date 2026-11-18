@@ -97,19 +97,20 @@ function track(call, handle, { answer = false } = {}) {
 /**
  * For a call that does not exist yet (starting one now): the window opens in
  * the click, empty, and goes to the call once `start` gives it. A failed
- * start closes it again and throws.
+ * start closes it again and throws, leaving any call already open as it was.
  */
 export async function openCallWindowFor(start) {
   listen();
-  if (current) leaveCallWindow();
   const handle = window.open("", "tsc-call-new", "popup,width=1200,height=800");
   let call;
   try {
     call = await start();
   } catch (failure) {
+    // Refused (a call is already on, say): the call the person is in stays.
     try { handle?.close(); } catch { /* Already gone. */ }
     throw failure;
   }
+  if (current) leaveCallWindow();
   if (handle && !handle.closed) handle.location.href = callPageUrl(call, { popup: true });
   track(call, handle && !handle.closed ? handle : null);
   return call;

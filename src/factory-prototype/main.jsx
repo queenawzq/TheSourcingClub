@@ -1345,7 +1345,7 @@ export const factoryMainZhText = {
   "Missed call": "未接通话",
   "Call again": "再次呼叫",
   "Call back": "回拨",
-  "There's already a call waiting in this conversation.": "此对话中已有一个等待接听的通话。",
+  "There's already a call in this conversation.": "此对话中已有一个通话。",
   "This call has ended.": "此通话已结束。",
   "The call couldn't be started. Try again.": "无法发起通话，请重试。",
   "No answer before the time": "到时未回复",

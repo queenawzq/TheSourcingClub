@@ -61,7 +61,10 @@ export default async function handler(request, response) {
   if (now >= new Date(call.closes_at).getTime()) return json(response, 409, { error: "this call has ended" });
 
   if (!zoomConfigured()) {
-    return json(response, 503, { error: "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
+    // A call that only rings is not confirmed for anyone yet.
+    return json(response, 503, { error: ringing
+      ? "video isn't set up on this site yet, so the call can't be joined here"
+      : "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
   }
 
   // The meeting: reuse it, wait for the request creating it, or create it.

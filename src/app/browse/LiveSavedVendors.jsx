@@ -16,24 +16,9 @@ import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadVendorDirectory } from "../profile/load-profile.js";
 import { filterVendors, emptyFilters, vendorCard } from "./vendor-directory-view.js";
 import { useVendorNames } from "../vendor-names.jsx";
-import { useVendorTranslations } from "./useVendorTranslations.js";
+import { inEnglish, useVendorTranslations } from "./useVendorTranslations.js";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
-
-/**
- * The card's words in English where the server translated them, as Browse
- * shows them. The designed Saved card draws the fields as given (it has no
- * "See original"), so the translations are put into the fields here.
- */
-const inEnglish = (card) => {
-  const english = (value) => card.translations?.[value] ?? value;
-  return {
-    ...card,
-    location: english(card.location),
-    notes: (card.notes ?? []).map(english),
-    products: (card.products ?? []).map((product) => ({ ...product, name: english(product.name) })),
-  };
-};
 
 /** A saved vendor the brand can no longer read: its name only. */
 const unlistedCard = (row) => ({
