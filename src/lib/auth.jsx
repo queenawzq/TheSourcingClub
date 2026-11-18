@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
@@ -219,6 +219,15 @@ export function AuthProvider({ children }) {
         setStatus("error");
         return;
       }
+      // An emailed sign-in link that signed nobody in: already used (the code
+      // was typed, or a mail scanner opened it), expired, or opened in another
+      // browser. Say so on the sign-in screen rather than showing it bare.
+      if (!data.session && landedFromSignInLink) {
+        supabase.auth.initialize().then(({ error: linkError } = {}) => {
+          if (cancelled) return;
+          setError(authFailure(linkError && isNoAnswer(linkError) ? "network" : "sign_in_link_used"));
+        }, () => {});
+      }
       finishRestore(data.session);
     }).catch((sessionError) => {
       if (cancelled || restored) return;
@@ -316,9 +325,17 @@ export function AuthProvider({ children }) {
     // their id did change, which is why it survived a quick look.
   }, [session === undefined, session?.user?.id]);
 
+  // The company chosen last, including in this same render: React runs a
+  // child's effects before this provider's, so a review link selecting its
+  // company (ReviewLinkGate) happens before the check below sees the change.
+  const latestOrgChoice = useRef(activeOrgId);
+  latestOrgChoice.current = activeOrgId;
+
   // Keep the remembered org valid: drop it if the user lost access.
   useEffect(() => {
     if (!orgs.length) return;
+    // A choice made by a child this render (a review link) is not stale.
+    if (orgs.some((org) => org.id === latestOrgChoice.current)) return;
     const stillAMember = orgs.some((org) => org.id === activeOrgId);
     if (!stillAMember) {
       setActiveOrgId(orgs[0].id);
@@ -394,6 +411,7 @@ export function AuthProvider({ children }) {
       // `remember: false` is for a link that says which company it is about:
       // this page opens on it, and the next visit opens where the person left off.
       selectOrg(orgId, { remember = true } = {}) {
+        latestOrgChoice.current = orgId;
         setActiveOrgId(orgId);
         if (remember) activeOrgStore.choose(orgId);
       },
@@ -611,7 +629,11 @@ export function AuthProvider({ children }) {
             // for whatever address was typed would mint an org-less account
             // and bypass the one-step signup the design specifies.
             shouldCreateUser: createUser,
-            emailRedirectTo: window.location.origin + window.location.pathname,
+            // The vendor portal stays in the link, so a link that fails still
+            // opens the vendor sign-in. Production's redirect list has this
+            // exact address; anything else is the Site URL, not an error.
+            emailRedirectTo: window.location.origin + window.location.pathname
+              + (new URLSearchParams(window.location.search).get("portal") === "factory" ? "?portal=factory" : ""),
           },
         });
         if (otpError) {
