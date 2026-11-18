@@ -257,6 +257,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [certificationTags, setCertificationTags] = useState([]);
   const [serviceTags, setServiceTags] = useState([]);
   const [busy, setBusy] = useState(false);
+  // True only while Review waits on a window reading: the button then says
+  // "Saving…", since nothing is sent at this step.
+  const [readingWindow, setReadingWindow] = useState(false);
   const [error, setError] = useState(null);
   const [draftState, setDraftState] = useState(null);
 
@@ -397,7 +400,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       return;
     }
     setBusy(true);
+    setReadingWindow(true);
     const values = await withWindowReading(typedValues);
+    setReadingWindow(false);
     const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
       setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
@@ -458,6 +463,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
       language={getUiLanguage()}
+      busyLabel={readingWindow ? (getUiLanguage() === "zh" ? "保存中…" : "Saving…") : null}
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",

@@ -10689,6 +10689,7 @@ export function FactorySubmitQuote({
   // "saved" while live reports back; the prototype passes neither.
   onSaveDraft,
   draftState = null,
+  busyLabel = null,
 }) {
   const isZh = language === "zh";
   const cardRef = useRef(null);
@@ -10776,7 +10777,7 @@ export function FactorySubmitQuote({
             // saves it there, and the prototype's handler ignores the argument.
             onClick={() => (onSubmit ? onSubmit(readQuote()) : onReviewTotal?.(readQuote()))}
           >
-            {busy ? (isZh ? "提交中…" : "Sending…") : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
+            {busy ? (busyLabel ?? (isZh ? "提交中…" : "Sending…")) : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
           </button>
         </div>
       </footer>
