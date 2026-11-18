@@ -45,25 +45,52 @@ export function rememberReturn(win, { keepSignedIn = true } = {}, now = Date.now
 }
 
 /**
- * On load: if this is an emailed link landing (`?code=`) with none of the
- * kept parameters, put back the remembered ones. Returns the new search
+ * On load: if this is an emailed link landing (`?code=`), put back the
+ * remembered parameters it does not carry itself. Returns the new search
  * string, or null when nothing changed. Always forgets what was remembered
  * once a link lands, so it is used once.
  */
+/**
+ * An emailed sign-in link landing: `?code=` when it worked, or Supabase's
+ * `?error_code=` (and the same in the fragment) when the link was already
+ * used, expired or unknown.
+ */
+export function isSignInLinkLanding(win) {
+  const query = new URLSearchParams(win.location.search);
+  if (query.has("reset")) return false;
+  const hash = new URLSearchParams(String(win.location.hash ?? "").replace(/^#/, ""));
+  return query.has("code") || query.has("error_code") || hash.has("error_code");
+}
+
+/** Supabase's error words in the address, removed once read. Returns the cleaned search, or null. */
+export function withoutLinkError(win) {
+  const query = new URLSearchParams(win.location.search);
+  const hash = new URLSearchParams(String(win.location.hash ?? "").replace(/^#/, ""));
+  if (!query.has("error_code") && !hash.has("error_code")) return null;
+  for (const key of ["error", "error_code", "error_description"]) query.delete(key);
+  const rest = query.toString();
+  return rest ? `?${rest}` : "";
+}
+
 export function restoreReturn(win, now = Date.now()) {
   const current = new URLSearchParams(win.location.search);
-  if (!current.has("code")) return null;
+  if (!isSignInLinkLanding(win)) return null;
   const saved = safe(() => JSON.parse(win.localStorage.getItem(KEY) ?? "null"));
   safe(() => win.localStorage.removeItem(KEY));
   if (!saved?.params || !(now - Number(saved.at) < FRESH_MS)) return null;
   // Before the client saves the session: this tab keeps it to itself.
   if (saved.keep === false) safe(() => win.sessionStorage.setItem(KEEP_KEY, "0"));
-  if (KEPT.some((key) => current.has(key)) || !Object.keys(saved.params).length) return null;
+  // The link may carry some of them itself (the vendor portal): those win,
+  // and only the missing ones come back.
+  let changed = false;
   for (const key of KEPT) {
     const value = saved.params[key];
-    if (typeof value === "string" && value) current.set(key, value);
+    if (typeof value === "string" && value && !current.has(key)) {
+      current.set(key, value);
+      changed = true;
+    }
   }
-  return `?${current.toString()}`;
+  return changed ? `?${current.toString()}` : null;
 }
 
 /** Signed in another way (the code typed in, a password): the link is no longer needed. */

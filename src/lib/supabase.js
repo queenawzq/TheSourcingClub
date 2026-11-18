@@ -13,7 +13,7 @@ import { createSessionStorage } from "./session-storage.mjs";
 import { createRoute, proxyPathFor } from "./supabase-route.mjs";
 import { AUTH_MESSAGES, isNoAnswer } from "../shared/auth-messages.mjs";
 import { fillOlderBrowsers } from "./older-browsers.mjs";
-import { restoreReturn } from "./return-after-link.mjs";
+import { isSignInLinkLanding, restoreReturn, withoutLinkError } from "./return-after-link.mjs";
 
 fillOlderBrowsers();
 
@@ -35,9 +35,17 @@ export const supabaseUrl = url ?? "";
 // An emailed sign-in link lands on the page alone: put back the portal, review
 // and language it was asked from (return-after-link.mjs), before the client
 // reads and removes `?code=`.
+/** This page load is an emailed sign-in link landing, read before the client removes it. */
+export const landedFromSignInLink = Boolean(globalThis.window) && isSignInLinkLanding(window);
 const returnSearch = globalThis.window ? restoreReturn(globalThis.window) : null;
 if (returnSearch) {
   window.history.replaceState(window.history.state, "", `${window.location.pathname}${returnSearch}${window.location.hash}`);
+}
+// A link Supabase refused comes back with its error words in the address
+// (query and fragment). The sign-in screen says it in our words instead.
+const cleanedSearch = globalThis.window ? withoutLinkError(window) : null;
+if (cleanedSearch !== null) {
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${cleanedSearch}`);
 }
 
 // "Keep me logged in": where the session is kept, per tab. See session-storage.mjs.

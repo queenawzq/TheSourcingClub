@@ -12,7 +12,8 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
-import { forgetReturn, rememberReturn, restoreReturn } from "../src/lib/return-after-link.mjs";
+import { forgetReturn, isSignInLinkLanding, rememberReturn, restoreReturn, withoutLinkError } from "../src/lib/return-after-link.mjs";
+import { reopensSummary } from "../src/app/onboarding/resubmit.mjs";
 import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
 const KEY = "sb-test-auth-token";
@@ -311,8 +312,11 @@ check(/logInAnotherAccountHere\(\)/.test(linkSource) && !/Log out and continue/.
   check(restoreReturn(at("?code=abc"), 3000) === null, "used once");
   rememberReturn(at("?review=x"), {}, 0);
   check(restoreReturn(at("?code=abc"), 61 * 60 * 1000) === null, "and only within the hour");
-  rememberReturn(at("?portal=factory"), {}, 0);
-  check(restoreReturn(at("?code=abc&review=y"), 1) === null, "a link that carries its own parameters keeps them");
+  rememberReturn(at("?portal=factory&review=r"), {}, 0);
+  check(restoreReturn(at("?code=abc&portal=factory"), 1) === "?code=abc&portal=factory&review=r",
+    "a link carrying the vendor portal gets back only the company it lacks");
+  rememberReturn(at("?portal=factory&review=r"), {}, 0);
+  check(restoreReturn(at("?code=abc&review=y"), 1) === "?code=abc&review=y&portal=factory", "and what a link carries itself wins");
   rememberReturn(at(""), {}, 0);
   check(local.getItem("tscReturnAfterLink") === null, "a code asked from a plain page, box ticked, remembers nothing");
 
@@ -378,6 +382,50 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(signedIn({ [KEY]: session }, { tscKeepSignedIn: "0" }) === false, "a tab signed out on its own shows Log in, whatever the browser remembers");
   check(signedIn({ "sb-test-auth-token-code-verifier": "x" }, {}) === false, "a code verifier alone is not a sign-in");
   check(signedIn({}, {}) === false, "signed out shows Log in");
+}
+
+// Sending the profile back from a review link must not bounce to the summary
+// (src/app/onboarding/resubmit.mjs): the finish card opens before the profile
+// is re-read, while the answered request still says "needs_information".
+{
+  const request = { state: "needs_information", message: "Please upload…" };
+  check(reopensSummary({ review: request, step: 10, lastStep: 10, answered: null }) === true, "a request arriving on the finish card opens the summary");
+  check(reopensSummary({ review: request, step: 10, lastStep: 10, answered: request }) === false, "the request just answered does not send the factory back to the summary");
+  check(reopensSummary({ review: { ...request }, step: 10, lastStep: 10, answered: request }) === true, "a new request from staff after that still does");
+  check(reopensSummary({ review: { state: "pending" }, step: 10, lastStep: 10, answered: null }) === false, "nothing to answer, nothing reopens");
+  check(reopensSummary({ review: request, step: 8, lastStep: 10, answered: null }) === false, "and it never moves someone mid-steps");
+  const live = readFileSync("src/app/onboarding/LiveFactoryOnboarding.jsx", "utf8");
+  check((live.match(/await resubmitForReview\(org\.id\);\s*setAnswered\(review\);/g) ?? []).length === 2, "both ways of sending the profile back record the answered request");
+}
+
+// The code email's link keeps the vendor portal, and a link that signs nobody
+// in says so (src/lib/auth.jsx, src/lib/supabase.js).
+{
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/emailRedirectTo:[^\n]*\n[^\n]*"\?portal=factory"/.test(auth), "the code email's link keeps the vendor portal");
+  check(/!data\.session && landedFromSignInLink[\s\S]{0,300}"sign_in_link_used"/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
+}
+
+// A review link's company wins over the "keep the company valid" fallback
+// (src/lib/auth.jsx): the link's selectOrg runs first, in the same commit.
+{
+  const auth = readFileSync("src/lib/auth.jsx", "utf8");
+  check(/selectOrg\(orgId[^)]*\) \{\s*latestOrgChoice\.current = orgId;/.test(auth)
+    && /if \(orgs\.some\(\(org\) => org\.id === latestOrgChoice\.current\)\) return;/.test(auth),
+    "a company chosen by a review link is not replaced by the first company");
+}
+
+// A link Supabase refused (already used, expired) lands with ?error_code=, not
+// ?code=; it still counts as a link landing, and its error words are removed.
+{
+  const page = (search, hash = "") => ({ location: { search, hash } });
+  check(isSignInLinkLanding(page("?code=abc")) && isSignInLinkLanding(page("?error=access_denied&error_code=otp_expired&portal=factory")),
+    "a working link and a refused link are both link landings");
+  check(isSignInLinkLanding(page("", "#error=access_denied&error_code=otp_expired")), "also when the error is only in the fragment");
+  check(!isSignInLinkLanding(page("?portal=factory")) && !isSignInLinkLanding(page("?code=abc&reset=1")), "a plain page or a reset link is not");
+  check(withoutLinkError(page("?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid&portal=factory")) === "?portal=factory",
+    "the refusal's words leave the address, the portal stays");
+  check(withoutLinkError(page("?portal=factory")) === null, "an ordinary address is left alone");
 }
 
 if (failures) {
