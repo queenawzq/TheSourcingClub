@@ -155,7 +155,7 @@ async function start() {
       if (!/accepted already/.test(failure.message)) {
         show(/has ended/.test(failure.message) ? "This call has ended."
           : /other side answers/.test(failure.message) ? "You started this call, so you can't answer it."
-          : failure.noAnswer ? failure.message : "The call could not be opened.");
+          : failure.noAnswer ? failure.message : "The call couldn't be opened. Try again.");
         return;
       }
     }
