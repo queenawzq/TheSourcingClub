@@ -217,4 +217,17 @@ for (const [why, row] of [
   assert.deepEqual(net.total, [{ currency: "USD", amount: 6421 }]);
 }
 
+// The Withdraw dialog never moves a withdrawal to another method by itself:
+// when the chosen method stops being offered (a provider switched off while
+// it is open), the choice is cleared and Withdraw stays off until the person
+// chooses again (Nov 18).
+{
+  const { readFileSync } = await import("node:fs");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes('if (methodId && !choices.some((m) => m.id === methodId)) setMethodId("");'), "a method no longer offered clears the choice");
+  assert.ok(!/setMethodId\(\(choices\.find\(\(m\) => m\.id === defaultId\)[^;]*\}, \[offered\]\)/s.test(form), "and never picks another method in its place");
+  assert.ok(form.includes('disabled={busy || asking || !method ||'), "Withdraw is off while nothing is chosen");
+  assert.ok(form.includes("{methodId ? null : <option value=\"\" />}"), "the dropdown shows nothing chosen");
+}
+
 console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");
