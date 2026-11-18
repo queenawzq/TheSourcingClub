@@ -336,6 +336,25 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
     `${file} sends the box's choice with the code`);
 }
 
+// The marketing pages hand a sign-in link's `?code=` to the app (script.js):
+// Supabase's fallback lands on the home address, which cannot finish it.
+{
+  const source = readFileSync("script.js", "utf8");
+  const guard = source.slice(0, source.indexOf("})();") + 5);
+  const visit = (pathname, search) => {
+    let went = null;
+    const window = { location: { pathname, search, hash: "", replace: (to) => { went = to; } } };
+    new Function("window", "URLSearchParams", guard)(window, URLSearchParams);
+    return went;
+  };
+  const code = "6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+  check(visit("/", `?code=${code}`) === `/app.html?code=${code}`, "the home page hands a sign-in code to the app");
+  check(visit("/factories.html", `?code=${code}&lang=zh`) === `/app.html?code=${code}&lang=zh`, "any marketing page does, with the rest of the query");
+  check(visit("/", "?code=not-a-code") === null && visit("/", "?lang=zh") === null && visit("/", "") === null,
+    "nothing else is forwarded");
+  check(visit("/app.html", `?code=${code}`) === null, "and the app itself is never forwarded (no loop)");
+}
+
 if (failures) {
   console.error(`\n${failures} check(s) failed: "Keep me logged in" does not hold across tabs.`);
   process.exit(1);

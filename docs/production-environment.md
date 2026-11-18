@@ -55,7 +55,7 @@ schedule and "Join call" says video isn't set up yet.
 | Variable | What it is |
 |---|---|
 | `CRON_SECRET` | any long random string (for example `openssl rand -hex 32`). Vercel sends it with the daily job (`vercel.json` → `/api/cron-daily`, 07:00 UTC), and the job refuses calls without it. |
-| `PUBLIC_APP_URL` | only if the site's address is not `the-sourcing-club.vercel.app`: the links in every email point here. |
+| `PUBLIC_APP_URL` | `https://sourcing-club.com`: the links in every email point here. Sign-in and the emails must use the same address, or a person signed in on one is signed out on the other. |
 
 The emails go through the same Resend settings as the review emails
 (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`). Resend's free plan allows 100 emails
