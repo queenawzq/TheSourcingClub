@@ -42,6 +42,8 @@ import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
+import { fetchApi } from "../../lib/supabase.js";
+import { acceptModelWindow, windowNeedsReading, windowUnits } from "../../lib/domain/capacity-window.mjs";
 
 const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
@@ -115,16 +117,94 @@ function depositPctFrom(slug) {
 /** "2 months" has no fixed number of days, and read as a figure it stored 2 days. */
 const IN_MONTHS = /\d\s*(?:months?\b|mos?\b|个月|個月)/i;
 
-const WINDOW_EXAMPLE = "“Jan 5 - Mar 1, 2027 · 300 units”";
+const WINDOW_EXAMPLE = "“Dec 1 - Jan 15”";
 
-/** The sentence for a window that cannot be kept; the form's words for it name the field. */
+/**
+ * The sentence for a window that cannot be kept: the field, what to fix, and
+ * an example. Any readable dates are kept, so this is only for text that is
+ * not dates, or dates that are not real or already over.
+ */
 function windowRefusal(values, companyType) {
   const problem = capacityWindowProblem(values.capacityWindow);
   if (!problem) return null;
   const field = companyType === "trading" ? "partner production window" : "open capacity window";
-  return problem === "past"
-    ? `${field} (those dates have passed; write the year, like ${WINDOW_EXAMPLE})`
-    : `${field} (write the first and last day, like ${WINDOW_EXAMPLE})`;
+  switch (problem.code) {
+    case "past":
+      return problem.yearWritten
+        ? `${field} (those dates have passed; check the dates, like ${WINDOW_EXAMPLE})`
+        : `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
+    case "long":
+      return `${field} (can't be longer than 12 months; check the dates, like ${WINDOW_EXAMPLE})`;
+    case "order":
+      return `${field} (the first date is after the last; check the dates, like ${WINDOW_EXAMPLE})`;
+    case "invalid":
+      return `${field} (“${problem.piece}” is not a date; check the day and month, like ${WINDOW_EXAMPLE})`;
+    case "words":
+      return `${field} (remove the extra words, like ${WINDOW_EXAMPLE})`;
+    case "many":
+      return `${field} (enter a first and last date, like ${WINDOW_EXAMPLE})`;
+    default:
+      return `${field} (enter dates, like ${WINDOW_EXAMPLE})`;
+  }
+}
+
+/**
+ * A window the parser could not read (no readable dates, or words beside
+ * them), read by the server's model (api/parse-capacity-window.js) and kept
+ * only when it passes the same rules. The field then holds the reading, so
+ * Review, the draft and the stored dates all come from it, and the vendor can
+ * still change it. Any failure leaves the values as typed, and the form says
+ * what it says without the model.
+ */
+async function withWindowReading(values) {
+  const typed = String(values.capacityWindow ?? "").trim();
+  if (!typed || !windowNeedsReading(capacityWindowProblem(typed))) return values;
+  let answer = null;
+  try {
+    const response = await fetchApi("/api/parse-capacity-window", {
+      text: typed,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    const body = response.ok ? await response.json().catch(() => ({})) : {};
+    answer = acceptModelWindow(body?.window);
+  } catch {
+    answer = null;
+  }
+  if (!answer) return values;
+  const reading = formatCapacityWindow({
+    capacity_window_start: answer.start,
+    capacity_window_end: answer.end,
+    capacity_window_units: windowUnits(typed),
+  });
+  if (capacityWindowProblem(reading)) return values;
+  // Typed over while the reading was on its way: what is there now wins, and
+  // is read by the form's own rules like any other text.
+  const field = document.querySelector('[data-quote-field="capacityWindow"]');
+  const now = field ? field.textContent.trim() : typed;
+  if (now !== typed) return { ...values, capacityWindow: now };
+  showWindowReading(reading);
+  return { ...values, capacityWindow: reading };
+}
+
+/** The reading into the field as an edit, so the browser's undo brings the vendor's own words back. */
+function showWindowReading(reading) {
+  const field = document.querySelector('[data-quote-field="capacityWindow"]');
+  if (!field) return;
+  let replaced = false;
+  try {
+    field.focus();
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    replaced = document.execCommand("insertText", false, reading);
+    selection.removeAllRanges();
+    field.blur();
+  } catch {
+    replaced = false;
+  }
+  if (!replaced || field.textContent.trim() !== reading) field.textContent = reading;
 }
 
 function missingQuoteFields(values, terms, companyType) {
@@ -177,6 +257,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [certificationTags, setCertificationTags] = useState([]);
   const [serviceTags, setServiceTags] = useState([]);
   const [busy, setBusy] = useState(false);
+  // True while a Review press that asked for a window reading is waiting on
+  // it and on the save after it: the button then says "Saving…", since
+  // nothing is sent at this step.
+  const [readingWindow, setReadingWindow] = useState(false);
   const [error, setError] = useState(null);
   const [draftState, setDraftState] = useState(null);
 
@@ -304,15 +388,31 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
    * where the vendor sees the computed total and what sending costs before it
    * is charged. Submitting straight from the form skipped both.
    */
-  async function saveAndReview(values) {
-    if (busy || !quote) return;
+  async function saveAndReview(typedValues) {
+    // Not while Save draft is still saving (or still waiting on a reading).
+    if (busy || !quote || draftState === "saving") return;
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
-    const missing = missingQuoteFields(values, terms, companyType);
-    if (missing.length) {
-      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+    // Other fields first: no reading is asked for while the form is
+    // incomplete anyway, and the list is the same as without one.
+    const windowSentence = windowRefusal(typedValues, companyType);
+    const before = missingQuoteFields(typedValues, terms, companyType);
+    if (before.some((item) => item !== windowSentence)) {
+      setError(new Error(`Complete these required fields before reviewing: ${before.join(", ")}.`));
       return;
     }
     setBusy(true);
+    // "Saving…" for the whole press when a reading is asked for: the save
+    // that follows it sends nothing either, and the label should not flip.
+    setReadingWindow(Boolean(String(typedValues.capacityWindow ?? "").trim())
+      && windowNeedsReading(capacityWindowProblem(typedValues.capacityWindow)));
+    const values = await withWindowReading(typedValues);
+    const missing = missingQuoteFields(values, terms, companyType);
+    if (missing.length) {
+      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+      setReadingWindow(false);
+      setBusy(false);
+      return;
+    }
     setError(null);
 
     try {
@@ -321,15 +421,17 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     } catch (failure) {
       setError(failure);
     } finally {
+      setReadingWindow(false);
       setBusy(false);
     }
   }
 
   /** The design's "Save draft": keep the card and stay on it. */
-  async function saveDraft(values) {
+  async function saveDraft(typedValues) {
     if (busy || !quote || draftState === "saving") return;
     setDraftState("saving");
     setError(null);
+    const values = await withWindowReading(typedValues);
     try {
       await persist(values);
       setDraftState("saved");
@@ -366,6 +468,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
       language={getUiLanguage()}
+      busyLabel={readingWindow ? (getUiLanguage() === "zh" ? "保存中…" : "Saving…") : null}
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",

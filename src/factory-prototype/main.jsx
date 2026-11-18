@@ -1398,7 +1398,7 @@ export const factoryMainZhText = {
   "e.g. $12–$15 / unit": "例如 $12–$15 / 件",
   "Enter exact production quantity": "填写准确的生产数量",
   "e.g. 30–35 days": "例如 30–35 天",
-  "e.g. Jan 5 - Mar 1, 2027 · 300 units": "例如 2027 年 1 月 5 日 - 3 月 1 日 · 300 件",
+  "e.g. Dec 1 - Jan 15": "例如 12 月 1 日 - 1 月 15 日",
   "e.g. 30/70, paid in full, or Net 30": "例如 30/70、全款或 Net 30",
   "Enter shipping / incoterms": "填写运输 / 贸易条款",
   "Enter information": "填写信息",
@@ -10686,6 +10686,7 @@ export function FactorySubmitQuote({
   // "saved" while live reports back; the prototype passes neither.
   onSaveDraft,
   draftState = null,
+  busyLabel = null,
 }) {
   const isZh = language === "zh";
   const cardRef = useRef(null);
@@ -10773,7 +10774,7 @@ export function FactorySubmitQuote({
             // saves it there, and the prototype's handler ignores the argument.
             onClick={() => (onSubmit ? onSubmit(readQuote()) : onReviewTotal?.(readQuote()))}
           >
-            {busy ? (isZh ? "提交中…" : "Sending…") : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
+            {busy ? (busyLabel ?? (isZh ? "提交中…" : "Sending…")) : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
           </button>
         </div>
       </footer>
@@ -11096,7 +11097,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             name="capacityWindow"
             label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"}
             value={values?.capacityWindow ?? (values ? "" : (companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"))}
-            placeholder="e.g. Jan 5 - Mar 1, 2027 · 300 units"
+            placeholder="e.g. Dec 1 - Jan 15"
             {...reviewFieldProps}
           />
           <QuoteField
