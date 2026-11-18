@@ -13,7 +13,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(46);
 
 insert into auth.users (id, email) values
   ('c1c01000-0000-0000-0000-000000000001', 'pic-brand@example.com'),
@@ -337,6 +337,29 @@ select throws_ok(
   '42501', null, 'the ring window helper is internal'
 );
 reset role;
+
+-- What each role may run, read from the catalogue: a function made again
+-- (call_join_context was dropped and recreated) gets EXECUTE for
+-- authenticated from the default privileges unless the file takes it away.
+select ok(not has_function_privilege('anon', 'public.call_join_context(uuid, uuid)', 'execute'),
+  'anon CANNOT run call_join_context');
+select ok(not has_function_privilege('authenticated', 'public.call_join_context(uuid, uuid)', 'execute'),
+  'authenticated CANNOT run call_join_context');
+select ok(has_function_privilege('service_role', 'public.call_join_context(uuid, uuid)', 'execute'),
+  'the server (service_role) runs call_join_context');
+select ok(not has_function_privilege('anon', 'public.instant_call_rings_until(public.calls)', 'execute'),
+  'anon CANNOT run instant_call_rings_until');
+select ok(not has_function_privilege('authenticated', 'public.instant_call_rings_until(public.calls)', 'execute'),
+  'authenticated CANNOT run instant_call_rings_until');
+select ok(not has_function_privilege('anon', 'public.start_call_now(uuid, text)', 'execute'),
+  'anon CANNOT run start_call_now');
+select ok(has_function_privilege('authenticated', 'public.start_call_now(uuid, text)', 'execute'),
+  'a signed-in person runs start_call_now (it checks the party itself)');
+select ok(not has_function_privilege('anon', 'public.call_to_answer(uuid)', 'execute')
+      and not has_function_privilege('authenticated', 'public.call_to_answer(uuid)', 'execute'),
+  'call_to_answer stays internal');
+select ok(not has_function_privilege('anon', 'public.cancel_call(uuid, text)', 'execute'),
+  'anon CANNOT run cancel_call');
 
 select * from finish();
 rollback;
