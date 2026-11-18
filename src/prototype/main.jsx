@@ -3406,7 +3406,7 @@ export function BrandOnboarding({
             key={item.title}
             disabled={busy || index === step || index > reach}
             aria-current={index === step ? "step" : undefined}
-            aria-label={index < step ? `Go back to Step ${index + 1}: ${item.title}` : index <= reach ? `Go to Step ${index + 1}: ${item.title}` : `Step ${index + 1}: ${item.title}`}
+            aria-label={index < step ? `Go back to Step ${index + 1}: ${item.title}` : index > step && index <= reach ? `Go to Step ${index + 1}: ${item.title}` : `Step ${index + 1}: ${item.title}`}
             title={index < step ? `Go back to ${item.title}` : index <= reach && index > step ? `Go to ${item.title}` : item.title}
             onClick={(event) => (index < step ? onGoToStep?.(index) : continueOnboarding(event, index))}
           />

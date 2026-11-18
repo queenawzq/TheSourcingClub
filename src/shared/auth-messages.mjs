@@ -40,7 +40,7 @@ export const AUTH_MESSAGES = {
     en: () => "This sign-in link has expired or was already used. Ask for a new code.",
     zh: () => "此登录链接已过期或已被使用。请重新获取验证码。",
   },
-    reset_link_network: {
+  reset_link_network: {
     en: () => `We couldn't connect to open your reset link. Open the link from the email again. ${TRY_ANOTHER_EN}`,
     zh: () => `无法连接以打开重置链接。请重新打开邮件中的链接。${TRY_ANOTHER_ZH}`,
   },
