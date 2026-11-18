@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(33);
+select plan(38);
 
 -- These rules are tested with Wise switched on (20261117200000 starts it off).
 update public.payout_provider_settings set enabled = true where provider = 'wise';
@@ -131,6 +131,25 @@ select ok(not has_function_privilege('anon', 'public.save_wise_payout_account(uu
 select ok(not has_function_privilege('authenticated', 'public.set_wise_recipient(uuid, text, timestamptz)', 'execute'), 'set_wise_recipient is the server''s');
 select ok(not has_table_privilege('authenticated', 'public.provider_payouts', 'insert,update,delete'), 'provider_payouts is select-only');
 select ok(has_function_privilege('service_role', 'public.set_wise_recipient(uuid, text, timestamptz)', 'execute'), 'the server can call it');
+
+-- 20261118600000: one Wise save, which still takes the live site's call.
+-- A second, nine-argument version would make that call ambiguous to the API.
+select is((select count(*)::int from pg_proc where proname = 'save_wise_payout_account' and pronamespace = 'public'::regnamespace), 1,
+  'exactly one save_wise_payout_account');
+select is((select pronargs::int from pg_proc where proname = 'save_wise_payout_account' and pronamespace = 'public'::regnamespace), 10,
+  'with the picked country as its tenth argument');
+select ok(has_function_privilege('authenticated', 'public.save_wise_payout_account(uuid, uuid, text, text, text, jsonb, text, text, text, text)', 'execute'),
+  'a signed-in owner may call it');
+select pg_temp.as_user('77a00000-0000-0000-0000-000000000001');
+select lives_ok($$ select public.save_wise_payout_account(
+    target_org => '77b00000-0000-0000-0000-0000000000f1', target_account => null, bank_name => 'Demo Bank',
+    recipient_type => 'chinese_local_business', currency => 'CNY',
+    details => '{"legalType":"BUSINESS","accountHolderName":"OLD SITE LTD","swiftCode":"BOSHCNSH","address.country":"CN","address.city":"Ningbo","address.firstLine":"1 Test Road"}'::jsonb,
+    number_key => 'accountNumber', account_number => '0000 0000 0000 4321', account_number_again => '0000 0000 0000 4321') $$,
+  'the live site''s call, nine named arguments and no country, still saves');
+select is((select payout_country from public.factory_payout_accounts where account_name = 'OLD SITE LTD'), null,
+  'and keeps no country, so the company''s country applies as before');
+reset role;
 
 select * from finish();
 rollback;

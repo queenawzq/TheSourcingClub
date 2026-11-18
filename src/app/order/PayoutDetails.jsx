@@ -334,7 +334,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       // A brand pays the step plus TSC's fee; the factory earns the step.
       note: [
         // "Available Nov 19": when Stripe lets it be withdrawn.
-        clearingNote(row, clearing),
+        clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
         // With a payout fee the amount is what the factory received, so the step is said here.
         payoutFee(row) > 0
           ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`

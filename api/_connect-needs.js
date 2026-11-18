@@ -32,7 +32,9 @@ export function connectNeedsNotice(before, account) {
   return {
     kind: "payout_method_changed",
     title: transfers ? "Finish setup to withdraw" : "Finish setup to receive earnings",
-    // Stripe's form opens from Add withdrawal method, on the account already started.
-    body: "We need a few more details for your withdrawal account. Open Payments, choose Withdrawal methods, then Add withdrawal method.",
+    // Stripe's form opens from Add withdrawal method, on the account already
+    // started; that button is on the card, or in Withdrawal methods once a
+    // method is saved, so the path names neither.
+    body: "We need a few more details for your withdrawal account. Open Payments and add a withdrawal method.",
   };
 }

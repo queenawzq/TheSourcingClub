@@ -376,6 +376,8 @@ export default function StripePayoutCard({
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [methodMenu, setMethodMenu] = useState(null);
+  // A notice said in Withdrawal methods only (a new default), not on the card.
+  const shownInDialogOnly = useRef(null);
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
@@ -745,7 +747,8 @@ export default function StripePayoutCard({
       if (result.error) throw result.error;
       setPayoutRoute("stripe");
       await load().catch(setError);
-      setMethodNotice(`${methodLabel(method)} is now your default.`);
+      shownInDialogOnly.current = `${methodLabel(method)} is now your default.`;
+      setMethodNotice(shownInDialogOnly.current);
     } catch (failure) { setRemoveError(defaultRefusal(failure)); }
     finally { setMethodBusy(false); }
   };
@@ -838,7 +841,8 @@ export default function StripePayoutCard({
       await onMakePrimaryManual?.(row);
       setPayoutRoute("manual");
       await load().catch(setError);
-      setMethodNotice(`${manualLabel(row)} is now your default.`);
+      shownInDialogOnly.current = `${manualLabel(row)} is now your default.`;
+      setMethodNotice(shownInDialogOnly.current);
     } catch (failure) {
       setManualError(defaultRefusal(failure));
     }
@@ -966,7 +970,7 @@ export default function StripePayoutCard({
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
-          {methodNotice && !methodNotice.endsWith(" is now your default.") ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
+          {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">

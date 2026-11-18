@@ -337,7 +337,7 @@ const SENTENCES = [
   [/^We need a few more details for your withdrawal account\.$/, () => "你的提现账户还需要补充一些信息。"],
   // Kept for notices sent before Nov 18.
   [/^Open Payments and choose Finish setup\.$/, () => "请打开“付款”并选择“完成设置”。"],
-  [/^Open Payments, choose Withdrawal methods, then Add withdrawal method\.$/, () => "请打开“付款”，选择“提现方式”，然后选择“添加提现方式”。"],
+  [/^Open Payments and add a withdrawal method\.$/, () => "请打开“付款”并添加提现方式。"],
   // Credits and capacity
   [/^Your profile is verified\.$/, () => "你的资料已通过验证。"],
   [/^Each quote you send uses (\d+) credits\.$/, (n) => `每发送一份报价使用 ${n} 额度。`],

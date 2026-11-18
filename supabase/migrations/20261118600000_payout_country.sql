@@ -205,8 +205,13 @@ $$;
 revoke all on function public.request_withdrawal(uuid, bigint, uuid) from public, anon;
 grant execute on function public.request_withdrawal(uuid, bigint, uuid) to authenticated;
 
--- 20261107100000's Wise save, with the picked country. The old signature goes
--- in the same statement batch, so exactly one save_wise_payout_account exists.
+-- 20261107100000's Wise save, with the picked country. Replaced, not
+-- overloaded: the live site calls it through the API with nine named
+-- arguments, which this one (its tenth defaulting to null) still takes, so the
+-- old code keeps working while the deploy runs. A second, nine-argument
+-- version kept beside it would make that same call ambiguous: the API then
+-- refuses it ("Could not choose the best candidate function", PGRST203), as
+-- tried on a local stack. payout_methods_test.sql pins that there is one.
 drop function if exists public.save_wise_payout_account(uuid, uuid, text, text, text, jsonb, text, text, text);
 
 create or replace function public.save_wise_payout_account(
