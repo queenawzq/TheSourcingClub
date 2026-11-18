@@ -1459,17 +1459,20 @@ async function withdrawnByPaypal(org, account, country, payment, reference) {
   }), `paid by PayPal: ${reference}`);
 }
 
-// 1. Fit sample funded by card, approved and paid to the factory ("Paid";
-//    by hand, as staff do for a factory with no Stripe account), then the
-//    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
-//    factory at once and waits on staff ("Funded", payout pending).
+// 1. Fit sample funded by card (a real test charge) and the factory's update
+//    posted: it waits for the brand to approve ("Funded"). Not approved here:
+//    Demo Factory has no payout method in the seed, so an approved step would
+//    wait on staff to pay it by bank, which TSC no longer does (20261117500000).
 const poplinTitle = "Organic poplin shirt, AW27";
 const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
-const poplinFit = await dueNow(poplin, poplinTitle);
-await funded(poplinFit, CARD);
-await approveOpenStep(poplin, poplinTitle);
-must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
+{
+  const step = must(await admin.from("order_milestones").select("id")
+    .eq("order_id", poplin.id).eq("state", "active").order("sort").limit(1).single(), `open step: ${poplinTitle}`);
+  must(await factory.client.rpc("post_milestone_update", {
+    target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
+  }), `factory update: ${poplinTitle}`);
+}
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
@@ -1494,8 +1497,8 @@ await failed(chinoFit, "Your card was declined.");
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
-//    fit sample is funded and approved, and waits on staff: "Pay with Wise",
-//    or by bank ("Payout owed" on the staff payments page). Saved through the
+//    fit sample is funded and approved, and waits on staff: "Pay with Wise"
+//    ("Payout owed" on the staff payments page). Saved through the
 //    form's own function; the number is plainly fake, in Vault. Wise may be
 //    switched off for China (payout_provider_settings), which refuses a new
 //    Wise method; it is switched on for the save and put back as it was.
@@ -1690,13 +1693,13 @@ done. Every login uses the password "${PASSWORD}".
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
-    - "Organic poplin shirt, AW27": fit sample paid out, bulk deposit held and owed to the factory
+    - "Organic poplin shirt, AW27": fit sample funded by card, the factory's update waiting for approval
     - "Cotton twill overshirt, AW27": fit sample funded by card, held while the factory works
     - "Merino rib tank, AW27": fit sample paid by bank, clearing
     - "Stretch chino, AW27": fit sample card declined, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
     - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
-      Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
+      Stripe cannot pay (China): staff pay it with Wise from the admin's Payments page
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   Settings → Notifications: "Payment and approval requests" emails are off; the others are on.
