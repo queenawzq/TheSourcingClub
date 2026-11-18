@@ -129,7 +129,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     if ((quote.capacity_window_end ?? quote.capacity_window_start) < today) {
-      setError(new Error(`Go back and update the ${field} before sending; those dates have passed.`));
+      setError(new Error(`The ${field} has passed. Go back and update the dates before sending.`));
       return;
     }
     if (busy) return;

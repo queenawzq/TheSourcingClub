@@ -132,13 +132,13 @@ function windowRefusal(values, companyType) {
         ? `${field} (those dates have passed; check the dates, like ${WINDOW_EXAMPLE})`
         : `${field} (those dates have passed; add the year, like “Jan 15, ${new Date().getFullYear() + 1}”)`;
     case "long":
-      return `${field} (longer than 12 months; check the dates, like ${WINDOW_EXAMPLE})`;
+      return `${field} (can't be longer than 12 months; check the dates, like ${WINDOW_EXAMPLE})`;
     case "order":
       return `${field} (the first date is after the last; check the dates, like ${WINDOW_EXAMPLE})`;
     case "invalid":
       return `${field} (“${problem.piece}” is not a date; check the day and month, like ${WINDOW_EXAMPLE})`;
     case "words":
-      return `${field} (enter dates only, like ${WINDOW_EXAMPLE})`;
+      return `${field} (remove the extra words, like ${WINDOW_EXAMPLE})`;
     case "many":
       return `${field} (enter a first and last date, like ${WINDOW_EXAMPLE})`;
     default:
