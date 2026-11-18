@@ -57,7 +57,6 @@ import {
   deleteFactory,
   deleteBrand,
 } from "../../lib/domain/admin.js";
-import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
 import { profileCompletion } from "./profile-completion.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
@@ -266,10 +265,6 @@ export function toReviewProfile(row) {
         ? status
         : VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
-      // Last, on a row of its own (console-live.css): a request is often a
-      // paragraph and a list, which stretched one third of the grid down the
-      // page and pushed its neighbours to the middle of a tall row.
-      ["Last note", row.note ? createElement("span", { className: "admin-review-note" }, row.note) : "—"],
     ],
     capabilities: row.capabilities ?? [],
     capabilityGroups: row.capabilityGroups ?? [],

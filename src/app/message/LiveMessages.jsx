@@ -40,20 +40,14 @@ const initialsOf = (name) =>
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
 
-/** After this long still being checked, a message says so even before the screen has been asked again. */
-const SAY_CHECKING_AFTER_MS = 15 * 1000;
-
 const BLOCKED_OUTSIDE = "TSC doesn't allow arranging to talk or pay outside TSC. Repeated attempts may restrict your account. See the";
 
 /**
  * What the sender is told about a message that has not reached the other side.
- * Nothing in the first seconds of being checked: that is how long a check
- * takes, and saying so on every message would make every message look
- * suspect. Once the screen has answered without a verdict, or it has been a
- * while, it says so: a message that looks sent and never arrives is the worst
- * of both.
+ * A message still being checked shows as sent: the page keeps asking the
+ * screen in the background, and it is delivered once it passes.
  */
-function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
+function deliveryStatus(message, { onGuidelines } = {}) {
   if (message.failed) {
     return {
       kind: "rejected",
@@ -74,14 +68,6 @@ function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
           <button type="button" className="message-guidelines-link" onClick={onGuidelines} data-testid="message-guidelines-link">{words.link}</button>.
         </>
       ),
-    };
-  }
-  if (message.delivery === "checking" && !String(message.id).startsWith("outgoing-")
-      && (unscreened || Date.now() - Date.parse(message.created_at) > SAY_CHECKING_AFTER_MS)) {
-    return {
-      kind: "checking",
-      label: "Checking before it is sent",
-      note: "It has not reached them yet. This page keeps trying.",
     };
   }
   if (message.delivery === "rejected") {
@@ -271,10 +257,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
    * Your own messages the screen has not decided: ask it again, on a back-off,
    * for as long as the page is open. Only asking once, on the send, left a
    * message whose screen failed in `checking` for good while its sender
-   * looked at it as sent. `unscreened` is the ones the screen was asked about
-   * and did not decide, which then say so.
+   * looked at it as sent.
    */
-  const [unscreened, setUnscreened] = useState(() => new Set());
   const attempts = useRef({});
   const [screenRound, setScreenRound] = useState(0);
   useEffect(() => {
@@ -286,7 +270,6 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     const timer = setTimeout(async () => {
       const due = waiting.filter((message) => dueAt(message) <= Date.now());
       for (const message of due) attempts.current[message.id] = (attempts.current[message.id] ?? 0) + 1;
-      setUnscreened((current) => new Set([...current, ...due.map((message) => message.id)]));
       if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
         for (const threadId of new Set(due.map((message) => message.thread_id))) {
           const rows = await listMessages(threadId, org.id).catch(() => null);
@@ -405,8 +388,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         dropDraft();
       },
     })
-      .then(({ message, failed, delivery }) => {
-        if (delivery === "checking") setUnscreened((current) => new Set([...current, message.id]));
+      .then(({ message, failed }) => {
         setUploading((current) => {
           const next = { ...current };
           delete next[message.id];
@@ -580,7 +562,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
-          status: deliveryStatus(message, { unscreened: unscreened.has(message.id), onGuidelines: () => setGuidelinesOpen(true) }),
+          status: deliveryStatus(message, { onGuidelines: () => setGuidelinesOpen(true) }),
           ...readerTranslation(message, { own: mine }),
           attachments: files.length ? files : undefined,
         };
