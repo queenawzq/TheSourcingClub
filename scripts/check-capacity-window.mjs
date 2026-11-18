@@ -246,6 +246,9 @@ for (const [typed, asks] of [
   ["Feb 30 - Mar 15", false], ["Jan 5 - Mar 1", false], ["12.1.2026 - 15.1.2027", false],
   ["Dec 1 2026 - Jan 15 2026", false], ["Dec 1, Dec 15 and Jan 15", false], ["Dec 1 - Jan 15", false],
   ["Jan 5 - Mar 1 tentative", false], ["Feb 30 - Mar 15 approx", false], ["12.1.2026 - 15.1.2027 approx", false],
+  // A year-less window read as past, with words that name part of a period: next year's, for the model
+  ["early Jan to end Feb", true], ["mid January", true], ["1月中旬", true], ["2月上旬", true], ["end of Q1", true],
+  ["January", false], ["early January approx", false], ["mid Jan 2026", false],
 ]) {
   if (windowNeedsReading(capacityWindowProblem(typed, NOW)) !== asks) fail(`${JSON.stringify(typed)} ${asks ? "should" : "should not"} be sent to the model`);
 }

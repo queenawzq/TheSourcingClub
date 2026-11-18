@@ -388,6 +388,14 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     // Not while Save draft is still saving (or still waiting on a reading).
     if (busy || !quote || draftState === "saving") return;
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
+    // Other fields first: no reading is asked for while the form is
+    // incomplete anyway, and the list is the same as without one.
+    const windowSentence = windowRefusal(typedValues, companyType);
+    const before = missingQuoteFields(typedValues, terms, companyType);
+    if (before.some((item) => item !== windowSentence)) {
+      setError(new Error(`Complete these required fields before reviewing: ${before.join(", ")}.`));
+      return;
+    }
     setBusy(true);
     const values = await withWindowReading(typedValues);
     const missing = missingQuoteFields(values, terms, companyType);

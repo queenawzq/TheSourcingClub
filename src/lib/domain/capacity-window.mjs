@@ -54,6 +54,14 @@ const DATES = new RegExp(
   "gi",
 );
 
+/**
+ * Words that name part of a period, the only words that may send a year-less
+ * window the form reads as past to the model: "mid January" in November is
+ * next January, while "Jan 5 - Mar 1 tentative" stays refused like "Jan 5 -
+ * Mar 1" (the form never guesses a typed window forward).
+ */
+const PERIOD_WORD = /^(?:early|earlier|mid|middle|late|later|end|ending|beginning|begin|start|first|second|last|half|week|weeks|of|the|上旬|中旬|下旬|初|月初|中|下|上|底|月底|末|月末|半|前|后|後)$/i;
+
 const UNITS = /(\d[\d,]*)\s*(?:units?|pcs\.?|pieces?)(?![a-z])/gi;
 /** What may sit between the dates: separators and joining words, nothing else. */
 const JOINERS = /\b(?:from|and|between|starting|start|open|available)\b|[-–—~·•,;:/()|.\s]/gi;
@@ -232,7 +240,14 @@ function read(text, now) {
     if (endDay > limit) return refuse({ code: "long" });
   }
   if ((endDay ?? startDay) < todayOf(now)) {
-    return { start: startDay, end: endDay, units, problem: { code: "past", yearWritten: startYearWritten || endYearWritten } };
+    const yearWritten = startYearWritten || endYearWritten;
+    // Words naming part of a period on a year-less window: the model, told
+    // today's date, reads the next one ("early Jan to end Feb", "1月中旬").
+    const words = withoutDates.replace(UNITS, " ").match(/[a-z]+|[\u3400-\u9fff]+/gi) ?? [];
+    const vague = !yearWritten && words.length > 0
+      && words.every((word) => PERIOD_WORD.test(word) || /^(?:from|and|between|to|until|till|through|thru)$/i.test(word))
+      && words.some((word) => PERIOD_WORD.test(word) && !/^(?:of|the)$/i.test(word));
+    return { start: startDay, end: endDay, units, problem: { code: "past", yearWritten, ...(vague ? { vague: true } : {}) } };
   }
   if (leftover) return refuse({ code: "words" });
   return { start: startDay, end: endDay, units, problem: null };
@@ -317,7 +332,7 @@ export function acceptModelWindow(answer, now = new Date()) {
 
 /** Whether the parser's refusal is one the model may be asked about: no readable dates, or words beside them. */
 export function windowNeedsReading(problem) {
-  return problem?.code === "format" || problem?.code === "words";
+  return problem?.code === "format" || problem?.code === "words" || (problem?.code === "past" && problem.vague === true);
 }
 
 /** The units written in a window, refused or not ("mid December · 300 units" → 300), so a reading keeps them. */
