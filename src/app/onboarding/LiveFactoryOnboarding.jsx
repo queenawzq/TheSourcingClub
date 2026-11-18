@@ -19,6 +19,7 @@ import MatchingProfile from "../matching/MatchingProfile.jsx";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { useOnboardingStep } from "./onboarding-step.js";
+import { reopensSummary } from "./resubmit.mjs";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
@@ -165,12 +166,14 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   );
   // True while answering staff's request, until the profile is sent back.
   const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
+  // The staff request this mount has just answered (resubmit.mjs).
+  const [answered, setAnswered] = useState(null);
   // A request that arrives while the finish card is open opens the summary too.
   useEffect(() => {
-    if (!askedForMore || step < LAST_STEP) return;
+    if (!reopensSummary({ review, step, lastStep: LAST_STEP, answered })) return;
     setResubmitting(true);
     setStep(REVIEW_STEP);
-  }, [askedForMore, step]);
+  }, [review, step, answered]);
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
@@ -668,6 +671,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // Terms already signed: confirming the summary sends it back to staff
         // and stays on the summary, with no page after it.
         await resubmitForReview(org.id);
+        setAnswered(review);
         startVerification(org.id);
         setResubmitting(false);
         onComplete();
@@ -678,6 +682,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
         await resubmitForReview(org.id);
+        setAnswered(review);
         startVerification(org.id);
         setResubmitting(false);
         onComplete();
