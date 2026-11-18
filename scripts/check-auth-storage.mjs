@@ -355,6 +355,27 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(visit("/app.html", `?code=${code}`) === null, "and the app itself is never forwarded (no loop)");
 }
 
+// The marketing header says "Dashboard" only when this tab would open the app
+// signed in (script.js hasAppSession, the same rule as session-storage.mjs).
+{
+  const source = readFileSync("script.js", "utf8");
+  const fn = source.slice(source.indexOf("function hasAppSession"), source.indexOf("function showSignedInHeader"));
+  const asStore = (entries) => {
+    const map = new Map(Object.entries(entries));
+    return new Proxy({ getItem: (k) => (map.has(k) ? map.get(k) : null) }, {
+      ownKeys: () => [...map.keys()],
+      getOwnPropertyDescriptor: (target, key) => (map.has(key) ? { enumerable: true, configurable: true, value: map.get(key) } : Object.getOwnPropertyDescriptor(target, key)),
+    });
+  };
+  const session = JSON.stringify({ access_token: "a", refresh_token: "r", user: { id: "u" } });
+  const signedIn = (local, tab) => new Function("localStorage", "sessionStorage", `${fn}; return hasAppSession();`)(asStore(local), asStore(tab));
+  check(signedIn({ [KEY]: session }, {}) === true, "a remembered sign-in shows Dashboard");
+  check(signedIn({}, { [KEY]: session, tscKeepSignedIn: "0" }) === true, "so does a sign-in kept to this tab");
+  check(signedIn({ [KEY]: session }, { tscKeepSignedIn: "0" }) === false, "a tab signed out on its own shows Log in, whatever the browser remembers");
+  check(signedIn({ "sb-test-auth-token-code-verifier": "x" }, {}) === false, "a code verifier alone is not a sign-in");
+  check(signedIn({}, {}) === false, "signed out shows Log in");
+}
+
 if (failures) {
   console.error(`\n${failures} check(s) failed: "Keep me logged in" does not hold across tabs.`);
   process.exit(1);
