@@ -7,7 +7,7 @@ import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { providerOf, providerOn } from "./payout-providers.js";
 
 /**
- * A factory paid by Wise, PayPal or bank transfer withdraws from its balance:
+ * A factory paid by Wise or PayPal withdraws from its balance:
  * approved earnings, less what it has asked for or been paid. The balance is
  * the database's (my_withdrawal_balance, one source with the staff board); the
  * request and its cancelling are RPCs that check the owner, the amount and the
@@ -16,10 +16,10 @@ import { providerOf, providerOn } from "./payout-providers.js";
  * the provider's own quote where it gives one.
  */
 
-const PROVIDER_FOR = (row) => (row?.method === "paypal" ? "paypal" : row?.wise_recipient_type ? "wise" : "bank");
+// A bank account is withdrawn to only through Wise: TSC no longer pays one by hand (20261117500000).
 const usable = (row) => row?.method === "paypal"
   ? Boolean(row.paypal_email)
-  : row?.method === "bank" && Boolean(row.account_name?.trim() && row.number_changed_at);
+  : row?.method === "bank" && Boolean(row.wise_recipient_type && row.account_name?.trim() && row.number_changed_at);
 
 const REFUSALS = {
   withdraw_owner_only: "Only a company owner can withdraw.",
@@ -29,7 +29,6 @@ const REFUSALS = {
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
-  fee_too_large: "This amount is not more than the bank transfer fee, so nothing would arrive.",
   withdrawal_provider_off: "This withdrawal method isn't available right now. Choose another one.",
 };
 const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301" || /JWT/i.test(error?.message ?? "")
@@ -39,18 +38,16 @@ const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301"
 const TIMING = {
   wise: "Sent by Wise after TSC approves it; usually 1–2 business days to arrive.",
   paypal: "Sent by PayPal after TSC approves it; usually reaches your PayPal balance within minutes.",
-  bank: "Sent by bank transfer after TSC approves it; a few business days to arrive.",
 };
-export const withdrawalTiming = (provider) => TIMING[provider] ?? TIMING.bank;
+export const withdrawalTiming = (provider) => TIMING[provider] ?? null;
 
 const dollars = (cents) => `US$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
 /**
  * The rate beside the fee, from the fee module's own formulas: "2%",
- * "US$0.25 per payment", "US$50 per payment"; for a quoted fee, its share of
+ * "US$0.25 per payment"; for a quoted fee, its share of
  * the amount.
  */
 export function feeRate(provider, { country = "", feeCents, amountCents }) {
-  if (provider === "bank") return `${dollars(FEE_FORMULAS.bank.fixedCents)} per payment`;
   if (provider === "paypal") {
     const f = FEE_FORMULAS.paypal;
     return country === f.home ? `${dollars(f.domesticFixedCents)} per payment` : `${f.bps / 100}%`;
@@ -281,15 +278,15 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offered]);
   const method = choices.find((m) => m.id === methodId) ?? null;
-  const provider = PROVIDER_FOR(method);
+  const provider = providerOf(method);
   const amountCents = /^\d+(\.\d{0,2})?$/.test(amountText.trim()) ? Math.round(Number(amountText.trim()) * 100) : NaN;
   const amountProblem = !Number.isFinite(amountCents) || amountCents <= 0 ? "Enter an amount to withdraw."
     : amountCents > available ? `You can withdraw up to ${formatMoney(available, "USD")}.` : null;
   const fee = amountProblem || !method ? null : withdrawalFee({ provider, amountCents, currency: "USD", country });
   // The provider's own figure when it can give one (Wise quotes per transfer);
   // otherwise the fee line, and the exact figure comes when TSC sends it.
-  const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee) && provider !== "bank");
-  const asking = Boolean(fee) && provider !== "bank" && !exact;
+  const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee));
+  const asking = Boolean(fee) && !exact;
 
 
   async function confirm() {

@@ -17,7 +17,6 @@ import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { providerOn, usePayoutProviders } from "./payout-providers.js";
-import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -326,7 +325,6 @@ export default function StripePayoutCard({
   onMakePrimaryManual,
   manualForm,
   onManualFieldChange,
-  onSaveManual,
   onSaveWise,
   onSavePaypal,
   onDeleteManual,
@@ -369,8 +367,6 @@ export default function StripePayoutCard({
   const [removing, setRemoving] = useState(null);
   const [handover, setHandover] = useState(null);
   const [methodNotice, setMethodNotice] = useState(null);
-  // The staff-paid form's Save, pressed with something missing.
-  const [manualPressed, setManualPressed] = useState(false);
   const [removeError, setRemoveError] = useState(null);
   // TSC's own add and remove (an account TSC manages): which account a
   // Replace removes once the new one is added, which account becomes the
@@ -407,12 +403,12 @@ export default function StripePayoutCard({
   }, [methodMenu]);
 
   const manualCountry = manualAccount?.bank_country?.trim() || "";
-  // The step a saved method opens on, and the bank form it uses: Wise's for a
-  // bank in China or one set up on it, the staff-paid form elsewhere.
+  // The step a saved method opens on. Every bank account is on Wise's form:
+  // TSC no longer pays one by hand.
   const stepFor = (row) => {
     if (!row) return "setup";
     if (isPaypal(row)) return "setup-paypal";
-    return row.wise_recipient_type || (row.bank_country ?? country) === "CN" ? "setup-wise" : "setup-bank";
+    return "setup-wise";
   };
   const load = useCallback(async () => {
     const [saved, { data: profile }, preference] = await Promise.all([
@@ -630,35 +626,17 @@ export default function StripePayoutCard({
   const closeModal = () => {
     if (!busy && !manualBusy) {
       setMethodMenu(null);
-      setManualPressed(false);
       setError(null);
       setModal(null);
       onFlowClose?.();
     }
   };
 
-  // Staff cannot pay a bank with no name, an account with no holder, or a
-  // country nobody named; a country not listed is named in the instructions.
   const notListed = country === NOT_LISTED;
-  const bankFields = bankFieldsFor(notListed ? null : country);
-  const editingBank = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
-  const hasStoredNumber = Boolean(editingBank?.number_changed_at);
-  const typedNumber = normalBankNumber(manualForm?.account_number);
-  const numberMismatch = typedNumber !== normalBankNumber(manualForm?.account_number_again) && Boolean(manualForm?.account_number_again);
-  const manualReady = Boolean(
-    country
-    && manualForm?.bank_name?.trim()
-    && manualForm?.account_name?.trim()
-    && validSwift(manualForm?.swift)
-    && (!bankFields.branch.required || manualForm?.branch?.trim())
-    && (typedNumber ? validBankNumber(typedNumber) && !numberMismatch : hasStoredNumber && !numberMismatch)
-    && (!notListed || manualForm?.instructions?.trim()),
-  );
 
   // Back from a step: to the list when adding; when editing, to where it came from.
   const backFromStep = () => {
     setManualError(null);
-    setManualPressed(false);
     if (manualEditingId) {
       if (renderCard) setModal("manage");
       else closeModal();
@@ -668,45 +646,6 @@ export default function StripePayoutCard({
   // Settings opens a removal straight from its own row, with no list behind it.
   const backToList = () => (renderCard ? setModal("manage") : closeModal());
 
-  const manualFieldsContent = manualForm ? (
-    <div className="payout-manual-fields">
-      <div className="payout-form-grid">
-        <label>
-          <span>Account holder *</span>
-          <input data-field="payout_account_name" value={manualForm.account_name} required onChange={onManualFieldChange("account_name")} />
-        </label>
-        <label>
-          <span>Bank name *</span>
-          <input data-field="payout_bank_name" value={manualForm.bank_name} required onChange={onManualFieldChange("bank_name")} />
-        </label>
-        <label>
-          <span>{bankFields.numberLabel}{hasStoredNumber ? "" : " *"}</span>
-          <input data-field="payout_account_number" autoComplete="off" spellCheck={false} value={manualForm.account_number} required={!hasStoredNumber} onChange={onManualFieldChange("account_number")}
-                 placeholder={hasStoredNumber ? `Ending ${editingBank.account_number_last4}` : ""} />
-        </label>
-        <label>
-          <span>{reEnter(bankFields.numberLabel)}{hasStoredNumber && !typedNumber ? "" : " *"}</span>
-          <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={manualForm.account_number_again} required={!hasStoredNumber || Boolean(typedNumber)} onChange={onManualFieldChange("account_number_again")} />
-        </label>
-        <label>
-          <span>SWIFT / BIC *</span>
-          <input data-field="payout_swift" value={manualForm.swift} required onChange={onManualFieldChange("swift")} />
-        </label>
-        <label>
-          <span>{bankFields.branch.label}{bankFields.branch.required ? " *" : " (optional)"}</span>
-          <input data-field="payout_branch" value={manualForm.branch} placeholder={bankFields.branch.placeholder} required={Boolean(bankFields.branch.required)} onChange={onManualFieldChange("branch")} />
-        </label>
-      </div>
-      {numberMismatch ? <p className="live-stripe-error" role="alert">The two account numbers don't match.</p> : null}
-      {typedNumber && !validBankNumber(typedNumber) ? <p className="live-stripe-error" role="alert">Enter the account number with letters and digits only, 5 to 34 characters.</p> : null}
-      {manualForm.swift && !validSwift(manualForm.swift) ? <p className="live-stripe-error" role="alert">A SWIFT / BIC is 8 or 11 letters and digits.</p> : null}
-      <label className="payout-textarea-field">
-        <span>{notListed ? "Bank country and transfer instructions *" : "Transfer instructions (optional)"}</span>
-        <textarea data-field="payout_instructions" rows={2} value={manualForm.instructions} required={notListed} onChange={onManualFieldChange("instructions")} />
-      </label>
-      {manualPressed && !manualReady ? <p className="live-stripe-error" role="alert">Fill in the fields marked *.</p> : null}
-    </div>
-  ) : null;
 
   // An account still being set up pays nobody: it has its own row, to finish it.
   const providerMethodRows = !account?.transfers_active ? [] : connectedMethods.length ? connectedMethods : [{
@@ -833,21 +772,9 @@ export default function StripePayoutCard({
   const openManual = (row) => {
     setManualError(null);
     setMethodNotice(null);
-    setManualPressed(false);
     onStartManual?.(row);
     setModal(stepFor(row));
   };
-
-  async function saveManual(details) {
-    setManualError(null);
-    try {
-      // Saving adds the method and leaves the default where it is: only the
-      // first method a factory saves becomes its default (the database's rule).
-      await onSaveManual?.(details);
-    } catch (failure) {
-      setManualError(failure);
-    }
-  }
 
   async function makePrimary(row) {
     setManualError(null);
@@ -1262,20 +1189,6 @@ export default function StripePayoutCard({
         <PaypalStep row={stepRow} country={stepRow?.bank_country ?? country} form={manualForm} busy={manualBusy} onField={onManualFieldChange} savePaypal={() => onSavePaypal?.()} onBack={backFromStep} onClose={closeModal} />
       ) : null}
 
-      {modal === "setup-bank" ? (
-        <PayoutModal keepOpen title={manualEditingId ? "Edit bank account" : transferName(country)} onClose={closeModal} actions={<>
-          {/* In the footer, beside Save: this form can be taller than its dialog. */}
-          {manualError ? <p className="live-stripe-error payout-modal-refusal" role="alert">{manualError.message}</p> : null}
-          <button className="secondary-btn" type="button" onClick={backFromStep}>Back</button>
-          <button className="primary-btn" type="button" data-testid="save-payout" disabled={manualBusy}
-                  onClick={() => { setManualPressed(true); if (manualReady) saveManual({ bank_country: notListed ? null : country }); }}>
-            {manualBusy ? "Saving…" : "Save"}
-          </button>
-        </>}>
-          <p className="payout-modal-intro">Use an account in your company’s name. TSC uses these bank details to pay your released earnings.</p>
-          {manualFieldsContent}
-        </PayoutModal>
-      ) : null}
 
       {modal === "resume" ? (
         <PayoutModal

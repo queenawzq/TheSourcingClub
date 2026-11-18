@@ -46,7 +46,8 @@ assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000, quotedFe
 assert.equal(withdrawalFee({ provider: "tazapay", amountCents: 10_000, quotedFeeCents: 543.2 }).feeCents, 544);
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 10_000, quotedFeeCents: 10 }).feeCents, 10, "a quote wins over the formula");
 assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000 }), { feeCents: null, receivesCents: null, basis: "quote_needed" });
-// The staff-paid bank wire: a fixed US$50, the same figure as the database's.
+// The staff-paid bank wire ("Mark paid out by bank", the fallback for a Wise
+// bank account): a fixed US$50, the same figure as the database's.
 assert.deepEqual(withdrawalFee({ provider: "bank", amountCents: 10_000 }), { feeCents: 5000, receivesCents: 5_000, basis: "formula" });
 assert.match(withdrawalFee({ provider: "bank", amountCents: 5000 }).refused, /too small: the fee to send it is US\$50\.00/);
 {
@@ -68,7 +69,9 @@ for (const r of [
 assert.equal(withdrawalFee({ provider: "stripe", amountCents: 27, country: "US" }).receivesCents, 1);
 
 // Lines: both languages, never "TSC pays".
-for (const provider of ["stripe", "wise", "paypal", "tazapay", "bank"]) {
+// No bank line: a bank is withdrawn to only through Stripe or Wise (20261117500000).
+assert.throws(() => withdrawalFeeLine("bank"), /Unknown payout provider/);
+for (const provider of ["stripe", "wise", "paypal", "tazapay"]) {
   for (const country of ["US", "CN", "DE"]) {
     const en = withdrawalFeeLine(provider, { country });
     const zh = withdrawalFeeLine(provider, { country, language: "zh" });

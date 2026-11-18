@@ -437,7 +437,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onMakePrimaryManual={payouts.makePrimary}
             manualForm={payouts.form}
             onManualFieldChange={payouts.setField}
-            onSaveManual={payouts.save}
             onSaveWise={payouts.saveWise}
             onSavePaypal={payouts.savePaypal}
             problem={withdrawalProblem(earnings, payouts.primary)}

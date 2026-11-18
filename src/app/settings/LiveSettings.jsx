@@ -314,7 +314,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   }
 
   // Settings' list is built from the accounts, so it is read again after a change.
-  const savePayout = async (details) => { const row = await payouts.save(details); await reload(); return row; };
   const removePayout = async (account, promote) => { await payouts.remove(account, promote); await reload(); };
   const makePrimaryPayout = async (account) => { await payouts.makePrimary(account); await reload(); };
 
@@ -542,7 +541,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onManualFieldChange={payouts.setField}
           onSavePaypal={async () => { const row = await payouts.savePaypal(); await reload(); return row; }}
           onSaveWise={async (details) => { const row = await payouts.saveWise(details); await reload(); return row; }}
-          onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}
           manualSaved={payouts.saved}
