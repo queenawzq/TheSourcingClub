@@ -61,6 +61,9 @@ for (const country of ["TW", "KH", "other"]) assert.equal(info.chooserMethod("ba
 assert.ok(card.includes("const bankRoute = supported || (wiseOn && paidByWise(country));") && card.includes("country && !bankRoute ?"), "the chooser offers PayPal alone where no bank route pays");
 assert.ok(card.includes('onUnavailable={() => setModal("bank-unavailable")}') && !card.includes('onUnavailable={() => setModal("setup-bank")}'), "Wise's form unavailable never falls back to the staff bank form");
 assert.ok(!card.includes('notListed ? "setup-bank"'), "the chooser never opens the staff bank form");
+// TSC no longer pays a bank by hand (20261117500000): the staff-paid form and its save are gone.
+assert.ok(!card.includes('"setup-bank"') && !card.includes("onSaveManual"), "the card has no staff-paid bank form, to set up or to edit");
+assert.ok(!read("src/app/order/use-manual-payouts.js").includes("save_bank_payout_account"), "nothing in the app saves a bank account staff would pay by hand");
 const factoryZh = read("src/factory-prototype/main.jsx");
 const { WITHDRAWAL_FEE_LINES_ZH } = await import("../src/shared/withdrawal-fees.mjs");
 assert.ok(factoryZh.includes("  ...WITHDRAWAL_FEE_LINES_ZH,"), "the factory dictionary takes the fee lines' Chinese from the fee module");
