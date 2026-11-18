@@ -32,7 +32,7 @@ function appUrl(request) {
   const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (productionHost) return `https://${productionHost.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   if (!process.env.VERCEL && request?.headers?.host) return `http://${request.headers.host}`;
-  return "https://the-sourcing-club.vercel.app";
+  return "https://sourcing-club.com";
 }
 
 function transport() {

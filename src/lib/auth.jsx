@@ -18,13 +18,14 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink, linkRefusedInAddress, linkCannotFinish, dropSignInHere } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 import { takeRecoveryToken } from "./recovery-link.mjs";
 import { createActiveOrgStorage, pickActiveOrg } from "./active-org-storage.mjs";
+import { forgetReturn, rememberReturn } from "./return-after-link.mjs";
 
 // The company each tab works in belongs to that tab. See active-org-storage.mjs.
 const activeOrgStore = createActiveOrgStorage(window);
@@ -72,6 +73,9 @@ function reportNoAnswer(stage, authError, portal) {
 
 const LAST_ORG_KIND = "tscLastOrgKind";
 /** The kind of company this person was last working in on this browser, or null. */
+/** sessionStorage: a sign-in link just failed in this tab (see the restore below). */
+const LINK_FAILED_KEY = "tscSignInLinkFailed";
+
 export const lastCompanyKind = (userId) => (userId ? window.localStorage.getItem(`${LAST_ORG_KIND}:${userId}`) : null);
 
 const alreadyRegistered = (authError) =>
@@ -194,6 +198,16 @@ export function AuthProvider({ children }) {
     // (src/lib/recovery-link.mjs). Verifying it is a fetch, so it goes direct
     // or through our own host like everything else; the restore waits for it,
     // since a slow route can take longer than the usual restore allows.
+    // A sign-in link failed in this tab while the browser kept someone else:
+    // the tab reloaded signed out, and the sign-in screen says why.
+    try {
+      const failedLink = window.sessionStorage.getItem(LINK_FAILED_KEY);
+      if (failedLink) {
+        window.sessionStorage.removeItem(LINK_FAILED_KEY);
+        setError(authFailure(failedLink === "network" ? "network" : "sign_in_link_used"));
+      }
+    } catch { /* storage blocked: nothing was flagged */ }
+
     const recoveryToken = takeRecoveryToken(window);
     const recovered = recoveryToken === null
       ? Promise.resolve()
@@ -218,7 +232,41 @@ export function AuthProvider({ children }) {
         setStatus("error");
         return;
       }
-      finishRestore(data.session);
+      if (!landedFromSignInLink) {
+        finishRestore(data.session);
+        return;
+      }
+      // An emailed sign-in link that signed nobody in: already used (the code
+      // was typed, or a mail scanner opened it), expired, or opened in another
+      // browser. Say so on the sign-in screen rather than showing it bare.
+      supabase.auth.initialize().then(({ error: linkError } = {}) => {
+        if (cancelled) return;
+        const failed = linkRefusedInAddress || linkCannotFinish || Boolean(linkError);
+        const words = linkError && isNoAnswer(linkError) ? "network" : "sign_in_link_used";
+        if (failed && data.session && !new URLSearchParams(window.location.search).has("review")) {
+          // The browser keeps someone else: opening their account here
+          // without a word looked like being signed in as the wrong person.
+          // This tab drops it (the other tabs keep it) and says why. A link
+          // about a company goes on to ReviewLinkGate, which explains itself.
+          dropSignInHere();
+          activeOrgStore.clear();
+          try { window.sessionStorage.setItem(LINK_FAILED_KEY, words); } catch { /* the reload just shows the sign-in */ }
+          const url = new URL(window.location.href);
+          url.searchParams.delete("code");
+          window.location.replace(url.toString());
+          return;
+        }
+        if (failed && !data.session) {
+          setError(authFailure(words));
+          // A code that cannot be used is no use in the address either.
+          const url = new URL(window.location.href);
+          if (url.searchParams.has("code")) {
+            url.searchParams.delete("code");
+            window.history.replaceState(window.history.state, "", url.toString());
+          }
+        }
+        finishRestore(data.session);
+      }, () => { if (!cancelled) finishRestore(data.session); });
     }).catch((sessionError) => {
       if (cancelled || restored) return;
       restored = true;
@@ -315,9 +363,17 @@ export function AuthProvider({ children }) {
     // their id did change, which is why it survived a quick look.
   }, [session === undefined, session?.user?.id]);
 
+  // The company chosen last, including in this same render: React runs a
+  // child's effects before this provider's, so a review link selecting its
+  // company (ReviewLinkGate) happens before the check below sees the change.
+  const latestOrgChoice = useRef(activeOrgId);
+  latestOrgChoice.current = activeOrgId;
+
   // Keep the remembered org valid: drop it if the user lost access.
   useEffect(() => {
     if (!orgs.length) return;
+    // A choice made by a child this render (a review link) is not stale.
+    if (orgs.some((org) => org.id === latestOrgChoice.current)) return;
     const stillAMember = orgs.some((org) => org.id === activeOrgId);
     if (!stillAMember) {
       setActiveOrgId(orgs[0].id);
@@ -378,7 +434,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => {
     const activeOrg = pickActiveOrg(orgs, activeOrgId);
 
-    return {
+    const api = {
       status: creatingOrg && status === "no-org" ? "loading" : status,
       error,
       session,
@@ -393,6 +449,7 @@ export function AuthProvider({ children }) {
       // `remember: false` is for a link that says which company it is about:
       // this page opens on it, and the next visit opens where the person left off.
       selectOrg(orgId, { remember = true } = {}) {
+        latestOrgChoice.current = orgId;
         setActiveOrgId(orgId);
         if (remember) activeOrgStore.choose(orgId);
       },
@@ -531,6 +588,7 @@ export function AuthProvider({ children }) {
           setError(readable(signInError));
           return false;
         }
+        forgetReturn(window);
         return true;
       },
 
@@ -597,8 +655,11 @@ export function AuthProvider({ children }) {
        * whichever is easier works — the code matters most on a preview deploy
        * behind SSO, where following the link lands somewhere useless.
        */
-      async sendEmailCode(email, { createUser = false } = {}) {
+      async sendEmailCode(email, { createUser = false, keepSignedIn = true } = {}) {
         setError(null);
+        // The email's link lands on the page alone, in a new tab: remember
+        // what it was for and the sign-in box's choice.
+        rememberReturn(window, { keepSignedIn });
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: email.trim().toLowerCase(),
           options: {
@@ -606,7 +667,11 @@ export function AuthProvider({ children }) {
             // for whatever address was typed would mint an org-less account
             // and bypass the one-step signup the design specifies.
             shouldCreateUser: createUser,
-            emailRedirectTo: window.location.origin + window.location.pathname,
+            // The vendor portal stays in the link, so a link that fails still
+            // opens the vendor sign-in. Production's redirect list has this
+            // exact address; anything else is the Site URL, not an error.
+            emailRedirectTo: window.location.origin + window.location.pathname
+              + (new URLSearchParams(window.location.search).get("portal") === "factory" ? "?portal=factory" : ""),
           },
         });
         if (otpError) {
@@ -633,6 +698,8 @@ export function AuthProvider({ children }) {
           setError(readable(verifyError));
           return false;
         }
+        // Signed in with the code: the email's link must not reuse the page later.
+        forgetReturn(window);
         return true;
       },
 
@@ -677,8 +744,24 @@ export function AuthProvider({ children }) {
         await supabase.auth.signOut();
       },
 
+      /**
+       * Another account, in this tab only (the review link's screen). A tab
+       * on the browser's remembered sign-in drops it here alone and reloads
+       * signed out, with the link still in the address; every other tab keeps
+       * that sign-in. A tab signed in on its own just signs out.
+       */
+      async logInAnotherAccountHere() {
+        if (leaveSharedSignIn()) {
+          activeOrgStore.clear();
+          window.location.reload();
+          return;
+        }
+        await api.signOut();
+      },
+
       refreshOrgs: reloadOrgs,
     };
+    return api;
   }, [status, creatingOrg, error, session, orgs, activeOrgId, reloadOrgs, lostAccess]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
