@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink, linkRefusedInAddress, dropSignInHere } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isThisTabsSession, leaveSharedSignIn, landedFromSignInLink, linkRefusedInAddress, linkCannotFinish, dropSignInHere } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
@@ -241,7 +241,7 @@ export function AuthProvider({ children }) {
       // browser. Say so on the sign-in screen rather than showing it bare.
       supabase.auth.initialize().then(({ error: linkError } = {}) => {
         if (cancelled) return;
-        const failed = linkRefusedInAddress || Boolean(linkError);
+        const failed = linkRefusedInAddress || linkCannotFinish || Boolean(linkError);
         const words = linkError && isNoAnswer(linkError) ? "network" : "sign_in_link_used";
         if (failed && data.session && !new URLSearchParams(window.location.search).has("review")) {
           // The browser keeps someone else: opening their account here
@@ -256,7 +256,15 @@ export function AuthProvider({ children }) {
           window.location.replace(url.toString());
           return;
         }
-        if (failed && !data.session) setError(authFailure(words));
+        if (failed && !data.session) {
+          setError(authFailure(words));
+          // A code that cannot be used is no use in the address either.
+          const url = new URL(window.location.href);
+          if (url.searchParams.has("code")) {
+            url.searchParams.delete("code");
+            window.history.replaceState(window.history.state, "", url.toString());
+          }
+        }
         finishRestore(data.session);
       }, () => { if (!cancelled) finishRestore(data.session); });
     }).catch((sessionError) => {

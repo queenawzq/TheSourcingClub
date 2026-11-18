@@ -13,7 +13,7 @@ import { createSessionStorage } from "./session-storage.mjs";
 import { createRoute, proxyPathFor } from "./supabase-route.mjs";
 import { AUTH_MESSAGES, isNoAnswer } from "../shared/auth-messages.mjs";
 import { fillOlderBrowsers } from "./older-browsers.mjs";
-import { isSignInLinkLanding, restoreReturn, withoutLinkError } from "./return-after-link.mjs";
+import { isSignInLinkLanding, linkCannotFinishHere, restoreReturn, withoutLinkError } from "./return-after-link.mjs";
 
 fillOlderBrowsers();
 
@@ -37,6 +37,8 @@ export const supabaseUrl = url ?? "";
 // reads and removes `?code=`.
 /** This page load is an emailed sign-in link landing, read before the client removes it. */
 export const landedFromSignInLink = Boolean(globalThis.window) && isSignInLinkLanding(window);
+/** A `?code=` this browser holds no code verifier for (another browser), which Supabase ignores silently. */
+export const linkCannotFinish = Boolean(globalThis.window) && linkCannotFinishHere(window);
 /** The link landed refused by Supabase (`error_code`), before the words are removed below. */
 export const linkRefusedInAddress = Boolean(globalThis.window)
   && /(^|[?&#])error_code=/.test(`${window.location.search}${window.location.hash}`);

@@ -12,7 +12,7 @@
 import { readFileSync } from "node:fs";
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
 import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
-import { forgetReturn, isSignInLinkLanding, rememberReturn, restoreReturn, withoutLinkError } from "../src/lib/return-after-link.mjs";
+import { forgetReturn, isSignInLinkLanding, linkCannotFinishHere, rememberReturn, restoreReturn, withoutLinkError } from "../src/lib/return-after-link.mjs";
 import { reopensSummary } from "../src/app/onboarding/resubmit.mjs";
 import { ACTIVE_ORG_KEY, createActiveOrgStorage, pickActiveOrg } from "../src/lib/active-org-storage.mjs";
 
@@ -406,7 +406,7 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
 {
   const auth = readFileSync("src/lib/auth.jsx", "utf8");
   check(/emailRedirectTo:[^\n]*\n[^\n]*"\?portal=factory"/.test(auth), "the code email's link keeps the vendor portal");
-  check(/const words = [^\n]*"sign_in_link_used"[\s\S]{0,900}if \(failed && !data\.session\) setError\(authFailure\(words\)\)/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
+  check(/const words = [^\n]*"sign_in_link_used"[\s\S]{0,900}if \(failed && !data\.session\) \{\s*setError\(authFailure\(words\)\)/.test(auth), "a sign-in link that signs nobody in says it expired or was used");
 }
 
 // A review link's company wins over the "keep the company valid" fallback
@@ -451,6 +451,23 @@ for (const file of ["src/app/main.jsx", "src/app/admin/login.jsx"]) {
   check(/failed && data\.session && !new URLSearchParams\(window\.location\.search\)\.has\("review"\)[\s\S]{0,500}dropSignInHere\(\)[\s\S]{0,400}LINK_FAILED_KEY/.test(auth),
     "a failed link with someone else kept drops it here and flags the message (a review link goes to its card instead)");
   check(/getItem\(LINK_FAILED_KEY\)[\s\S]{0,200}"sign_in_link_used"/.test(auth), "after the reload the sign-in screen shows the existing message");
+}
+
+// A link opened in a browser that never asked for the code: Supabase ignores
+// the ?code= silently (no code verifier), so the app checks it itself.
+{
+  const browserWith = (entries, search) => {
+    const local = new MemoryStorage();
+    for (const [k, v] of Object.entries(entries)) local.setItem(k, v);
+    local.keys = () => [...local.map.keys()];
+    return { location: { search }, localStorage: new Proxy(local, { ownKeys: () => [...local.map.keys()], getOwnPropertyDescriptor: (t, k) => (local.map.has(k) ? { enumerable: true, configurable: true, value: local.map.get(k) } : undefined) }) };
+  };
+  check(linkCannotFinishHere(browserWith({}, "?code=abc")) === true, "a code with no verifier in this browser cannot finish here");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-code-verifier": "\"v/magiclink\"" }, "?code=abc")) === false, "the browser that asked can finish it");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-flow-abcdefgh12-code-verifier": "v" }, "?code=abc&sb_flow_id=abcdefgh12")) === false, "including by its flow's own verifier");
+  check(linkCannotFinishHere(browserWith({ "sb-x-auth-token-flow-otherflow99-code-verifier": "v" }, "?code=abc&sb_flow_id=abcdefgh12")) === true, "another flow's verifier does not count");
+  check(linkCannotFinishHere(browserWith({}, "?portal=factory")) === false, "no code, nothing to finish");
+  check(/const failed = linkRefusedInAddress \|\| linkCannotFinish \|\|/.test(readFileSync("src/lib/auth.jsx", "utf8")), "the app treats such a link as failed");
 }
 
 if (failures) {

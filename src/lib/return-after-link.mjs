@@ -97,3 +97,22 @@ export function restoreReturn(win, now = Date.now()) {
 export function forgetReturn(win) {
   safe(() => win.localStorage.removeItem(KEY));
 }
+
+/**
+ * A sign-in link's `?code=` that this browser cannot finish: the code is only
+ * exchanged with the code verifier saved when the code was asked for, so a
+ * link opened in another browser (or after the verifier was used) has none.
+ * Supabase then ignores the code without an error, so this is checked here.
+ */
+export function linkCannotFinishHere(win) {
+  const query = new URLSearchParams(win.location.search);
+  if (!query.get("code")) return false;
+  const has = (key) => Boolean(safe(() => win.localStorage.getItem(key)));
+  const keys = safe(() => Object.keys(win.localStorage), []);
+  // supabase-js's own test (_isPKCECallback): the verifier saved for this
+  // link's flow id, or the single verifier of older versions.
+  const flowId = query.get("sb_flow_id");
+  if (flowId && /^[a-zA-Z0-9_-]{8,64}$/.test(flowId)
+    && keys.some((key) => key.endsWith(`-flow-${flowId}-code-verifier`) && has(key))) return false;
+  return !keys.some((key) => /^sb-.+-auth-token-code-verifier$/.test(key) && has(key));
+}
