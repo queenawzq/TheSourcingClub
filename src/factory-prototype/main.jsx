@@ -1347,6 +1347,7 @@ export const factoryMainZhText = {
   "Call back": "回拨",
   "There's already a call in this conversation.": "此对话中已有一个通话。",
   "This call has ended.": "此通话已结束。",
+  "You started this call, so you can't answer it.": "这是你发起的通话，不能由你接听。",
   "The call couldn't be started. Try again.": "无法发起通话，请重试。",
   "No answer before the time": "到时未回复",
   "On now": "进行中",

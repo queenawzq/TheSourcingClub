@@ -85,6 +85,8 @@ function callFailure(failure, otherwise = null) {
   const text = String(failure?.message ?? "");
   if (/already a call/.test(text)) return "There's already a call in this conversation.";
   if (/has ended/.test(text)) return "This call has ended.";
+  // A person in both companies answering the call they started themselves.
+  if (/other side answers/.test(text)) return "You started this call, so you can't answer it.";
   if (otherwise && !failure?.noAnswer) return otherwise;
   return text;
 }

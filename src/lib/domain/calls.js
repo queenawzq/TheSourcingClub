@@ -19,7 +19,7 @@ export * from "../../shared/call-time.mjs";
 
 const CALL_COLUMNS = `
   id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
-  proposer_org_id, proposer_time_zone, status, responded_at, response_note,
+  proposer_org_id, proposer_user_id, proposer_time_zone, status, responded_at, response_note,
   cancelled_by_org_id, created_at, instant,
   thread:message_threads (
     id, order_id, rfq_id, brand_org_id, factory_org_id,
@@ -35,8 +35,12 @@ export async function listCalls(orgId) {
     "load your calls",
   );
   // A person in two companies reads both companies' calls through RLS; this
-  // screen is about one of them.
-  return rows.filter((call) => call.thread?.brand_org_id === orgId || call.thread?.factory_org_id === orgId);
+  // screen is about one of them. A call they started now from their other
+  // company is theirs, not one ringing for them here.
+  const { data } = await supabase.auth.getSession();
+  const me = data?.session?.user?.id ?? null;
+  return rows.filter((call) => (call.thread?.brand_org_id === orgId || call.thread?.factory_org_id === orgId)
+    && !(call.instant && me && call.proposer_user_id === me && call.proposer_org_id !== orgId));
 }
 
 export async function listThreadCalls(threadId) {

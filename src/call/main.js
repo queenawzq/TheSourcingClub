@@ -19,7 +19,7 @@
  */
 import "./call.css";
 import { supabase, isConfigured, kickNotificationEmails } from "../lib/supabase.js";
-import { acceptCall, joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
+import { acceptCall, cancelCall, joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
 import { callWindowChannel } from "../app/message/call-window.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -114,10 +114,27 @@ async function leave() {
   }
 }
 
+/**
+ * Leaving a call started now that nobody has answered yet ends it, as closing
+ * its window does on a computer: nobody answers into an empty call. Only the
+ * caller's side can end it (the database refuses anyone else, and anything but
+ * a call that still rings), so a refusal is simply nothing to do.
+ */
+async function endIfStillRinging() {
+  try {
+    const { data: call } = await supabase.from("calls").select("instant, status").eq("id", callId).maybeSingle();
+    if (call?.instant && call.status === "proposed") await cancelCall(callId);
+  } catch {
+    // Already answered, declined, missed or ended.
+  }
+}
+
 async function start() {
   if (signedOut) return;
   if (params.get("left") === "1") {
-    finished();
+    if (isConfigured && callId) await endIfStillRinging();
+    if (popup) finished();
+    else window.location.replace(back);
     return;
   }
   if (!isConfigured || !callId) {
@@ -136,7 +153,9 @@ async function start() {
       await acceptCall(callId);
     } catch (failure) {
       if (!/accepted already/.test(failure.message)) {
-        show(/has ended/.test(failure.message) ? "This call has ended." : failure.noAnswer ? failure.message : "The call could not be opened.");
+        show(/has ended/.test(failure.message) ? "This call has ended."
+          : /other side answers/.test(failure.message) ? "You started this call, so you can't answer it."
+          : failure.noAnswer ? failure.message : "The call could not be opened.");
         return;
       }
     }
@@ -163,9 +182,9 @@ async function start() {
   zoom = ZoomMtg;
   // In a window, Zoom's Leave (or the host ending the meeting) lands on this
   // page again as `left=1`, which closes it.
-  const leaveUrl = popup
-    ? `${window.location.origin}/call.html?call=${encodeURIComponent(callId)}&popup=1&left=1&back=${encodeURIComponent(backPath)}`
-    : back;
+  // Zoom's Leave lands on this page again as `left=1` (in a window or on a
+  // phone), so a call that still rings can be ended before going back.
+  const leaveUrl = `${window.location.origin}/call.html?call=${encodeURIComponent(callId)}${popup ? "&popup=1" : ""}&left=1&back=${encodeURIComponent(backPath)}`;
   ZoomMtg.init({
     leaveUrl,
     patchJsMedia: true,

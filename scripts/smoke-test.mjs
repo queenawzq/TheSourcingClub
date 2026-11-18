@@ -1739,7 +1739,7 @@ console.log("\nphase 3 — the order runs");
 
       const { data: seenCalls, error: callsError } = await factoryClient.from("calls").select(`
         id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
-        proposer_org_id, proposer_time_zone, status, responded_at, response_note,
+        proposer_org_id, proposer_user_id, proposer_time_zone, status, responded_at, response_note,
         cancelled_by_org_id, created_at, instant,
         thread:message_threads (
           id, order_id, rfq_id, brand_org_id, factory_org_id,
