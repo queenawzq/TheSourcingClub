@@ -20,7 +20,7 @@ export * from "../../shared/call-time.mjs";
 const CALL_COLUMNS = `
   id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
   proposer_org_id, proposer_time_zone, status, responded_at, response_note,
-  cancelled_by_org_id, created_at,
+  cancelled_by_org_id, created_at, instant,
   thread:message_threads (
     id, order_id, rfq_id, brand_org_id, factory_org_id,
     brand:orgs!message_threads_brand_org_id_fkey (name),
@@ -98,6 +98,15 @@ export async function counterCall({ callId, startsAt, durationMinutes = 30, titl
     }),
     "propose another time",
   );
+}
+
+/**
+ * Starts a call now (start_call_now): it rings the other company for 15
+ * minutes, and the caller may join its meeting at once. Its title is fixed,
+ * so there are no words to check.
+ */
+export async function startCallNow(threadId, timeZone = browserTimeZone()) {
+  return unwrap(await supabase.rpc("start_call_now", { target_thread: threadId, time_zone: timeZone }), "start the call");
 }
 
 export async function acceptCall(callId, timeZone = browserTimeZone()) {

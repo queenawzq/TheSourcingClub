@@ -157,6 +157,8 @@ const ZH_SAMPLES = [
   { kind: "call_countered", title: "Maison Rue proposed another time for your call about TSC-1042", body: "Lab dip review", data: { starts_at: "2026-11-21T08:00:00Z" }, typed: true },
   { kind: "call_cancelled", title: "Maison Rue withdrew the invite to a call about TSC-1042", body: "Lab dip review", data: { starts_at: "2026-11-21T08:00:00Z" }, typed: true },
   { kind: "call_cancelled", title: "Maison Rue cancelled the call about TSC-1042", body: "Lab dip review", data: { starts_at: "2026-11-21T08:00:00Z" }, typed: true },
+  { kind: "call_cancelled", title: "Maison Rue ended the call about TSC-1042", body: "Live video chat", typed: true },
+  { kind: "call_started", title: "Maison Rue started a call about TSC-1042", body: "Live video chat", typed: true },
 ];
 
 const ZONES = ["America/New_York", "America/Los_Angeles", "Asia/Shanghai", "Pacific/Kiritimati"];

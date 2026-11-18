@@ -1740,7 +1740,7 @@ console.log("\nphase 3 — the order runs");
       const { data: seenCalls, error: callsError } = await factoryClient.from("calls").select(`
         id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
         proposer_org_id, proposer_time_zone, status, responded_at, response_note,
-        cancelled_by_org_id, created_at,
+        cancelled_by_org_id, created_at, instant,
         thread:message_threads (
           id, order_id, rfq_id, brand_org_id, factory_org_id,
           brand:orgs!message_threads_brand_org_id_fkey (name),
@@ -1805,6 +1805,34 @@ console.log("\nphase 3 — the order runs");
 
       const { error: cancelError } = await brand.client.rpc("cancel_call", { target_call: proposed?.id, note: null });
       cancelError ? fail("either side cancels an accepted call", cancelError) : ok("either side cancels an accepted call");
+
+      // A call started now (20261118520000): it rings, the caller may join
+      // at once, the other side joins by accepting, an outsider never.
+      const { data: instant, error: instantError } = await brand.client.rpc("start_call_now", { target_thread: threadId, time_zone: "America/New_York" });
+      instantError || !instant?.instant ? fail("the brand starts a call now", instantError) : ok("the brand starts a call now, with no words to check");
+      const { error: againError } = await factoryClient.rpc("start_call_now", { target_thread: threadId, time_zone: null });
+      againError ? ok("the other side CANNOT start a second one while it rings") : fail("two calls ring at once in one conversation");
+      const { error: strangerStart } = await losingFactory.rpc("start_call_now", { target_thread: threadId, time_zone: null });
+      strangerStart ? ok("an outsider CANNOT start a call in the conversation") : fail("LEAK: an outsider started a call in another conversation");
+      const callerJoin = await joinAs(brand.client, instant?.id);
+      callerJoin.status === 503 && /set up/.test(callerJoin.error ?? "")
+        ? ok("the caller may join while it rings (as far as Zoom, which isn't set up here)")
+        : fail(`the caller's join answered ${callerJoin.status} ${callerJoin.error}`);
+      const otherEarly = await joinAs(factoryClient, instant?.id);
+      otherEarly.status === 409
+        ? ok("the other side joins only by accepting")
+        : fail(`the other side's join before accepting answered ${otherEarly.status}`);
+      const strangerJoin = await joinAs(losingFactory, instant?.id);
+      strangerJoin.status === 404 ? ok("an outsider CANNOT join it") : fail(`LEAK: an outsider's join answered ${strangerJoin.status}`);
+      const { error: answerError } = await factoryClient.rpc("accept_call", { target_call: instant?.id, time_zone: "Europe/Lisbon" });
+      const otherJoin = await joinAs(factoryClient, instant?.id);
+      !answerError && otherJoin.status === 503
+        ? ok("the other side accepts and may then join")
+        : fail(`accepting a call started now: ${answerError?.message ?? ""} join ${otherJoin.status}`);
+      const { data: started } = await factoryClient.from("notifications").select("title").eq("kind", "call_started").eq("subject_id", threadId);
+      (started ?? []).length === 1
+        ? ok("the other company was told the call started")
+        : fail(`call_started notices: ${(started ?? []).length}`);
 
       // A session signed out somewhere else. signOut() ends the session on
       // the auth server at once, but its access token is still a valid JWT
