@@ -50,7 +50,10 @@
  *
  * Running it again changes nothing at Stripe except step 4, which funds one
  * more step only when the available balance is under US$50 (a tester
- * withdrew it). --fund funds one more regardless. After `npm run seed:demo`
+ * withdrew it). --fund funds one more regardless. --pending-step also funds
+ * one more step with the test card 4242, whose money stays pending at Stripe
+ * for a few days, so Payments shows an earning "Pending · Available <day>".
+ * After `npm run seed:demo`
  * the company is new, so the account, the banks and the balance are made
  * again and the old account is deleted.
  */
@@ -209,13 +212,20 @@ for (const result of await releaseOwedTo({ stripe, db, factoryOrgId: org.id })) 
   console.log(`owed payment ${result.id}: ${result.released ? `paid out (${result.reason})` : `not paid out: ${result.reason}`}`);
 }
 
-// 4. Money available now.
+// 4. Money available now (card 4000 0000 0000 0077), and with --pending-step
+//    one more step paid with the ordinary test card 4242, whose money stays
+//    pending at Stripe for a few days: the factory's Payments page then shows
+//    it as "Pending · Available <day>".
 const availableUsd = async () => (await stripe.balance.retrieve({}, { stripeAccount: account.id })).available
   .filter((b) => b.currency === "usd").reduce((sum, b) => sum + b.amount, 0);
-const before = await availableUsd();
-if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
-  console.log(`available: ${money(before)} already; no step funded (pass --fund for one more)`);
-} else {
+
+const CARDS = {
+  now: { method: "pm_card_bypassPending", label: "Visa ···0077", said: "the test card 4000 0000 0000 0077 (available at once)" },
+  pending: { method: "pm_card_visa", label: "Visa ···4242", said: "the test card 4242 4242 4242 4242 (pending at Stripe for a few days)" },
+};
+
+/** Funds Demo Factory's next due step with a test card, approves it as the app does, and pays it out. */
+async function fundOneStep(card) {
   const due = must(await db.from("order_payments")
     .select("id, order_id, milestone_id, amount_cents, release_requested_at, production_orders!inner (factory_org_id, status, rfqs (title))")
     .eq("state", "due").eq("production_orders.factory_org_id", org.id).eq("production_orders.status", "active")
@@ -224,19 +234,19 @@ if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
   if (!payment) throw new Error(`${org.name} has no due payment to fund. Run \`npm run seed:demo\` for a fresh set.`);
   const title = payment.production_orders.rfqs?.title ?? payment.order_id;
 
-  // As the seed's fundedByStripe(), with the card whose money is available at once.
+  // As the seed's fundedByStripe().
   const total = Number(must(await db.rpc("payment_charge_cents", { target_payment: payment.id }), "the charge"));
   must(await db.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: null, charged: total }), "the charge");
   const intent = await stripe.paymentIntents.create({
-    amount: total, currency: "usd", payment_method: "pm_card_bypassPending", confirm: true,
+    amount: total, currency: "usd", payment_method: card.method, confirm: true,
     automatic_payment_methods: { enabled: true, allow_redirects: "never" },
     transfer_group: payment.order_id, metadata: { payment_id: payment.id },
   });
   must(await db.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent.id, charged: total }), "the test charge");
   must(await db.rpc("record_payment_funded", {
-    target_payment: payment.id, charge: intent.latest_charge, method_type: "card", method_label: "Visa ···0077", received: total,
+    target_payment: payment.id, charge: intent.latest_charge, method_type: "card", method_label: card.label, received: total,
   }), "a payment held by TSC");
-  console.log(`funded: ${title}, ${money(total)} charged to the test card 4000 0000 0000 0077 (${intent.id})`);
+  console.log(`funded: ${title}, ${money(total)} charged to ${card.said} (${intent.id})`);
 
   // A paid step is approved from the factory's update on it; a payment-only
   // one is owed as soon as it is funded.
@@ -255,6 +265,14 @@ if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
   if (!released.released && released.reason !== "already being paid") throw new Error(`the step was funded but not paid out: ${released.reason}`);
   console.log(released.released ? `paid out to the factory: ${released.reason}` : "paid out to the factory by the site's webhook");
 }
+
+const before = await availableUsd();
+if (before >= ENOUGH_CENTS && !process.argv.includes("--fund")) {
+  console.log(`available: ${money(before)} already; no step funded (pass --fund for one more)`);
+} else {
+  await fundOneStep(CARDS.now);
+}
+if (process.argv.includes("--pending-step")) await fundOneStep(CARDS.pending);
 
 const after = await availableUsd();
 const pending = (await stripe.balance.retrieve({}, { stripeAccount: account.id })).pending
