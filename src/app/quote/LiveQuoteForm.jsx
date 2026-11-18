@@ -257,8 +257,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [certificationTags, setCertificationTags] = useState([]);
   const [serviceTags, setServiceTags] = useState([]);
   const [busy, setBusy] = useState(false);
-  // True only while Review waits on a window reading: the button then says
-  // "Saving…", since nothing is sent at this step.
+  // True while a Review press that asked for a window reading is waiting on
+  // it and on the save after it: the button then says "Saving…", since
+  // nothing is sent at this step.
   const [readingWindow, setReadingWindow] = useState(false);
   const [error, setError] = useState(null);
   const [draftState, setDraftState] = useState(null);
@@ -400,12 +401,15 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       return;
     }
     setBusy(true);
-    setReadingWindow(true);
+    // "Saving…" for the whole press when a reading is asked for: the save
+    // that follows it sends nothing either, and the label should not flip.
+    setReadingWindow(Boolean(String(typedValues.capacityWindow ?? "").trim())
+      && windowNeedsReading(capacityWindowProblem(typedValues.capacityWindow)));
     const values = await withWindowReading(typedValues);
-    setReadingWindow(false);
     const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
       setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+      setReadingWindow(false);
       setBusy(false);
       return;
     }
@@ -417,6 +421,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     } catch (failure) {
       setError(failure);
     } finally {
+      setReadingWindow(false);
       setBusy(false);
     }
   }
