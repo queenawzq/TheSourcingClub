@@ -1779,6 +1779,9 @@ export function MessagesScreen({
   // Live: a call being joined, drawn in the designed video panel with Zoom
   // inside it ({ title, text, mountRef, joinUrl, onLeave }).
   video: liveVideo,
+  // Live: "Live video chat" starts a call now ({ onOpen }). Absent, live
+  // leaves the button out.
+  instantCall: liveInstantCall,
   // Live only: which files the picker offers, and a filter for what was
   // picked (it keeps what may go and says why the rest may not).
   attachAccept,
@@ -1971,11 +1974,10 @@ export function MessagesScreen({
                 <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
               </button>
             )}
-            {/* Live schedules calls when the mount passes `scheduling`. An
-                instant "Live video chat" has nothing behind it (no presence:
-                the other side would not know), so it stays in the prototype. */}
+            {/* Live schedules calls when the mount passes `scheduling`, and
+                starts one now when it passes `instantCall`. */}
             {(!isLive || liveScheduling) && <button className="secondary-btn compact-btn" type="button" onClick={() => (liveScheduling ? liveScheduling.onOpen() : setShowSchedule(true))}>Schedule call</button>}
-            {!isLive && <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>}
+            {(!isLive || liveInstantCall) && <button className="primary-btn compact-btn" type="button" onClick={() => (liveInstantCall ? liveInstantCall.onOpen() : setCallMode("preview"))}>Live video chat</button>}
           </div>
         </header>
 
@@ -1998,7 +2000,7 @@ export function MessagesScreen({
             if (call) return (<article className="message-call-event" key={call.id}>
             <span className="message-call-event-avatar" aria-hidden="true">TSC</span>
             <div className="message-call-event-content">
-              <header className="message-call-event-header"><strong>Call declined</strong>{call.live.eventTime && <time>{call.live.eventTime}</time>}</header>
+              <header className="message-call-event-header"><strong>{call.live.eventTitle ?? "Call declined"}</strong>{call.live.eventTime && <time>{call.live.eventTime}</time>}</header>
               <UpcomingCallCard call={call} thread={activeThread} live={call.live} />
             </div>
           </article>);
@@ -2192,12 +2194,16 @@ function VideoCallPanel({ thread, mode, setMode, live }) {
         </div>
       </div>
       {live?.mountRef && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
-      {live ? (
+      {live?.actions ? (
+        <div className="video-call-controls">
+          {live.actions.map((action) => <button type="button" onClick={action.onClick} disabled={action.disabled} key={action.label}>{action.label}</button>)}
+        </div>
+      ) : live ? (
         <div className="video-call-controls">
           {live.openUrl && <a className="primary-btn compact-btn" href={live.openUrl} target="_blank" rel="opener" onClick={live.onOpenLink}>Open the call</a>}
           {live.onShow && <button className="secondary-btn compact-btn" type="button" onClick={live.onShow}>Show call window</button>}
           {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer" onClick={live.onOpenApp}>Open in Zoom app</a>}
-          <button className={live.failed ? "" : "danger"} type="button" onClick={live.onLeave}>{live.failed ? "Close" : "Leave call"}</button>
+          <button className={live.failed ? "" : "danger"} type="button" onClick={live.onLeave}>{live.failed ? "Close" : live.leaveLabel ?? "Leave call"}</button>
         </div>
       ) : (
       <div className="video-call-controls">

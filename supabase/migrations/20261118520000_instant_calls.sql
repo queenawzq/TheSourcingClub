@@ -47,7 +47,7 @@ begin
     return new;
   end if;
   if (tg_op = 'INSERT' or new.title is distinct from old.title)
-     and not (tg_op = 'INSERT' and new.instant and new.title = 'Live video chat')
+     and not (tg_op = 'INSERT' and new.instant and new.title = 'Video call')
      and not public.call_text_checked(new.title) then
     raise exception 'the call''s title was not checked; send it again' using errcode = '42501';
   end if;
@@ -106,7 +106,7 @@ begin
     (thread_id, title, starts_at, duration_minutes, instant,
      proposer_org_id, proposer_user_id, proposer_time_zone)
   values
-    (t.id, 'Live video chat', now(), 30, true,
+    (t.id, 'Video call', now(), 30, true,
      mine, auth.uid(), time_zone)
   returning * into c;
 

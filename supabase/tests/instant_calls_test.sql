@@ -53,7 +53,7 @@ insert into public.message_threads (id, rfq_id, brand_org_id, factory_org_id) va
 -- A call the brand started 20 minutes ago that nobody answered: missed.
 insert into public.calls (id, thread_id, title, starts_at, instant, proposer_org_id, proposer_user_id)
 values ('c1c05000-0000-0000-0000-0000000000aa', 'c1c04000-0000-0000-0000-000000000002',
-        'Live video chat', now() - interval '20 minutes', true,
+        'Video call', now() - interval '20 minutes', true,
         'c1c02000-0000-0000-0000-00000000000b', 'c1c01000-0000-0000-0000-000000000001');
 
 -- ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ select is(
   (select instant::text || ':' || status::text || ':' || title || ':' || duration_minutes || ':' ||
           (starts_at between now() - interval '1 minute' and now() + interval '1 minute')::text
      from public.calls where thread_id = 'c1c04000-0000-0000-0000-000000000001'),
-  'true:proposed:Live video chat:30:true',
+  'true:proposed:Video call:30:true',
   'it starts now, rings as proposed, 30 minutes, with the fixed title'
 );
 
@@ -106,13 +106,13 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$select public.propose_call('c1c04000-0000-0000-0000-000000000001', now() + interval '2 days', 30, 'Live video chat', null, null)$$,
+  $$select public.propose_call('c1c04000-0000-0000-0000-000000000001', now() + interval '2 days', 30, 'Video call', null, null)$$,
   '42501', null, 'the fixed title passes unchecked only on a call started now'
 );
 
 select throws_ok(
   $$insert into public.calls (thread_id, title, starts_at, instant, proposer_org_id)
-    values ('c1c04000-0000-0000-0000-000000000001', 'Live video chat', now(), true,
+    values ('c1c04000-0000-0000-0000-000000000001', 'Video call', now(), true,
             'c1c02000-0000-0000-0000-00000000000b')$$,
   '42501', null, 'a call started now CANNOT be inserted directly'
 );

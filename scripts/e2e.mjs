@@ -3111,7 +3111,7 @@ async function main() {
     await waitFor(page, ".message-room-actions", 25000);
     check(await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].some((node) => node.textContent.trim() === "Schedule call")),
       "the conversation offers the designed \"Schedule call\"");
-    check(!(await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].some((node) => node.textContent.trim() === "Live video chat"))),
+    check(!(await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].some((node) => node.textContent.trim() === "Video call"))),
       "and not the instant \"Live video chat\" (no presence behind it)");
     await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].find((node) => node.textContent.trim() === "Schedule call")?.click());
     await record(page, "Schedule call", "the designed dialog: a real month, times in your zone");

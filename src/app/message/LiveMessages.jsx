@@ -4,11 +4,12 @@
  * `MessagesScreen` is imported from src/prototype/main.jsx and mounted here
  * with live threads behind it. This file is the seam.
  *
- * Calls are live: "Schedule call" opens the designed dialog, and the
- * conversation's calls are the designed cards in the "Scheduled call" panel
- * (see live-calls.js). Two things the design draws still have nothing behind
- * them, presence and "usually replies in 2h", and an instant "Live video
- * chat" needs presence, so all three stay absent here; the prototype keeps
+ * Calls are live: "Schedule call" opens the designed dialog, "Live video
+ * chat" starts a call now (it rings the other company for 15 minutes; the
+ * design's video panel asks first), and the conversation's calls are the
+ * designed cards in the "Scheduled call" panel (see live-calls.js). Two
+ * things the design draws still have nothing behind them, presence and
+ * "usually replies in 2h", so both stay absent here; the prototype keeps
  * them.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -17,10 +18,10 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
 import { awaitingScreen, fileOnlyBody, englishTranslation, readerLanguage, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
-import { callsForPanel, panelCard } from "./live-calls.js";
+import { acceptCall, browserTimeZone, callState, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, startCallNow, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { callsForPanel, panelCard, withConversationEvents } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
-import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
+import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openCallWindowFor, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 import MessageGuidelinesDialog from "./MessageGuidelinesDialog.jsx";
@@ -74,6 +75,18 @@ function deliveryStatus(message, { onGuidelines } = {}) {
     return { kind: "rejected", label: "Not delivered", note: message.review_note || null };
   }
   return null;
+}
+
+/**
+ * What a call function's refusal says on the card. The database's words for
+ * a call started now are put in ours; anything else is said as before.
+ */
+function callFailure(failure, otherwise = null) {
+  const text = String(failure?.message ?? "");
+  if (/already a call/.test(text)) return "There's already a call waiting in this conversation.";
+  if (/has ended/.test(text)) return "This call has ended.";
+  if (otherwise && !failure?.noAnswer) return otherwise;
+  return text;
 }
 
 /**
@@ -158,6 +171,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
   const [confirmCall, setConfirmCall] = useState(null);
+  // "Live video chat" pressed: the design's video panel asks before the call
+  // starts ({ threadId, busy, error }).
+  const [instantConfirm, setInstantConfirm] = useState(null);
   // The call open in its own window (call-window.js), or null. The designed
   // video panel says so in that call's conversation.
   const [video, setVideo] = useState(() => currentCallWindow());
@@ -413,9 +429,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       await change();
       await reloadCalls();
     } catch (failure) {
-      setCallNotes((current) => ({ ...current, [call.id]: { text: failure.message, error: true } }));
+      setCallNotes((current) => ({ ...current, [call.id]: { text: callFailure(failure), error: true } }));
     } finally {
       setCallBusy(null);
+    }
+  }
+
+  // A call started now: the window opens in this click (empty until the call
+  // exists), or on a phone the call takes the page once it is started.
+  async function startInstantCall() {
+    const { threadId: target } = instantConfirm;
+    setInstantConfirm((current) => current && { ...current, busy: true, error: null });
+    try {
+      if (joinsInPage()) {
+        const call = await startCallNow(target, ownZone);
+        window.location.assign(callPageUrl(call));
+        return;
+      }
+      await openCallWindowFor(() => startCallNow(target, ownZone));
+      setInstantConfirm(null);
+      await reloadCalls();
+    } catch (failure) {
+      setInstantConfirm((current) => current && { ...current, busy: false, error: callFailure(failure, "The call couldn't be started. Try again.") });
     }
   }
 
@@ -428,18 +463,30 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     }),
     accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
     // Each closes the call for both sides and cannot be undone: asked first.
-    decline: (call) => setConfirmCall({ call, mode: "decline" }),
+    // A call started now is answered at once, as a phone call is: declining
+    // it, or ending your own while it rings, asks nothing.
+    decline: (call) => (call.instant
+      ? changeCall(call, () => declineCall(call.id))
+      : setConfirmCall({ call, mode: "decline" })),
+    end: (call) => {
+      if (currentCallWindow()?.call.id === call.id) leaveCallWindow();
+      changeCall(call, () => cancelCall(call.id));
+    },
+    callAgain: (call) => setInstantConfirm({ threadId: call.thread_id, busy: false, error: null }),
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     // In the click: a browser blocks a window opened any later. Phones and
     // tablets join on the page itself, which comes back here on leaving.
+    // Joining a call started now that rings for us answers it (call.html
+    // accepts it first).
     join: (call) => {
       setCallNotes((current) => ({ ...current, [call.id]: null }));
+      const answer = callState(call, org.id, serverNow()) === "ringing";
       if (joinsInPage()) {
-        window.location.assign(callPageUrl(call));
+        window.location.assign(callPageUrl(call, { answer }));
         return;
       }
-      openCallWindow(call);
+      openCallWindow(call, { answer });
     },
   };
 
@@ -460,7 +507,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     joinOnOpen.current = null;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     const call = calls.find((candidate) => candidate.id === id);
-    if (call && canJoinCall(call, serverNow())) callHandlers.join(call);
+    if (call && (canJoinCall(call, serverNow(), org.id) || callState(call, org.id, serverNow()) === "ringing")) callHandlers.join(call);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 
@@ -470,6 +517,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     setVideo(next);
     if (!next) reloadCallsRef.current();
   }), []);
+
+  // A call started now that was declined, ended or missed: nobody is coming,
+  // so the caller's window leaves the meeting.
+  useEffect(() => {
+    if (!video?.call.instant) return;
+    const call = calls.find((candidate) => candidate.id === video.call.id);
+    if (call && ["declined", "cancelled", "missed"].includes(callState(call, org.id, now))) leaveCallWindow();
+  }, [video, calls, now, org.id]);
 
   async function submitSchedule({ startsAt, timeZone, title, agenda }) {
     setDialog((current) => ({ ...current, busy: true, error: null }));
@@ -574,7 +629,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const callCards = {};
   for (const thread of threads) {
     const theirs = calls.filter((call) => call.thread_id === thread.id && !deletedCallCards.includes(call.id));
-    callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
+    callCards[thread.id] = withConversationEvents(callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
       now,
       orgId: org.id,
       ownZone,
@@ -582,8 +637,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       handlers: callHandlers,
       busyId: callBusy,
       notes: callNotes,
-    }));
+    })));
   }
+  const activeThreadRow = threads.find((thread) => thread.id === activeId);
+  const activeOther = activeThreadRow ? (isFactory ? activeThreadRow.brand_name : activeThreadRow.factory_name && vendorNames.text(activeThreadRow.factory_org_id, activeThreadRow.factory_name)) ?? "" : "";
+  // The call in the window, as it stands now: ringing for the other side
+  // while nobody has answered.
+  const videoCall = video ? calls.find((call) => call.id === video.call.id) ?? video.call : null;
+  const videoCalling = videoCall ? callState(videoCall, org.id, now) === "calling" : false;
   const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
   const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name && vendorNames.text(dialogThread.factory_org_id, dialogThread.factory_name)) ?? "" : "";
 
@@ -591,8 +652,16 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     <>
       <MessagesScreen
         calls={callCards}
-        video={video && video.call.thread_id === activeId ? {
-          title: video.call.title,
+        instantCall={{ onOpen: () => activeId && setInstantConfirm({ threadId: activeId, busy: false, error: null }) }}
+        video={instantConfirm && instantConfirm.threadId === activeId ? {
+          title: `Ready to call ${activeOther}`,
+          text: instantConfirm.error ?? `${activeOther} will be notified to join.`,
+          actions: [
+            { label: "Start call", onClick: startInstantCall, disabled: instantConfirm.busy },
+            { label: "Cancel", onClick: () => setInstantConfirm(null), disabled: instantConfirm.busy },
+          ],
+        } : video && video.call.thread_id === activeId ? {
+          title: videoCalling ? `Calling ${activeOther}…` : video.call.title,
           text: video.inApp
             ? "You're in the call in the Zoom app."
             : video.blocked
@@ -601,7 +670,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
                 ? "You're in the call, in its own window."
                 : "The call is opening in its own window…",
           // A blocked window opens from a link: a click on a link is allowed.
-          openUrl: video.blocked ? callPageUrl(video.call, { popup: true }) : null,
+          openUrl: video.blocked ? callPageUrl(video.call, { popup: true, answer: video.answer }) : null,
           onOpenLink: openedFromLink,
           onShow: video.blocked || video.inApp ? null : showCallWindow,
           // The Zoom app instead: leave the window first, or the person is in
@@ -610,7 +679,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           joinUrl: video.joinUrl,
           onOpenApp: openedInZoomApp,
           failed: Boolean(video.inApp),
-          onLeave: leaveCallWindow,
+          // While it rings for the other side, the caller's End call ends it.
+          leaveLabel: videoCalling ? "End call" : undefined,
+          onLeave: videoCalling ? () => callHandlers.end(videoCall) : leaveCallWindow,
         } : null}
         scheduling={{
           open: Boolean(dialog),

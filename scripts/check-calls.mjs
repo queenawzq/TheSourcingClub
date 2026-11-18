@@ -20,6 +20,7 @@ import {
   callState,
   canJoinCall,
   nextCallChange,
+  ringsUntil,
   startOf,
   theirTime,
   theirZoneFor,
@@ -70,6 +71,19 @@ const invite = { status: "proposed", starts_at: at(5 / 60), duration_minutes: 30
 check(nextCallChange([confirmed, invite], now) === startOf(invite).getTime(), "the earliest change of several calls wins (an invite expiring)");
 check(nextCallChange([{ ...confirmed, status: "cancelled" }, { ...invite, status: "declined" }], now) === null,
   "cancelled and declined calls never wake a page");
+
+// A call started now rings for 15 minutes: the caller is "calling" and may
+// join, the other side is "ringing" and joins by answering, then it is missed.
+const instant = { status: "proposed", instant: true, starts_at: at(-2), duration_minutes: 30, proposer_org_id: BRAND };
+check(callState(instant, BRAND, now) === "calling", "a call started now is calling for its caller");
+check(callState(instant, FACTORY, now) === "ringing", "and ringing for the other side");
+check(canJoinCall(instant, now, BRAND), "the caller may join while it rings");
+check(!canJoinCall(instant, now, FACTORY) && !canJoinCall(instant, now), "the other side joins only by answering it");
+check(callState(instant, BRAND, ringsUntil(instant)) === "missed" && callState(instant, FACTORY, ringsUntil(instant)) === "missed",
+  "nobody answering in 15 minutes is a missed call for both sides");
+check(!canJoinCall(instant, ringsUntil(instant), BRAND), "and a missed call cannot be joined");
+check(nextCallChange([instant], now) === ringsUntil(instant), "the page wakes when the ring ends, not at the start that has passed");
+check(callState({ ...instant, status: "accepted" }, FACTORY, now) === "live", "an answered call is on now, as a confirmed one");
 
 // No call page keeps time with a poll again.
 for (const path of ["src/app/message/use-calls.js", "src/app/message/LiveMessages.jsx"]) {
@@ -126,7 +140,7 @@ const callWindow = readFileSync(new URL("../src/app/message/call-window.js", imp
 check(!/ZoomMtgEmbedded|loadZoomEmbedded/.test(conversation), "the conversation no longer joins the meeting itself");
 check(/onOpenApp: openedInZoomApp/.test(conversation) && /export function openedInZoomApp\(\) \{\s*if \(!current\) return;\s*closeWindow\(\);/.test(callWindow), "opening the Zoom app leaves the call's window first, and keeps the panel");
 const dashboardCards = readFileSync(new URL("../src/app/message/live-calls.js", import.meta.url), "utf8");
-check(/openCallWindow\(call\)/.test(dashboardCards), "the dashboard's Join call opens the window in the click");
+check(/openCallWindow\(call(, \{ answer: ringing \})?\)/.test(dashboardCards), "the dashboard's Join call opens the window in the click");
 
 // A laptop clock 90 seconds ahead of Zoom must not issue a future-dated JWT.
 const zoomNow = 1_800_000_000;

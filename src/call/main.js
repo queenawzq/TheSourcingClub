@@ -19,7 +19,7 @@
  */
 import "./call.css";
 import { supabase, isConfigured } from "../lib/supabase.js";
-import { joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
+import { acceptCall, joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
 import { callWindowChannel } from "../app/message/call-window.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -123,6 +123,19 @@ async function start() {
   if (!isConfigured || !callId) {
     show("This call can't be opened from this link.");
     return;
+  }
+  // Joining a call started now is answering it: accepted here, so the window
+  // could open in the click. Already accepted (a teammate, or a second
+  // press) is fine.
+  if (params.get("answer") === "1") {
+    try {
+      await acceptCall(callId);
+    } catch (failure) {
+      if (!/accepted already/.test(failure.message)) {
+        show(/has ended/.test(failure.message) ? "This call has ended." : failure.noAnswer ? failure.message : "The call could not be opened.");
+        return;
+      }
+    }
   }
   const answer = await joinCall(callId);
   if (signedOut) return;

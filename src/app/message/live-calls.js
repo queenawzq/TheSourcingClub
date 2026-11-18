@@ -20,13 +20,16 @@ import {
 } from "../../lib/domain/calls.js";
 import { joinsInPage, openCallWindow } from "./call-window.js";
 
-const OPEN = new Set(["invite", "waiting", "upcoming", "live"]);
+const OPEN = new Set(["invite", "waiting", "upcoming", "live", "calling", "ringing"]);
 
-/** Open calls go in the sidebar; declined calls remain in the conversation. */
+/**
+ * Open calls go in the sidebar; declined calls remain in the conversation. A
+ * call started now that nobody answered stays, as a missed call.
+ */
 export function callsForPanel(calls, orgId, now = Date.now()) {
   const open = calls.filter((call) => OPEN.has(callState(call, orgId, now)));
   const closed = calls
-    .filter((call) => callState(call, orgId, now) === "declined")
+    .filter((call) => ["declined", "missed"].includes(callState(call, orgId, now)))
     .sort((a, b) => new Date(b.responded_at ?? b.starts_at) - new Date(a.responded_at ?? a.starts_at));
   return [...open, ...closed];
 }
@@ -46,9 +49,14 @@ const CLOSED_STATUS = {
   past: () => "Ended",
 };
 
+/** States in which a call started now also shows in the conversation itself. */
+const INSTANT_EVENT = new Set(["calling", "ringing", "upcoming", "live", "missed"]);
+
+const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
+
 /**
  * One call as the conversation panel's card. `handlers` are the screen's:
- * accept, decline, counter, cancel, join. `busyId` greys the buttons of the
+ * accept, decline, counter, cancel, join, end, callAgain. `busyId` greys the buttons of the
  * call being changed; `notes` holds a line to show under one card.
  */
 export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, notes = {}, now = Date.now() }) {
@@ -64,7 +72,25 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
   let status;
   let tone = "";
   let actions = [];
-  if (state === "invite") {
+  if (state === "calling") {
+    status = `Waiting for ${other.name} to join`;
+    actions = [
+      { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
+      { label: "End call", onClick: () => handlers.end(call), disabled: busy },
+    ];
+  } else if (state === "ringing") {
+    status = `${other.name} started a call`;
+    tone = "attention";
+    actions = [
+      { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
+      { label: "Decline", destructive: true, onClick: () => handlers.decline(call), disabled: busy },
+    ];
+  } else if (state === "missed") {
+    const mine = call.proposer_org_id === orgId;
+    status = mine ? `${other.name} didn't join` : `You missed a call from ${other.name}`;
+    tone = "closed";
+    actions = [{ label: mine ? "Call again" : "Call back", onClick: () => handlers.callAgain(call), disabled: busy }];
+  } else if (state === "invite") {
     status = `${other.name} invited you`;
     tone = "attention";
     actions = [
@@ -91,12 +117,16 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
       // cancel_call allows it until the start, so someone who can't make it
       // in the last ten minutes says so here, not in a message.
       ...(start.getTime() > now ? [{ label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy }] : []),
-      ...calendar,
+      // A call started now is on already: nothing to put in a calendar.
+      ...(call.instant ? [] : calendar),
     ];
   } else {
     status = CLOSED_STATUS[state]?.(call, other, orgId) ?? state;
     tone = "closed";
   }
+
+  // A call started now is said in the conversation too: started, or missed.
+  const event = Boolean(call.instant) && INSTANT_EVENT.has(state);
 
   return {
     id: call.id,
@@ -109,12 +139,16 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     live: {
       status,
       inConversation: state === "declined",
-      eventTimestamp: call.responded_at ?? call.updated_at ?? call.starts_at,
-      eventTime: call.responded_at ? new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(new Date(call.responded_at)) : null,
+      event,
+      eventTitle: event ? (state === "missed" ? "Missed call" : "Call started") : undefined,
+      eventTimestamp: event ? call.starts_at : call.responded_at ?? call.updated_at ?? call.starts_at,
+      eventTime: event ? TIME.format(new Date(call.starts_at)) : call.responded_at ? TIME.format(new Date(call.responded_at)) : null,
       tone,
       actions,
       menuActions: state === "declined" ? [
         { label: "Schedule another call", onClick: () => handlers.scheduleAgain(call), disabled: busy },
+        { label: "Delete", destructive: true, onClick: () => handlers.deleteCard(call), disabled: busy },
+      ] : state === "missed" ? [
         { label: "Delete", destructive: true, onClick: () => handlers.deleteCard(call), disabled: busy },
       ] : [],
       note: notes[call.id]?.text ?? null,
@@ -124,13 +158,24 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
 }
 
 /**
+ * The cards for one conversation: each call's card in the side panel, and a
+ * call started now also as a row in the conversation ("Call started",
+ * "Missed call").
+ */
+export function withConversationEvents(cards) {
+  return cards.flatMap((card) => (card.live.event
+    ? [card, { ...card, live: { ...card.live, inConversation: true } }]
+    : [card]));
+}
+
+/**
  * The dashboard's "Scheduled calls": invites waiting on this company and
  * confirmed calls not yet over. Each opens its conversation; "Join call"
  * also opens the call's window (call-window.js), so it does what it says.
  */
 export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = Date.now() }) {
   return calls
-    .filter((call) => ["invite", "upcoming", "live"].includes(callState(call, orgId, now)))
+    .filter((call) => ["invite", "upcoming", "live", "ringing"].includes(callState(call, orgId, now)))
     .slice(0, 4)
     .map((call) => {
       const other = otherSide(call, orgId);
@@ -146,11 +191,13 @@ export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = 
         description: call.agenda ?? "",
         action: state === "invite" ? "Review invite" : "Join call",
         // The call's window opens in this click, or the browser blocks it;
-        // a phone joins on the conversation's own page instead.
+        // a phone joins on the conversation's own page instead. Joining a
+        // call started now answers it.
         onAction: () => {
-          const join = canJoinCall(call, now);
+          const ringing = state === "ringing";
+          const join = ringing || canJoinCall(call, now, orgId);
           if (join && !joinsInPage()) {
-            openCallWindow(call);
+            openCallWindow(call, { answer: ringing });
             open(call);
             return;
           }
