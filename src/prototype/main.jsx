@@ -3263,6 +3263,9 @@ function readOnboardingCard(card) {
 
 export function BrandOnboarding({
   step,
+  // Live only: the furthest step reached, so the dots also go forward to it.
+  // Absent, only earlier steps can be clicked, as designed.
+  furthestStep,
   isReviewEdit,
   onEditSection,
   onBack,
@@ -3310,8 +3313,9 @@ export function BrandOnboarding({
     event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
   }
 
-  function continueOnboarding(event) {
-    const card = event.currentTarget.closest(".brand-onboarding-card");
+  // `target`: a step dot ahead of this one, checked and saved like Next.
+  function continueOnboarding(event, target) {
+    const card = event.currentTarget.closest(".brand-onboarding-page")?.querySelector(".brand-onboarding-card");
     const requiredFields = [...card.querySelectorAll('[data-onboarding-required="true"]')];
     card.querySelectorAll(".has-onboarding-error").forEach((field) => field.classList.remove("has-onboarding-error"));
 
@@ -3336,8 +3340,10 @@ export function BrandOnboarding({
       return;
     }
 
-    onNext(readOnboardingCard(card));
+    if (typeof target === "number") onNext(readOnboardingCard(card), target);
+    else onNext(readOnboardingCard(card));
   }
+  const reach = furthestStep ?? step;
 
   return (
     <main className="brand-onboarding-page">
@@ -3395,14 +3401,14 @@ export function BrandOnboarding({
       <div className="brand-onboarding-progress" aria-label="Onboarding progress">
         {brandOnboardingSteps.map((item, index) => (
           <button
-            className={index === step ? "current" : index < step ? "complete" : ""}
+            className={index === step ? "current" : index <= reach ? "complete" : ""}
             type="button"
             key={item.title}
-            disabled={busy || index >= step}
+            disabled={busy || index === step || index > reach}
             aria-current={index === step ? "step" : undefined}
-            aria-label={index < step ? `Go back to Step ${index + 1}: ${item.title}` : `Step ${index + 1}: ${item.title}`}
-            title={index < step ? `Go back to ${item.title}` : item.title}
-            onClick={() => onGoToStep?.(index)}
+            aria-label={index < step ? `Go back to Step ${index + 1}: ${item.title}` : index <= reach ? `Go to Step ${index + 1}: ${item.title}` : `Step ${index + 1}: ${item.title}`}
+            title={index < step ? `Go back to ${item.title}` : index <= reach && index > step ? `Go to ${item.title}` : item.title}
+            onClick={(event) => (index < step ? onGoToStep?.(index) : continueOnboarding(event, index))}
           />
         ))}
       </div>

@@ -1944,8 +1944,6 @@ const onboardingCopy = {
         businessHelper: "Required for verification.",
         photosTitle: "Factory & production line photos",
         photosHelper: "Your own workshop and production lines, as they are today.",
-        authorisationTitle: "Authorisation",
-        authorisationHelper: "A photo of your licence with \"The Sourcing Club\" and today's date handwritten on paper beside it, or a letter stamped with your company seal.",
         certificationLabel: "Add certifications you hold",
         search: "Search or select a certification",
         add: "Add certification",
@@ -2077,8 +2075,6 @@ const onboardingCopy = {
         businessHelper: "验证必填。",
         photosTitle: "工厂及生产线照片",
         photosHelper: "你自己的车间和生产线的近期实拍。",
-        authorisationTitle: "授权证明",
-        authorisationHelper: "营业执照照片，旁边放一张手写\"The Sourcing Club\"和今天日期的纸；或加盖公章的授权信。",
         certificationLabel: "添加你已持有的认证",
         search: "搜索或选择认证",
         add: "添加认证",
@@ -2215,8 +2211,6 @@ const tradingOnboardingCopy = {
         businessLabel: "Business registration certificate *",
         businessUpload: "Click or drag files to upload",
         businessHelper: "Required for verification.",
-        authorisationTitle: "Authorisation",
-        authorisationHelper: "A photo of your licence with \"The Sourcing Club\" and today's date handwritten on paper beside it, or a letter stamped with your company seal.",
         certificationLabel: "Add certifications or memberships",
         search: "Search or add a certification",
         add: "Add certification",
@@ -2341,8 +2335,6 @@ tradingOnboardingCopy.zh = {
       businessLabel: "营业执照 / 公司注册文件 *",
       businessUpload: "点击或拖拽文件上传",
       businessHelper: "验证必填。",
-      authorisationTitle: "授权证明",
-      authorisationHelper: "营业执照照片，旁边放一张手写\"The Sourcing Club\"和今天日期的纸；或加盖公章的授权信。",
       certificationLabel: "添加认证或会员资质",
       search: "搜索或添加认证",
       add: "添加认证",
@@ -7974,6 +7966,9 @@ export function FactoryOnboarding({
   companyType = "factory",
   language,
   step,
+  // Live only: the furthest step reached, so the dots also go forward to it.
+  // Absent, only earlier steps can be clicked, as designed.
+  furthestStep,
   isReviewEdit,
   onLanguageChange,
   onCompanyTypeChange,
@@ -8026,7 +8021,7 @@ export function FactoryOnboarding({
   const clearFieldError = (event) => {
     event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
   };
-  const handleNext = () => {
+  const handleNext = (target) => {
     const card = cardRef.current;
     const requiredFields = [...(card?.querySelectorAll('[data-onboarding-required="true"]') || [])];
     card?.querySelectorAll(".has-onboarding-error").forEach((field) => field.classList.remove("has-onboarding-error"));
@@ -8047,8 +8042,11 @@ export function FactoryOnboarding({
       focusTarget?.focus();
       return;
     }
-    onNext(readFactoryCard(card));
+    // A dot ahead is checked and saved like Next, then goes to its step.
+    if (typeof target === "number") onNext(readFactoryCard(card), target);
+    else onNext(readFactoryCard(card));
   };
+  const reach = furthestStep ?? step;
 
   return (
     <main className="factory-onboarding-page">
@@ -8113,7 +8111,7 @@ export function FactoryOnboarding({
               {busy ? (language === "zh" ? "保存中…" : "Saving…") : completion.cta}
             </button>
           ) : (
-          <button className="primary-btn" type="button" disabled={busy || (isLast && completionPending)} onClick={handleNext}>
+          <button className="primary-btn" type="button" disabled={busy || (isLast && completionPending)} onClick={() => handleNext()}>
             {busy
               ? (language === "zh" ? "保存中…" : "Saving…")
               : isLast && completionPending ? (language === "zh" ? "等待验证" : "Verification pending")
@@ -8126,16 +8124,20 @@ export function FactoryOnboarding({
       <div className="factory-onboarding-progress" aria-label="Onboarding progress">
         {copy.steps.map((item, index) => (
           <button
-            className={index === step ? "current" : index < step ? "complete" : ""}
+            className={index === step ? "current" : index <= reach ? "complete" : ""}
             type="button"
             key={item.title}
-            disabled={busy || index >= step}
+            disabled={busy || index === step || index > reach}
             aria-current={index === step ? "step" : undefined}
             aria-label={index < step
               ? (language === "zh" ? `返回第 ${index + 1} 步：${item.title}` : `Go back to Step ${index + 1}: ${item.title}`)
-              : (language === "zh" ? `第 ${index + 1} 步：${item.title}` : `Step ${index + 1}: ${item.title}`)}
-            title={index < step ? (language === "zh" ? `返回${item.title}` : `Go back to ${item.title}`) : item.title}
-            onClick={() => onGoToStep?.(index)}
+              : index > step && index <= reach
+                ? (language === "zh" ? `前往第 ${index + 1} 步：${item.title}` : `Go to Step ${index + 1}: ${item.title}`)
+                : (language === "zh" ? `第 ${index + 1} 步：${item.title}` : `Step ${index + 1}: ${item.title}`)}
+            title={index < step
+              ? (language === "zh" ? `返回${item.title}` : `Go back to ${item.title}`)
+              : index > step && index <= reach ? (language === "zh" ? `前往${item.title}` : `Go to ${item.title}`) : item.title}
+            onClick={() => (index < step ? onGoToStep?.(index) : handleNext(index))}
           />
         ))}
       </div>
@@ -8380,7 +8382,6 @@ function FactoryOnboardingStep({
         onDeleteCertificate={onDeleteCertificate}
         registrationDocuments={documents["business-registration"] ?? []}
         photoDocuments={documents["factory-photos"] ?? []}
-        authorisationDocuments={documents["authorisation"] ?? []}
         onDeleteRegistration={onDeleteDocument}
         registration={registration}
       />
@@ -8711,7 +8712,7 @@ function FactoryOnboardingStep({
 function OnboardingVerification({
   content, language, live, values = {},
   certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate,
-  registrationDocuments = [], photoDocuments = [], authorisationDocuments = [], onDeleteRegistration, registration = null,
+  registrationDocuments = [], photoDocuments = [], onDeleteRegistration, registration = null,
 }) {
   const isZh = language === "zh";
   // Live only: a sole proprietor uploads another document, named on the upload.
@@ -8835,21 +8836,6 @@ function OnboardingVerification({
           deleteLabel={content.deleteCertificate}
           name="factory-photos"
           documents={photoDocuments}
-          onDeleteDocument={onDeleteRegistration}
-        />
-      )}
-      {content.authorisationTitle && (
-        <OnboardingAssetUploadCard
-          title={content.authorisationTitle}
-          helper={content.authorisationHelper}
-          accept={isZh ? "PDF、PNG 或 JPG" : "PDF, PNG, or JPG"}
-          fileAccept=".pdf,.png,.jpg,.jpeg,.heic,.heif,application/pdf,image/png,image/jpeg,image/heic,image/heif"
-          uploadLabel={content.businessUpload}
-          uploadMoreLabel={isZh ? "上传更多" : "Upload more"}
-          uploadedLabel={isZh ? "已上传" : "Uploaded"}
-          deleteLabel={content.deleteCertificate}
-          name="authorisation"
-          documents={authorisationDocuments}
           onDeleteDocument={onDeleteRegistration}
         />
       )}

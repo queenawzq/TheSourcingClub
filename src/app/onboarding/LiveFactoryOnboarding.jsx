@@ -18,6 +18,7 @@ import MatchingProfile from "../matching/MatchingProfile.jsx";
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
+import { useOnboardingStep } from "./onboarding-step.js";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
@@ -155,7 +156,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Asked for more information, the factory lands on its profile summary
   // (Queena, Nov 9): no card in between.
   const askedForMore = review?.state === "needs_information";
-  const [step, setStep] = useState(askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep);
+  // A company still onboarding resumes at its saved step after a refresh, and
+  // its dots reach every step it has been to (onboarding-step.js).
+  const [step, setStep, furthestStep] = useOnboardingStep(
+    org.id,
+    askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep,
+    { lastStep: LAST_STEP, resume: initialStep === 0 },
+  );
   // True while answering staff's request, until the profile is sent back.
   const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
   // A request that arrives while the finish card is open opens the summary too.
@@ -217,7 +224,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos, authorisations] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -228,7 +235,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
           listDocuments(org.id, "factory_photo"),
-          listDocuments(org.id, "authorisation"),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
         if (savedRegistration?.number) {
@@ -252,7 +258,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           "factory-samples": samples ?? [],
           "factory-walkthrough": walkthroughs ?? [],
           "factory-photos": photos ?? [],
-          authorisation: authorisations ?? [],
         });
 
         const profile = existing.data ?? {};
@@ -423,7 +428,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     product_image: "factory-samples",
     walkthrough: "factory-walkthrough",
     factory_photo: "factory-photos",
-    authorisation: "authorisation",
   };
 
   /**
@@ -489,7 +493,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     // Verification evidence, private by kind. Each upload starts the checks.
     let evidenceUploaded = registrationFiles.length > 0;
-    for (const [field, kind] of [["factory-photos", "factory_photo"], ["authorisation", "authorisation"]]) {
+    for (const [field, kind] of [["factory-photos", "factory_photo"]]) {
       const chosen = submitted[field];
       const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
       if (!files.length) continue;
@@ -615,7 +619,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     }
   }
 
-  async function next(submitted = {}) {
+  /**
+   * Next, or a step dot ahead of this one (`target`): either way the card is
+   * checked and saved first. A dot then goes to its step; it never finishes,
+   * publishes or sends the profile back, which only Next does.
+   */
+  async function next(submitted = {}, target = null) {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -623,7 +632,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     try {
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
-      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, authorisation: _authorisation, ...answers } = submitted;
+      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature && !termsAcceptance) {
@@ -636,6 +645,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           signature: submitted.signature,
           userId: user.id,
         }));
+      }
+
+      if (typeof target === "number" && target > step && target <= furthestStep) {
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
       }
 
       if (reviewEditStep !== null) {
@@ -710,6 +726,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       companyType={companyType}
       language={language}
       step={step}
+      furthestStep={furthestStep}
       isReviewEdit={reviewEditStep !== null}
       onLanguageChange={(next) => { setLanguage(next); chooseUiLanguage(user?.id, next).catch(() => {}); }}
       onCompanyTypeChange={setCompanyType}
@@ -724,6 +741,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }}
       onGoToStep={(target) => {
         if (typeof target !== "number" || target >= step) return;
+        // Going back saves nothing, like Previous; going ahead is next(…, target).
         setReviewEditStep(null);
         setStep(target);
         window.scrollTo({ top: 0, behavior: "smooth" });
