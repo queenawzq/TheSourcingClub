@@ -270,6 +270,9 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   const choices = methods.filter((row) => usable(row) && methodProviderOn(providers, row));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
+  // An amount is judged once the person works on it, never on opening: a
+  // method whose balance is $0 says "Available: $0.00" and no error.
+  const [amountTouched, setAmountTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   // Several withdrawals may be open, so the database no longer stops a double
   // click: this does, before the state update reaches the button.
@@ -335,18 +338,19 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
         <div className="withdraw-amount-field payout-form-grid">
           <div className="withdraw-amount-heading">
             <label htmlFor="withdraw-amount">Amount (USD)</label>
-            <button className="secondary-btn" type="button" disabled={busy} onClick={() => setAmountText((available / 100).toFixed(2))}>Withdraw full amount</button>
+            <button className="secondary-btn" type="button" disabled={busy} onClick={() => { setAmountTouched(true); setAmountText((available / 100).toFixed(2)); }}>Withdraw full amount</button>
           </div>
           <input id="withdraw-amount" name="Amount (USD)" inputMode="decimal" value={amountText} disabled={busy}
             onChange={(event) => {
               const value = event.target.value;
+              setAmountTouched(true);
               setAmountText(Number(value) > available / 100 ? (available / 100).toFixed(2) : value);
             }} aria-describedby="withdraw-available" />
           <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
         </div>
       </div>
       )}
-      {choices.length > 0 && amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+      {choices.length > 0 && amountTouched && amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
       {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>

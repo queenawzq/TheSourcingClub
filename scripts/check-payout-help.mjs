@@ -34,6 +34,13 @@ assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page
 // methods in the same "Withdraw to".
 assert.ok(!/Withdraw to bank/.test(card), 'no "Withdraw to bank": the button is "Withdraw" for every method');
 assert.ok(card.includes('value={`balance:${row.id}`}') && card.includes("others={stripeReachable"), "both Withdraw dialogs list every withdrawal method");
+// A Withdraw dialog opened on a method with $0 shows "Available: $0.00" and no
+// error until the person works on the amount (Nov 19 test).
+{
+  const form = read("src/app/order/WithdrawFromBalance.jsx");
+  assert.ok(/amountTouched && amountText && amountProblem/.test(form), "the amount error waits until the amount is touched");
+  assert.ok((form.match(/setAmountTouched\(true\)/g) ?? []).length >= 2, "typing and Withdraw full amount both count as touching it");
+}
 // Removed on request (Nov 18): the country picked now decides the methods, so
 // the chooser no longer asks for the country of registration.
 assert.ok(!card.includes("Choose where your company is registered."), "the chooser does not ask for the country of registration");
