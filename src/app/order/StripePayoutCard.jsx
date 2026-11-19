@@ -1,6 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { payoutUsdTotal } from "../../lib/payout-display.mjs";
-import { isHandPaid } from "./payment-summary.mjs";
+import { cardPendingCents, isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -357,6 +357,8 @@ export default function StripePayoutCard({
   manualSaved,
   manualOwed = [],
   problem = null,
+  // The page's Pending figure (all clients, US$ cents): the card's "$X pending" is read from it.
+  pendingTotal = null,
   renderCard = true,
   initialAction = null,
   initialMethodId = null,
@@ -923,6 +925,18 @@ export default function StripePayoutCard({
   // Owed money that bounced: what this person must do next, on the card.
   const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : null;
 
+  // "$X pending", the same sentence on every payout method, from the page's
+  // Pending figure less what the card already shows (cardPendingCents).
+  const pendingWords = (cents, approx = false) => (cents > 0 ? <>{`${approx ? "≈" : ""}${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
+  const stripePending = pendingTotal != null ? cardPendingCents(pendingTotal, 0)
+    : pending > 0 ? payoutUsdTotal(balance?.pending ?? [], balance?.displayFx) : 0;
+  const handShown = !handPaid ? 0
+    : (fromBalance.pool && fromBalance.available != null ? fromBalance.available : handFigures.balance ? payoutUsdTotal(handFigures.balance) ?? 0 : 0)
+      + (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0)
+      + (handFigures.onItsWay?.length ? payoutUsdTotal(handFigures.onItsWay) ?? 0 : 0);
+  const handPending = handPaid ? cardPendingCents(pendingTotal, handShown) : null;
+  const handFigureKnown = handPaid && ((fromBalance.pool && fromBalance.available != null) || Boolean(handFigures.balance));
+
   return (
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
@@ -934,6 +948,10 @@ export default function StripePayoutCard({
             <strong data-testid="payout-balance">{fromBalance.pool && fromBalance.available != null ? formatMoney(fromBalance.available, "USD")
               : handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
+            {handFigureKnown ? <p className="payout-balance-line" data-testid="payout-balance-line">{[
+              "Earnings stay in your balance until you withdraw them.",
+              pendingWords(handPending ?? 0),
+            ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p> : null}
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
 
@@ -952,7 +970,7 @@ export default function StripePayoutCard({
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
               // Its "?" sits right after it, not on a line of its own.
-              pending > 0 ? <>{`${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null,
+              pendingWords(stripePending ?? 0, pendingTotal == null && currency !== "USD"),
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,

@@ -309,8 +309,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // the Pending figure, from the same read, so the two always agree.
   const clearing = clearingFor(stripeBalance);
   // The figures wait with the rows for Stripe, so they never jump.
-  const summary = earningsSummaryFor(transactionsReady ? earningsShown : null, client, fromBalance.withdrawn,
-    fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees, clearing);
+  const withdrawalFees = fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees;
+  const summary = earningsSummaryFor(transactionsReady ? earningsShown : null, client, fromBalance.withdrawn, withdrawalFees, clearing);
+  // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
+  const allPending = earningsSummaryFor(transactionsReady ? earningsShown : null, "All clients", fromBalance.withdrawn, withdrawalFees, clearing).pending;
+  const pendingTotal = allPending ? payoutUsdTotal(allPending, stripeBalance?.displayFx) : null;
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
@@ -450,6 +453,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualBusy={payouts.busy}
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
+            pendingTotal={pendingTotal}
           />}
           <label className="payments-client-filter">
             <span>Filter by client</span>

@@ -15,6 +15,20 @@ for (const label of ["Balance", "Available balance", "Pending balance"]) {
 for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies"]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
+// Every payout method's card says both (Nov 19): the sentence, and "$X pending"
+// from the page's Pending figure. The Stripe card and the balance card each carry them.
+const sentence = "Earnings stay in your balance until you withdraw them.";
+assert.ok(card.split(sentence).length - 1 >= 2, "the sentence is on the Stripe card and on the balance card (PayPal, Wise)");
+assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 2, "both cards say what is pending, with the one helper");
+assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page's Pending figure");
+{
+  const { cardPendingCents } = await import("../src/app/order/payment-summary.mjs");
+  assert.equal(cardPendingCents(null, 100), null, "nothing until the page's figure is known");
+  assert.equal(cardPendingCents(360, 0), 360, "Pending $3.60 with nothing shown elsewhere: the card says $3.60 pending");
+  assert.equal(cardPendingCents(360, 360), 0, "money the card offers to withdraw is not called pending");
+  assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
+  assert.equal(cardPendingCents(100, 360), 0, "never below zero");
+}
 // Removed on request (Nov 18): the country picked now decides the methods, so
 // the chooser no longer asks for the country of registration.
 assert.ok(!card.includes("Choose where your company is registered."), "the chooser does not ask for the country of registration");

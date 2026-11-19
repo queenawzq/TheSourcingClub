@@ -56,6 +56,17 @@ export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.
 export const isHandPaid = (account, earnings) => !account?.transfers_active && !stripeRelevant(earnings);
 
 /**
+ * The card's "$X pending" amount, in US$ cents, for every payout method: the
+ * Pending figure on the page (earningsSummaryFor, all clients) less what the
+ * card already shows elsewhere (the balance it offers to withdraw, and money
+ * already on its way). Null until the page's figure is known; never below 0.
+ */
+export function cardPendingCents(pendingTotal, shownElsewhere = 0) {
+  if (pendingTotal == null) return null;
+  return Math.max(0, Number(pendingTotal) - Math.max(0, Number(shownElsewhere) || 0));
+}
+
+/**
  * The card's figures for a factory paid by hand, across all clients. Balance is
  * approved and not moving yet; on its way has left TSC; pending is waiting for
  * the brand. Balance + on its way is the strip's Pending.

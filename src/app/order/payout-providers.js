@@ -59,7 +59,11 @@ const regionOf = (providers, country) => {
 export const providerOnFor = (providers, provider, country) => {
   const region = regionOf(providers, country);
   if (!region) return providerOn(providers, provider);
-  return providers.byRegion[region]?.[provider] !== false;
+  if (providers.byRegion[region]?.[provider] !== false) return true;
+  // PayPal "where Stripe isn't available" (20261119300000): on for a country
+  // Stripe can't pay out to, by the database's list.
+  return provider === "paypal" && providers.paypalWhereNoStripe === true && Array.isArray(providers.stripeCountries)
+    && !providers.stripeCountries.includes(String(country).trim().toUpperCase());
 };
 
 /** Whether a saved method's provider is on, by the country it was added for. */
