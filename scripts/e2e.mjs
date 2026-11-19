@@ -2313,7 +2313,7 @@ async function main() {
         const beforeFunding = await page.locator(".before-funding").innerText();
         check((await page.locator('.before-funding input[type="checkbox"]').count()) === 1, "Fund asks for one tick, not two");
         check(beforeFunding.includes(fundingStep.kind === "payment_only"
-          ? `I understand this goes to ${factoryName} once it is funded.`
+          ? `I understand TSC releases this step to ${factoryName} once it is funded, and it takes a few business days to arrive.`
           : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
         check(await page.evaluate(() => document.querySelector('.before-funding input[type="checkbox"]')?.checked === false
           && document.querySelector(".bottom-bar .primary-btn")?.disabled === true), "it starts unticked, with the pay button greyed");
@@ -4423,12 +4423,19 @@ async function main() {
     await page.waitForTimeout(1000);
 
     // The last owner can neither leave nor be made a member: neither is offered.
-    const ownLeave = page.locator(`button[aria-label="Leave ${brandName}"]`);
-    check((await ownLeave.count()) === 1
-      && await page.evaluate((label) => document.querySelector(`button[aria-label="${label}"]`)?.disabled === true, `Leave ${brandName}`),
-      "the last owner's own Leave is drawn disabled");
-    check(!(await eachText(page, ".tsc-team-role-btn")).some((label) => /make member/i.test(label)),
-      'and no "Make member" is offered on the last owner');
+    // Leave and Make member sit in each member's "…" menu, so the last owner's
+    // own menu is drawn greyed, saying why, and neither item can be reached.
+    const ownMenu = await page.evaluate((email) => {
+      const menus = [...document.querySelectorAll(".settings-permission-row")]
+        .filter((row) => row.textContent.includes(email))
+        .map((row) => row.querySelector(".settings-member-menu .settings-menu-btn"));
+      return menus.length === 1 && menus[0] ? { disabled: menus[0].disabled, title: menus[0].title } : null;
+    }, brandEmail);
+    check(ownMenu?.disabled === true, "the last owner's own menu, where Leave is, is drawn disabled");
+    check(ownMenu?.title === "A company always keeps at least one owner"
+      && (await page.locator(`button[aria-label="Leave ${brandName}"]`).count()) === 0
+      && !(await eachText(page, '.settings-member-menu [role="menuitem"]')).some((label) => /make member/i.test(label)),
+      `and no Leave or "Make member" is offered on the last owner, with the reason on the menu (${ownMenu?.title ?? "no menu"})`);
 
     // The drawer's name, title and permissions all reach the invitation.
     const sendInvite = async (email, { name = "", title = null, extra = [] } = {}) => {
@@ -4573,6 +4580,17 @@ async function main() {
     await page.goto(`${APP}/team`);
     await waitFor(page, ".settings-page, .settings-shell, .settings-nav", 25000);
     await clickButton(page, "team & stakeholders");
+    // Leave is in their own row's "…" menu.
+    let ownRowMenu = null;
+    await within(page, async () => {
+      ownRowMenu = await page.evaluate((email) => {
+        const row = [...document.querySelectorAll(".settings-permission-row")].find((each) => each.textContent.includes(email));
+        return row?.querySelector(".settings-member-menu .settings-menu-btn")?.getAttribute("aria-label") ?? null;
+      }, colleagueEmail);
+      return Boolean(ownRowMenu);
+    }, 15000);
+    if (!ownRowMenu) throw new Error(`timed out waiting for ${colleagueEmail}'s own "…" menu`);
+    await page.locator(`.settings-permission-row .settings-member-menu button[aria-label="${ownRowMenu}"]`).first().click();
     await waitFor(page, `button[aria-label="Leave ${factoryName}"]`, 15000);
     await page.locator(`button[aria-label="Leave ${factoryName}"]`).click();
     await waitFor(page, '[data-testid="confirm-team-change"]', 10000);
