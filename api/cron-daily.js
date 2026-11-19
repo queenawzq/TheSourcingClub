@@ -77,6 +77,9 @@ export default async function handler(request, response) {
 
   // Messages a closed page left `checking` (api/_message-sweep.js). Before the
   // emails, so a message delivered here is emailed in this run. Never fails the job.
+  // Its time comes out of the emails' budget, not on top of it, so the job
+  // takes no longer than it did before.
+  const drainStarted = Date.now();
   let messages = null;
   try {
     messages = await sweepCheckingMessages(service);
@@ -90,7 +93,7 @@ export default async function handler(request, response) {
   const mail = emailTransport();
   if (mail) {
     emails.configured = true;
-    const started = Date.now();
+    const started = drainStarted;
     try {
       do {
         const batch = await sendDueNotificationEmails(service, request, mail);
