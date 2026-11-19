@@ -232,6 +232,35 @@ for (const rule of [
   assert.ok(board.includes(rule), `the board's rule changed; check payment-summary.mjs: ${rule}`);
 }
 
+// The factory's order page and its Payments page give one payment the same
+// word. Each reads its own columns (milestone.js, PayoutDetails.jsx); a column
+// earningStatus() needs that one of them leaves out makes them disagree, which
+// is how the order page said "Pending" for PayPal balance money that Payments
+// called "Added to your balance". Run every state through both column lists.
+{
+  const columnsIn = (file, pattern) => {
+    const code = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
+    const match = code.match(pattern);
+    assert.ok(match, `${file}: the payment select was not found`);
+    return match[1].split(",").map((column) => column.trim()).filter((column) => /^\w+$/.test(column));
+  };
+  const orderPage = columnsIn("lib/domain/milestone.js", /listMilestones[\s\S]*?order_payments \(([^)]*)\)/);
+  const payments = columnsIn("app/order/PayoutDetails.jsx", /\.select\("(id, order_id, amount_cents[^"]*?), order_milestones/);
+  const only = (row, columns) => ({ ...Object.fromEntries(columns.filter((column) => column in row).map((column) => [column, row[column]])), order: row.order });
+  const rows = [
+    ...earnings,
+    pay("pool", 4500, "confirmed", { ...APPROVED, withdrawal_pool: true }),
+    pay("pool-cancelled", 4500, "confirmed", { ...APPROVED, ...CANCELLED, withdrawal_pool: true }),
+    pay("stripe", 300, "released", { stripe_transfer_id: "tr_1" }),
+    pay("released-pool", 300, "released", { withdrawal_pool: true }),
+  ];
+  for (const row of rows) {
+    assert.equal(earningStatus(only(row, orderPage)), earningStatus(only(row, payments)),
+      `payment "${row.id}": the order page and Payments read different words (milestone.js's payment select is missing a column earningStatus needs)`);
+  }
+  assert.equal(earningStatus(only(rows.find((row) => row.id === "pool"), orderPage)), "Added to your balance", "PayPal/Wise balance money on the order page");
+}
+
 // A hand-paid card never goes back to saying how it is paid in place of a figure.
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");

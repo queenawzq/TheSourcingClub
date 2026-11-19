@@ -982,7 +982,7 @@ console.log("\nphase 3 — the order runs");
     // exact strings milestone.js, order.js and payment.js select.
     {
       const milestoneEmbed = await brand.client.from("order_milestones")
-        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id)")
+        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id, withdrawal_pool)")
         .eq("order_id", order.id);
       const orderEmbed = await brand.client.from("production_order_summary")
         .select("id, order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents))")
