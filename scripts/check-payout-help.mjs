@@ -29,6 +29,11 @@ assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page
   assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
   assert.equal(cardPendingCents(100, 360), 0, "never below zero");
 }
+// One balance, one Withdraw, whatever the method (Nov 19): the button is
+// "Withdraw" everywhere, and each Withdraw dialog lists the other balance's
+// methods in the same "Withdraw to".
+assert.ok(!/Withdraw to bank/.test(card), 'no "Withdraw to bank": the button is "Withdraw" for every method');
+assert.ok(card.includes('value={`balance:${row.id}`}') && card.includes("others={stripeReachable"), "both Withdraw dialogs list every withdrawal method");
 // Removed on request (Nov 18): the country picked now decides the methods, so
 // the chooser no longer asks for the country of registration.
 assert.ok(!card.includes("Choose where your company is registered."), "the chooser does not ask for the country of registration");

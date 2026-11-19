@@ -17,7 +17,7 @@ import { methodProviderOn, providerOf } from "./payout-providers.js";
  */
 
 // A bank account is withdrawn to only through Wise: TSC no longer pays one by hand (20261117500000).
-const usable = (row) => row?.method === "paypal"
+export const usable = (row) => row?.method === "paypal"
   ? Boolean(row.paypal_email)
   : row?.method === "bank" && Boolean(row.wise_recipient_type && row.account_name?.trim() && row.number_changed_at);
 
@@ -261,7 +261,11 @@ function useExactQuote(orgId, accountId, amountCents, enabled) {
 }
 
 /** The dialog body and its Confirm, in the payouts page's own PayoutModal. */
-export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null }) {
+// `others`: the factory's methods paid from another balance (its own Stripe
+// banks), listed in the same "Withdraw to" so there is one Withdraw. Choosing
+// one hands over to that balance's dialog (`onOther`), which shows what it can
+// reach.
+export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null, others = [], onOther }) {
   // A saved method whose provider staff switched off stays saved, but is not offered.
   const choices = methods.filter((row) => usable(row) && methodProviderOn(providers, row));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
@@ -318,9 +322,14 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
       <div className="withdraw-form-fields">
         <label className="payout-country-field withdraw-method-field">
           <span>Withdraw to</span>
-          <select name="Withdraw to" value={methodId} disabled={busy} onChange={(event) => setMethodId(event.target.value)}>
+          <select name="Withdraw to" value={methodId} disabled={busy} onChange={(event) => {
+            const value = event.target.value;
+            if (value.startsWith("other:")) onOther?.(value.slice(6));
+            else setMethodId(value);
+          }}>
             {methodId ? null : <option value="" />}
             {choices.map((row) => <option key={row.id} value={row.id}>{label(row)}</option>)}
+            {others.map((other) => <option key={other.id} value={`other:${other.id}`}>{other.label}</option>)}
           </select>
         </label>
         <div className="withdraw-amount-field payout-form-grid">
