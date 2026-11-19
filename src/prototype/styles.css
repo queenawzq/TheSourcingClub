@@ -141,6 +141,13 @@ button {
   cursor: pointer;
 }
 
+/* A checkbox keeps the size its own rule gives it. Beside a long sentence in
+   a flex row it was squeezed to a sliver a few pixels wide, which read as a
+   round or line-shaped box. `npm run check:checkboxes` keeps this rule. */
+input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
 .search-icon {
   display: block;
   width: 20px;
@@ -1500,7 +1507,7 @@ button {
 .home-upcoming-call-list {
   display: grid;
   gap: 10px;
-  max-height: 118px;
+  max-height: 310px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -12858,6 +12865,12 @@ body:has(.brand-onboarding-page) {
 .settings-payment-popover button:hover { background: #f3f7fb; }
 .settings-payment-popover button.danger { color: #b93824; }
 
+/* Team: the table clips what hangs below it, so the last member's menu opens upwards. */
+.settings-permission-row:last-child .settings-member-menu .settings-payment-popover {
+  top: auto;
+  bottom: calc(100% + 7px);
+}
+
 .settings-add-btn {
   justify-self: start;
   height: var(--button-height);
@@ -13015,7 +13028,7 @@ body:has(.brand-onboarding-page) {
 }
 
 .factory-settings-page .settings-permission-row {
-  grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(128px, 1fr)) 36px;
+  grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(117px, 1fr)) 36px;
 }
 
 .settings-permission-row:first-child {
@@ -13109,7 +13122,8 @@ body:has(.brand-onboarding-page) {
   display: block;
 }
 
-.settings-remove-member-btn:disabled {
+.settings-remove-member-btn:disabled,
+.settings-member-menu .settings-menu-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
@@ -13680,6 +13694,7 @@ body:has(.brand-onboarding-page) {
 
 .message-avatar {
   display: grid;
+  flex-shrink: 0;
   place-items: center;
   width: 42px;
   height: 42px;
@@ -13699,7 +13714,6 @@ body:has(.brand-onboarding-page) {
 .message-avatar.xl {
   width: 72px;
   height: 72px;
-  border-radius: 50%;
   font-size: 18px;
 }
 

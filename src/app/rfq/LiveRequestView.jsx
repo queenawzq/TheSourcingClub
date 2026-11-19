@@ -466,9 +466,11 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         </div>
       )}
       <FactoryReadOnlyRfqPage
-        // The material rows are held in the designed card's own state from its
-        // first render, and they load after the quote: remount when they arrive.
-        key={`materials-${materialLines.length}`}
+        // The material and sample rows are held in the designed card's own
+        // state from its first render, and they load after the quote: remount
+        // when they arrive. (Without the sample rows here, a sent quote's
+        // Sample plan read back empty while the price card named its stages.)
+        key={`lines-${materialLines.length}-${sampleLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
         language={getUiLanguage()}
         project={project}

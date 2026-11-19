@@ -56,3 +56,7 @@ if (problems.length) {
 }
 
 console.log(`css tokens: ${defined.size} defined, every reference resolves`);
+
+// Every checkbox stays square (scripts/check-checkboxes.mjs), in the same build step.
+const { default: checkCheckboxes } = await import("./check-checkboxes.mjs");
+checkCheckboxes();

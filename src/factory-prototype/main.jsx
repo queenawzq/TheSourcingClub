@@ -7615,6 +7615,13 @@ function FactorySettingsScreen({ companyType = "factory", language = "en" }) {
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
+  const [memberMenu, setMemberMenu] = useState(null);
+  useEffect(() => {
+    if (!memberMenu) return undefined;
+    const close = (event) => { if (!event.target.closest(".settings-member-menu")) setMemberMenu(null); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [memberMenu]);
   const [paymentTab, setPaymentTab] = useState("earnings");
   const isZh = language === "zh";
   const isTradingCompany = companyType === "trading";
@@ -7835,15 +7842,29 @@ function FactorySettingsScreen({ companyType = "factory", language = "en" }) {
                       <span>{tx(permission.label)}</span>
                     </label>
                   ))}
-                  <button
-                    className="settings-remove-member-btn"
-                    type="button"
-                    aria-label={isZh ? `移除 ${member.name}` : `Remove ${member.name}`}
-                    disabled={member.role === "Owner"}
-                    onClick={() => removeMember(member.email)}
-                  >
-                    <img src="/assets/prototype-icons/trash.svg" alt="" />
-                  </button>
+                  <div className="settings-payment-menu settings-member-menu">
+                    <button
+                      className="settings-menu-btn"
+                      type="button"
+                      aria-label={isZh ? `${member.name} 的更多选项` : `More options for ${member.name}`}
+                      aria-expanded={memberMenu === member.email}
+                      disabled={member.role === "Owner"}
+                      onClick={() => setMemberMenu((open) => (open === member.email ? null : member.email))}
+                    />
+                    {memberMenu === member.email ? (
+                      <div className="settings-payment-popover" role="menu">
+                        <button
+                          className="danger"
+                          type="button"
+                          role="menuitem"
+                          aria-label={isZh ? `移除 ${member.name}` : `Remove ${member.name}`}
+                          onClick={() => { setMemberMenu(null); removeMember(member.email); }}
+                        >
+                          {isZh ? "移除" : "Remove"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>

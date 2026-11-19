@@ -48,7 +48,7 @@ const factoryTranslations = {
     'nav.brands': 'For Brands',
     'nav.signin': 'Sign in',
     'cta.join': 'Join us',
-    'cta.dashboard': 'Dashboard',
+    'cta.dashboard': 'Account',
     'cta.apply': 'Sign up',
     'hero.eyebrow': 'For factories',
     'hero.title1': 'Grow with',
@@ -173,7 +173,7 @@ const factoryTranslations = {
     'nav.brands': '品牌页面',
     'nav.signin': '登录',
     'cta.join': '加入我们',
-    'cta.dashboard': '控制台',
+    'cta.dashboard': '账户',
     'cta.apply': '注册',
     'hero.eyebrow': '工厂合作',
     'hero.title1': '对接',
@@ -329,7 +329,7 @@ function applyFactoryLanguage(lang) {
   }
 }
 
-// Signed in, the header offers the dashboard instead of "Log in" and "Join us".
+// Signed in, the header offers "Account" (the app) instead of "Log in" and "Join us".
 // The sign-in this tab would use: one kept to itself when its "Keep me logged
 // in" was unticked (sessionStorage), otherwise the browser's remembered one
 // (localStorage). Same rule as src/lib/session-storage.mjs.
@@ -362,7 +362,7 @@ function showSignedInHeader() {
   }
   login.setAttribute('href', href);
   login.dataset.i18n = 'cta.dashboard';
-  login.textContent = 'Dashboard';
+  login.textContent = 'Account';
   if (join) join.style.display = 'none';
 }
 

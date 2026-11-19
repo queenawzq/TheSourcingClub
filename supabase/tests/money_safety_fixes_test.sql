@@ -131,12 +131,15 @@ $f$;
 -- 1. Manual to Stripe while a manual payout is owed
 -- ---------------------------------------------------------------------------
 select pg_temp.reset(true);
+savepoint m97_switch;
 select pg_temp.act_as(1); set local role authenticated;
-select throws_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-0000000000f1', null)$$, '22023', null,
-  'a factory cannot move to Stripe while staff may be sending its payout by hand');
+select lives_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-0000000000f1', null)$$,
+  'a factory can move to Stripe while a payout is owed on its saved method');
 reset role;
-select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'manual', 'and the route stays manual');
-select is(public.claim_payment_release('97f00000-0000-0000-0000-000000000001'), null::timestamptz, 'so Stripe still cannot claim it');
+select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'stripe', 'and the route is Stripe');
+select ok((select withdrawal_pool from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'what was owed stays in the balance, for the saved method');
+select throws_ok($$select public.claim_payment_release('97f00000-0000-0000-0000-000000000001')$$, '22023', null, 'so Stripe still cannot claim it');
+rollback to savepoint m97_switch;
 
 update public.order_payments set state = 'released', released_at = now() where id = '97f00000-0000-0000-0000-000000000001';
 select pg_temp.act_as(1); set local role authenticated;

@@ -329,7 +329,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           title: addingCard ? "Card details" : "Select billing method",
           agreements: [paymentOnly
             ? `I understand TSC releases this step to ${factory} once it is funded, and it takes a few business days to arrive.`
-            : "I understand funds are released after I approve this step."],
+            : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."],
           agreed,
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
           paymentElement: (

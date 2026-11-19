@@ -15,6 +15,32 @@ for (const label of ["Balance", "Available balance", "Pending balance"]) {
 for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies"]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
+// Every payout method's card says both (Nov 19): the sentence, and "$X pending"
+// from the page's Pending figure. The Stripe card and the balance card each carry them.
+const sentence = "Earnings stay in your balance until you withdraw them.";
+assert.ok(card.split(sentence).length - 1 >= 2, "the sentence is on the Stripe card and on the balance card (PayPal, Wise)");
+assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 2, "both cards say what is pending, with the one helper");
+assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page's Pending figure");
+{
+  const { cardPendingCents } = await import("../src/app/order/payment-summary.mjs");
+  assert.equal(cardPendingCents(null, 100), null, "nothing until the page's figure is known");
+  assert.equal(cardPendingCents(360, 0), 360, "Pending $3.60 with nothing shown elsewhere: the card says $3.60 pending");
+  assert.equal(cardPendingCents(360, 360), 0, "money the card offers to withdraw is not called pending");
+  assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
+  assert.equal(cardPendingCents(100, 360), 0, "never below zero");
+}
+// One balance, one Withdraw, whatever the method (Nov 19): the button is
+// "Withdraw" everywhere, and each Withdraw dialog lists the other balance's
+// methods in the same "Withdraw to".
+assert.ok(!/Withdraw to bank/.test(card), 'no "Withdraw to bank": the button is "Withdraw" for every method');
+assert.ok(card.includes('value={`balance:${row.id}`}') && card.includes("others={stripeReachable"), "both Withdraw dialogs list every withdrawal method");
+// A Withdraw dialog opened on a method with $0 shows "Available: $0.00" and no
+// error until the person works on the amount (Nov 19 test).
+{
+  const form = read("src/app/order/WithdrawFromBalance.jsx");
+  assert.ok(/amountTouched && amountText && amountProblem/.test(form), "the amount error waits until the amount is touched");
+  assert.ok((form.match(/setAmountTouched\(true\)/g) ?? []).length >= 2, "typing and Withdraw full amount both count as touching it");
+}
 // Removed on request (Nov 18): the country picked now decides the methods, so
 // the chooser no longer asks for the country of registration.
 assert.ok(!card.includes("Choose where your company is registered."), "the chooser does not ask for the country of registration");

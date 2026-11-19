@@ -484,6 +484,9 @@ export async function releasePayment({ stripe, db, paymentId }) {
   if (!selectedStripe.data) {
     const settled = await settleStartedRelease({ stripe, db, payment });
     if (settled) return settled;
+    // The default changed while this was on its way: it waits in the factory's
+    // balance for the method it now withdraws to, instead of nowhere.
+    await rpc(db, "join_owed_to_pool", { target_org: payment.production_orders.factory_org_id });
     return { released: false, reason: "the factory selected another payout method" };
   }
 

@@ -165,6 +165,69 @@ async function hasContract(db, threadId) {
   return data === true;
 }
 
+/**
+ * Screen one message still `checking` and record the verdict: the patterns,
+ * then the contract, then the model (8 s), with the translation side by side.
+ * `db` holds the server key. Used by this endpoint for the sender's own
+ * message, and by the daily job for messages a closed page left checking
+ * (api/cron-daily.js). Never delivers twice: record_message_screening locks
+ * the row and changes only one still `checking`.
+ *
+ * Returns `{ delivery, method, heldFor }`, or `{ error }` when the verdict
+ * could not be saved (the message then stays `checking`).
+ */
+export async function screenOne(db, message, { ask = askModel, translate = translateText } = {}) {
+  const fileNames = (message.documents ?? []).map((doc) => doc.file_name).filter(Boolean);
+
+  // The check and the translation run side by side: the slower of the two is
+  // the wait, not their sum.
+  const translating = translate(message.body, { timeoutMs: MODEL_TIMEOUT_MS });
+  let verdict;
+  const pattern = findContactDetails(message.body, fileNames);
+  if (pattern.hit) {
+    // Every pattern is a way to reach someone: an address, a number, an id.
+    verdict = { outcome: "held", method: "pattern", reason: pattern.reason, model: null, heldFor: "contact_details" };
+  } else if (await hasContract(db, message.thread_id)) {
+    // Contact details are allowed after a contract: nothing to ask the model.
+    verdict = { outcome: "delivered", method: "pattern_only", reason: "contract", model: null };
+  } else {
+    const ai = await ask(message.body, fileNames);
+    verdict = ai
+      ? { outcome: ai.hold ? "held" : "delivered", method: "ai", reason: ai.reason || null, model: ai.model, heldFor: ai.hold ? ai.kind : null }
+      : { outcome: "delivered", method: "pattern_only", reason: null, model: null };
+  }
+
+  const translation = await translating;
+  if (translation?.source_language) {
+    const { error: translateError } = await db
+      .from("messages")
+      .update({
+        body_lang: translation.source_language,
+        body_translated: translation.translation,
+        body_translated_lang: translation.translation ? translation.target_language : null,
+        translated_by: translation.model ?? null,
+      })
+      .eq("id", message.id)
+      .eq("delivery", "checking");
+    // Never a reason to stop: the message is delivered as typed.
+    if (translateError) console.error("screen-message translation", translateError.message);
+  }
+
+  const { data: recorded, error } = await db.rpc("record_message_screening", {
+    target_message: message.id,
+    outcome: verdict.outcome,
+    method: verdict.method,
+    reason: verdict.reason,
+    model: verdict.model,
+    held_for: verdict.heldFor ?? null,
+  });
+  if (error) {
+    console.error("screen-message record", error.message);
+    return { error: "the verdict could not be saved" };
+  }
+  return { delivery: recorded?.delivery ?? null, method: verdict.method, heldFor: recorded?.held_for ?? null };
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return json(response, 405, { delivery: null, error: "method not allowed" });
 
@@ -218,53 +281,7 @@ export default async function handler(request, response) {
   }
   if (message.delivery !== "checking") return json(response, 200, { delivery: message.delivery, method: null });
 
-  const fileNames = (message.documents ?? []).map((doc) => doc.file_name).filter(Boolean);
-
-  // The check and the translation run side by side: the slower of the two is
-  // the wait, not their sum.
-  const translating = translateText(message.body, { timeoutMs: MODEL_TIMEOUT_MS });
-  let verdict;
-  const pattern = findContactDetails(message.body, fileNames);
-  if (pattern.hit) {
-    // Every pattern is a way to reach someone: an address, a number, an id.
-    verdict = { outcome: "held", method: "pattern", reason: pattern.reason, model: null, heldFor: "contact_details" };
-  } else if (await hasContract(db, message.thread_id)) {
-    // Contact details are allowed after a contract: nothing to ask the model.
-    verdict = { outcome: "delivered", method: "pattern_only", reason: "contract", model: null };
-  } else {
-    const ai = await askModel(message.body, fileNames);
-    verdict = ai
-      ? { outcome: ai.hold ? "held" : "delivered", method: "ai", reason: ai.reason || null, model: ai.model, heldFor: ai.hold ? ai.kind : null }
-      : { outcome: "delivered", method: "pattern_only", reason: null, model: null };
-  }
-
-  const translation = await translating;
-  if (translation?.source_language) {
-    const { error: translateError } = await db
-      .from("messages")
-      .update({
-        body_lang: translation.source_language,
-        body_translated: translation.translation,
-        body_translated_lang: translation.translation ? translation.target_language : null,
-        translated_by: translation.model ?? null,
-      })
-      .eq("id", message.id)
-      .eq("delivery", "checking");
-    // Never a reason to stop: the message is delivered as typed.
-    if (translateError) console.error("screen-message translation", translateError.message);
-  }
-
-  const { data: recorded, error } = await db.rpc("record_message_screening", {
-    target_message: message.id,
-    outcome: verdict.outcome,
-    method: verdict.method,
-    reason: verdict.reason,
-    model: verdict.model,
-    held_for: verdict.heldFor ?? null,
-  });
-  if (error) {
-    console.error("screen-message record", error.message);
-    return json(response, 200, { delivery: null, error: "the verdict could not be saved" });
-  }
-  return json(response, 200, { delivery: recorded?.delivery ?? null, method: verdict.method, heldFor: recorded?.held_for ?? null });
+  const result = await screenOne(db, message);
+  if (result.error) return json(response, 200, { delivery: null, error: result.error });
+  return json(response, 200, result);
 }

@@ -983,7 +983,12 @@ async function main() {
     })();
     check(Boolean(askedMail?.Text?.replace(/\r\n/g, "\n").includes(askFor)), "and the email carries the request exactly as staff wrote it");
     const afterAsk = await page.locator("body").innerText();
-    check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
+    // The summary no longer repeats the last note (the email card and the
+    // email itself above say it went). Its grid is still drawn, so the pair's
+    // absence is not an empty page.
+    const lastNoteShown = await detailValue("Last note");
+    const decidedShown = await detailValue("Decided");
+    check(lastNoteShown === null && decidedShown !== null, `the review summary is drawn without a "Last note" (${lastNoteShown ?? "none"}; Decided: ${decidedShown})`);
     check(/needs information/i.test(afterAsk), "and the badge says Needs information");
     // It said "Pending": the review state and the profile's own column.
     const statusShown = await detailValue("Profile status");
@@ -2309,7 +2314,7 @@ async function main() {
         check((await page.locator('.before-funding input[type="checkbox"]').count()) === 1, "Fund asks for one tick, not two");
         check(beforeFunding.includes(fundingStep.kind === "payment_only"
           ? `I understand this goes to ${factoryName} once it is funded.`
-          : "I understand funds are released after I approve this step."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
+          : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
         check(await page.evaluate(() => document.querySelector('.before-funding input[type="checkbox"]')?.checked === false
           && document.querySelector(".bottom-bar .primary-btn")?.disabled === true), "it starts unticked, with the pay button greyed");
         await record(page, "Fund", "one required tick, then the card");

@@ -8,6 +8,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { fillOlderBrowsers } from "../src/lib/older-browsers.mjs";
+import { sbProxyEntries, sbUnknownIs404 } from "./dev-sb-proxy.mjs";
 import { CHECK_MS, GIVE_UP_MS, HEDGE_MS, READ_RPCS, classify, createRoute, proxyPathFor } from "../src/lib/supabase-route.mjs";
 
 let failed = 0;
@@ -259,6 +260,33 @@ for (const rule of proxied) {
 }
 same("/sb is never cached", vercel.headers?.some((rule) => rule.source === "/sb/(.*)"
   && rule.headers.some((h) => h.key === "x-vercel-enable-rewrite-caching" && h.value === "0")), true);
+
+// ---- The dev server's /sb: like Vercel's, and a 404 for anything else
+// (scripts/dev-sb-proxy.mjs). It answered the app's page with a 200 for a
+// hosted project, which the route took for a working way to the database.
+{
+  const qa = sbProxyEntries("https://lafsvocxthdoryezikdb.supabase.co");
+  same("a dev server on a hosted database proxies its own /sb", Object.keys(qa), ["/sb/local", "/sb/lafsvocxthdoryezikdb"]);
+  same("…to that database only", qa["/sb/lafsvocxthdoryezikdb"].target, "https://lafsvocxthdoryezikdb.supabase.co");
+  same("…without the prefix", qa["/sb/lafsvocxthdoryezikdb"].rewrite("/sb/lafsvocxthdoryezikdb/rest/v1/orgs?x=1"), "/rest/v1/orgs?x=1");
+  const local = sbProxyEntries("http://127.0.0.1:54321");
+  same("a dev server on a local stack keeps /sb/local alone", Object.keys(local), ["/sb/local"]);
+  same("…pointed at the stack", local["/sb/local"].target, "http://127.0.0.1:54321");
+  same("SB_PROXY_TARGET still wins for /sb/local", sbProxyEntries("http://127.0.0.1:54321", "http://127.0.0.1:9999")["/sb/local"].target, "http://127.0.0.1:9999");
+
+  const answer = (url) => {
+    const res = { statusCode: 200, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end() { this.ended = true; } };
+    let passed = false;
+    sbUnknownIs404(qa)({ url }, res, () => { passed = true; });
+    return passed ? "next" : `${res.statusCode} ${res.headers["content-type"]}`;
+  };
+  same("another project's /sb is a 404 page", answer("/sb/wxzliajdtwekqdvwzqfb/rest/v1/orgs"), "404 text/html; charset=utf-8");
+  same("a made-up /sb is a 404 page", answer("/sb/nothing/auth/v1/health"), "404 text/html; charset=utf-8");
+  same("its own /sb goes on to the proxy", answer("/sb/lafsvocxthdoryezikdb/rest/v1/orgs?select=id"), "next");
+  same("/sb/local goes on to the proxy", answer("/sb/local/auth/v1/health"), "next");
+  same("a lookalike prefix is not its own", answer("/sb/lafsvocxthdoryezikdbx/rest/v1/orgs"), "404 text/html; charset=utf-8");
+  same("the app's own pages are untouched", answer("/app.html?portal=factory"), "next");
+}
 
 if (failed) {
   console.error(`check:sb-fallback: ${failed} failed`);

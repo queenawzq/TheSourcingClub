@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { sbProxyEntries, sbUnknownIs404 } from "./scripts/dev-sb-proxy.mjs";
 
 // Netlify sets NETLIFY=true and Vercel sets VERCEL=1 during their builds, so the
 // deploy target is baked in at build time rather than sniffed from the hostname.
@@ -115,22 +116,29 @@ function apiRoutes() {
   };
 }
 
+/** Dev server only: an /sb path that reaches no database answers 404, not the app's page. */
+function devSbProxy(mode) {
+  return {
+    name: "dev-sb-proxy",
+    configureServer(server) {
+      const entries = sbProxyEntries(loadEnv(mode, process.cwd(), "VITE_").VITE_SUPABASE_URL, process.env.SB_PROXY_TARGET);
+      server.middlewares.use(sbUnknownIs404(entries));
+    },
+  };
+}
+
 export default defineConfig(({ command, mode }) => ({
-  plugins: [react(), appDeepLinks(), apiRoutes()],
+  plugins: [react(), appDeepLinks(), apiRoutes(), devSbProxy(mode)],
   define: {
     __DEPLOY_TARGET__: JSON.stringify(deployTarget),
     __PREVIEW_SUPABASE__: JSON.stringify(previewSupabase(mode)),
     __DEMO_SIGN_IN__: JSON.stringify(demoSignIn(command))
   },
   server: {
-    proxy: {
-      // What /sb/<project> is on Vercel (vercel.json), for a local stack.
-      "/sb/local": {
-        target: process.env.SB_PROXY_TARGET || loadEnv(mode, process.cwd(), "VITE_").VITE_SUPABASE_URL || "http://127.0.0.1:54321",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/sb\/local/, ""),
-      },
-    },
+    // What /sb/<project> is on Vercel (vercel.json): /sb/local for a local
+    // stack, /sb/<ref> for the hosted database this server uses, and a 404 for
+    // any other /sb path (devSbProxy below; scripts/dev-sb-proxy.mjs).
+    proxy: sbProxyEntries(loadEnv(mode, process.cwd(), "VITE_").VITE_SUPABASE_URL, process.env.SB_PROXY_TARGET),
   },
   build: {
     rollupOptions: {

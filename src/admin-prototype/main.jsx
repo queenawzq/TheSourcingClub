@@ -1873,7 +1873,14 @@ function TestDataPanel() {
  * it is changed, then the switches are read again.
  */
 const PAYOUT_PROVIDERS = [{ key: "paypal", label: "PayPal" }, { key: "wise", label: "Wise" }];
-const PAYOUT_REGIONS = [{ key: "china", label: "China and Hong Kong" }, { key: "elsewhere", label: "Everywhere else" }];
+// `where` finishes "PayPal … is now on." A provider offers only the regions it lists.
+const PAYOUT_REGIONS = [
+  { key: "china", label: "China and Hong Kong", where: "in China and Hong Kong" },
+  { key: "elsewhere", label: "Outside China and Hong Kong", where: "outside China and Hong Kong" },
+  // PayPal only (20261119300000): on wherever Stripe can't pay out, China included.
+  { key: "no_stripe", label: "Any country Stripe can't pay", where: "in any country Stripe can't pay", only: "paypal" },
+];
+const regionsFor = (provider) => PAYOUT_REGIONS.filter((region) => !region.only || region.only === provider);
 
 function PayoutProvidersPanelIfLive() {
   const actions = useActions();
@@ -1898,7 +1905,7 @@ function PayoutProvidersPanel() {
   const enabled = (provider, region) => rows?.find((row) => row.provider === provider && row.region === region)?.enabled ?? false;
 
   const change = async (provider, region, on) => {
-    const name = `${PAYOUT_PROVIDERS.find((p) => p.key === provider).label} in ${PAYOUT_REGIONS.find((r) => r.key === region).label}`;
+    const name = `${PAYOUT_PROVIDERS.find((p) => p.key === provider).label} ${PAYOUT_REGIONS.find((r) => r.key === region).where}`;
     setSaving(`${provider}:${region}`);
     setMessage({ error: false, text: "" });
     try {
@@ -1920,7 +1927,7 @@ function PayoutProvidersPanel() {
         <div className="admin-payout-provider-row" role="group" aria-labelledby={`payout-provider-${provider.key}`} key={provider.key}>
           <strong id={`payout-provider-${provider.key}`}>{provider.label}</strong>
           <div className="admin-payout-provider-regions">
-            {PAYOUT_REGIONS.map((region) => (
+            {regionsFor(provider.key).map((region) => (
               <label className="admin-check" key={region.key}>
                 <input type="checkbox" name={`${provider.label} · ${region.label}`} aria-label={`${provider.label}: ${region.label}`} data-testid={`provider-${provider.key}-${region.key}`}
                   checked={enabled(provider.key, region.key)} disabled={Boolean(saving)}

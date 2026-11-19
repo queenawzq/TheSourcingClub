@@ -1977,7 +1977,7 @@ export function MessagesScreen({
             {/* Live schedules calls when the mount passes `scheduling`, and
                 starts one now when it passes `instantCall`. */}
             {(!isLive || liveScheduling) && <button className="secondary-btn compact-btn" type="button" onClick={() => (liveScheduling ? liveScheduling.onOpen() : setShowSchedule(true))}>Schedule call</button>}
-            {(!isLive || liveInstantCall) && <button className="primary-btn compact-btn" type="button" onClick={() => (liveInstantCall ? liveInstantCall.onOpen() : setCallMode("preview"))}>Live video chat</button>}
+            {(!isLive || liveInstantCall) && <button className="primary-btn compact-btn" type="button" onClick={() => (liveInstantCall ? liveInstantCall.onOpen() : setCallMode("active"))}>Live video chat</button>}
           </div>
         </header>
 
@@ -3033,11 +3033,6 @@ export function SettingsScreen({
                     <div>
                       <strong>{member.name}</strong>
                       <small>{member.role} - {member.email}</small>
-                      {isLive && member.roleActionLabel ? (
-                        <button className="tsc-team-role-btn" type="button" disabled={busy} onClick={() => onRoleChange?.(member)}>
-                          {member.roleActionLabel}
-                        </button>
-                      ) : null}
                     </div>
                     {activePermissionLabels.map((permission) => (
                       <label className="settings-check" key={permission.key} title={(member.lockedPermissions ?? []).includes(permission.key) ? member.lockedReason : undefined}>
@@ -3053,16 +3048,45 @@ export function SettingsScreen({
                         <span>{permission.label}</span>
                       </label>
                     ))}
-                    <button
-                      className="settings-remove-member-btn"
-                      type="button"
-                      aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
-                      disabled={isLive ? busy || !member.removable : isFactory ? member.role === "Owner" : undefined}
-                      title={isLive && !member.removable ? member.removeLockedReason : undefined}
-                      onClick={() => removeMember(member.email)}
-                    >
-                      <img src="/assets/prototype-icons/trash.svg" alt="" />
-                    </button>
+                    {(() => {
+                      // One "…" menu per member, as Make default is drawn: the
+                      // role change (live) and removing them, each confirmed as before.
+                      const menuKey = `member:${member.email}`;
+                      const canRemove = isLive ? member.removable : !(isFactory && member.role === "Owner");
+                      const roleAction = isLive ? member.roleActionLabel : null;
+                      const locked = !roleAction && !canRemove;
+                      return (
+                        <div className="settings-payment-menu settings-member-menu">
+                          <button
+                            className="settings-menu-btn"
+                            type="button"
+                            aria-label={`More options for ${member.name}`}
+                            aria-expanded={paymentMenu === menuKey}
+                            disabled={busy || locked || undefined}
+                            title={locked && isLive ? member.removeLockedReason : undefined}
+                            onClick={() => setPaymentMenu((open) => (open === menuKey ? null : menuKey))}
+                          />
+                          {paymentMenu === menuKey ? (
+                            <div className="settings-payment-popover" role="menu">
+                              {roleAction ? (
+                                <button type="button" role="menuitem" disabled={busy} onClick={() => { setPaymentMenu(null); onRoleChange?.(member); }}>{roleAction}</button>
+                              ) : null}
+                              <button
+                                className="danger"
+                                type="button"
+                                role="menuitem"
+                                aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
+                                disabled={busy || !canRemove}
+                                title={isLive && !canRemove ? member.removeLockedReason : undefined}
+                                onClick={() => { setPaymentMenu(null); removeMember(member.email); }}
+                              >
+                                {isLive && member.removeItemLabel ? member.removeItemLabel : "Remove"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
