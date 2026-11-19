@@ -18,7 +18,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(23);
 
 insert into auth.users (id, email) values
   ('c5400000-0000-0000-0000-000000000001', 'p54-admin@example.com'),
@@ -38,6 +38,16 @@ insert into public.org_members (org_id, user_id, role) values
 
 insert into public.factory_profiles (org_id, country_code, moq, onboarding_completed_at) values
   ('d5400000-0000-0000-0000-0000000000f1', 'PT', 100, now());
+
+-- The queue's "Submitted" (20261119100000): the first completion, until a
+-- profile sent back for more information is resubmitted. A transaction's
+-- now() never moves, so the completions are set in the past.
+update public.factory_profiles set onboarding_completed_at = now() - interval '20 days'
+ where org_id = 'd5400000-0000-0000-0000-0000000000f1';
+insert into public.orgs (id, type, name, slug) values
+  ('d5400000-0000-0000-0000-0000000000f2', 'factory', 'P54 Factory Two', 'pgtap54-factory-two');
+insert into public.factory_profiles (org_id, country_code, moq, onboarding_completed_at) values
+  ('d5400000-0000-0000-0000-0000000000f2', 'PT', 100, now() - interval '10 days');
 
 -- ---------------------------------------------------------------------------
 -- Before staff touch it: a member reads "ready", with nothing to show.
@@ -70,6 +80,11 @@ set local role authenticated;
 select lives_ok(
   $$select public.admin_review_decision('d5400000-0000-0000-0000-0000000000f1', 'needs_information', 'Please upload your business licence.')$$,
   'staff return the profile with a note'
+);
+select is(
+  (select submitted_at from public.admin_verification_queue() q where q.org_id = 'd5400000-0000-0000-0000-0000000000f1'),
+  now() - interval '20 days',
+  'before it is sent back, the queue says it was submitted when onboarding finished'
 );
 -- The reviewer's private working note, written after the request went out.
 reset role;
@@ -146,6 +161,33 @@ select is(
 select throws_ok(
   $$select public.resubmit_for_review('d5400000-0000-0000-0000-0000000000f1')$$, '22023',
   null, 'and cannot do it twice'
+);
+-- The admin test comes first: a member of the company is refused the queue.
+select throws_ok(
+  $$select * from public.admin_verification_queue()$$, '42501',
+  null, 'a company member cannot read the staff queue'
+);
+
+reset role;
+set local request.jwt.claims = '{}';
+set local role anon;
+select throws_ok(
+  $$select * from public.admin_verification_queue()$$, '42501',
+  null, 'nor can a signed-out visitor'
+);
+
+reset role;
+set local request.jwt.claims = '{"sub":"c5400000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select submitted_at from public.admin_verification_queue() q where q.org_id = 'd5400000-0000-0000-0000-0000000000f1'),
+  now(),
+  'once sent back, the queue says it was submitted then'
+);
+select is(
+  (select submitted_at from public.admin_verification_queue() q where q.org_id = 'd5400000-0000-0000-0000-0000000000f2'),
+  now() - interval '10 days',
+  'a company never sent back keeps its completion time'
 );
 
 -- ---------------------------------------------------------------------------
