@@ -16,7 +16,7 @@ import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadVendorDirectory } from "../profile/load-profile.js";
 import { filterVendors, emptyFilters, vendorCard } from "./vendor-directory-view.js";
 import { useVendorNames } from "../vendor-names.jsx";
-import { inEnglish, useVendorTranslations } from "./useVendorTranslations.js";
+import { useVendorTranslations } from "./useVendorTranslations.js";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
 
@@ -65,13 +65,15 @@ export default function LiveSavedVendors({ org }) {
   }, [state.rows, state.directory]);
   const originalCards = useMemo(() => cards.map((item) => item.card), [cards]);
   const vendorNames = useVendorNames(originalCards);
-  // Location, intro and product names in English, as on Browse (useVendorTranslations).
-  const english = new Map(useVendorTranslations(originalCards, org.id).map((card) => [card.id, inEnglish(card)]));
+  // Location, intro and product names in English, as on Browse: the card
+  // swaps them itself, with its label and "See original" (useVendorCardText).
+  const english = new Map(useVendorTranslations(originalCards, org.id).map((card) => [card.id, card]));
 
   if (state.error) {
     return <main className="rfqs-page"><p className="live-profile-error" role="alert">Couldn't load your saved vendors: {state.error.message}</p></main>;
   }
-  if (!state.rows) {
+  // Held until the English is in (at most 3 s), as on Browse.
+  if (!state.rows || [...english.values()].some((card) => card.translating)) {
     return <main className="rfqs-page"><p className="live-profile-loading">Loading your saved vendors…</p></main>;
   }
 

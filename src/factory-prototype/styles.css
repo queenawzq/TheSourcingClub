@@ -5246,6 +5246,15 @@ body:has(.factory-onboarding-page) {
   margin-bottom: 0;
 }
 
+/* The same space above the note as below it: the card's own 10px gap. */
+.factory-request-brief .brand-card-translation .brand-brief-translation-meta {
+  margin-top: 4px;
+}
+
+.factory-request-brief .brand-card-translation:has(.brand-brief-translation-meta) + .factory-request-requirements {
+  margin-top: 0;
+}
+
 .brand-card-translation .brand-brief-translation-meta span,
 .brand-card-translation .brand-brief-translation-meta button {
   min-height: 22px;
@@ -5963,6 +5972,11 @@ body:has(.factory-onboarding-page) {
 .list-card-translation-meta {
   gap: 6px;
   margin: 8px 0 0;
+}
+
+/* Last in the dashboard's request card: the same space above it as the card's 14px below. */
+.factory-dashboard-rfq-row .list-card-translation-meta {
+  margin-top: 6px;
 }
 
 .list-card-translation-meta span,

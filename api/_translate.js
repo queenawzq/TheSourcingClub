@@ -84,6 +84,8 @@ ${text.slice(0, 4000)}
         // Forced tool call, for the reason recorded in generate-brief.js: a
         // JSON-schema request came back once as prose in a markdown fence.
         tool_choice: { type: "function", function: { name: "submit_translation" } },
+        // No thinking before the answer, as in suggest-review-request.js.
+        reasoning: { enabled: false },
       }),
     });
 
@@ -104,7 +106,9 @@ ${text.slice(0, 4000)}
     }
     const translated = typeof fields.translation === "string" ? fields.translation.trim() : "";
     if (fields.source_language !== "en" && (!translated || translated === text)) {
-      return softTranslation("nothing to translate into");
+      // An answer, not a failure: the text reads the same in English (a place
+      // name, "Porto, Portugal"). Callers that cache may keep it as written.
+      return { ...softTranslation("nothing to translate into"), unchanged: translated === text };
     }
 
     return {
@@ -177,6 +181,7 @@ ${text.slice(0, 4000)}
         ],
         tools: [{ type: "function", function: { name: "submit_translation", description: "Return the Chinese text.", parameters: CHINESE_SCHEMA } }],
         tool_choice: { type: "function", function: { name: "submit_translation" } },
+        reasoning: { enabled: false },
       }),
     });
     if (!upstream.ok) {

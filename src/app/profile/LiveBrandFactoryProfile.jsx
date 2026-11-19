@@ -64,6 +64,14 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
     );
     return () => { cancelled = true; controller.abort(); };
   }, [vendorOrgId, org.id, translationAttempt]);
+  // The page waits for the English (at most 3 s) before drawing, so nobody
+  // sees the Chinese for a moment first; after that the English fills in.
+  const [held, setHeld] = useState(true);
+  useEffect(() => {
+    setHeld(true);
+    const cap = window.setTimeout(() => setHeld(false), 3000);
+    return () => window.clearTimeout(cap);
+  }, [vendorOrgId]);
   const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
   // The company's name in English, the same one every brand screen shows (vendor-names.jsx).
@@ -94,7 +102,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   });
   const backLabel = BACK_LABELS[from] ?? "previous page";
 
-  if (state.parts === undefined) {
+  // Held (at most 3 s) for the profile's English and the company name's.
+  if (state.parts === undefined || (state.parts && held && ((translation.loading && profileSources(state.parts).some(needsEnglish)) || vendorNames.waiting()))) {
     return <Frame><p className="live-profile-loading">Loading the profile…</p></Frame>;
   }
   if (!state.parts) {

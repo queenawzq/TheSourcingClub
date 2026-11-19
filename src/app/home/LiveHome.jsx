@@ -324,7 +324,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           : null}
         factories={translatedRecommended}
         newcomerVendorWords={{ title: "Recommended vendors", browse: "Browse vendors" }}
-        vendorsPending={!vendors.answered}
+        vendorsPending={!vendors.answered || translatedRecommended.some((card) => card.translating)}
         goTo={goTo}
         createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
         onOpenActivity={openActivity}

@@ -115,7 +115,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [serviceTags, setServiceTags] = useState([]);
   const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], images: [], saved: false });
   // The request and the brand card in Chinese for a person reading Chinese.
-  useChineseContent({ rfqIds: [rfqId], brandOrgIds: [rfq?.brand_org_id] });
+  // Held until the Chinese is in (at most 3 s): no English for a moment first.
+  const waitingForChinese = useChineseContent({ rfqIds: [rfqId], brandOrgIds: [rfq?.brand_org_id] });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   // "revise" or "withdraw" while the vendor is being asked; a sent quote is
@@ -247,7 +248,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       </main>
     );
   }
-  if (!rfq) return null;
+  if (!rfq || waitingForChinese) return null;
 
   const verified = profile?.verification_status === "verified";
   // Writing and sending a quote is RFQ flow (submit_quote asks the same).

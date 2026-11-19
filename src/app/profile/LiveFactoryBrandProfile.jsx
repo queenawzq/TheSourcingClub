@@ -31,7 +31,8 @@ function Frame({ children }) {
 
 export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = null }) {
   // The brand's own words in Chinese for a person reading Chinese.
-  useChineseContent({ brandOrgIds: [brandOrgId] });
+  // Held until the Chinese is in (at most 3 s): no English for a moment first.
+  const waitingForChinese = useChineseContent({ brandOrgIds: [brandOrgId] });
   const { navigate } = useRouter();
   const [state, setState] = useState({ parts: undefined, error: null });
   const [saving, setSaving] = useState(false);
@@ -57,7 +58,7 @@ export default function LiveFactoryBrandProfile({ org, user, brandOrgId, from = 
     else navigate(fallback);
   };
 
-  if (state.parts === undefined) {
+  if (state.parts === undefined || waitingForChinese) {
     return <Frame><p className="live-profile-loading">Loading the profile…</p></Frame>;
   }
   if (!state.parts) {

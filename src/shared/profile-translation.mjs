@@ -98,11 +98,13 @@ export async function translateSources(sources, { translate, cacheRead, cacheWri
       const chunks = source.match(/[\s\S]{1,4000}/g) ?? [];
       const results = await Promise.all(chunks.map(async (chunk) => {
         let result = await translate(chunk, { timeoutMs: Math.min(6000, left()) });
-        if ((result.error || !result.source_language) && left() >= 2500) result = await translate(chunk, { timeoutMs: Math.min(2000, left()) });
+        if (!result.unchanged && (result.error || !result.source_language) && left() >= 2500) result = await translate(chunk, { timeoutMs: Math.min(2000, left()) });
         return result;
       }));
-      const failed = results.some((result) => result.error || !result.source_language);
-      const translated = results.some((result) => result.source_language !== "en");
+      // "Porto, Portugal" comes back unchanged: an answer, kept as written and
+      // cached, or it went to the model again on every load (Nov 19).
+      const failed = results.some((result) => !result.unchanged && (result.error || !result.source_language));
+      const translated = results.some((result) => !result.unchanged && result.source_language !== "en");
       if (failed || (!translated && needsEnglish(source))) { missing.push(source); continue; }
       const english = results.map((result, index) => result.translation ?? chunks[index]).join("");
       fresh.push({ source, english, translated });

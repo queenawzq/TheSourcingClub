@@ -84,6 +84,19 @@ export function englishName(id, name) {
   return answer && answer.source === source ? answer.english : null;
 }
 
+/**
+ * Whether a screen is still waiting for this name's English: asked, or about
+ * to be, and not answered. A failed answer is not waiting (the name stays as
+ * written). Screens that hold their loading line for the English use it.
+ */
+export function nameWaiting(id, name) {
+  const source = clean(name);
+  if (!id || !needsEnglish(source)) return false;
+  if (answers.get(id)?.source === source) return false;
+  const ask = asked.get(id);
+  return !ask || ask.source !== source || ask.inFlight || queue.has(id);
+}
+
 /** The English name first, the name as written under it, in the card's subtitle style. */
 export function VendorName({ id, name, english = englishName(id, name) }) {
   if (!english) return <>{name}</>;
@@ -115,6 +128,8 @@ export function useVendorNames(vendors, { enabled = true } = {}) {
   const english = (id, name) => (enabled ? englishName(id, name) : null);
   return {
     text: (id, name) => english(id, name) ?? name,
+    /** Any of these names still waiting for its English. */
+    waiting: () => enabled && (vendors ?? []).some((vendor) => nameWaiting(vendor?.id, vendor?.name)),
     node: (id, name) => <VendorName id={id} name={name} english={english(id, name)} />,
     search: (id, name) => [english(id, name), name].filter(Boolean).join(" "),
     /** A card `{ id, name, searchText? }`: `name` in English, `nameNode` with the original, search on both. */

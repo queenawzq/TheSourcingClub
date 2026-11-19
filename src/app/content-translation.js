@@ -14,12 +14,14 @@
  * `failed` for what did not, so a note never calls untranslated text
  * translated.
  */
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase.js";
 import { getUiLanguage } from "../lib/ui-language.js";
 
 const state = { translations: new Map(), failed: new Set(), pending: 0, showOriginal: false, version: 0 };
 const asked = new Set();
+// Ids whose first answer is in (or failed): a screen may stop holding for them.
+const answered = new Set();
 const listeners = new Set();
 const changed = () => { state.version += 1; listeners.forEach((listener) => listener()); };
 
@@ -73,6 +75,7 @@ async function ask(groups, extra = {}) {
     state.failed.add(Symbol.for("tsc-content-translation-down"));
     keys.forEach((key) => asked.delete(key));
   } finally {
+    keys.forEach((key) => answered.add(key));
     state.pending -= 1;
     changed();
   }
@@ -94,13 +97,32 @@ export function requestEnglishContent({ quoteIds = [], orderIds = [], factoryOrg
 
 const keyOf = (groups) => groups.map((list) => (list ?? []).filter(Boolean).join(",")).join("|");
 
-/** A screen's requests, brands and messages, asked for while the person reads Chinese. */
+// How long a screen may hold its loading line for the Chinese (the brand
+// side's cap): after it, the screen draws and the Chinese fills in.
+const HOLD_MS = 3000;
+
+/**
+ * A screen's requests, brands and messages, asked for while the person reads
+ * Chinese. Returns true while the first answer for them is not in yet (at
+ * most HOLD_MS from the screen's first draw): the screen keeps its loading
+ * line meanwhile, so nobody sees the brand's English for a moment first.
+ */
 export function useChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = [], orderIds = [] }) {
   const key = keyOf([rfqIds, brandOrgIds, messageIds, orderIds]);
+  useContentTranslations();
+  const [held, setHeld] = useState(true);
+  useEffect(() => {
+    const cap = window.setTimeout(() => setHeld(false), HOLD_MS);
+    return () => window.clearTimeout(cap);
+  }, []);
   useEffect(() => {
     if (key.replace(/\|/g, "")) requestChineseContent({ rfqIds, brandOrgIds, messageIds, orderIds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+  if (!held || getUiLanguage() !== "zh") return false;
+  const keys = [["rfq", rfqIds], ["brand", brandOrgIds], ["message", messageIds], ["order-zh", orderIds]]
+    .flatMap(([prefix, ids]) => (ids ?? []).filter(Boolean).map((id) => `${prefix}:${id}`));
+  return keys.some((k) => !answered.has(k));
 }
 
 /** A brand screen's quotes, orders and vendors: what the factory typed, in English. */

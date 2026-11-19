@@ -31,7 +31,7 @@ import {
   toggleFilter,
   vendorCard,
 } from "./vendor-directory-view.js";
-import { inEnglish, useVendorTranslations } from "./useVendorTranslations.js";
+import { useVendorTranslations } from "./useVendorTranslations.js";
 import { useVendorNames } from "../vendor-names.jsx";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
@@ -119,7 +119,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
   if (state.error) {
     return <main className="directory-page"><p className="live-profile-error" role="alert">Couldn't load vendors: {state.error.message}</p></main>;
   }
-  if (!state.data) {
+  // Held until the English is in (at most 3 s): no Chinese for a moment first.
+  if (!state.data || cards.some((card) => card.translating)) {
     return <main className="directory-page"><p className="live-profile-loading">Loading vendors…</p></main>;
   }
 
@@ -194,8 +195,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
           goTo={() => {}}
           live={{
             ...live,
-            // The list's rows draw the fields as given: the English goes in them.
-            vendors: shown.map(inEnglish),
+            // Each row swaps its words to English itself, with its label and "See original".
+            vendors: shown,
             onCardsView: () => navigate(`/browse${typeQuery}`),
           }}
         />
