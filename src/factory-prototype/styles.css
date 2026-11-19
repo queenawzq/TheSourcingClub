@@ -5379,9 +5379,6 @@ body:has(.factory-onboarding-page) {
   box-sizing: border-box;
   width: 272px;
   min-height: auto;
-  max-height: calc(100vh - 56px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
   top: 28px;
   gap: 24px;
   padding: 28px 24px;
