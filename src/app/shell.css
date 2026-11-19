@@ -489,8 +489,8 @@ body {
   }
 }
 
-/* Scheduled calls: the design's list is 118 px tall with its own scroller,
-   one call in view. At phone width the title wraps and one call no longer
+/* Scheduled calls: the design's list is 310 px tall with its own scroller,
+   two calls in view. At phone width the title wraps and one call no longer
    fits, so the card cut through it, "Join call" included. There the list
    shows its calls in full (live lists at most four). */
 @media (max-width: 760px) {

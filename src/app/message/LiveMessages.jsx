@@ -173,12 +173,17 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
   const [confirmCall, setConfirmCall] = useState(null);
-  // "Live video chat" pressed: the design's video panel asks before the call
-  // starts ({ threadId, busy, error }).
-  const [instantConfirm, setInstantConfirm] = useState(null);
+  // "Live video chat" starts the call in one click. While it starts, a second
+  // click does nothing; a call that could not start says so under the composer
+  // ({ threadId, text }).
+  const startingCall = useRef(false);
+  const [callStartError, setCallStartError] = useState(null);
   // The call open in its own window (call-window.js), or null. The designed
   // video panel says so in that call's conversation.
   const [video, setVideo] = useState(() => currentCallWindow());
+  // A refusal belongs to the call that was on when it was said.
+  const videoCallId = video?.call.id ?? null;
+  useEffect(() => { setCallStartError(null); }, [videoCallId]);
 
   // The other side's time zone, asked again whenever a conversation opens
   // and whenever the calls reload rather than kept: it may have moved since.
@@ -442,11 +447,13 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     }
   }
 
-  // A call started now: the window opens in this click (empty until the call
-  // exists), or on a phone the call takes the page once it is started.
-  async function startInstantCall() {
-    const { threadId: target } = instantConfirm;
-    setInstantConfirm((current) => current && { ...current, busy: true, error: null });
+  // A call started now, in one click: the window opens in this click (empty
+  // until the call exists), or on a phone the call takes the page once it is
+  // started. The other side is rung as before.
+  async function startInstantCall(target) {
+    if (!target || startingCall.current) return;
+    startingCall.current = true;
+    setCallStartError(null);
     try {
       if (joinsInPage()) {
         const call = await startCallNow(target, ownZone);
@@ -454,10 +461,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         return;
       }
       await openCallWindowFor(() => startCallNow(target, ownZone));
-      setInstantConfirm(null);
       await reloadCalls();
+      // Call again / Call back on a card lower down: the panel saying where the
+      // call stands is at the top of the conversation.
+      requestAnimationFrame(() => document.querySelector(".video-call-panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     } catch (failure) {
-      setInstantConfirm((current) => current && { ...current, busy: false, error: callFailure(failure, "The call couldn't be started. Try again.") });
+      setCallStartError({ threadId: target, text: callFailure(failure, "The call couldn't be started. Try again.") });
+    } finally {
+      startingCall.current = false;
     }
   }
 
@@ -477,7 +488,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       : setConfirmCall({ call, mode: "decline" })),
     // Ended, the call's window closes by itself (the effect below).
     end: (call) => changeCall(call, () => cancelCall(call.id)),
-    callAgain: (call) => setInstantConfirm({ threadId: call.thread_id, busy: false, error: null }),
+    callAgain: (call) => startInstantCall(call.thread_id),
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     // In the click: a browser blocks a window opened any later. Phones and
@@ -533,14 +544,6 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     if (!next) reloadCallsRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
-
-  // Call again / Call back on a card lower down: the panel asking first is at
-  // the top of the conversation, so it is brought into view.
-  const confirmingIn = instantConfirm?.threadId ?? null;
-  useEffect(() => {
-    if (!confirmingIn) return;
-    requestAnimationFrame(() => document.querySelector(".video-call-panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
-  }, [confirmingIn]);
 
   // A call started now that was declined, ended or missed: nobody is coming,
   // so the caller's window leaves the meeting.
@@ -680,15 +683,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         calls={callCards}
         // Hidden while the other side's call rings for this company here: the
         // card's Join call is the way in, and a second call would be refused.
-        instantCall={ringingHere ? undefined : { onOpen: () => activeId && setInstantConfirm({ threadId: activeId, busy: false, error: null }) }}
-        video={instantConfirm && instantConfirm.threadId === activeId ? {
-          title: `Ready to call ${activeOther}`,
-          text: instantConfirm.error ?? `${activeOther} will be notified to join.`,
-          actions: [
-            { label: "Start call", onClick: startInstantCall, disabled: instantConfirm.busy },
-            { label: "Cancel", onClick: () => setInstantConfirm(null), disabled: instantConfirm.busy },
-          ],
-        } : video && video.call.thread_id === activeId ? {
+        instantCall={ringingHere ? undefined : { onOpen: () => startInstantCall(activeId) }}
+        video={video && video.call.thread_id === activeId ? {
           title: videoCalling ? `Calling ${activeOther}…` : video.call.title,
           text: video.inApp
             ? "You're in the call in the Zoom app."
@@ -750,7 +746,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           setNotice(refused.length ? refused.join(" ") : null);
           return picked.filter((file) => !attachmentRefusal(file));
         }}
-        composerNotice={error ? { text: error.message, alert: true } : notice ? { text: notice } : null}
+        composerNotice={error ? { text: error.message, alert: true }
+          : callStartError?.threadId === activeId ? { text: callStartError.text, alert: true }
+            : notice ? { text: notice } : null}
         ownName={org.name}
       />
       {confirmCall && (
