@@ -14,6 +14,7 @@
     "taxonomy": "python3 scripts/build-taxonomy.py",
     "e2e": "node scripts/e2e.mjs",
     "check:css": "node scripts/check-css-tokens.mjs",
+    "check:checkboxes": "node scripts/check-checkboxes.mjs",
     "check:api-load": "node scripts/check-api-load.mjs",
     "check:dates": "node scripts/check-dates.mjs",
     "check:capacity-window": "node scripts/check-capacity-window.mjs",

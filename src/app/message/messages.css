@@ -169,7 +169,7 @@
   }
 }
 
-/* The avatar keeps its circle when the title wraps on a narrow screen. */
+/* The avatar keeps its square when the title wraps on a narrow screen. */
 .video-call-stage .message-avatar {
   flex-shrink: 0;
 }

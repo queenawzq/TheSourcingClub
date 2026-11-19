@@ -294,6 +294,22 @@ try {
     /\b[1-9]\d* vendor quotes?\b/i.test(rfqBody) && /organic cotton poplin/i.test(rfqBody),
     "the admin request page still shows the design's quotes and brief",
   );
+
+  // Beside a long sentence on a phone, the Fund screen's consent boxes were
+  // squeezed to a sliver. Every checkbox keeps its square at every width.
+  const fundPage = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=fund`);
+  for (const width of [375, 950, 1440]) {
+    await fundPage.setViewportSize(width, 900);
+    await fundPage.waitForTimeout(width === 375 ? 3500 : 800);
+    const boxes = await fundPage.evaluate(() => [...document.querySelectorAll('input[type="checkbox"]')]
+      .map((input) => input.getBoundingClientRect())
+      .filter((box) => box.width > 0)
+      .map((box) => `${box.width.toFixed(1)}x${box.height.toFixed(1)}`));
+    check(
+      boxes.length >= 2 && boxes.every((size) => { const [w, h] = size.split("x").map(Number); return Math.abs(w - h) < 1; }),
+      `the Fund screen's checkboxes are square at ${width} px (${boxes.join(", ")})`,
+    );
+  }
 } finally {
   await stagehand.close();
   await browser.close().catch(() => {});

@@ -394,6 +394,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       lockedReason: !isOwner ? "Only an owner changes what people may do" : "An owner holds every permission",
       removable: isMe ? !lastOwner : isOwner && !lastOwner,
       removeLabel: isMe ? `Leave ${org.name}` : `Remove ${name}`,
+      // The words in the member's "…" menu.
+      removeItemLabel: isMe ? `Leave ${org.name}` : "Remove",
       removeLockedReason: lastOwner ? "A company always keeps at least one owner" : "Only an owner can remove someone",
       roleActionLabel: isOwner ? (isOwnerRow ? (lastOwner ? null : "Make member") : "Make owner") : null,
     };

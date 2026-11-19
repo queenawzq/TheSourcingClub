@@ -2309,7 +2309,7 @@ async function main() {
         check((await page.locator('.before-funding input[type="checkbox"]').count()) === 1, "Fund asks for one tick, not two");
         check(beforeFunding.includes(fundingStep.kind === "payment_only"
           ? `I understand this goes to ${factoryName} once it is funded.`
-          : "I understand funds are released after I approve this step."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
+          : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
         check(await page.evaluate(() => document.querySelector('.before-funding input[type="checkbox"]')?.checked === false
           && document.querySelector(".bottom-bar .primary-btn")?.disabled === true), "it starts unticked, with the pay button greyed");
         await record(page, "Fund", "one required tick, then the card");

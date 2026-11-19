@@ -101,7 +101,10 @@ function track(call, handle, { answer = false } = {}) {
  */
 export async function openCallWindowFor(start) {
   listen();
-  const handle = window.open("", "tsc-call-new", "popup,width=1200,height=800");
+  // A name of its own for each start. With one shared name, a second start
+  // while a call's window was open got that window back, and a refused start
+  // then closed it, which ends a call that is still ringing.
+  const handle = window.open("", `tsc-call-new-${Date.now()}`, "popup,width=1200,height=800");
   let call;
   try {
     call = await start();
