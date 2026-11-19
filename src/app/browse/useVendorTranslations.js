@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { requestCardTranslations } from "../profile/profile-translation-client.js";
+import { nameWaiting } from "../vendor-names.jsx";
 
 // The route takes at most 50 vendors at a time.
 const BATCH = 50;
@@ -10,8 +11,8 @@ const HOLD_MS = 3000;
 
 /**
  * The cards with each vendor's words in English where a translation exists.
- * `translating` is true on a card until its first answer is in (or failed, or
- * HOLD_MS passed): a screen keeps its loading line until none is, so nobody
+ * `translating` is true on a card until its first answer and its company
+ * name's English are in (or failed, or HOLD_MS passed): a screen keeps its loading line until none is, so nobody
  * sees the Chinese for a moment before the English (Nov 19, C2).
  * One request for all the cards (Nov 13, B7: it was one per card), and one
  * more for the vendors whose answers were not back in that request's time.
@@ -53,25 +54,10 @@ export function useVendorTranslations(cards, orgId) {
     return {
       ...card,
       translations,
-      translating: held && !card.unlisted && !answered.has(card.id),
+      // Its words, and its company name (vendor-names.jsx), in English yet?
+      translating: held && !card.unlisted && (!answered.has(card.id) || nameWaiting(card.id, card.name)),
       translationPartial: Boolean(answer?.incomplete) && english.length > 0,
       ...(english.length && typeof card.searchText === "string" ? { searchText: `${card.searchText} ${english.join(" ").toLowerCase()}` } : {}),
     };
   });
-}
-
-/**
- * A card with its translated words put into the fields, for the designed
- * cards that draw the fields as given and have no "See original" of their
- * own (Saved, the directory list). The marketplace card swaps them itself.
- */
-export function inEnglish(card) {
-  const english = (value) => card.translations?.[value] ?? value;
-  return {
-    ...card,
-    location: english(card.location),
-    notes: (card.notes ?? []).map(english),
-    insight: (card.insight ?? []).map(english),
-    products: (card.products ?? []).map((product) => ({ ...product, name: english(product.name) })),
-  };
 }

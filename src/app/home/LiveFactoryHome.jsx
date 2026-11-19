@@ -120,7 +120,8 @@ const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZo
 export default function LiveFactoryHome({ org, profile }) {
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
-  useChineseContent({ rfqIds: [...(state?.rfqs ?? []).map((rfq) => rfq?.id), ...(state?.orders ?? []).map((order) => order?.rfq_id)] });
+  // Held until the Chinese is in (at most 3 s): no English for a moment first.
+  const waitingForChinese = useChineseContent({ rfqIds: [...(state?.rfqs ?? []).map((rfq) => rfq?.id), ...(state?.orders ?? []).map((order) => order?.rfq_id)] });
   // The first read failed: nothing is known, so no layout can be drawn.
   const [failed, setFailed] = useState(false);
   // Something later did not go through, on a dashboard that is still right.
@@ -240,7 +241,7 @@ export default function LiveFactoryHome({ org, profile }) {
 
   const isTrading = profile?.vendor_kind === "trading_company";
   const layout = homeLayout({
-    status: failed ? "failed" : state && callsLoaded ? "ready" : "loading",
+    status: failed ? "failed" : state && callsLoaded && !waitingForChinese ? "ready" : "loading",
     hasHistory: factoryHasHistory(state?.orders, state?.everQuoted),
   });
   if (layout === "loading" || layout === "failed") {

@@ -92,7 +92,8 @@ export default function LiveBrowse({ org, profile }) {
   const { navigate } = useRouter();
   const [rfqs, setRfqs] = useState(null);
   // The brands' requests in Chinese for a person reading Chinese.
-  useChineseContent({ rfqIds: (rfqs ?? []).map((rfq) => rfq.id) });
+  // Held until the Chinese is in (at most 3 s): no English for a moment first.
+  const waitingForChinese = useChineseContent({ rfqIds: (rfqs ?? []).map((rfq) => rfq.id) });
   const [matchScores, setMatchScores] = useState(new Map());
   const [requestDocuments, setRequestDocuments] = useState(new Map());
   const [tagMetadata, setTagMetadata] = useState(new Map());
@@ -150,7 +151,7 @@ export default function LiveBrowse({ org, profile }) {
     return () => { cancelled = true; };
   }, [org.id, isTrading, profile?.country_code]);
 
-  if (!rfqs) {
+  if (!rfqs || waitingForChinese) {
     return error ? <p className="composer-error" role="alert">{error.message}</p> : null;
   }
 

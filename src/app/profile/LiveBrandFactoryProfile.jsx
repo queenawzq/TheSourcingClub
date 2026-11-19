@@ -102,7 +102,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   });
   const backLabel = BACK_LABELS[from] ?? "previous page";
 
-  if (state.parts === undefined || (state.parts && held && translation.loading && profileSources(state.parts).some(needsEnglish))) {
+  // Held (at most 3 s) for the profile's English and the company name's.
+  if (state.parts === undefined || (state.parts && held && ((translation.loading && profileSources(state.parts).some(needsEnglish)) || vendorNames.waiting()))) {
     return <Frame><p className="live-profile-loading">Loading the profile…</p></Frame>;
   }
   if (!state.parts) {

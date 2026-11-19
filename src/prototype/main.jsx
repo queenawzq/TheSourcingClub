@@ -4629,8 +4629,7 @@ export function HomeScreen({
 }
 
 function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
-  const translations = originalFactory.translations ?? {};
-  const text = (value) => translations[value] ?? value;
+  const { text, label: translationLabel } = useVendorCardText(originalFactory);
   const factory = { ...originalFactory, name: text(originalFactory.name), location: text(originalFactory.location), notes: originalFactory.notes.map(text), products: (originalFactory.products ?? []).map((product) => ({ ...product, name: text(product.name) })) };
   const sampleProducts = (factory.products ?? []).filter((product) => product.image);
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
@@ -4679,6 +4678,8 @@ function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
             <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))} disabled={Boolean(factory.quoteLocked) || undefined} title={factory.quoteLocked || undefined}>Request quote</button>
           </div>
         </div>
+        {/* One label for the whole card, under its header. */}
+        {translationLabel}
 
         <div className="invite-factory-body">
           <div className="marketplace-spec-panel invite-spec-panel">
@@ -7012,7 +7013,13 @@ function DirectoryLiveFilters({ filters }) {
 }
 
 /** `live`: as MarketplaceFactoryCard's. */
-function DirectoryFactoryCard({ factory, onQuote, live = null }) {
+function DirectoryFactoryCard({ factory: originalFactory, onQuote, live = null }) {
+  const { text, label: translationLabel } = useVendorCardText(originalFactory);
+  const factory = live ? {
+    ...originalFactory,
+    location: text(originalFactory.location),
+    insight: (originalFactory.insight ?? []).map(text),
+  } : originalFactory;
   if (live) {
     return (
       <article className="directory-factory-card">
@@ -7049,6 +7056,8 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
           )}
           <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>
         </div>
+        {/* One label for the whole card, under its header. */}
+        {translationLabel}
         {factory.tags.length > 0 && (
           <div className="tag-row compact-tags directory-tags">
             {factory.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
@@ -7329,11 +7338,28 @@ export function FactoryMarketplaceScreen({ goTo, live = null }) {
  * A live card leaves out what nothing records (match, rating, Club orders),
  * and any button with nothing behind it.
  */
-function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factory", onQuote, live = null }) {
+/**
+ * A vendor card's own words in English where a translation exists, and its
+ * one "Automatically translated to English" label with "See original", for
+ * every vendor card (Browse, the directory list, Saved, the dashboard).
+ * Cards with no `translations` (the prototype's) draw no label.
+ */
+function useVendorCardText(card) {
   const [showOriginal, setShowOriginal] = useState(false);
-  const translations = originalFactory.translations ?? {};
+  const translations = card.translations ?? {};
   const translated = Object.keys(translations).length > 0;
-  const text = (value) => showOriginal ? value : translations[value] ?? value;
+  const text = (value) => (showOriginal ? value : translations[value] ?? value);
+  const label = translated ? (
+    <div className="vendor-card-translation">
+      <span>{showOriginal ? "Original text" : card.translationPartial ? "Partly translated to English" : "Automatically translated to English"}</span>
+      <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
+    </div>
+  ) : null;
+  return { text, label };
+}
+
+function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factory", onQuote, live = null }) {
+  const { text, label: translationLabel } = useVendorCardText(originalFactory);
   const factory = {
     ...originalFactory,
     name: text(originalFactory.name),
@@ -7426,10 +7452,7 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
         )}
       </div>
       {/* One label for the whole card, under its header. */}
-      {translated && <div className="vendor-card-translation">
-        <span>{showOriginal ? "Original text" : originalFactory.translationPartial ? "Partly translated to English" : "Automatically translated to English"}</span>
-        <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
-      </div>}
+      {translationLabel}
 
       <div className="marketplace-factory-body">
         <div className="marketplace-spec-panel">
@@ -7579,7 +7602,14 @@ export function SavedFactoriesScreen({ goTo, live = null }) {
 }
 
 /** `live`: { href, onOpen, onMessage, onQuote }; null links for a vendor no longer listed. */
-function SavedFactoryCard({ factory, goTo, live = null }) {
+function SavedFactoryCard({ factory: originalFactory, goTo, live = null }) {
+  const { text, label: translationLabel } = useVendorCardText(originalFactory);
+  const factory = {
+    ...originalFactory,
+    location: text(originalFactory.location),
+    notes: (originalFactory.notes ?? []).map(text),
+    products: (originalFactory.products ?? []).map((product) => ({ ...product, name: text(product.name) })),
+  };
   const previews = factory.products || [];
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
@@ -7645,6 +7675,8 @@ function SavedFactoryCard({ factory, goTo, live = null }) {
         </div>
         )}
       </header>
+      {/* One label for the whole card, under its header. */}
+      {translationLabel}
 
       <div className="saved-factory-card-body">
         <aside className="marketplace-spec-panel saved-factory-profile-copy">

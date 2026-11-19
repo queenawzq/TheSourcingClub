@@ -3,9 +3,10 @@
  * one label per card, at the top of the card, and its "See original" shows
  * the whole card as written.
  *
- * A card is the outermost card-like box around the translated text, below the
- * page itself, so a bordered box nested in a card (a quote's "Notes from
- * vendor") is part of that card and gets no label of its own. Cards that
+ * A card is the nearest card around the translated text (\`CARD\`), so each
+ * vendor card in a list gets its own label even when the list itself sits in
+ * a \`.card\` (the invite step). A box inside a card that is not itself a card
+ * (a quote's "Notes from vendor") is part of that card and gets no label. Cards that
  * translate themselves (the Browse card, the vendor page) are left to their
  * own label; the vendor card in a side rail (quote to contract, the order page) shows
  * its words in English with no label.
@@ -18,16 +19,15 @@ export const CARD_STOP = "main, body, dialog, [role='dialog'], .flow-content, .s
 export const NO_LABEL = ".accepted-factory, .project-factory-panel";
 // A card's header row (logo, name, location, actions): a label for text in it
 // goes under the whole row, on one line, not squeezed beside the buttons.
-export const HEADER_ROW = ".quote-factory-top, .marketplace-factory-top, .saved-factory-card-top, .quote-detail-summary-top, .invite-factory-top";
-export const SELF_TRANSLATING = ".marketplace-factory-card, .factory-profile-page, .brand-factory-public-profile";
+export const HEADER_ROW = ".quote-factory-top, .marketplace-factory-top, .quote-detail-summary-top, .invite-factory-top";
+export const SELF_TRANSLATING = ".marketplace-factory-card, .saved-factory-card, .directory-factory-card, .home-recommended-invite-card, .factory-profile-page, .brand-factory-public-profile";
 
 /** The card a translated text belongs to; the element itself when it sits in no card. */
 export function cardFor(element) {
-  let card = null;
   for (let at = element; at && !at.matches(CARD_STOP); at = at.parentElement) {
-    if (at.matches(CARD)) card = at;
+    if (at.matches(CARD)) return at;
   }
-  return card ?? element;
+  return element;
 }
 
 /** Translated, but drawn without a label (the rail's vendor card). */
@@ -52,8 +52,10 @@ export function labelAnchors(elements) {
     const current = anchors.get(card);
     if (!current || current.compareDocumentPosition(element) & PRECEDING) anchors.set(card, element);
   }
+  // A card with a header row (a vendor card) has its label under the header,
+  // wherever its first translated text is (an English location, a Chinese intro).
   for (const [card, element] of anchors) {
-    const row = element.closest(HEADER_ROW);
+    const row = element.closest(HEADER_ROW) ?? card.querySelector(HEADER_ROW);
     if (row && row !== card && card.contains(row)) anchors.set(card, row);
   }
   return anchors;

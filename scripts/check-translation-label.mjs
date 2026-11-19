@@ -51,6 +51,14 @@ class El {
   }
   matches(selector) { return selector.split(",").some((one) => this.matchesOne(one)); }
   closest(selector) { for (let at = this; at; at = at.parentElement) if (at.matches(selector)) return at; return null; }
+  querySelector(selector) {
+    for (const child of this.children) {
+      if (child.matches(selector)) return child;
+      const found = child.querySelector(selector);
+      if (found) return found;
+    }
+    return null;
+  }
   contains(other) { for (let at = other; at; at = at.parentElement) if (at === this) return true; return false; }
   compareDocumentPosition(other) { return order.indexOf(other) < order.indexOf(this) ? 2 : 4; }
 }
@@ -104,7 +112,8 @@ const translatedIn = (root) => order.filter((node) => node.translated && root.co
   const side = el("aside.project-detail-side", el("section.project-factory-panel", el("div.project-factory-row", el("div", t("span")))));
   const root = page(el("main", el("div.project-detail-shell", el("div.project-detail-layout", el("div.project-detail-main", timeline), side))));
   const anchors = labelAnchors(translatedIn(root));
-  check(anchors.size === 1 && anchors.get(timeline) === firstUpdate, "order page: one label for the timeline, at its first translated update");
+  const updateCards = [...anchors.keys()];
+  check(anchors.size === 2 && updateCards.every((card) => card.matches(".project-update-card")) && [...anchors.values()].includes(firstUpdate), "order page: one label per update card, not one per text nor one for the whole timeline");
   check(![...anchors.values()].some((anchor) => side.contains(anchor)), "order page: no label in the side rail's vendor card");
 }
 
@@ -114,11 +123,22 @@ const translatedIn = (root) => order.filter((node) => node.translated && root.co
 }
 
 { // Two cards on one page: one label each, never shared.
-  const first = el("article.saved-factory-card", el("div.saved-factory-card-top", t("p")), el("aside", t("p")));
-  const second = el("article.saved-factory-card", el("div.saved-factory-card-top", t("p")));
+  const first = el("article.request-card", el("div", t("p")), el("aside", t("p")));
+  const second = el("article.request-card", el("div", t("p")));
   const root = page(el("main", first, second));
   const anchors = labelAnchors(translatedIn(root));
   check(anchors.size === 2 && anchors.has(first) && anchors.has(second), "two cards: one label each");
+}
+
+{ // The invite step: vendor cards in a list that is itself a card. One label each.
+  const one = el("article.factory-card.invite-selection-factory-card", el("div.invite-factory-content", el("div.invite-factory-top", el("a", el("div", t("p")))), el("div.invite-factory-body", t("p"))));
+  // Its location is English; only the intro, in the body, was translated.
+  const twoTop = el("div.invite-factory-top", el("a", el("div", el("p"))));
+  const two = el("article.factory-card.invite-selection-factory-card", el("div.invite-factory-content", twoTop, el("div.invite-factory-body", t("p"))));
+  const root = page(el("main", el("section.flow-content", el("section.card.invite-results", el("div.factory-list", one, two)))));
+  const anchors = labelAnchors(translatedIn(root));
+  check(anchors.size === 2 && anchors.has(one) && anchors.has(two), `invite step: one label per vendor card, not one for the list (got ${anchors.size})`);
+  check(anchors.get(two) === twoTop, "a vendor card's label is under its header even when only its intro was translated");
 }
 
 { // The first translated text in the card decides the place, whatever order the layer saw them in.
@@ -145,9 +165,28 @@ check(/translatesItself\(element\)/.test(layer), "BrandEnglishLayer leaves self-
 check(/stopPropagation\(\)/.test(layer), "\"See original\" inside a clickable card does not open the card");
 
 const prototype = readFileSync(new URL("../src/prototype/main.jsx", import.meta.url), "utf8");
-const marketplaceCard = prototype.slice(prototype.indexOf("function MarketplaceFactoryCard"), prototype.indexOf("function ", prototype.indexOf("function MarketplaceFactoryCard") + 10));
-check((marketplaceCard.match(/vendor-card-translation/g) ?? []).length === 1, "the Browse card draws one label");
-check(marketplaceCard.indexOf("vendor-card-translation") < marketplaceCard.indexOf("marketplace-factory-body"), "the Browse card's label is at the top, under its header");
+const component = (name) => {
+  const at = prototype.indexOf(`function ${name}(`);
+  return at < 0 ? "" : prototype.slice(at, prototype.indexOf("\nfunction ", at + 10));
+};
+const labelHook = component("useVendorCardText");
+check((labelHook.match(/vendor-card-translation/g) ?? []).length === 1 && /See original/.test(labelHook), "one shared label with \"See original\" for every vendor card");
+// Every vendor card a brand reads: one label, under its header, before its body.
+for (const [name, body, where] of [
+  ["MarketplaceFactoryCard", "marketplace-factory-body", "Browse"],
+  ["SavedFactoryCard", "saved-factory-card-body", "Saved"],
+  ["HomeRecommendedFactoryCard", "invite-factory-body", "the dashboard's recommended vendors"],
+  ["DirectoryFactoryCard", "directory-tags", "the directory list"],
+]) {
+  const code = component(name);
+  check(/useVendorCardText\(/.test(code), `${where}: the card swaps its words with the shared label`);
+  check((code.match(/\{translationLabel\}/g) ?? []).length === 1, `${where}: the card draws its label once`);
+  check(code.indexOf("{translationLabel}") > 0 && code.indexOf("{translationLabel}") < code.indexOf(body), `${where}: the label is under the card's header, above its body`);
+  check(!/vendor-card-translation/.test(code), `${where}: no label of its own beside the shared one`);
+}
+for (const file of ["../src/app/browse/LiveSavedVendors.jsx", "../src/app/browse/LiveBrandBrowse.jsx"]) {
+  check(!/inEnglish\(|map\(inEnglish\)/.test(readFileSync(new URL(file, import.meta.url), "utf8")), `${file.split("/").pop()} passes the translations to the card, not words already swapped (or the card has nothing to show as original)`);
+}
 
 // ---- The CSS: one line, even space ----
 const rule = (css, selector) => {
@@ -164,7 +203,7 @@ check(own && !/margin-(top|bottom)/.test(own), "the Browse card's label takes th
 check(/white-space:\s*nowrap/.test(own), "the Browse card's label and \"See original\" keep their words on one line");
 // ---- One line at 375px: the label, the gap and "See original" fit the narrowest card ----
 // Measured in Chrome, Satoshi 12px/600 (Nov 19): the label's words 192.2px,
-// "See original" 65.6px; quote compare's row, the narrowest, is 277px wide at
+// "See original" 65.6px; quote compare's row, the narrowest vendor card, is 277px wide at
 // 375px (the card's checkbox column takes the rest). The rule's own padding,
 // border and gap are read from the CSS, so widening any of them fails here.
 {
@@ -192,7 +231,25 @@ for (const [file, note] of [
 ]) {
   check(/\.translating\)/.test(readFileSync(new URL(file, import.meta.url), "utf8")), `${note} keep their loading line until the English is in`);
 }
-check(/held && translation\.loading/.test(readFileSync(new URL("../src/app/profile/LiveBrandFactoryProfile.jsx", import.meta.url), "utf8")), "the vendor page keeps its loading line until the English is in");
+const vendorPage = readFileSync(new URL("../src/app/profile/LiveBrandFactoryProfile.jsx", import.meta.url), "utf8");
+check(/held && \(\(translation\.loading/.test(vendorPage), "the vendor page keeps its loading line until the English is in");
+check(/vendorNames\.waiting\(\)/.test(vendorPage), "the vendor page also waits for the company name's English");
+check(/nameWaiting\(card\.id, card\.name\)/.test(hook), "vendor cards also wait for the company name's English");
+
+// ---- The other direction: a factory reading Chinese sees no English first ----
+const contentTranslation = readFileSync(new URL("../src/app/content-translation.js", import.meta.url), "utf8");
+check(/HOLD_MS = 3000/.test(contentTranslation) && /return keys\.some\(\(k\) => !answered\.has\(k\)\)/.test(contentTranslation), "useChineseContent says when the Chinese is still on the way, for at most 3 s");
+for (const [file, note] of [
+  ["../src/app/rfq/LiveBrowse.jsx", "Browse RFQs"],
+  ["../src/app/rfq/LiveRequestView.jsx", "the request page"],
+  ["../src/app/home/LiveFactoryHome.jsx", "the factory dashboard"],
+  ["../src/app/order/LiveFactoryOrders.jsx", "the factory's orders"],
+  ["../src/app/order/LiveOrderDetail.jsx", "the factory's order page"],
+  ["../src/app/profile/LiveFactoryBrandProfile.jsx", "the factory's view of a brand"],
+]) {
+  const code = readFileSync(new URL(file, import.meta.url), "utf8");
+  check(/const waitingForChinese = useChineseContent\(/.test(code) && (code.match(/waitingForChinese/g) ?? []).length >= 2, `${note} keeps its loading state until the Chinese is in`);
+}
 
 console.log(failures ? `\ncheck:translation-label: ${failures} of ${checks} failed` : `check:translation-label: ${checks} checks passed`);
 process.exit(failures ? 1 : 0);

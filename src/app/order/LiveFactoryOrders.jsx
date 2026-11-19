@@ -19,7 +19,8 @@ import { useChineseContent } from "../content-translation.js";
 function Orders({ org, user, onViewOrder }) {
   const { data, loading, error, reload } = useOrders();
   // The requests' words in Chinese for a person reading Chinese.
-  useChineseContent({ rfqIds: (data ?? []).map((card) => card.rfqId) });
+  // Held until the Chinese is in (at most 3 s): no English for a moment first.
+  const waitingForChinese = useChineseContent({ rfqIds: (data ?? []).map((card) => card.rfqId) });
   const tabStore = useOrderTabs(org, user);
   const cancelStore = useOrderCancel({ onViewOrder });
   const projects = (data ?? []).map((card) => ({
@@ -32,7 +33,7 @@ function Orders({ org, user, onViewOrder }) {
     <>
       <FactoryProjectsPage
         language={getUiLanguage()}
-        live={{ projects, loading, error, reload, tabStore, cancelStore }}
+        live={{ projects, loading: loading || waitingForChinese, error, reload, tabStore, cancelStore }}
         onViewProject={onViewOrder}
       />
       {cancelStore.dialog}

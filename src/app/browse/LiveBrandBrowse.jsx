@@ -31,7 +31,7 @@ import {
   toggleFilter,
   vendorCard,
 } from "./vendor-directory-view.js";
-import { inEnglish, useVendorTranslations } from "./useVendorTranslations.js";
+import { useVendorTranslations } from "./useVendorTranslations.js";
 import { useVendorNames } from "../vendor-names.jsx";
 import "./browse.css";
 import { can, permissionHint } from "../../lib/domain/org.js";
@@ -195,8 +195,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
           goTo={() => {}}
           live={{
             ...live,
-            // The list's rows draw the fields as given: the English goes in them.
-            vendors: shown.map(inEnglish),
+            // Each row swaps its words to English itself, with its label and "See original".
+            vendors: shown,
             onCardsView: () => navigate(`/browse${typeQuery}`),
           }}
         />

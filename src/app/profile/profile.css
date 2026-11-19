@@ -132,6 +132,8 @@
   grid-template-areas: "back" "translation" "hero" "layout";
 }
 .factory-profile-shell > .profile-translation-controls { grid-area: translation; }
+/* The invite card (the composer's invite step): its body sits 4px closer than the card's 12px gap. */
+.invite-factory-content > .profile-translation-controls { margin: 0 0 4px; }
 .profile-translation-label { padding: 5px 10px; border: 1px solid #d7e0ea; border-radius: 20px; background: #f6f8fb; font-weight: 600; }
 .profile-translation-controls button { padding: 0; border: 0; background: transparent; color: #60769b; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 /* Phone width: label and "See original" still on one line in the narrowest card (quote compare, 277px at 375). */

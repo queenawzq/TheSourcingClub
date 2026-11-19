@@ -18799,6 +18799,19 @@ textarea.note-field::placeholder {
 .vendor-card-translation { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; color: #60769b; font-size: 11px; white-space: nowrap; }
 .vendor-card-translation > span { border: 1px solid #d7e0ea; border-radius: 20px; padding: 4px 8px; background: #f6f8fb; font-weight: 600; }
 .vendor-card-translation button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* The directory list's card: under the header, lined up with the rows below it, the same space either side. */
+.directory-factory-card > .vendor-card-translation { grid-column: 1 / -1; margin: 12px 0 0 64px; }
+.directory-factory-card > .vendor-card-translation + :is(.directory-tags, .directory-capacity-tags, .directory-insight-box) { margin-top: 12px; }
+/* Cards built on the invite card (the dashboard's recommended vendors): the body sits 4px closer than the card's 12px gap. */
+.invite-factory-content > .vendor-card-translation { margin-bottom: 4px; }
+@media (max-width: 1180px) {
+  /* The card stacks with a 16px gap: that gap is the space either side. */
+  .directory-factory-card > .vendor-card-translation { margin: 0 0 0 64px; }
+  .directory-factory-card > .vendor-card-translation + :is(.directory-tags, .directory-capacity-tags, .directory-insight-box) { margin-top: 0; }
+}
+@media (max-width: 760px) {
+  .directory-factory-card > .vendor-card-translation { margin-left: 0; }
+}
 
 /* A value too long for its line wraps, inside the rail, rather than pushing the
    card and the page past the window. The design's short examples still fit on one. */
