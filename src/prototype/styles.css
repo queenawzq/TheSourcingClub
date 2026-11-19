@@ -18795,7 +18795,8 @@ textarea.note-field::placeholder {
   box-shadow: 0 12px 28px rgba(11, 16, 32, 0.2);
 }
 
-.vendor-card-translation { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; color: #60769b; font-size: 11px; }
+/* Under the card's header, label and "See original" on one line, the card's own gap above and below. */
+.vendor-card-translation { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; color: #60769b; font-size: 11px; white-space: nowrap; }
 .vendor-card-translation > span { border: 1px solid #d7e0ea; border-radius: 20px; padding: 4px 8px; background: #f6f8fb; font-weight: 600; }
 .vendor-card-translation button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 

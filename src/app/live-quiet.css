@@ -206,3 +206,10 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* The rail's vendor card on the quote-to-contract steps: a long name, its
+   Chinese original and the location run several lines, so the logo sits at
+   the top beside the name rather than centred on the block (Nov 19, B8). */
+.accepted-quote-panel .accepted-factory {
+  align-items: start;
+}

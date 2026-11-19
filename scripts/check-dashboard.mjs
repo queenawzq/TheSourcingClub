@@ -89,7 +89,7 @@ const following = (read, giveUpMs) => {
 // The mount has to use it: a server render runs no effects, so this is by name.
 const liveHome = readFileSync(new URL("../src/app/home/LiveHome.jsx", import.meta.url), "utf8");
 check(liveHome.includes("followRead(vendorsRead, setVendors)"), "LiveHome follows its vendors past the cap");
-check(liveHome.includes("vendorsPending={!vendors.answered}"), "LiveHome tells the panel it is still waiting");
+check(liveHome.includes("vendorsPending={!vendors.answered"), "LiveHome tells the panel it is still waiting");
 
 // ---- The first paint of the real mounts ----
 const store = { getItem: () => null, setItem() {}, removeItem() {} };

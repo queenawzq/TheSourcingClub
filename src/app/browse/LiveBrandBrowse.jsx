@@ -119,7 +119,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
   if (state.error) {
     return <main className="directory-page"><p className="live-profile-error" role="alert">Couldn't load vendors: {state.error.message}</p></main>;
   }
-  if (!state.data) {
+  // Held until the English is in (at most 3 s): no Chinese for a moment first.
+  if (!state.data || cards.some((card) => card.translating)) {
     return <main className="directory-page"><p className="live-profile-loading">Loading vendors…</p></main>;
   }
 

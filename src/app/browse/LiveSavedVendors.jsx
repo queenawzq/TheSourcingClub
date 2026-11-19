@@ -71,7 +71,8 @@ export default function LiveSavedVendors({ org }) {
   if (state.error) {
     return <main className="rfqs-page"><p className="live-profile-error" role="alert">Couldn't load your saved vendors: {state.error.message}</p></main>;
   }
-  if (!state.rows) {
+  // Held until the English is in (at most 3 s), as on Browse.
+  if (!state.rows || [...english.values()].some((card) => card.translating)) {
     return <main className="rfqs-page"><p className="live-profile-loading">Loading your saved vendors…</p></main>;
   }
 

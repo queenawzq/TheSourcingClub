@@ -7425,6 +7425,11 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
         </div>
         )}
       </div>
+      {/* One label for the whole card, under its header. */}
+      {translated && <div className="vendor-card-translation">
+        <span>{showOriginal ? "Original text" : originalFactory.translationPartial ? "Partly translated to English" : "Automatically translated to English"}</span>
+        <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
+      </div>}
 
       <div className="marketplace-factory-body">
         <div className="marketplace-spec-panel">
@@ -7441,10 +7446,6 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
             <p>{factory.notes[0]}</p>
           </div>
           )}
-          {translated && <div className="vendor-card-translation">
-            <span>{showOriginal ? "Original text" : originalFactory.translationPartial ? "Partly translated to English" : "Automatically translated to English"}</span>
-            <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
-          </div>}
         </div>
 
         {(!live || factory.products.length > 0) && (

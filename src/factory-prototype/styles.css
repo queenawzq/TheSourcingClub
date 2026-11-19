@@ -5246,6 +5246,15 @@ body:has(.factory-onboarding-page) {
   margin-bottom: 0;
 }
 
+/* The same space above the note as below it: the card's own 10px gap. */
+.factory-request-brief .brand-card-translation .brand-brief-translation-meta {
+  margin-top: 4px;
+}
+
+.factory-request-brief .brand-card-translation:has(.brand-brief-translation-meta) + .factory-request-requirements {
+  margin-top: 0;
+}
+
 .brand-card-translation .brand-brief-translation-meta span,
 .brand-card-translation .brand-brief-translation-meta button {
   min-height: 22px;
