@@ -34,18 +34,34 @@ async function listAllAuthUsers(service) {
   }
 }
 
+// Every row, a page at a time: a read stops at 1,000 rows without saying so,
+// even with the secret key, and the users past it showed no name and "No
+// company". `query` must order by something unique. A row added while it
+// reads can push one onto the next page, so a row read twice is kept once,
+// by `key` (as readEveryPage does in src/lib/read-pages.js).
+async function readAllRows(query, key) {
+  const rows = [];
+  const seen = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await query().range(from, from + 999);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const rowKey = key(row);
+      if (!seen.has(rowKey)) rows.push(row);
+      seen.add(rowKey);
+    }
+    if ((data ?? []).length < 1000) return { data: rows };
+  }
+}
+
 async function listUsers(service, currentUserId) {
   const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult] = await Promise.all([
     listAllAuthUsers(service),
-    service.from("user_profiles").select("id, email, full_name, created_at"),
-    service.from("org_members").select("user_id, role, org_id, orgs (name, type)"),
-    service.from("platform_admins").select("user_id"),
-    service.from("factory_profiles").select("org_id, vendor_kind"),
+    readAllRows(() => service.from("user_profiles").select("id, email, full_name, created_at").order("id"), (row) => row.id),
+    readAllRows(() => service.from("org_members").select("user_id, role, org_id, created_at, orgs (name, type)").order("created_at").order("user_id").order("org_id"), (row) => `${row.user_id}:${row.org_id}`),
+    readAllRows(() => service.from("platform_admins").select("user_id").order("user_id"), (row) => row.user_id),
+    readAllRows(() => service.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), (row) => row.org_id),
   ]);
-
-  for (const result of [profilesResult, membersResult, adminsResult, factoriesResult]) {
-    if (result.error) throw result.error;
-  }
 
   const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
   const memberships = new Map();

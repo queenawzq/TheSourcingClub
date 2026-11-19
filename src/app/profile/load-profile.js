@@ -22,6 +22,7 @@ import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { loadCertifications } from "../../lib/domain/certifications.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { certificateChecks, getRegistration, registryFact } from "../../lib/domain/registration.js";
 import { CHIP_KINDS, titleFromFileName } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
@@ -170,7 +171,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
  */
 export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   const [rows, brandTerms] = await Promise.all([
-    supabase
+    readEveryPage(() => supabase
       .from("factory_profiles")
       .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
       .not("published_at", "is", null)
@@ -178,17 +179,22 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
       // read (Browse), but cannot quote, so it is not put forward here.
       .eq("verification_status", "verified")
       .eq("orgs.is_demo", false)
-      .then((result) => unwrap(result, "load recommended vendors")),
+      .order("org_id"), "load recommended vendors", "org_id"),
     getSelectedTerms("brand_profile", brandOrgId),
   ]);
   if (!rows.length) return [];
 
-  const links = unwrap(
-    await supabase
+  // In batches: past ~195 vendors one `in` list was longer than the address
+  // allows (read-pages.js).
+  const links = await readByIds(
+    rows.map((row) => row.org_id),
+    (batch) => supabase
       .from("taxonomy_links")
       .select("subject_id, term_id")
       .eq("subject_type", "factory_profile")
-      .in("subject_id", rows.map((row) => row.org_id)),
+      .in("subject_id", batch)
+      .order("subject_id")
+      .order("term_id"),
     "load recommended vendors",
   );
   const enabled = await matchingEnabled();
@@ -229,34 +235,37 @@ const groupBy = (rows, key) => rows.reduce((grouped, row) => {
  */
 export async function loadVendorDirectory(brandOrg) {
   const [profiles, terms, brandTerms, threads] = await Promise.all([
-    supabase.from("factory_profiles").select(VENDOR_COLUMNS)
+    readEveryPage(() => supabase.from("factory_profiles").select(VENDOR_COLUMNS)
       .not("published_at", "is", null)
       .eq("verification_status", "verified")
       .eq("orgs.is_demo", false)
-      .then((result) => unwrap(result, "load vendors")),
+      .order("org_id"), "load vendors", "org_id"),
     listTermsByKind(KINDS),
     getSelectedTerms("brand_profile", brandOrg.id),
     listThreads(brandOrg.id),
   ]);
   if (!profiles.length) return { vendors: [], terms, threads };
 
+  // Every vendor's id in one `in` list was longer than the address allows
+  // past ~195 vendors, and the tags passed 1,000 rows well before that: each
+  // read goes in id batches, a page at a time (read-pages.js). A vendor's
+  // rows are all in its batch, so each keeps its own order.
   const ids = profiles.map((profile) => profile.org_id);
   const [links, capacities, months, claims, refs, files] = await Promise.all([
-    supabase.from("taxonomy_links").select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", ids)
-      .then((result) => unwrap(result, "load vendors' tags")),
-    supabase.from("factory_capacity").select("org_id, category_term_id, input_mode, line_hours, monthly_units").in("org_id", ids)
-      .then((result) => unwrap(result, "load vendors' capacity")),
-    supabase.from("factory_capacity_months").select("org_id, month, level").in("org_id", ids)
-      .then((result) => unwrap(result, "load vendors' booking calendars")),
+    readByIds(ids, (batch) => supabase.from("taxonomy_links").select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", batch)
+      .order("subject_id").order("term_id"), "load vendors' tags"),
+    readByIds(ids, (batch) => supabase.from("factory_capacity").select("org_id, category_term_id, input_mode, line_hours, monthly_units").in("org_id", batch)
+      .order("org_id"), "load vendors' capacity"),
+    readByIds(ids, (batch) => supabase.from("factory_capacity_months").select("org_id, month, level").in("org_id", batch)
+      .order("org_id").order("month"), "load vendors' booking calendars"),
     // The claim and its status only: the certificate file is private.
-    supabase.from("factory_certifications").select("org_id, term_id, status").in("org_id", ids).order("created_at")
-      .then((result) => unwrap(result, "load vendors' certifications")),
-    supabase.from("profile_references").select("id, org_id, title, counterparty, sort").in("org_id", ids).order("sort")
-      .then((result) => unwrap(result, "load vendors' references")),
-    supabase.from("documents").select("id, org_id, kind, bucket, storage_path, file_name, title, caption, created_at")
-      .in("org_id", ids).in("kind", ["logo", "product_image"]).eq("bucket", "org-public")
-      .order("created_at")
-      .then((result) => unwrap(result, "load vendors' images")),
+    readByIds(ids, (batch) => supabase.from("factory_certifications").select("id, org_id, term_id, status").in("org_id", batch).order("created_at").order("id"),
+      "load vendors' certifications"),
+    readByIds(ids, (batch) => supabase.from("profile_references").select("id, org_id, title, counterparty, sort").in("org_id", batch).order("sort").order("id"),
+      "load vendors' references"),
+    readByIds(ids, (batch) => supabase.from("documents").select("id, org_id, kind, bucket, storage_path, file_name, title, caption, created_at")
+      .in("org_id", batch).in("kind", ["logo", "product_image"]).eq("bucket", "org-public")
+      .order("created_at").order("id"), "load vendors' images"),
   ]);
 
   const termKind = new Map(Object.values(terms).flat().map((term) => [term.id, term.kind]));

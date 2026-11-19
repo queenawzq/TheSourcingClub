@@ -13,6 +13,7 @@
  */
 import { supabase, unwrap } from "../supabase.js";
 import { refundCancelledOrder } from "./stripe.js";
+import { readEveryPage } from "../read-pages.js";
 
 // Everything the header and the list cards need, already summed in SQL.
 // JavaScript never adds money up here: capacity_monthly_units() has four
@@ -34,8 +35,9 @@ const SUMMARY_COLUMNS = `
 `;
 
 export async function listOrders(orgId) {
-  return unwrap(
-    await supabase
+  // A page at a time: one read stops at 1,000 orders without saying so.
+  return readEveryPage(
+    () => supabase
       .from("production_order_summary")
       // The steps ride along so each card can draw its own rail rather than
       // the design's fixed five, and `brief` so the card's description line
@@ -44,7 +46,8 @@ export async function listOrders(orgId) {
       // RLS already scopes this, but a person can belong to both a brand and a
       // factory org, and the question being asked is about the ACTIVE one.
       .or(`brand_org_id.eq.${orgId},factory_org_id.eq.${orgId}`)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }),
     "load your production orders",
   );
 }

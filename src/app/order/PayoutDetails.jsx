@@ -23,7 +23,8 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
-import { supabase, unwrap } from "../../lib/supabase.js";
+import { supabase } from "../../lib/supabase.js";
+import { byCreated, readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { can } from "../../lib/domain/org.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
@@ -218,27 +219,31 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // shows as soon as it answers: one spinner held the whole page, and the
   // Stripe balance, for the slowest of the three.
   const loadEarnings = useCallback(async () => {
-    const orders = unwrap(
-      await supabase
+    const orders = await readEveryPage(
+      () => supabase
         .from("production_orders")
         .select("id, order_number, status, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
         .eq("factory_org_id", org.id)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false }),
       "load your payment orders",
     );
     const orderById = new Map(orders.map((order) => [order.id, order]));
 
-    let paymentRows = [];
-    if (orders.length) {
-      paymentRows = unwrap(
-        await supabase
+    // By id batches, a page at a time: past ~195 orders one `in` list was
+    // longer than the address allows (read-pages.js).
+    const paymentRows = (
+      await readByIds(
+        orders.map((order) => order.id),
+        (batch) => supabase
           .from("order_payments")
           .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
-          .in("order_id", orders.map((order) => order.id))
-          .order("created_at", { ascending: false }),
+          .in("order_id", batch)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false }),
         "load your earnings",
-      );
-    }
+      )
+    ).sort((a, b) => byCreated(b, a));
 
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
     setEarningsError(null);

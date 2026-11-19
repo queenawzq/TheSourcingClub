@@ -13,6 +13,7 @@
  * was shown, and a rate changed later changes no JavaScript at all.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { byCreated, readByIds, readEveryPage } from "../read-pages.js";
 
 const PAYMENT_COLUMNS = `
   id, order_id, milestone_id, amount_cents, currency, fee_bps, state,
@@ -40,15 +41,17 @@ export async function listPayments(orderId) {
  * the brand's Payments page. RLS gives a brand only its own orders' rows.
  */
 export async function listPaymentsForOrders(orderIds) {
-  if (!orderIds.length) return [];
-  return unwrap(
-    await supabase
+  const rows = await readByIds(
+    orderIds,
+    (batch) => supabase
       .from("order_payments")
       .select(`${PAYMENT_COLUMNS}, order_milestones (title, sort, due_on, kind)`)
-      .in("order_id", orderIds)
-      .order("created_at"),
+      .in("order_id", batch)
+      .order("created_at")
+      .order("id"),
     "load your payments",
   );
+  return rows.sort(byCreated);
 }
 
 export async function getPayment(orderId, paymentId) {
@@ -119,7 +122,40 @@ export async function markPaymentSent(paymentId, { reference, note } = {}) {
  * The old admin_payment_queue() stays for the old site only.
  */
 export async function paymentBoard() {
-  return unwrap(await supabase.rpc("admin_payment_board"), "load the payments board");
+  // A page at a time: one read stops at 1,000 rows without saying so (the
+  // Held tab showed 994 of 1,102). Paged by payment_id, which is unique: the
+  // function's own order has ties, and a page boundary inside a tie can skip
+  // or repeat a row. The rows are then put back in that order.
+  const rows = await readEveryPage(
+    () => supabase.rpc("admin_payment_board").order("payment_id"),
+    "load the payments board",
+    "payment_id",
+  );
+  return rows.sort(boardOrder);
+}
+
+// admin_payment_board()'s `order by` (20261113900000_card_processing_fee.sql):
+// keep the two in step.
+const boardRank = (row) => {
+  if (row.state === "sent") return 0;
+  if (row.state === "confirmed") return row.release_requested_at ? 1 : 3;
+  if (row.state === "released") return 1;
+  if (row.state === "failed") return 2;
+  return 4;
+};
+const boardTime = (row) => row.release_requested_at ?? row.sent_at ?? row.failed_at ?? row.processing_at ?? row.confirmed_at;
+function boardOrder(a, b) {
+  const rank = boardRank(a) - boardRank(b);
+  if (rank) return rank;
+  const [x, y] = [boardTime(a), boardTime(b)];
+  // Postgres sorts nulls last in ascending order.
+  if (x == null || y == null) {
+    if (x != null || y != null) return x == null ? 1 : -1;
+  } else {
+    const time = new Date(x) - new Date(y);
+    if (time) return time;
+  }
+  return String(a.payment_id).localeCompare(String(b.payment_id));
 }
 
 export async function confirmPaymentReceived(paymentId, { amountReceived, note } = {}) {
@@ -238,12 +274,13 @@ export function chargedCents(payment) {
  * yet, and only the database knows the rates its payments will get.
  */
 export async function listStepCharges(orderIds) {
-  if (!orderIds.length) return [];
-  return unwrap(
-    await supabase
+  return readByIds(
+    orderIds,
+    (batch) => supabase
       .from("order_step_charges")
       .select("order_id, milestone_id, payment_id, charged_cents")
-      .in("order_id", orderIds),
+      .in("order_id", batch)
+      .order("milestone_id"),
     "load what each step charges",
   );
 }
@@ -255,13 +292,15 @@ export async function listStepCharges(orderIds) {
  */
 export async function factoryStripeSetup(orderIds) {
   if (!orderIds.length) return new Map();
-  const orders = unwrap(
-    await supabase.from("production_orders").select("id, factory_org_id").in("id", orderIds),
+  const orders = await readByIds(
+    orderIds,
+    (batch) => supabase.from("production_orders").select("id, factory_org_id").in("id", batch).order("id"),
     "load the orders' factories",
   );
   const orgIds = [...new Set(orders.map((order) => order.factory_org_id))];
-  const accounts = unwrap(
-    await supabase.from("stripe_connect_accounts").select("org_id, details_submitted, transfers_active").in("org_id", orgIds),
+  const accounts = await readByIds(
+    orgIds,
+    (batch) => supabase.from("stripe_connect_accounts").select("org_id, details_submitted, transfers_active").in("org_id", batch).order("org_id"),
     "load the factories' Stripe accounts",
   );
   const byOrg = new Map(accounts.map((account) => [account.org_id, account]));

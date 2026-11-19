@@ -25,7 +25,8 @@ import LiveBrandFactoryProfile from "../profile/LiveBrandFactoryProfile.jsx";
 import { attachDocumentToRfq, createDraftRfq, getColourSplits, getQuestions, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
 import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getOrder } from "../../lib/domain/order.js";
-import { supabase, unwrap } from "../../lib/supabase.js";
+import { supabase } from "../../lib/supabase.js";
+import { readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
@@ -501,14 +502,16 @@ export default function LiveComposer({ org, rfqId }) {
       setMatchingAcknowledged(false);
       setSaveState("saved");
 
-      const rows = unwrap(
-        await supabase
+      const rows = await readEveryPage(
+        () => supabase
           .from("factory_profiles")
           .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs!inner (id, name)")
           .not("published_at", "is", null)
           .eq("verification_status", "verified")
-          .eq("orgs.is_demo", false),
+          .eq("orgs.is_demo", false)
+          .order("org_id"),
         "load vendors",
+        "org_id",
       );
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
@@ -516,11 +519,14 @@ export default function LiveComposer({ org, rfqId }) {
       const scores = matchingV2 ? new Map([...assessments].map(([id,m])=>[id,m?.score ?? null])) : await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
       const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
       const vendorIds = (rows ?? []).map((row) => row.org_id);
-      const links = vendorIds.length ? unwrap(await supabase.from("taxonomy_links")
-        .select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", vendorIds), "load vendor specialties") : [];
-      const images = vendorIds.length ? unwrap(await supabase.from("documents")
-        .select("id, org_id, storage_path, file_name, title").in("org_id", vendorIds)
-        .eq("kind", "product_image").eq("bucket", "org-public").order("created_at"), "load vendor sample images") : [];
+      // In id batches, a page at a time: past ~195 vendors one `in` list was
+      // longer than the address allows (read-pages.js).
+      const links = await readByIds(vendorIds, (batch) => supabase.from("taxonomy_links")
+        .select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", batch)
+        .order("subject_id").order("term_id"), "load vendor specialties");
+      const images = await readByIds(vendorIds, (batch) => supabase.from("documents")
+        .select("id, org_id, storage_path, file_name, title").in("org_id", batch)
+        .eq("kind", "product_image").eq("bucket", "org-public").order("created_at").order("id"), "load vendor sample images");
       const cardDetails = new Map((rows ?? []).map((row) => {
         const selected = new Set(links.filter((link) => link.subject_id === row.org_id).map((link) => link.term_id));
         const labels = (kind) => (vendorTerms[kind] ?? []).filter((term) => selected.has(term.id)).map((term) => termLabel(term));
