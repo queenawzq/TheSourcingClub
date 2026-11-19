@@ -251,5 +251,29 @@ for (const [file, note] of [
   check(/const waitingForChinese = useChineseContent\(/.test(code) && (code.match(/waitingForChinese/g) ?? []).length >= 2, `${note} keeps its loading state until the Chinese is in`);
 }
 
+// ---- A text that reads the same in English is an answer, cached once ----
+// "Porto, Portugal" came back unchanged and counted as a failure, so Browse
+// sent the same place names to the model on every load (1.6–2.8 s each).
+{
+  const { translateSources } = await import("../src/shared/profile-translation.mjs");
+  const written = [];
+  const result = await translateSources(["Porto, Portugal", "浙江省宁波市鄞州区"], {
+    translate: async (text) => (text === "Porto, Portugal"
+      ? { source_language: null, target_language: null, translation: null, error: "nothing to translate into", unchanged: true }
+      : { source_language: "zh", target_language: "en", translation: "Yinzhou District, Ningbo", error: null }),
+    cacheRead: async () => new Map(),
+    cacheWrite: async (rows) => { written.push(...rows); },
+  });
+  check(!result.missing.includes("Porto, Portugal"), "an unchanged place name is not reported missing");
+  check(written.some((row) => row.source === "Porto, Portugal" && row.translated === false && row.english === "Porto, Portugal"), "an unchanged place name is cached as written, so it is not asked again");
+  const chinese = await translateSources(["宁波"], {
+    translate: async () => ({ source_language: null, target_language: null, translation: null, error: "nothing to translate into", unchanged: true }),
+    cacheRead: async () => new Map(), cacheWrite: async () => {},
+  });
+  check(chinese.missing.includes("宁波"), "Chinese that comes back unchanged is still missing, never cached as English");
+}
+const translator = readFileSync(new URL("../api/_translate.js", import.meta.url), "utf8");
+check((translator.match(/reasoning: \{ enabled: false \}/g) ?? []).length === 2, "both translators ask for no thinking before the answer");
+
 console.log(failures ? `\ncheck:translation-label: ${failures} of ${checks} failed` : `check:translation-label: ${checks} checks passed`);
 process.exit(failures ? 1 : 0);
