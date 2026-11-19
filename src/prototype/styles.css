@@ -13028,7 +13028,7 @@ body:has(.brand-onboarding-page) {
 }
 
 .factory-settings-page .settings-permission-row {
-  grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(128px, 1fr)) 36px;
+  grid-template-columns: minmax(210px, 1fr) repeat(4, minmax(117px, 1fr)) 36px;
 }
 
 .settings-permission-row:first-child {
@@ -13122,7 +13122,8 @@ body:has(.brand-onboarding-page) {
   display: block;
 }
 
-.settings-remove-member-btn:disabled {
+.settings-remove-member-btn:disabled,
+.settings-member-menu .settings-menu-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
@@ -13693,6 +13694,7 @@ body:has(.brand-onboarding-page) {
 
 .message-avatar {
   display: grid;
+  flex-shrink: 0;
   place-items: center;
   width: 42px;
   height: 42px;
