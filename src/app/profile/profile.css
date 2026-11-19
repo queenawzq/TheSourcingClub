@@ -131,9 +131,20 @@
 .brand-profile-redesign.brand-factory-public-profile.is-public-view .factory-profile-shell:has(> .profile-translation-controls:not(:empty)) {
   grid-template-areas: "back" "translation" "hero" "layout";
 }
-.factory-profile-shell > .profile-translation-controls { grid-area: translation; margin-bottom: 0; }
+.factory-profile-shell > .profile-translation-controls { grid-area: translation; }
 .profile-translation-label { padding: 5px 10px; border: 1px solid #d7e0ea; border-radius: 20px; background: #f6f8fb; font-weight: 600; }
 .profile-translation-controls button { padding: 0; border: 0; background: transparent; color: #60769b; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* Phone width: label and "See original" still on one line in the narrowest card (quote compare, 277px at 375). */
+/* A card's own span rule (quote compare's is 13px) must not resize the label. */
+.profile-translation-controls .profile-translation-label { font-size: 12px; }
+@media (max-width: 480px) {
+  .profile-translation-controls { column-gap: 5px; }
+  .profile-translation-label { padding-inline: 5px; }
+}
 
 .factory-profile-owner-bar.brand-vendor-profile-navigation { flex-direction: column; align-items: flex-start; gap: 16px; border: 0; background: transparent; padding: 0; }
 .brand-vendor-profile-navigation .profile-translation-controls { margin: 0; }
+/* Stacked under "Back" (the design stacks the bar below 761px): the same space above as the page's 22px below. */
+@media (max-width: 760px) {
+  .brand-vendor-profile-navigation .profile-translation-controls { margin-top: 6px; }
+}

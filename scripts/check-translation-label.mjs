@@ -162,6 +162,23 @@ const prototypeCss = readFileSync(new URL("../src/prototype/styles.css", import.
 const own = rule(prototypeCss, ".vendor-card-translation");
 check(own && !/margin-(top|bottom)/.test(own), "the Browse card's label takes the card's own gap above and below");
 check(/white-space:\s*nowrap/.test(own), "the Browse card's label and \"See original\" keep their words on one line");
+// ---- One line at 375px: the label, the gap and "See original" fit the narrowest card ----
+// Measured in Chrome, Satoshi 12px/600 (Nov 19): the label's words 192.2px,
+// "See original" 65.6px; quote compare's row, the narrowest, is 277px wide at
+// 375px (the card's checkbox column takes the rest). The rule's own padding,
+// border and gap are read from the CSS, so widening any of them fails here.
+{
+  const px = (value) => Number.parseFloat(value);
+  const phone = profileCss.slice(profileCss.indexOf("@media (max-width: 480px)"));
+  const phoneRules = phone.slice(0, phone.indexOf("\n}\n"));
+  const gap = px(phoneRules.match(/\.profile-translation-controls\s*\{[^}]*column-gap:\s*([\d.]+)px/)?.[1] ?? controls.match(/gap:\s*[\d.]+px\s+([\d.]+)px/)?.[1]);
+  const labelRule = rule(profileCss, ".profile-translation-label");
+  const inline = px(phoneRules.match(/\.profile-translation-label\s*\{[^}]*padding-inline:\s*([\d.]+)px/)?.[1] ?? labelRule.match(/padding:\s*[\d.]+px\s+([\d.]+)px/)?.[1]);
+  const border = px(labelRule.match(/border:\s*([\d.]+)px/)?.[1] ?? 0);
+  const width = 192.2 + 2 * inline + 2 * border + gap + 65.6;
+  check(/\.profile-translation-controls \.profile-translation-label\s*\{\s*font-size:\s*12px/.test(profileCss), "the label keeps 12px inside cards that size their own spans (the widths above are for 12px)");
+  check(Number.isFinite(width) && width <= 277, `at 375px the label and "See original" fit on one line in quote compare's 277px row (needs ${width.toFixed(1)}px)`);
+}
 const liveCss = readFileSync(new URL("../src/app/live-quiet.css", import.meta.url), "utf8");
 check(/\.accepted-quote-panel \.accepted-factory\s*\{\s*align-items:\s*start/.test(liveCss), "the rail's vendor card keeps its logo beside the top of the name");
 
