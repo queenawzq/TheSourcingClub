@@ -5049,6 +5049,8 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
           ))}
         </div>
         <p data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
+        {/* The same note as the factory's other request cards. */}
+        {isZh && <ListTranslationMeta />}
       </div>
     </article>
   );

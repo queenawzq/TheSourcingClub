@@ -236,6 +236,16 @@ check(/held && \(\(translation\.loading/.test(vendorPage), "the vendor page keep
 check(/vendorNames\.waiting\(\)/.test(vendorPage), "the vendor page also waits for the company name's English");
 check(/nameWaiting\(card\.id, card\.name\)/.test(hook), "vendor cards also wait for the company name's English");
 
+// ---- A factory reading Chinese: one note on every request card ----
+{
+  const factory = readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
+  const part = (name) => { const at = factory.indexOf(`function ${name}(`); return at < 0 ? "" : factory.slice(at, factory.indexOf("\nfunction ", at + 10)); };
+  const row = part("FactoryDashboardRfqRow");
+  check((row.match(/<ListTranslationMeta \/>/g) ?? []).length === 1, "the factory dashboard's request card draws the design's note once");
+  check(row.indexOf("<ListTranslationMeta />") > row.indexOf("getTranslatedListDescription(rfq)"), "the dashboard's note sits under the request's words, as on the factory's other request cards");
+  check(/isZh && <ListTranslationMeta \/>/.test(row), "the dashboard's note shows only on the Chinese page");
+}
+
 // ---- The other direction: a factory reading Chinese sees no English first ----
 const contentTranslation = readFileSync(new URL("../src/app/content-translation.js", import.meta.url), "utf8");
 check(/HOLD_MS = 3000/.test(contentTranslation) && /return keys\.some\(\(k\) => !answered\.has\(k\)\)/.test(contentTranslation), "useChineseContent says when the Chinese is still on the way, for at most 3 s");
