@@ -14,6 +14,7 @@
 import { kickNotificationEmails, supabase, unwrap } from "../supabase.js";
 import { attachmentRefusal, uploadDocument } from "./documents.js";
 import { inReadingOrder } from "../../shared/message-order.mjs";
+import { readByIds } from "../read-pages.js";
 
 const THREAD_COLUMNS = `
   id, rfq_id, order_id, brand_org_id, factory_org_id, last_message_at, created_at,
@@ -45,8 +46,11 @@ export async function threadProjectNames(threads) {
   const names = new Map();
   const orderIds = [...new Set((threads ?? []).map((thread) => thread.order_id).filter(Boolean))];
   if (orderIds.length) {
-    const orders = unwrap(
-      await supabase.from("production_orders").select("id, rfqs (title)").in("id", orderIds),
+    // In batches: past ~195 order conversations one `in` list was longer
+    // than the address allows (read-pages.js).
+    const orders = await readByIds(
+      orderIds,
+      (batch) => supabase.from("production_orders").select("id, rfqs (title)").in("id", batch).order("id"),
       "load your conversations",
     );
     const titleByOrder = new Map((orders ?? []).map((order) => [order.id, order.rfqs?.title]));

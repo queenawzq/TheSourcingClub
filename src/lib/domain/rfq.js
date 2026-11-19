@@ -8,6 +8,7 @@
  * exists to prevent.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { readEveryPage } from "../read-pages.js";
 
 const RFQ_COLUMNS = `
   id, brand_org_id, title, brief, status, visibility,
@@ -70,8 +71,9 @@ export async function saveRfq(rfqId, patch) {
 
 /** A brand's own requests. RLS keeps this to the caller's org. */
 export async function listRfqs(orgId) {
-  return unwrap(
-    await supabase
+  // A page at a time: one read stops at 1,000 requests without saying so.
+  return readEveryPage(
+    () => supabase
       .from("rfqs")
       // The embed must name the constraint: there are two foreign keys between
       // rfqs and quotes (quotes.rfq_id, and rfqs.awarded_quote_id pointing
@@ -83,7 +85,8 @@ export async function listRfqs(orgId) {
       // withdrawn rows are history. Same set listQuotesForRfq() shows, so the
       // card's count and the compare screen agree.
       .in("quotes.status", ["submitted", "accepted", "declined"])
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }),
     "load your requests",
   );
 }
@@ -96,12 +99,13 @@ export async function listRfqs(orgId) {
  * in JS where it could drift from the policy.
  */
 export async function listOpenRfqs() {
-  return unwrap(
-    await supabase
+  return readEveryPage(
+    () => supabase
       .from("rfqs")
       .select(`${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`)
       .eq("status", "open")
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }),
     "load open requests",
   );
 }
@@ -118,8 +122,9 @@ export async function listOpenRfqs() {
 export async function listFactoryRfqs(factoryOrgId) {
   const rfqColumns = `${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`;
 
+  // Each a page at a time: one read stops at 1,000 rows without saying so.
   const [quotes, invitations] = await Promise.all([
-    supabase
+    readEveryPage(() => supabase
       .from("quotes")
       // Named for the same reason as listRfqs(): quotes.rfq_id and
       // rfqs.awarded_quote_id are two paths between these tables, and an
@@ -128,17 +133,19 @@ export async function listFactoryRfqs(factoryOrgId) {
       .eq("factory_org_id", factoryOrgId)
       // Superseded versions are history; the live row is what the tab shows.
       .neq("status", "superseded")
-      .order("created_at", { ascending: false }),
-    supabase
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }), "load your quotes"),
+    readEveryPage(() => supabase
       .from("rfq_invitations")
       .select(`id, rfq_id, status, created_at, rfqs (${rfqColumns})`)
       .eq("factory_org_id", factoryOrgId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false }), "load your invitations"),
   ]);
 
   return {
-    quotes: unwrap(quotes, "load your quotes").filter((row) => row.rfqs),
-    invitations: unwrap(invitations, "load your invitations"),
+    quotes: quotes.filter((row) => row.rfqs),
+    invitations,
   };
 }
 

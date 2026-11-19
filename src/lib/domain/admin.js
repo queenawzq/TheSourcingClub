@@ -6,6 +6,7 @@
  * module only finds the queue and calls it.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { readByIds, readEveryPage } from "../read-pages.js";
 import { getColourSplits, getRfq } from "./rfq.js";
 import { listQuotesForRfq } from "./quote.js";
 import { listLinks, listTermsByKind } from "./taxonomy.js";
@@ -85,6 +86,25 @@ export async function reviewDocument(documentId, decision, note = null) {
  * Both write the same verification_status column, so they cannot disagree.
  */
 
+// admin_verification_queue()'s `order by` (20261026000700_admin_review_fixes.sql):
+// undecided first, oldest submission first inside that. Keep the two in step.
+// The queue is read a page at a time (PostgREST stops at 1,000 rows), by
+// org_id, because a page boundary inside a tie of that order can skip or
+// repeat a company.
+const QUEUE_RANK = { ready_for_review: 0, in_review: 1, needs_information: 2 };
+function queueOrder(a, b) {
+  const rank = (QUEUE_RANK[a.state] ?? 3) - (QUEUE_RANK[b.state] ?? 3);
+  if (rank) return rank;
+  // Postgres sorts nulls last in ascending order.
+  if (a.submitted_at == null || b.submitted_at == null) {
+    if (a.submitted_at != null || b.submitted_at != null) return a.submitted_at == null ? 1 : -1;
+  } else {
+    const time = new Date(a.submitted_at) - new Date(b.submitted_at);
+    if (time) return time;
+  }
+  return String(a.org_id).localeCompare(String(b.org_id));
+}
+
 /**
  * Every company waiting on, or already carrying, a decision.
  *
@@ -99,10 +119,13 @@ export async function reviewDocument(documentId, decision, note = null) {
  * calculate.
  */
 export async function verificationQueue() {
-  const rows = await unwrap(
-    await supabase.rpc("admin_verification_queue"),
+  // A page at a time by org_id, then back in the queue's own order: see
+  // queueOrder below.
+  const rows = (await readEveryPage(
+    () => supabase.rpc("admin_verification_queue").order("org_id"),
     "load the verification queue",
-  );
+    "org_id",
+  )).sort(queueOrder);
 
   const factoryIds = (rows ?? []).filter((row) => row.org_type === "factory").map((row) => row.org_id);
   const productionByOrg = new Map();
@@ -110,10 +133,13 @@ export async function verificationQueue() {
   const categoriesByOrg = new Map();
   const capabilitiesByOrg = new Map();
   if (factoryIds.length) {
-    const links = unwrap(await supabase.from("taxonomy_links")
+    // In id batches: past ~195 factories one `in` list was longer than the
+    // address allows (read-pages.js).
+    const links = await readByIds(factoryIds, (batch) => supabase.from("taxonomy_links")
       .select("org_id, taxonomy_terms!inner(kind, label_en)")
-      .in("org_id", factoryIds)
-      .eq("subject_type", "factory_profile"), "load factory capabilities");
+      .in("org_id", batch)
+      .eq("subject_type", "factory_profile")
+      .order("org_id").order("term_id"), "load factory capabilities");
     for (const link of links ?? []) {
       const groups = capabilitiesByOrg.get(link.org_id) ?? {};
       (groups[link.taxonomy_terms.kind] ??= new Set()).add(link.taxonomy_terms.label_en);
@@ -319,11 +345,20 @@ export async function suggestReviewRequest({ orgId, companyName, entityType, gap
  * attached, which is what the admin RFQ and quote tables show.
  */
 
-export async function rfqQueue(limit = 200) {
-  const rows = await unwrap(
-    await supabase.rpc("admin_rfq_queue", { row_limit: limit }),
+// The queues' own `row_limit` cut the tables at 200 without saying so, and
+// PostgREST stops any read at 1,000. So every row is asked for and read a
+// page at a time, by its unique id (the functions' order has ties, and a page
+// boundary inside a tie can skip or repeat a row), then put back newest first
+// as the functions order them (20260912000100, 20261022000400).
+const ALL_ROWS = 2147483647;
+const newestFirst = (when) => (a, b) => String(when(b)).localeCompare(String(when(a)));
+
+export async function rfqQueue() {
+  const rows = (await readEveryPage(
+    () => supabase.rpc("admin_rfq_queue", { row_limit: ALL_ROWS }).order("rfq_id"),
     "load marketplace requests",
-  );
+    "rfq_id",
+  )).sort(newestFirst((row) => row.published_at ?? row.created_at));
 
   return (rows ?? []).map((row) => ({
     id: row.rfq_id,
@@ -344,11 +379,14 @@ export async function rfqQueue(limit = 200) {
   }));
 }
 
-export async function quoteQueue(limit = 200) {
-  const rows = await unwrap(
-    await supabase.rpc("admin_quote_queue", { row_limit: limit }),
+// The function sorts a quote with no submitted_at by its created_at, which it
+// does not return: those go last.
+export async function quoteQueue() {
+  const rows = (await readEveryPage(
+    () => supabase.rpc("admin_quote_queue", { row_limit: ALL_ROWS }).order("quote_id"),
     "load marketplace quotes",
-  );
+    "quote_id",
+  )).sort((a, b) => (a.submitted_at == null) - (b.submitted_at == null) || newestFirst((row) => row.submitted_at)(a, b));
 
   return (rows ?? []).map((row) => ({
     id: row.quote_id,
@@ -439,16 +477,16 @@ async function adminUserRequest(options = {}) {
 }
 
 async function directUserDirectory() {
-  const [{ data: auth }, profiles, members, admins, factories] = await Promise.all([
+  // Each a page at a time: one read stops at 1,000 rows without saying so,
+  // and the users past it showed no name and "No company".
+  const [{ data: auth }, ...lists] = await Promise.all([
     supabase.auth.getUser(),
-    supabase.from("user_profiles").select("id, email, full_name, created_at"),
-    supabase.from("org_members").select("user_id, org_id, orgs (name, type)"),
-    supabase.from("platform_admins").select("user_id"),
-    supabase.from("factory_profiles").select("org_id, vendor_kind"),
+    readEveryPage(() => supabase.from("user_profiles").select("id, email, full_name, created_at").order("id"), "load users"),
+    readEveryPage(() => supabase.from("org_members").select("user_id, org_id, created_at, orgs (name, type)").order("created_at").order("user_id").order("org_id"), "load users", (row) => `${row.user_id}:${row.org_id}`),
+    readEveryPage(() => supabase.from("platform_admins").select("user_id").order("user_id"), "load users", "user_id"),
+    readEveryPage(() => supabase.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), "load users", "org_id"),
   ]);
-  for (const result of [profiles, members, admins, factories]) {
-    if (result.error) throw result.error;
-  }
+  const [profiles, members, admins, factories] = lists.map((data) => ({ data }));
 
   const memberships = new Map();
   for (const membership of members.data ?? []) {
