@@ -930,12 +930,15 @@ export default function StripePayoutCard({
   // "$X pending", the same sentence on every payout method, from the page's
   // Pending figure less what the card already shows (cardPendingCents).
   const pendingWords = (cents, approx = false) => (cents > 0 ? <>{`${approx ? "≈" : ""}${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
-  const stripePending = pendingTotal != null ? cardPendingCents(pendingTotal, (fromBalance.pool && fromBalance.available != null ? fromBalance.available : 0)
-      + (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0))
+  // Money in TSC's balance is not in the page's Pending (inBalance): nothing to take off.
+  const stripePending = pendingTotal != null ? cardPendingCents(pendingTotal, 0)
     : pending > 0 ? payoutUsdTotal(balance?.pending ?? [], balance?.displayFx) : 0;
+  // Without a balance (an older factory paid step by step), what is owed is
+  // both the card's balance and the page's Pending; money on its way is said
+  // on its own line. Neither is "pending" again. Money in TSC's balance is not
+  // in the page's Pending at all (inBalance).
   const handShown = !handPaid ? 0
-    : (fromBalance.pool && fromBalance.available != null ? fromBalance.available : handFigures.balance ? payoutUsdTotal(handFigures.balance) ?? 0 : 0)
-      + (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0)
+    : (!fromBalance.pool && handFigures.balance ? payoutUsdTotal(handFigures.balance) ?? 0 : 0)
       + (handFigures.onItsWay?.length ? payoutUsdTotal(handFigures.onItsWay) ?? 0 : 0);
   const handPending = handPaid ? cardPendingCents(pendingTotal, handShown) : null;
   const handFigureKnown = handPaid && ((fromBalance.pool && fromBalance.available != null) || Boolean(handFigures.balance));

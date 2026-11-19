@@ -200,12 +200,14 @@ for (const [why, row] of [
     failure.kind === "too_small" && /smallest transfer to this account is 9\.25 USD/.test(failure.message) && failure.message !== CANT_PAY_FROM_BALANCE);
 }
 
-// One figure: a $40 withdrawal of a $65 step moves $40 from Pending to Paid out.
+// One figure: a $65 step in the balance is Paid out whole, before and after a $40
+// withdrawal of it. Changed Nov 19: balance money reads as Stripe balance money
+// does ("Added to your balance", in Paid out), since it can be withdrawn now.
 {
   const step = { id: "p1", state: "confirmed", release_requested_at: "2026-11-16", amount_cents: 6500, currency: "USD", withdrawal_pool: true, order: { status: "active" } };
   const summary = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]));
-  assert.deepEqual(summary.pending, [{ currency: "USD", amount: 2500 }]);
-  assert.deepEqual(summary.paid, [{ currency: "USD", amount: 4000 }]);
+  assert.deepEqual(summary.pending, []);
+  assert.deepEqual(summary.paid, [{ currency: "USD", amount: 6500 }]);
   assert.deepEqual(summary.total, [{ currency: "USD", amount: 6500 }]);
   // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
   assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
@@ -213,7 +215,7 @@ for (const [why, row] of [
   assert.equal(rows.length, 1);
   assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
   const net = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]), 79);
-  assert.deepEqual(net.paid, [{ currency: "USD", amount: 3921 }]);
+  assert.deepEqual(net.paid, [{ currency: "USD", amount: 6421 }]);
   assert.deepEqual(net.total, [{ currency: "USD", amount: 6421 }]);
 }
 
