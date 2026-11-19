@@ -983,7 +983,12 @@ async function main() {
     })();
     check(Boolean(askedMail?.Text?.replace(/\r\n/g, "\n").includes(askFor)), "and the email carries the request exactly as staff wrote it");
     const afterAsk = await page.locator("body").innerText();
-    check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
+    // The summary no longer repeats the last note (the email card and the
+    // email itself above say it went). Its grid is still drawn, so the pair's
+    // absence is not an empty page.
+    const lastNoteShown = await detailValue("Last note");
+    const decidedShown = await detailValue("Decided");
+    check(lastNoteShown === null && decidedShown !== null, `the review summary is drawn without a "Last note" (${lastNoteShown ?? "none"}; Decided: ${decidedShown})`);
     check(/needs information/i.test(afterAsk), "and the badge says Needs information");
     // It said "Pending": the review state and the profile's own column.
     const statusShown = await detailValue("Profile status");

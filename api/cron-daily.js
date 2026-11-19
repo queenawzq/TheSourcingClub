@@ -4,6 +4,7 @@ import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_not
 import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-decision-sender.js";
 import { refundCancelledOrders, stripeFrom } from "./_stripe.js";
 import { sweepProviderPayouts } from "./payout-sync.js";
+import { sweepCheckingMessages } from "./_message-sweep.js";
 
 /**
  * The daily job: capacity reminders and steps due soon
@@ -20,6 +21,9 @@ import { sweepProviderPayouts } from "./payout-sync.js";
  * It also refunds held money on cancelled orders that is still held (a page
  * closed before it asked, Stripe down, a refusal): nothing waits on staff.
  * Each refund is claimed first, so this never refunds twice.
+ *
+ * And it screens messages a closed page left `checking` (api/_message-sweep.js),
+ * as the server, the same way a send is screened.
  */
 
 // Leaves room under Vercel's function time limit.
@@ -71,6 +75,16 @@ export default async function handler(request, response) {
     refunds = { error: "the cancelled-order refunds could not be checked" };
   }
 
+  // Messages a closed page left `checking` (api/_message-sweep.js). Before the
+  // emails, so a message delivered here is emailed in this run. Never fails the job.
+  let messages = null;
+  try {
+    messages = await sweepCheckingMessages(service);
+  } catch (error) {
+    console.error("cron-daily: message sweep", error?.message);
+    messages = { error: "the messages left checking could not be read" };
+  }
+
   // Reminders are written either way; without a provider they wait queued.
   const emails = { sent: 0, skipped: 0, failed: 0, more: false, configured: false };
   const mail = emailTransport();
@@ -86,7 +100,7 @@ export default async function handler(request, response) {
         emails.more = batch.more;
       } while (emails.more && Date.now() - started < DRAIN_BUDGET_MS);
     } catch (error) {
-      response.status(500).json({ reminders, refunds, emails, error: error.message });
+      response.status(500).json({ reminders, refunds, messages, emails, error: error.message });
       return;
     }
   }
@@ -105,7 +119,7 @@ export default async function handler(request, response) {
       reviews.failed += alerts.failed;
       reviews.unconfirmed += alerts.unconfirmed;
     } catch (error) {
-      response.status(500).json({ reminders, refunds, emails, reviews, error: error.message });
+      response.status(500).json({ reminders, refunds, messages, emails, reviews, error: error.message });
       return;
     }
   }
@@ -117,5 +131,5 @@ export default async function handler(request, response) {
     console.error("payout sweep:", error.message);
   }
 
-  response.status(200).json({ reminders, refunds, emails, reviews, error: null });
+  response.status(200).json({ reminders, refunds, messages, emails, reviews, error: null });
 }
