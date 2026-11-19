@@ -220,9 +220,15 @@ select is((public.mark_withdrawal_paid_by_bank((select id from public.factory_wi
 reset role;
 select is((select fee_cents from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and provider_ref = 'WIRE-116'), public.bank_payout_fee_cents(), 'the fee recorded is the one source');
 
--- Money in the balance cannot be stranded by moving to Stripe.
-select throws_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')$$,
-  '22023', 'Withdraw your balance first, then switch to Stripe.', 'no switch to Stripe while a balance is left');
+-- Moving to Stripe no longer waits for the balance (20261119300000): the
+-- balance stays, still withdrawn the way it was earned.
+savepoint p116_route;
+create temp table p116_before on commit drop as select public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1') as cents;
+select lives_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')
+  on conflict (org_id) do update set route = excluded.route$$, 'a switch to Stripe with a balance left is allowed');
+select ok((select cents from p116_before) > 0 and public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1') = (select cents from p116_before),
+  'and the balance is still there to withdraw');
+rollback to savepoint p116_route;
 
 -- Paying a bank withdrawal by hand (20261117350000): staff read the number of the
 -- account the withdrawal pays, even one that is not the default, and only while

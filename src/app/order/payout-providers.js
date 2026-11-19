@@ -11,20 +11,17 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
+import { providersFrom } from "./payout-provider-rules.mjs";
+
+// The rules live in payout-provider-rules.mjs, so the build's checks can run them.
+export { methodProviderOn, providerOf, providerOn, providerOnFor, providersFrom } from "./payout-provider-rules.mjs";
 
 export function usePayoutProviders(orgId, enabled = true) {
   const [providers, setProviders] = useState(null);
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const { data, error } = await supabase.rpc("payout_providers_for", { target_org: orgId });
-    if (!error && data) {
-      setProviders({
-        paypal: data.paypal !== false,
-        wise: data.wise !== false,
-        byRegion: data.byRegion ?? null,
-        chinaCountries: Array.isArray(data.chinaCountries) ? data.chinaCountries : null,
-      });
-    }
+    if (!error && data) setProviders(providersFrom(data));
   }, [orgId, enabled]);
 
   useEffect(() => {
@@ -39,28 +36,3 @@ export function usePayoutProviders(orgId, enabled = true) {
   return providers;
 }
 
-/** The provider that pays a saved method, as request_withdrawal() decides it. */
-export const providerOf = (row) => (row?.method === "paypal" ? "paypal" : row?.method === "bank" && row.wise_recipient_type ? "wise" : "bank");
-
-/** Whether a provider is on; unknown switches count as on. */
-export const providerOn = (providers, provider) => !providers || providers[provider] !== false;
-
-/** The region a country is in, by the database's list; null when not known. */
-const regionOf = (providers, country) => {
-  if (!providers?.byRegion || !providers.chinaCountries || !country) return null;
-  return providers.chinaCountries.includes(String(country).trim().toUpperCase()) ? "china" : "elsewhere";
-};
-
-/**
- * Whether a provider is on for a picked country ("ZZ" for not listed is
- * elsewhere). With no country, or before the regions are known, the company's
- * region decides, as for a method saved before countries were kept.
- */
-export const providerOnFor = (providers, provider, country) => {
-  const region = regionOf(providers, country);
-  if (!region) return providerOn(providers, provider);
-  return providers.byRegion[region]?.[provider] !== false;
-};
-
-/** Whether a saved method's provider is on, by the country it was added for. */
-export const methodProviderOn = (providers, row) => providerOnFor(providers, providerOf(row), row?.payout_country);

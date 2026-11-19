@@ -1,6 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { payoutUsdTotal } from "../../lib/payout-display.mjs";
-import { isHandPaid } from "./payment-summary.mjs";
+import { cardPendingCents, isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -16,8 +16,8 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
-import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
-import { providerOnFor, usePayoutProviders } from "./payout-providers.js";
+import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
+import { methodProviderOn, providerOnFor, usePayoutProviders } from "./payout-providers.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -357,12 +357,16 @@ export default function StripePayoutCard({
   manualSaved,
   manualOwed = [],
   problem = null,
+  // The page's Pending figure (all clients, US$ cents): the card's "$X pending" is read from it.
+  pendingTotal = null,
   renderCard = true,
   initialAction = null,
   initialMethodId = null,
   onFlowClose,
 }) {
   const [account, setAccount] = useState(undefined);
+  // The saved method a Withdraw opened on, when chosen in the other dialog.
+  const [withdrawFromId, setWithdrawFromId] = useState(null);
   const [balance, setBalance] = useState(null);
   const uiLanguage = useUiLanguage();
   // Where reading Stripe's balance stands: "loading", "slow" (still loading
@@ -923,6 +927,57 @@ export default function StripePayoutCard({
   // Owed money that bounced: what this person must do next, on the card.
   const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : null;
 
+  // "$X pending", the same sentence on every payout method, from the page's
+  // Pending figure less what the card already shows (cardPendingCents).
+  const pendingWords = (cents, approx = false) => (cents > 0 ? <>{`${approx ? "≈" : ""}${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
+  // Money in TSC's balance is not in the page's Pending (inBalance): nothing to take off.
+  const stripePending = pendingTotal != null ? cardPendingCents(pendingTotal, 0)
+    : pending > 0 ? payoutUsdTotal(balance?.pending ?? [], balance?.displayFx) : 0;
+  // Without a balance (an older factory paid step by step), what is owed is
+  // both the card's balance and the page's Pending; money on its way is said
+  // on its own line. Neither is "pending" again. Money in TSC's balance is not
+  // in the page's Pending at all (inBalance).
+  const handShown = !handPaid ? 0
+    : (!fromBalance.pool && handFigures.balance ? payoutUsdTotal(handFigures.balance) ?? 0 : 0)
+      + (handFigures.onItsWay?.length ? payoutUsdTotal(handFigures.onItsWay) ?? 0 : 0);
+  const handPending = handPaid ? cardPendingCents(pendingTotal, handShown) : null;
+  const handFigureKnown = handPaid && ((fromBalance.pool && fromBalance.available != null) || Boolean(handFigures.balance));
+
+  // One balance, one Withdraw (C5). A factory with a Stripe account can also
+  // hold money with TSC for its saved methods (PayPal, Wise), for example
+  // after changing its default. The card adds the two; Withdraw opens on the
+  // default, and "Withdraw to" lists every method, each dialog showing what
+  // its method can reach.
+  const poolAvailable = fromBalance.pool && fromBalance.available != null ? fromBalance.available : 0;
+  const poolOpen = (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0);
+  const balanceChoices = (fromBalance.pool || payoutRoute === "manual")
+    ? manualAccounts.filter((row) => usable(row) && methodProviderOn(providers, row)) : [];
+  const stripeAvailableUsd = balance ? payoutUsdTotal(balance.available, balance.displayFx) ?? 0 : 0;
+  const stripeReachable = Boolean(balance && account?.transfers_active && account.payouts_enabled && stripeWithdrawTargets.length);
+  const totalAvailable = stripeAvailableUsd + poolAvailable;
+  const openStripeWithdraw = (destination = null) => {
+    setError(null);
+    setWithdrawal({ amount: available, max: available, amountText: (available / 100).toFixed(2), currency: currency.toLowerCase(), requestId: crypto.randomUUID(),
+      destination: destination ?? stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
+    setModal("withdraw");
+  };
+  const openBalanceWithdraw = (methodId = null) => {
+    setWithdrawalError(null);
+    setWithdrawFromId(methodId);
+    setModal("withdraw-balance");
+  };
+  // Opens on the default; when the default's balance is empty and the other
+  // one holds money, on the method that can reach it, so it never opens at $0.
+  const openWithdraw = () => {
+    const balanceSide = balanceChoices.length > 0 && fromBalance.available != null;
+    const preferBalance = payoutRoute === "manual" || !stripeReachable;
+    const useBalance = balanceSide && (preferBalance
+      ? poolAvailable > 0 || !(stripeReachable && available > 0)
+      : !(available > 0) && poolAvailable > 0);
+    if (useBalance) openBalanceWithdraw(manualAccount && balanceChoices.some((row) => row.id === manualAccount.id) ? manualAccount.id : null);
+    else openStripeWithdraw();
+  };
+
   return (
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
@@ -934,25 +989,33 @@ export default function StripePayoutCard({
             <strong data-testid="payout-balance">{fromBalance.pool && fromBalance.available != null ? formatMoney(fromBalance.available, "USD")
               : handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
+            {handFigureKnown ? <p className="payout-balance-line" data-testid="payout-balance-line">{[
+              "Earnings stay in your balance until you withdraw them.",
+              pendingWords(handPending ?? 0),
+            ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p> : null}
             {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
 
             {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           </> : <>
           <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
-          <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(balance.available, balance.displayFx), "USD")
+          <strong data-testid="payout-balance">{balance ? formatMoney(totalAvailable, "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the provider answers.
             : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
             : "—"}</strong>
           {balanceStatus === "loading" && balanceWaiting ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
+          ) : !isOwner && pendingTotal != null ? (
+            // A member reads no provider balance, but the page's Pending figure is theirs too.
+            <p className="payout-balance-line" data-testid="payout-balance-line">{["Earnings stay in your balance until you withdraw them.", pendingWords(stripePending ?? 0)]
+              .filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : !balance && !payoutSetupLine ? null : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
               "Earnings stay in your balance until you withdraw them.",
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
               // Its "?" sits right after it, not on a line of its own.
-              pending > 0 ? <>{`${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null,
+              pendingWords(stripePending ?? 0, pendingTotal == null && currency !== "USD"),
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
@@ -976,13 +1039,10 @@ export default function StripePayoutCard({
         <div className="live-payout-card-action">
           {isOwner ? account?.transfers_active ? (
             <>
-            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
-              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 && arrivesOn ? availableOnWords(arrivesOn) : "Nothing to withdraw yet"} onClick={() => {
-              setError(null);
-              setWithdrawal({ amount: available, max: available, amountText: (available / 100).toFixed(2), currency: currency.toLowerCase(), requestId: crypto.randomUUID(),
-                destination: stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
-              setModal("withdraw");
-            }}>Withdraw to bank</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance"
+              disabled={busy || !((stripeReachable && available > 0) || (balanceChoices.length && poolAvailable > 0))}
+              title={!balance ? undefined : (balanceChoices.length && poolAvailable > 0) || (stripeReachable && available > 0) ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : pending > 0 && arrivesOn ? availableOnWords(arrivesOn) : "Nothing to withdraw yet"}
+              onClick={openWithdraw}>Withdraw</button>
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
             </>
           ) : manualAccount && !savedMethod ? (
@@ -999,11 +1059,11 @@ export default function StripePayoutCard({
           )
           : <>
             {handPaid && fromBalance.pool ? <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled title="Only a company owner can withdraw">Withdraw</button> : null}
-            {account?.transfers_active ? <button className="primary-btn compact-btn" type="button" disabled title="Only a company owner can withdraw">Withdraw to bank</button> : null}
+            {account?.transfers_active ? <button className="primary-btn compact-btn" type="button" disabled title="Only a company owner can withdraw">Withdraw</button> : null}
             <button className={`${account?.transfers_active ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
-        {handPaid ? <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async (row) => {
+        {handPaid || fromBalance.pool ? <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async (row) => {
               setWithdrawalError(null);
               // More than one waiting: choose which to cancel.
               if (fromBalance.opens.filter((w) => w.status === "requested").length > 1) {
@@ -1024,7 +1084,9 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "withdraw-balance" && fromBalance.available != null ? (
-        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={manualAccount?.id} country={country} providers={providers}
+        <WithdrawForm orgId={org.id} available={fromBalance.available} methods={manualAccounts} defaultId={withdrawFromId ?? manualAccount?.id} country={country} providers={providers}
+          others={stripeReachable ? stripeWithdrawTargets.map((method) => ({ id: method.id, label: listLabelIn(method, uiLanguage) })) : []}
+          onOther={(id) => openStripeWithdraw(id)}
           Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); }} />
       ) : null}
 
@@ -1041,8 +1103,14 @@ export default function StripePayoutCard({
                 <label className="payout-country-field withdraw-method-field">
                   <span>Withdraw to</span>
                   <select name="Withdraw to" value={withdrawal.destination ?? ""} disabled={busy}
-                    onChange={(event) => setWithdrawal((was) => ({ ...was, destination: event.target.value }))}>
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      // A saved method is withdrawn from TSC's balance, in its own dialog.
+                      if (value.startsWith("balance:")) openBalanceWithdraw(value.slice(8));
+                      else setWithdrawal((was) => ({ ...was, destination: value }));
+                    }}>
                     {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabelIn(method, uiLanguage)}</option>)}
+                    {fromBalance.available != null ? balanceChoices.map((row) => <option key={row.id} value={`balance:${row.id}`}>{withdrawOptionLabel(row, uiLanguage)}</option>) : null}
                   </select>
                 </label>
               ) : null}

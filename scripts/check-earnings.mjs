@@ -41,6 +41,18 @@ assert.equal(usd(summary.pending), usd(hand.balance), "the strip's Pending is th
 assert.equal(usd(summary.paid), 1600, "Paid out is what TSC sent");
 assert.equal(usd(summary.total), usd(hand.balance) + usd(hand.pending) + usd(summary.paid), "total = balance + pending + paid out");
 
+// Approved into the balance TSC holds for PayPal/Wise (withdrawal_pool): the
+// factory can withdraw it now, so the row, the strip and the card agree it is in
+// the balance, as Stripe money in the factory's own balance is (Nov 19).
+{
+  const pooled = [pay("pool", 4500, "confirmed", { ...APPROVED, withdrawal_pool: true }), pay("held-p", 100, "confirmed")];
+  const pooledSummary = earningsSummaryFor(pooled, "All clients", new Map([["pool", 1000]]));
+  assert.equal(earningStatus(pooled[0]), "Added to your balance", "money in the balance is not called Pending");
+  assert.equal(usd(pooledSummary.pending), 0, "nor counted in Pending");
+  assert.equal(usd(pooledSummary.paid), 4500, "it is in Paid out, whole, however much has been withdrawn");
+  assert.equal(usd(pooledSummary.total), usd(pooledSummary.approval) + usd(pooledSummary.pending) + usd(pooledSummary.paid), "and the figures still add up");
+}
+
 // Nothing is in two figures, and money held on a cancelled order is in none.
 for (const row of earnings) {
   const buckets = [awaitingApproval(row), toBeSent(row), row.state === "released", heldOnCancelledOrder(row)].filter(Boolean);

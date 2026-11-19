@@ -11,8 +11,8 @@ function fixture(routeResult) {
   const db = {
     from(table) { return { select() { return this; }, eq() { return this; },
       async maybeSingle() { return { data: table === 'order_payments' ? payment : { stripe_account_id: 'acct_route_fake', transfers_active: true } }; } }; },
-    async rpc(name, args) { calls.push(name); assert.equal(name, 'uses_stripe_payout');
-      assert.equal(args.target_org, payment.production_orders.factory_org_id); return routeResult; },
+    async rpc(name, args) { calls.push(name); assert.ok(['uses_stripe_payout', 'join_owed_to_pool'].includes(name), name);
+      assert.equal(args.target_org, payment.production_orders.factory_org_id); return name === 'uses_stripe_payout' ? routeResult : { data: null, error: null }; },
   };
   const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } },
     accounts: { async update() { assert.fail('manual route must not configure a Stripe payout'); } },
@@ -22,7 +22,8 @@ function fixture(routeResult) {
 const manual = fixture({ data: false, error: null });
 assert.deepEqual(await releasePayment({ ...manual, paymentId: payment.id }),
   { released: false, reason: 'the factory selected another payout method' });
-assert.deepEqual(manual.calls, ['uses_stripe_payout']);
+// The default changed: the payment waits in the factory's balance for its new method.
+assert.deepEqual(manual.calls, ['uses_stripe_payout', 'join_owed_to_pool']);
 const unknown = fixture({ data: null, error: { message: 'preference lookup unavailable' } });
 await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /preference lookup unavailable/);
 
@@ -116,3 +117,42 @@ await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /pre
   }
 }
 console.log('payout routing: manual defaults never enter Stripe release; unreadable preference fails closed; every transfer is read; a transfer reversed by withdrawal fees is never paid again');
+
+// One list of the countries Stripe pays out to: the app's, the server's and the
+// database's (20261119300000: PayPal "where Stripe isn't available").
+{
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { PAYOUT_COUNTRIES } = await import('../src/shared/stripe-payout-countries.mjs');
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const latest = readdirSync(dir).filter((name) => name.endsWith('.sql')).sort().reverse()
+    .map((name) => readFileSync(new URL(name, dir), 'utf8')).find((sql) => sql.includes('function public.stripe_pays_out_to'));
+  assert.ok(latest, 'stripe_pays_out_to() exists');
+  const lists = [...latest.matchAll(/array\[\s*('[A-Z]{2}'(?:,\s*'[A-Z]{2}')*)\s*\]/g)].map((m) => new Set(m[1].match(/[A-Z]{2}/g)));
+  assert.ok(lists.length >= 2, 'the function and payout_providers_for() both carry the list');
+  for (const list of lists) assert.deepEqual([...list].sort(), [...PAYOUT_COUNTRIES].sort(), 'the database lists the same Stripe payout countries as the app');
+}
+
+// The screens follow "Any country Stripe can't pay" (Nov 19 test): the answer of
+// payout_providers_for() goes through providersFrom() with every key it sends,
+// and the chooser and Withdraw then offer PayPal where the database allows it.
+{
+  const { providersFrom, providerOnFor, methodProviderOn } = await import('../src/app/order/payout-provider-rules.mjs');
+  const { PAYOUT_COUNTRIES } = await import('../src/shared/stripe-payout-countries.mjs');
+  const answer = { region: 'elsewhere', paypal: false, wise: false, chinaCountries: ['CN', 'HK'],
+    byRegion: { china: { paypal: true, wise: false }, elsewhere: { paypal: false, wise: false } },
+    paypalWhereNoStripe: true, stripeCountries: [...PAYOUT_COUNTRIES] };
+  const providers = providersFrom(answer);
+  assert.equal(providers.paypalWhereNoStripe, true, 'the switch reaches the screens');
+  assert.deepEqual(providers.stripeCountries, answer.stripeCountries, 'and the country list');
+  assert.equal(providerOnFor(providers, 'paypal', 'VN'), true, 'Vietnam is offered PayPal');
+  assert.equal(providerOnFor(providers, 'paypal', 'TR'), true, 'Türkiye too');
+  assert.equal(providerOnFor(providers, 'paypal', 'ZZ'), true, 'and a country not listed');
+  assert.equal(providerOnFor(providers, 'paypal', 'DE'), false, 'Germany is not: Stripe pays it');
+  assert.equal(providerOnFor(providers, 'paypal', 'CN'), true, 'China by its own box');
+  assert.equal(providerOnFor(providers, 'wise', 'VN'), false, 'Wise is not turned on by it');
+  assert.equal(methodProviderOn(providers, { method: 'paypal', paypal_email: 'x@example.com', payout_country: 'VN' }), true, 'a saved Vietnam PayPal stays in Withdraw');
+  assert.equal(providerOnFor(providersFrom({ ...answer, paypalWhereNoStripe: false }), 'paypal', 'VN'), false, 'off: nothing changes');
+  // The hook must use providersFrom, not a hand-picked copy of the keys.
+  const hook = (await import('node:fs')).readFileSync(new URL('../src/app/order/payout-providers.js', import.meta.url), 'utf8');
+  assert.ok(/setProviders\(providersFrom\(data\)\)/.test(hook), 'usePayoutProviders shapes the answer with providersFrom');
+}
