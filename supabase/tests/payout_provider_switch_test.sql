@@ -7,6 +7,13 @@ create extension if not exists pgtap with schema extensions;
 
 select no_plan();
 
+-- The switches as the migrations leave them (20261117200000, 20261119300000):
+-- this file's assertions start from that, whatever the shared stack was left
+-- with by someone testing by hand. Rolled back with the rest.
+update public.payout_provider_settings set enabled = case
+    when provider = 'paypal' and region in ('china', 'elsewhere') then true
+    else false end;
+
 set local session_replication_role = replica;
 
 insert into auth.users (id, email) values

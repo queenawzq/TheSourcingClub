@@ -2700,6 +2700,56 @@ async function main() {
       await signIn(page, adminEmail, "Admin paying out");
     }
 
+    // ================= THE FIRST WITHDRAWAL METHOD, AND WITHDRAW =================
+    // A factory with money in its balance and no method adds its first one
+    // (PayPal): Withdraw appears on the card at once, without a reload
+    // (the local tester's finding, fix round 5). Hangzhou Test Knit is the
+    // demo factory with nothing set up (seed-demo.mjs); the method added here
+    // is removed again, so the demo stays as the seed left it.
+    console.log("\nTHE FIRST WITHDRAWAL METHOD, AND WITHDRAW");
+    {
+      const { data: chinaOrg } = await db.from("orgs").select("id").eq("name", "Hangzhou Test Knit").maybeSingle();
+      const { data: chinaMethods } = chinaOrg
+        ? await db.from("factory_payout_accounts").select("id").eq("org_id", chinaOrg.id) : { data: null };
+      if (!chinaOrg || (chinaMethods ?? []).length > 0) {
+        console.log("  (no Hangzhou Test Knit with nothing set up: skipped; run seed:demo)");
+      } else {
+        await signOutFully(page);
+        await page.goto(portalUrl("factory"));
+        await waitFor(page, 'input[name="email"]', 30000);
+        await page.locator('input[name="email"]').first().fill("demo-factory-china@example.com");
+        await page.locator('input[name="password"]').first().fill("demo password 8");
+        await clickButton(page, "log in");
+        await page.waitForTimeout(4000);
+        await page.goto(`${APP}/payout`);
+        await waitFor(page, '[data-testid="payout-balance"]', 25000);
+        check((await page.locator('[data-testid="withdraw-balance"]').count()) === 0, "no method yet: the card offers no Withdraw");
+        await page.locator('[data-testid="add-payout-method"]').first().click();
+        const paypalOffered = await within(page, async () => (await page.locator('[data-testid="payout-set-up-paypal"]').count()) > 0, 5000);
+        if (paypalOffered === null) await clickButton(page, "add withdrawal method");
+        await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
+        await page.locator('[data-testid="payout-set-up-paypal"]').click();
+        await waitFor(page, '[data-field="payout_paypal_email"]', 10000);
+        const firstPaypal = `e2e-first-${stamp}@example.com`;
+        await page.locator('[data-field="payout_paypal_email"]').fill(firstPaypal);
+        await page.locator('[data-field="payout_paypal_email_confirm"]').fill(firstPaypal);
+        await page.locator('[data-testid="save-payout"]').click();
+        // No reload: the card must offer Withdraw by itself once the method is saved.
+        const withdrawShown = await within(page, async () => page.evaluate(() => {
+          const button = document.querySelector('[data-testid="withdraw-balance"]');
+          return Boolean(button) && !button.disabled;
+        }), 15000);
+        check(withdrawShown !== null, "after saving its first method, the card offers Withdraw without a reload");
+        await record(page, "First method saved", "Withdraw is on the card at once");
+        const { data: firstAdded } = await db.from("factory_payout_accounts").select("id").eq("paypal_email", firstPaypal);
+        const { data: noWithdrawal } = await db.from("factory_withdrawals").select("id").eq("org_id", chinaOrg.id).in("status", ["requested", "paying"]);
+        check((noWithdrawal ?? []).length === 0, "saving a method withdrew nothing (D6)");
+        for (const added of firstAdded ?? []) await db.from("factory_payout_accounts").delete().eq("id", added.id);
+        await signOutFully(page);
+        await signIn(page, adminEmail, "Admin paying out");
+      }
+    }
+
     // ================= THE FACTORY WITHDRAWS TO STRIPE =================
     // One balance, stage 2 (20261120200000): nothing moves at approval. The
     // owner presses Withdraw, and only then are the oldest cleared owed steps

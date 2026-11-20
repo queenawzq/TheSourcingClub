@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(168);
+select plan(169);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -465,8 +465,18 @@ select is(
     where not exists (select 1 from public.order_payments p where p.id = b.payment_id and p.withdrawal_pool)
       and ((b.state = 'confirmed' and b.release_requested_at is not null
             and (b.stripe_release_started or b.provider_status in ('processing', 'failed')))
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null))),
+       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)))
+  -- Also staff's (20261120210000): withdrawals waiting to be approved or paid,
+  -- and the Needs checking rows (disputed owed steps, stuck Stripe withdrawals).
+  -- Counted from the same sources, so the identity holds whatever else the
+  -- shared stack holds.
+  + (select count(*)::integer from public.factory_withdrawals w where w.status in ('requested', 'paying'))
+  + jsonb_array_length(public.admin_balance_attention() -> 'disputed') + jsonb_array_length(public.admin_balance_attention() -> 'stuck'),
   'the overview counts every payment waiting on staff, and not money owed in a balance');
+-- And for this file's fixtures alone: the owed Balance step adds nothing.
+select ok(not exists (select 1 from jsonb_array_elements(public.admin_balance_attention() -> 'disputed') d
+                       where (d ->> 'payment_id')::uuid = pg_temp.p18_pay('order_a', 'Balance')),
+  'money owed in a balance is not on Needs checking either');
 select ok(
   exists (select 1 from public.admin_payment_board() b
            where b.payment_id = pg_temp.p18_pay('order_a', 'Balance') and b.state = 'confirmed' and b.release_requested_at is not null

@@ -364,6 +364,15 @@ for (const [why, row] of [
   assert.equal(byHand[0].note, "Reference BANKREF-1");
 }
 
+// Fix round 5: the overview's "Payments owed" opens the board on the first
+// queue it counted that has rows (payouts owed, withdrawals, needs checking),
+// or on the tab it names.
+{
+  const board = (await import("node:fs")).readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
+  assert.match(board, /\["payout", "withdrawals", "attention", "failed", "clearing"\]/, "the queues the overview counts, in order");
+  assert.match(board, /get\("tab"\)/, "and ?tab= opens the tab asked for");
+}
+
 // What each method can withdraw (D5): Stripe reaches owed money and the
 // factory's own Stripe money (D1); PayPal / Wise reach owed money and pool
 // money, never D1. The server's answers come first when the page has them.
@@ -470,6 +479,21 @@ for (const [why, row] of [
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     assert.ok(/balanceFigures\(data, null, null\), stripe_unavailable: true/.test(connect), "the balance action falls back to it when Stripe can't be read");
   }
+  // Fix round 5: one answer for owner and member. The database's figures
+  // already take Stripe's payout fee out of Paid out; the owner's card adds
+  // its Stripe account, whose payouts are net of that fee, so for a US$
+  // account the owner reads exactly what a member reads from the database.
+  {
+    // $10 withdrawn by Stripe, 33c fee, $9.67 paid out to the bank.
+    const db = tsc({ available_cents: 18500, paid_out_cents: 967, parts: { stripe_released_cents: 1000, stripe_withdrawal_fees_cents: 33 } });
+    const stripe = { available: [{ amount: 0, currency: "usd" }], pending: [], onTheirWay: [], payouts: [{ amount: 967, currency: "usd", paid: true }] };
+    const owner = balanceFigures(db, stripe, null);
+    assert.equal(owner.paid_out_cents, 967, "the owner's Paid out: $9.67, as the member's");
+    assert.equal(owner.total_cents, db.available_cents + db.paid_out_cents, "the owner's Total is the member's");
+    // Still on its way: Pending for the owner; the database (member) says Paid out. Same total.
+    const onItsWay = balanceFigures(db, { available: [], pending: [], onTheirWay: [{ amount: 967, currency: "usd" }], payouts: [{ amount: 967, currency: "usd", paid: false }] }, null);
+    assert.equal(onItsWay.total_cents, db.available_cents + db.paid_out_cents, "on its way: same Total, the money only moves figure");
+  }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
     const f = balanceFigures(db, { available: [], pending: [], onTheirWay: [], payouts: [] }, null);
@@ -499,6 +523,7 @@ for (const [why, row] of [
     const rows = [];
     const takes = [];
     const calls = [];
+    const notices = [];
     const leased = (row) => row.lease_until && Date.parse(row.lease_until) > Date.now();
     const lease = () => new Date(Date.now() + 120_000).toISOString();
     const left = (step) => step.amount - takes.filter((t) => t.payment_id === step.id && t.status !== "returned").reduce((a, t) => a + t.amount_cents, 0);
@@ -531,11 +556,16 @@ for (const [why, row] of [
         disputed_at: step.disputedRecorded ? new Date().toISOString() : null, production_orders: { order_number: step.number ?? "TSC-1" } } };
     }));
     const db = {
-      rows, takes, calls,
+      rows, takes, calls, notices,
       from(name) {
         if (name === "stripe_withdrawals") return withdrawalsTable();
         if (name === "payment_takes") return takesTable();
         if (name === "stripe_connect_accounts") return table(() => [])();
+        if (name === "notifications") {
+          const q = table(() => notices)();
+          q.insert = async (row) => { notices.push({ id: randomUUID(), ...row }); return { data: null, error: null }; };
+          return q;
+        }
         if (name === "order_payments") return table(() => steps.map((step) => ({ id: step.id, state: "confirmed", order_id: step.order,
           stripe_payment_intent_id: `pi_${step.id}`, stripe_charge_id: step.charge })))();
         throw new Error(`unexpected table ${name}`);
@@ -748,6 +778,21 @@ for (const [why, row] of [
     await withdraw(w, 15000);
     assert.deepEqual(w.stripe.transfers.slice(2).map((t) => [t.source_transaction, t.amount]), [["ch_p2", 5000], ["ch_p3", 10000]],
       "the next withdrawal takes the remainder before the newer step");
+  }
+
+  // Fix round 5: the company is told of a Stripe withdrawal, as of a PayPal
+  // one, in the same words, once.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    const requestId = randomUUID();
+    await withdraw(w, 5000, { requestId });
+    const told = w.db.notices.filter((n) => n.kind === "withdrawal" && n.subject_id === w.db.rows[0].id);
+    assert.equal(told.length, 1, "one notice for the Stripe withdrawal");
+    assert.equal(told[0].title, "Withdrawal of $50.00 requested", "in the PayPal notice's words, the amount asked");
+    assert.equal(told[0].body, "To your bank account.");
+    assert.equal(told[0].org_id, "org");
+    await withdraw(w, 5000, { requestId });
+    assert.equal(w.db.notices.filter((n) => n.kind === "withdrawal").length, 1, "pressed again: not told twice");
   }
 
   // D1 first: $30 already in the factory's Stripe account, $50 asked: only $20 is claimed and transferred.
