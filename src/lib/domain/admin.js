@@ -449,7 +449,7 @@ export async function overviewMetrics() {
     "load the marketplace overview",
   );
   const row = rows?.[0] ?? {};
-  const paymentsHref = await paymentsQueueHref(row.payments_awaiting_confirmation ?? 0);
+  const paymentsHref = await paymentsQueueHref();
 
   return {
     profilesAwaitingReview: row.profiles_awaiting_review ?? 0,
@@ -463,23 +463,42 @@ export async function overviewMetrics() {
 }
 
 /**
- * Where "Payments owed" opens: the board's queue its count is in. The count
- * is per-step payouts staff must settle (Payout owed, the board's default),
- * plus withdrawals waiting, plus what Needs checking lists; the first of
- * those with anything in it opens. Never throws: the board is the fallback.
+ * paymentsQueueHref(): where "Payments owed" opens, the board's tab that holds
+ * what it counts, in this order: Payout owed (a Stripe release an earlier
+ * version started), Failed (a Wise / PayPal payout per step that failed, or a
+ * refund Stripe refused on a cancelled order), Processing (a payout per step
+ * under way), Withdrawals (waiting or being paid), Needs checking. The same
+ * rules as admin_overview_metrics(); steps a withdrawal took or pool money are
+ * not staff's (admin_withdrawals().pool_payment_ids). Never throws: the plain
+ * board is the fallback.
  */
-async function paymentsQueueHref(total) {
+export async function paymentsQueueHref() {
   const board = "/app.html/admin/payments";
   try {
-    const [open, attention] = await Promise.all([
-      supabase.from("factory_withdrawals").select("id", { count: "exact", head: true }).in("status", ["requested", "paying"]),
+    const [rows, asked, attention] = await Promise.all([
+      supabase.rpc("admin_payment_board"),
+      supabase.rpc("admin_withdrawals"),
       supabase.rpc("admin_balance_attention"),
     ]);
-    const withdrawals = open.count ?? 0;
+    if (rows.error || asked.error || attention.error) return board;
+    const inBalance = new Set(asked.data?.pool_payment_ids ?? []);
+    let payout = 0;
+    let failed = 0;
+    let processing = 0;
+    for (const row of rows.data ?? []) {
+      if (["confirmed", "processing"].includes(row.state) && row.order_status === "cancelled" && row.refund_failed_at) failed += 1;
+      if (row.state !== "confirmed" || !row.release_requested_at || inBalance.has(row.payment_id)) continue;
+      if (row.provider_status === "processing") processing += 1;
+      else if (row.provider_status === "failed") failed += 1;
+      else if (row.stripe_release_started) payout += 1;
+    }
+    const withdrawals = (asked.data?.withdrawals ?? []).filter((w) => ["requested", "paying"].includes(w.status)).length;
     const checking = (attention.data?.disputed?.length ?? 0) + (attention.data?.stuck?.length ?? 0);
-    if (total - withdrawals - checking > 0) return board;
-    if (withdrawals > 0) return `${board}?tab=withdrawals`;
-    if (checking > 0) return `${board}?tab=needs_checking`;
+    if (payout) return board;
+    if (failed) return `${board}?tab=failed`;
+    if (processing) return `${board}?tab=processing`;
+    if (withdrawals) return `${board}?tab=withdrawals`;
+    if (checking) return `${board}?tab=needs_checking`;
     return board;
   } catch {
     return board;

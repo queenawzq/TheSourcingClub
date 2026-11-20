@@ -1038,7 +1038,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     try {
       const asked = new URLSearchParams(window.location.search).get("tab");
       // The tab's words, as a link may say them.
-      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout" }[asked] ?? asked;
+      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
     } catch {
       return null;
     }
