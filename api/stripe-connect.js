@@ -285,19 +285,20 @@ export default async function handler(request, response) {
         allocation.payouts.push(...historical.payouts);
         allocation.pending.push(...historical.pending);
       }
+      // What open withdrawals hold of the Stripe account (their own Stripe
+      // part, and owed money they transferred for a payout not yet made):
+      // on its way, not available, in the figures and in what Withdraw offers.
+      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
       const figures = { ...balanceFigures(tscBalance.data, {
         available: [...balance.available, ...(recovery?.available ?? [])],
         pending: [...balance.pending, ...(recovery?.pending ?? [])],
-        onTheirWay,
-        payouts: allocation.payouts,
+        held: heldRows(balance.available, heldElsewhere),
       }, displayFx), stripe_unavailable: false };
       // What Withdraw can offer by each road, in US$: Stripe reaches owed
       // steps paid by card and the money already in this Stripe account
-      // (an estimate when that is in another currency); PayPal and Wise reach
-      // owed steps and pool money, never the Stripe account's.
-      // Less what another open withdrawal holds of it (its own Stripe part,
-      // and owed money it transferred for its payout that has not gone yet).
-      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
+      // (an estimate when that is in another currency), less what is held;
+      // PayPal and Wise reach owed steps and pool money, never the Stripe
+      // account's.
       let inStripeUsd = 0;
       let reachEstimated = false;
       for (const entry of balance.available) {
@@ -454,13 +455,12 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
       allocation.payouts.push(...historical.payouts);
     }
+    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
     const figures = { ...balanceFigures(fresh.error ? tsc.data : fresh.data, {
       available: [...balance.available, ...(recovery?.available ?? [])],
       pending: [...balance.pending, ...(recovery?.pending ?? [])],
-      onTheirWay,
-      payouts: allocation.payouts,
+      held: heldRows(balance.available, heldElsewhere),
     }, displayFx), stripe_unavailable: false };
-    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
     let inStripeUsd = 0;
     let estimated = false;
     for (const entry of balance.available) {
@@ -481,6 +481,13 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: true },
     });
   }
+}
+
+/** What open withdrawals hold, per currency, as { amount, currency } rows, never more than is available. */
+function heldRows(available, held) {
+  return (available ?? []).map(({ amount, currency }) => ({
+    amount: Math.min(Number(amount) || 0, held[String(currency).toLowerCase()] ?? 0), currency,
+  })).filter((row) => row.amount > 0);
 }
 
 /** The one balance from the database alone, for when Stripe cannot be read; null if that fails too. */

@@ -594,10 +594,23 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
     const { data: checks } = await db.from("payment_charge_checks").select("payment_id, checked_at")
       .in("payment_id", owed.map((row) => row.id));
     const last = new Map((checks ?? []).map((row) => [row.payment_id, Date.parse(row.checked_at)]));
-    // A charge read in the last 5 minutes is not read again.
+    // Steps an open withdrawal holds are read first, on every read the
+    // company's once-a-minute claim allows: staff could pay them out. Any
+    // other step read in the last 5 minutes is not read again.
+    let held = new Set();
+    try {
+      const { data: heldRows } = await db.from("payment_takes")
+        .select("payment_id, factory_withdrawals!inner(status)")
+        .eq("org_id", orgId).eq("status", "held").eq("road", "pool")
+        .in("factory_withdrawals.status", ["requested", "paying"]);
+      held = new Set((heldRows ?? []).map((row) => row.payment_id));
+    } catch {
+      // Read as no step held: the least recently checked still go first.
+    }
     const fresh = Date.now() - 5 * 60 * 1000;
-    const due = owed.filter((row) => !((last.get(row.id) ?? 0) > fresh))
-      .sort((a, b) => (last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)).slice(0, limit);
+    const due = owed.filter((row) => held.has(row.id) || !((last.get(row.id) ?? 0) > fresh))
+      .sort((a, b) => (held.has(b.id) - held.has(a.id)) || ((last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)))
+      .slice(0, limit);
     const read = await Promise.all(due.map(async (row) => {
       try {
         const charge = await stripe.charges.retrieve(row.stripe_charge_id);

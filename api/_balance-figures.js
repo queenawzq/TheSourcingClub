@@ -44,8 +44,10 @@ const converted = (rows) => (rows ?? []).some((row) => String(row.currency ?? ""
 
 /**
  * @param tsc       factory_balance(org) as the database returned it
- * @param stripe    { available, pending } from Stripe (the money in the
- *                  factory's own Stripe account now), or null. Other keys
+ * @param stripe    { available, pending, held? } from Stripe (the money in the
+ *                  factory's own Stripe account now; `held`, rows of
+ *                  { amount, currency }, is the part of `available` an open
+ *                  withdrawal holds, counted in Pending), or null. Other keys
  *                  (onTheirWay, payouts) are ignored: the database counts
  *                  every payout, on its way or arrived, in the US dollars it
  *                  took from the balance.
@@ -68,9 +70,15 @@ export function balanceFigures(tsc, stripe, displayFx) {
     next_cleared_at: tsc?.next_cleared_at ?? null,
     withdrawals: tsc?.withdrawals ?? [],
   };
+  // Money in the Stripe account an open withdrawal holds (its own part, or
+  // owed money transferred for its payout) is on its way: Pending.
+  const heldCents = stripe ? usdTotal(stripe.held ?? [], displayFx) : 0;
+  const availableRaw = stripe ? usdTotal(stripe.available, displayFx) : null;
+  const pendingRaw = stripe ? usdTotal(stripe.pending, displayFx) : null;
+  const heldKnown = heldCents == null ? 0 : Math.min(heldCents, availableRaw ?? 0);
   const parts = stripe ? {
-    available_cents: usdTotal(stripe.available, displayFx),
-    pending_cents: usdTotal(stripe.pending, displayFx),
+    available_cents: availableRaw == null ? null : availableRaw - heldKnown,
+    pending_cents: pendingRaw == null ? null : pendingRaw + heldKnown,
     // Kept for readers of the old shape: the database now holds these.
     in_transit_cents: 0,
     paid_out_cents: 0,
