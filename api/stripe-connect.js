@@ -67,7 +67,7 @@ async function neverUsed({ stripe, db, orgId, existing, upgrade }) {
 const describe = (method) => `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`;
 
 /** A withdrawal may make several Stripe calls in a row (claim, transfers, fee, payout): room for all of them. */
-export const config = { maxDuration: 90 };
+export const config = { maxDuration: 60 };
 
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
