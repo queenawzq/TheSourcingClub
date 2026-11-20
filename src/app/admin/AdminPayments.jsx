@@ -49,6 +49,7 @@ import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
+import { boardSections, paidByBank, paidByPaypal, paidByStripe, paidByWise, providerFailed, providerFor, underway } from "../../shared/payments-board-sections.mjs";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
@@ -71,11 +72,6 @@ const ROW_TIME = {
   held: (row) => row.confirmed_at,
 };
 
-/** Includes a payout Stripe was asked for and may have made: only Retry finds out, so no other rail is offered. */
-const paidByStripe = (row) => (row.factory_stripe_ready || row.stripe_release_started) && row.stripe_payment_intent_id;
-const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
-const paidByBank = (row) => !paidByStripe(row) && !paidByPaypal(row);
-const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
 /** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
 const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
 /**
@@ -83,24 +79,9 @@ const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !r
  * the row above, which has no other way off the board.
  */
 const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_id) && row.payout_has_number) || stripeCantPay(row));
-/**
- * Which provider the server pays this row through, if any. A payout already
- * under way stays with the provider paying it, whatever the factory's method
- * is now, so staff can still check it.
- */
-const providerUnderway = (row) => (row.provider_status === "processing" && ["wise", "paypal"].includes(row.provider) ? row.provider : null);
-const providerFor = (row) => providerUnderway(row) ?? (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
 /** The board's word once a press sent money: the row itself moves to Processing. */
 const SentContext = createContext(null);
-/** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
-const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
-/**
- * Wise or PayPal's last attempt failed (returned, refused) and the factory has
- * not changed its details since: listed under Failed, with Pay again.
- */
-const providerFailed = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "failed"
-  && !(row.payout_changed_at && attempt.updated_at && new Date(row.payout_changed_at) > new Date(attempt.updated_at));
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -778,36 +759,8 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
   );
 }
 
-/**
- * Splits the board's rows into its sections. A payout Wise or PayPal is
- * paying now (its attempt `processing`) is under Processing, not Payout owed.
- * The board no longer shows bank-wire claims (`sent`) or payments refunded
- * after payout (`released`): John, Nov 7.
- */
-export function boardSections(rows, attempts = new Map(), pool = new Set()) {
-  const cancelled = (row) => row.order_status === "cancelled";
-  const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
-  // Approved money waits in the factory's balance and is paid when the
-  // factory withdraws (the Withdrawals tab). Still staff's, whatever the
-  // factory's method or details are now (the overview counts the same rows):
-  // a Stripe release an earlier version started (Retry checks Stripe), and a
-  // Wise or PayPal payout per step whose latest attempt is under way or failed.
-  const staffs = (row) => Boolean(row.stripe_release_started)
-    || ["processing", "failed"].includes(attempts.get(row.payment_id)?.status ?? row.provider_status);
-  const inBalance = (row) => pool.has(row.payment_id) || !staffs(row);
-  const moving = (row) => underway(row, attempts.get(row.payment_id));
-  const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
-  return {
-    payout: owed.filter((row) => !moving(row) && !refused(row) && !inBalance(row)),
-    // A cancelled order's held money is refunded automatically; only a refund
-    // Stripe refused (20261108300000) needs a person.
-    failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
-      || (["confirmed", "processing"].includes(row.state) && cancelled(row) && row.refund_failed_at))
-      .concat(owed.filter(refused)),
-    clearing: [...rows.filter((row) => row.state === "processing" && !cancelled(row)), ...owed.filter(moving)],
-    held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row)),
-  };
-}
+// The sections, one rule with the overview's link (src/shared/payments-board-sections.mjs).
+export { boardSections };
 
 export default function AdminPayments() {
   const { signOut } = useAuth();

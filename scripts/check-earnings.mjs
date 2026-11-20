@@ -465,7 +465,7 @@ assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import
 }
 
 // The same rules as the staff board's buckets. A change there must change here.
-const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
+const board = readFileSync(new URL("../src/shared/payments-board-sections.mjs", import.meta.url), "utf8");
 for (const rule of [
   // Owed, whichever tab draws it: a Wise or PayPal payout underway is shown under Processing.
   'const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
