@@ -390,6 +390,11 @@ assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still 
   assert.ok(page.includes('rpc("factory_balance", { target_org: org.id, target_client: client })'), "a client's figures from the same function");
   assert.ok(page.includes("figures={earningsError ? null : allFigures}"), "the card and the figures read the same answer");
   assert.ok(!/earningsSummaryFor|handPaidFigures|inBalance/.test(page), "no figure is summed from payments in the browser");
+  // Members and factories with no Stripe account: clearing dates are asked for
+  // first (best effort, at most once a minute), then the balance is read.
+  assert.ok(/clearingPath\.current && Date\.now\(\) - clearingAskedAt\.current > 60_000/.test(page)
+    && page.includes("await refreshClearingDates(org.id).catch(() => null);")
+    && page.indexOf("refreshClearingDates(org.id)") < page.indexOf('rpc("factory_balance", { target_org: org.id })'), "clearing dates are refreshed before factory_balance on the non-Stripe path");
 }
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.

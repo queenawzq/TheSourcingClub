@@ -13,7 +13,7 @@ import { payoutUsdMinor } from "../../lib/payout-display.mjs";
  * these details. No screen here names Stripe.
  */
 import PaymentHelp from "./PaymentHelp.jsx";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   CardCvcElement,
@@ -29,7 +29,7 @@ import { can } from "../../lib/domain/org.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
 import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
-import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, listSavedCards, refreshClearingDates, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
@@ -185,6 +185,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     setStripeFallback(fallback);
   }, []);
   const [stripeStatus, setStripeStatus] = useState("loading");
+  // Where nobody reads Stripe here (a member, or no Stripe account: the card
+  // says "none"), the page asks the server to record its card payments'
+  // clearing dates before reading the balance; at most once a minute.
+  const clearingPath = useRef(false);
+  const clearingAskedAt = useRef(0);
   // Whether the payout card has its final shape (it knows how the factory is
   // paid, from our database). Figures below it wait for that, never for
   // Stripe, so the card settling can only move placeholders.
@@ -240,6 +245,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       "load your payment orders",
     );
     const orderById = new Map(orders.map((order) => [order.id, order]));
+    if (clearingPath.current && Date.now() - clearingAskedAt.current > 60_000) {
+      clearingAskedAt.current = Date.now();
+      // Best effort: the figures are read whatever it answers.
+      await refreshClearingDates(org.id).catch(() => null);
+    }
     const figures = await supabase.rpc("factory_balance", { target_org: org.id });
     if (figures.error) throw new Error("Couldn't load your balance. Try again shortly.");
 
@@ -262,6 +272,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     setBalanceFigures(figures.data);
     setEarningsError(null);
   }, [org.id]);
+
+  // The card has said nobody reads Stripe here: read again, with the dates asked for first.
+  useEffect(() => {
+    if (stripeStatus !== "none" || clearingPath.current) return;
+    clearingPath.current = true;
+    loadEarnings().catch(setEarningsError);
+  }, [stripeStatus, loadEarnings]);
 
   // One client's figures: the same function, narrowed to that brand's orders.
   const loadClientFigures = useCallback(async () => {
