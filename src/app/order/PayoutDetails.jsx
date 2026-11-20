@@ -183,9 +183,14 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // What the balance answered when Stripe could not be read: the database's
   // figures, its Stripe part left out (stripe-connect `balance`, 502).
   const [stripeFallback, setStripeFallback] = useState(null);
+  // When each answer came: the newer one wins (figuresAsOf), so a balance read
+  // after a withdrawal is never mixed back with an older database read.
+  const [stripeAt, setStripeAt] = useState(0);
+  const [databaseAt, setDatabaseAt] = useState(0);
   const balanceChanged = useCallback((value, fallback = null) => {
     setStripeBalance(value);
     setStripeFallback(fallback);
+    setStripeAt(Date.now());
   }, []);
   const [stripeStatus, setStripeStatus] = useState("loading");
   // Where nobody reads Stripe here (a member, or no Stripe account: the card
@@ -259,9 +264,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       clearingAskedAt.current = Date.now();
       try {
         setViaFigures((await connectAction(org.id, "figures")).figures ?? null);
+        setStripeAt(Date.now());
       } catch (failure) {
         // Stripe unreachable: the database's figures, as the server sent them.
         setViaFigures(failure?.details?.figures ?? null);
+        setStripeAt(Date.now());
       }
     }
     const [figures, toBank] = await Promise.all([
@@ -289,6 +296,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
     setBalanceFigures(figures.data);
+    setDatabaseAt(Date.now());
     setStripeWithdrawals(toBank.data ?? []);
     setEarningsError(null);
   }, [org.id]);
@@ -397,12 +405,15 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // not be read, what the server answered without it). It waits for the card
   // while that is reading Stripe, so the figures never jump.
   const stripeReading = !accountsError && (!cardSettled || stripeStatus === "loading" || stripeStatus === "slow");
+  // The server's full answer when it is the newer read; else the newer
+  // database read with that answer's Stripe part kept.
+  const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));
   const allFigures = earningsShown && !stripeReading
-    ? stripeStatus === "ready" ? withStripePart(balanceFigures, stripeBalance?.figures)
-      : stripeStatus === "failed" ? withStripePart(balanceFigures, stripeFallback)
+    ? stripeStatus === "ready" ? figuresAsOf(stripeBalance?.figures)
+      : stripeStatus === "failed" ? figuresAsOf(stripeFallback)
       // Waits for the figures action's first answer, so the figures never jump.
       : viaFigures === undefined && clearingPath.current ? null
-      : withStripePart(balanceFigures, viaFigures ?? null)
+      : figuresAsOf(viaFigures ?? null)
     : null;
   const shownFigures = client === "All clients" ? allFigures
     : allFigures && clientFigures?.client === client ? clientFigures.figures : null;

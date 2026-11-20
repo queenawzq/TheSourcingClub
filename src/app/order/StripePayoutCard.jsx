@@ -565,6 +565,14 @@ export default function StripePayoutCard({
       // Signed out meanwhile (in another tab): say so, not "try again".
       const signedOut = failure?.status === 401 || !(await supabase.auth.getSession()).data?.session;
       setError(signedOut ? new Error(SIGN_IN_ENDED) : failure);
+      // Refused ("You can withdraw up to $X."), perhaps because another owner
+      // withdrew first: read the balance again at once, Stripe part included,
+      // so the card and this dialog's Available show what is left now.
+      if (!signedOut) {
+        setFreshReach(null);
+        fromBalance.load();
+        await load().catch(() => null);
+      }
     } finally {
       setBusy(false);
     }

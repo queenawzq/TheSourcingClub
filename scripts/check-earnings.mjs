@@ -294,6 +294,15 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     && form.includes('data-testid="withdrawal-on-hold">On hold</span>'), "On hold for the owner and the member");
 }
 
+// Round 11: after any withdrawal answer, refusals included, the balance is read
+// again at once, and the newer answer wins over an older database read.
+{
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(/setFreshReach\(null\);\s*fromBalance\.load\(\);\s*await load\(\)\.catch/.test(cardCode), "a refused withdrawal re-reads the balance, Stripe part included");
+  assert.ok(page.includes("const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));"), "the newer read wins");
+}
+
 // Fix round 5 (local tester).
 {
   // M5: a disputed step is On hold, never "Available <day>", on both pages.
