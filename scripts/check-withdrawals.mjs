@@ -542,13 +542,56 @@ for (const [why, row] of [
   assert.equal(byHand[0].note, "Reference BANKREF-1");
 }
 
-// Fix round 5: the overview's "Payments owed" opens the board on the first
-// queue it counted that has rows (payouts owed, withdrawals, needs checking),
-// or on the tab it names.
+// The overview's "Payments owed" links to the board's tab that holds what it
+// counts (paymentsQueueHref, src/lib/domain/admin.js): Payout owed if it has
+// rows, else Failed, else Processing, else Withdrawals, else Needs checking;
+// the plain board when nothing is there or a read fails. The board itself
+// opens on Payout owed, as on main; only ?tab= opens another tab.
+// (Changed Nov 20: the board used to pick its own first tab with rows.)
 {
-  const board = (await import("node:fs")).readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
-  assert.match(board, /\["payout", "withdrawals", "attention", "failed", "clearing"\]/, "the queues the overview counts, in order");
-  assert.match(board, /get\("tab"\)/, "and ?tab= opens the tab asked for");
+  const fs = await import("node:fs");
+  const board = fs.readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
+  assert.match(board, /get\("tab"\)/, "?tab= opens the tab asked for");
+  assert.match(board, /\? chosen : "payout"/, "and with none asked for, the board opens on Payout owed");
+  assert.doesNotMatch(board, /firstWithRows/, "the board no longer picks a tab of its own");
+  const admin = fs.readFileSync(new URL("../src/lib/domain/admin.js", import.meta.url), "utf8");
+  const start = admin.indexOf("export async function paymentsQueueHref");
+  const end = admin.indexOf("\n}\n", start) + 2;
+  // Run the real function against a fake client (the module itself needs the browser build).
+  // eslint-disable-next-line no-new-func
+  const paymentsQueueHref = new Function("supabase", `${admin.slice(start, end).replace("export ", "")}; return paymentsQueueHref;`);
+  const BOARD = "/app.html/admin/payments";
+  const owed = (over = {}) => ({ payment_id: `p${Math.random()}`, state: "confirmed", release_requested_at: "x", order_status: "active", ...over });
+  const hrefFor = ({ rows = [], withdrawals = [], pool = [], disputed = [], stuck = [], fail = null } = {}) => paymentsQueueHref({
+    rpc: async (name) => {
+      if (fail === name) return { data: null, error: { message: "down" } };
+      if (fail === "throw") throw new Error("offline");
+      if (name === "admin_payment_board") return { data: rows, error: null };
+      if (name === "admin_withdrawals") return { data: { withdrawals, pool_payment_ids: pool }, error: null };
+      if (name === "admin_balance_attention") return { data: { disputed, stuck }, error: null };
+      throw new Error(`unexpected ${name}`);
+    },
+  })();
+  const all = {
+    rows: [owed({ stripe_release_started: true }), owed({ provider_status: "failed" }), owed({ provider_status: "processing" })],
+    withdrawals: [{ status: "requested" }], disputed: [{}], stuck: [{}],
+  };
+  assert.equal(await hrefFor(all), BOARD, "Payout owed first, when it has rows");
+  assert.equal(await hrefFor({ ...all, rows: all.rows.slice(1) }), `${BOARD}?tab=failed`, "else Failed");
+  assert.equal(await hrefFor({ rows: [owed({ state: "processing", order_status: "cancelled", refund_failed_at: "x" })] }), `${BOARD}?tab=failed`,
+    "a cancelled order's refund Stripe refused is under Failed");
+  assert.equal(await hrefFor({ ...all, rows: all.rows.slice(2) }), `${BOARD}?tab=processing`, "else Processing");
+  assert.equal(await hrefFor({ ...all, rows: [] }), `${BOARD}?tab=withdrawals`, "else Withdrawals");
+  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], disputed: [{}] }), `${BOARD}?tab=needs_checking`,
+    "else Needs checking (a finished withdrawal is not waiting)");
+  assert.equal(await hrefFor({}), BOARD, "nothing waiting: the board");
+  assert.equal(await hrefFor({ rows: [owed()], pool: [] }), BOARD, "owed money waiting in a balance is no queue of staff's: the board");
+  const pooled = owed({ provider_status: "failed" });
+  assert.equal(await hrefFor({ rows: [pooled], pool: [pooled.payment_id], stuck: [{}] }), `${BOARD}?tab=needs_checking`,
+    "a step in a withdrawal's balance is not counted under Failed");
+  for (const fail of ["admin_payment_board", "admin_withdrawals", "admin_balance_attention", "throw"]) {
+    assert.equal(await hrefFor({ ...all, fail }), BOARD, `a failed read (${fail}): the plain board link`);
+  }
 }
 
 // Fix round 6: a Stripe payout is on its way (Pending) until its arrival day,
