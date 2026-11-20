@@ -36,7 +36,7 @@ insert into public.orgs (id, type, name, slug) values
   ('cb2b0000-0000-0000-0000-00000000000b', 'brand', 'UW2 Brand', 'pgtap-uw2-brand');
 insert into public.orgs (id, type, name, slug)
 select ('cb2b0000-0000-0000-0000-0000000000e' || n)::uuid, 'factory', 'UW2 Factory ' || n, 'pgtap-uw2-factory-' || n
-  from generate_series(1, 4) n;
+  from generate_series(1, 7) n;
 insert into public.org_members (org_id, user_id, role, permissions)
 select ('cb2b0000-0000-0000-0000-0000000000e' || n)::uuid, ('cb2a0000-0000-0000-0000-00000000000' || n)::uuid, 'owner', '{}'
   from generate_series(1, 4) n;
@@ -45,11 +45,11 @@ insert into public.org_members (org_id, user_id, role, permissions) values
 
 insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total)
 select ('cb2c0000-0000-0000-0000-00000000000' || n)::uuid, 'cb2b0000-0000-0000-0000-00000000000b', 'UW2 request ' || n, 'awarded', 'invited_only', 100
-  from generate_series(1, 4) n;
+  from generate_series(1, 7) n;
 insert into public.quotes (id, rfq_id, factory_org_id, status, unit_price_cents, production_quantity, submitted_at)
 select ('cb2c1000-0000-0000-0000-00000000000' || n)::uuid, ('cb2c0000-0000-0000-0000-00000000000' || n)::uuid,
        ('cb2b0000-0000-0000-0000-0000000000e' || n)::uuid, 'accepted', 100, 1, now()
-  from generate_series(1, 4) n;
+  from generate_series(1, 7) n;
 insert into public.production_orders
   (id, rfq_id, quote_id, brand_org_id, factory_org_id, unit_price_cents, status, schedule_brand_agreed_at, schedule_brand_agreed_by,
    production_quantity, bulk_subtotal_cents, sample_subtotal_cents, order_total_cents, deposit_pct, balance_pct, order_number)
@@ -57,7 +57,7 @@ select ('cb2d0000-0000-0000-0000-00000000000' || n)::uuid, ('cb2c0000-0000-0000-
        ('cb2c1000-0000-0000-0000-00000000000' || n)::uuid, 'cb2b0000-0000-0000-0000-00000000000b',
        ('cb2b0000-0000-0000-0000-0000000000e' || n)::uuid, 1000000, 'active', now() - interval '60 days',
        'cb2a0000-0000-0000-0000-000000000005', 1, 1000000, 0, 1000000, 50, 50, 'UW2-' || n
-  from generate_series(1, 4) n;
+  from generate_series(1, 7) n;
 
 -- Steps: (n, s, amount, approved). Approved ones are owed and cleared.
 create temp table uw2_steps (n int, s int, amount bigint, approved boolean) on commit drop;
@@ -69,7 +69,10 @@ insert into uw2_steps values
   (2, 1, 10000, true),   -- F7 / F4 stuck: the Stripe road
   (3, 1, 10000, false),  -- N3: approved below, incomplete method
   (4, 1, 10000, false),  -- N3: approved below, no method
-  (4, 2, 10000, false);  -- N1: funded below
+  (4, 2, 10000, false),  -- N1: funded below
+  (5, 1, 10000, false),  -- N3: Payoneer only
+  (6, 1, 10000, false),  -- N3: PayPal switched off
+  (7, 1, 10000, false);  -- N3: a Stripe account still verifying
 insert into public.order_milestones (id, order_id, kind, title, amount_cents, state, sort, completed_at)
 select ('cb2e000' || s || '-0000-0000-0000-00000000000' || n)::uuid, ('cb2d0000-0000-0000-0000-00000000000' || n)::uuid,
        'approval_and_payment', 'UW2 step ' || s, amount,
@@ -98,6 +101,12 @@ values ('cb290000-0000-0000-0000-000000000003', 'cb2b0000-0000-0000-0000-0000000
         'chinese_local_business', 'CNY', 'accountNumber', '{}', '2026-11-01', null);
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active, payouts_enabled, details_submitted)
 values ('cb2b0000-0000-0000-0000-0000000000e2', 'acct_pgtap_uw2_2', 'US', true, true, true);
+insert into public.factory_payout_accounts (id, org_id, method, payoneer_email, is_primary, details_changed_at) values
+  ('cb290000-0000-0000-0000-000000000005', 'cb2b0000-0000-0000-0000-0000000000e5', 'payoneer', 'pgtap-uw2-payoneer@example.com', true, '2026-11-01');
+insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, details_changed_at) values
+  ('cb290000-0000-0000-0000-000000000006', 'cb2b0000-0000-0000-0000-0000000000e6', 'paypal', 'pgtap-uw2-off@example.com', true, '2026-11-01');
+insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active, payouts_enabled, details_submitted)
+values ('cb2b0000-0000-0000-0000-0000000000e7', 'acct_pgtap_uw2_7', 'US', false, false, false);
 
 -- Legacy per-step attempts on h1.
 update public.order_payments set payout_fee_cents = 2000 where id = 'cb2f0001-0000-0000-0000-000000000001';
@@ -118,7 +127,7 @@ values ('cb2a2000-0000-0000-0000-000000000001', 'cb2b0000-0000-0000-0000-0000000
 insert into public.stripe_withdrawals (id, org_id, stripe_account_id, request_key, request_id, amount_minor, currency, usd_cents, state)
 select ('cb280000-0000-0000-0000-00000000000' || k)::uuid, 'cb2b0000-0000-0000-0000-0000000000e2', 'acct_pgtap_uw2_2',
        'pgtap-uw2-sw-' || k, gen_random_uuid(), 100, 'USD', 100, 'claimed'
-  from generate_series(1, 5) k;
+  from generate_series(1, 6) k;
 set local session_replication_role = origin;
 
 -- F3: the $1,000 step's PayPal attempt (its $20 fee recorded before PayPal was
@@ -310,6 +319,42 @@ select ok(exists (select 1 from jsonb_array_elements(public.admin_balance_attent
   'F4: and listed on the board with what it holds');
 reset role;
 
+-- F4: a Stripe withdrawal refused because TSC's Stripe balance was short is
+-- staff's to see (refusal_cause = 'platform_short').
+set local session_replication_role = replica;
+update public.stripe_withdrawals set state = 'refused', reason = 'x', refusal_cause = 'platform_short' where id = pg_temp.sw(6);
+set local session_replication_role = origin;
+select pg_temp.act_as('06'); set local role authenticated;
+select ok(exists (select 1 from jsonb_array_elements(public.admin_balance_attention() -> 'stuck') x
+                   where (x ->> 'withdrawal_id')::uuid = pg_temp.sw(6) and x ->> 'refusal_cause' = 'platform_short'),
+  'F4: a withdrawal refused for a short platform balance is on the staff board');
+reset role;
+
+-- ===========================================================================
+-- F2 (database side). A PayPal withdrawal whose step is found disputed before
+-- it is paid: staff cannot approve it; declining returns its parts.
+-- ===========================================================================
+select set_config('tsc.uw2_f2', (select (public.request_withdrawal(pg_temp.org(1), 10000, 'cb290000-0000-0000-0000-000000000001')).id::text
+  from (select pg_temp.act_as('01')) a), true);
+reset role;
+select is((select string_agg(distinct payment_id::text, ',') from public.payment_takes
+            where factory_withdrawal_id = current_setting('tsc.uw2_f2')::uuid and status = 'held'), pg_temp.pay(1, 4)::text,
+  'F2: the withdrawal holds the clean step');
+select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, true)', pg_temp.pay(1, 4))),
+  'the server finds the brand''s charge disputed before paying');
+select throws_ok($$
+  select pg_temp.act_as('06'); set local role authenticated;
+  select public.claim_withdrawal(current_setting('tsc.uw2_f2')::uuid);
+$$, '22023', null, 'F2: staff cannot approve it');
+reset role;
+select pg_temp.act_as('06'); set local role authenticated;
+select lives_ok($$select public.decline_withdrawal(current_setting('tsc.uw2_f2')::uuid, 'The brand disputed this payment.')$$, 'F2: staff decline it');
+reset role;
+select is((select string_agg(distinct status, ',') from public.payment_takes where factory_withdrawal_id = current_setting('tsc.uw2_f2')::uuid),
+  'returned', 'F2: declining returns its parts');
+select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(1, 4))),
+  'the dispute is won');
+
 -- ===========================================================================
 -- N3 / N1. Notification words.
 -- ===========================================================================
@@ -332,6 +377,18 @@ select ok(pg_temp.note(3, 'milestone_approved', pg_temp.step(3, 1)) not like '%A
   'N3: a factory with a saved (incomplete) method is not asked to add one');
 select ok(pg_temp.note(4, 'milestone_approved', pg_temp.step(4, 1)) like '%Add a withdrawal method to receive earnings.%',
   'N3: a factory with no saved method is');
+select pg_temp.approve(5, 1);
+select ok(pg_temp.note(5, 'milestone_approved', pg_temp.step(5, 1)) like '%Add a withdrawal method to receive earnings.%',
+  'N3: Payoneer only (no longer a way to withdraw): asked to add a method');
+update public.payout_provider_settings set enabled = false where provider = 'paypal';
+select pg_temp.approve(6, 1);
+update public.payout_provider_settings set enabled = true where provider = 'paypal';
+select ok(pg_temp.note(6, 'milestone_approved', pg_temp.step(6, 1)) not like '%Add a withdrawal method%',
+  'N3: a saved PayPal switched off for now: not asked to add a method');
+select pg_temp.approve(7, 1);
+select ok(pg_temp.note(7, 'milestone_approved', pg_temp.step(7, 1)) like '%added to your balance%'
+      and pg_temp.note(7, 'milestone_approved', pg_temp.step(7, 1)) not like '%Add a withdrawal method%',
+  'N3: a Stripe account still verifying: not asked to add a method');
 
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_funded(%L, %L, %L, %L, %s)', pg_temp.pay(4, 2), 'ch_pgtap_uw2_4_2', 'card', 'Visa ···4242', 10000)),

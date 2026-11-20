@@ -139,6 +139,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /disputed/i.test(failure.message));
     assert.equal(w.paid.length, 0, "F2: a disputed charge behind the withdrawal: the provider is never asked");
     assert.deepEqual(x.rpcs.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "s2", disputed: true }, "and the dispute is recorded");
+    assert.equal(w.recorded.at(-1)?.outcome, "requeue", "the withdrawal goes back to waiting (staff then decline it)");
   }
   // A dispute TSC won does not stop it.
   {
@@ -160,6 +161,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /refunded/i.test(failure.message));
     assert.equal(w.paid.length, 0, "F2: a refunded charge behind the withdrawal: the provider is never asked");
     assert.ok(recorded, "and the refund is recorded");
+    assert.equal(w.recorded.at(-1)?.outcome, "requeue", "back to waiting");
   }
   // Stripe can't be read: nothing sent, said in words.
   {
@@ -752,6 +754,7 @@ for (const [why, row] of [
     await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
     assert.equal(w.stripe.transfers.length, 0, "platform short: no transfer");
     assert.equal(held(w).length, 0, "and the claim is returned");
+    assert.equal(w.db.rows[0].refusal_cause, "platform_short", "and the row says why, for the staff board");
   }
 
   // Not verified for transfers: owed money needed, refused, nothing claimed.
