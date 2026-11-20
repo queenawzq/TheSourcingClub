@@ -192,5 +192,31 @@ select ok(exists (select 1 from public.notifications where org_id = 'ce8b0000-00
                    and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and kind = 'payment_confirmed'),
   'R9: the brand is still told its payment is funded');
 
+-- ===========================================================================
+-- Fix round 10 (20261120290000): Needs checking says who asked for each
+-- stuck Stripe withdrawal (name, else email); still staff only.
+-- ===========================================================================
+set local session_replication_role = replica;
+insert into public.user_profiles (id, email, full_name) values
+  ('ce8a0000-0000-0000-0000-000000000001', 'pgtap-r8-01@example.com', 'R8 Owner'),
+  ('ce8a0000-0000-0000-0000-000000000003', 'pgtap-r8-03@example.com', '  ')
+on conflict (id) do update set email = excluded.email, full_name = excluded.full_name;
+insert into public.stripe_withdrawals (id, org_id, stripe_account_id, request_key, request_id, amount_minor, currency, usd_cents, state,
+                                       requested_by, created_at, updated_at, lease_until)
+values ('ce880000-0000-0000-0000-000000000007', 'ce8b0000-0000-0000-0000-0000000000e1', 'acct_pgtap_r8', 'pgtap-r8-sw-7', gen_random_uuid(),
+        100, 'USD', 100, 'claimed', 'ce8a0000-0000-0000-0000-000000000001', now() - interval '1 hour', now() - interval '1 hour', null),
+       ('ce880000-0000-0000-0000-000000000008', 'ce8b0000-0000-0000-0000-0000000000e1', 'acct_pgtap_r8', 'pgtap-r8-sw-8', gen_random_uuid(),
+        100, 'USD', 100, 'claimed', 'ce8a0000-0000-0000-0000-000000000003', now() - interval '1 hour', now() - interval '1 hour', null);
+set local session_replication_role = origin;
+select pg_temp.act_as('02'); set local role authenticated;
+select is((select x ->> 'requested_by_name' from jsonb_array_elements(public.admin_balance_attention() -> 'stuck') x
+            where x ->> 'withdrawal_id' = 'ce880000-0000-0000-0000-000000000007'), 'R8 Owner', 'R10: a stuck row names who asked');
+select is((select x ->> 'requested_by_name' from jsonb_array_elements(public.admin_balance_attention() -> 'stuck') x
+            where x ->> 'withdrawal_id' = 'ce880000-0000-0000-0000-000000000008'), 'pgtap-r8-03@example.com', 'R10: by email when there is no name');
+reset role;
+select pg_temp.act_as('01'); set local role authenticated;
+select throws_ok($$select public.admin_balance_attention()$$, '42501', null, 'R10: still staff only');
+reset role;
+
 select * from finish();
 rollback;

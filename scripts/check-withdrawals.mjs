@@ -279,6 +279,33 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.deepEqual(calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-d", disputed: false }, "a won dispute is not a hold");
 }
 
+// Fix round 10 (c): a balance read records the clearing date of the few
+// payments with none, and a dispute Stripe already holds on their charges.
+{
+  const { ensureFundsAvailableFor } = await import("../api/_stripe.js");
+  const calls = [];
+  const payment = { id: "pay-new", state: "confirmed", stripe_charge_id: "ch_new", funds_available_at: null };
+  const query = (rows) => {
+    const q = { select: () => q, eq: () => q, in: () => q, not: () => q, is: () => q, order: () => q, limit: () => q,
+      maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+      then: (resolve, reject) => Promise.resolve({ data: rows, error: null }).then(resolve, reject) };
+    return q;
+  };
+  const db = {
+    from: () => query([payment]),
+    rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
+  };
+  const stripe = {
+    charges: { retrieve: async (id) => ({ id, disputed: true, dispute: "du_n", balance_transaction: { available_on: 1795478400 } }) },
+    balanceTransactions: { retrieve: async () => ({ available_on: 1795478400 }) },
+    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
+  };
+  await ensureFundsAvailableFor({ stripe, db, orgId: "org-1" });
+  assert.ok(calls.some(([name, args]) => name === "record_payment_funds_available" && args.target_payment === "pay-new"), "R10: the clearing date is recorded");
+  assert.deepEqual(calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-new", disputed: true },
+    "R10: and the dispute Stripe holds on the charge");
+}
+
 // (d) A Stripe withdrawal records who asked from the token's subject when the
 // auth server gives no user for it (the database had just accepted it).
 {
