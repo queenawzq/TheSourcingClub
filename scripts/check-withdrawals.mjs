@@ -553,6 +553,38 @@ for (const [why, row] of [
     assert.equal(owner.paid_out_cents, 1960 - 1001 - 200, "taken out of Paid out, where the server counted it");
     assert.deepEqual(owner.withdrawals, db.withdrawals, "the server's withdrawals list passes through");
   }
+  // Fix round 8b: at an indicative rate, the money in the factory's Stripe
+  // account can read more than the database counted as sent. Paid out never
+  // goes below zero; the excess comes off the Stripe part of Available, then
+  // of Pending; the total stays the server's.
+  {
+    const db = tsc({ available_cents: 100, paid_out_cents: 1000 });
+    const f = balanceFigures(db, { available: [{ amount: 1000, currency: "eur" }], pending: [] }, { rates: { EUR: 1.1 } });
+    assert.deepEqual([f.available_cents, f.pending_cents, f.paid_out_cents, f.total_cents], [1100, 0, 0, 1100],
+      "€10.00 at 1.10 against $10.00 Paid out: Available $11.00, Paid out $0, Total the server's $11.00");
+    assert.equal(f.stripe.available_cents, 1000, "the Stripe part reported after the trim");
+    assert.equal(f.estimated, true);
+  }
+  {
+    // €1.00 available and €10.00 pending (=$1.10 + $11.00) against $5.00 Paid
+    // out: $7.10 too much. Available's Stripe part ($1.10) is used up; Pending's
+    // gives the remaining $6.00.
+    const db = tsc({ awaiting_cents: 300, available_cents: 2000, pending_cents: 400, paid_out_cents: 500 });
+    const total = 300 + 2000 + 400 + 500;
+    const f = balanceFigures(db, { available: [{ amount: 100, currency: "eur" }], pending: [{ amount: 1000, currency: "eur" }] }, { rates: { EUR: 1.1 } });
+    assert.equal(f.stripe.available_cents, 0, "Available's Stripe part goes first");
+    assert.equal(f.stripe.pending_cents, 500, "then Pending's absorbs the rest");
+    assert.deepEqual([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents], [300, 2000, 900, 0]);
+    assert.equal(f.total_cents, total, "Total is the server's");
+    assert.ok([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents].every((x) => x >= 0), "no figure below zero");
+  }
+  // And for any amounts in the Stripe account: total = the server's, nothing below zero.
+  for (const [avail, pend, paid] of [[0, 0, 0], [5000, 0, 100], [0, 5000, 100], [3000, 4000, 2500], [100, 100, 100000]]) {
+    const db = tsc({ awaiting_cents: 10, available_cents: 20, pending_cents: 30, paid_out_cents: paid });
+    const f = balanceFigures(db, { available: [{ amount: avail, currency: "eur" }], pending: [{ amount: pend, currency: "eur" }] }, { rates: { EUR: 1.1 } });
+    assert.equal(f.total_cents, 10 + 20 + 30 + paid, `total is the server's (${avail}/${pend}/${paid})`);
+    assert.ok([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents].every((x) => x >= 0), `no figure below zero (${avail}/${pend}/${paid})`);
+  }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
     const f = balanceFigures(db, { available: [], pending: [], onTheirWay: [], payouts: [] }, null);
