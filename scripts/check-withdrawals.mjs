@@ -17,6 +17,13 @@ import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
 import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, figuresByPayment, staffBankNote, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
+// Hermetic: nothing here may reach a real service or change its path because
+// of the environment the build runs in (Vercel sets Stripe, PayPal, Wise and
+// Supabase variables). Every service is a fake passed in explicitly.
+for (const name of Object.keys(process.env)) {
+  if (/^(STRIPE_|PAYPAL_|WISE_|SUPABASE_|NEXT_PUBLIC_SUPABASE_|VITE_SUPABASE_|VITE_STRIPE_|OPENROUTER_|RESEND_|PAYONEER_|TAZAPAY_)/.test(name) || name === "VERCEL_ENV") delete process.env[name];
+}
+
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
   const paid = [];
@@ -43,7 +50,9 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     },
     status: async () => ({ state: status, raw: status }),
   };
-  return { db, caller, adapter, recorded, paid, client: {} };
+  // No Stripe here: approveWithdrawal's charge check (F2) is given its own
+  // fake where a case needs one, never a client built from the environment.
+  return { db, caller, adapter, recorded, paid, client: {}, stripeBuild: () => null };
 }
 
 // Short of money: nothing is sent, the request waits again with a sentence.
