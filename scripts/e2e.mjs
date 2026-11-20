@@ -2669,8 +2669,10 @@ async function main() {
       check(!declined.error, "staff decline it with a reason");
       const reasonShown = await within(page, async () => (await page.locator('[data-testid="withdrawal-declined"]').innerText().catch(() => "")).includes(reason), 20000);
       check(reasonShown !== null, "the factory reads the reason on its card, without reloading");
-      const paypalEarnings = await page.locator(".payout-transaction-table").first().innerText();
-      check(/\bcompleted\b/i.test(paypalEarnings) && /\bdeclined\b/i.test(paypalEarnings),
+      // The list re-reads on the change too: waited for, as the reason above is.
+      const listed = (text) => /\bcompleted\b/i.test(text) && /\bdeclined\b/i.test(text);
+      const bothListed = await within(page, async () => listed(await page.locator(".payout-transaction-table").first().innerText().catch(() => "")), 20000);
+      check(bothListed !== null,
         "its withdrawals are listed: the one paid by PayPal, Completed, and this one, Declined");
       await record(page, "A factory's earnings", "the balance, a declined withdrawal with TSC's reason, and the paid one");
 
