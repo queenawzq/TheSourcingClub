@@ -482,7 +482,10 @@ export function pendingParts(figures, opens = []) {
   const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
     .reduce((sum, row) => sum + n(row.amount_cents), 0);
   const onHold = Math.min(pending, n(parts.disputed_cents) + refundedHeld);
-  const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + n(figures.stripe?.pending_cents));
+  // Stripe's pending part, less what an open withdrawal holds there (on its
+  // way, not clearing: api/_balance-figures.js `held_cents`).
+  const stripeClearing = Math.max(0, n(figures.stripe?.pending_cents) - n(figures.stripe?.held_cents));
+  const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + stripeClearing);
   const asked = list ? sumOf("waiting")
     : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
   const waiting = Math.min(pending - onHold - clearing, asked);

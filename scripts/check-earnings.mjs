@@ -269,6 +269,10 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const p75 = pendingParts(withParts, []);
   assert.deepEqual(p75, { pending: 191594, clearing: 0, onHold: 5000, waiting: 2500, onItsWay: 184094 }, "lines from parts: $25 waiting + $50 on hold");
   assert.equal(p75.clearing + p75.onHold + p75.waiting + p75.onItsWay, withParts.pending_cents, "and they add up to Pending");
+  // Round 12: Stripe money an open withdrawal holds is on its way, not clearing.
+  const held = pendingParts({ pending_cents: 11467, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, stripe: { pending_cents: 1467, held_cents: 1467 },
+    withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, parts: [{ word: "waiting", amount_cents: 5000 }, { word: "on_hold", amount_cents: 5000 }] }] }, []);
+  assert.deepEqual(held, { pending: 11467, clearing: 0, onHold: 5000, waiting: 5000, onItsWay: 1467 }, "held Stripe money reads on its way, never 'withdraw once processing finishes'");
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "On its way", -184094],

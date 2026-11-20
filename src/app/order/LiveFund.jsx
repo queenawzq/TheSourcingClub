@@ -242,7 +242,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     railStep: checkout.title,
     // The design's subtitle says funds wait for an approval. A deposit or
     // balance does not wait (Nov 13 tester, #2); a paid step keeps the design's.
-    ...(paymentOnly ? { fundNote: paymentOnlyFundNote(figures.total, checkout.title, factory) } : {}),
+    // An already-approved step (paying again after a refund) does not wait either.
+    ...(paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"
+      ? { fundNote: paymentOnlyFundNote(figures.total, checkout.title, factory) } : {}),
   };
   const heading = { eyebrow: "FUND" };
 
