@@ -126,7 +126,8 @@ assert.ok(liveFund.includes("The step amount, without fees, is added to ${factor
 assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \|\| [\s\S]*?\? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
 assert.ok(liveFund.includes("Your payment is funded. It is added to ${factory}'s balance."), "the payment-only success text says it goes to the balance");
 assert.ok(liveFund.includes("Once your payment clears, it is added to ${factory}'s balance."), "the payment-only processing text says it goes to the balance");
-assert.equal((liveFund.match(/\.\.\.\(paymentOnly \|\| approvedAlready \? \{ description: paymentOnlySuccess\(factory, (true|false), disputed\) \} : \{\}\)/g) ?? []).length, 2, "both success headings pass the payment-only text");
+assert.equal((liveFund.match(/description: paymentOnly \|\| approvedAlready \? paymentOnlySuccess\(factory, (true|false), disputed\) : approvalStepSuccess\((true|false), disputed\),/g) ?? []).length, 2, "both success headings pass the live text, never the design's sample sentence");
+assert.ok(liveFund.includes('"Your payment is funded. The factory can start work, and funds are only released after you approve this step."'), "an approval step's success names no sample");
 // An already-approved step is never told it waits for approval (Nov 20).
 assert.ok(liveFund.includes('...(paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"\n      ? { fundNote: paymentOnlyFundNote('), "an approved step's top line says it goes to the factory's balance");
 assert.ok(liveFund.includes('agreements: [paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"'), "an approved step's agreement says it goes to the factory's balance");

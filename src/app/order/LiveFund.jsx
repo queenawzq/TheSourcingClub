@@ -441,6 +441,18 @@ function paymentOnlyFundNote(amount, title, factory) {
 /** A charge the brand's bank disputed is held, not added to the factory's balance. */
 export const DISPUTED_CHARGE = "This charge is disputed. It is held until the dispute is settled.";
 
+/**
+ * A step the brand approves: the design's sentence, said of this step rather
+ * than "the sample" (its success screen showed "Your sample payment is
+ * funded" for any step, a bulk run included).
+ */
+function approvalStepSuccess(funded, disputed = false) {
+  if (disputed) return DISPUTED_CHARGE;
+  return funded
+    ? "Your payment is funded. The factory can start work, and funds are only released after you approve this step."
+    : "Once your payment clears, the factory can start work, and funds are only released after you approve this step.";
+}
+
 function paymentOnlySuccess(factory, funded, disputed = false) {
   if (disputed) return DISPUTED_CHARGE;
   return funded
@@ -503,11 +515,11 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
-        ...(paymentOnly || approvedAlready ? { description: paymentOnlySuccess(factory, false, disputed) } : {}),
+        description: paymentOnly || approvedAlready ? paymentOnlySuccess(factory, false, disputed) : approvalStepSuccess(false, disputed),
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
-        ...(paymentOnly || approvedAlready ? { description: paymentOnlySuccess(factory, true, disputed) } : {}),
+        description: paymentOnly || approvedAlready ? paymentOnlySuccess(factory, true, disputed) : approvalStepSuccess(true, disputed),
       }}
       onBack={onBack}
       onNext={onBack}
