@@ -301,7 +301,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
       if (!refusedByStripe(failure)) throw failure;
       // Stripe would not take (all of) the fee: give back any part it took.
       // Most often the balance went in the meantime (another tab's withdrawal).
-      await giveBack(stripe, db, row, plan.filter((item) => item.reversal).reduce((sum, item) => sum + item.amount, 0), CANNOT_PROCESS);
+      await giveBack(stripe, db, row, plan.filter((item) => item.reversal).reduce((sum, item) => sum + item.amount, 0), CANNOT_PROCESS, { takeBack: true });
       // The one balance: its owed money is back in the balance, so the
       // Stripe account's "up to" would mislead.
       const reason = row.usd_cents != null ? CANNOT_PROCESS : await balanceShortSentence(stripe, db, row, currency, amount) ?? CANNOT_PROCESS;
@@ -318,7 +318,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
       // The fee as Stripe converted it left less than its estimate: the same answer as before any reversal.
       const reason = payoutAmount <= 0 ? CANNOT_PROCESS
         : minimumWithdrawalSentence(Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: Number(row.fee_local_minor) / Number(row.fee_cents) || 1 })), currency);
-      await giveBack(stripe, db, row, Number(row.fee_cents), reason);
+      await giveBack(stripe, db, row, Number(row.fee_cents), reason, { takeBack: true });
       throw new PayoutMethodRefusal(reason);
     }
     let payout = await findPayout(stripe, row);
@@ -331,7 +331,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
       } catch (failure) {
         if (!refusedByStripe(failure)) throw failure;
         // Refused: nothing left the balance, so neither does the fee.
-        await giveBack(stripe, db, row, Number(row.fee_cents), failure instanceof PayoutMethodRefusal ? failure.message : null);
+        await giveBack(stripe, db, row, Number(row.fee_cents), failure instanceof PayoutMethodRefusal ? failure.message : null, { takeBack: true });
         // The balance went in the meantime (another tab's withdrawal): said in the dialog's words.
         const short = row.usd_cents != null ? CANNOT_PROCESS : await balanceShortSentence(stripe, db, row, currency, amount);
         if (short) {
@@ -493,6 +493,14 @@ export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
   }
   try {
     if (["claimed", "fee_taken"].includes(mine.state)) await settleOne(stripe, db, mine);
+    // A reversal Stripe made whose part was not returned (the call stopped,
+    // or another held the lease): returned now. No new reversal is made.
+    if (mine.refusal_cause === "reversal_failed" && mine.usd_cents != null) {
+      const back = await reverseSentTakes(stripe, db, mine, { createNew: false });
+      // A part still sent with no reversal is money in the factory's Stripe
+      // account (counted there): nothing more for staff to do.
+      if (!back.failed) await update(db, mine, { refusal_cause: null }).catch(() => null);
+    }
     const result = await settleAttempted(stripe, db, mine, { staff: true });
     return { done: true, ...result, sentence: checkedSentence(result) };
   } finally {
@@ -727,13 +735,17 @@ async function findPayout(stripe, row) {
 }
 
 /** Give the fee back to the factory's balance: a transfer of what was reversed, once. */
-async function giveBack(stripe, db, row, usdAmount, reason) {
+async function giveBack(stripe, db, row, usdAmount, reason, { takeBack = false } = {}) {
   let transferId = null;
   let cause = null;
-  // The one balance: the owed parts this withdrawal transferred go back to
-  // TSC whole, the fee they paid included (it was reversed from them), so
-  // only a fee taken from money already in the account is given back.
-  if (row.usd_cents != null) {
+  // The one balance, refused before any payout existed, by the call holding
+  // the lease (takeBack): the owed parts this withdrawal transferred go back
+  // to TSC whole, the fee they paid included (it was reversed from them), so
+  // only a fee taken from money already in the account is given back. A
+  // payout that failed after it was made (returnFeeOnFailedPayout) gives the
+  // fee back only: its money is back in the factory's Stripe account, may
+  // already be withdrawn again, and stays Stripe money.
+  if (takeBack && row.usd_cents != null) {
     const back = await reverseSentTakes(stripe, db, row);
     usdAmount = Math.max(0, usdAmount - back.feeFromTakes);
     if (back.failed) cause = "reversal_failed";
@@ -764,7 +776,7 @@ async function giveBack(stripe, db, row, usdAmount, reason) {
  * row is listed for staff. Returns { feeFromTakes, failed } in US cents:
  * the fee that came out of these transfers.
  */
-async function reverseSentTakes(stripe, db, row) {
+async function reverseSentTakes(stripe, db, row, { createNew = true } = {}) {
   const sent = (await readTakes(db, row)).filter((take) => take.status === "sent" && take.stripe_transfer_id);
   let feeFromTakes = 0;
   let failed = false;
@@ -777,6 +789,9 @@ async function reverseSentTakes(stripe, db, row) {
         if (reversal.metadata?.take_reversal === take.id) mine = reversal;
       }
       const want = Number(take.amount_cents) - feeHere;
+      // Only finishing what was done (staff's "Check again"): a part with no
+      // reversal yet stays sent; its money is in the factory's account.
+      if (!mine && !createNew) continue;
       if (!mine && want > 0) {
         mine = await stripe.transfers.createReversal(take.stripe_transfer_id, {
           amount: want, metadata: { take_reversal: take.id, take_withdrawal_id: row.id },
@@ -859,7 +874,8 @@ async function settleOne(stripe, db, row) {
       if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
     }
   }
-  await giveBack(stripe, db, row, taken, null);
+  // No payout exists (findPayout above), and this call holds the lease.
+  await giveBack(stripe, db, row, taken, null, { takeBack: true });
 }
 
 /**
