@@ -118,14 +118,14 @@ for (const option of ["bank", "wise", "paypal"]) {
 }
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
-assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");
+assert.ok(liveFund.includes("I understand this step is added to ${factory}'s balance once it is funded."), "the deposit agreement says where the money goes (one balance)");
 // Nov 13: a deposit or balance is released once funded, so the live Fund
 // subtitle and success text must not borrow the design's "after you approve"
 // words for it. Approval steps keep the design's; the prototype's text stays.
-assert.ok(liveFund.includes("The step amount, without fees, is released to ${factory} once funded."), "the payment-only Fund subtitle says it is released once funded");
+assert.ok(liveFund.includes("The step amount, without fees, is added to ${factory}'s balance once funded."), "the payment-only Fund subtitle says it goes to the balance once funded");
 assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
-assert.ok(liveFund.includes("Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only success text says TSC releases it");
-assert.ok(liveFund.includes("Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only processing text says TSC releases it");
+assert.ok(liveFund.includes("Your payment is funded. It is added to ${factory}'s balance."), "the payment-only success text says it goes to the balance");
+assert.ok(liveFund.includes("Once your payment clears, it is added to ${factory}'s balance."), "the payment-only processing text says it goes to the balance");
 assert.equal((liveFund.match(/\.\.\.\(paymentOnly \? \{ description: paymentOnlySuccess\(factory, (true|false)\) \} : \{\}\)/g) ?? []).length, 2, "both success headings pass the payment-only text");
 const prototype = read("src/prototype/main.jsx");
 assert.ok(prototype.includes("funds are only released after you approve the sample."), "the prototype keeps its own success text");

@@ -3,7 +3,7 @@ import { cardPendingCents, parseWithdrawAmount, withdrawFeeLine, withdrawReach }
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { supabase } from "../../lib/supabase.js";
+import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { countryNameZh, wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
@@ -411,6 +411,10 @@ export default function StripePayoutCard({
   // which one is being removed, and what the form or the list last refused.
   const [removingManual, setRemovingManual] = useState(null);
   const [manualError, setManualError] = useState(null);
+  // What each method can reach, read again after anything that moves money
+  // (a withdrawal, a cancel, an approval, a method change) and when Withdraw
+  // is opened: the balance read's `reach` is only as new as that read.
+  const [freshReach, setFreshReach] = useState(null);
   const handledInitialAction = useRef(false);
   const accountKnown = useRef(false);
 
@@ -460,6 +464,7 @@ export default function StripePayoutCard({
       try {
         const nextBalance = await connectAction(org.id, "balance");
         setBalance(nextBalance);
+        setFreshReach(null);
         setBalanceStatus("ready");
         onBalanceChange?.(nextBalance);
         return nextBalance;
@@ -557,7 +562,9 @@ export default function StripePayoutCard({
       onBalanceChange?.(undefined);
       await load();
     } catch (failure) {
-      setError(failure);
+      // Signed out meanwhile (in another tab): say so, not "try again".
+      const signedOut = failure?.status === 401 || !(await supabase.auth.getSession()).data?.session;
+      setError(signedOut ? new Error(SIGN_IN_ENDED) : failure);
     } finally {
       setBusy(false);
     }
@@ -644,6 +651,32 @@ export default function StripePayoutCard({
 
   // The card's shape while the account is read, so it does not appear late
   // and push the page down.
+  const readReach = useCallback(async () => {
+    if (!isOwner || !account?.transfers_active) return null;
+    try {
+      const { reach: next } = await connectAction(org.id, "figures");
+      if (next) setFreshReach(next);
+      return next ?? null;
+    } catch (failure) {
+      if (failure?.details?.reach) setFreshReach(failure.details.reach);
+      return failure?.details?.reach ?? null;
+    }
+  }, [org.id, isOwner, account?.transfers_active]);
+  const movedKey = `${fromBalance.available}|${fromBalance.rows?.length}|${(fromBalance.opens ?? []).length}|${figures?.available_cents}|${figures?.pending_cents}|${figures?.paid_out_cents}|${manualAccounts.length}`;
+  const movedSeen = useRef(null);
+  useEffect(() => {
+    if (movedSeen.current === null) { movedSeen.current = movedKey; return; }
+    if (movedSeen.current === movedKey) return;
+    movedSeen.current = movedKey;
+    readReach();
+  }, [movedKey, readReach]);
+  // An open Stripe dialog follows: its Available is never older than the card.
+  const liveStripeMax = (freshReach ?? balance?.reach)?.stripe_cents;
+  useEffect(() => {
+    if (modal !== "withdraw" || !withdrawal || withdrawal.previous || liveStripeMax == null || liveStripeMax === withdrawal.max) return;
+    setWithdrawal((was) => (was ? { ...was, max: liveStripeMax } : was));
+  }, [modal, withdrawal, liveStripeMax]);
+
   if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
   const closeModal = () => {
@@ -931,7 +964,11 @@ export default function StripePayoutCard({
   const heldElsewhere = [...(balance?.available ?? []), ...(balance?.pending ?? [])]
     .find((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount) !== 0);
   const heldCurrency = heldElsewhere ? String(heldElsewhere.currency).toUpperCase() : null;
-  const reach = withdrawReach(figures, balance?.reach ?? null, fromBalance.available);
+  // Someone who reads no Stripe balance (a member) is told the same by the
+  // server's figures: converted, and money sitting in the Stripe account now.
+  const estimatedLabel = Boolean(heldCurrency) || (!balance && Boolean(figures?.estimated)
+    && (Number(figures?.stripe?.available_cents) || 0) + (Number(figures?.stripe?.pending_cents) || 0) > 0);
+  const reach = withdrawReach(figures, freshReach ?? balance?.reach ?? null, fromBalance.available);
   // The earliest day money still clearing can be withdrawn: a card payment
   // TSC holds (the database's), or Stripe's for money in the factory's own
   // Stripe account, whichever comes first.
@@ -943,10 +980,12 @@ export default function StripePayoutCard({
   // "$X pending", from the page's Pending figure less the withdrawals the
   // card lists on their own rows, so no amount is said twice on the card.
   const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
-  const openListed = (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0);
   // A step whose card charge is disputed is held: in Pending, but never "available on" a day.
   const onHoldCents = Math.max(0, Number((figures?.tsc ?? figures)?.parts?.disputed_cents) || 0);
-  const cardPending = cardPendingCents(pendingTotal, openListed + (Number(onItsWayCents) || 0) + onHoldCents);
+  // "$X pending" is the Pending figure itself (re-test): never a sum of its own
+  // that can drift from the figure when a step under a withdrawal is refunded.
+  // The lines for money on hold or on its way say which part that is.
+  const cardPending = cardPendingCents(pendingTotal, 0);
 
   // One balance, one Withdraw (D5). Every saved method withdraws from it;
   // Withdraw opens on the default, and "Withdraw to" lists every method,
@@ -955,10 +994,10 @@ export default function StripePayoutCard({
   const stripeReachable = Boolean(balance && account?.transfers_active && account.payouts_enabled && stripeWithdrawTargets.length);
   const stripeCan = stripeReachable && reach.stripe > 0;
   const balanceCan = balanceChoices.length > 0 && reach.balance > 0;
-  const openStripeWithdraw = (destination = null) => {
+  const openStripeWithdraw = (destination = null, latest = reach) => {
     setError(null);
-    const max = reach.stripe ?? 0;
-    setWithdrawal({ amount: max, max, amountText: (max / 100).toFixed(2), currency: "usd", estimated: reach.estimated, requestId: crypto.randomUUID(),
+    const max = latest.stripe ?? 0;
+    setWithdrawal({ amount: max, max, amountText: (max / 100).toFixed(2), currency: "usd", estimated: latest.estimated, requestId: crypto.randomUUID(),
       destination: destination ?? stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
     setModal("withdraw");
   };
@@ -976,10 +1015,16 @@ export default function StripePayoutCard({
   const stripeFeeLine = stripeFee && !stripeFee.refused ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
   // Opens on the default; when the default's method can reach nothing and
   // another can, on that one, so it never opens at $0.
-  const openWithdraw = () => {
+  const openWithdraw = async () => {
+    // What each method reaches now, not at the last balance read.
+    setBusy(true);
+    const [server] = await Promise.all([readReach(), fromBalance.load()]).catch(() => [null]);
+    setBusy(false);
+    const latest = server ? withdrawReach(figures, server, fromBalance.available) : reach;
     const preferBalance = payoutRoute === "manual" || !stripeReachable;
-    if (balanceCan && (preferBalance || !stripeCan)) openBalanceWithdraw(manualAccount && balanceChoices.some((row) => row.id === manualAccount.id) ? manualAccount.id : null);
-    else openStripeWithdraw();
+    const canStripe = stripeReachable && latest.stripe > 0;
+    if (balanceCan && (preferBalance || !canStripe)) openBalanceWithdraw(manualAccount && balanceChoices.some((row) => row.id === manualAccount.id) ? manualAccount.id : null);
+    else openStripeWithdraw(null, latest);
   };
   // Withdraw when the factory has a method it can withdraw to (has_method,
   // D6); a Stripe account still being finished keeps its Withdraw, off,
@@ -998,7 +1043,7 @@ export default function StripePayoutCard({
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          <span className="payment-metric-label">{heldCurrency ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
+          <span className="payment-metric-label">{estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
           <strong data-testid="payout-balance">{figures ? formatMoney(Number(figures.available_cents) || 0, "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the figures answer.
@@ -1064,14 +1109,14 @@ export default function StripePayoutCard({
 
       {modal === "cancel-withdrawals" ? (
         <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} Modal={PayoutModal} onClose={closeModal}
-          onDone={() => { closeModal(); fromBalance.load(); }} />
+          onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
       ) : null}
 
       {modal === "withdraw-balance" && reach.balance != null ? (
         <WithdrawForm orgId={org.id} available={reach.balance} methods={manualAccounts} defaultId={withdrawFromId ?? manualAccount?.id} country={country} providers={providers}
           others={stripeReachable ? stripeWithdrawTargets.map((method) => ({ id: method.id, label: listLabelIn(method, uiLanguage) })) : []}
           onOther={(id) => openStripeWithdraw(id)}
-          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); }} />
+          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
       ) : null}
 
       {modal === "withdraw" && withdrawal ? (

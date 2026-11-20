@@ -328,7 +328,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           // draws it; "Card details" promised a card form that was not there.
           title: addingCard ? "Card details" : "Select billing method",
           agreements: [paymentOnly
-            ? `I understand TSC releases this step to ${factory} once it is funded, and it takes a few business days to arrive.`
+            ? `I understand this step is added to ${factory}'s balance once it is funded.`
             : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."],
           agreed,
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
@@ -430,13 +430,13 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
  * scripts/check-payout-help.mjs.
  */
 function paymentOnlyFundNote(amount, title, factory) {
-  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is released to ${factory} once funded.`;
+  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is added to ${factory}'s balance once funded.`;
 }
 
 function paymentOnlySuccess(factory, funded) {
   return funded
-    ? `Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive.`
-    : `Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive.`;
+    ? `Your payment is funded. It is added to ${factory}'s balance.`
+    : `Once your payment clears, it is added to ${factory}'s balance.`;
 }
 
 /** The design's success screen, in the words of what actually happened. */

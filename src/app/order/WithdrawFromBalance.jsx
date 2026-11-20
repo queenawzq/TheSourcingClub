@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase.js";
+import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
@@ -206,7 +206,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
       await cancelWithdrawals(ticked.map((w) => w.id));
       onDone();
     } catch (failure) {
-      setError(failure.message);
+      setError((await supabase.auth.getSession()).data?.session ? failure.message : SIGN_IN_ENDED);
     } finally {
       sending.current = false;
       setBusy(false);
@@ -316,6 +316,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
     const { error: refused } = await supabase.rpc("request_withdrawal", { target_org: orgId, amount: amountCents, target_account: method.id });
     sending.current = false;
     setBusy(false);
+    // Signed out meanwhile (in another tab): say so, not "try again".
+    if (refused && !(await supabase.auth.getSession()).data?.session) return setError(SIGN_IN_ENDED);
     if (refused) return setError(sentence(refused));
     onDone();
   }

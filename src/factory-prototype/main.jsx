@@ -1138,6 +1138,9 @@ export const factoryMainZhText = {
   "TSC has already started sending this, so it can no longer be cancelled.": "TSC 已开始发送，无法再取消。",
   "That didn't go through. Reload the page and try again.": "操作未成功。请刷新页面后重试。",
   "Your sign-in expired. Sign in again.": "登录已过期，请重新登录。",
+  "Your sign-in has ended. Sign in again.": "你的登录已结束，请重新登录。",
+  "This IBAN isn't valid. Check each character.": "此 IBAN 无效，请逐个核对字符。",
+  "Refunded": "已退款",
   // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
   "Pending withdrawal": "待处理提现",
   "Withdraw full amount": "提取全部金额",

@@ -131,7 +131,10 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 450, estimated: true }, 500), { stripe: 700, balance: 450, estimated: true }, "reach.pool_cents first; the Stripe amount says when it was converted");
   assert.deepEqual(withdrawReach(figures, null, 500), { stripe: 800, balance: 500, estimated: false }, "no Stripe read (members, no Stripe account): my_withdrawal_balance() for PayPal and Wise");
   const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(cardCode.includes("withdrawReach(figures, balance?.reach ?? null, fromBalance.available)") && !cardCode.includes("figures?.reach"), "reach is read only at the balance answer's top level");
+  assert.ok(cardCode.includes("withdrawReach(figures, freshReach ?? balance?.reach ?? null, fromBalance.available)") && !cardCode.includes("figures?.reach"), "reach is read only at the server's top level");
+  // Re-test: the dialog's Available is read again after anything that moves money and when Withdraw opens.
+  assert.ok(cardCode.includes('connectAction(org.id, "figures")') && cardCode.includes("await Promise.all([readReach(), fromBalance.load()])")
+    && cardCode.includes("setWithdrawal((was) => (was ? { ...was, max: liveStripeMax } : was))"), "each method's Available is never stale");
   assert.ok(cardCode.includes('withdrawal.estimated ? "Amount (estimated USD)"'), "a converted Stripe reach says estimated USD");
   assert.equal(withStripePart(db, null), db, "no Stripe read: the database's figures as they are");
   assert.equal(withStripePart(null, figures), figures, "no database read yet: the Stripe answer as it is");
@@ -203,6 +206,18 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(staffBankNote(byPaypal), null, "and no staff reference on it");
   const byBank = pay("w4", 1000, "released", { ...base, released_note: "Wire 9", bank_payouts: { paid_to_bank: "Demo Bank", paid_to_last4: "0001" } });
   assert.equal(withdrawalRows([byBank]).length, 1, "staff's bank payout keeps its row");
+}
+
+// Re-test (fix round 6): the card's "$X pending" is the Pending figure itself.
+{
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  assert.ok(cardCode.includes("const cardPending = cardPendingCents(pendingTotal, 0);"), "the pending line equals the Pending figure");
+  // A refunded earning stays listed, in no figure.
+  const refunded = pay("r1", 6500, "failed", { ...APPROVED, confirmed_at: "2026-11-19T00:00:00Z", refunded_at: "2026-11-20T00:00:00Z" });
+  assert.equal(earningStatus(refunded), "Refunded");
+  assert.equal(earningPaid(refunded), false);
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes('|| refundedEarning(row));') && page.includes('timeZone: "UTC" });'), "refunded rows stay on the list; Stripe's arrival is read as its day");
 }
 
 // Fix round 5 (local tester).
@@ -421,7 +436,7 @@ assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline i
 // server's Available, the page's four figures the same read. No second card
 // version, no figure summed from payments in the browser.
 assert.ok(!card.includes("Balance (USD)") && !/isHandPaid|handFigures|handPaid/.test(card), "one card: no hand-paid version");
-assert.ok(card.includes('heldCurrency ? "Available balance (estimated USD)" : "Available balance (USD)"'), "the label says estimated only while the Stripe account holds money in another currency");
+assert.ok(card.includes('estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"'), "the label says estimated only while the Stripe account holds money in another currency");
 assert.ok(card.includes("formatMoney(Number(figures.available_cents) || 0, \"USD\")"), "the big number is the server's Available");
 assert.ok(card.includes("Boolean(figures?.has_method) || balanceChoices.length > 0"), "Withdraw or Add withdrawal method by has_method (D6), and at once after the first method is saved (M1)");
 assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still shows them");

@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -47,6 +47,8 @@ const dateLabel = (value) => value
 
 // Stripe's arrival_date is a day (midnight UTC), not an instant: read in the
 // Americas as an instant it is the day before.
+/** Stripe's arrival day (stripe_withdrawals.payout_arrives_at, midnight UTC): the day, not the instant. */
+const stripeDayLabel = (value) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const stripeDateLabel = (value) => value
   ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
   : "Date pending";
@@ -279,7 +281,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         orders.map((order) => order.id),
         (batch) => supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)")
           .in("order_id", batch)
           .order("created_at", { ascending: false })
           .order("id", { ascending: false }),
@@ -372,7 +374,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // A promise to pay is not an earning. The factory's ledger begins only
   // once the brand's money has cleared and TSC is holding or releasing it.
   // Until the earnings answer, these are empty and nothing below draws them.
-  const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state));
+  const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state) || refundedEarning(row));
   const clients = useMemo(
     () => [...new Map((earnings ?? []).filter((row) => row.order?.brand_org_id)
       .map((row) => [row.order.brand_org_id, { id: row.order.brand_org_id, name: row.order.orgs?.name || "Brand" }])).values()],
@@ -453,6 +455,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       amount: factoryAmount(row),
       currency: row.currency,
       available: earningPaid(row, clearing, placed),
+      // Refunded to the brand: listed, struck through, in no figure.
+      failed: refundedEarning(row),
     })),
     // A withdrawal is across clients, so it is listed under All clients only.
     ...(client === "All clients" ? askedWithdrawalRows(fromBalance.rows) : []).map((row) => ({
@@ -471,7 +475,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
       const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
       return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
-    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? dateLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
+    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? stripeDayLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,
       type: "withdrawal",

@@ -183,6 +183,12 @@ export function askedWithdrawalRows(withdrawals = []) {
 
 export const ADDED_TO_BALANCE = "Added to your balance";
 export const ON_HOLD = "On hold";
+export const REFUNDED = "Refunded";
+/**
+ * Funded, then refunded to the brand (a refund or a lost dispute): it stays on
+ * the list as "Refunded", in no figure, so an earning never vanishes silently.
+ */
+export const refundedEarning = (row) => Boolean(row?.refunded_at && !["confirmed", "released"].includes(row.state));
 /** Earned and the factory's to withdraw or already sent: "Paid", or in its balance. */
 export const earningPaid = (row, clearing = null, figures = null) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row, clearing, figures));
 
@@ -228,6 +234,7 @@ export function legacyOnItsWayCents(earnings, figures) {
  * decides. How it was sent is on its withdrawal row.
  */
 export function earningStatus(row, clearing = null, figures = null) {
+  if (refundedEarning(row)) return REFUNDED;
   if (heldOnCancelledOrder(row)) return "Order cancelled";
   if (isClearing(row, clearing)) return "Pending";
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
