@@ -164,5 +164,33 @@ select is((pg_temp.bal() ->> 'total_cents')::bigint,
   + (pg_temp.bal() ->> 'pending_cents')::bigint + (pg_temp.bal() ->> 'paid_out_cents')::bigint, 'Total is the sum of the four');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x), 8, 'every withdrawal listed once');
 
+-- ===========================================================================
+-- Fix round 9 (20261120280000): a payment-only step whose charge was disputed
+-- before its payment was recorded: funded, the factory is told the money is
+-- on hold, never "added to your balance", and it is held in Pending.
+-- ===========================================================================
+set local session_replication_role = replica;
+insert into public.order_milestones (id, order_id, kind, title, amount_cents, state, sort)
+values ('ce8e0009-0000-0000-0000-000000000001', 'ce8d0000-0000-0000-0000-000000000001', 'payment_only', 'R8 deposit', 7000, 'active', 90);
+insert into public.order_payments (id, order_id, milestone_id, amount_cents, currency, state, stripe_payment_intent_id, disputed_at)
+values ('ce8f0009-0000-0000-0000-000000000001', 'ce8d0000-0000-0000-0000-000000000001', 'ce8e0009-0000-0000-0000-000000000001',
+        7000, 'USD', 'due', 'pi_pgtap_r8_9', now());
+set local session_replication_role = origin;
+select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''ce8f0009-0000-0000-0000-000000000001'', ''ch_pgtap_r8_9'', ''card'', ''Visa ···0259'', 7000)')$$,
+  'R9: the payment-only step, its charge already disputed, is funded');
+select is((select title || ' | ' || body from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
+            and kind = 'payment_disputed' and subject_id = 'ce8f0009-0000-0000-0000-000000000001'),
+  'Payment for "R8 deposit" on hold | The brand disputed the charge. $70.00 is held until the dispute is settled.',
+  'R9: the factory is told the money is on hold');
+select is((select count(*)::int from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
+            and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and body like '%added to your balance%'), 0,
+  'R9: never "added to your balance"');
+select ok((select bool_and(r ->> 'figure' = 'pending' and coalesce((r ->> 'held')::boolean, false))
+             from jsonb_array_elements(pg_temp.bal() -> 'rows') r where (r ->> 'payment_id')::uuid = 'ce8f0009-0000-0000-0000-000000000001'),
+  'R9: held in Pending');
+select ok(exists (select 1 from public.notifications where org_id = 'ce8b0000-0000-0000-0000-00000000000b'
+                   and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and kind = 'payment_confirmed'),
+  'R9: the brand is still told its payment is funded');
+
 select * from finish();
 rollback;

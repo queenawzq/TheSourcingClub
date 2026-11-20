@@ -223,6 +223,79 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(reads, 2, "Stripe is not asked again");
 }
 
+// Fix round 9: a charge disputed before its payment is recorded.
+// (a) The dispute event finds the payment by its charge, else by its
+// PaymentIntent; an order payment Stripe knows that is not recorded yet
+// throws (the event is delivered again); anything else is null.
+{
+  const { paymentForDispute, applyPaymentIntent } = await import("../api/_stripe.js");
+  const dbWith = (rows) => ({
+    from: () => ({ select: () => ({ eq: (column, value) => ({
+      maybeSingle: async () => ({ data: rows.find((row) => row[column] === value) ?? null, error: null }),
+    }) }) }),
+  });
+  const stripeWith = (metadata) => ({ paymentIntents: { retrieve: async (id) => ({ id, metadata }) } });
+  const rows = [{ id: "pay-charge", stripe_charge_id: "ch_1", stripe_payment_intent_id: "pi_1" },
+    { id: "pay-intent", stripe_charge_id: null, stripe_payment_intent_id: "pi_2" }];
+  assert.equal((await paymentForDispute({ stripe: stripeWith({}), db: dbWith(rows), dispute: { charge: "ch_1", payment_intent: "pi_1" } }))?.id,
+    "pay-charge", "found by its charge");
+  assert.equal((await paymentForDispute({ stripe: stripeWith({}), db: dbWith(rows), dispute: { charge: "ch_new", payment_intent: "pi_2" } }))?.id,
+    "pay-intent", "found by its PaymentIntent when the charge is not recorded yet");
+  await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-unknown" }), db: dbWith(rows), dispute: { charge: "ch_x", payment_intent: "pi_x" } }),
+    /not recorded yet/, "an order payment Stripe knows and the database doesn't yet: thrown, so Stripe sends the event again");
+  assert.equal(await paymentForDispute({ stripe: stripeWith({ kind: "credits" }), db: dbWith(rows), dispute: { charge: "ch_y", payment_intent: "pi_y" } }),
+    null, "another app's charge or a credit pack: nothing");
+  assert.equal(await paymentForDispute({ stripe: stripeWith({}), db: dbWith(rows), dispute: { charge: "ch_z" } }), null, "no intent: nothing");
+
+  // (b) Recording a successful payment whose charge is already disputed:
+  // the dispute is recorded first, then the payment.
+  const calls = [];
+  const db = {
+    rpc: async (name, args) => {
+      calls.push([name, args]);
+      if (name === "record_payment_succeeded") return { data: { funded: true, payment: { id: args.target_payment } }, error: null };
+      return { data: null, error: null };
+    },
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+  };
+  const stripe = {
+    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
+    charges: { retrieve: async (id) => ({ id, disputed: true, dispute: "du_1", balance_transaction: { available_on: 1795478400 } }) },
+    balanceTransactions: { retrieve: async () => ({ available_on: 1795478400 }) },
+    paymentIntents: { retrieve: async () => { throw new Error("already expanded"); } },
+  };
+  const intent = { id: "pi_d", status: "succeeded", amount: 5000, amount_received: 5000, metadata: { payment_id: "pay-d" },
+    payment_method: { type: "card", card: { brand: "visa", last4: "0259" } },
+    latest_charge: { id: "ch_d", disputed: true, dispute: "du_1", amount_refunded: 0, balance_transaction: { available_on: 1795478400 } } };
+  await applyPaymentIntent({ stripe, db, intent });
+  const names = calls.map(([name]) => name);
+  assert.ok(names.includes("record_payment_disputed"), "R9: the dispute is recorded");
+  assert.deepEqual(calls.find(([name]) => name === "record_payment_disputed")[1], { target_payment: "pay-d", disputed: true });
+  assert.ok(names.indexOf("record_payment_disputed") < names.indexOf("record_payment_succeeded"),
+    "R9: before the payment is recorded, so the funded notice says on hold");
+  // A dispute already won does not hold it.
+  calls.length = 0;
+  await applyPaymentIntent({ stripe: { ...stripe, disputes: { retrieve: async (id) => ({ id, status: "won" }) } }, db, intent });
+  assert.deepEqual(calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-d", disputed: false }, "a won dispute is not a hold");
+}
+
+// (d) A Stripe withdrawal records who asked from the token's subject when the
+// auth server gives no user for it (the database had just accepted it).
+{
+  const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+  const calls = connect.split("withdrawWithFee({").length - 1;
+  const withFallback = connect.split("userId: auth?.user?.id ?? tokenSubject(request)").length - 1;
+  assert.ok(calls >= 2 && withFallback === calls && !/userId: auth\?\.user\?\.id \?\? null/.test(connect),
+    `R9: every Stripe withdrawal call (${calls}) falls back to the token's subject for who asked (${withFallback})`);
+  const fn = connect.slice(connect.indexOf("function tokenSubject"), connect.indexOf("export default async function handler"));
+  // eslint-disable-next-line no-new-func
+  const tokenSubject = new Function(`${fn}; return tokenSubject;`)();
+  const jwt = (payload) => `x.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.y`;
+  assert.equal(tokenSubject({ headers: { authorization: `Bearer ${jwt({ sub: "6b1c3a2e-0000-4000-8000-000000000001" })}` } }), "6b1c3a2e-0000-4000-8000-000000000001");
+  assert.equal(tokenSubject({ headers: { authorization: `Bearer ${jwt({ sub: "not an id" })}` } }), null, "anything but an id is not recorded");
+  assert.equal(tokenSubject({ headers: {} }), null);
+}
+
 // The reference fits every Wise route: GBP takes 18 characters, others fewer or
 // other characters. A 23-character one had Wise refuse every UK withdrawal.
 {
