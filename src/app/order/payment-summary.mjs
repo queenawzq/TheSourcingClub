@@ -89,16 +89,12 @@ const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "paid
  */
 export function withStripePart(database, viaStripe) {
   if (!viaStripe?.tsc || !database) return viaStripe ?? database ?? null;
-  // Only the money sitting in the factory's own Stripe account is added (its
-  // available and pending balance). Everything else, Paid out included, is
-  // the database's, so an owner and a member read the same figures.
-  const own = viaStripe.stripe ?? null;
-  const merged = { ...viaStripe, ...Object.fromEntries(FIGURE_KEYS.map((key) => [key, Number(database[key] ?? 0)])),
-    has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
-  if (own) {
-    merged.available_cents += Math.max(0, Number(own.available_cents) || 0);
-    merged.pending_cents += Math.max(0, Number(own.pending_cents) || 0);
-  }
+  // The server's own answer (api/_balance-figures.js), with its database part
+  // swapped for a newer read: what the Stripe account adds is kept exactly as
+  // the server worked it out, so an owner (balance) and a member (figures)
+  // read the same figures.
+  const merged = { ...viaStripe, has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
+  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
   merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
   return merged;
 }

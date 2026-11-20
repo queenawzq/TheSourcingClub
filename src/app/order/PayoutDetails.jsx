@@ -29,7 +29,7 @@ import { can } from "../../lib/domain/org.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
 import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
-import { STRIPE_PUBLISHABLE_KEY, listSavedCards, refreshClearingDates, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
@@ -193,6 +193,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // clearing dates before reading the balance; at most once a minute.
   const clearingPath = useRef(false);
   const clearingAskedAt = useRef(0);
+  // The figures action's answer: undefined until it answers, null if it could not.
+  const [viaFigures, setViaFigures] = useState(undefined);
   // Whether the payout card has its final shape (it knows how the factory is
   // paid, from our database). Figures below it wait for that, never for
   // Stripe, so the card settling can only move placeholders.
@@ -248,15 +250,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       "load your payment orders",
     );
     const orderById = new Map(orders.map((order) => [order.id, order]));
+    // Where the card does not read Stripe (a member, or no Stripe account):
+    // the server's figures action, the same answer an owner's balance read
+    // gives, own Stripe money included; it also records missing clearing
+    // dates. At most once a minute; in between, the database is read and the
+    // last answer's Stripe part kept (withStripePart).
     if (clearingPath.current && Date.now() - clearingAskedAt.current > 60_000) {
       clearingAskedAt.current = Date.now();
-      // Best effort: the figures are read whatever it answers.
-      await refreshClearingDates(org.id).catch(() => null);
+      try {
+        setViaFigures((await connectAction(org.id, "figures")).figures ?? null);
+      } catch (failure) {
+        // Stripe unreachable: the database's figures, as the server sent them.
+        setViaFigures(failure?.details?.figures ?? null);
+      }
     }
     const [figures, toBank] = await Promise.all([
       supabase.rpc("factory_balance", { target_org: org.id }),
       supabase.from("stripe_withdrawals")
-        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, state, payout_status, payout_arrives_at, created_at")
+        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, destination_label, destination_bank, state, payout_status, payout_arrives_at, created_at")
         .eq("org_id", org.id).not("payout_id", "is", null).order("created_at", { ascending: false }).limit(200),
     ]);
     if (figures.error || toBank.error) throw new Error("Couldn't load your balance. Try again shortly.");
@@ -389,7 +400,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const allFigures = earningsShown && !stripeReading
     ? stripeStatus === "ready" ? withStripePart(balanceFigures, stripeBalance?.figures)
       : stripeStatus === "failed" ? withStripePart(balanceFigures, stripeFallback)
-      : balanceFigures
+      // Waits for the figures action's first answer, so the figures never jump.
+      : viaFigures === undefined && clearingPath.current ? null
+      : withStripePart(balanceFigures, viaFigures ?? null)
     : null;
   const shownFigures = client === "All clients" ? allFigures
     : allFigures && clientFigures?.client === client ? clientFigures.figures : null;
@@ -453,6 +466,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       available: !row.failed,
     })),
     ...(client === "All clients" ? companyStripeRows(stripeWithdrawals, (w) => {
+      // Where it went, as the server recorded it for everyone ("To Bank account
+      // ending in 0154."); older rows only an owner's Stripe read can name.
+      if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
       const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
       return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
     }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? dateLabel(row.arrives) : null].filter(Boolean).join(" · ") })),

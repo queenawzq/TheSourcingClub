@@ -101,14 +101,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     available: [{ amount: 300, currency: "usd" }], pending: [{ amount: 100, currency: "usd" }],
     onTheirWay: [{ amount: 50, currency: "usd" }], payouts: [{ amount: 450, currency: "usd", paid: true }],
   }, null);
-  // What the owner's page shows: the database's figures plus only what sits
-  // in its own Stripe account (withStripePart). A member reads the database.
+  // The owner's page (the balance answer, kept fresh by withStripePart) and a
+  // member's (the figures action) are the same function's answer: identical.
   const s = checkTotal(withStripePart(db, figures), "mixed D1 + owed");
-  const member = checkTotal(db, "mixed, as a member reads it");
+  const member = checkTotal(figures, "mixed, as a member reads it (figures action)");
+  assert.deepEqual(s, member, "owner and member read the same four figures");
   assert.equal(s.available, 800, "mixed: TSC's $5 + the $3 in its Stripe account");
-  assert.equal(s.pending, 250 + 100, "mixed: clearing card payment + Stripe's pending balance");
-  assert.equal(s.paid, member.paid, "mixed: owner and member read the same Paid out (the database's, fees off)");
-  assert.equal(s.approval, member.approval, "and the same Awaiting approval");
+  assert.equal(s.pending, 250 + 100 + 50, "mixed: clearing card payment + Stripe pending + payout on its way");
   assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
   const placed = figuresByPayment(figures);
   const clearingStep = pay("o2", 250, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
@@ -432,11 +431,12 @@ assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still 
   assert.ok(page.includes('rpc("factory_balance", { target_org: org.id, target_client: client })'), "a client's figures from the same function");
   assert.ok(page.includes("figures={earningsError ? null : allFigures}"), "the card and the figures read the same answer");
   assert.ok(!/earningsSummaryFor|handPaidFigures|inBalance/.test(page), "no figure is summed from payments in the browser");
-  // Members and factories with no Stripe account: clearing dates are asked for
-  // first (best effort, at most once a minute), then the balance is read.
-  assert.ok(/clearingPath\.current && Date\.now\(\) - clearingAskedAt\.current > 60_000/.test(page)
-    && page.includes("await refreshClearingDates(org.id).catch(() => null);")
-    && page.indexOf("refreshClearingDates(org.id)") < page.indexOf('rpc("factory_balance", { target_org: org.id })'), "clearing dates are refreshed before factory_balance on the non-Stripe path");
+  // Members and factories with no Stripe account read the server's figures
+  // action (the same answer as an owner's balance read; it records missing
+  // clearing dates itself), at most once a minute, and wait for its first answer.
+  assert.ok(page.includes('connectAction(org.id, "figures")') && /clearingAskedAt\.current > 60_000/.test(page)
+    && page.includes("setViaFigures(failure?.details?.figures ?? null)") && !page.includes("refreshClearingDates"), "the figures action on the non-Stripe path");
+  assert.ok(page.includes("if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank]"), "a Stripe withdrawal row says where it went, for owner and member");
 }
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
