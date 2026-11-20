@@ -248,5 +248,70 @@ select ok((select count(*) > 0 from jsonb_array_elements(public.admin_withdrawal
   'R11: (for this factory''s withdrawals)');
 reset role;
 
+-- ===========================================================================
+-- 87f83990 (20261120310000): a waiting PayPal request partly on a refunded
+-- step is split: that part on hold, the rest still waiting. A clean one is
+-- one part. Parts always add up to the amount.
+-- ===========================================================================
+set local session_replication_role = replica;
+insert into auth.users (id, email) values ('ce8a0000-0000-0000-0000-000000000004', 'pgtap-r8-04@example.com');
+insert into public.orgs (id, type, name, slug) values ('ce8b0000-0000-0000-0000-0000000000e2', 'factory', 'R8 Parts', 'pgtap-r8-parts');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('ce8b0000-0000-0000-0000-0000000000e2', 'ce8a0000-0000-0000-0000-000000000004', 'owner', '{}');
+insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total) values
+  ('ce8c0000-0000-0000-0000-000000000002', 'ce8b0000-0000-0000-0000-00000000000b', 'R8 parts request', 'awarded', 'invited_only', 100);
+insert into public.quotes (id, rfq_id, factory_org_id, status, unit_price_cents, production_quantity, submitted_at) values
+  ('ce8c1000-0000-0000-0000-000000000002', 'ce8c0000-0000-0000-0000-000000000002', 'ce8b0000-0000-0000-0000-0000000000e2', 'accepted', 100, 1, now());
+insert into public.production_orders
+  (id, rfq_id, quote_id, brand_org_id, factory_org_id, unit_price_cents, status, schedule_brand_agreed_at, schedule_brand_agreed_by,
+   production_quantity, bulk_subtotal_cents, sample_subtotal_cents, order_total_cents, deposit_pct, balance_pct, order_number)
+values ('ce8d0000-0000-0000-0000-000000000002', 'ce8c0000-0000-0000-0000-000000000002', 'ce8c1000-0000-0000-0000-000000000002',
+        'ce8b0000-0000-0000-0000-00000000000b', 'ce8b0000-0000-0000-0000-0000000000e2', 100000, 'active', now() - interval '60 days',
+        'ce8a0000-0000-0000-0000-000000000003', 1, 100000, 0, 100000, 50, 50, 'R8-2');
+-- Oldest first: $25 clean, then $50 (to be refunded), then $40 clean.
+insert into public.order_milestones (id, order_id, kind, title, amount_cents, state, sort, completed_at)
+select ('ce8e100' || s || '-0000-0000-0000-000000000002')::uuid, 'ce8d0000-0000-0000-0000-000000000002', 'approval_and_payment',
+       'R8 parts step ' || s, a, 'complete', s * 10, now() - make_interval(days => 10 - s)
+  from (values (1, 2500), (2, 5000), (3, 4000)) v(s, a);
+insert into public.order_payments
+  (id, order_id, milestone_id, amount_cents, currency, state, confirmed_at, release_requested_at, stripe_payment_intent_id, stripe_charge_id, funds_available_at)
+select ('ce8f100' || s || '-0000-0000-0000-000000000002')::uuid, 'ce8d0000-0000-0000-0000-000000000002',
+       ('ce8e100' || s || '-0000-0000-0000-000000000002')::uuid, a, 'USD', 'confirmed', now() - interval '30 days',
+       now() - make_interval(days => 10 - s), 'pi_pgtap_r8p_' || s, 'ch_pgtap_r8p_' || s, now() - interval '20 days'
+  from (values (1, 2500), (2, 5000), (3, 4000)) v(s, a);
+insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, details_changed_at) values
+  ('ce890000-0000-0000-0000-000000000002', 'ce8b0000-0000-0000-0000-0000000000e2', 'paypal', 'pgtap-r8-parts@example.com', true, '2026-11-01');
+set local session_replication_role = origin;
+create function pg_temp.parts_of(w uuid) returns jsonb language plpgsql as $f$
+declare j jsonb;
+begin
+  perform pg_temp.act_as('04');
+  set local role authenticated;
+  select x -> 'parts' into j from jsonb_array_elements(public.factory_balance('ce8b0000-0000-0000-0000-0000000000e2') -> 'withdrawals') x
+   where (x ->> 'id')::uuid = w;
+  reset role;
+  return j;
+end;
+$f$;
+select set_config('tsc.r8p_mixed', (select (public.request_withdrawal('ce8b0000-0000-0000-0000-0000000000e2', 7500, 'ce890000-0000-0000-0000-000000000002')).id::text
+  from (select pg_temp.act_as('04')) a), true);
+reset role;
+select set_config('tsc.r8p_clean', (select (public.request_withdrawal('ce8b0000-0000-0000-0000-0000000000e2', 4000, 'ce890000-0000-0000-0000-000000000002')).id::text
+  from (select pg_temp.act_as('04')) a), true);
+reset role;
+select is((select sum(amount_cents)::bigint from public.payment_takes where factory_withdrawal_id = current_setting('tsc.r8p_mixed')::uuid
+            and payment_id = 'ce8f1002-0000-0000-0000-000000000002'), 5000::bigint, 'the $75 request holds $25 of step 1 and $50 of step 2');
+select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid), '[{"word": "waiting", "amount_cents": 7500}]'::jsonb,
+  'before any refund: one part, waiting, the whole $75');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_refunded(''ce8f1002-0000-0000-0000-000000000002'', ''pi_pgtap_r8p_2'', ''The payment was refunded.'')')$$,
+  'the $50 step is refunded');
+select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid),
+  '[{"word": "waiting", "amount_cents": 2500}, {"word": "on_hold", "amount_cents": 5000}]'::jsonb,
+  'the $75 request: $25 still waiting, $50 on hold');
+select is((select sum((p ->> 'amount_cents')::bigint)::bigint from jsonb_array_elements(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid)) p),
+  7500::bigint, 'its parts add up to its amount');
+select is(pg_temp.parts_of(current_setting('tsc.r8p_clean')::uuid), '[{"word": "waiting", "amount_cents": 4000}]'::jsonb,
+  'a clean request: one part, with its word and its whole amount');
+
 select * from finish();
 rollback;
