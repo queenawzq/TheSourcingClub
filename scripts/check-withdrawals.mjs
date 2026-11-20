@@ -191,6 +191,38 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.match(disputeCase, /\["won", "warning_closed"\]\.includes\(dispute\.status\)/, "only its current status does");
 }
 
+// The clearing date (funds_available_at) is Stripe's available_on, read from
+// the charge's balance transaction. Right after a payment it can be missing
+// (Stripe has not made the balance transaction yet): nothing is recorded then,
+// and a later read records it. Without it the step stays Pending for 7 days.
+{
+  const { ensureFundsAvailable } = await import("../api/_stripe.js");
+  const recorded = [];
+  let payment = { id: "pay-1", state: "confirmed", stripe_charge_id: "ch_1", funds_available_at: null };
+  const db = {
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { ...payment }, error: null }) }) }) }),
+    rpc: async (name, args) => {
+      assert.equal(name, "record_payment_funds_available");
+      recorded.push(args);
+      payment = { ...payment, funds_available_at: args.available_at };
+      return { data: null, error: null };
+    },
+  };
+  let reads = 0;
+  const availableOn = 1795478400;
+  const stripe = {
+    charges: { retrieve: async (id) => (++reads === 1 ? { id, balance_transaction: null } : { id, balance_transaction: { id: "txn_1", available_on: availableOn } }) },
+    balanceTransactions: { retrieve: async () => ({ id: "txn_1", available_on: availableOn }) },
+  };
+  assert.equal(await ensureFundsAvailable({ stripe, db, paymentId: "pay-1" }), null, "no balance transaction yet: nothing recorded");
+  assert.equal(recorded.length, 0);
+  const date = await ensureFundsAvailable({ stripe, db, paymentId: "pay-1" });
+  assert.equal(date, new Date(availableOn * 1000).toISOString(), "a later read records Stripe's date");
+  assert.deepEqual(recorded, [{ target_payment: "pay-1", available_at: new Date(availableOn * 1000).toISOString() }]);
+  assert.equal(await ensureFundsAvailable({ stripe, db, paymentId: "pay-1" }), date, "once recorded, it is read back, not asked again");
+  assert.equal(reads, 2, "Stripe is not asked again");
+}
+
 // The reference fits every Wise route: GBP takes 18 characters, others fewer or
 // other characters. A 23-character one had Wise refuse every UK withdrawal.
 {

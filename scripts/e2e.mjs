@@ -2444,7 +2444,15 @@ async function main() {
         const { data } = await factoryReader.client.rpc("factory_balance", { target_org: factoryOrg.id });
         return (data?.rows ?? []).filter((row) => row.payment_id === dueNow.id).map((row) => row.figure).join(",");
       };
-      const { data: clearing } = await db.from("order_payments").select("funds_available_at").eq("id", dueNow.id).single();
+      // The server records Stripe's clearing date once the charge's balance
+      // transaction exists, which can be a moment after the payment is confirmed.
+      let clearing = null;
+      for (let waited = 0; waited < 15000; waited += 500) {
+        ({ data: clearing } = await db.from("order_payments").select("funds_available_at, stripe_charge_id").eq("id", dueNow.id).single());
+        if (clearing?.funds_available_at || !clearing?.stripe_charge_id) break;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (clearing?.stripe_charge_id) check(Boolean(clearing.funds_available_at), "Stripe's clearing date is recorded for the card payment");
       if (clearing?.funds_available_at && new Date(clearing.funds_available_at) > new Date()) {
         check(await figureOf() === "pending", "money Stripe is still clearing is Pending, not Available");
         realClearingDate = clearing.funds_available_at;
@@ -2760,6 +2768,17 @@ async function main() {
       await STRIPE.stripe.paymentIntents.confirm(intentId, { payment_method: "pm_card_bypassPending", return_url: APP });
       const synced = await apiWith(brandPerson.token, "stripe-sync", { paymentId: nextDue.id });
       check(synced.body.state === "confirmed", `held by TSC (${synced.body.state})`);
+      // Stripe's clearing date can be recorded a moment after the payment: wait for it.
+      let clearedNext = null;
+      for (let waited = 0; waited < 15000 && !clearedNext?.funds_available_at; waited += 500) {
+        if (waited) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (waited % 3000 === 0) await apiWith(brandPerson.token, "stripe-sync", { paymentId: nextDue.id });
+        }
+        ({ data: clearedNext } = await db.from("order_payments").select("funds_available_at").eq("id", nextDue.id).single());
+      }
+      check(Boolean(clearedNext?.funds_available_at) && new Date(clearedNext.funds_available_at) <= new Date(),
+        `the charge cleared at once, and its date is recorded (${clearedNext?.funds_available_at})`);
       const posted = await factoryPerson.client.rpc("post_milestone_update", {
         target_milestone: nextDue.milestone_id, body: "Bulk cutting finished.", document_ids: [] });
       check(!posted.error, `the factory posts its update on the step (${posted.error?.message ?? "ok"})`);
@@ -2774,9 +2793,14 @@ async function main() {
 
       // The balance: Available, and what Withdraw can reach by Stripe.
       const factoryAmount = Number(nextDue.amount_cents) - Number(nextDue.payout_fee_cents ?? 0);
-      const before = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "balance" });
-      check(before.status === 200, `the factory reads its balance (${before.status})`);
       const rowOf = (figures) => (figures?.tsc?.rows ?? []).filter((row) => row.payment_id === nextDue.id).map((row) => row.figure).join(",");
+      let before = null;
+      for (let waited = 0; waited < 15000; waited += 1000) {
+        before = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "balance" });
+        if (before.status === 200 && rowOf(before.body.figures) === "available") break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      check(before.status === 200, `the factory reads its balance (${before.status})`);
       check(rowOf(before.body.figures) === "available", `the approved step is Available (${rowOf(before.body.figures)})`);
       check(Number(before.body.reach?.stripe_cents) >= factoryAmount, `Withdraw can reach it by Stripe (${before.body.reach?.stripe_cents})`);
       await signOutFully(page);
@@ -2821,7 +2845,7 @@ async function main() {
       let after = null;
       for (let tries = 0; tries < 15; tries += 1) {
         after = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "balance" });
-        const payout = payoutId ? await STRIPE.stripe.payouts.retrieve(payoutId, { stripeAccount: account.id }) : null;
+        const payout = payoutId ? await STRIPE.stripe.payouts.retrieve(payoutId, {}, { stripeAccount: account.id }) : null;
         if (payout?.status === "paid") break;
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
