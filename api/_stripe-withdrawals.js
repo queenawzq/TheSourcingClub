@@ -642,6 +642,53 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
   await update(db, row, { landed_minor: landedMinor, amount_minor: gross, transfers_done_at: new Date().toISOString() });
 }
 
+/**
+ * Before a factory's balance is read, without waiting for webhooks: its Stripe
+ * payouts the database still has on their way (no arrival day yet, or that
+ * day has come) are read back from Stripe, a few per read. A new status or
+ * day is recorded; a payout that failed or was cancelled gives its fee back
+ * (returnFeeOnFailedPayout, as the webhook does). Never throws; bounded by
+ * `budgetMs`. Returns how many were read in time.
+ */
+export async function refreshPayoutsFor({ stripe, db, orgId, limit = 5, budgetMs = 3000 }) {
+  const work = (async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: recent, error } = await db.from("stripe_withdrawals")
+      .select("id, stripe_account_id, payout_id, payout_status, payout_arrives_on, created_at")
+      .eq("org_id", orgId).eq("state", "paid_out").not("payout_id", "is", null)
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return 0;
+    const data = (recent ?? [])
+      .filter((row) => [null, "pending", "in_transit"].includes(row.payout_status ?? null)
+        && (!row.payout_arrives_on || row.payout_arrives_on <= today))
+      .reverse().slice(0, limit);
+    if (!data.length) return 0;
+    const read = await Promise.all(data.map(async (row) => {
+      try {
+        const payout = await stripe.payouts.retrieve(row.payout_id, {}, { stripeAccount: row.stripe_account_id });
+        const fields = payoutFields(payout);
+        if (fields.payout_status !== row.payout_status || fields.payout_arrives_on !== row.payout_arrives_on) {
+          const { error: saveError } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
+          if (saveError) throw new Error(saveError.message);
+        }
+        if (["failed", "canceled"].includes(payout.status)) await returnFeeOnFailedPayout({ stripe, db, payout });
+        return true;
+      } catch (failure) {
+        console.error("stripe-withdrawals payout read", row.id, failure?.message);
+        return false;
+      }
+    }));
+    return read.filter(Boolean).length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** What the company's list reads about a payout: where it is, and when it arrives. */
 export const payoutFields = (payout) => ({
   payout_status: payout?.status ?? null,

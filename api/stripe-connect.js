@@ -2,14 +2,14 @@ import { payoutBankOptions } from "./_payout-bank-options.js";
 import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js";
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
-import { PAYOUT_COUNTRIES, appOrigin, callerClient, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { PAYOUT_COUNTRIES, appOrigin, callerClient, checkChargesFor, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import { balanceFigures, usdCents } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -252,8 +252,13 @@ export default async function handler(request, response) {
         .catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
       // A payout that failed or was cancelled gives its fee back even if its webhook never came.
       await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
-      // Funded payments Stripe gave a clearing date after they were recorded.
-      await ensureFundsAvailableFor({ stripe, db, orgId });
+      // Funded payments Stripe gave a clearing date after they were recorded;
+      // refunds, disputes and payouts whose webhooks never came.
+      await Promise.all([
+        ensureFundsAvailableFor({ stripe, db, orgId }),
+        checkChargesFor({ stripe, db, orgId }),
+        refreshPayoutsFor({ stripe, db, orgId }),
+      ]);
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const [balance, allocation, methods, onTheirWay, displayFx, tscBalance, owedReach, poolLeft] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
@@ -401,6 +406,14 @@ export default async function handler(request, response) {
  */
 async function memberFigures({ stripe, db, caller, orgId, response }) {
   const tsc = await caller.rpc("factory_balance", { target_org: orgId });
+  if (!tsc.error) {
+    // A member of this company (the database said so): refunds, disputes and
+    // payouts whose webhooks never came are read from Stripe first, so the
+    // figures below are Stripe's. Only Stripe's facts are recorded.
+    await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayoutsFor({ stripe, db, orgId })]);
+    const again = await caller.rpc("factory_balance", { target_org: orgId });
+    if (!again.error) tsc.data = again.data;
+  }
   if (tokenRefused(tsc)) return reply(response, 401, { error: "sign in is required" });
   if (tsc.error) return reply(response, tsc.error.code === "42501" ? 403 : 502, { error: tsc.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
   const [owedReach, poolLeft, existingRead] = await Promise.all([

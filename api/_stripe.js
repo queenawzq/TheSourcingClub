@@ -560,6 +560,51 @@ export async function ensureFundsAvailableFor({ stripe, db, orgId, limit = 5, bu
 }
 
 /**
+ * Before a factory's balance is read, without waiting for webhooks: the few
+ * owed steps whose brand charge was checked least recently are read from
+ * Stripe, and a refund or dispute there is recorded as its webhook would
+ * (applyChargeRefund, recordChargeDispute), so refunded or disputed money
+ * leaves the balance even when charge.refunded or charge.dispute.* never
+ * arrives. Writes only on a change. Never throws; bounded by `budgetMs`.
+ * Returns how many charges were read in time.
+ */
+export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs = 4000 }) {
+  const work = (async () => {
+    const { data: owed, error } = await db.from("order_payments")
+      .select("id, stripe_charge_id, production_orders!inner(factory_org_id)")
+      .eq("production_orders.factory_org_id", orgId).eq("state", "confirmed")
+      .not("release_requested_at", "is", null).not("stripe_charge_id", "is", null).eq("withdrawal_pool", false)
+      .limit(500);
+    if (error || !owed?.length) return 0;
+    const { data: checks } = await db.from("payment_charge_checks").select("payment_id, checked_at")
+      .in("payment_id", owed.map((row) => row.id));
+    const last = new Map((checks ?? []).map((row) => [row.payment_id, Date.parse(row.checked_at)]));
+    const due = owed.sort((a, b) => (last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)).slice(0, limit);
+    const read = await Promise.all(due.map(async (row) => {
+      try {
+        const charge = await stripe.charges.retrieve(row.stripe_charge_id);
+        if (Number(charge.amount_refunded) > 0) await applyChargeRefund({ stripe, db, charge });
+        else if (charge.disputed) await recordChargeDispute({ stripe, db, paymentId: row.id, charge });
+        return row.id;
+      } catch (failure) {
+        logStripeFailure("charge-check", failure, { paymentId: row.id });
+        return null;
+      }
+    }));
+    const done = read.filter(Boolean);
+    if (done.length) await db.rpc("record_charges_checked", { targets: done });
+    return done.length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Stripe's charge.updated: the balance transaction has appeared on a charge
  * whose payment is recorded with no clearing date. Returns the date or null.
  */
