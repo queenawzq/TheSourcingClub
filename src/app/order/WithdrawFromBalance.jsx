@@ -7,8 +7,10 @@ import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
 
 /**
- * A factory paid by Wise or PayPal withdraws from its balance:
- * approved earnings, less what it has asked for or been paid. The balance is
+ * A factory withdraws to Wise or PayPal from its one balance: cleared
+ * approved earnings and the older pool money, less what it has asked for or
+ * been paid (my_withdrawal_balance().available_cents, the balance read's
+ * `reach.pool_cents`). The balance is
  * the database's (my_withdrawal_balance, one source with the staff board); the
  * request and its cancelling are RPCs that check the owner, the amount and the
  * one open request again. The fee shown is the one fee rule
@@ -96,17 +98,18 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
-      // A brand approving a step moves its payment into the balance
-      // (join_withdrawal_pool) with no factory_withdrawals row changing: the
-      // first such payment is what reveals Withdraw. order_payments has no org
+      // A brand approving a step adds it to the balance (it becomes owed;
+      // my_withdrawal_balance counts it once cleared) with no
+      // factory_withdrawals row changing: the first such payment is what
+      // reveals Withdraw. order_payments has no org
       // column to filter on; Realtime applies order_payments_read per
       // subscriber, so only this company's orders are heard.
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, () => load())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  // Saving the first default method moves owed payments into the pool, even
-  // though no factory_withdrawals row changes yet. Re-read after that save.
+  // Saving the first default method moves nothing (owed money stays owed),
+  // but it is what makes the balance withdrawable. Re-read after that save.
   }, [orgId, enabled, load, defaultMethodId]);
 
   return { ...state, load };

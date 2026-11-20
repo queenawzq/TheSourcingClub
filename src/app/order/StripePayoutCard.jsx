@@ -924,10 +924,10 @@ export default function StripePayoutCard({
   // The one balance (D3): the big number is the server's Available, for
   // every factory, however it withdraws. The page's four figures are the
   // same read, so the two never disagree.
-  // What each method can reach, from the server: the Stripe account's from
-  // the balance read, PayPal's and Wise's from my_withdrawal_balance(), which
+  // What each method can reach, from the server: the balance read's `reach`
+  // (owners with a Stripe account), else my_withdrawal_balance(), which
   // request_withdrawal() checks.
-  const reach = withdrawReach(figures, balance?.reach ?? balance?.figures?.reach ?? null, fromBalance.available);
+  const reach = withdrawReach(figures, balance?.reach ?? null, fromBalance.available);
   // The earliest day money still clearing can be withdrawn: a card payment
   // TSC holds (the database's), or Stripe's for money in the factory's own
   // Stripe account, whichever comes first.
@@ -952,7 +952,7 @@ export default function StripePayoutCard({
   const openStripeWithdraw = (destination = null) => {
     setError(null);
     const max = reach.stripe ?? 0;
-    setWithdrawal({ amount: max, max, amountText: (max / 100).toFixed(2), currency: "usd", requestId: crypto.randomUUID(),
+    setWithdrawal({ amount: max, max, amountText: (max / 100).toFixed(2), currency: "usd", estimated: reach.estimated, requestId: crypto.randomUUID(),
       destination: destination ?? stripeWithdrawTargets.find((m) => m.default)?.id ?? stripeWithdrawTargets[0]?.id ?? null });
     setModal("withdraw");
   };
@@ -1090,7 +1090,7 @@ export default function StripePayoutCard({
               ) : null}
               <div className="withdraw-amount-field payout-form-grid">
                 <div className="withdraw-amount-heading">
-                  <label htmlFor="stripe-withdraw-amount">{`Amount (${withdrawal.currency.toUpperCase()})`}</label>
+                  <label htmlFor="stripe-withdraw-amount">{withdrawal.estimated ? "Amount (estimated USD)" : `Amount (${withdrawal.currency.toUpperCase()})`}</label>
                   <button className="secondary-btn" type="button" disabled={busy}
                     onClick={() => setWithdrawal((was) => ({ ...was, amount: was.max, amountText: (was.max / 100).toFixed(2) }))}>Withdraw full amount</button>
                 </div>

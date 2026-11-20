@@ -51,7 +51,7 @@ const row = (payment_id, figure, amount_cents) => ({ payment_id, figure, amount_
 
 // Nothing until the figures answer: placeholders, never a guess.
 assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
-assert.deepEqual(withdrawReach(null), { stripe: null, balance: null });
+assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: false });
 
 // IMG 75: a $1 step approved, no withdrawal method. Available $1, Pending $0,
 // and the row says "Added to your balance", never "Pending". The card offers
@@ -76,7 +76,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null });
   assert.equal(s.available, 100, "IMG 76: Available $1");
   assert.equal(s.paid, 0, "IMG 76: Paid out $0, adding a method pays nothing out");
   assert.equal(figures.has_method, true, "IMG 76: Withdraw");
-  assert.deepEqual(withdrawReach(figures), { stripe: 100, balance: 100 }, "IMG 76: PayPal reaches the $1");
+  assert.deepEqual(withdrawReach(figures), { stripe: 100, balance: 100, estimated: false }, "IMG 76: PayPal reaches the $1");
 }
 
 // IMG 45: $1 withdrawn by PayPal, $0.02 fee. Paid out $0.98, Total $0.98:
@@ -105,7 +105,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null });
   assert.equal(s.available, 800, "mixed: TSC's $5 + the $3 in its Stripe account");
   assert.equal(s.pending, 250 + 100 + 50, "mixed: clearing card payment + Stripe pending + payout on its way");
   assert.equal(s.paid, 450, "mixed: what Stripe paid to the bank, not the transfers");
-  assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500 }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
+  assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
   const placed = figuresByPayment(figures);
   const clearingStep = pay("o2", 250, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
   assert.equal(earningStatus(clearingStep, null, placed), "Pending", "a card payment still clearing reads Pending, as its figure does");
@@ -121,11 +121,15 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null });
   assert.equal(m.approval, 0, "the approved step leaves Awaiting approval");
   assert.equal(m.available, 1500, "and joins Available, the Stripe $3 kept");
   assert.equal(m.total, s.total, "Total is unchanged: the money only moved");
-  assert.deepEqual(withdrawReach(merged), { stripe: 1500, balance: 1200 });
+  assert.deepEqual(withdrawReach(merged), { stripe: 1500, balance: 1200, estimated: false });
   // The server's own reach comes first: Stripe's from the balance read (only
   // steps paid by card count), PayPal's and Wise's from my_withdrawal_balance().
-  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 500 }, null), { stripe: 700, balance: 500 }, "the balance read's reach");
-  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 450 }, 500), { stripe: 700, balance: 500 }, "what request_withdrawal() checks, for PayPal and Wise");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 500, estimated: false }, null), { stripe: 700, balance: 500, estimated: false }, "the balance read's top-level reach");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 450, estimated: true }, 500), { stripe: 700, balance: 450, estimated: true }, "reach.pool_cents first; the Stripe amount says when it was converted");
+  assert.deepEqual(withdrawReach(figures, null, 500), { stripe: 800, balance: 500, estimated: false }, "no Stripe read (members, no Stripe account): my_withdrawal_balance() for PayPal and Wise");
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  assert.ok(cardCode.includes("withdrawReach(figures, balance?.reach ?? null, fromBalance.available)") && !cardCode.includes("figures?.reach"), "reach is read only at the balance answer's top level");
+  assert.ok(cardCode.includes('withdrawal.estimated ? "Amount (estimated USD)"'), "a converted Stripe reach says estimated USD");
   assert.equal(withStripePart(db, null), db, "no Stripe read: the database's figures as they are");
   assert.equal(withStripePart(null, figures), figures, "no database read yet: the Stripe answer as it is");
 }

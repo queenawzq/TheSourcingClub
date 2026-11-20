@@ -116,8 +116,9 @@ export function figuresByPayment(figures) {
  * left in the balance kept for them, never the Stripe account's.
  *
  * The server's own answers come first: `server` is the balance action's
- * `reach` ({ stripe_cents, pool_cents }), `poolCents` is
- * my_withdrawal_balance()'s available_cents (what request_withdrawal() checks).
+ * top-level `reach` ({ stripe_cents, pool_cents, estimated }), for an owner
+ * with a Stripe account; `poolCents` is my_withdrawal_balance()'s
+ * available_cents, the same number as reach.pool_cents, for everyone else.
  * Without them it is worked out from the figures' parts. Null until known.
  */
 export function withdrawReach(figures, server = null, poolCents = null) {
@@ -128,7 +129,9 @@ export function withdrawReach(figures, server = null, poolCents = null) {
   const known = (value) => value != null && Number.isFinite(Number(value));
   return {
     stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? owed + ownStripe : null,
-    balance: known(poolCents) ? Number(poolCents) : known(server?.pool_cents) ? Number(server.pool_cents) : figures ? owed + pool : null,
+    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? owed + pool : null,
+    // The Stripe amount was converted from the account's currency.
+    estimated: Boolean(server?.estimated),
   };
 }
 
