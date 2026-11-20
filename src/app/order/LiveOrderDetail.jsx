@@ -180,7 +180,9 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
 
   if (milestone.state === "cancelled") return money ? `Cancelled · ${money}` : "Cancelled";
   if (milestone.state === "complete") {
-    return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
+    // Approved, then refunded (one balance: nothing was paid out yet): the
+    // payment's own words, as on the payment page, not a bare "Done".
+    return payment?.state === "confirmed" || payment?.state === "released" || (payment?.state === "failed" && payment.refunded_at) ? `Done · ${money}` : "Done";
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {

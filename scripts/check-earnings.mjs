@@ -254,11 +254,18 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   listed.pending_cents += 4500;
   assert.deepEqual(pendingParts(listed, []), { pending: 293594, clearing: 5000, onHold: 4500, waiting: 100000, onItsWay: 184094 },
     "on its way is only what the server calls on its way; waiting and on hold from its words");
+  // A waiting withdrawal partly held because a step under it was refunded: the
+  // held part on hold, the rest waiting, as two entries or one with held_cents.
+  const split = { pending_cents: 10000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } };
+  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "on_hold", amount_cents: 4500 }, { id: "w", road: "pool", word: "waiting", amount_cents: 5500 }] }, []),
+    { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "split into two entries");
+  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, held_cents: 4500 }] }, []),
+    { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "one entry with its held part");
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "On its way", -184094],
     ["asked-p2", "Waiting", -100000],
-    ["asked-p3", "On hold", -4500],
+    ["asked-p3-held", "On hold", -4500],
   ], "rows from the server's list: a cancelled request and a Stripe withdrawal refused before any payout are not listed");
   assert.equal(listedRows[0].meta, "To Bank account ending in 0154.", "where it went, in the notices' words");
   assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");

@@ -1109,7 +1109,7 @@ export default function StripePayoutCard({
           </>}
         </div>
         <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner}
-          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, w.word]))} onCancel={(row) => {
+          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold" || Number(w.held_cents) > 0).map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
               setWithdrawalError(null);
               // Cancelling is asked first, like any step that can't be undone:
               // the dialog that chooses among several, with this one ticked.

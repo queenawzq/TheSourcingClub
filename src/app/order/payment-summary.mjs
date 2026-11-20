@@ -468,7 +468,12 @@ export function pendingParts(figures, opens = []) {
   const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
   const list = base.withdrawals ?? figures.withdrawals ?? null;
-  const sumOf = (word) => (list ?? []).filter((w) => w?.word === word).reduce((sum, w) => sum + n(w.amount_cents), 0);
+  // A withdrawal partly held (a step under it refunded) may come as two entries
+  // (on_hold and waiting) or as one carrying its held part (held_cents): either
+  // way the held part is on hold and the rest keeps its word.
+  const heldOf = (w) => (w?.word === "on_hold" ? n(w.amount_cents) : Math.min(n(w?.amount_cents), n(w?.held_cents ?? w?.on_hold_cents)));
+  const sumOf = (word) => (list ?? []).reduce((sum, w) => sum + (word === "on_hold" ? heldOf(w)
+    : w?.word === word ? n(w.amount_cents) - heldOf(w) : 0), 0);
   // The server's list says which withdrawals wait for staff and which are held;
   // without it (an older server), the open requests and the refunded rows do.
   const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
@@ -504,7 +509,8 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       const paid = w.word === "paid";
       return [{
         ...base,
-        id: `asked-${w.id}`,
+        // A partly held withdrawal can come as two entries: one row each.
+        id: `asked-${w.id}${w.word === "on_hold" ? "-held" : ""}`,
         title: ASKED_TITLE[w.provider] ?? "Bank transfer",
         meta: w.to ?? own?.paid_to ?? null,
         note: own?.status === "declined" ? own.reason
