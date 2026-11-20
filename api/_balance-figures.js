@@ -76,6 +76,17 @@ export function balanceFigures(tsc, stripe, displayFx) {
     paid_out_cents: 0,
   } : null;
   const known = parts && parts.available_cents != null && parts.pending_cents != null;
+  if (known) {
+    // At an indicative rate, what is in the Stripe account can read a little
+    // more than the database counted as sent: Paid out never goes below
+    // zero, and the excess comes off the Stripe part of Available (then of
+    // Pending), so the total stays the database's.
+    let over = Math.max(0, parts.available_cents + parts.pending_cents - base.paid_out_cents);
+    const fromAvailable = Math.min(over, parts.available_cents);
+    parts.available_cents -= fromAvailable;
+    over -= fromAvailable;
+    parts.pending_cents -= Math.min(over, parts.pending_cents);
+  }
   const inStripe = known ? parts.available_cents + parts.pending_cents : 0;
   const figures = known ? {
     ...base,
