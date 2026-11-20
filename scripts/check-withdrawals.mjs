@@ -962,7 +962,7 @@ for (const [why, row] of [
 // what the transfers landed as (non-US$ accounts); and nothing claimed is left
 // held when the withdrawal is refused.
 {
-  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, refreshPayoutsFor, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
+  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, refreshPayoutsFor, heldByOpenWithdrawals, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
   const { PayoutMethodRefusal } = await import("../api/_stripe-payouts.js");
   const { stripeWithdrawalFee } = await import("../src/shared/withdrawal-fees.mjs");
   const { randomUUID } = await import("node:crypto");
@@ -1827,6 +1827,49 @@ for (const [why, row] of [
       payout_arrives_on: null, created_at: new Date().toISOString() });
     broken.api.payouts.retrieve = async () => { throw new Error("Stripe down"); };
     assert.equal(await refreshPayoutsFor({ stripe: broken.api, db: broken.db, orgId: "org" }), 0, "R11: a failed read never throws");
+  }
+
+  // 37b6c70f: what other open withdrawals on the account still hold of the
+  // money in it (heldByOpenWithdrawals), so Withdraw never offers it twice.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    const base = { org_id: "org", stripe_account_id: "acct_f", request_id: randomUUID(), fee_cents: null, reversals: [], payout_id: null,
+      lease_until: null, created_at: new Date().toISOString() };
+    // Mid-transfer (one balance, transfers not done): its own Stripe part plus the parts already sent.
+    w.db.rows.push({ ...base, id: "mid", request_key: "mid", state: "claimed", currency: "USD", amount_minor: 9000, usd_cents: 9000,
+      d1_minor: 1500, transfers_done_at: null });
+    w.db.takes.push({ id: "t-sent", payment_id: "p1", stripe_withdrawal_id: "mid", amount_cents: 2500, status: "sent" },
+      { id: "t-held", payment_id: "p1", stripe_withdrawal_id: "mid", amount_cents: 5000, status: "held" });
+    // Fee taken, payout not made: its amount less the fee already taken back.
+    w.db.rows.push({ ...base, id: "fee", request_key: "fee", state: "fee_taken", currency: "USD", amount_minor: 4000, usd_cents: 4000,
+      d1_minor: 0, transfers_done_at: new Date().toISOString(), fee_local_minor: 120 });
+    // Ignored: refused and paid out.
+    w.db.rows.push({ ...base, id: "refused", request_key: "refused", state: "refused", currency: "USD", amount_minor: 99999, usd_cents: 99999 },
+      { ...base, id: "paid", request_key: "paid", state: "paid_out", currency: "USD", amount_minor: 88888, usd_cents: 88888 });
+    // A non-US$ one, mid-transfer: sent US$ parts at its own rate.
+    w.db.rows.push({ ...base, id: "eur", request_key: "eur", state: "claimed", currency: "EUR", amount_minor: 9100, usd_cents: 10000,
+      d1_minor: 0, transfers_done_at: null });
+    w.db.takes.push({ id: "t-eur", payment_id: "p1", stripe_withdrawal_id: "eur", amount_cents: 1000, status: "sent" });
+    const held = await heldByOpenWithdrawals(w.db, "acct_f");
+    assert.equal(held.usd, (1500 + 2500) + (4000 - 120), "mid-transfer: Stripe part + parts sent; fee taken: amount less the fee; refused and paid out ignored");
+    assert.equal(held.eur, 910, "a non-US$ row: its sent parts at its own rate");
+    assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", "mid")).usd, 4000 - 120, "the withdrawal being made is not counted against itself");
+  }
+  // Reach: $1,343.03 in the account, all held by another open withdrawal:
+  // Stripe reaches only owed money; never below zero per currency.
+  {
+    const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    const freeLine = "const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));";
+    assert.equal(connect.split(freeLine).length - 1, 2, "the balance answer and the members' figures both leave out what other withdrawals hold");
+    assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id)").length - 1, 2);
+    // The same rule, on the tester's numbers.
+    const free = (entry, held) => Math.max(0, Number(entry.amount) - (held[entry.currency.toLowerCase()] ?? 0));
+    const available = [{ amount: 134303, currency: "usd" }, { amount: 500, currency: "eur" }];
+    const held = { usd: 134303, eur: 800 };
+    const owedStripe = 2500;
+    const stripeCents = owedStripe + available.reduce((sum, entry) => sum + (entry.currency === "usd" ? free(entry, held) : 0), 0);
+    assert.equal(stripeCents, 2500, "all $1,343.03 held elsewhere: Stripe reaches only the owed money");
+    assert.equal(free(available[1], held), 0, "never below zero per currency");
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.
