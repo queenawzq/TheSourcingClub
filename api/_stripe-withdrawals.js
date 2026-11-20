@@ -397,7 +397,7 @@ async function settleAttempted(stripe, db, row, { staff = false } = {}) {
       }
       if (Date.parse(take.attempted_at) < Date.now() - KEY_WINDOW_MS) {
         if (staff) {
-          await call(db, "return_take", { target_take: take.id });
+          await call(db, "return_take_leased", { target_take: take.id, lease: row.lease_until ?? null });
           result.returned += amount;
         } else result.unsure += amount;
         continue;
@@ -412,7 +412,7 @@ async function settleAttempted(stripe, db, row, { staff = false } = {}) {
         transfer = await stripe.transfers.create(...takeTransfer(take, row));
       } catch (failure) {
         if (refusedByStripe(failure)) {
-          await call(db, "return_take", { target_take: take.id });
+          await call(db, "return_take_leased", { target_take: take.id, lease: row.lease_until ?? null });
           result.returned += amount;
           continue;
         }
@@ -448,10 +448,25 @@ export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
   const { data: row, error } = await db.from("stripe_withdrawals").select("*").eq("id", withdrawalId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return { done: false, sentence: "That withdrawal isn't on the board any more. Reload the page." };
-  await settleAbandoned({ stripe, db, accountId: row.stripe_account_id });
-  const { data: fresh } = await db.from("stripe_withdrawals").select("*").eq("id", withdrawalId).maybeSingle();
-  const result = await settleAttempted(stripe, db, fresh ?? row, { staff: true });
-  return { done: true, ...result, sentence: checkedSentence(result) };
+  // The withdrawal's lease first: while another call is carrying it on, its
+  // parts are that call's to settle, and nothing here touches them.
+  const leased = await db.rpc("lease_stripe_withdrawal", { target: withdrawalId });
+  if (leased.error) throw new Error(leased.error.message);
+  const mine = Array.isArray(leased.data) ? leased.data[0] : leased.data;
+  if (!mine?.id) {
+    const unsure = (await readTakes(db, row)).filter((take) => take.status === "held")
+      .reduce((sum, take) => sum + Number(take.amount_cents), 0);
+    const result = { sent: 0, returned: 0, unsure };
+    return { done: false, ...result, sentence: checkedSentence(result) };
+  }
+  try {
+    if (["claimed", "fee_taken"].includes(mine.state)) await settleOne(stripe, db, mine);
+    const result = await settleAttempted(stripe, db, mine, { staff: true });
+    return { done: true, ...result, sentence: checkedSentence(result) };
+  } finally {
+    await db.from("stripe_withdrawals").update({ lease_until: null })
+      .eq("id", mine.id).eq("lease_until", mine.lease_until).then(() => null, () => null);
+  }
 }
 
 async function call(db, name, args) {
@@ -662,44 +677,53 @@ export async function settleAbandoned({ stripe, db, accountId, except = null }) 
     const row = Array.isArray(claim.data) ? claim.data[0] : claim.data;
     if (!row?.id) continue;
     try {
-      // The one balance, stopped while claiming or transferring owed money:
-      // carried on, since the owner asked for it (a refusal is recorded on
-      // the row and its claims go back to the balance).
-      if (row.usd_cents != null && row.state === "claimed" && row.fee_cents == null) {
-        const { data: account } = await db.from("stripe_connect_accounts")
-          .select("country, transfers_active").eq("org_id", row.org_id).maybeSingle();
-        try {
-          await carryOut({ stripe, db, row, country: account?.country ?? "", requestId: row.request_id,
-            destination: row.destination ?? null, transfersActive: Boolean(account?.transfers_active) });
-        } catch (failure) {
-          // Stripe or the database did not answer: tried again on the next
-          // read or withdrawal once this lease lapses. Never blocks this one.
-          if (!(failure instanceof PayoutMethodRefusal)) console.error("stripe-withdrawals resume", row.id, failure?.message);
-        }
-        continue;
-      }
-      const payout = await findPayout(stripe, row);
-      if (payout && !["failed", "canceled"].includes(payout.status)) {
-        const plan = row.reversals ?? [];
-        await update(db, row, {
-          state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
-          fee_local_minor: row.fee_local_minor ?? Number(row.amount_minor) - Number(payout.amount),
-          reversals: plan,
-        });
-        continue;
-      }
-      // Reversals Stripe made, recorded or not.
-      let taken = 0;
-      for (const item of row.reversals ?? []) {
-        for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
-          if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
-        }
-      }
-      await giveBack(stripe, db, row, taken, null);
+      await settleOne(stripe, db, row);
     } finally {
       await db.from("stripe_withdrawals").update({ lease_until: null }).eq("id", row.id).then(() => null, () => null);
     }
   }
+}
+
+/**
+ * One withdrawal this call holds the lease on, left half-way: the one
+ * balance's claim or transfers are carried on; otherwise a payout that went
+ * is recorded, else whatever fee was taken goes back.
+ */
+async function settleOne(stripe, db, row) {
+  // The one balance, stopped while claiming or transferring owed money:
+  // carried on, since the owner asked for it (a refusal is recorded on
+  // the row and its claims go back to the balance).
+  if (row.usd_cents != null && row.state === "claimed" && row.fee_cents == null) {
+    const { data: account } = await db.from("stripe_connect_accounts")
+      .select("country, transfers_active").eq("org_id", row.org_id).maybeSingle();
+    try {
+      await carryOut({ stripe, db, row, country: account?.country ?? "", requestId: row.request_id,
+        destination: row.destination ?? null, transfersActive: Boolean(account?.transfers_active) });
+    } catch (failure) {
+      // Stripe or the database did not answer: tried again on the next
+      // read or withdrawal once this lease lapses. Never blocks this one.
+      if (!(failure instanceof PayoutMethodRefusal)) console.error("stripe-withdrawals resume", row.id, failure?.message);
+    }
+    return;
+  }
+  const payout = await findPayout(stripe, row);
+  if (payout && !["failed", "canceled"].includes(payout.status)) {
+    const plan = row.reversals ?? [];
+    await update(db, row, {
+      state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
+      fee_local_minor: row.fee_local_minor ?? Number(row.amount_minor) - Number(payout.amount),
+      reversals: plan,
+    });
+    return;
+  }
+  // Reversals Stripe made, recorded or not.
+  let taken = 0;
+  for (const item of row.reversals ?? []) {
+    for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
+      if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
+    }
+  }
+  await giveBack(stripe, db, row, taken, null);
 }
 
 /**
