@@ -218,5 +218,35 @@ select pg_temp.act_as('01'); set local role authenticated;
 select throws_ok($$select public.admin_balance_attention()$$, '42501', null, 'R10: still staff only');
 reset role;
 
+-- ===========================================================================
+-- Fix round 11 (20261120300000): when a charge was last checked against
+-- Stripe is the server's alone; staff's "Balance after" is the one balance.
+-- ===========================================================================
+select ok(not has_table_privilege('anon', 'public.payment_charge_checks', 'select')
+      and not has_table_privilege('anon', 'public.payment_charge_checks', 'insert')
+      and not has_table_privilege('authenticated', 'public.payment_charge_checks', 'select')
+      and not has_table_privilege('authenticated', 'public.payment_charge_checks', 'insert')
+      and not has_table_privilege('authenticated', 'public.payment_charge_checks', 'update')
+      and not has_table_privilege('authenticated', 'public.payment_charge_checks', 'delete'),
+  'R11: payment_charge_checks is neither readable nor writable by anon or a signed-in person');
+select pg_temp.act_as('01'); set local role authenticated;
+select throws_ok($$select * from public.payment_charge_checks$$, '42501', null, 'R11: a factory owner cannot read it');
+reset role;
+select ok(not has_function_privilege('authenticated', 'public.record_charges_checked(uuid[])', 'execute')
+      and not has_function_privilege('anon', 'public.record_charges_checked(uuid[])', 'execute')
+      and has_function_privilege('service_role', 'public.record_charges_checked(uuid[])', 'execute'),
+  'R11: record_charges_checked is the server''s only');
+select lives_ok($$select pg_temp.as_server('select public.record_charges_checked(array[''ce8f0001-0000-0000-0000-000000000001''::uuid])')$$,
+  'R11: the server records a check');
+select ok((select checked_at is not null from public.payment_charge_checks where payment_id = 'ce8f0001-0000-0000-0000-000000000001'),
+  'R11: and it is kept');
+select pg_temp.act_as('02'); set local role authenticated;
+select ok((select bool_and((w ->> 'balance_after_cents')::bigint = (public.factory_balance(('ce8b0000-0000-0000-0000-0000000000e1')::uuid) ->> 'available_cents')::bigint)
+             from jsonb_array_elements(public.admin_withdrawals() -> 'withdrawals') w where w ->> 'org_id' = 'ce8b0000-0000-0000-0000-0000000000e1'),
+  'R11: staff''s "Balance after" is the factory''s Available balance');
+select ok((select count(*) > 0 from jsonb_array_elements(public.admin_withdrawals() -> 'withdrawals') w where w ->> 'org_id' = 'ce8b0000-0000-0000-0000-0000000000e1'),
+  'R11: (for this factory''s withdrawals)');
+reset role;
+
 select * from finish();
 rollback;

@@ -393,6 +393,63 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(script.includes("decideBackfill") && script.includes("applyBackfill"), "the backfill script runs these two functions");
 }
 
+// Fix round 11 (b): without refund / dispute webhooks, a balance read checks
+// the owed steps' charges, least recently checked first, a few per read.
+{
+  const { checkChargesFor } = await import("../api/_stripe.js");
+  const make = ({ owed, checks = [], charges }) => {
+    const calls = [];
+    const reads = [];
+    const chain = (rows) => {
+      const filters = [];
+      const q = { select: () => q, in: () => q, not: () => q, limit: () => q, order: () => q,
+        eq: (column, value) => (column.includes(".") || ["state", "withdrawal_pool"].includes(column) ? q : (filters.push((r) => r[column] === value), q)),
+        maybeSingle: async () => ({ data: rows.find((r) => filters.every((f) => f(r))) ?? null, error: null }),
+        then: (resolve, reject) => Promise.resolve({ data: rows, error: null }).then(resolve, reject) };
+      return q;
+    };
+    const db = {
+      from: (table) => {
+        if (table === "order_payments") return chain(owed.map((r) => ({ ...r, state: "confirmed", order_id: "o1", stripe_payment_intent_id: `pi_${r.id}` })));
+        if (table === "payment_charge_checks") return chain(checks);
+        throw new Error(`unexpected table ${table}`);
+      },
+      rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
+    };
+    const stripe = {
+      charges: { retrieve: async (id) => (reads.push(id), { id, payment_intent: `pi_${id}`, amount: 1000, amount_refunded: 0, refunded: false, disputed: false, ...charges[id] }) },
+      disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
+      refunds: { list: async () => ({ data: [{ metadata: {} }] }), create: async () => { throw new Error("no new refund"); } },
+    };
+    return { db, stripe, calls, reads };
+  };
+  const owed = Array.from({ length: 7 }, (_, i) => ({ id: `pay-${i}`, stripe_charge_id: `ch_${i}` }));
+  const checks = owed.map((r, i) => ({ payment_id: r.id, checked_at: new Date(Date.now() - (7 - i) * 60_000).toISOString() })).slice(1); // pay-0 never checked
+  const x = make({ owed, checks, charges: {
+    ch_0: { amount_refunded: 1000, refunded: true },
+    ch_1: { disputed: true, dispute: "du_1" },
+  } });
+  await checkChargesFor({ stripe: x.stripe, db: x.db, orgId: "org" });
+  assert.deepEqual(x.reads, ["ch_0", "ch_1", "ch_2", "ch_3", "ch_4"], "R11: least recently checked first (never checked first), at most 5");
+  assert.ok(x.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-0"), "R11: a refunded charge is recorded (applyChargeRefund)");
+  assert.deepEqual(x.calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-1", disputed: true }, "R11: a disputed one is recorded");
+  const others = x.calls.filter(([name]) => !["record_payment_refunded", "record_payment_disputed", "record_charges_checked"].includes(name));
+  assert.deepEqual(others, [], "R11: nothing else is written");
+  assert.equal(x.calls.filter(([name]) => name === "record_payment_refunded" || name === "record_payment_disputed").length, 2,
+    "R11: the charges with neither change are not written");
+  assert.deepEqual(x.calls.find(([name]) => name === "record_charges_checked")?.[1].targets.sort(), ["pay-0", "pay-1", "pay-2", "pay-3", "pay-4"],
+    "R11: the five read are recorded as checked");
+  // A charge Stripe can't read is not recorded as checked; nothing throws.
+  const y = make({ owed: owed.slice(0, 2), charges: {} });
+  y.stripe.charges.retrieve = async (id) => { if (id === "ch_0") throw new Error("down"); return { id, amount_refunded: 0, disputed: false }; };
+  await checkChargesFor({ stripe: y.stripe, db: y.db, orgId: "org" });
+  assert.deepEqual(y.calls.find(([name]) => name === "record_charges_checked")?.[1].targets, ["pay-1"], "R11: only what was read is recorded as checked");
+  // Nothing owed: no Stripe read, no write.
+  const z = make({ owed: [], charges: {} });
+  assert.equal(await checkChargesFor({ stripe: z.stripe, db: z.db, orgId: "org" }), 0);
+  assert.equal(z.reads.length + z.calls.length, 0);
+}
+
 // (d) A Stripe withdrawal records who asked from the token's subject when the
 // auth server gives no user for it (the database had just accepted it).
 {
@@ -868,7 +925,7 @@ for (const [why, row] of [
 // what the transfers landed as (non-US$ accounts); and nothing claimed is left
 // held when the withdrawal is refused.
 {
-  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
+  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, refreshPayoutsFor, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
   const { PayoutMethodRefusal } = await import("../api/_stripe-payouts.js");
   const { stripeWithdrawalFee } = await import("../src/shared/withdrawal-fees.mjs");
   const { randomUUID } = await import("node:crypto");
@@ -1675,6 +1732,49 @@ for (const [why, row] of [
     const ok1 = oneBalanceWorld({ steps: [step("p1", 10000)] });
     await withdraw(ok1, 5000, { userId: "user-owner-2" });
     assert.equal(ok1.db.rows[0].requested_by, "user-owner-2", "and so does a paid one");
+  }
+
+  // Fix round 11 (a): without payout webhooks, a balance read reads back the
+  // payouts the database still has on their way, once their day has come.
+  {
+    const day = (offset) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
+    // Paid in Stripe, recorded pending with yesterday's arrival: updated.
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    await withdraw(w, 5000);
+    const row = w.db.rows[0];
+    Object.assign(row, { payout_status: "pending", payout_arrives_on: day(-1) });
+    Object.assign(w.stripe.payouts[0], { status: "paid", arrival_date: Math.floor(Date.now() / 1000) - 86400 });
+    assert.equal(await refreshPayoutsFor({ stripe: w.api, db: w.db, orgId: "org" }), 1);
+    assert.equal(row.payout_status, "paid", "R11: a payout Stripe paid is recorded paid");
+    assert.equal(row.payout_arrives_on, day(-1));
+    // Failed in Stripe: the fee goes back once, however often it is read.
+    const f = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    await withdraw(f, 5000);
+    Object.assign(f.db.rows[0], { payout_status: "in_transit", payout_arrives_on: day(-1) });
+    Object.assign(f.stripe.payouts[0], { status: "failed", metadata: { stripe_withdrawal_id: f.db.rows[0].id } });
+    await refreshPayoutsFor({ stripe: f.api, db: f.db, orgId: "org" });
+    await refreshPayoutsFor({ stripe: f.api, db: f.db, orgId: "org" });
+    assert.equal(f.stripe.transfers.filter((t) => t.metadata?.stripe_withdrawal_fee_return === f.db.rows[0].id).length, 1,
+      "R11: a failed payout gives its fee back once (returnFeeOnFailedPayout)");
+    assert.equal(f.db.rows[0].state, "fee_returned");
+    // Arriving tomorrow: not read. And at most `limit` per read, oldest first.
+    const t = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    let reads = [];
+    t.api.payouts.retrieve = async (id) => (reads.push(id), { id, status: "paid", arrival_date: Math.floor(Date.now() / 1000) });
+    const add = (k, arrives, ageMinutes) => t.db.rows.push({ id: `sw-${k}`, org_id: "org", stripe_account_id: "acct_f", state: "paid_out", payout_id: `po_${k}`,
+      payout_status: "pending", payout_arrives_on: arrives, created_at: new Date(Date.now() - ageMinutes * 60_000).toISOString(), currency: "USD" });
+    add("tomorrow", day(1), 100);
+    for (let k = 1; k <= 7; k += 1) add(k, k % 2 ? day(-1) : null, 10 * k);
+    await refreshPayoutsFor({ stripe: t.api, db: t.db, orgId: "org" });
+    assert.ok(!reads.includes("po_tomorrow"), "R11: a payout arriving tomorrow is not read");
+    assert.equal(reads.length, 5, "R11: at most 5 per read");
+    assert.deepEqual(reads.sort(), ["po_3", "po_4", "po_5", "po_6", "po_7"], "R11: the oldest first");
+    // Never throws.
+    const broken = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    broken.db.rows.push({ id: "sw-x", org_id: "org", stripe_account_id: "acct_f", state: "paid_out", payout_id: "po_x", payout_status: null,
+      payout_arrives_on: null, created_at: new Date().toISOString() });
+    broken.api.payouts.retrieve = async () => { throw new Error("Stripe down"); };
+    assert.equal(await refreshPayoutsFor({ stripe: broken.api, db: broken.db, orgId: "org" }), 0, "R11: a failed read never throws");
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.
