@@ -12,6 +12,15 @@
 export async function tellPayoutEvent(db, event) {
   const payout = event.data?.object;
   if (!event.account || !payout || !["payout.paid", "payout.failed"].includes(event.type)) return false;
+  // Where a withdrawal's payout is, for the company's list (its members read
+  // stripe_withdrawals). Best effort: the bell below matters more.
+  try {
+    const { payoutFields } = await import("./_stripe-withdrawals.js");
+    const marked = await db.from("stripe_withdrawals").update(payoutFields(payout)).eq("payout_id", payout.id);
+    if (marked?.error) console.error("payout status not recorded", payout.id, marked.error.message);
+  } catch (failure) {
+    console.error("payout status not recorded", payout.id, failure?.message);
+  }
   const known = await db.from("stripe_connect_accounts").select("org_id")
     .eq("stripe_account_id", event.account).maybeSingle();
   if (known.error) throw new Error(known.error.message);

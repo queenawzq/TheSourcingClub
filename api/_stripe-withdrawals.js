@@ -322,7 +322,8 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
         throw failure;
       }
     }
-    await update(db, row, { state: "paid_out", payout_id: payout.id, payout_minor: payout.amount });
+    await update(db, row, { state: "paid_out", payout_id: payout.id, payout_minor: payout.amount, ...payoutFields(payout) });
+    await tellWithdrawalAsked(stripe, db, row, payout);
     return payoutReply(payout);
   }
   if (row.state === "paid_out") return { id: row.payout_id, amount: Number(row.payout_minor), currency, status: "pending" };
@@ -609,6 +610,41 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
   await update(db, row, { landed_minor: landedMinor, amount_minor: gross, transfers_done_at: new Date().toISOString() });
 }
 
+/** What the company's list reads about a payout: where it is, and when it arrives. */
+export const payoutFields = (payout) => ({
+  payout_status: payout?.status ?? null,
+  payout_arrives_at: payout?.arrival_date ? new Date(Number(payout.arrival_date) * 1000).toISOString() : null,
+});
+
+/**
+ * The whole company hears of a Stripe withdrawal, as of a PayPal or Wise one,
+ * in the same words ("Withdrawal of $X requested" / "To …"). Once per
+ * withdrawal; never fails the withdrawal.
+ */
+async function tellWithdrawalAsked(stripe, db, row, payout) {
+  try {
+    const { data: already } = await db.from("notifications").select("id")
+      .eq("kind", "withdrawal").eq("subject_type", "withdrawal").eq("subject_id", row.id).limit(1);
+    if (already?.length) return;
+    const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
+    const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
+    let to = "your bank account";
+    const destination = typeof payout?.destination === "string" ? payout.destination : payout?.destination?.id;
+    if (destination) {
+      const method = await stripe.accounts.retrieveExternalAccount(row.stripe_account_id, destination).catch(() => null);
+      if (method?.last4) to = `${method.object === "card" ? "Debit card" : "Bank account"} ending in ${method.last4}`;
+    }
+    await db.from("notifications").insert({
+      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
+      title: `Withdrawal of ${asked} requested`, body: `To ${to}.`,
+      data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
+        receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },
+    });
+  } catch (failure) {
+    console.error("stripe-withdrawals notice", row.id, failure?.message);
+  }
+}
+
 /** "You can withdraw up to …" when the balance is now under the amount, else null. Never throws: it only chooses words. */
 async function balanceShortSentence(stripe, db, row, currency, amount) {
   try {
@@ -720,10 +756,11 @@ async function settleOne(stripe, db, row) {
   if (payout && !["failed", "canceled"].includes(payout.status)) {
     const plan = row.reversals ?? [];
     await update(db, row, {
-      state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
+      state: "paid_out", payout_id: payout.id, payout_minor: payout.amount, ...payoutFields(payout),
       fee_local_minor: row.fee_local_minor ?? Number(row.amount_minor) - Number(payout.amount),
       reversals: plan,
     });
+    await tellWithdrawalAsked(stripe, db, row, payout);
     return;
   }
   // Reversals Stripe made, recorded or not.

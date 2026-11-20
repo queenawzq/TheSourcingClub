@@ -983,7 +983,8 @@ function AttentionSection({ attention, onChanged }) {
                   <td>{row.factory_name}<br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></td>
                   <td>{moneyIn(row.amount_cents, row.currency)}</td>
                   <td>
-                    The brand disputed this charge, so it waits in the factory's balance.{" "}
+                    The brand disputed this charge, so it waits in the factory's balance.
+                    {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it again.{" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>
                   <td><PaymentDate value={row.disputed_at} /></td>
@@ -1030,7 +1031,15 @@ const TABS = [
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
   attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null, attention = null }) {
-  const [chosen, setChosen] = useState("payout");
+  // Opened from the overview's "Payments owed": the first queue with something
+  // in it (the overview counts these same queues), unless a tab is asked for.
+  const [chosen, setChosen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("tab");
+    } catch {
+      return null;
+    }
+  });
   const [sentNotice, setSentNotice] = useState(null);
   const onSent = useCallback((row, name, done) => {
     setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
@@ -1042,7 +1051,9 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   if (attention) sections.attention = [...attention.disputed, ...attention.stuck];
   const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
-  const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
+  const firstWithRows = ["payout", "withdrawals", "attention", "failed", "clearing"]
+    .find((id) => tabs.some(([tab]) => tab === id) && sections[id]?.length) ?? "payout";
+  const active = tabs.some(([id]) => id === chosen) ? chosen : firstWithRows;
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
   const wiseShort = wise?.balanceCents != null ? Math.max(0, owedByWise - wise.balanceCents) : 0;

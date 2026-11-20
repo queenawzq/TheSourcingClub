@@ -70,7 +70,9 @@ export function balanceFigures(tsc, stripe, displayFx) {
     ...base,
     available_cents: base.available_cents + parts.available_cents,
     pending_cents: base.pending_cents + parts.pending_cents + parts.in_transit_cents,
-    paid_out_cents: base.paid_out_cents - n(tsc?.parts?.stripe_released_cents) + parts.paid_out_cents,
+    // The database already took Stripe's payout fees out of Paid out; the
+    // Stripe payouts below are net of them, so the fees are put back first.
+    paid_out_cents: base.paid_out_cents + n(tsc?.parts?.stripe_withdrawal_fees_cents) - n(tsc?.parts?.stripe_released_cents) + parts.paid_out_cents,
     estimated: [stripe.available, stripe.pending, stripe.onTheirWay, paidRows].some(converted),
   } : { ...base, estimated: false };
   return {
