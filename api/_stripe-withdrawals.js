@@ -791,7 +791,9 @@ async function reverseSentTakes(stripe, db, row, { createNew = true } = {}) {
       const want = Number(take.amount_cents) - feeHere;
       // Only finishing what was done (staff's "Check again"): a part with no
       // reversal yet stays sent; its money is in the factory's account.
-      if (!mine && !createNew) continue;
+      // (A part whose whole transfer its fee reversal took has nothing left to
+      // reverse: it is returned either way.)
+      if (!mine && want > 0 && !createNew) continue;
       if (!mine && want > 0) {
         mine = await stripe.transfers.createReversal(take.stripe_transfer_id, {
           amount: want, metadata: { take_reversal: take.id, take_withdrawal_id: row.id },
@@ -855,8 +857,19 @@ async function settleOne(stripe, db, row) {
     }
     return;
   }
+  // Reversals Stripe made for the fee, recorded or not.
+  const feeTaken = async () => {
+    let taken = 0;
+    for (const item of row.reversals ?? []) {
+      for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
+        if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
+      }
+    }
+    return taken;
+  };
   const payout = await findPayout(stripe, row);
-  if (payout && !["failed", "canceled"].includes(payout.status)) {
+  if (payout) {
+    // A payout was made: recorded, whatever became of it.
     const plan = row.reversals ?? [];
     await update(db, row, {
       state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
@@ -864,18 +877,18 @@ async function settleOne(stripe, db, row) {
       reversals: plan,
     });
     await recordPayoutMade(db, row, payout);
-    await tellWithdrawalAsked(stripe, db, row, payout);
+    if (!["failed", "canceled"].includes(payout.status)) {
+      await tellWithdrawalAsked(stripe, db, row, payout);
+      return;
+    }
+    // It failed or was cancelled after it was made: its money is back in the
+    // factory's Stripe account and stays Stripe money. The fee only goes back.
+    await giveBack(stripe, db, row, await feeTaken(), null);
     return;
   }
-  // Reversals Stripe made, recorded or not.
-  let taken = 0;
-  for (const item of row.reversals ?? []) {
-    for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
-      if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
-    }
-  }
-  // No payout exists (findPayout above), and this call holds the lease.
-  await giveBack(stripe, db, row, taken, null, { takeBack: true });
+  // No payout exists at all, and this call holds the lease: refused before
+  // any payout, so the owed parts go back too.
+  await giveBack(stripe, db, row, await feeTaken(), null, { takeBack: true });
 }
 
 /**
