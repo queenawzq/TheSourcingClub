@@ -9,23 +9,26 @@ for (const label of ["Total earnings", "Awaiting approval", "Pending", "Paid out
   assert.match(page, new RegExp(`\\["${label}", summary\\.\\w+, "[^"\\n]+"\\]`), `${label} keeps its explanation`);
 }
 assert.ok(page.includes('<PaymentHelp label={label}>{help}</PaymentHelp>'), "summary helpers remain reachable");
-for (const label of ["Balance", "Available balance", "Pending balance"]) {
+for (const label of ["Available balance", "Pending balance"]) {
   assert.ok(card.includes(`<PaymentHelp label="${label}">`), `${label} keeps its help button`);
 }
+// One card for every factory (D3, Nov 20): the hand-paid "Balance (USD)" and its
+// help went with the second card version; "Available balance" is everyone's.
+assert.ok(!card.includes('<PaymentHelp label="Balance">'), "no second balance help: one card");
 for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies"]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
 // Every payout method's card says both (Nov 19): the sentence, and "$X pending"
-// from the page's Pending figure. The Stripe card and the balance card each carry them.
+// from the page's Pending figure. One card carries them for every method (D3).
 const sentence = "Earnings stay in your balance until you withdraw them.";
-assert.ok(card.split(sentence).length - 1 >= 2, "the sentence is on the Stripe card and on the balance card (PayPal, Wise)");
-assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 2, "both cards say what is pending, with the one helper");
+assert.ok(card.split(sentence).length - 1 >= 1, "the sentence is on the card, whatever the method");
+assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 1, "the card says what is pending, with the one helper");
 assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page's Pending figure");
 {
   const { cardPendingCents } = await import("../src/app/order/payment-summary.mjs");
   assert.equal(cardPendingCents(null, 100), null, "nothing until the page's figure is known");
   assert.equal(cardPendingCents(360, 0), 360, "Pending $3.60 with nothing shown elsewhere: the card says $3.60 pending");
-  assert.equal(cardPendingCents(360, 360), 0, "money the card offers to withdraw is not called pending");
+  assert.equal(cardPendingCents(360, 360), 0, "a withdrawal the card lists on its own row is not called pending again");
   assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
   assert.equal(cardPendingCents(100, 360), 0, "never below zero");
 }

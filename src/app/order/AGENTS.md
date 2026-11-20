@@ -16,3 +16,15 @@ The payout UI and text reviewed with John on `claude/nov16-withdrawals` are appr
 - Saving the first/default withdrawal method must refresh the withdrawal balance immediately; never require a browser refresh to reveal Withdraw. Preserve the default-method dependency on `useWithdrawalBalance` in both the payout page and card.
 
 Before merging, check the diff for accidental changes to these decisions. Run `npm run check:payout-help`, `npm run check:css` and `npm run build` for payout UI changes.
+
+### One balance, one card (Nov 20, 2026)
+
+Every factory has the same Earnings card, however it withdraws or with no method yet: "Available balance (USD)" ("(estimated USD)" only when money in its own Stripe account was converted), its number the server's Available. The hand-paid "Balance (USD)" card and its help are gone; do not bring a second version back.
+
+- The four figures and the card come from the server only: `factory_balance(org)` (and `factory_balance(org, client)` for the client filter), with the owner's Stripe money added by `/api/stripe-connect` `balance` → `figures` (`withStripePart` keeps it while the database is read again). Total earnings is the four added up (`summaryFrom`), never worked out on its own. Never sum payments into a figure in the browser.
+- If the balance call answers 502 with `figures` (Stripe unreachable), show those figures; never blank the card.
+- Withdraw when `has_method`, else "Add withdrawal method" (D6). Each Withdraw dialog's Available is what that method reaches (`withdrawReach`: the server's `reach` / `my_withdrawal_balance()`): Stripe = cleared owed money + money already in its Stripe account; PayPal/Wise = cleared owed money + the balance kept for them, never the Stripe account's.
+- An approved step reads "Added to your balance", never "Pending", unless all its money is in Pending (a card payment still clearing). Withdrawals on their way keep their own rows and words.
+- The four tooltips above stay word for word unless Youssef approves a change; Pending now also holds withdrawals on their way, and a reworded Pending tooltip is waiting for his OK.
+
+Run `npm run check:earnings`, `npm run check:payout-help` and `npm run build` after changing the card or the figures.
