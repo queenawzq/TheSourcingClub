@@ -1271,6 +1271,7 @@ export const factoryMainZhText = {
   "Balance (USD)": "余额 (USD)",
   "Available balance (USD)": "可提现余额 (USD)",
   "Available balance (estimated USD)": "可提现余额（估算美元）",
+  "Money you can withdraw to your bank now. This is your overall balance across all clients.": "你现在可以提现到银行账户的金额。这是你在所有客户中的总余额。",
   "Amount (estimated USD)": "金额（估算美元）",
   "Add withdrawal method": "添加提现方式",
   "Add a withdrawal method to receive earnings.": "添加提现方式以接收收入。",
