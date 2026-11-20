@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { cardPendingCents, parseWithdrawAmount, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -977,15 +977,16 @@ export default function StripePayoutCard({
   const arrivesOn = clearsOn && !Number.isNaN(clearsOn.getTime()) && !(Number.isFinite(stripeClears) && stripeClears * 1000 < clearsOn.getTime())
     ? clearsOn.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : availableFrom(balance);
-  // "$X pending", from the page's Pending figure less the withdrawals the
-  // card lists on their own rows, so no amount is said twice on the card.
+  // "$X pending": only card payments still clearing, with the day they can be withdrawn.
   const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
-  // A step whose card charge is disputed is held: in Pending, but never "available on" a day.
-  const onHoldCents = Math.max(0, Number((figures?.tsc ?? figures)?.parts?.disputed_cents) || 0);
-  // "$X pending" is the Pending figure itself (re-test): never a sum of its own
-  // that can drift from the figure when a step under a withdrawal is refunded.
-  // The lines for money on hold or on its way say which part that is.
-  const cardPending = cardPendingCents(pendingTotal, 0);
+  // The Pending figure in its three lines, adding up to it exactly: money
+  // clearing ("$X pending. Available to withdraw on …"), withdrawals and old
+  // payouts on their way ("$Y on its way"), disputed steps ("$Z on hold").
+  // A withdrawal on its way is never called available to withdraw.
+  const pendingLines = pendingParts(figures) ?? { clearing: 0, onItsWay: 0, onHold: 0 };
+  const cardPending = pendingLines.clearing;
+  const onHoldCents = pendingLines.onHold;
+  const onItsWayLine = pendingLines.onItsWay;
 
   // One balance, one Withdraw (D5). Every saved method withdraws from it;
   // Withdraw opens on the default, and "Withdraw to" lists every method,
@@ -1061,7 +1062,7 @@ export default function StripePayoutCard({
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
-          {figures && onItsWayCents > 0 && !failedLine ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayCents, "USD")} on its way`}</p> : null}
+          {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}

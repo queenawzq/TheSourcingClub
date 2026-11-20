@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
-  ON_HOLD, ON_ITS_WAY, companyStripeRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
+  ON_HOLD, ON_ITS_WAY, companyStripeRows, pendingParts, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -211,7 +211,24 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 // Re-test (fix round 6): the card's "$X pending" is the Pending figure itself.
 {
   const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(cardCode.includes("const cardPending = cardPendingCents(pendingTotal, 0);"), "the pending line equals the Pending figure");
+  // The card's lines under the balance add up to the Pending figure exactly:
+  // clearing ("$X pending. Available to withdraw on …"), on its way, on hold.
+  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws the three lines from pendingParts");
+  const sum = (p) => p.clearing + p.onItsWay + p.onHold;
+  const cases = [
+    { pending_cents: 187079, parts: { owed_clearing_cents: 11500, disputed_cents: 0 }, stripe: { pending_cents: 0 } },
+    { pending_cents: 2000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } },
+    { pending_cents: 16500, parts: { owed_clearing_cents: 6500, disputed_cents: 5000 }, stripe: { pending_cents: 1000 } },
+    { pending_cents: 500, parts: { owed_clearing_cents: 6500, disputed_cents: 5000 } },
+  ];
+  for (const figures of cases) {
+    const p = pendingParts(figures);
+    assert.equal(sum(p), figures.pending_cents, `the lines add up to Pending (${figures.pending_cents})`);
+    assert.ok(p.clearing >= 0 && p.onItsWay >= 0 && p.onHold >= 0, "no line below zero");
+  }
+  assert.deepEqual(pendingParts(cases[0]), { pending: 187079, clearing: 11500, onHold: 0, onItsWay: 175579 }, "withdrawals on their way are not 'available to withdraw'");
+  assert.equal(pendingParts(cases[1]).clearing, 0, "only withdrawals pending: no 'available to withdraw on' line");
+  assert.equal(pendingParts(null), null);
   // A refunded earning stays listed, in no figure.
   const refunded = pay("r1", 6500, "failed", { ...APPROVED, confirmed_at: "2026-11-19T00:00:00Z", refunded_at: "2026-11-20T00:00:00Z" });
   assert.equal(earningStatus(refunded), "Refunded");

@@ -446,3 +446,23 @@ export function companyStripeRows(withdrawals = [], methodName = () => null, now
     };
   });
 }
+
+/**
+ * The card's lines under the balance, from the Pending figure, in US$ cents,
+ * adding up to it exactly:
+ *   clearing  card payments not yet cleared (TSC's, and the factory's own
+ *             Stripe pending balance): "$X pending. Available to withdraw on …"
+ *   onHold    steps whose card charge is disputed: "$Z on hold"
+ *   onItsWay  the rest: withdrawals asked for or on their way to the bank,
+ *             and old step-by-step payouts being sent: "$Y on its way"
+ * Null until the figures answer.
+ */
+export function pendingParts(figures) {
+  if (!figures) return null;
+  const n = (value) => Math.max(0, Number(value) || 0);
+  const parts = (figures.tsc ?? figures).parts ?? {};
+  const pending = n(figures.pending_cents);
+  const onHold = Math.min(pending, n(parts.disputed_cents));
+  const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + n(figures.stripe?.pending_cents));
+  return { pending, clearing, onHold, onItsWay: pending - onHold - clearing };
+}
