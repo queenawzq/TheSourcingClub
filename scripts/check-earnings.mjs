@@ -107,7 +107,10 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const member = checkTotal(figures, "mixed, as a member reads it (figures action)");
   assert.deepEqual(s, member, "owner and member read the same four figures");
   assert.equal(s.available, 800, "mixed: TSC's $5 + the $3 in its Stripe account");
-  assert.equal(s.pending, 250 + 100 + 50, "mixed: clearing card payment + Stripe pending + payout on its way");
+  // The server decides where a payout on its way sits (api/_balance-figures.js);
+  // the card shows its answer to the cent, never a sum of its own.
+  assert.equal(s.pending, figures.pending_cents, "mixed: the card's Pending is the server's");
+  assert.equal(s.total, figures.total_cents, "mixed: the card's Total is the server's, to the cent");
   assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
   const placed = figuresByPayment(figures);
   const clearingStep = pay("o2", 250, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
@@ -213,8 +216,8 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
   // The card's lines under the balance add up to the Pending figure exactly:
   // clearing ("$X pending. Available to withdraw on …"), on its way, on hold.
-  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws the three lines from pendingParts");
-  const sum = (p) => p.clearing + p.onItsWay + p.onHold;
+  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures, fromBalance.opens)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws the three lines from pendingParts");
+  const sum = (p) => p.clearing + p.onItsWay + p.onHold + p.waiting;
   const cases = [
     { pending_cents: 187079, parts: { owed_clearing_cents: 11500, disputed_cents: 0 }, stripe: { pending_cents: 0 } },
     { pending_cents: 2000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } },
@@ -222,11 +225,21 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     { pending_cents: 500, parts: { owed_clearing_cents: 6500, disputed_cents: 5000 } },
   ];
   for (const figures of cases) {
-    const p = pendingParts(figures);
+    const p = pendingParts(figures, [{ status: "requested", amount_cents: 1000 }, { status: "paying", amount_cents: 300 }]);
     assert.equal(sum(p), figures.pending_cents, `the lines add up to Pending (${figures.pending_cents})`);
-    assert.ok(p.clearing >= 0 && p.onItsWay >= 0 && p.onHold >= 0, "no line below zero");
+    assert.ok(p.clearing >= 0 && p.onItsWay >= 0 && p.onHold >= 0 && p.waiting >= 0, "no line below zero");
   }
-  assert.deepEqual(pendingParts(cases[0]), { pending: 187079, clearing: 11500, onHold: 0, onItsWay: 175579 }, "withdrawals on their way are not 'available to withdraw'");
+  assert.deepEqual(pendingParts(cases[0]), { pending: 187079, clearing: 11500, onHold: 0, waiting: 0, onItsWay: 175579 }, "withdrawals on their way are not 'available to withdraw'");
+  // Round 8: a PayPal/Wise withdrawal waiting for staff is "waiting", not "on its way";
+  // the part of one whose step was refunded is "on hold"; only what was sent is "on its way".
+  const round8 = { pending_cents: 9500 + 100000, parts: { owed_clearing_cents: 0, disputed_cents: 5000 },
+    rows: [{ payment_id: "p447", figure: "pending", amount_cents: 4500, refunded: true }] };
+  const opens = [{ status: "requested", amount_cents: 4500 }, { status: "requested", amount_cents: 100000 }];
+  assert.deepEqual(pendingParts(round8, opens), { pending: 109500, clearing: 0, onHold: 9500, waiting: 100000, onItsWay: 0 },
+    "dispute + refunded-under-withdrawal on hold, the rest waiting for staff, nothing called on its way");
+  assert.ok(cardCode.includes("pendingParts(figures, fromBalance.opens)") && cardCode.includes("waiting`}</p>"), "the card draws the waiting line");
+  assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
+  assert.ok(cardCode.includes("withdrawal.amount > 0 && !amountProblem"), "the fee line follows the dialog's Available");
   assert.equal(pendingParts(cases[1]).clearing, 0, "only withdrawals pending: no 'available to withdraw on' line");
   assert.equal(pendingParts(null), null);
   // A refunded earning stays listed, in no figure.

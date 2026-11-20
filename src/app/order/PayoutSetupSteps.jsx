@@ -95,7 +95,9 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
       else if (!form) onUnavailable?.();
     }
   };
-  useEffect(() => { load(); /* once, for this row */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // An edit asks for the saved recipient's own form (a business is asked for
+  // "Name of the business / organisation", as when it was added).
+  useEffect(() => { load(row?.wise_details?.legalType ? { legalType: row.wise_details.legalType } : undefined); /* once, for this row */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasStoredNumber = Boolean(row?.number_changed_at);
   const typed = normalBankNumber(number);

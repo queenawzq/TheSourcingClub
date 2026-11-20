@@ -452,17 +452,27 @@ export function companyStripeRows(withdrawals = [], methodName = () => null, now
  * adding up to it exactly:
  *   clearing  card payments not yet cleared (TSC's, and the factory's own
  *             Stripe pending balance): "$X pending. Available to withdraw on …"
- *   onHold    steps whose card charge is disputed: "$Z on hold"
- *   onItsWay  the rest: withdrawals asked for or on their way to the bank,
- *             and old step-by-step payouts being sent: "$Y on its way"
+ *   onHold    steps whose card charge is disputed, and parts of a waiting
+ *             withdrawal whose step was refunded: "$Z on hold"
+ *   waiting   PayPal / Wise withdrawals asked for and waiting for staff:
+ *             "$W waiting"
+ *   onItsWay  the rest: withdrawals sent and on their way to the bank, and
+ *             old step-by-step payouts being sent: "$Y on its way"
+ * `opens` are the open PayPal / Wise withdrawals (factory_withdrawals).
  * Null until the figures answer.
  */
-export function pendingParts(figures) {
+export function pendingParts(figures, opens = []) {
   if (!figures) return null;
   const n = (value) => Math.max(0, Number(value) || 0);
-  const parts = (figures.tsc ?? figures).parts ?? {};
+  const base = figures.tsc ?? figures;
+  const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
-  const onHold = Math.min(pending, n(parts.disputed_cents));
+  // A refunded step's part held under a waiting withdrawal (factory_balance rows).
+  const refundedHeld = (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
+    .reduce((sum, row) => sum + n(row.amount_cents), 0);
+  const onHold = Math.min(pending, n(parts.disputed_cents) + refundedHeld);
   const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + n(figures.stripe?.pending_cents));
-  return { pending, clearing, onHold, onItsWay: pending - onHold - clearing };
+  const asked = (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0);
+  const waiting = Math.min(pending - onHold - clearing, Math.max(0, asked - refundedHeld));
+  return { pending, clearing, onHold, waiting, onItsWay: pending - onHold - clearing - waiting };
 }

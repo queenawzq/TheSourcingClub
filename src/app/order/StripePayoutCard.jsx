@@ -983,7 +983,7 @@ export default function StripePayoutCard({
   // clearing ("$X pending. Available to withdraw on …"), withdrawals and old
   // payouts on their way ("$Y on its way"), disputed steps ("$Z on hold").
   // A withdrawal on its way is never called available to withdraw.
-  const pendingLines = pendingParts(figures) ?? { clearing: 0, onItsWay: 0, onHold: 0 };
+  const pendingLines = pendingParts(figures, fromBalance.opens) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
   const cardPending = pendingLines.clearing;
   const onHoldCents = pendingLines.onHold;
   const onItsWayLine = pendingLines.onItsWay;
@@ -1011,7 +1011,7 @@ export default function StripePayoutCard({
   // published Stripe fee, in US$; an estimate where the account is not US$).
   const amountProblem = withdrawal && !withdrawal.previous && withdrawal.amountText
     ? parseWithdrawAmount(withdrawal.amountText, withdrawal.max, (most) => formatMoney(most, withdrawal.currency)).problem : null;
-  const stripeFee = withdrawal && !withdrawal.previous && withdrawal.amount > 0
+  const stripeFee = withdrawal && !withdrawal.previous && withdrawal.amount > 0 && !amountProblem
     ? withdrawalFee({ provider: "stripe", amountCents: withdrawal.amount, currency: "USD", country: String(account?.country ?? "").toUpperCase() }) : null;
   const stripeFeeLine = stripeFee && !stripeFee.refused ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
   // Opens on the default; when the default's method can reach nothing and
@@ -1062,6 +1062,7 @@ export default function StripePayoutCard({
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
+          {figures && pendingLines.waiting > 0 ? <p data-testid="payout-waiting">{`${formatMoney(pendingLines.waiting, "USD")} waiting`}</p> : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
@@ -1162,7 +1163,8 @@ export default function StripePayoutCard({
               </div>
             </div>
           )}
-          {!withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+          {/* One message: the server's refusal, when there is one, is the truth. */}
+          {!error && !withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}
