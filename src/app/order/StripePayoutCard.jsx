@@ -1100,7 +1100,8 @@ export default function StripePayoutCard({
             <button className={`${showWithdraw ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
-        <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} onCancel={(row) => {
+        <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner}
+          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, w.word]))} onCancel={(row) => {
               setWithdrawalError(null);
               // Cancelling is asked first, like any step that can't be undone:
               // the dialog that chooses among several, with this one ticked.

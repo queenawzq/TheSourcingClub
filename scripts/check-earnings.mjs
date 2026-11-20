@@ -287,6 +287,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     "cancelling says what really comes back, or that nothing does after a refund");
 }
 
+// Round 9: a request the server marks on_hold reads "On hold" in the Pending withdrawal block, for owner and member.
+{
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes('words.get(row.id) === "on_hold"') && form.includes('{onHold(row) ? "On hold" : row.status === "requested" ? "Waiting" : "Processing"}')
+    && form.includes('data-testid="withdrawal-on-hold">On hold</span>'), "On hold for the owner and the member");
+}
+
 // Fix round 5 (local tester).
 {
   // M5: a disputed step is On hold, never "Available <day>", on both pages.

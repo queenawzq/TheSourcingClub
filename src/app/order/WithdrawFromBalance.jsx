@@ -146,19 +146,23 @@ export const withdrawOptionLabel = (row, language = "en") => {
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
+    // The server's word for it (factory_balance().withdrawals): a request whose
+    // step was refunded underneath is on hold, for the owner and members alike.
+    const onHold = (row) => words instanceof Map && words.get(row.id) === "on_hold";
     return list.map((row) => (
       <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
           <span className="payout-pending-label">Pending withdrawal</span>
           <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
           <span className="payout-pending-destination">{destination(row)}</span>
+          {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
         {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
           // Someone who can't cancel sees the owner's word: still waiting for TSC, or being sent.
-          : <span className="billing-status">{row.status === "requested" ? "Waiting" : "Processing"}</span>}
+          : <span className="billing-status">{onHold(row) ? "On hold" : row.status === "requested" ? "Waiting" : "Processing"}</span>}
       </div>
     ));
   }

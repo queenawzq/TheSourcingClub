@@ -126,7 +126,9 @@ assert.ok(liveFund.includes("The step amount, without fees, is added to ${factor
 assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
 assert.ok(liveFund.includes("Your payment is funded. It is added to ${factory}'s balance."), "the payment-only success text says it goes to the balance");
 assert.ok(liveFund.includes("Once your payment clears, it is added to ${factory}'s balance."), "the payment-only processing text says it goes to the balance");
-assert.equal((liveFund.match(/\.\.\.\(paymentOnly \? \{ description: paymentOnlySuccess\(factory, (true|false)\) \} : \{\}\)/g) ?? []).length, 2, "both success headings pass the payment-only text");
+assert.equal((liveFund.match(/\.\.\.\(paymentOnly \? \{ description: paymentOnlySuccess\(factory, (true|false), disputed\) \} : \{\}\)/g) ?? []).length, 2, "both success headings pass the payment-only text");
+// A disputed charge is never promised to the factory's balance (Nov 20, round 9).
+assert.ok(liveFund.includes('export const DISPUTED_CHARGE = "This charge is disputed. It is held until the dispute is settled.";') && liveFund.includes("if (disputed) return DISPUTED_CHARGE;"), "the Fund page says a disputed charge is held");
 const prototype = read("src/prototype/main.jsx");
 assert.ok(prototype.includes("funds are only released after you approve the sample."), "the prototype keeps its own success text");
 assert.equal((prototype.match(/Funds stay protected until the related step is approved\./g) ?? []).length, 2, "the prototype keeps its own Fund subtitle");

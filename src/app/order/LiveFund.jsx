@@ -21,6 +21,7 @@
  * the webhook does, and this screen shows what was recorded.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabase.js";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   CardCvcElement,
@@ -433,7 +434,11 @@ function paymentOnlyFundNote(amount, title, factory) {
   return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is added to ${factory}'s balance once funded.`;
 }
 
-function paymentOnlySuccess(factory, funded) {
+/** A charge the brand's bank disputed is held, not added to the factory's balance. */
+export const DISPUTED_CHARGE = "This charge is disputed. It is held until the dispute is settled.";
+
+function paymentOnlySuccess(factory, funded, disputed = false) {
+  if (disputed) return DISPUTED_CHARGE;
   return funded
     ? `Your payment is funded. It is added to ${factory}'s balance.`
     : `Once your payment clears, it is added to ${factory}'s balance.`;
@@ -444,6 +449,18 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   // The card form is long, so paying leaves the page scrolled; the result
   // opens at its heading.
   useEffect(() => { window.scrollTo(0, 0); }, []);
+  // A dispute is recorded by Stripe's webhook, seconds after the charge: read
+  // it now and once more shortly after, so the page never promises the money
+  // to the factory's balance while the charge is disputed.
+  const [disputed, setDisputed] = useState(Boolean(payment.disputed_at));
+  useEffect(() => {
+    let live = true;
+    const read = () => supabase.from("order_payments").select("disputed_at").eq("id", payment.id).maybeSingle()
+      .then(({ data }) => { if (live && data) setDisputed(Boolean(data.disputed_at)); }, () => {});
+    read();
+    const again = setTimeout(read, 4000);
+    return () => { live = false; clearTimeout(again); };
+  }, [payment.id]);
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   // Each fee as checkout or the database computed it: the total less the
@@ -478,11 +495,11 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, false) } : {}),
+        ...(paymentOnly ? { description: paymentOnlySuccess(factory, false, disputed) } : {}),
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, true) } : {}),
+        ...(paymentOnly ? { description: paymentOnlySuccess(factory, true, disputed) } : {}),
       }}
       onBack={onBack}
       onNext={onBack}
