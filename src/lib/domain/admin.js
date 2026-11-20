@@ -449,6 +449,7 @@ export async function overviewMetrics() {
     "load the marketplace overview",
   );
   const row = rows?.[0] ?? {};
+  const paymentsHref = await paymentsQueueHref(row.payments_awaiting_confirmation ?? 0);
 
   return {
     profilesAwaitingReview: row.profiles_awaiting_review ?? 0,
@@ -457,8 +458,32 @@ export async function overviewMetrics() {
     quotesSubmittedToday: row.quotes_submitted_today ?? 0,
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
     // The payments board is the app's, not the console's.
-    paymentsHref: "/app.html/admin/payments",
+    paymentsHref,
   };
+}
+
+/**
+ * Where "Payments owed" opens: the board's queue its count is in. The count
+ * is per-step payouts staff must settle (Payout owed, the board's default),
+ * plus withdrawals waiting, plus what Needs checking lists; the first of
+ * those with anything in it opens. Never throws: the board is the fallback.
+ */
+async function paymentsQueueHref(total) {
+  const board = "/app.html/admin/payments";
+  try {
+    const [open, attention] = await Promise.all([
+      supabase.from("factory_withdrawals").select("id", { count: "exact", head: true }).in("status", ["requested", "paying"]),
+      supabase.rpc("admin_balance_attention"),
+    ]);
+    const withdrawals = open.count ?? 0;
+    const checking = (attention.data?.disputed?.length ?? 0) + (attention.data?.stuck?.length ?? 0);
+    if (total - withdrawals - checking > 0) return board;
+    if (withdrawals > 0) return `${board}?tab=withdrawals`;
+    if (checking > 0) return `${board}?tab=needs_checking`;
+    return board;
+  } catch {
+    return board;
+  }
 }
 
 async function adminUserRequest(options = {}) {
