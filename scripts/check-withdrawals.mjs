@@ -475,11 +475,16 @@ for (const [why, row] of [
       payouts: [{ amount: 2500, currency: "usd", paid: true }, { amount: 500, currency: "usd", paid: false }],
     };
     const f = balanceFigures(db, stripe, null);
+    // Fix round 8: the database counts every payout (on its way: Pending,
+    // until its arrival day; then Paid out), so only the money sitting in the
+    // factory's Stripe account moves: out of Paid out, into Available and
+    // Pending. onTheirWay and payouts are not read.
     assert.equal(f.available_cents, 10000 + 5000, "D1: Stripe's available money is in Available with the owed money");
-    assert.equal(f.pending_cents, 3000 + 2000 + 500, "Stripe pending and payouts on their way are Pending");
-    assert.equal(f.paid_out_cents, 2500, "Paid out is what reached the bank, not the transfers made to Stripe");
+    assert.equal(f.pending_cents, 3000 + 2000, "Stripe's pending money is Pending (payouts on their way are the database's)");
+    assert.equal(f.paid_out_cents, 8000 - (5000 + 2000), "Paid out is the database's, less what still sits in the Stripe account");
     assert.equal(f.awaiting_cents, 1000);
     assert.equal(f.total_cents, sum(f), "total is the sum of the four");
+    assert.equal(f.total_cents, 1000 + 10000 + 3000 + 8000, "and the database's total, to the cent");
     assert.equal(f.estimated, false);
   }
   // Non-USD Stripe money is converted and marked estimated; a currency with no
@@ -527,9 +532,26 @@ for (const [why, row] of [
     const owner = balanceFigures(db, stripe, null);
     assert.equal(owner.paid_out_cents, 967, "the owner's Paid out: $9.67, as the member's");
     assert.equal(owner.total_cents, db.available_cents + db.paid_out_cents, "the owner's Total is the member's");
-    // Still on its way: Pending for the owner; the database (member) says Paid out. Same total.
+    // Fix round 8: a payout on its way is the database's to place (Pending
+    // until its arrival day); Stripe's own list of payouts changes nothing.
     const onItsWay = balanceFigures(db, { available: [], pending: [], onTheirWay: [{ amount: 967, currency: "usd" }], payouts: [{ amount: 967, currency: "usd", paid: false }] }, null);
-    assert.equal(onItsWay.total_cents, db.available_cents + db.paid_out_cents, "on its way: same Total, the money only moves figure");
+    assert.deepEqual([onItsWay.pending_cents, onItsWay.paid_out_cents, onItsWay.total_cents], [db.pending_cents, db.paid_out_cents, db.available_cents + db.paid_out_cents],
+      "Stripe's payouts list moves nothing: the owner reads the database's figures");
+  }
+  // Fix round 8: the owner's Total is factory_balance's total to the cent,
+  // with EUR sitting in the factory's Stripe account (converted, estimated).
+  {
+    const db = tsc({ awaiting_cents: 6500, available_cents: 4500, pending_cents: 11500, paid_out_cents: 1960,
+      withdrawals: [{ id: "w1", road: "stripe", word: "on_its_way", amount_cents: 1960 }] });
+    const total = 6500 + 4500 + 11500 + 1960;
+    const stripe = { available: [{ amount: 910, currency: "eur" }], pending: [{ amount: 182, currency: "eur" }] };
+    const owner = balanceFigures(db, stripe, { rates: { EUR: 1.1 } });
+    assert.equal(owner.total_cents, total, "the owner's Total is the server's, to the cent");
+    assert.equal(owner.estimated, true, "the EUR part is an estimate");
+    assert.equal(owner.available_cents, 4500 + 1001, "EUR in the Stripe account converted into Available");
+    assert.equal(owner.pending_cents, 11500 + 200, "and into Pending");
+    assert.equal(owner.paid_out_cents, 1960 - 1001 - 200, "taken out of Paid out, where the server counted it");
+    assert.deepEqual(owner.withdrawals, db.withdrawals, "the server's withdrawals list passes through");
   }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
@@ -1345,6 +1367,17 @@ for (const [why, row] of [
     assert.ok(w.db.callArgs.slice(asked).some(([name, args]) => name === "return_sent_take" && args.target_take === part.id), "R7-2: return_sent_take is called for it");
     assert.equal(part.status, "returned", "the part is back in the balance");
     assert.equal(w.db.rows[0].refusal_cause, null, "the row leaves Needs checking");
+  }
+
+  // Fix round 8: a refused Stripe withdrawal still records who asked.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    await assert.rejects(withdraw(w, 20000, { userId: "user-owner-1" }), (failure) => failure instanceof PayoutMethodRefusal);
+    assert.equal(w.db.rows[0].state, "refused");
+    assert.equal(w.db.rows[0].requested_by, "user-owner-1", "the refused row keeps requested_by");
+    const ok1 = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    await withdraw(ok1, 5000, { userId: "user-owner-2" });
+    assert.equal(ok1.db.rows[0].requested_by, "user-owner-2", "and so does a paid one");
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.

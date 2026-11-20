@@ -122,8 +122,22 @@ select lives_ok($$select pg_temp.as_server('select public.claim_owed_steps(''cc5
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   (select format('select public.record_take_sent(%L, %L)', id, 'tr_pgtap_r5_1') from public.payment_takes where stripe_withdrawal_id = 'cc580000-0000-0000-0000-000000000001')),
   'its transfer goes');
-select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set state = ''paid_out'', fee_cents = 33, fee_local_minor = 33, payout_minor = 967, payout_id = ''po_pgtap_r5'', payout_status = ''in_transit'' where id = ''cc580000-0000-0000-0000-000000000001''')$$,
-  'Stripe takes its 33c fee and pays out $9.67');
+select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set state = ''paid_out'', fee_cents = 33, fee_local_minor = 33, payout_minor = 967, payout_id = ''po_pgtap_r5'', payout_status = ''in_transit'', payout_arrives_on = current_date + 2 where id = ''cc580000-0000-0000-0000-000000000001''')$$,
+  'Stripe takes its 33c fee and pays out $9.67, arriving in two days');
+-- Fix round 8: on its way until its arrival day: Pending, at the US dollars it
+-- took from the balance less the fee; the total does not move.
+select is((pg_temp.bal_as('01') -> 'parts' ->> 'stripe_on_way_cents')::bigint, 967::bigint, 'on its way: $9.67 in parts.stripe_on_way_cents');
+select is((pg_temp.bal_as('01') ->> 'paid_out_cents')::bigint, 0::bigint, 'and not yet Paid out');
+select is((pg_temp.bal_as('01') ->> 'total_cents')::bigint, current_setting('tsc.r5_total0')::bigint - 33, 'Total drops by the fee only');
+select is((select w ->> 'word' from jsonb_array_elements(pg_temp.bal_as('01') -> 'withdrawals') w where w ->> 'id' = 'cc580000-0000-0000-0000-000000000001'),
+  'on_its_way', 'the withdrawal reads On its way');
+select is((select (w ->> 'amount_cents')::bigint from jsonb_array_elements(pg_temp.bal_as('01') -> 'withdrawals') w where w ->> 'id' = 'cc580000-0000-0000-0000-000000000001'),
+  967::bigint, 'for the US dollars that left, net of the fee');
+select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set payout_status = ''paid'', payout_arrives_on = current_date - 1 where id = ''cc580000-0000-0000-0000-000000000001''')$$,
+  'the payout arrives');
+select is((select w ->> 'word' from jsonb_array_elements(pg_temp.bal_as('01') -> 'withdrawals') w where w ->> 'id' = 'cc580000-0000-0000-0000-000000000001'),
+  'paid', 'the withdrawal reads Paid');
+select is((pg_temp.bal_as('01') -> 'parts' ->> 'stripe_on_way_cents')::bigint, 0::bigint, 'nothing on its way any more');
 select is((pg_temp.bal_as('01') -> 'parts' ->> 'stripe_withdrawal_fees_cents')::bigint, 33::bigint, 'the fee is counted once, in parts');
 select is((pg_temp.bal_as('01') ->> 'paid_out_cents')::bigint, 967::bigint, 'Paid out is what left for the bank: $9.67');
 select is((pg_temp.bal_as('01') ->> 'total_cents')::bigint, current_setting('tsc.r5_total0')::bigint - 33,
@@ -148,7 +162,7 @@ select is(pg_temp.bal_as('02'), pg_temp.bal_as('01'), 'owner and member still ag
 select pg_temp.act_as('02'); set local role authenticated;
 select is((select count(*)::int from public.stripe_withdrawals where org_id = 'cc5b0000-0000-0000-0000-0000000000e1'), 2,
   'a member reads its company''s Stripe withdrawals');
-select is((select payout_status from public.stripe_withdrawals where id = 'cc580000-0000-0000-0000-000000000001'), 'in_transit',
+select is((select payout_status from public.stripe_withdrawals where id = 'cc580000-0000-0000-0000-000000000001'), 'paid',
   'with where the payout is');
 select is((select count(*)::int from public.stripe_withdrawals where org_id = 'cc5b0000-0000-0000-0000-0000000000e2'), 0,
   'and not another company''s');
@@ -189,7 +203,7 @@ select is((select count(*)::int from public.notifications where kind = 'payment_
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(2))),
   'TSC wins the dispute');
 select is(pg_temp.notes('payment_disputed', pg_temp.pay(2)),
-  'Payment for "R5 step 2" on hold | The brand disputed the charge. $50.00 is held until the dispute is settled. || Hold lifted on "R5 step 2" | The dispute is settled. $50.00 is back in your balance.',
+  'Payment for "R5 step 2" on hold | The brand disputed the charge. $50.00 is held until the dispute is settled. || Hold lifted on "R5 step 2" | The dispute is settled. $50.00 is no longer on hold.',
   'and told the hold is lifted');
 select ok((pg_temp.bal_as('01') ->> 'next_cleared_at') is not null, 'the step clears again on its date');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, true)', pg_temp.pay(3))),
