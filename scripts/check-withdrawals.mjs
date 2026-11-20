@@ -397,7 +397,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
 // the owed steps' charges, least recently checked first, a few per read.
 {
   const { checkChargesFor } = await import("../api/_stripe.js");
-  const make = ({ owed, checks = [], charges }) => {
+  const make = ({ owed, checks = [], charges, heldIds = [] }) => {
     const calls = [];
     const reads = [];
     const chain = (rows) => {
@@ -412,6 +412,8 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       from: (table) => {
         if (table === "order_payments") return chain(owed.map((r) => ({ ...r, state: "confirmed", order_id: "o1", stripe_payment_intent_id: `pi_${r.id}` })));
         if (table === "payment_charge_checks") return chain(checks);
+        // Steps a requested / paying PayPal or Wise withdrawal holds (94eaef7a).
+        if (table === "payment_takes") return chain(heldIds.map((id) => ({ payment_id: id })));
         throw new Error(`unexpected table ${table}`);
       },
       rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
@@ -454,6 +456,23 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     ] });
     await checkChargesFor({ stripe: recent.stripe, db: recent.db, orgId: "org" });
     assert.deepEqual(recent.reads, ["ch_2"], "only the charge checked more than 5 minutes ago is read again");
+  }
+  // 94eaef7a: a step a waiting PayPal / Wise withdrawal holds is read on every
+  // claimed read, first, even if checked a minute ago; others still wait 5 minutes.
+  {
+    const minuteAgo = new Date(Date.now() - 60_000).toISOString();
+    const longAgo = new Date(Date.now() - 30 * 60_000).toISOString();
+    const h = make({ owed: owed.slice(0, 3), charges: { ch_2: { amount_refunded: 1000, refunded: true } }, heldIds: ["pay-2"], checks: [
+      { payment_id: "pay-0", checked_at: minuteAgo },
+      { payment_id: "pay-1", checked_at: longAgo },
+      { payment_id: "pay-2", checked_at: minuteAgo },
+    ] });
+    await checkChargesFor({ stripe: h.stripe, db: h.db, orgId: "org" });
+    assert.equal(h.reads[0], "ch_2", "the held step is read first, though checked a minute ago");
+    assert.ok(!h.reads.includes("ch_0"), "an unheld step checked a minute ago is not read");
+    assert.ok(h.reads.includes("ch_1"), "an unheld step checked long ago is");
+    assert.ok(h.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-2"),
+      "so a refund under a waiting withdrawal is recorded on the next read");
   }
   // claimStripeRead: true only when the database grants the read; false on a
   // refusal, an error or an exception.
@@ -943,6 +962,28 @@ for (const [why, row] of [
     const f = balanceFigures(db, { available: [{ amount: avail, currency: "eur" }], pending: [{ amount: pend, currency: "eur" }] }, { rates: { EUR: 1.1 } });
     assert.equal(f.total_cents, 10 + 20 + 30 + paid, `total is the server's (${avail}/${pend}/${paid})`);
     assert.ok([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents].every((x) => x >= 0), `no figure below zero (${avail}/${pend}/${paid})`);
+  }
+  // 94eaef7a: money in the Stripe account an open withdrawal holds is on its
+  // way: moved from Available to Pending, the total unchanged, never more
+  // than is available.
+  {
+    const db = tsc({ awaiting_cents: 0, available_cents: 500, pending_cents: 0, paid_out_cents: 200000 });
+    const all = balanceFigures(db, { available: [{ amount: 175597, currency: "usd" }], pending: [], held: [{ amount: 175597, currency: "usd" }] }, null);
+    assert.equal(all.stripe.available_cents, 0, "all of it held: the Stripe part of Available is 0");
+    assert.equal(all.available_cents, 500, "Available is only TSC's");
+    assert.equal(all.pending_cents, 175597, "and the held $1,755.97 is Pending");
+    assert.equal(all.total_cents, 500 + 200000, "Total is the server's");
+    const capped = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [], held: [{ amount: 5000, currency: "usd" }] }, null);
+    assert.equal(capped.stripe.available_cents, 0, "held beyond what is available is capped");
+    assert.equal(capped.pending_cents, 1000, "only what is there moves to Pending");
+    assert.equal(capped.total_cents, 500 + 200000);
+    const none = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [] }, null);
+    assert.equal(none.available_cents, 1500, "nothing held: unchanged");
+    // The owner's balance and the members' figures pass the same `held`, so they agree during an open withdrawal.
+    const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    assert.equal(connect.split("held: heldRows(balance.available, heldElsewhere)").length - 1, 2, "owner's balance and members' figures pass the same held");
+    assert.equal(JSON.stringify(balanceFigures(db, { available: [{ amount: 175597, currency: "usd" }], pending: [], held: [{ amount: 175597, currency: "usd" }] }, null)),
+      JSON.stringify(all), "same inputs, same figures, owner or member");
   }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
