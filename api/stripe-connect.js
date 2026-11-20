@@ -9,7 +9,7 @@ import {
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -295,10 +295,14 @@ export default async function handler(request, response) {
       // steps paid by card and the money already in this Stripe account
       // (an estimate when that is in another currency); PayPal and Wise reach
       // owed steps and pool money, never the Stripe account's.
+      // Less what another open withdrawal holds of it (its own Stripe part,
+      // and owed money it transferred for its payout that has not gone yet).
+      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
       let inStripeUsd = 0;
       let reachEstimated = false;
       for (const entry of balance.available) {
-        const cents = usdCents(entry.amount, entry.currency, displayFx);
+        const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));
+        const cents = usdCents(free, entry.currency, displayFx);
         if (cents == null) continue;
         if (entry.currency.toLowerCase() !== "usd" && entry.amount) reachEstimated = true;
         inStripeUsd += cents;
@@ -456,10 +460,12 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       onTheirWay,
       payouts: allocation.payouts,
     }, displayFx), stripe_unavailable: false };
+    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
     let inStripeUsd = 0;
     let estimated = false;
     for (const entry of balance.available) {
-      const cents = usdCents(entry.amount, entry.currency, displayFx);
+      const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));
+      const cents = usdCents(free, entry.currency, displayFx);
       if (cents == null) continue;
       if (entry.currency.toLowerCase() !== "usd" && entry.amount) estimated = true;
       inStripeUsd += cents;

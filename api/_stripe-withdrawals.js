@@ -214,6 +214,40 @@ async function withdrawableNow(stripe, db, row, currency) {
   return Math.max(0, available - claimed);
 }
 
+/**
+ * What open withdrawals on this Stripe account (claimed or fee taken, still
+ * to be paid out) hold of its balance, per currency (lower case), in that
+ * currency's minor units: the same claim withdrawableNow() subtracts, for
+ * every open row, live lease or not, except `except`. A one-balance row still
+ * claiming or transferring holds its own Stripe part and what it has landed
+ * so far; any other holds its amount less the fee already taken back.
+ */
+export async function heldByOpenWithdrawals(db, accountId, except = null) {
+  const { data, error } = await db.from("stripe_withdrawals")
+    .select("id, currency, amount_minor, fee_local_minor, reversals, state, usd_cents, d1_minor, transfers_done_at")
+    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]);
+  if (error) throw new Error(error.message);
+  const held = {};
+  for (const other of data ?? []) {
+    if (other.id === except) continue;
+    const currency = String(other.currency ?? "").toLowerCase();
+    let claim;
+    if (other.usd_cents != null && !other.transfers_done_at) {
+      const { data: parts } = await db.from("payment_takes").select("amount_cents")
+        .eq("stripe_withdrawal_id", other.id).eq("status", "sent");
+      const sentUsd = (parts ?? []).reduce((sum, part) => sum + Number(part.amount_cents), 0);
+      const rate = currency === "usd" ? 1 : Number(other.amount_minor) / Number(other.usd_cents) || 1;
+      claim = Number(other.d1_minor ?? 0) + Math.round(sentUsd * rate);
+    } else {
+      const taken = other.state === "fee_taken" ? Number(other.fee_local_minor ?? 0)
+        : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
+      claim = Math.max(0, Number(other.amount_minor) - taken);
+    }
+    held[currency] = (held[currency] ?? 0) + claim;
+  }
+  return held;
+}
+
 /** The currency and rate a transfer landed at in the factory's balance. */
 async function landed(stripe, accountId, transfer) {
   const id = typeof transfer.destination_payment === "string" ? transfer.destination_payment : transfer.destination_payment?.id;
