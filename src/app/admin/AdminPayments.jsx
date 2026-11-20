@@ -992,13 +992,14 @@ function AttentionSection({ attention, onChanged }) {
               ))}
               {attention.stuck.map((row) => (
                 <tr key={`s-${row.withdrawal_id}`} data-testid="attention-stuck">
-                  <td>{row.factory_name}</td>
+                  <td>{row.factory_name}{row.requested_by_name ? <><br /><span className="admin-sub">Requested by {row.requested_by_name}</span></> : null}</td>
                   <td>{moneyIn(row.usd_cents, "USD")}</td>
                   <td>
                     {row.refusal_cause === "platform_short"
-                      ? "Withdrawal to Stripe refused: TSC's Stripe balance can't cover it. Check the balance in Stripe."
+                      // One attempt per row: two owners' attempts on one balance are two rows, not twice the money.
+                      ? `This attempt to withdraw ${moneyIn(row.usd_cents, "USD")} to Stripe was refused: TSC's Stripe balance couldn't cover it. Nothing left the factory's balance. Check the balance in Stripe.`
                       : `Withdrawal to Stripe not finished${Number(row.held_cents) > 0 ? `: ${moneyIn(row.held_cents, "USD")} not yet sent` : ""}. Check it in Stripe.`}
-                    {Number(row.held_cents) > 0 || ["claimed", "fee_taken"].includes(row.state) ? (
+                    {Number(row.held_cents) > 0 || ["claimed", "fee_taken"].includes(row.state) || row.refusal_cause === "reversal_failed" ? (
                       <>
                         {" "}
                         <button type="button" className="quiet-btn" disabled={checking === row.withdrawal_id} data-testid="attention-check-again"

@@ -536,8 +536,18 @@ export async function ensureFundsAvailableFor({ stripe, db, orgId, limit = 5, bu
       .not("stripe_charge_id", "is", null).is("funds_available_at", null)
       .order("confirmed_at", { ascending: true }).limit(limit);
     if (error) return 0;
-    const done = await Promise.all((data ?? []).map((row) => ensureFundsAvailable({ stripe, db, paymentId: row.id })
-      .catch((failure) => { logStripeFailure("funds-available", failure, { paymentId: row.id }); return null; })));
+    const done = await Promise.all((data ?? []).map(async (row) => {
+      const at = await ensureFundsAvailable({ stripe, db, paymentId: row.id })
+        .catch((failure) => { logStripeFailure("funds-available", failure, { paymentId: row.id }); return null; });
+      // The same few payments, freshly paid: a dispute Stripe already holds
+      // on the charge is recorded too.
+      const { data: payment } = await db.from("order_payments").select("stripe_charge_id").eq("id", row.id).maybeSingle();
+      if (payment?.stripe_charge_id) {
+        await recordChargeDispute({ stripe, db, paymentId: row.id, charge: payment.stripe_charge_id })
+          .catch((failure) => logStripeFailure("charge-dispute", failure, { paymentId: row.id }));
+      }
+      return at;
+    }));
     return done.filter(Boolean).length;
   })().catch(() => 0);
   let timer;
