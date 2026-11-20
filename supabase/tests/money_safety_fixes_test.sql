@@ -308,10 +308,16 @@ select ok(public.uses_stripe_payout('97b00000-0000-0000-0000-0000000000f3'), 'so
 select ok(not public.factory_has_no_payout_method('97b00000-0000-0000-0000-0000000000f3'), 'and the factory is not left with nothing');
 
 select pg_temp.reset(true);
+-- Money on its way to the account: a waiting withdrawal to it
+-- (20261120330000: owed money in the balance alone goes nowhere until the
+-- factory withdraws).
+insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('97700000-0000-0000-0000-000000000001', '97b00000-0000-0000-0000-0000000000f1', '97a10000-0000-0000-0000-000000000001', 'bank', 'requested', 100, 'USD', 'P97 Bank');
 select pg_temp.act_as(1); set local role authenticated;
-select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001', null, 'with money owed the account cannot go');
+select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001', null, 'with money on its way to it the account cannot go');
 reset role;
 select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'manual', 'and the preference stays');
+delete from public.factory_withdrawals where id = '97700000-0000-0000-0000-000000000001';
 
 -- ---------------------------------------------------------------------------
 -- 7. What can join a message

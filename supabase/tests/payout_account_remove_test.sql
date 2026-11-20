@@ -64,6 +64,11 @@ insert into public.order_milestones (id, order_id, kind, title, amount_cents) va
 insert into public.order_payments (id, order_id, milestone_id, amount_cents, currency, state, confirmed_at, release_requested_at) values
   ('29800000-0000-0000-0000-000000000001', '29f00000-0000-0000-0000-000000000001', '29900000-0000-0000-0000-000000000001', 124800, 'USD', 'confirmed', now(), now()),
   ('29800000-0000-0000-0000-000000000002', '29f00000-0000-0000-0000-000000000002', '29900000-0000-0000-0000-000000000002', 124800, 'USD', 'confirmed', now(), now());
+-- Money on its way to the bank-paid factory's account: its withdrawal waits
+-- for staff (20261120330000: owed money in the balance alone is on its way
+-- to no account until the factory withdraws).
+insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('29700000-0000-0000-0000-000000000001', '29b00000-0000-0000-0000-0000000000f1', '29c00000-0000-0000-0000-0000000000f1', 'bank', 'requested', 124800, 'USD', 'P29 Bank');
 
 set local session_replication_role = origin;
 
@@ -84,9 +89,10 @@ select is(
   1, 'and the account is still there'
 );
 
--- Paid out by staff: nothing is owed, so the owner may remove it.
+-- Paid out by staff: nothing is on its way, so the owner may remove it.
 update public.order_payments set state = 'released', released_at = now()
  where id = '29800000-0000-0000-0000-000000000001';
+update public.factory_withdrawals set status = 'paid', paid_at = now() where id = '29700000-0000-0000-0000-000000000001';
 select set_config('request.jwt.claims', json_build_object('sub', '29a00000-0000-0000-0000-000000000001', 'role', 'authenticated')::text, true);
 set local role authenticated;
 select lives_ok(

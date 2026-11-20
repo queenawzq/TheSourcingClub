@@ -351,5 +351,71 @@ select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set
 select is((select payout_status from public.stripe_withdrawals where id = 'ce880000-0000-0000-0000-000000000002'), 'failed',
   'paid → failed is allowed');
 
+-- ===========================================================================
+-- 6251227f (20261120330000): a method can be removed unless money is on its
+-- way to it; the payment-only funded notice is titled "$X added to your
+-- balance", a held step's keeps "Payment held for …".
+-- ===========================================================================
+set local session_replication_role = replica;
+insert into auth.users (id, email) values ('ce8a0000-0000-0000-0000-000000000005', 'pgtap-r8-05@example.com');
+insert into public.orgs (id, type, name, slug) values ('ce8b0000-0000-0000-0000-0000000000e3', 'factory', 'R8 Remove', 'pgtap-r8-remove');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('ce8b0000-0000-0000-0000-0000000000e3', 'ce8a0000-0000-0000-0000-000000000005', 'owner', '{}');
+insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total) values
+  ('ce8c0000-0000-0000-0000-000000000003', 'ce8b0000-0000-0000-0000-00000000000b', 'R8 remove request', 'awarded', 'invited_only', 100);
+insert into public.quotes (id, rfq_id, factory_org_id, status, unit_price_cents, production_quantity, submitted_at) values
+  ('ce8c1000-0000-0000-0000-000000000003', 'ce8c0000-0000-0000-0000-000000000003', 'ce8b0000-0000-0000-0000-0000000000e3', 'accepted', 100, 1, now());
+insert into public.production_orders
+  (id, rfq_id, quote_id, brand_org_id, factory_org_id, unit_price_cents, status, schedule_brand_agreed_at, schedule_brand_agreed_by,
+   production_quantity, bulk_subtotal_cents, sample_subtotal_cents, order_total_cents, deposit_pct, balance_pct, order_number)
+values ('ce8d0000-0000-0000-0000-000000000003', 'ce8c0000-0000-0000-0000-000000000003', 'ce8c1000-0000-0000-0000-000000000003',
+        'ce8b0000-0000-0000-0000-00000000000b', 'ce8b0000-0000-0000-0000-0000000000e3', 100000, 'active', now() - interval '60 days',
+        'ce8a0000-0000-0000-0000-000000000003', 1, 100000, 0, 100000, 50, 50, 'R8-3');
+-- s1: $90 owed, cleared (in the balance, no withdrawal). s2: a payment-only
+-- deposit, due. s3: an approval step, due.
+insert into public.order_milestones (id, order_id, kind, title, amount_cents, state, sort, completed_at) values
+  ('ce8e2001-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'approval_and_payment', 'R8 remove step', 9000, 'complete', 10, now() - interval '5 days'),
+  ('ce8e2002-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'payment_only', 'R8 remove deposit', 6000, 'active', 20, null),
+  ('ce8e2003-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'approval_and_payment', 'R8 remove fit', 3000, 'active', 30, null);
+insert into public.order_payments
+  (id, order_id, milestone_id, amount_cents, currency, state, confirmed_at, release_requested_at, stripe_payment_intent_id, stripe_charge_id, funds_available_at) values
+  ('ce8f2001-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'ce8e2001-0000-0000-0000-000000000003', 9000, 'USD', 'confirmed',
+   now() - interval '30 days', now() - interval '5 days', 'pi_pgtap_r8r_1', 'ch_pgtap_r8r_1', now() - interval '20 days');
+insert into public.order_payments (id, order_id, milestone_id, amount_cents, currency, state, stripe_payment_intent_id) values
+  ('ce8f2002-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'ce8e2002-0000-0000-0000-000000000003', 6000, 'USD', 'due', 'pi_pgtap_r8r_2'),
+  ('ce8f2003-0000-0000-0000-000000000003', 'ce8d0000-0000-0000-0000-000000000003', 'ce8e2003-0000-0000-0000-000000000003', 3000, 'USD', 'due', 'pi_pgtap_r8r_3');
+insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, details_changed_at) values
+  ('ce890000-0000-0000-0000-000000000031', 'ce8b0000-0000-0000-0000-0000000000e3', 'paypal', 'pgtap-r8-rm-a@example.com', true, '2026-11-01'),
+  ('ce890000-0000-0000-0000-000000000032', 'ce8b0000-0000-0000-0000-0000000000e3', 'paypal', 'pgtap-r8-rm-b@example.com', false, '2026-11-01');
+-- A withdrawal waiting to the second (non-default) account.
+insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('ce870000-0000-0000-0000-000000000031', 'ce8b0000-0000-0000-0000-0000000000e3', 'ce890000-0000-0000-0000-000000000032', 'paypal', 'requested', 1000, 'USD', 'pgtap-r8-rm-b@example.com');
+set local session_replication_role = origin;
+
+select pg_temp.act_as('05'); set local role authenticated;
+select throws_ok($$select public.remove_payout_account('ce890000-0000-0000-0000-000000000032', null)$$, 'P0001',
+  'TSC is about to pay this account, so it cannot be removed until that payment is sent',
+  'a non-default account with a withdrawal waiting to it cannot be removed');
+reset role;
+update public.factory_withdrawals set status = 'cancelled' where id = 'ce870000-0000-0000-0000-000000000031';
+select pg_temp.act_as('05'); set local role authenticated;
+select lives_ok($$select public.remove_payout_account('ce890000-0000-0000-0000-000000000032', null)$$,
+  'once that withdrawal ended, it can be removed');
+select lives_ok($$select public.remove_payout_account('ce890000-0000-0000-0000-000000000031', null)$$,
+  'approved money waiting in the balance, with no withdrawal open, does not stop removing the last method');
+reset role;
+select is((select count(*)::int from public.factory_payout_accounts where org_id = 'ce8b0000-0000-0000-0000-0000000000e3'), 0, 'the factory has no method left');
+select ok((select state = 'confirmed' and release_requested_at is not null from public.order_payments where id = 'ce8f2001-0000-0000-0000-000000000003'),
+  'and its $90 is still owed, in its balance');
+
+select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''ce8f2002-0000-0000-0000-000000000003'', ''ch_pgtap_r8r_2'', ''card'', ''Visa'', 6000)')$$,
+  'the payment-only deposit is funded');
+select is((select title from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e3' and subject_id = 'ce8f2002-0000-0000-0000-000000000003'
+            and kind = 'payment_confirmed'), '$60.00 added to your balance', 'its notice is titled "$60.00 added to your balance"');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''ce8f2003-0000-0000-0000-000000000003'', ''ch_pgtap_r8r_3'', ''card'', ''Visa'', 3000)')$$,
+  'an approval step is funded');
+select is((select title from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e3' and subject_id = 'ce8f2003-0000-0000-0000-000000000003'
+            and kind = 'payment_confirmed'), 'Payment held for "R8 remove fit"', 'its notice keeps "Payment held for …"');
+
 select * from finish();
 rollback;

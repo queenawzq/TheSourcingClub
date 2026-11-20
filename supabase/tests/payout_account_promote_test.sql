@@ -55,6 +55,11 @@ insert into public.order_milestones (id, order_id, kind, title, amount_cents) va
   ('30900000-0000-0000-0000-000000000001', '30f00000-0000-0000-0000-000000000001', 'payment_only', 'P30 deposit', 50000);
 insert into public.order_payments (id, order_id, milestone_id, amount_cents, currency, state, confirmed_at, release_requested_at) values
   ('30800000-0000-0000-0000-000000000001', '30f00000-0000-0000-0000-000000000001', '30900000-0000-0000-0000-000000000001', 50000, 'USD', 'confirmed', now(), now());
+-- Money on its way to the owed mill's account: a withdrawal to it that waits
+-- for staff (20261120330000: approved money in the balance alone is not on
+-- its way to any account until the factory withdraws).
+insert into public.factory_withdrawals (org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('30b00000-0000-0000-0000-0000000000f2', '30c00000-0000-0000-0000-0000000000f2', 'bank', 'requested', 50000, 'USD', 'P30 Owed');
 
 set local session_replication_role = origin;
 
