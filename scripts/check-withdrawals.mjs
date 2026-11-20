@@ -15,7 +15,7 @@ import { BACK_IN_BALANCE, REFERENCE_MAX, approveWithdrawal, previewWithdrawal, w
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
-import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, earningsSummaryFor, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, figuresByPayment, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
@@ -200,23 +200,42 @@ for (const [why, row] of [
     failure.kind === "too_small" && /smallest transfer to this account is 9\.25 USD/.test(failure.message) && failure.message !== CANT_PAY_FROM_BALANCE);
 }
 
-// One figure: a $65 step in the balance is Paid out whole, before and after a $40
-// withdrawal of it. Changed Nov 19: balance money reads as Stripe balance money
-// does ("Added to your balance", in Paid out), since it can be withdrawn now.
+// One figure (D3, 20261120100000): a $65 step in the balance, $40 of it taken
+// by a paid PayPal withdrawal with a $0.79 fee. The figures come from the
+// server only (factory_balance): $25 Available, $39.21 Paid out; the fee is in
+// no figure, and the page never sums payments itself. Changed Nov 20: until
+// then balance money read as Paid out whole (earningsSummaryFor), which put
+// money the factory could still withdraw under Paid out (IMG 76).
 {
   const step = { id: "p1", state: "confirmed", release_requested_at: "2026-11-16", amount_cents: 6500, currency: "USD", withdrawal_pool: true, order: { status: "active" } };
-  const summary = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]));
-  assert.deepEqual(summary.pending, []);
-  assert.deepEqual(summary.paid, [{ currency: "USD", amount: 6500 }]);
-  assert.deepEqual(summary.total, [{ currency: "USD", amount: 6500 }]);
+  const figures = { awaiting_cents: 0, available_cents: 2500, pending_cents: 0, paid_out_cents: 4000 - 79,
+    rows: [{ payment_id: "p1", figure: "available", amount_cents: 2500 }, { payment_id: "p1", figure: "paid_out", amount_cents: 4000 }] };
+  const summary = summaryFrom(figures);
+  assert.equal(summary.available, 2500, "the part not withdrawn is Available");
+  assert.equal(summary.paid, 3921, "the part withdrawn is Paid out, net of its fee");
+  assert.equal(summary.pending, 0);
+  assert.equal(summary.total, 6421, "total is the four added up: the step less the fee");
+  assert.deepEqual([...figuresByPayment(figures).get("p1")].sort(), ["available", "paid_out"], "the split step is in both figures, each part once");
+  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined }, "no figures yet: nothing guessed");
   // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
   assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
   const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
-  const net = earningsSummaryFor([step], "All clients", new Map([["p1", 4000]]), 79);
-  assert.deepEqual(net.paid, [{ currency: "USD", amount: 6421 }]);
-  assert.deepEqual(net.total, [{ currency: "USD", amount: 6421 }]);
+}
+
+// What each method can withdraw (D5): Stripe reaches owed money and the
+// factory's own Stripe money (D1); PayPal / Wise reach owed money and pool
+// money, never D1. The server's answers come first when the page has them.
+{
+  const figures = { tsc: { parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }, stripe: { available_cents: 2500 } };
+  assert.deepEqual(withdrawReach(figures), { stripe: 12500, balance: 13000 }, "Stripe: owed + D1; PayPal/Wise: owed + pool, never D1");
+  assert.deepEqual(withdrawReach({ parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }), { stripe: 10000, balance: 13000 },
+    "no Stripe account: Stripe reaches only owed money");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }), { stripe: 9000, balance: 11000 }, "the server's reach wins");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }, 10500), { stripe: 9000, balance: 10500 },
+    "and my_withdrawal_balance (what request_withdrawal checks) wins for PayPal/Wise");
+  assert.deepEqual(withdrawReach(null), { stripe: null, balance: null }, "unknown until the figures answer");
 }
 
 // The Withdraw dialog never moves a withdrawal to another method by itself:
@@ -316,4 +335,320 @@ for (const [why, row] of [
   }
 }
 
-console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");
+// One balance, stage 2 (20261120200000): withdrawing to Stripe from the one
+// balance. A fake Stripe and a fake database whose claim_owed_steps claims the
+// oldest steps for exactly the amount asked (the database's own rules are
+// pinned in supabase/tests/unified_withdraw_test.sql). What this pins is the
+// server's side: money already in the factory's Stripe account (D1) first,
+// then owed steps; each part transferred from its own charge, exactly the part
+// claimed, under a key per step and withdrawal; every charge checked and TSC's
+// platform balance checked before any transfer; the payout worked out from
+// what the transfers landed as (non-US$ accounts); and nothing claimed is left
+// held when the withdrawal is refused.
+{
+  const { withdrawWithFee, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
+  const { PayoutMethodRefusal } = await import("../api/_stripe-payouts.js");
+  const { stripeWithdrawalFee } = await import("../src/shared/withdrawal-fees.mjs");
+  const { randomUUID } = await import("node:crypto");
+
+  const iterable = (items) => ({ data: items, has_more: false, async *[Symbol.asyncIterator]() { yield* items; } });
+
+  function oneBalanceWorld({ currency = "usd", rate = 1, d1 = 0, platform = 1_000_000, steps, disputed = [] }) {
+    const rows = [];
+    const takes = [];
+    const calls = [];
+    const leased = (row) => row.lease_until && Date.parse(row.lease_until) > Date.now();
+    const lease = () => new Date(Date.now() + 120_000).toISOString();
+    const left = (step) => step.amount - takes.filter((t) => t.payment_id === step.id && t.status !== "returned").reduce((a, t) => a + t.amount_cents, 0);
+    const stripeReach = () => steps.filter((step) => step.charge && step.cleared !== false).reduce((a, step) => a + left(step), 0);
+    function table(rowsOf) {
+      return () => {
+        const filters = [];
+        let patch = null;
+        const matches = () => rowsOf().filter((row) => filters.every((f) => f(row)));
+        const q = {
+          select() { return q; },
+          update(fields) { patch = fields; return q; },
+          eq(column, value) { filters.push((row) => row[column] === value); if (patch) for (const row of matches()) Object.assign(row, structuredClone(patch)); return q; },
+          in(column, values) { filters.push((row) => values.includes(row[column])); return q; },
+          gte() { return q; },
+          not() { return q; },
+          order() { return q; },
+          limit() { return q; },
+          range() { return q; },
+          async maybeSingle() { return { data: structuredClone(matches()[0] ?? null), error: null }; },
+          then(resolve, reject) { return Promise.resolve({ data: structuredClone(matches()), error: null }).then(resolve, reject); },
+        };
+        return q;
+      };
+    }
+    const withdrawalsTable = table(() => rows);
+    const takesTable = table(() => takes.map((take) => {
+      const step = steps.find((s) => s.id === take.payment_id);
+      return { ...take, order_payments: { stripe_charge_id: step.charge, order_id: step.order, production_orders: { order_number: step.number ?? "TSC-1" } } };
+    }));
+    const db = {
+      rows, takes, calls,
+      from(name) {
+        if (name === "stripe_withdrawals") return withdrawalsTable();
+        if (name === "payment_takes") return takesTable();
+        if (name === "stripe_connect_accounts") return table(() => [])();
+        throw new Error(`unexpected table ${name}`);
+      },
+      async rpc(name, args) {
+        calls.push(name);
+        if (name === "claim_stripe_withdrawal") {
+          let row = rows.find((r) => r.request_key === args.key);
+          if (!row) {
+            row = { id: randomUUID(), org_id: args.target_org, stripe_account_id: args.account, request_key: args.key, request_id: args.request,
+              amount_minor: args.amount, currency: args.in_currency.toUpperCase(), destination: args.to_destination, fee_cents: null,
+              fee_local_minor: null, reversals: [], payout_id: null, payout_minor: null, state: "claimed", reason: null, lease_until: null,
+              usd_cents: null, owed_cents: null, d1_minor: null, landed_minor: null, transfers_done_at: null, created_at: new Date().toISOString() };
+            rows.push(row);
+          }
+          if (["claimed", "fee_taken"].includes(row.state) && !leased(row)) {
+            row.lease_until = lease();
+            return { data: { claimed: true, row: structuredClone(row) }, error: null };
+          }
+          return { data: { claimed: false, row: structuredClone(row) }, error: null };
+        }
+        if (name === "claim_abandoned_stripe_withdrawal") return { data: null, error: null };
+        if (name === "claim_owed_steps") {
+          assert.equal(args.road, "stripe", "the Stripe road claims as stripe");
+          const row = rows.find((r) => r.id === args.withdrawal);
+          if (!row || row.owed_cents != null) return { data: null, error: { message: "not waiting", code: "22023", hint: "withdrawal_not_waiting" } };
+          if (!(args.amount > 0)) return { data: null, error: { message: "Enter an amount to withdraw.", code: "22023", hint: "withdrawal_amount" } };
+          if (args.amount > stripeReach()) return { data: null, error: { message: "That is more than your balance.", code: "22023", hint: "withdrawal_over_balance" } };
+          let need = args.amount;
+          const made = [];
+          for (const step of steps) {
+            if (need <= 0) break;
+            if (!step.charge || step.cleared === false) continue;
+            const part = Math.min(left(step), need);
+            if (part <= 0) continue;
+            const take = { id: randomUUID(), payment_id: step.id, org_id: args.target_org, road: "stripe", stripe_withdrawal_id: row.id,
+              amount_cents: part, status: "held", stripe_transfer_id: null, created_at: new Date().toISOString() };
+            takes.push(take);
+            made.push({ take_id: take.id, payment_id: step.id, amount_cents: part, charge_id: step.charge, order_id: step.order });
+            need -= part;
+          }
+          row.owed_cents = args.amount;
+          return { data: { claimed_cents: args.amount, takes: made }, error: null };
+        }
+        if (name === "owed_reachable") return { data: { any_cents: stripeReach(), stripe_cents: stripeReach() }, error: null };
+        if (name === "record_take_sent") {
+          const take = takes.find((t) => t.id === args.target_take);
+          assert.equal(take.status, "held", "only a held take is sent");
+          Object.assign(take, { status: "sent", stripe_transfer_id: args.transfer });
+          return { data: null, error: null };
+        }
+        if (name === "return_stripe_takes") {
+          for (const take of takes) if (take.stripe_withdrawal_id === args.target_withdrawal && take.status === "held") take.status = "returned";
+          return { data: null, error: null };
+        }
+        if (name === "record_payment_disputed") {
+          steps.find((s) => s.id === args.target_payment).disputedRecorded = true;
+          return { data: null, error: null };
+        }
+        throw new Error(`unexpected rpc ${name}`);
+      },
+    };
+
+    const s = { platform, balance: { [currency]: d1 }, transfers: [], reversals: [], payouts: [], keys: new Map() };
+    let n = 0;
+    const once = (key, make) => {
+      if (key && s.keys.has(key)) return s.keys.get(key);
+      const made = make();
+      if (key) s.keys.set(key, made);
+      return made;
+    };
+    // D1: an older transfer is what put the D1 money there (the fee can be reversed from it).
+    if (d1 > 0) s.transfers.push({ id: "tr_old", amount: Math.ceil(d1 / rate), amount_reversed: 0, currency: "usd", destination: "acct_f", destination_payment: "py_old", metadata: {}, local: d1 });
+    const refused = (message, code = 402) => Object.assign(new Error(message), { statusCode: code });
+    const api = {
+      accounts: { update: async () => ({}), retrieveExternalAccount: async () => null },
+      balance: {
+        retrieve: async (_params, options) => options?.stripeAccount
+          ? { available: Object.entries(s.balance).map(([c, amount]) => ({ currency: c, amount })), pending: [] }
+          : { available: [{ currency: "usd", amount: s.platform }], pending: [] },
+      },
+      transfers: {
+        list: (params) => iterable([...s.transfers].reverse().filter((t) =>
+          (!params.destination || t.destination === params.destination) && (!params.transfer_group || t.transfer_group === params.transfer_group))),
+        retrieve: async (id) => structuredClone(s.transfers.find((t) => t.id === id)),
+        create: async (params, options) => once(options?.idempotencyKey, () => {
+          if (params.source_transaction) {
+            if (params.amount > s.platform) throw refused("insufficient available funds");
+            s.platform -= params.amount;
+          }
+          const local = currency === "usd" ? params.amount : Math.round(params.amount * rate);
+          const transfer = { id: `tr_${++n}`, ...params, amount_reversed: 0, destination_payment: `py_${n}`, local, key: options?.idempotencyKey };
+          s.transfers.push(transfer);
+          s.balance[currency] = (s.balance[currency] ?? 0) + local;
+          return structuredClone(transfer);
+        }),
+        listReversals: (id) => iterable(s.reversals.filter((r) => r.transfer === id)),
+        createReversal: async (id, params, options) => once(options?.idempotencyKey, () => {
+          const transfer = s.transfers.find((t) => t.id === id);
+          transfer.amount_reversed += params.amount;
+          const local = currency === "usd" ? params.amount : Math.ceil(params.amount * rate);
+          s.balance[currency] -= local;
+          const reversal = { id: `trr_${++n}`, transfer: id, amount: params.amount, metadata: params.metadata, destination_payment_refund: `pyr_${n}`, local };
+          s.reversals.push(reversal);
+          return structuredClone(reversal);
+        }),
+      },
+      charges: {
+        retrieve: async (id) => {
+          if (id.startsWith("py_")) {
+            const transfer = s.transfers.find((t) => t.destination_payment === id);
+            return { id, balance_transaction: { currency, exchange_rate: currency === "usd" ? 1 : rate, amount: transfer.local } };
+          }
+          return { id, amount_refunded: 0, disputed: disputed.includes(id), dispute: disputed.includes(id) ? `du_${id}` : null };
+        },
+      },
+      disputes: { retrieve: async () => ({ status: "needs_response" }) },
+      refunds: {
+        retrieve: async (id) => {
+          const reversal = s.reversals.find((r) => r.destination_payment_refund === id);
+          return { id, balance_transaction: { currency, amount: -reversal.local } };
+        },
+      },
+      payouts: {
+        create: async (params, options) => once(options?.idempotencyKey, () => {
+          if (params.amount > (s.balance[params.currency] ?? 0)) throw refused("insufficient funds", 400);
+          s.balance[params.currency] -= params.amount;
+          const payout = { id: `po_${++n}`, amount: params.amount, currency: params.currency, status: "pending", metadata: params.metadata ?? {} };
+          s.payouts.push(payout);
+          return structuredClone(payout);
+        }),
+        list: async () => ({ data: structuredClone([...s.payouts].reverse()) }),
+        retrieve: async (id) => structuredClone(s.payouts.find((p) => p.id === id)),
+      },
+    };
+    return { db, stripe: s, api };
+  }
+  const step = (id, amount, extra = {}) => ({ id, amount, charge: `ch_${id}`, order: `order-${id}`, ...extra });
+  const usFee = (amount) => stripeWithdrawalFee({ amountMinor: amount, currency: "usd", country: "US", localPerUsd: 1 }).feeCents;
+  const withdraw = (w, amount, extra = {}) => withdrawWithFee({ stripe: w.api, db: w.db, orgId: "org", accountId: "acct_f", country: "US",
+    amount, currency: "usd", requestId: randomUUID(), oneBalance: true, payoutCurrency: "usd", transfersActive: true, ...extra });
+  const held = (w) => w.db.takes.filter((t) => t.status === "held");
+
+  // Exact amount: $150 from two $100 steps is $100 + $50, each from its own
+  // charge, under a key per step and withdrawal; the payout is $150 less the fee.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000), step("p3", 10000)] });
+    const payout = await withdraw(w, 15000);
+    const moved = w.stripe.transfers.map((t) => [t.source_transaction, t.amount]);
+    assert.deepEqual(moved, [["ch_p1", 10000], ["ch_p2", 5000]], "exact amount: the oldest step whole, then $50 of the next");
+    const row = w.db.rows[0];
+    assert.deepEqual(w.stripe.transfers.map((t) => t.key), [`release-p1-${row.id}`, `release-p2-${row.id}`], "one key per step and withdrawal");
+    assert.ok(w.stripe.transfers.every((t) => t.metadata?.take_id && t.metadata?.payment_id), "each transfer names its take and step");
+    assert.equal(payout.amount, 15000 - usFee(15000), "the payout is the amount less the fee");
+    assert.equal(row.owed_cents, 15000, "the row owns its claim");
+    assert.equal(row.d1_minor, 0);
+    assert.equal(row.landed_minor, 15000);
+    assert.equal(row.state, "paid_out");
+    assert.equal(held(w).length, 0, "nothing left held");
+    assert.deepEqual(w.db.takes.map((t) => [t.payment_id, t.amount_cents, t.status]), [["p1", 10000, "sent"], ["p2", 5000, "sent"]]);
+    assert.equal(w.stripe.platform, 1_000_000 - 15000, "TSC's platform balance paid exactly the claimed parts");
+    // The $50 left on the step and the newest step are still there for the next withdrawal.
+    await withdraw(w, 15000);
+    assert.deepEqual(w.stripe.transfers.slice(2).map((t) => [t.source_transaction, t.amount]), [["ch_p2", 5000], ["ch_p3", 10000]],
+      "the next withdrawal takes the remainder before the newer step");
+  }
+
+  // D1 first: $30 already in the factory's Stripe account, $50 asked: only $20 is claimed and transferred.
+  {
+    const w = oneBalanceWorld({ d1: 3000, steps: [step("p1", 10000)] });
+    const payout = await withdraw(w, 5000);
+    assert.deepEqual(w.stripe.transfers.filter((t) => t.source_transaction).map((t) => t.amount), [2000], "D1 money is used first; only the rest is claimed");
+    assert.equal(w.db.rows[0].owed_cents, 2000);
+    assert.equal(w.db.rows[0].d1_minor, 3000);
+    assert.equal(payout.amount, 5000 - usFee(5000));
+  }
+
+  // All of it from D1: nothing owed is claimed, nothing transferred.
+  {
+    const w = oneBalanceWorld({ d1: 9000, steps: [step("p1", 10000)] });
+    await withdraw(w, 5000);
+    assert.equal(w.stripe.transfers.filter((t) => t.source_transaction).length, 0, "covered by D1: no transfer");
+    assert.ok(!w.db.calls.includes("claim_owed_steps"), "and no claim");
+    assert.equal(w.db.rows[0].owed_cents, 0);
+  }
+
+  // Over what Stripe can reach (D1 + owed steps with a cleared charge): refused
+  // naming the reachable amount; nothing claimed, nothing transferred.
+  {
+    const w = oneBalanceWorld({ d1: 1000, steps: [step("p1", 10000), step("p2", 5000, { charge: null }), step("p3", 2000, { cleared: false })] });
+    await assert.rejects(withdraw(w, 11001), (failure) => failure instanceof PayoutMethodRefusal && failure.message === "You can withdraw up to $110.00.");
+    assert.equal(w.stripe.transfers.filter((t) => t.source_transaction).length, 0, "nothing transferred");
+    assert.equal(held(w).length, 0, "nothing held");
+    assert.equal(w.stripe.payouts.length, 0);
+    assert.equal(w.db.rows[0].state, "refused");
+  }
+
+  // A disputed charge among the claimed steps: nothing is transferred at all,
+  // the dispute is recorded, the claim goes back to the balance.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)], disputed: ["ch_p2"] });
+    await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
+    assert.equal(w.stripe.transfers.length, 0, "every charge is checked before any transfer");
+    assert.ok(w.db.calls.includes("record_payment_disputed"), "the dispute is recorded");
+    assert.equal(held(w).length, 0, "the claim is returned");
+    assert.equal(w.stripe.payouts.length, 0);
+  }
+
+  // TSC's platform balance short of the transfers: refused before any transfer.
+  {
+    const w = oneBalanceWorld({ platform: 14999, steps: [step("p1", 10000), step("p2", 10000)] });
+    await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
+    assert.equal(w.stripe.transfers.length, 0, "platform short: no transfer");
+    assert.equal(held(w).length, 0, "and the claim is returned");
+  }
+
+  // Not verified for transfers: owed money needed, refused, nothing claimed.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    await assert.rejects(withdraw(w, 5000, { transfersActive: false }), (failure) => failure.message === "Finish payout verification before withdrawing.");
+    assert.equal(w.db.takes.length, 0);
+  }
+
+  // Pressed twice at once: one claim, one set of transfers, one payout.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)] });
+    const requestId = randomUUID();
+    const both = await Promise.allSettled([withdraw(w, 15000, { requestId }), withdraw(w, 15000, { requestId })]);
+    assert.ok(both.some((r) => r.status === "fulfilled"), "one goes through");
+    assert.equal(w.stripe.payouts.length, 1, "one payout");
+    assert.equal(w.stripe.transfers.length, 2, "one set of transfers");
+    assert.equal(w.db.takes.filter((t) => t.status !== "returned").reduce((a, t) => a + t.amount_cents, 0), 15000, "claimed once");
+  }
+
+  // Non-US$ account: $100 asked in US$, transferred in US$, landed as £76.32;
+  // the payout is worked out from what landed, less the fee in pounds.
+  {
+    const w = oneBalanceWorld({ currency: "gbp", rate: 0.7632, steps: [step("p1", 10000)] });
+    const payout = await withdraw(w, 10000, { payoutCurrency: "gbp", country: "GB" });
+    const row = w.db.rows[0];
+    assert.deepEqual(w.stripe.transfers.map((t) => [t.currency, t.amount]), [["usd", 10000]], "the transfer is the US$ step");
+    assert.equal(row.landed_minor, 7632, "what it landed as, in pounds");
+    assert.equal(row.amount_minor, 7632, "the withdrawal's gross is what landed");
+    assert.equal(payout.currency, "gbp", "paid out in the account's currency");
+    assert.equal(payout.amount, 7632 - Number(row.fee_local_minor), "what landed, less the fee as Stripe took it in pounds");
+    assert.ok(Number(row.fee_local_minor) > 0);
+  }
+
+  // What Withdraw offers per road (the balance action): Stripe reaches owed
+  // steps with a charge plus the Stripe account's money (D1); PayPal and Wise
+  // reach owed steps plus pool money, never D1.
+  {
+    const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    assert.match(connect, /stripe_cents:\s*Number\(owedReach\.data\?\.stripe_cents \?\? 0\)\s*\+\s*inStripeUsd/, "Stripe: owed with a charge + D1");
+    assert.match(connect, /pool_cents:\s*Math\.max\(0, Number\(poolLeft\.data \?\? 0\)\)\s*\+\s*Number\(owedReach\.data\?\.any_cents \?\? 0\)/,
+      "PayPal / Wise: pool money + owed, never D1");
+    assert.ok(!/pool_cents:[^\n]*inStripe/.test(connect), "D1 never reaches the pool road");
+  }
+}
+
+console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed; the one balance withdraws exactly the amount asked, by one road");

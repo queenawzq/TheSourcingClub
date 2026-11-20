@@ -1471,6 +1471,74 @@ console.log("\nphase 3 — the order runs");
           : fail("LEAK: a signed-out caller read a factory's balance");
       }
 
+      // One balance, stage 2 (20261120200000): withdrawing claims owed steps,
+      // recorded per step in payment_takes. Only the server claims; the client
+      // reaches it through request_withdrawal.
+      {
+        const anonClient = createClient(URL, ANON, { auth: { persistSession: false } });
+        const factoryOrg = winner.factory_org_id;
+        const serverOnly = [
+          ["claim_owed_steps", { target_org: factoryOrg, amount: 1, road: "pool", withdrawal: null }],
+          ["owed_reachable", { target_org: factoryOrg }],
+          ["record_take_sent", { target_take: deposit.id, transfer: "tr_smoke" }],
+          ["return_stripe_takes", { target_withdrawal: deposit.id }],
+          ["return_take", { target_take: deposit.id }],
+          ["record_payment_disputed", { target_payment: deposit.id, disputed: true }],
+        ];
+        for (const [fn, args] of serverOnly) {
+          const asFactory = await factoryClient.rpc(fn, args);
+          const asAnon = await anonClient.rpc(fn, args);
+          asFactory.error && asAnon.error
+            ? ok(`${fn}: refused to the factory's owner and to a signed-out caller`)
+            : fail(`LEAK: ${fn} ran for a client`, { message: JSON.stringify({ factory: asFactory.error?.message ?? asFactory.data, anon: asAnon.error?.message ?? asAnon.data }) });
+        }
+        // Signatures as the server calls them: a refusal from the function's own
+        // checks (22023 / 42501 / P0002), never "function not found" (PGRST202).
+        for (const [fn, args] of [serverOnly[0], serverOnly[1], serverOnly[2], serverOnly[3], serverOnly[4]]) {
+          const res = await admin.rpc(fn, fn === "claim_owed_steps" ? { ...args, amount: 0 } : args);
+          res.error?.code === "PGRST202" || res.error?.code === "PGRST203"
+            ? fail(`${fn}: the server's call does not match the function's signature`, res.error)
+            : ok(`${fn}: the server's call reaches the function (${res.error?.code ?? "ok"})`);
+        }
+        const claimNothing = await admin.rpc("claim_owed_steps", { target_org: factoryOrg, amount: 0, road: "pool", withdrawal: null });
+        claimNothing.error
+          ? ok("claim_owed_steps refuses a $0 claim, even for the server")
+          : fail("claim_owed_steps took a $0 claim", { message: JSON.stringify(claimNothing.data) });
+        const reach = await factoryClient.rpc("my_withdrawal_balance", { target_org: factoryOrg });
+        if (reach.error) fail("the factory reads what it can withdraw", reach.error);
+        else {
+          const r = reach.data;
+          ["available_cents", "pool_cents", "owed_cents", "stripe_owed_cents", "taken", "withdrawn"].every((k) => k in r)
+            && Number(r.available_cents) >= Number(r.owed_cents) && Number(r.available_cents) === Number(r.pool_cents) + Number(r.owed_cents)
+            ? ok("my_withdrawal_balance: PayPal/Wise reach pool + owed cleared; Stripe's part is listed")
+            : fail("my_withdrawal_balance keys or sums are wrong", { message: JSON.stringify(r) });
+        }
+        const brandReach = await brand.client.rpc("my_withdrawal_balance", { target_org: factoryOrg });
+        brandReach.error && !brandReach.data
+          ? ok("the brand cannot read what the factory can withdraw")
+          : fail("LEAK: the brand read the factory's withdrawable balance");
+        const takes = await factoryClient.from("payment_takes")
+          .select("id, payment_id, road, status, amount_cents, stripe_withdrawal_id, factory_withdrawal_id, stripe_transfer_id").limit(5);
+        takes.error ? fail("the factory reads its payment_takes", takes.error) : ok("the factory reads its payment_takes (columns as the server writes them)");
+        const brandTakes = await brand.client.from("payment_takes").select("id").eq("org_id", factoryOrg);
+        !brandTakes.error && (brandTakes.data ?? []).length === 0
+          ? ok("the brand reads no payment_takes")
+          : fail("LEAK: the brand read a factory's payment_takes", brandTakes.error);
+        const anonTakes = await anonClient.from("payment_takes").select("id").limit(1);
+        anonTakes.error || (anonTakes.data ?? []).length === 0
+          ? ok("signed out, payment_takes is refused")
+          : fail("LEAK: a signed-out caller read payment_takes");
+        const writeTake = await factoryClient.from("payment_takes")
+          .insert({ payment_id: deposit.id, org_id: factoryOrg, road: "pool", amount_cents: 1, status: "sent" });
+        writeTake.error
+          ? ok("the factory cannot write a take")
+          : fail("LEAK: the factory wrote a take");
+        const stripeCols = await factoryClient.from("stripe_withdrawals").select("id, usd_cents, owed_cents, d1_minor, landed_minor, transfers_done_at").limit(1);
+        stripeCols.error ? fail("stripe_withdrawals has the stage 2 columns", stripeCols.error) : ok("stripe_withdrawals has the stage 2 columns");
+        const poolCols = await factoryClient.from("factory_withdrawals").select("id, pool_cents").limit(1);
+        poolCols.error ? fail("factory_withdrawals has pool_cents", poolCols.error) : ok("factory_withdrawals has pool_cents");
+      }
+
       const { data: paid } = await admin
         .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
       Number(paid.paid_cents) === Number(deposit.amount_cents)

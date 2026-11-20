@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allocatePayouts, payoutAllocationFor } from "../api/_payout-allocation.js";
-import { earningStatus, earningsSummaryFor, stripeRelevant } from "../src/app/order/payment-summary.mjs";
+import { ADDED_TO_BALANCE, earningStatus, figuresByPayment, stripeRelevant, summaryFrom } from "../src/app/order/payment-summary.mjs";
 
 const payments = ["a", "b", "c"].map((id) => ({ id, stripe_transfer_id: `tr_${id}` }));
 const credit = (id, amount, at, extra = {}) => ({ id: `txn_${id}`, currency: "usd", type: "payment", net: amount,
@@ -55,57 +55,56 @@ test("currency conversion uses actual bank currency and never mixes currency poo
 test("the ledger is fully paginated and the database query is factory-scoped", async () => {
   const tx = [credit("a", 3000, 1), ...Array.from({ length: 30 }, (_, i) => payout(`po_${i}`, 100, i + 2))];
   let scoped = false;
-  const db = { from: () => ({ select: () => ({ eq: (key, value) => {
+  let takesScoped = false;
+  const db = { from: (table) => ({ select: () => ({ eq: (key, value) => {
+    if (table === "payment_takes") {
+      // A step withdrawn through Stripe in parts has a transfer per part (20261120200000).
+      takesScoped = key === "org_id" && value === "factory";
+      const chain = { not: () => chain, order: () => chain, range: async () => ({ data: [], error: null }) };
+      return chain;
+    }
     scoped = key === "production_orders.factory_org_id" && value === "factory";
     return { order: () => ({ range: async () => ({ data: payments, error: null }) }) };
   } }) }) };
   const stripe = { balanceTransactions: { list: () => ({ async *[Symbol.asyncIterator]() { yield* tx; } }) } };
   const result = await payoutAllocationFor(stripe, db, "factory", "acct");
   assert.equal(scoped, true);
+  assert.equal(takesScoped, true, "the Stripe takes are read for this factory only");
   assert.equal(result.payouts.length, 30);
   assert.equal(result.payouts.reduce((s, p) => s + p.allocations[0].amount, 0), 3000);
 });
-test("each client's figures are its own payments, whatever Stripe says", () => {
-  const rows = [
-    { id: "a", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", stripe_transfer_id: "tr_a", order: { brand_org_id: "brand-a" } },
-    { id: "b", state: "confirmed", amount_cents: 2000, currency: "USD", order: { brand_org_id: "brand-b" } },
-  ];
-  const a = earningsSummaryFor(rows, "brand-a");
-  assert.deepEqual(a.total, [{ currency: "USD", amount: 1000 }]);
-  assert.deepEqual(a.pending, [], "paid through Stripe is not Pending");
-  assert.deepEqual(a.paid, [{ currency: "USD", amount: 1000 }], "it is Paid out, in the order's currency");
-  assert.deepEqual(earningsSummaryFor(rows, "brand-b").approval, [{ currency: "USD", amount: 2000 }]);
-  assert.deepEqual(earningsSummaryFor(rows, "brand-b").paid, []);
-  assert.deepEqual(earningsSummaryFor(rows, "All clients").paid, [{ currency: "USD", amount: 1000 }]);
+// The figures come from the server (factory_balance, per client with
+// target_client): the page never sums payments itself (D3, 20261120100000).
+// The per-client and "paid out by bank" rules these tests pinned on the
+// retired earningsSummaryFor() are pinned in supabase/tests/unified_balance_test.sql.
+test("the four figures are the server's, and Total is their sum", () => {
+  const figures = { awaiting_cents: 2000, available_cents: 1000, pending_cents: 300, paid_out_cents: 6500 };
+  assert.deepEqual(summaryFrom(figures), { total: 9800, approval: 2000, available: 1000, pending: 300, paid: 6500 });
 });
-test("a card payment TSC paid out by bank counts as paid out, and never as a balance", () => {
-  const rows = [
-    { id: "bank", state: "released", amount_cents: 6500, charged_cents: 6955, stripe_transfer_id: null, currency: "USD", order: { brand_org_id: "brand-a" } },
-  ];
-  assert.deepEqual(earningsSummaryFor(rows, "All clients").paid, [{ currency: "USD", amount: 6500 }]);
-  assert.equal(earningStatus(rows[0]), "Paid");
+test("before the figures are read, every figure is unknown, never zero", () => {
+  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
 });
-test("an approved earning not yet paid out says Approved, not Paid", () => {
-  const row = { id: "a", state: "released", stripe_transfer_id: "tr_a" };
-  assert.equal(earningStatus(row), "Paid");
-  assert.equal(earningStatus({ state: "confirmed", release_requested_at: "x" }), "Approved");
+test("a step split between figures is in each once", () => {
+  const map = figuresByPayment({ rows: [
+    { payment_id: "a", figure: "available", amount_cents: 500 },
+    { payment_id: "a", figure: "pending", amount_cents: 500 },
+    { payment_id: "b", figure: "paid_out", amount_cents: 0 },
+  ] });
+  assert.deepEqual([...map.get("a")].sort(), ["available", "pending"]);
+  assert.equal(map.has("b"), false, "an empty part is no figure");
+});
+test("one word per earning: paid by bank is Paid; approved money is in the balance, never Pending unless its figure is", () => {
+  assert.equal(earningStatus({ id: "bank", state: "released", stripe_transfer_id: null }), "Paid");
+  assert.equal(earningStatus({ id: "a", state: "confirmed", release_requested_at: "x" }), ADDED_TO_BALANCE);
+  assert.equal(earningStatus({ id: "a", state: "confirmed", release_requested_at: "x" }, null, new Map([["a", new Set(["pending"])]])), "Pending");
   assert.equal(earningStatus({ state: "confirmed" }), "Awaiting approval");
 });
-test("before the earnings are read, every figure is unknown, never zero", () => {
-  assert.deepEqual(earningsSummaryFor(null, "All clients"), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
-});
-test("the figures never wait for Stripe and add up; only the withdrawals do", () => {
+test("Stripe matters only once a step was paid by a Stripe transfer", () => {
   const rows = [
-    { id: "s", state: "released", amount_cents: 6500, stripe_transfer_id: "tr_s", currency: "USD", order: { brand_org_id: "brand-a" } },
-    { id: "r", state: "confirmed", amount_cents: 1000, release_requested_at: "x", currency: "USD", order: { brand_org_id: "brand-b" } },
-    { id: "b", state: "released", amount_cents: 300, stripe_transfer_id: null, currency: "USD", order: { brand_org_id: "brand-b" } },
+    { id: "s", state: "released", stripe_transfer_id: "tr_s" },
+    { id: "r", state: "confirmed", release_requested_at: "x" },
   ];
-  const all = earningsSummaryFor(rows, "All clients");
-  assert.deepEqual(all.total, [{ currency: "USD", amount: 7800 }]);
-  assert.deepEqual(all.pending, [{ currency: "USD", amount: 1000 }]);
-  assert.deepEqual(all.paid, [{ currency: "USD", amount: 6800 }]);
   assert.equal(stripeRelevant(rows), true);
   assert.equal(stripeRelevant(rows.slice(1)), false);
-  assert.deepEqual(earningsSummaryFor([], "All clients").paid, []);
   assert.equal(stripeRelevant(null), false);
 });
