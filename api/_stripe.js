@@ -397,6 +397,14 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
       const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
       return data;
     }
+    // Disputed in the same second it was paid (its dispute event can come
+    // before this): recorded first, from Stripe, so the funded notice says
+    // the money is on hold, never "added to your balance". Never fails the
+    // recording; the dispute webhook retries until the payment is known.
+    if (charge?.id) {
+      await recordChargeDispute({ stripe, db, paymentId, charge })
+        .catch((failure) => logStripeFailure("charge-dispute", failure, { paymentId }));
+    }
     const result = await rpc(db, "record_payment_succeeded", {
       target_payment: paymentId,
       payment_intent: full.id,
@@ -425,6 +433,45 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
 /** How long a fresh payment waits for Stripe to attach its balance transaction (about 1.5 to 5 s after confirming). */
 export const FUNDS_WAIT_MS = 10_000;
 const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * The order payment a dispute is about: by its charge, else by its
+ * PaymentIntent (a charge can be disputed before its payment is recorded;
+ * the intent is attached at checkout). An order payment Stripe knows but this
+ * database does not yet throws, so the event is not marked processed and
+ * Stripe sends it again. Another app's charge, or a credit pack, is null.
+ */
+export async function paymentForDispute({ stripe, db, dispute }) {
+  const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const intentId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id ?? null;
+  let { data: payment, error } = await db.from("order_payments").select("id").eq("stripe_charge_id", chargeId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment && intentId) {
+    ({ data: payment, error } = await db.from("order_payments").select("id").eq("stripe_payment_intent_id", intentId).maybeSingle());
+    if (error) throw new Error(error.message);
+  }
+  if (!payment && intentId) {
+    const intent = await stripe.paymentIntents.retrieve(intentId);
+    if (intent.metadata?.payment_id) throw new Error("the disputed charge's payment is not recorded yet");
+  }
+  return payment ?? null;
+}
+
+/**
+ * Whether a charge's dispute is open or lost (Stripe keeps `disputed` true
+ * after a win), recorded on its payment. Returns true when it is disputed.
+ */
+export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
+  const chargeId = typeof charge === "string" ? charge : charge?.id;
+  if (!chargeId) return false;
+  const fresh = typeof charge === "object" && "disputed" in charge ? charge : await stripe.charges.retrieve(chargeId);
+  if (!fresh.disputed) return false;
+  const disputeId = typeof fresh.dispute === "string" ? fresh.dispute : fresh.dispute?.id;
+  const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+  const disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
+  await rpc(db, "record_payment_disputed", { target_payment: paymentId, disputed });
+  return disputed;
+}
 
 /**
  * Record when a charge's money is available on TSC's Stripe account (its

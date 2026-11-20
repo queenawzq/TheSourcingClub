@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyChargeUpdated, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyChargeUpdated, applyPaymentIntent, paymentForDispute, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -140,9 +140,9 @@ export default async function handler(request, response) {
         // from Stripe, never from the event: "closed" can arrive before
         // "created", and the dispute as it is now decides.
         const dispute = await stripe.disputes.retrieve(event.data.object.id);
-        const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
-        const { data: payment, error } = await db.from("order_payments").select("id").eq("stripe_charge_id", chargeId).maybeSingle();
-        if (error) throw new Error(error.message);
+        // Found by its charge, else its PaymentIntent; an order payment not
+        // recorded yet throws, so Stripe sends the event again.
+        const payment = await paymentForDispute({ stripe, db, dispute });
         if (payment) {
           const disputed = !["won", "warning_closed"].includes(dispute.status);
           const recorded = await db.rpc("record_payment_disputed", { target_payment: payment.id, disputed });

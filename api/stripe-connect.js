@@ -69,6 +69,22 @@ const describe = (method) => `${method.type === "card" ? "Debit card" : "Bank ac
 /** A withdrawal may make several Stripe calls in a row (claim, transfers, fee, payout): room for all of them. */
 export const config = { maxDuration: 60 };
 
+/**
+ * The signed-in person's id from the caller's token, when the auth server did
+ * not answer for it (getUser): the database has just accepted the same token
+ * for is_org_owner, so its subject is who is asking. Only ever recorded as
+ * "who asked", never used to decide anything.
+ */
+function tokenSubject(request) {
+  try {
+    const token = String(request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+    const sub = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).sub;
+    return /^[0-9a-f-]{36}$/i.test(sub ?? "") ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
 
@@ -195,7 +211,7 @@ export default async function handler(request, response) {
       if (!previous.payouts_enabled) return reply(response, 422, { error: "Contact TSC operations to recover funds from your previous payout account." });
       // The factory pays Stripe's payout fee once, taken back before the payout (api/_stripe-withdrawals.js).
       const payout = await withdrawWithFee({ stripe, db, orgId, accountId: upgrade.old_account_id, country: previous.country ?? "",
-        amount, currency, requestId, userId: auth?.user?.id ?? null });
+        amount, currency, requestId, userId: auth?.user?.id ?? tokenSubject(request) });
       return reply(response, 200, { payout });
     }
 
@@ -207,7 +223,7 @@ export default async function handler(request, response) {
       const oneBalance = String(currency ?? "").toLowerCase() === "usd";
       const account = oneBalance ? await stripe.accounts.retrieve(existing.stripe_account_id) : null;
       const payout = await withdrawWithFee({ stripe, db, orgId, accountId: existing.stripe_account_id, country: existing.country ?? "",
-        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? null,
+        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? tokenSubject(request),
         oneBalance, payoutCurrency: account?.default_currency ?? "usd", transfersActive: Boolean(existing.transfers_active) });
       return reply(response, 200, { payout });
     }
