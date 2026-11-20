@@ -106,6 +106,8 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: "Payment confirmed on TSC-1042", body: '$1,200.00 has arrived for "Deposit". You can start this work.' },
   { kind: "payment_confirmed", title: "Your payment on TSC-1042 was confirmed", body: "$1,284.00 received. The factory has been told to begin." },
   { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "TSC received $1,200.00 on TSC-1042 and will send it to you once you add a withdrawal method." },
+  { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance." },
+  { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance. Add a withdrawal method to receive earnings." },
   { kind: "payment_confirmed", title: 'Payment held for "Fit sample"', body: "TSC holds $1,200.00 for this step on TSC-1042. You can start this work; it is paid to you when the brand approves it." },
   { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. TSC will pay the factory." },
   { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and pays the factory when you approve this step." },
