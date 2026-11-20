@@ -232,4 +232,69 @@ for (const [why, row] of [
   assert.ok(form.includes("{methodId ? null : <option value=\"\" />}"), "the dropdown shows nothing chosen");
 }
 
+// One balance (20261120100000): the database's figures plus the factory's own
+// Stripe money (D1), each dollar in exactly one figure, total the sum of four.
+{
+  const { balanceFigures } = await import("../api/_balance-figures.js");
+  const sum = (f) => f.awaiting_cents + f.available_cents + f.pending_cents + f.paid_out_cents;
+  const tsc = (over = {}) => ({ awaiting_cents: 0, available_cents: 0, pending_cents: 0, paid_out_cents: 0, has_method: true, next_cleared_at: null,
+    parts: { stripe_released_cents: 0 }, ...over });
+
+  // IMG 75: no method, $1 owed and cleared, no Stripe account: Available $1, Pending $0.
+  {
+    const f = balanceFigures(tsc({ available_cents: 100, has_method: false }), null, null);
+    assert.equal(f.available_cents, 100, "IMG 75: owed money is Available");
+    assert.equal(f.pending_cents, 0, "IMG 75: and not Pending");
+    assert.equal(f.paid_out_cents, 0);
+    assert.equal(f.has_method, false, "the card offers Add withdrawal method");
+    assert.equal(f.total_cents, 100);
+  }
+  // IMG 76: PayPal added; nothing moved: still Available $1, Paid out $0.
+  {
+    const f = balanceFigures(tsc({ available_cents: 100 }), null, null);
+    assert.equal(f.available_cents, 100, "IMG 76: still Available after adding PayPal");
+    assert.equal(f.paid_out_cents, 0, "IMG 76: not Paid out");
+    assert.equal(f.has_method, true);
+  }
+  // D1: $80 of steps went to the factory's Stripe account before this change.
+  // $50 is still there, $5 is on its way to the bank, $25 reached it; $20 more
+  // is clearing in Stripe. Owed on TSC: $100 cleared, $30 clearing; $10 awaiting.
+  {
+    const db = tsc({ awaiting_cents: 1000, available_cents: 10000, pending_cents: 3000, paid_out_cents: 8000, parts: { stripe_released_cents: 8000 } });
+    const stripe = {
+      available: [{ amount: 5000, currency: "usd" }],
+      pending: [{ amount: 2000, currency: "usd" }],
+      onTheirWay: [{ amount: 500, currency: "usd" }],
+      payouts: [{ amount: 2500, currency: "usd", paid: true }, { amount: 500, currency: "usd", paid: false }],
+    };
+    const f = balanceFigures(db, stripe, null);
+    assert.equal(f.available_cents, 10000 + 5000, "D1: Stripe's available money is in Available with the owed money");
+    assert.equal(f.pending_cents, 3000 + 2000 + 500, "Stripe pending and payouts on their way are Pending");
+    assert.equal(f.paid_out_cents, 2500, "Paid out is what reached the bank, not the transfers made to Stripe");
+    assert.equal(f.awaiting_cents, 1000);
+    assert.equal(f.total_cents, sum(f), "total is the sum of the four");
+    assert.equal(f.estimated, false);
+  }
+  // Non-USD Stripe money is converted and marked estimated; a currency with no
+  // rate leaves Stripe out rather than guessing.
+  {
+    const db = tsc({ available_cents: 1000, paid_out_cents: 500, parts: { stripe_released_cents: 500 } });
+    const stripe = { available: [{ amount: 400, currency: "gbp" }], pending: [], onTheirWay: [], payouts: [] };
+    const withRate = balanceFigures(db, stripe, { rates: { GBP: 1.25 } });
+    assert.equal(withRate.available_cents, 1000 + 500, "GBP converted to US cents");
+    assert.equal(withRate.estimated, true, "and said to be an estimate");
+    assert.equal(withRate.total_cents, sum(withRate));
+    const noRate = balanceFigures(db, stripe, { rates: {} });
+    assert.equal(noRate.stripe, null, "no rate: Stripe money is not guessed");
+    assert.equal(noRate.available_cents, 1000);
+    assert.equal(noRate.paid_out_cents, 500, "and the database's own figures stand");
+    assert.equal(noRate.total_cents, sum(noRate));
+  }
+  // Whatever the inputs, total is never computed separately.
+  for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
+    const f = balanceFigures(db, { available: [], pending: [], onTheirWay: [], payouts: [] }, null);
+    assert.equal(f.total_cents, sum(f));
+  }
+}
+
 console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed");

@@ -1432,6 +1432,38 @@ console.log("\nphase 3 — the order runs");
         ? ok("the held money is now owed to the factory (payout requested)")
         : fail(`after approval the payment is ${owed.state}, payout requested: ${Boolean(owed.release_requested_at)}`);
 
+      // One balance (20261120100000): approving moves nothing. The owed step is
+      // counted once in the factory's balance, read through factory_balance().
+      {
+        const { data: unmoved } = await admin.from("order_payments")
+          .select("withdrawal_pool, stripe_transfer_id, release_claimed_at, stripe_release_started, funds_available_at").eq("id", deposit.id).single();
+        unmoved && !unmoved.withdrawal_pool && !unmoved.stripe_transfer_id && !unmoved.release_claimed_at && !unmoved.stripe_release_started
+          ? ok("approval transfers nothing and puts nothing in the withdrawal pool")
+          : fail("approval moved the money", unmoved && { message: JSON.stringify(unmoved) });
+        const balance = await factoryClient.rpc("factory_balance", { target_org: winner.factory_org_id });
+        if (balance.error) fail("the factory reads its one balance", balance.error);
+        else {
+          const b = balance.data;
+          const four = ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"].map((k) => Number(b[k]));
+          four.every(Number.isFinite) && Number(b.total_cents) === four.reduce((a, c) => a + c, 0)
+            ? ok("factory_balance returns the four figures, and total is their sum")
+            : fail("factory_balance figures do not add up", { message: JSON.stringify(b) });
+          const mine = (b.rows ?? []).filter((r) => r.payment_id === deposit.id);
+          mine.length === 1 && ["available", "pending"].includes(mine[0].figure)
+            ? ok(`the approved step is in exactly one figure (${mine[0].figure})`)
+            : fail("the approved step is not counted exactly once", { message: JSON.stringify(mine) });
+        }
+        const fromBrand = await brand.client.rpc("factory_balance", { target_org: winner.factory_org_id });
+        fromBrand.error && !fromBrand.data
+          ? ok("the brand on the order CANNOT read the factory's balance")
+          : fail("LEAK: the brand read the factory's balance");
+        const signedOutBalance = await createClient(URL, ANON, { auth: { persistSession: false } })
+          .rpc("factory_balance", { target_org: winner.factory_org_id });
+        signedOutBalance.error && !signedOutBalance.data
+          ? ok("signed out, factory_balance is refused")
+          : fail("LEAK: a signed-out caller read a factory's balance");
+      }
+
       const { data: paid } = await admin
         .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
       Number(paid.paid_cents) === Number(deposit.amount_cents)

@@ -137,8 +137,8 @@ select lives_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-00
   'a factory can move to Stripe while a payout is owed on its saved method');
 reset role;
 select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'stripe', 'and the route is Stripe');
-select ok((select withdrawal_pool from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'what was owed stays in the balance, for the saved method');
-select throws_ok($$select public.claim_payment_release('97f00000-0000-0000-0000-000000000001')$$, '22023', null, 'so Stripe still cannot claim it');
+select ok((select not withdrawal_pool and release_claimed_at is null and not stripe_release_started from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'choosing Stripe moves nothing: what was owed stays owed, unclaimed, outside the pool');
+select is((select count(*)::int from public.provider_payouts where payment_id = '97f00000-0000-0000-0000-000000000001' and status in ('processing', 'paid')), 0, 'and nothing pays it by another road');
 rollback to savepoint m97_switch;
 
 update public.order_payments set state = 'released', released_at = now() where id = '97f00000-0000-0000-0000-000000000001';

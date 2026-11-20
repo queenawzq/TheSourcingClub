@@ -460,13 +460,18 @@ select is(
   (select count(*)::integer from public.admin_payment_board() b
     -- A payment in a factory's withdrawal balance is not owed by staff: the
     -- factory withdraws it (20261116200000), and the board leaves it out too.
+    -- Owed money in a factory's balance waits on the factory too (20261120100000):
+    -- only a payout under way or failed is staff's.
     where not exists (select 1 from public.order_payments p where p.id = b.payment_id and p.withdrawal_pool)
-      and ((b.state = 'confirmed' and b.release_requested_at is not null)
+      and ((b.state = 'confirmed' and b.release_requested_at is not null
+            and (b.stripe_release_started or b.provider_status in ('processing', 'failed')))
        or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null))),
-  'the overview counts every payment waiting on staff, payouts owed included');
+  'the overview counts every payment waiting on staff, and not money owed in a balance');
 select ok(
-  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
-  'which here includes the payout owed');
+  exists (select 1 from public.admin_payment_board() b
+           where b.payment_id = pg_temp.p18_pay('order_a', 'Balance') and b.state = 'confirmed' and b.release_requested_at is not null
+             and not b.stripe_release_started and b.provider_status is null),
+  'the owed payout is still on the board for staff to read, but is not counted as theirs');
 reset role;
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active)
@@ -747,7 +752,7 @@ select is(
 select is(
   (select n.body from public.notifications n
     where n.kind = 'milestone_approved' and n.subject_id = pg_temp.p18_step('order_a', 'Fit sample')),
-  'The brand approved this step. TSC will send you $500.00 once you add a withdrawal method. Their note: Lovely fit.',
+  'The brand approved this step. $500.00 added to your balance. Add a withdrawal method to receive earnings. Their note: Lovely fit.',
   'an approval says the amount, what to do and the note');
 
 -- ===========================================================================
