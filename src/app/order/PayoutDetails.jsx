@@ -362,7 +362,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
-    ["Pending", summary.pending, "Pending payments become available to withdraw after processing."],
+    ["Pending", summary.pending, "Payments still processing and withdrawals on their way to you."],
     ["Paid out", summary.paid, "Money that has been paid out to you"],
   ];
   // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
