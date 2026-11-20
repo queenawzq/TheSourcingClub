@@ -105,7 +105,7 @@ const PATTERNS = [
   [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
   // The Withdraw dialog's refusal when the fee would take everything (withdrawalFee, src/shared/withdrawal-fees.mjs).
   [/^This payment of (\S+) is too small: the fee to send it is (\S+), so nothing would arrive\. Nothing was sent\.$/, (m) => `该笔款项 ${m[1]} 金额过低：转账手续费为 ${m[2]}，到账金额为零。未发送任何款项。`],
-  [/^This payment of (\S+) is too small: the fee to send it is (\S+), so nothing would arrive\.$/, (m) => `该笔款项 ${m[1]} 金额过低：转账手续费为 ${m[2]}，到账金额为零。`],
+  [/^This payment of (\S+) is too small to send\. The fee is (\S+)\.$/, (m) => `该笔款项 ${m[1]} 金额过低，无法发送。手续费为 ${m[2]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],

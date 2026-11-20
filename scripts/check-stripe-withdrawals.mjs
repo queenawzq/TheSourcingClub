@@ -216,7 +216,7 @@ assert.equal(usFee, 523);
 {
   const s = fakeStripe({ transfers: [transfer("tr_a", 100)], available: 100 });
   const db = fakeDb();
-  await assert.rejects(withdrawWithFee(args(s, db, { amount: 26 })), /^Error: This payment of US\$0\.26 is too small: the fee to send it is US\$0\.26, so nothing would arrive\.$/);
+  await assert.rejects(withdrawWithFee(args(s, db, { amount: 26 })), /^Error: This payment of US\$0\.26 is too small to send\. The fee is US\$0\.26\.$/);
   assert.deepEqual([s.reversals.length, s.payouts.length, s.platform], [0, 0, 0]);
   assert.equal(db.rows[0].state, "refused");
 }
