@@ -3,7 +3,7 @@ import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js"
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
-import { balanceFigures } from "./_balance-figures.js";
+import { balanceFigures, usdCents } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
@@ -192,8 +192,14 @@ export default async function handler(request, response) {
 
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
+      // In US$: the one balance (Stripe money first, then owed steps), paid
+      // out in the account's own currency. In the account's other currency:
+      // its Stripe money only, as before.
+      const oneBalance = String(currency ?? "").toLowerCase() === "usd";
+      const account = oneBalance ? await stripe.accounts.retrieve(existing.stripe_account_id) : null;
       const payout = await withdrawWithFee({ stripe, db, orgId, accountId: existing.stripe_account_id, country: existing.country ?? "",
-        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? null });
+        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? null,
+        oneBalance, payoutCurrency: account?.default_currency ?? "usd", transfersActive: Boolean(existing.transfers_active) });
       return reply(response, 200, { payout });
     }
 
@@ -222,7 +228,7 @@ export default async function handler(request, response) {
       // A payout that failed or was cancelled gives its fee back even if its webhook never came.
       await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
-      const [balance, allocation, methods, onTheirWay, displayFx, tscBalance] = await Promise.all([
+      const [balance, allocation, methods, onTheirWay, displayFx, tscBalance, owedReach, poolLeft] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
@@ -230,8 +236,12 @@ export default async function handler(request, response) {
         payoutDisplayRates(),
         // As the owner: the database checks who is asking.
         caller.rpc("factory_balance", { target_org: orgId }),
+        db.rpc("owed_reachable", { target_org: orgId }),
+        db.rpc("factory_withdrawable", { target_org: orgId }),
       ]);
       if (tscBalance.error) throw new Error(tscBalance.error.message);
+      if (owedReach.error) throw new Error(owedReach.error.message);
+      if (poolLeft.error) throw new Error(poolLeft.error.message);
       const migration = await upgradeReadiness(stripe, upgrade);
       let recovery = null;
       if (upgrade?.completed_at) {
@@ -248,8 +258,25 @@ export default async function handler(request, response) {
         onTheirWay,
         payouts: allocation.payouts,
       }, displayFx), stripe_unavailable: false };
+      // What Withdraw can offer by each road, in US$: Stripe reaches owed
+      // steps paid by card and the money already in this Stripe account
+      // (an estimate when that is in another currency); PayPal and Wise reach
+      // owed steps and pool money, never the Stripe account's.
+      let inStripeUsd = 0;
+      let reachEstimated = false;
+      for (const entry of balance.available) {
+        const cents = usdCents(entry.amount, entry.currency, displayFx);
+        if (cents == null) continue;
+        if (entry.currency.toLowerCase() !== "usd" && entry.amount) reachEstimated = true;
+        inStripeUsd += cents;
+      }
+      const reach = {
+        stripe_cents: Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd,
+        pool_cents: Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0),
+        estimated: reachEstimated,
+      };
       return reply(response, 200, {
-        displayFx, recovery, figures,
+        displayFx, recovery, figures, reach,
         upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
         defaultCurrency: account.default_currency,
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),

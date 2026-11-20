@@ -123,5 +123,15 @@ export async function payoutAllocationFor(stripe, db, orgId, accountId) {
     payments.push(...data);
     if (data.length < 1000) break;
   }
+  // A step withdrawn through Stripe in parts has a transfer per part
+  // (payment_takes); each is that step's earning.
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("payment_takes")
+      .select("payment_id, stripe_transfer_id").eq("org_id", orgId).not("stripe_transfer_id", "is", null)
+      .order("id").range(from, from + 999);
+    if (error) throw new Error(error.message);
+    payments.push(...data.map((take) => ({ id: take.payment_id, stripe_transfer_id: take.stripe_transfer_id })));
+    if (data.length < 1000) break;
+  }
   return allocatePayouts(transactions, payments);
 }
