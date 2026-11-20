@@ -167,12 +167,29 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     ));
   }
   if (last?.status === "declined") {
-    return <p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p>;
+    return <NewOnly id={`${last.id}:declined`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p></NewOnly>;
   }
   if (last?.status === "failed") {
-    return <p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p>;
+    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p></NewOnly>;
   }
   return null;
+}
+
+/**
+ * A declined or failed withdrawal is said on the card while it is new: on the
+ * page where this browser first shows it, not again in later visits (its row
+ * in Transactions and the bell keep it). Browser storage only remembers what
+ * was seen; without it the notice simply shows.
+ */
+function NewOnly({ id, children }) {
+  const key = `tscWithdrawalNoticeSeen:${id}`;
+  const [seenBefore] = useState(() => {
+    try { return window.localStorage.getItem(key) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(key, "1"); } catch { /* shown, nothing remembered */ }
+  }, [key]);
+  return seenBefore ? null : children;
 }
 
 export async function cancelWithdrawal(id) {

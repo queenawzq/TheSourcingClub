@@ -318,6 +318,12 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.ok(page.includes("const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));"), "the newer read wins");
 }
 
+// A declined or failed withdrawal banner shows while new, not in every later visit.
+{
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes("<NewOnly id={`${last.id}:declined`}>") && form.includes("tscWithdrawalNoticeSeen:"), "the declined banner is shown once per withdrawal");
+}
+
 // Fix round 5 (local tester).
 {
   // M5: a disputed step is On hold, never "Available <day>", on both pages.
