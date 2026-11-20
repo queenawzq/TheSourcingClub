@@ -73,6 +73,8 @@ const ZH_SAMPLES = [
   { kind: "message_rejected", title: "Your message to Maison Rue about TSC-1042 was not delivered", body: "It contained a phone number.", typed: true },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. TSC will send you $1,200.00. Their note: Great work" },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. TSC will send you $1,200.00 once you add a withdrawal method." },
+  { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. $1,200.00 added to your balance." },
+  { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. $1,200.00 added to your balance. Add a withdrawal method to receive earnings. Their note: Great work" },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "You can carry on to the next step." },
   { kind: "milestone_submitted", title: '"Fit sample" is ready for you', body: "The factory has sent this step for your approval." },
   { kind: "milestone_dispute", title: 'Dispute opened on "Fit sample"', body: "Wrong colour", typed: true },

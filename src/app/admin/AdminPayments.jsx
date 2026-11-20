@@ -2,15 +2,17 @@
  * The payments board.
  *
  * Brands pay TSC through Stripe, by card; TSC holds the
- * money until the brand approves the step, then pays the factory. Most of it
- * runs on its own: the webhook records what Stripe says, and approving a step
- * transfers the money to a factory's Stripe account. This page is for what
+ * money until the brand approves the step; the money then waits in the
+ * factory's balance until the factory withdraws it. Most of it runs on its
+ * own: the webhook records what Stripe says, and a Stripe withdrawal needs no
+ * staff. This page is for what
  * does not, and it is a required step in the workflow, not a convenience:
  * notifications.org_id is `not null references orgs` and platform staff have
  * no org, so an admin cannot be notified of anything.
  *
- *   Payout owed      approved and not paid out, on an active order or one
- *                    cancelled after the approval. "Retry payout" when the
+ *   Payout owed      a payout an earlier version started when the step was
+ *                    approved and that has not settled (approved money now
+ *                    waits in the factory's balance). "Retry payout" when the
  *                    factory has a Stripe account that can take transfers and
  *                    the money came through Stripe. "Pay with Wise" or "Pay with
  *                    PayPal" when the factory's method is one of those: the
@@ -780,8 +782,10 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
 export function boardSections(rows, attempts = new Map(), pool = new Set()) {
   const cancelled = (row) => row.order_status === "cancelled";
   const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
-  // A step in a factory's withdrawal balance is paid when the factory asks (the Withdrawals tab).
-  const inBalance = (row) => pool.has(row.payment_id);
+  // Approved money waits in the factory's balance and is paid when the
+  // factory withdraws (the Withdrawals tab): only a payout an earlier release
+  // started on approval is still staff's to settle (Retry checks Stripe).
+  const inBalance = (row) => pool.has(row.payment_id) || !row.stripe_release_started;
   const moving = (row) => underway(row, attempts.get(row.payment_id));
   const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {

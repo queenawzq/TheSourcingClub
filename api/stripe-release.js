@@ -1,14 +1,16 @@
 import { logStripeFailure, payoutSentenceForStaff } from "./_stripe-errors.js";
-import { callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { callerClient, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
- * Pay a held payment out to its factory now. Called by the brand's page right
- * after it approves a step, and by staff's "Retry payout".
+ * Settle a payout an earlier version started when a step was approved. Called
+ * by staff's "Retry payout" (and, while it is still live, by the old brand
+ * page right after approving).
  *
- * Whether the money is owed is the database's call (the approval set
- * release_requested_at); this only carries it out, once: releasePayment
- * claims the payment first, and a second caller is told it is already being
- * paid. Anyone who can read the payment may ask.
+ * Approving no longer sends anything: the money waits in the factory's
+ * balance until the factory withdraws. So this never creates a transfer. It
+ * only finds out what a release already started did: a transfer that went is
+ * recorded, and one that did not is unpinned (settleRelease). Anyone who can
+ * read the payment may ask.
  */
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
@@ -32,7 +34,7 @@ export default async function handler(request, response) {
   if (!visible) return reply(response, 404, { error: "that payment is not available to you" });
 
   try {
-    return reply(response, 200, await releasePayment({ stripe, db, paymentId }));
+    return reply(response, 200, await settleRelease({ stripe, db, paymentId }));
   } catch (failure) {
     logStripeFailure("stripe-release", failure, { paymentId });
     // Staff get what to do next. Anyone else who can read the payment asked for

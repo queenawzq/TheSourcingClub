@@ -36,7 +36,7 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
-import { connectAccountFor, requestRelease } from "../../lib/domain/stripe.js";
+import { connectAccountFor } from "../../lib/domain/stripe.js";
 import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
 import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
@@ -766,14 +766,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
-        // Approving a funded step asks for its payout straight away. A payout
-        // that cannot go now (the factory has no Stripe account yet, or
-        // Stripe is down) stays owed and shows on the staff payments page;
-        // it never undoes the approval.
-        onApprove={(milestone, note) => fromDialog(async () => {
-          await approveMilestone(milestone.id, note);
-          if (milestone.paymentId) await requestRelease(milestone.paymentId).catch(() => null);
-        })}
+        // Approving makes the step's money owed: it waits in the factory's
+        // balance until the factory withdraws. Nothing is sent from here.
+        onApprove={(milestone, note) => fromDialog(() => approveMilestone(milestone.id, note))}
         onPostComment={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}

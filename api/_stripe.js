@@ -20,9 +20,11 @@ import { cardReason } from "./_card-words.js";
  *                              longer wants (a changed amount, a cancelled
  *                              order) is refunded, and a refund made in
  *                              Stripe is recorded (applyChargeRefund)
- *   the brand approves      -> the database asks for the payout
- *                              (release_requested_at); releasePayment() sends
- *                              a Transfer to the factory's Express account
+ *   the brand approves      -> the money is owed (release_requested_at): it
+ *                              stays with TSC, in the factory's balance
+ *                              (factory_balance()), until the factory
+ *                              withdraws. Nothing is transferred on approval;
+ *                              releasePayment() is for the withdrawal
  *
  * Only this code, holding the service key, can move a payment through those
  * states; the database refuses everyone else. The browser never decides a
@@ -404,19 +406,64 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
       received: full.amount_received ?? full.amount,
     });
     if (!result.funded) return refundIntent({ stripe, db, intent: full, charge, result });
-    const funded = result.payment;
-    // A payment-only step (or one approved under the old rules) is owed to
-    // the factory the moment it is funded.
-    if (funded?.release_requested_at && funded.state === "confirmed") {
-      await releasePayment({ stripe, db, paymentId }).catch(() => null);
-    }
-    return funded;
+    // A payment-only step is owed to the factory the moment it is funded, but
+    // nothing is sent: it waits in the factory's balance until it withdraws.
+    // When the charge's money becomes available decides Available or Pending.
+    await recordFundsAvailable({ stripe, db, paymentId, charge })
+      .catch((failure) => logStripeFailure("funds-available", failure, { paymentId }));
+    return result.payment;
   }
   if (full.status === "requires_payment_method" && full.last_payment_error) {
     return rpc(db, "record_payment_failed", { target_payment: paymentId, reason: failureReason(full) });
   }
   const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
   return data;
+}
+
+/**
+ * Record when a charge's money is available on TSC's Stripe account (its
+ * balance transaction's available_on): until then the factory's owed money
+ * for it is Pending, not Available, and cannot be withdrawn through Stripe.
+ * Returns the date, or null when Stripe has none yet.
+ */
+export async function recordFundsAvailable({ stripe, db, paymentId, charge }) {
+  if (!charge) return null;
+  let transaction = charge.balance_transaction;
+  if (!transaction) {
+    const fresh = await stripe.charges.retrieve(charge.id ?? charge, { expand: ["balance_transaction"] });
+    transaction = fresh.balance_transaction;
+  } else if (typeof transaction === "string") {
+    transaction = await stripe.balanceTransactions.retrieve(transaction);
+  }
+  const seconds = Number(transaction?.available_on);
+  if (!seconds) return null;
+  const availableAt = new Date(seconds * 1000).toISOString();
+  await rpc(db, "record_payment_funds_available", { target_payment: paymentId, available_at: availableAt });
+  return availableAt;
+}
+
+/**
+ * A release an earlier version started on approval (a claim and a Stripe
+ * call), settled without sending anything new: a transfer that went is
+ * recorded, and one that did not is unpinned so the money stays in the
+ * factory's balance. Never creates a transfer.
+ *
+ * Returns { released, reason }.
+ */
+export async function settleRelease({ stripe, db, paymentId }) {
+  const { data: payment, error } = await db
+    .from("order_payments")
+    .select("id, state, amount_cents, order_id, stripe_release_started, release_claimed_at")
+    .eq("id", paymentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment) return { released: false, reason: "no such payment" };
+  if (payment.state === "released") return { released: true, reason: "already paid out" };
+  if (payment.state !== "confirmed" || !payment.stripe_release_started) {
+    return { released: false, reason: "in the factory's balance until it withdraws" };
+  }
+  const settled = await settleStartedRelease({ stripe, db, payment });
+  return settled ?? { released: false, reason: "in the factory's balance until it withdraws" };
 }
 
 /**
@@ -649,27 +696,4 @@ export async function saveConnectAccount(db, orgId, account) {
 /** Answer with a status and a JSON body, the same shape on Vercel and in dev. */
 export function reply(response, status, body) {
   response.status(status).json(body);
-}
-
-/**
- * Pay out everything a factory is owed that is still waiting: run when its
- * Stripe account starts accepting transfers, or when staff press Retry.
- */
-export async function releaseOwedTo({ stripe, db, factoryOrgId }) {
-  const { data: owed, error } = await db
-    .from("order_payments")
-    .select("id, production_orders!inner (factory_org_id)")
-    .eq("state", "confirmed")
-    .not("release_requested_at", "is", null)
-    .eq("production_orders.factory_org_id", factoryOrgId);
-  if (error) throw new Error(error.message);
-  const results = [];
-  for (const payment of owed ?? []) {
-    results.push({ id: payment.id, ...(await releasePayment({ stripe, db, paymentId: payment.id }).catch((failure) => {
-      // Read by the factory's page: the raw text stays in the log.
-      logStripeFailure("release-owed", failure, { paymentId: payment.id });
-      return { released: false, reason: "not sent yet" };
-    })) });
-  }
-  return results;
 }

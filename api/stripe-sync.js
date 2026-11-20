@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -38,8 +38,9 @@ export default async function handler(request, response) {
       });
       await applyPaymentIntent({ stripe, db, intent });
     }
-    // A payout the database asked for and that did not go yet.
-    await releasePayment({ stripe, db, paymentId }).catch(() => null);
+    // A release an earlier version started on approval is settled; nothing
+    // new is sent; approved money waits in the factory's balance.
+    await settleRelease({ stripe, db, paymentId }).catch(() => null);
 
     const { data: payment } = await db
       .from("order_payments")

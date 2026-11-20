@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -171,7 +171,6 @@ export default async function handler(request, response) {
               await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
             }
           }
-          if (saved?.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
         }
         break;
       }

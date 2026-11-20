@@ -2,7 +2,8 @@ import { payoutBankOptions } from "./_payout-bank-options.js";
 import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js";
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
-import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { balanceFigures } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
@@ -24,9 +25,12 @@ import { returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_
  *              never used (see neverUsed) is deleted, and the next session
  *              creates one in the country chosen
  *   refresh    read the account back after onboarding and save its status;
- *              pays out anything already owed once transfers are on
+ *              moves nothing: owed money waits in the balance until the
+ *              factory withdraws
  *   dashboard  a one-time link to the factory's Express dashboard
- *   balance    the factory's live balances and recent bank payouts
+ *   balance    the factory's live balances and recent bank payouts, and
+ *              `figures`: the one balance (factory_balance()) with the money
+ *              already in its Stripe account added (api/_balance-figures.js)
  *   withdraw, withdraw_previous
  *              a payout to the bank, Stripe's payout fee taken first
  *              (api/_stripe-withdrawals.js)
@@ -206,8 +210,9 @@ export default async function handler(request, response) {
       }
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const saved = await saveConnectAccount(db, orgId, account);
-      const released = saved?.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
-      return reply(response, 200, { account: saved, released });
+      // Nothing is paid out here: approved money stays in the balance until
+      // the factory withdraws. `released` stays in the answer for pages that read it.
+      return reply(response, 200, { account: saved, released: [] });
     }
 
     if (action === "balance") {
@@ -217,13 +222,16 @@ export default async function handler(request, response) {
       // A payout that failed or was cancelled gives its fee back even if its webhook never came.
       await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
-      const [balance, allocation, methods, onTheirWay, displayFx] = await Promise.all([
+      const [balance, allocation, methods, onTheirWay, displayFx, tscBalance] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
         payoutsOnTheirWay(stripe, existing.stripe_account_id),
         payoutDisplayRates(),
+        // As the owner: the database checks who is asking.
+        caller.rpc("factory_balance", { target_org: orgId }),
       ]);
+      if (tscBalance.error) throw new Error(tscBalance.error.message);
       const migration = await upgradeReadiness(stripe, upgrade);
       let recovery = null;
       if (upgrade?.completed_at) {
@@ -234,8 +242,14 @@ export default async function handler(request, response) {
         allocation.payouts.push(...historical.payouts);
         allocation.pending.push(...historical.pending);
       }
+      const figures = balanceFigures(tscBalance.data, {
+        available: [...balance.available, ...(recovery?.available ?? [])],
+        pending: [...balance.pending, ...(recovery?.pending ?? [])],
+        onTheirWay,
+        payouts: allocation.payouts,
+      }, displayFx);
       return reply(response, 200, {
-        displayFx, recovery,
+        displayFx, recovery, figures,
         upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
         defaultCurrency: account.default_currency,
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
