@@ -242,12 +242,12 @@ export default async function handler(request, response) {
         allocation.payouts.push(...historical.payouts);
         allocation.pending.push(...historical.pending);
       }
-      const figures = balanceFigures(tscBalance.data, {
+      const figures = { ...balanceFigures(tscBalance.data, {
         available: [...balance.available, ...(recovery?.available ?? [])],
         pending: [...balance.pending, ...(recovery?.pending ?? [])],
         onTheirWay,
         payouts: allocation.payouts,
-      }, displayFx);
+      }, displayFx), stripe_unavailable: false };
       return reply(response, 200, {
         displayFx, recovery, figures,
         upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
@@ -328,6 +328,24 @@ export default async function handler(request, response) {
   } catch (failure) {
     if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
     logStripeFailure("stripe-connect", failure, { action });
-    return reply(response, 502, { error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes.") });
+    // Stripe unreachable: the balance still answers with what TSC holds for
+    // the factory (factory_balance()), its Stripe part marked unavailable,
+    // never with nothing.
+    const figures = action === "balance" ? await databaseFigures(caller, orgId) : undefined;
+    return reply(response, 502, {
+      error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes."),
+      ...(figures ? { figures } : {}),
+    });
+  }
+}
+
+/** The one balance from the database alone, for when Stripe cannot be read; null if that fails too. */
+async function databaseFigures(caller, orgId) {
+  try {
+    const { data, error } = await caller.rpc("factory_balance", { target_org: orgId });
+    if (error || !data) return null;
+    return { ...balanceFigures(data, null, null), stripe_unavailable: true };
+  } catch {
+    return null;
   }
 }

@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -97,6 +97,9 @@ export default async function handler(request, response) {
         try {
           const payment = await applyPaymentIntent({ stripe, db, intent });
           if (!payment) console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id);
+          // When the brand's money clears decides Available or Pending: a
+          // failure to record it fails this delivery, so Stripe sends it again.
+          else if (event.type === "payment_intent.succeeded") await ensureFundsAvailable({ stripe, db, paymentId: payment.id });
         } catch (failure) {
           if (!ORPHANED.has(failure.code)) throw failure;
           console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id, failure.code);

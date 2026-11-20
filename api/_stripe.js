@@ -443,6 +443,21 @@ export async function recordFundsAvailable({ stripe, db, paymentId, charge }) {
 }
 
 /**
+ * A funded Stripe payment whose clearing date is still missing (recording it
+ * failed, or it was cleared because the charge changed) gets it now. Throws
+ * when Stripe or the database fails, so a webhook delivery is tried again.
+ * Returns the date, or null when there is nothing to record.
+ */
+export async function ensureFundsAvailable({ stripe, db, paymentId }) {
+  const { data: payment, error } = await db.from("order_payments")
+    .select("id, state, stripe_charge_id, funds_available_at").eq("id", paymentId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment || !["confirmed", "released"].includes(payment.state) || !payment.stripe_charge_id) return null;
+  if (payment.funds_available_at) return payment.funds_available_at;
+  return recordFundsAvailable({ stripe, db, paymentId, charge: { id: payment.stripe_charge_id } });
+}
+
+/**
  * A release an earlier version started on approval (a claim and a Stripe
  * call), settled without sending anything new: a transfer that went is
  * recorded, and one that did not is unpinned so the money stays in the

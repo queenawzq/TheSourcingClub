@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, ensureFundsAvailable, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -41,6 +41,9 @@ export default async function handler(request, response) {
     // A release an earlier version started on approval is settled; nothing
     // new is sent; approved money waits in the factory's balance.
     await settleRelease({ stripe, db, paymentId }).catch(() => null);
+    // When the brand's money clears, if recording it failed before.
+    await ensureFundsAvailable({ stripe, db, paymentId })
+      .catch((failure) => logStripeFailure("stripe-sync funds-available", failure, { paymentId }));
 
     const { data: payment } = await db
       .from("order_payments")
