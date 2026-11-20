@@ -1551,6 +1551,16 @@ console.log("\nphase 3 — the order runs");
 
         // Fix rounds 2 and 3: the staff board for money nobody else would see,
         // and staff's "Check again" (api/withdrawal.js action check_stripe).
+        // 13ac6414: the once-a-minute Stripe read is the server's to claim.
+        const claimAsFactory = await factoryClient.rpc("claim_balance_stripe_read", { target_org: factoryOrg });
+        const claimAsAnon = await anonClient.rpc("claim_balance_stripe_read", { target_org: factoryOrg });
+        claimAsFactory.error && claimAsAnon.error
+          ? ok("claim_balance_stripe_read is refused to the factory's owner and to a signed-out caller")
+          : fail("LEAK: a client claimed the balance's Stripe read", { message: JSON.stringify({ f: claimAsFactory.data, a: claimAsAnon.data }) });
+        const claimAsServer = await admin.rpc("claim_balance_stripe_read", { target_org: factoryOrg });
+        !claimAsServer.error && typeof claimAsServer.data === "boolean"
+          ? ok("the server's claim reaches the function and answers yes or no")
+          : fail("claim_balance_stripe_read as the server", claimAsServer.error);
         const attention = await factoryClient.rpc("admin_balance_attention");
         attention.error?.code === "42501"
           ? ok("admin_balance_attention is refused to a factory's owner")

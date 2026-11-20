@@ -313,5 +313,43 @@ select is((select sum((p ->> 'amount_cents')::bigint)::bigint from jsonb_array_e
 select is(pg_temp.parts_of(current_setting('tsc.r8p_clean')::uuid), '[{"word": "waiting", "amount_cents": 4000}]'::jsonb,
   'a clean request: one part, with its word and its whole amount');
 
+-- ===========================================================================
+-- 13ac6414 (20261120320000): Stripe is asked at most once a minute per
+-- company; a payout's status only moves forward.
+-- ===========================================================================
+select ok(not has_function_privilege('authenticated', 'public.claim_balance_stripe_read(uuid)', 'execute')
+      and not has_function_privilege('anon', 'public.claim_balance_stripe_read(uuid)', 'execute')
+      and has_function_privilege('service_role', 'public.claim_balance_stripe_read(uuid)', 'execute'),
+  'claim_balance_stripe_read is the server''s only');
+select ok(not has_table_privilege('authenticated', 'public.balance_stripe_reads', 'select')
+      and not has_table_privilege('authenticated', 'public.balance_stripe_reads', 'insert')
+      and not has_table_privilege('anon', 'public.balance_stripe_reads', 'select'), 'balance_stripe_reads is no client''s');
+create function pg_temp.claim_read() returns boolean language plpgsql as $f$
+declare took boolean;
+begin
+  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  set local role service_role;
+  took := public.claim_balance_stripe_read('ce8b0000-0000-0000-0000-0000000000e1');
+  reset role;
+  return took;
+end;
+$f$;
+select is(pg_temp.claim_read(), true, 'the first balance read in a minute may ask Stripe');
+select is(pg_temp.claim_read(), false, 'a second within 60 seconds may not');
+set local session_replication_role = replica;
+update public.balance_stripe_reads set read_at = now() - interval '61 seconds' where org_id = 'ce8b0000-0000-0000-0000-0000000000e1';
+set local session_replication_role = origin;
+select is(pg_temp.claim_read(), true, 'after a minute, it may again');
+select is(pg_temp.claim_read(), false, 'and then not again at once');
+-- The payout status trigger.
+select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set payout_status = ''in_transit'' where id = ''ce880000-0000-0000-0000-000000000002''')$$,
+  'an older answer (in_transit) is written on a paid payout');
+select is((select payout_status from public.stripe_withdrawals where id = 'ce880000-0000-0000-0000-000000000002'), 'paid',
+  'it stays paid: a status never goes back');
+select lives_ok($$select pg_temp.as_server('update public.stripe_withdrawals set payout_status = ''failed'' where id = ''ce880000-0000-0000-0000-000000000002''')$$,
+  'a payout that fails after it was paid');
+select is((select payout_status from public.stripe_withdrawals where id = 'ce880000-0000-0000-0000-000000000002'), 'failed',
+  'paid → failed is allowed');
+
 select * from finish();
 rollback;

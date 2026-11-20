@@ -424,7 +424,8 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     return { db, stripe, calls, reads };
   };
   const owed = Array.from({ length: 7 }, (_, i) => ({ id: `pay-${i}`, stripe_charge_id: `ch_${i}` }));
-  const checks = owed.map((r, i) => ({ payment_id: r.id, checked_at: new Date(Date.now() - (7 - i) * 60_000).toISOString() })).slice(1); // pay-0 never checked
+  // Checked 11 to 16 minutes ago (older than the 5-minute pause), pay-0 never.
+  const checks = owed.map((r, i) => ({ payment_id: r.id, checked_at: new Date(Date.now() - (10 + 7 - i) * 60_000).toISOString() })).slice(1);
   const x = make({ owed, checks, charges: {
     ch_0: { amount_refunded: 1000, refunded: true },
     ch_1: { disputed: true, dispute: "du_1" },
@@ -444,6 +445,42 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   y.stripe.charges.retrieve = async (id) => { if (id === "ch_0") throw new Error("down"); return { id, amount_refunded: 0, disputed: false }; };
   await checkChargesFor({ stripe: y.stripe, db: y.db, orgId: "org" });
   assert.deepEqual(y.calls.find(([name]) => name === "record_charges_checked")?.[1].targets, ["pay-1"], "R11: only what was read is recorded as checked");
+  // 13ac6414: a charge checked in the last 5 minutes is not read again.
+  {
+    const recent = make({ owed: owed.slice(0, 3), charges: {}, checks: [
+      { payment_id: "pay-0", checked_at: new Date(Date.now() - 60_000).toISOString() },
+      { payment_id: "pay-1", checked_at: new Date(Date.now() - 4 * 60_000).toISOString() },
+      { payment_id: "pay-2", checked_at: new Date(Date.now() - 6 * 60_000).toISOString() },
+    ] });
+    await checkChargesFor({ stripe: recent.stripe, db: recent.db, orgId: "org" });
+    assert.deepEqual(recent.reads, ["ch_2"], "only the charge checked more than 5 minutes ago is read again");
+  }
+  // claimStripeRead: true only when the database grants the read; false on a
+  // refusal, an error or an exception.
+  {
+    const { claimStripeRead } = await import("../api/_stripe.js");
+    const answering = (answer) => ({ rpc: async (name, args) => (assert.equal(name, "claim_balance_stripe_read"), assert.deepEqual(args, { target_org: "org" }), answer) });
+    assert.equal(await claimStripeRead(answering({ data: true, error: null }), "org"), true);
+    assert.equal(await claimStripeRead(answering({ data: false, error: null }), "org"), false);
+    assert.equal(await claimStripeRead(answering({ data: null, error: { message: "denied" } }), "org"), false);
+    assert.equal(await claimStripeRead({ rpc: async () => { throw new Error("offline"); } }, "org"), false);
+  }
+  // Every route that reads Stripe for a balance asks the database first; with
+  // the claim refused it calls neither check.
+  {
+    const fs = await import("node:fs");
+    for (const route of ["stripe-connect.js", "stripe-sync.js"]) {
+      const code = fs.readFileSync(new URL(`../api/${route}`, import.meta.url), "utf8");
+      const lines = code.split("\n");
+      const calls = lines.filter((line) => /(checkChargesFor|refreshPayoutsFor)\(\{/.test(line));
+      assert.ok(calls.length > 0, `${route} reads charges or payouts`);
+      for (const line of calls) {
+        const guarded = /askStripe \?/.test(line) || lines.slice(Math.max(0, lines.indexOf(line) - 2), lines.indexOf(line) + 1).some((l) => /claimStripeRead\(db, orgId\)/.test(l));
+        assert.ok(guarded, `${route}: "${line.trim()}" runs only when claimStripeRead granted the read`);
+      }
+      assert.ok(code.includes("claimStripeRead(db, orgId)"), `${route} asks claimStripeRead`);
+    }
+  }
   // Nothing owed: no Stripe read, no write.
   const z = make({ owed: [], charges: {} });
   assert.equal(await checkChargesFor({ stripe: z.stripe, db: z.db, orgId: "org" }), 0);
@@ -1769,6 +1806,21 @@ for (const [why, row] of [
     assert.ok(!reads.includes("po_tomorrow"), "R11: a payout arriving tomorrow is not read");
     assert.equal(reads.length, 5, "R11: at most 5 per read");
     assert.deepEqual(reads.sort(), ["po_3", "po_4", "po_5", "po_6", "po_7"], "R11: the oldest first");
+    // 13ac6414: a payout's status only moves forward. A stale Stripe answer
+    // ranked below what is recorded (pending after in_transit) is ignored.
+    {
+      const r = oneBalanceWorld({ steps: [step("p1", 10000)] });
+      r.db.rows.push({ id: "sw-way", org_id: "org", stripe_account_id: "acct_f", state: "paid_out", payout_id: "po_way",
+        payout_status: null, payout_arrives_on: null, created_at: new Date().toISOString() });
+      let answer = "in_transit";
+      r.api.payouts.retrieve = async (id) => ({ id, status: answer, arrival_date: Math.floor(Date.now() / 1000) - 86400 });
+      await refreshPayoutsFor({ stripe: r.api, db: r.db, orgId: "org" });
+      assert.equal(r.db.rows.at(-1).payout_status, "in_transit", "a newer answer moves it forward");
+      answer = "pending";
+      const before = JSON.stringify(r.db.rows.at(-1));
+      await refreshPayoutsFor({ stripe: r.api, db: r.db, orgId: "org" });
+      assert.equal(JSON.stringify(r.db.rows.at(-1)), before, "a lower-ranked answer is ignored: nothing on the row is written");
+    }
     // Never throws.
     const broken = oneBalanceWorld({ steps: [step("p1", 10000)] });
     broken.db.rows.push({ id: "sw-x", org_id: "org", stripe_account_id: "acct_f", state: "paid_out", payout_id: "po_x", payout_status: null,
