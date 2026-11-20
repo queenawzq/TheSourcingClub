@@ -41,6 +41,9 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
 // The database's "no such row" (P0002) and "not an id" (22P02, a payment_id
 // in metadata that is not a uuid): retrying cannot fix either.
 const ORPHANED = new Set(["P0002", "22P02"]);
+/** A withdrawal may make several Stripe calls in a row (claim, transfers, fee, payout): room for all of them. */
+export const config = { maxDuration: 90 };
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
 

@@ -55,6 +55,17 @@ const refusedByStripe = (failure) => failure instanceof PayoutMethodRefusal
 export const withdrawalKey = (accountId, { requestId, amount, destination = null }) =>
   `withdraw-${accountId}-${requestId}-${amount}-${destination ?? "default"}`;
 
+/**
+ * Give up this call's lease on a withdrawal, only if it is still this call's:
+ * a call that outlived its 2 minutes must not clear the lease another call
+ * has taken since. Never throws; a lease left behind lapses on its own.
+ */
+async function releaseLease(db, row) {
+  if (!row?.id || !row.lease_until) return;
+  await db.from("stripe_withdrawals").update({ lease_until: null })
+    .eq("id", row.id).eq("lease_until", row.lease_until).then(() => null, () => null);
+}
+
 async function update(db, row, fields) {
   const { error } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
   if (error) throw new Error(error.message);
@@ -120,7 +131,7 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   try {
     return await carryOut({ stripe, db, row, country, requestId, destination, transfersActive });
   } finally {
-    await db.from("stripe_withdrawals").update({ lease_until: null }).eq("id", row.id).then(() => null, () => null);
+    await releaseLease(db, row);
   }
 }
 
@@ -464,8 +475,7 @@ export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
     const result = await settleAttempted(stripe, db, mine, { staff: true });
     return { done: true, ...result, sentence: checkedSentence(result) };
   } finally {
-    await db.from("stripe_withdrawals").update({ lease_until: null })
-      .eq("id", mine.id).eq("lease_until", mine.lease_until).then(() => null, () => null);
+    await releaseLease(db, mine);
   }
 }
 
@@ -679,7 +689,7 @@ export async function settleAbandoned({ stripe, db, accountId, except = null }) 
     try {
       await settleOne(stripe, db, row);
     } finally {
-      await db.from("stripe_withdrawals").update({ lease_until: null }).eq("id", row.id).then(() => null, () => null);
+      await releaseLease(db, row);
     }
   }
 }

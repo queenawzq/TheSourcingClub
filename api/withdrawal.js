@@ -8,6 +8,9 @@ import { checkStripeWithdrawal } from "./_stripe-withdrawals.js";
  * withdrawal's adapter), sync. See api/_withdrawals.js. Staff only, checked
  * with the caller's own token; the database checks again in claim_withdrawal.
  */
+/** A withdrawal may make several Stripe calls in a row (claim, transfers, fee, payout): room for all of them. */
+export const config = { maxDuration: 90 };
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
   const db = serviceClient();
