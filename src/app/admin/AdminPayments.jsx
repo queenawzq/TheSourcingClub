@@ -52,7 +52,7 @@ import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
-import { adminBalanceAttention, adminWithdrawals, syncWithdrawals } from "../../lib/domain/withdrawals.js";
+import { adminBalanceAttention, adminWithdrawals, checkStripeWithdrawal, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
   const date = dateFrom(value);
@@ -830,7 +830,8 @@ export default function AdminPayments() {
   const load = useCallback(async () => {
     try {
       const [board, tried, asked, checking] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals(),
-        adminBalanceAttention().catch(() => null)]);
+        // Its own failure is said in its tab; the rest of the board stands without it.
+        adminBalanceAttention().catch((failure) => ({ disputed: [], stuck: [], error: failure }))]);
       setWithdrawals(asked);
       setAttention(checking);
       setRows(board);
@@ -944,20 +945,33 @@ export default function AdminPayments() {
   );
 }
 
-const when = (at) => (at ? new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
-
 /**
  * Owed money only staff can see is stuck: a step whose brand charge is
  * disputed (it waits in the factory's Pending until the dispute is decided in
  * Stripe), and a Stripe withdrawal from the balance that stopped half-way or
  * was refused because TSC's Stripe balance was short. Nobody else is told.
  */
-function AttentionSection({ attention }) {
+function AttentionSection({ attention, onChanged }) {
   const count = attention.disputed.length + attention.stuck.length;
+  const [checking, setChecking] = useState(null);
+  const [said, setSaid] = useState({});
+  async function checkAgain(row) {
+    setChecking(row.withdrawal_id);
+    try {
+      const result = await checkStripeWithdrawal(row.withdrawal_id);
+      setSaid((was) => ({ ...was, [row.withdrawal_id]: { text: result.sentence, failed: false } }));
+      await onChanged?.();
+    } catch (failure) {
+      setSaid((was) => ({ ...was, [row.withdrawal_id]: { text: failure.message, failed: true } }));
+    } finally {
+      setChecking(null);
+    }
+  }
   return (
     <section className="payments-queue" data-section="attention">
       <h2>Needs checking ({count})</h2>
-      {count === 0 ? (
+      {attention.error ? <p className="admin-error">{attention.error.message}</p> : null}
+      {attention.error ? null : count === 0 ? (
         <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">Nothing needs checking.</p></div>
       ) : (
         <div className="admin-scroll">
@@ -972,7 +986,7 @@ function AttentionSection({ attention }) {
                     The brand disputed this charge, so it waits in the factory's balance.{" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>
-                  <td>{when(row.disputed_at)}</td>
+                  <td><PaymentDate value={row.disputed_at} /></td>
                 </tr>
               ))}
               {attention.stuck.map((row) => (
@@ -983,8 +997,18 @@ function AttentionSection({ attention }) {
                     {row.refusal_cause === "platform_short"
                       ? "Withdrawal to Stripe refused: TSC's Stripe balance can't cover it. Check the balance in Stripe."
                       : `Withdrawal to Stripe not finished${Number(row.held_cents) > 0 ? `: ${moneyIn(row.held_cents, "USD")} not yet sent` : ""}. Check it in Stripe.`}
+                    {Number(row.held_cents) > 0 || ["claimed", "fee_taken"].includes(row.state) ? (
+                      <>
+                        {" "}
+                        <button type="button" className="quiet-btn" disabled={checking === row.withdrawal_id} data-testid="attention-check-again"
+                                onClick={() => checkAgain(row)}>{checking === row.withdrawal_id ? "Checking…" : "Check again"}</button>
+                      </>
+                    ) : null}
+                    {said[row.withdrawal_id] ? (
+                      <p className={said[row.withdrawal_id].failed ? "admin-error" : "admin-sub"} role="status">{said[row.withdrawal_id].text}</p>
+                    ) : null}
                   </td>
-                  <td>{when(row.created_at)}</td>
+                  <td><PaymentDate value={row.created_at} /></td>
                 </tr>
               ))}
             </tbody>
@@ -1059,7 +1083,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
-      {active === "attention" && attention ? <AttentionSection attention={attention} /> : null}
+      {active === "attention" && attention ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
       {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} BankDetails={BankDetails} /> : null}
 
     </main>

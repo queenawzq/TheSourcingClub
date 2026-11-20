@@ -106,6 +106,8 @@ export async function withdrawalBankAccount(withdrawalId) {
 export const previewWithdrawal =(id, cnyConfirmed = false) => call({ action: "preview", withdrawalId: id, cnyConfirmed });
 export const approveWithdrawal = (id, cnyConfirmed = false) => call({ action: "approve", withdrawalId: id, cnyConfirmed });
 export const syncWithdrawals = (provider) => call({ action: "sync", provider });
+/** Staff's "Check again" on a Stripe withdrawal under "Needs checking": { sentence, sent, returned, unsure }. */
+export const checkStripeWithdrawal = (id) => call({ action: "check_stripe", withdrawalId: id });
 
 export async function declineWithdrawal(id, reason) {
   const { error } = await supabase.rpc("decline_withdrawal", { target_withdrawal: id, why: reason });

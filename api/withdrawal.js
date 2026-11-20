@@ -1,6 +1,7 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { adapterFor, approveWithdrawal, factoryQuote, previewWithdrawal, syncWithdrawals } from "./_withdrawals.js";
-import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_stripe.js";
+import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { checkStripeWithdrawal } from "./_stripe-withdrawals.js";
 
 /**
  * Staff's side of a factory's withdrawal: preview, approve (pays through the
@@ -20,6 +21,24 @@ export default async function handler(request, response) {
   if (staff.error || staff.data !== true) return reply(response, 403, { error: "This is limited to platform staff." });
 
   const { action, withdrawalId, provider: asked, cnyConfirmed } = jsonBody(request);
+  // "Check again" on a Stripe withdrawal from the factory's one balance
+  // (the board's "Needs checking" tab): settles what Stripe did, never sends.
+  if (action === "check_stripe") {
+    if (!/^[0-9a-f-]{36}$/i.test(String(withdrawalId ?? ""))) return reply(response, 400, { error: "That withdrawal isn't on the board any more. Reload the page." });
+    let stripe;
+    try {
+      stripe = stripeFrom();
+    } catch (failure) {
+      return reply(response, 503, { error: failure.message, kind: "not_set_up" });
+    }
+    if (!stripe) return reply(response, 503, { error: "payments are not set up on this site yet", kind: "not_set_up" });
+    try {
+      return reply(response, 200, await checkStripeWithdrawal({ stripe, db, withdrawalId }));
+    } catch (failure) {
+      console.error("withdrawal check_stripe:", withoutSecrets(failure?.message), { withdrawalId });
+      return reply(response, 502, { error: "That didn't go through, so nothing changed. Try again in a few minutes.", kind: "unknown", unsure: true });
+    }
+  }
   let adapter = null;
   try {
     let row = null;

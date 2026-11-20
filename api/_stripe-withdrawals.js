@@ -41,7 +41,15 @@ export const upToSentence = (available, currency) =>
   `You can withdraw up to ${new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(available / 100)}.`;
 
 /** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about what exists. */
-const refusedByStripe = (failure) => failure instanceof PayoutMethodRefusal || [400, 402, 403, 404].includes(failure?.statusCode);
+/**
+ * Stripe's answer to a key reused with other values: it says nothing about
+ * whether the first request made anything (the step's charge changed since,
+ * say), so it is never read as a refusal.
+ */
+const idempotencyClash = (failure) => failure?.type === "StripeIdempotencyError" || failure?.rawType === "idempotency_error"
+  || failure?.raw?.type === "idempotency_error";
+const refusedByStripe = (failure) => failure instanceof PayoutMethodRefusal
+  || (!idempotencyClash(failure) && [400, 402, 403, 404].includes(failure?.statusCode));
 
 /** The key a request is known by: the same as the payout key before fees, so a resent request finds its row. */
 export const withdrawalKey = (accountId, { requestId, amount, destination = null }) =>
@@ -355,41 +363,95 @@ const takeTransfer = (take, row) => [{
   metadata: { payment_id: take.payment_id, order_id: take.order_id, take_id: take.id, take_withdrawal_id: row.id },
 }, { idempotencyKey: `release-${take.payment_id}-${row.id}` }];
 
+/** Stripe keeps an idempotency key's answer 24 hours: after 23, asking again could make a second transfer. */
+const KEY_WINDOW_MS = 23 * 3600 * 1000;
+
 /**
  * Parts this withdrawal asked Stripe to transfer and has not recorded:
  * settled before anything goes back to the balance. Found by listing, or
  * asked again with the same key, which answers with the first transfer (or
  * makes it, which is the factory's money arriving, never a second one). A
  * refusal under that key means none exists: the part goes back. Unsure, a
- * key older than Stripe keeps (24 hours), or a charge now refunded or
+ * key past Stripe's window, a key reused with other values, or a step now
  * disputed: the part stays held, and the staff board lists it.
+ *
+ * `staff` (staff pressed "Check again"): a part not found by listing once the
+ * key window has passed has no transfer, and goes back; so does a part whose
+ * step was refunded when Stripe refuses the same transfer again. A part on a
+ * disputed step still in the window stays held: asking again could move
+ * disputed money.
+ *
+ * Returns { sent, returned, unsure } in US cents.
  */
-async function settleAttempted(stripe, db, row) {
+async function settleAttempted(stripe, db, row, { staff = false } = {}) {
   const held = (await readTakes(db, row)).filter((take) => take.status === "held" && take.attempted_at);
+  const result = { sent: 0, returned: 0, unsure: 0 };
   for (const take of held) {
+    const amount = Number(take.amount_cents);
     try {
       const found = await findTakeTransfer(stripe, take, row);
       if (found) {
         await call(db, "record_take_sent", { target_take: take.id, transfer: found.id });
+        result.sent += amount;
         continue;
       }
-      if (Date.parse(take.attempted_at) < Date.now() - 23 * 3600 * 1000) continue;
-      if (take.order_payments?.disputed_at || take.order_payments?.state !== "confirmed") continue;
+      if (Date.parse(take.attempted_at) < Date.now() - KEY_WINDOW_MS) {
+        if (staff) {
+          await call(db, "return_take", { target_take: take.id });
+          result.returned += amount;
+        } else result.unsure += amount;
+        continue;
+      }
+      const refunded = take.order_payments?.state !== "confirmed";
+      if (take.order_payments?.disputed_at || (refunded && !staff)) {
+        result.unsure += amount;
+        continue;
+      }
       let transfer = null;
       try {
         transfer = await stripe.transfers.create(...takeTransfer(take, row));
       } catch (failure) {
         if (refusedByStripe(failure)) {
           await call(db, "return_take", { target_take: take.id });
+          result.returned += amount;
           continue;
         }
         throw failure;
       }
       await call(db, "record_take_sent", { target_take: take.id, transfer: transfer.id });
+      result.sent += amount;
     } catch (failure) {
+      result.unsure += amount;
       console.error("stripe-withdrawals settle part", take.id, failure?.message);
     }
   }
+  return result;
+}
+
+/** What staff read after "Check again" (new sentences, staff only). */
+export function checkedSentence({ sent, returned, unsure }) {
+  const usd = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+  const parts = [];
+  if (sent) parts.push(`${usd(sent)} was sent to the factory's Stripe account`);
+  if (returned) parts.push(`${usd(returned)} is back in the factory's balance`);
+  if (unsure) parts.push(`${usd(unsure)} is still not settled. Check it in Stripe, or check again tomorrow`);
+  return parts.length ? `${parts.join(". ")}.` : "Nothing is waiting on this withdrawal.";
+}
+
+/**
+ * Staff's "Check again" on a Stripe withdrawal from the "Needs checking"
+ * tab: a withdrawal stopped half-way is carried on or settled
+ * (settleAbandoned), then its parts Stripe was asked for are settled as
+ * staff may (settleAttempted). Never makes a second transfer.
+ */
+export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
+  const { data: row, error } = await db.from("stripe_withdrawals").select("*").eq("id", withdrawalId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return { done: false, sentence: "That withdrawal isn't on the board any more. Reload the page." };
+  await settleAbandoned({ stripe, db, accountId: row.stripe_account_id });
+  const { data: fresh } = await db.from("stripe_withdrawals").select("*").eq("id", withdrawalId).maybeSingle();
+  const result = await settleAttempted(stripe, db, fresh ?? row, { staff: true });
+  return { done: true, ...result, sentence: checkedSentence(result) };
 }
 
 async function call(db, name, args) {
