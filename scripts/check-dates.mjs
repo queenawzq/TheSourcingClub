@@ -107,6 +107,7 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: "Your payment on TSC-1042 was confirmed", body: "$1,284.00 received. The factory has been told to begin." },
   { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "TSC received $1,200.00 on TSC-1042 and will send it to you once you add a withdrawal method." },
   { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance." },
+  { kind: "payment_confirmed", title: "$1,200.00 added to your balance", body: "$1,200.00 added to your balance. Add a withdrawal method to receive earnings." },
   { kind: "payment_disputed", title: 'Payment for "Deposit" on hold', body: "The brand disputed the charge. $1,200.00 is held until the dispute is settled." },
   { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is back in your balance." },
   { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is no longer on hold." },

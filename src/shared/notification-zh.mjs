@@ -159,6 +159,7 @@ const TITLES = [
   ["payment_confirmed", /^Payment confirmed on (.+)$/, (order) => `${order} 的付款已确认`],
   ["payment_confirmed", /^Your payment on (.+) was confirmed$/, (order) => `你在 ${order} 的付款已确认`],
   ["payment_confirmed", /^Payment held for "(.+)"$/, (step) => `${quoted(step)}的款项已由 TSC 托管`],
+  ["payment_confirmed", amountRe("^AMT added to your balance$"), (amount) => `${amount} 已计入你的余额`],
   ["payment_confirmed", /^Your payment for "(.+)" is funded$/, (step) => `你为${quoted(step)}支付的款项已到账`],
   ["payment_failed", /^Your payment for "(.+)" did not go through$/, (step) => `你为${quoted(step)}的付款未成功`],
   ["payment_failed", /^The payment for "(.+)" did not go through$/, (step) => `${quoted(step)}的付款未成功`],
