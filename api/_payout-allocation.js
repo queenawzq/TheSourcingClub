@@ -101,7 +101,9 @@ export function allocatePayouts(transactions, payments) {
       ...payout,
       allocations: parts.filter((part) => part.paymentId).map((part) => ({ paymentId: part.paymentId, amount: part.amount })),
       // A failure can arrive after a "paid" status. Never count returned funds.
-      paid: payout.status === "paid" && !returned,
+      // Reached the bank: paid, and its arrival day has come (until then it
+      // is on its way, payoutsOnTheirWay).
+      paid: payout.status === "paid" && !returned && !(Number(payout.arrival_date) * 1000 > Date.now()),
     })),
   };
 }

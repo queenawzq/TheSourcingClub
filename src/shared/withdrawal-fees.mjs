@@ -158,7 +158,7 @@ export function withdrawalFee({ provider, amountCents, currency = "USD", country
 }
 
 const tooSmallSentence = (amount, least, currency) =>
-  `This payment of ${feeMoney(amount, currency)} is too small: the fee to send it is ${feeMoney(least, currency)}, so nothing would arrive. Nothing was sent.`;
+  `This payment of ${feeMoney(amount, currency)} is too small: the fee to send it is ${feeMoney(least, currency)}, so nothing would arrive.`;
 
 /**
  * A withdrawal from a factory's Stripe balance: the fee TSC takes back (in

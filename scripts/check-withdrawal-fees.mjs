@@ -86,7 +86,7 @@ assert.deepEqual(stripeWithdrawalFee({ amountMinor: 100_000, currency: "usd", co
 // £758.36 is US$1,000.00 (rounded up), so the fee is the DE/GB US$7.70, about £5.84.
 assert.deepEqual(stripeWithdrawalFee({ amountMinor: 75_836, currency: "gbp", country: "GB", localPerUsd: 0.758366 }), { feeCents: 770, usdCents: 100_000, feeLocalEstimate: 584 });
 // At or under the fee: refused with the module's sentence, in the balance's currency.
-assert.match(stripeWithdrawalFee({ amountMinor: 26, currency: "usd", country: "US" }).refused, /^This payment of US\$0\.26 is too small: the fee to send it is US\$0\.26, so nothing would arrive\. Nothing was sent\.$/);
+assert.match(stripeWithdrawalFee({ amountMinor: 26, currency: "usd", country: "US" }).refused, /^This payment of US\$0\.26 is too small: the fee to send it is US\$0\.26, so nothing would arrive\.$/);
 assert.equal(stripeWithdrawalFee({ amountMinor: 27, currency: "usd", country: "US" }).feeCents, 26);
 assert.match(stripeWithdrawalFee({ amountMinor: 20, currency: "gbp", country: "GB", localPerUsd: 0.758366 }).refused, /^This payment of GBP 0\.20 is too small: the fee to send it is GBP 0\.20/);
 assert.match(stripeWithdrawalFee({ amountMinor: 0, currency: "usd" }).refused, /more than zero/);
