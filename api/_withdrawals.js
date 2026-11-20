@@ -1,5 +1,6 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { ADAPTERS } from "./_withdrawal-adapters.js";
+import { applyChargeRefund, stripeFrom } from "./_stripe.js";
 
 /**
  * The withdrawal core: staff approve a factory's request, and its adapter pays
@@ -147,7 +148,59 @@ export async function factoryQuote({ adapter, client, db, orgId, account, amount
     estimate: Boolean(asked.estimate), feeCents: quote.feeCents, receivesMinor: quote.receivesMinor, receivesCurrency: quote.receivesCurrency };
 }
 
-export async function approveWithdrawal({ adapter, client, caller, db, id, cnyConfirmed }) {
+/** _provider-payouts.js's sentences for the same check on a step paid by itself. */
+const CHARGE_UNCHECKED = "We couldn't check the brand's payment just now, so nothing was sent. Press again in a minute.";
+const CHARGE_DISPUTED = "The brand disputed this charge, so nothing was sent.";
+const CHARGE_REFUNDED = "The brand's payment was refunded, so there is nothing to pay out. Reload the board.";
+
+/**
+ * Owed steps this withdrawal took are paid from TSC's own provider balance,
+ * so each brand charge behind them is checked in Stripe first: a refund or a
+ * dispute reaches us by a webhook that can be late or lost. A refused one is
+ * recorded (the database then refuses to approve the withdrawal, and staff
+ * decline it, which returns its parts to the balance) and nothing is sent.
+ */
+export async function refuseIfTakenChargesReturned({ db, id, build = stripeFrom }) {
+  let stripe;
+  try {
+    stripe = build();
+  } catch (failure) {
+    log("charge check", failure, { id });
+    throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+  }
+  // No Stripe on this site: no card charge to check (as the per-step check).
+  if (!stripe) return;
+  const { data: takes, error } = await db.from("payment_takes")
+    .select("payment_id, order_payments (stripe_charge_id)").eq("factory_withdrawal_id", id).eq("status", "held");
+  if (error) throw new PayoutFailure("database", CHARGE_UNCHECKED);
+  const charges = (takes ?? []).map((take) => ({ paymentId: take.payment_id, chargeId: take.order_payments?.stripe_charge_id }))
+    .filter((item) => item.chargeId);
+  for (const { paymentId, chargeId } of charges) {
+    let charge;
+    let open = false;
+    try {
+      charge = await stripe.charges.retrieve(chargeId);
+      if (charge.disputed) {
+        const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
+        open = !disputeId || !["won", "warning_closed"].includes((await stripe.disputes.retrieve(disputeId)).status);
+      }
+    } catch (failure) {
+      log("charge check", failure, { id, paymentId });
+      throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+    }
+    if (Number(charge.amount_refunded) > 0) {
+      await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { id, paymentId }));
+      throw new PayoutFailure("charge_refunded", CHARGE_REFUNDED);
+    }
+    if (open) {
+      const recorded = await db.rpc("record_payment_disputed", { target_payment: paymentId, disputed: true });
+      if (recorded.error) log("record disputed", recorded.error, { id, paymentId });
+      throw new PayoutFailure("charge_disputed", CHARGE_DISPUTED);
+    }
+  }
+}
+
+export async function approveWithdrawal({ adapter, client, caller, db, id, cnyConfirmed, stripeBuild = stripeFrom }) {
   await loadFeeRule();
   const claimed = await caller.rpc("claim_withdrawal", { target_withdrawal: id });
   if (claimed.error) throw refusalFrom(claimed.error);
@@ -158,6 +211,7 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
 
   try {
     if (!ref) {
+      await refuseIfTakenChargesReturned({ db, id, build: stripeBuild });
       const short = await providerShort(adapter, client, ctx);
       if (short) {
         const sentence = `${adapter.label} balance is short by ${money(short, ctx.currency)}. Top up TSC's ${adapter.label} balance, then approve again.`;

@@ -46,6 +46,18 @@ async function call(body) {
   return result;
 }
 
+/**
+ * What only staff can see and nobody is told of: owed steps whose brand
+ * charge is disputed, and Stripe withdrawals from the balance that stopped
+ * half-way or were refused because TSC's Stripe balance was short
+ * (admin_balance_attention, counted in the overview's payments card).
+ */
+export async function adminBalanceAttention() {
+  const { data, error } = await supabase.rpc("admin_balance_attention");
+  if (error) throw new Error("The board couldn't read the payments that need checking. Reload the page.");
+  return { disputed: data?.disputed ?? [], stuck: data?.stuck ?? [] };
+}
+
 export async function adminWithdrawals() {
   const { data, error } = await supabase.rpc("admin_withdrawals");
   if (error) throw new Error("The board couldn't read the withdrawals. Reload the page.");

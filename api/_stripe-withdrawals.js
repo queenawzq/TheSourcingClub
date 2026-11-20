@@ -130,9 +130,10 @@ async function* reversibleTransfers(stripe, accountId) {
 }
 
 /** Refused: the row says why, so the same request is answered the same way until it is pressed again. */
-async function refuse(db, row, reason) {
+async function refuse(db, row, reason, { stripe = null, cause = null } = {}) {
+  if (stripe) await settleAttempted(stripe, db, row);
   await returnHeldTakes(db, row);
-  await update(db, row, { state: "refused", reason });
+  await update(db, row, { state: "refused", reason, ...(cause ? { refusal_cause: cause } : {}) });
   throw new PayoutMethodRefusal(reason);
 }
 
@@ -315,7 +316,7 @@ export const NOT_VERIFIED = "Finish payout verification before withdrawing.";
 /** The held takes of a withdrawal with the charge each is paid from. */
 async function readTakes(db, row) {
   const { data, error } = await db.from("payment_takes")
-    .select("id, payment_id, amount_cents, status, stripe_transfer_id, order_payments (stripe_charge_id, order_id, production_orders (order_number))")
+    .select("id, payment_id, amount_cents, status, stripe_transfer_id, attempted_at, order_payments (stripe_charge_id, order_id, state, disputed_at, production_orders (order_number))")
     .eq("stripe_withdrawal_id", row.id).order("created_at");
   if (error) throw new Error(error.message);
   return (data ?? []).map((take) => ({
@@ -341,6 +342,54 @@ async function findTakeTransfer(stripe, take, row) {
     if (transfer.metadata?.take_id === take.id && transfer.metadata?.take_withdrawal_id === row.id) return transfer;
   }
   return null;
+}
+
+/** The transfer for a part, the same every time it is asked for (Stripe refuses a key reused with other values). */
+const takeTransfer = (take, row) => [{
+  amount: Number(take.amount_cents),
+  currency: "usd",
+  destination: row.stripe_account_id,
+  source_transaction: take.charge_id,
+  transfer_group: take.order_id,
+  description: `${take.order_number}: payout`,
+  metadata: { payment_id: take.payment_id, order_id: take.order_id, take_id: take.id, take_withdrawal_id: row.id },
+}, { idempotencyKey: `release-${take.payment_id}-${row.id}` }];
+
+/**
+ * Parts this withdrawal asked Stripe to transfer and has not recorded:
+ * settled before anything goes back to the balance. Found by listing, or
+ * asked again with the same key, which answers with the first transfer (or
+ * makes it, which is the factory's money arriving, never a second one). A
+ * refusal under that key means none exists: the part goes back. Unsure, a
+ * key older than Stripe keeps (24 hours), or a charge now refunded or
+ * disputed: the part stays held, and the staff board lists it.
+ */
+async function settleAttempted(stripe, db, row) {
+  const held = (await readTakes(db, row)).filter((take) => take.status === "held" && take.attempted_at);
+  for (const take of held) {
+    try {
+      const found = await findTakeTransfer(stripe, take, row);
+      if (found) {
+        await call(db, "record_take_sent", { target_take: take.id, transfer: found.id });
+        continue;
+      }
+      if (Date.parse(take.attempted_at) < Date.now() - 23 * 3600 * 1000) continue;
+      if (take.order_payments?.disputed_at || take.order_payments?.state !== "confirmed") continue;
+      let transfer = null;
+      try {
+        transfer = await stripe.transfers.create(...takeTransfer(take, row));
+      } catch (failure) {
+        if (refusedByStripe(failure)) {
+          await call(db, "return_take", { target_take: take.id });
+          continue;
+        }
+        throw failure;
+      }
+      await call(db, "record_take_sent", { target_take: take.id, transfer: transfer.id });
+    } catch (failure) {
+      console.error("stripe-withdrawals settle part", take.id, failure?.message);
+    }
+  }
 }
 
 async function call(db, name, args) {
@@ -429,28 +478,26 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
         unsafe = true;
       }
     }
-    if (unsafe) await refuse(db, row, CANNOT_PROCESS);
+    if (unsafe) await refuse(db, row, CANNOT_PROCESS, { stripe });
     // A cleared charge's money is in TSC's available balance, or nowhere.
     const platform = await stripe.balance.retrieve();
     const platformUsd = platform.available?.find((entry) => entry.currency === "usd")?.amount ?? 0;
     const needed = held.reduce((sum, take) => sum + Number(take.amount_cents), 0);
-    if (platformUsd < needed) await refuse(db, row, CANNOT_PROCESS);
+    if (platformUsd < needed) await refuse(db, row, CANNOT_PROCESS, { stripe, cause: "platform_short" });
     for (const take of held) {
       let transfer;
+      // Marked first: a part Stripe may have is never handed back unchecked.
+      await call(db, "mark_take_attempted", { target_take: take.id });
+      take.attempted_at = take.attempted_at ?? new Date().toISOString();
       try {
-        transfer = await stripe.transfers.create({
-          amount: Number(take.amount_cents),
-          currency: "usd",
-          destination: accountId,
-          source_transaction: take.charge_id,
-          transfer_group: take.order_id,
-          description: `${take.order_number}: payout`,
-          metadata: { payment_id: take.payment_id, order_id: take.order_id, take_id: take.id, take_withdrawal_id: row.id },
-        }, { idempotencyKey: `release-${take.payment_id}-${row.id}` });
+        transfer = await stripe.transfers.create(...takeTransfer(take, row));
       } catch (failure) {
         // Refused: this part and the rest go back to the balance; what went
         // before is in the factory's Stripe account, still its money.
-        if (refusedByStripe(failure)) await refuse(db, row, CANNOT_PROCESS);
+        if (refusedByStripe(failure)) {
+          const short = failure?.code === "balance_insufficient";
+          await refuse(db, row, CANNOT_PROCESS, { stripe, cause: short ? "platform_short" : null });
+        }
         throw failure;
       }
       await call(db, "record_take_sent", { target_take: take.id, transfer: transfer.id });

@@ -267,6 +267,7 @@ const SENTENCES = [
   [amountRe("^TSC received AMT on (.+) and will send it to you once you add a withdrawal method\\.$"), (amount, order) => `TSC 已收到 ${order} 的 ${amount}，你添加提现方式后将支付给你。`],
   [amountRe("^TSC holds AMT for this step on (.+)\\.$"), (amount, order) => `TSC 已为 ${order} 中的此步骤托管 ${amount}。`],
   [/^You can start this work; it is paid to you when the brand approves it\.$/, () => "你可以开始这项工作，品牌批准后款项将支付给你。"],
+  [/^You can start this work; it is added to your balance when the brand approves it\.$/, () => "你可以开始这项工作，品牌批准后款项将计入你的余额。"],
   [amountRe("^AMT on (.+)\\.$"), (amount, order) => `${order}：${amount}。`],
   [/^It is still being confirmed\.$/, () => "款项仍在确认中。"],
   [/^We will tell you when TSC holds it; please do not start this work yet\.$/, () => "TSC 托管后我们会通知你，请暂时不要开始这项工作。"],

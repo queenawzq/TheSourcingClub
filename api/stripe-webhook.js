@@ -119,13 +119,15 @@ export default async function handler(request, response) {
       case "charge.dispute.created":
       case "charge.dispute.closed": {
         // A disputed charge's step is never withdrawn while the dispute is
-        // open; one the brand lost stays out (its money went back).
-        const dispute = event.data.object;
+        // open; one the brand lost stays out (its money went back). Read back
+        // from Stripe, never from the event: "closed" can arrive before
+        // "created", and the dispute as it is now decides.
+        const dispute = await stripe.disputes.retrieve(event.data.object.id);
         const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
         const { data: payment, error } = await db.from("order_payments").select("id").eq("stripe_charge_id", chargeId).maybeSingle();
         if (error) throw new Error(error.message);
         if (payment) {
-          const disputed = event.type === "charge.dispute.created" || !["won", "warning_closed"].includes(dispute.status);
+          const disputed = !["won", "warning_closed"].includes(dispute.status);
           const recorded = await db.rpc("record_payment_disputed", { target_payment: payment.id, disputed });
           if (recorded.error) throw new Error(recorded.error.message);
         }
