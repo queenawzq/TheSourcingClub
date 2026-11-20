@@ -560,6 +560,21 @@ export async function ensureFundsAvailableFor({ stripe, db, orgId, limit = 5, bu
 }
 
 /**
+ * Whether this balance read may ask Stripe about the company's charges and
+ * payouts: at most once a minute per company, decided by the database
+ * (claim_balance_stripe_read), so owners and members reloading cannot exhaust
+ * Stripe's rate limit. False on any failure: the next read tries again.
+ */
+export async function claimStripeRead(db, orgId) {
+  try {
+    const { data, error } = await db.rpc("claim_balance_stripe_read", { target_org: orgId });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Before a factory's balance is read, without waiting for webhooks: the few
  * owed steps whose brand charge was checked least recently are read from
  * Stripe, and a refund or dispute there is recorded as its webhook would
@@ -579,7 +594,10 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
     const { data: checks } = await db.from("payment_charge_checks").select("payment_id, checked_at")
       .in("payment_id", owed.map((row) => row.id));
     const last = new Map((checks ?? []).map((row) => [row.payment_id, Date.parse(row.checked_at)]));
-    const due = owed.sort((a, b) => (last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)).slice(0, limit);
+    // A charge read in the last 5 minutes is not read again.
+    const fresh = Date.now() - 5 * 60 * 1000;
+    const due = owed.filter((row) => !((last.get(row.id) ?? 0) > fresh))
+      .sort((a, b) => (last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)).slice(0, limit);
     const read = await Promise.all(due.map(async (row) => {
       try {
         const charge = await stripe.charges.retrieve(row.stripe_charge_id);

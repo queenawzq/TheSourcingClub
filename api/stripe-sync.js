@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, checkChargesFor, ensureFundsAvailable, ensureFundsAvailableFor, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, checkChargesFor, claimStripeRead, ensureFundsAvailable, ensureFundsAvailableFor, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -32,7 +32,8 @@ export default async function handler(request, response) {
     const member = await caller.rpc("is_org_member", { target_org: orgId });
     if (tokenRefused(member)) return reply(response, 401, { error: "sign in is required" });
     if (member.error || member.data !== true) return reply(response, 403, { error: "that company is not available to you" });
-    const [recorded] = await Promise.all([ensureFundsAvailableFor({ stripe, db, orgId }), checkChargesFor({ stripe, db, orgId })]);
+    const askStripe = await claimStripeRead(db, orgId);
+    const [recorded] = await Promise.all([ensureFundsAvailableFor({ stripe, db, orgId }), askStripe ? checkChargesFor({ stripe, db, orgId }) : null]);
     return reply(response, 200, { recorded });
   }
   const read = await caller.from("order_payments").select("id, stripe_payment_intent_id").eq("id", paymentId).maybeSingle();

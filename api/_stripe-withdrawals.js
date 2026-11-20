@@ -667,6 +667,10 @@ export async function refreshPayoutsFor({ stripe, db, orgId, limit = 5, budgetMs
       try {
         const payout = await stripe.payouts.retrieve(row.payout_id, {}, { stripeAccount: row.stripe_account_id });
         const fields = payoutFields(payout);
+        // Never backwards (an older answer read after payout.paid was recorded):
+        // the database refuses it too.
+        const rank = { pending: 1, in_transit: 2, paid: 3, failed: 4, canceled: 4 };
+        if ((rank[fields.payout_status] ?? 0) < (rank[row.payout_status] ?? 0)) return true;
         if (fields.payout_status !== row.payout_status || fields.payout_arrives_on !== row.payout_arrives_on) {
           const { error: saveError } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
           if (saveError) throw new Error(saveError.message);

@@ -2,7 +2,7 @@ import { payoutBankOptions } from "./_payout-bank-options.js";
 import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js";
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
-import { PAYOUT_COUNTRIES, appOrigin, callerClient, checkChargesFor, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { PAYOUT_COUNTRIES, appOrigin, callerClient, checkChargesFor, claimStripeRead, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import { balanceFigures, usdCents } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
@@ -254,10 +254,11 @@ export default async function handler(request, response) {
       await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
       // Funded payments Stripe gave a clearing date after they were recorded;
       // refunds, disputes and payouts whose webhooks never came.
+      const askStripe = await claimStripeRead(db, orgId);
       await Promise.all([
         ensureFundsAvailableFor({ stripe, db, orgId }),
-        checkChargesFor({ stripe, db, orgId }),
-        refreshPayoutsFor({ stripe, db, orgId }),
+        askStripe ? checkChargesFor({ stripe, db, orgId }) : null,
+        askStripe ? refreshPayoutsFor({ stripe, db, orgId }) : null,
       ]);
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const [balance, allocation, methods, onTheirWay, displayFx, tscBalance, owedReach, poolLeft] = await Promise.all([
@@ -410,7 +411,9 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
     // A member of this company (the database said so): refunds, disputes and
     // payouts whose webhooks never came are read from Stripe first, so the
     // figures below are Stripe's. Only Stripe's facts are recorded.
-    await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayoutsFor({ stripe, db, orgId })]);
+    if (await claimStripeRead(db, orgId)) {
+      await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayoutsFor({ stripe, db, orgId })]);
+    }
     const again = await caller.rpc("factory_balance", { target_org: orgId });
     if (!again.error) tsc.data = again.data;
   }
