@@ -373,6 +373,43 @@ for (const [why, row] of [
   assert.match(board, /get\("tab"\)/, "and ?tab= opens the tab asked for");
 }
 
+// Fix round 6: a Stripe payout is on its way (Pending) until its arrival day,
+// even when Stripe already calls it paid (test mode does at once); and "paid
+// out to your bank" is said only on payout.paid, never when a payout is made.
+{
+  const { payoutsOnTheirWay } = await import("../api/_stripe-payouts.js");
+  const now = Math.floor(Date.now() / 1000);
+  const stripe = { payouts: { list: async () => ({ data: [
+    { id: "po_pending", status: "pending", amount: 100, currency: "usd", arrival_date: now + 86400 },
+    { id: "po_transit", status: "in_transit", amount: 200, currency: "usd", arrival_date: now + 86400 },
+    { id: "po_paid_early", status: "paid", amount: 300, currency: "usd", arrival_date: now + 86400 },
+    { id: "po_arrived", status: "paid", amount: 400, currency: "usd", arrival_date: now - 86400 },
+    { id: "po_failed", status: "failed", amount: 500, currency: "usd", arrival_date: now - 86400 },
+  ] }) } };
+  const onTheirWay = await payoutsOnTheirWay(stripe, "acct_f");
+  assert.deepEqual(onTheirWay.map((p) => p.id), ["po_pending", "po_transit", "po_paid_early"],
+    "on its way until its arrival day, whatever Stripe calls it; arrived and failed are not");
+
+  const { tellPayoutEvent } = await import("../api/_stripe-payout-events.js");
+  const told = [];
+  const db = {
+    from(table) {
+      if (table === "stripe_withdrawals") return { update: () => ({ eq: async () => ({ error: null }) }) };
+      if (table === "stripe_connect_accounts") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { org_id: "org-1" }, error: null }) }) }) };
+      if (table === "notifications") return { insert: async (row) => (told.push(row), { error: null }) };
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const payout = { id: "po_1", amount: 1783, currency: "eur", status: "pending", arrival_date: now + 86400 };
+  for (const type of ["payout.created", "payout.updated"]) {
+    assert.equal(await tellPayoutEvent(db, { type, account: "acct_f", data: { object: payout } }), false, `${type}: nothing said`);
+  }
+  assert.equal(told.length, 0, "a payout made is not yet \"paid out to your bank\"");
+  assert.equal(await tellPayoutEvent(db, { type: "payout.paid", account: "acct_f", data: { object: { ...payout, status: "paid" } } }), true);
+  assert.equal(told.length, 1);
+  assert.match(told[0].title, /paid out to your bank$/, "said on payout.paid");
+}
+
 // What each method can withdraw (D5): Stripe reaches owed money and the
 // factory's own Stripe money (D1); PayPal / Wise reach owed money and pool
 // money, never D1. The server's answers come first when the page has them.
@@ -637,6 +674,17 @@ for (const [why, row] of [
           if (take.status === "held") take.status = "returned";
           return { data: null, error: null };
         }
+        if (name === "return_sent_take") {
+          // A sent part whose transfer was reversed back to TSC (fix round 6): back in the balance.
+          const take = takes.find((t) => t.id === args.target_take);
+          const row = rows.find((r) => r.id === take.stripe_withdrawal_id);
+          if (row && leased(row) && row.lease_until !== (args.lease ?? null)) {
+            return { data: null, error: { message: "this withdrawal is being processed", code: "22023", hint: "withdrawal_busy" } };
+          }
+          assert.ok(args.reversal, "a sent part goes back only with the reversal that took it back");
+          if (take.status === "sent") Object.assign(take, { status: "returned", reversal_id: args.reversal });
+          return { data: null, error: null };
+        }
         if (name === "lease_stripe_withdrawal") {
           const row = rows.find((r) => r.id === args.target);
           if (!row || leased(row)) return { data: null, error: null };
@@ -707,12 +755,15 @@ for (const [why, row] of [
         },
         listReversals: (id) => iterable(s.reversals.filter((r) => r.transfer === id)),
         createReversal: async (id, params, options) => once(options?.idempotencyKey, () => {
+          const refusal = s.onReversal?.(id, params);
+          if (refusal) throw refusal;
           const transfer = s.transfers.find((t) => t.id === id);
           transfer.amount_reversed += params.amount;
           const local = currency === "usd" ? params.amount : Math.ceil(params.amount * rate);
           s.balance[currency] -= local;
           const reversal = { id: `trr_${++n}`, transfer: id, amount: params.amount, metadata: params.metadata, destination_payment_refund: `pyr_${n}`, local };
           s.reversals.push(reversal);
+          s.platform += params.amount;
           return structuredClone(reversal);
         }),
       },
@@ -738,6 +789,7 @@ for (const [why, row] of [
       },
       payouts: {
         create: async (params, options) => once(options?.idempotencyKey, () => {
+          if (s.payoutRefusal) throw s.payoutRefusal;
           if (params.amount > (s.balance[params.currency] ?? 0)) throw refused("insufficient funds", 400);
           s.balance[params.currency] -= params.amount;
           const payout = { id: `po_${++n}`, amount: params.amount, currency: params.currency, status: "pending", metadata: params.metadata ?? {} };
@@ -773,7 +825,7 @@ for (const [why, row] of [
     assert.equal(row.state, "paid_out");
     assert.equal(held(w).length, 0, "nothing left held");
     assert.deepEqual(w.db.takes.map((t) => [t.payment_id, t.amount_cents, t.status]), [["p1", 10000, "sent"], ["p2", 5000, "sent"]]);
-    assert.equal(w.stripe.platform, 1_000_000 - 15000, "TSC's platform balance paid exactly the claimed parts");
+    assert.equal(w.stripe.platform, 1_000_000 - 15000 + usFee(15000), "TSC's platform balance paid exactly the claimed parts, and got the fee back");
     // The $50 left on the step and the newest step are still there for the next withdrawal.
     await withdraw(w, 15000);
     assert.deepEqual(w.stripe.transfers.slice(2).map((t) => [t.source_transaction, t.amount]), [["ch_p2", 5000], ["ch_p3", 10000]],
@@ -871,9 +923,13 @@ for (const [why, row] of [
     // Stripe keeps a refusal under its key and answers it again for 24 hours.
     w.stripe.onTransfer = () => (++made === 2 ? Object.assign(new Error("refused"), { statusCode: 400, stored: true }) : undefined);
     await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
-    assert.deepEqual(w.db.takes.map((t) => [t.payment_id, t.status]), [["p1", "sent"], ["p2", "returned"]],
-      "the transferred part stays sent, the refused part is returned");
+    // Fix round 6: refused means nothing left the balance. The part already
+    // transferred is reversed back to TSC and returned with the refused one.
+    assert.deepEqual(w.db.takes.map((t) => [t.payment_id, t.status]), [["p1", "returned"], ["p2", "returned"]],
+      "the transferred part is taken back, and both parts are back in the balance");
     assert.equal(w.stripe.transfers.length, 1);
+    assert.deepEqual(w.stripe.reversals.map((r) => [r.transfer, r.amount]), [[w.stripe.transfers[0].id, 10000]], "its whole transfer is reversed");
+    assert.equal(w.stripe.balance.usd, 0, "nothing is left in the factory's Stripe account for it");
     assert.equal(w.stripe.payouts.length, 0, "nothing paid out");
   }
 
@@ -893,7 +949,9 @@ for (const [why, row] of [
     w.db.rows[0].lease_until = null;
     await withdraw(w, 5000, { requestId }).catch(() => null);
     const take = w.db.takes[0];
-    assert.notEqual(take.status, "returned", "F5: a take whose transfer exists is never returned to the balance");
+    // Returned only with the reversal that took its transfer back (fix round 6), never while the money sits in the factory's account.
+    const backed = (t) => t.status !== "returned" || (t.reversal_id && w.stripe.reversals.some((r) => r.id === t.reversal_id && r.metadata?.take_reversal === t.id));
+    assert.ok(backed(take), "F5: a take whose transfer exists is never returned to the balance without taking the transfer back");
     assert.equal(w.stripe.transfers.length, 1, "and no second transfer was made");
     if (take.status === "sent") assert.equal(take.stripe_transfer_id, w.stripe.transfers[0].id, "it is recorded with the transfer that went");
   }
@@ -907,7 +965,9 @@ for (const [why, row] of [
     w.db.rows[0].lease_until = null;
     w.stripe.platform = 0; // and TSC's platform balance is now short
     await withdraw(w, 5000, { requestId }).catch(() => null);
-    assert.notEqual(w.db.takes[0].status, "returned", "F5: nor when the resume finds the platform balance short");
+    const t0 = w.db.takes[0];
+    assert.ok(t0.status !== "returned" || (t0.reversal_id && w.stripe.reversals.some((r) => r.id === t0.reversal_id)),
+      "F5: nor when the resume finds the platform balance short");
     assert.equal(w.stripe.transfers.length, 1);
   }
 
@@ -1063,6 +1123,73 @@ for (const [why, row] of [
       const answer = await checkStripeWithdrawal({ stripe: x.w.api, db: x.w.db, withdrawalId: randomUUID() });
       assert.equal(answer.done, false);
     }
+  }
+
+  // Fix round 6: the payout refused after the transfers went. The transfers
+  // are reversed (less the fee reversal that already came back), every part
+  // returns to the balance, the owner reads "can't be processed… Nothing was
+  // sent", and no step reads Paid.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)] });
+    w.stripe.payoutRefusal = Object.assign(new Error("payouts not allowed"), { statusCode: 400 });
+    await assert.rejects(withdraw(w, 15000), (failure) => failure instanceof PayoutMethodRefusal && failure.message === CANNOT,
+      "the owner is told it can't be processed, nothing was sent");
+    assert.deepEqual(w.db.takes.map((t) => t.status), ["returned", "returned"], "every part is back in the balance");
+    assert.ok(w.db.takes.every((t) => t.reversal_id), "each with the reversal that took it back");
+    const reversed = w.stripe.reversals.reduce((sum, r) => sum + r.amount, 0);
+    assert.equal(reversed, 15000, "the transfers are taken back whole, the fee reversal included");
+    assert.equal(w.stripe.balance.usd, 0, "nothing stays in the factory's Stripe account");
+    assert.equal(w.stripe.platform, 1_000_000, "TSC's platform balance is whole again");
+    assert.equal(w.stripe.payouts.length, 0);
+    assert.ok(["refused", "fee_returned"].includes(w.db.rows[0].state));
+    assert.ok(!w.db.rows[0].refusal_cause, "nothing for staff to check");
+    assert.equal(w.stripe.transfers.filter((t) => t.metadata?.stripe_withdrawal_fee_return).length, 0,
+      "no fee is given back by transfer: it came back with the reversals");
+  }
+  // A reversal Stripe refuses: the part stays sent (it is in the factory's
+  // account), the withdrawal goes to Needs checking, nothing reads Paid out.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    w.stripe.payoutRefusal = Object.assign(new Error("payouts not allowed"), { statusCode: 400 });
+    w.stripe.onReversal = (_id, params) => (params.metadata?.take_reversal ? Object.assign(new Error("cannot reverse"), { statusCode: 400 }) : null);
+    await assert.rejects(withdraw(w, 5000));
+    assert.equal(w.db.takes[0].status, "sent", "the part Stripe would not give back stays sent");
+    assert.equal(w.db.rows[0].refusal_cause, "reversal_failed", "and the withdrawal is listed for staff (Needs checking)");
+    assert.equal(w.stripe.payouts.length, 0, "no payout");
+    assert.ok(w.db.rows[0].state !== "paid_out", "never Paid out");
+  }
+  // Two owners at once, each asking for the whole balance by Stripe: one is
+  // paid out, the other is refused before any transfer, and nothing is left
+  // stranded in the factory's Stripe account.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 174000)] });
+    const both = await Promise.allSettled([withdraw(w, 174000), withdraw(w, 174000)]);
+    const paid = both.filter((r) => r.status === "fulfilled");
+    assert.equal(paid.length, 1, "one of the two owners is paid out");
+    assert.equal(w.stripe.payouts.length, 1, "one payout");
+    assert.equal(w.stripe.transfers.length, 1, "one transfer");
+    assert.equal(w.db.takes.filter((t) => t.status === "sent").reduce((a, t) => a + t.amount_cents, 0), 174000, "the step was taken once");
+    const refused = both.find((r) => r.status === "rejected");
+    assert.ok(refused.reason instanceof PayoutMethodRefusal, `the other is told in words (${refused.reason?.message})`);
+    const refusedRow = w.db.rows.find((r) => r.state !== "paid_out");
+    assert.equal(w.db.takes.filter((t) => t.stripe_withdrawal_id === refusedRow.id && t.status !== "returned").length, 0,
+      "the refused one holds and sent nothing: it was refused at its claim, before any transfer");
+    assert.equal(w.stripe.balance.usd, 0, "nothing stranded in the factory's Stripe account");
+  }
+
+  // The race the tester hit: another owner's one-balance withdrawal is still
+  // open (claimed, lease live, nothing landed yet). It must count only its own
+  // Stripe part and what it has landed, never its whole estimated gross, or
+  // this owner's payout is refused after its transfer went.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 174000)] });
+    w.db.rows.push({ id: randomUUID(), org_id: "org", stripe_account_id: "acct_f", request_key: "other-owner", request_id: randomUUID(),
+      amount_minor: 174000, currency: "USD", state: "claimed", usd_cents: 174000, owed_cents: null, d1_minor: null, landed_minor: null,
+      fee_cents: null, fee_local_minor: null, reversals: [], payout_id: null, lease_until: new Date(Date.now() + 90_000).toISOString(),
+      created_at: new Date().toISOString() });
+    const payout = await withdraw(w, 174000);
+    assert.equal(payout.amount, 174000 - usFee(174000), "the payout goes: the other open withdrawal holds nothing of this money");
+    assert.equal(w.db.takes.filter((t) => t.status === "sent").length, 1);
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.
