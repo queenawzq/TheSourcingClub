@@ -111,7 +111,8 @@ assert.ok(card.includes('export const transferName = (country) => (PAYOUT_COUNTR
 assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? '), "the saved list says (Wise) only on a row Wise pays (the balance card has no method line)");
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
-assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
+// Nov 20 (one balance): nothing is sent until the owner withdraws, whatever the method.
+assert.ok(card.includes('<p className="payout-modal-intro">Earnings stay in your balance until you withdraw them.</p>') && !card.includes("Released earnings are sent"), "the chooser intro says money waits in the balance");
 for (const option of ["bank", "wise", "paypal"]) {
   assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country: picked })} />`), `the ${option} option draws the lines of its route`);
 }

@@ -5,6 +5,7 @@ import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
+import { parseWithdrawAmount, withdrawFeeLine } from "./payment-summary.mjs";
 
 /**
  * A factory withdraws to Wise or PayPal from its one balance: cleared
@@ -27,7 +28,7 @@ const REFUSALS = {
   withdraw_owner_only: "Only a company owner can withdraw.",
   withdrawal_open: "You already have a withdrawal waiting. Cancel it first to ask for a different amount.",
   withdrawal_amount: "Enter an amount to withdraw.",
-  withdrawal_over_balance: "That is more than your balance. Reload the page to see it.",
+  withdrawal_over_balance: "That is more than your balance.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
@@ -152,7 +153,9 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy })
           <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
           <span className="payout-pending-destination">{destination(row)}</span>
         </div>
-        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
+        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
+          // Someone who can't cancel sees the owner's word: still waiting for TSC, or being sent.
+          : <span className="billing-status">{row.status === "requested" ? "Waiting" : "Processing"}</span>}
       </div>
     ));
   }
@@ -291,14 +294,18 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   }, [offered]);
   const method = choices.find((m) => m.id === methodId) ?? null;
   const provider = providerOf(method);
-  const amountCents = /^\d+(\.\d{0,2})?$/.test(amountText.trim()) ? Math.round(Number(amountText.trim()) * 100) : NaN;
-  const amountProblem = !Number.isFinite(amountCents) || amountCents <= 0 ? "Enter an amount to withdraw."
-    : amountCents > available ? `You can withdraw up to ${formatMoney(available, "USD")}.` : null;
+  // Read as typed, never changed under the person: more than available is said.
+  const { cents: amountCents, problem: amountProblem } = parseWithdrawAmount(amountText, available, (cents) => formatMoney(cents, "USD"));
   const fee = amountProblem || !method ? null : withdrawalFee({ provider, amountCents, currency: "USD", country });
   // The provider's own figure when it can give one (Wise quotes per transfer);
   // otherwise the fee line, and the exact figure comes when TSC sends it.
   const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee));
   const asking = Boolean(fee) && !exact;
+  // What it costs and what arrives, before asking: the provider's own figure
+  // when it gives one, else the published fee.
+  const feeLine = amountProblem || !method ? null
+    : exact && !exact.refused && exact.feeCents != null ? withdrawFeeLine(exact.feeCents, exact.receivesMinor, exact.receivesCurrency)
+    : fee && !fee.refused && fee.feeCents != null ? withdrawFeeLine(fee.feeCents, fee.receivesCents, "USD") : null;
 
 
   async function confirm() {
@@ -347,9 +354,10 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
             onChange={(event) => {
               const value = event.target.value;
               setAmountTouched(true);
-              setAmountText(Number(value) > available / 100 ? (available / 100).toFixed(2) : value);
+              setAmountText(value);
             }} aria-describedby="withdraw-available" />
           <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
+          {feeLine ? <p className="withdraw-available" data-testid="withdraw-fee">{feeLine}</p> : null}
         </div>
       </div>
       )}

@@ -159,7 +159,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
       if (!payment.release_requested_at) return "Funded: held by TSC";
-      return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
+      // One balance: approved money waits in the factory's balance until it withdraws.
+      return kind === "payment_only" ? "Funded: added to the factory's balance" : "Approved: added to the factory's balance";
     case "released":
       // The factory's word, as on Payments: a Stripe transfer is in its balance.
       return isFactory ? earningStatus(payment) : "Paid";

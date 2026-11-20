@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
-  legacyOnItsWayCents, owedClearingNote, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
+  ON_HOLD, ON_ITS_WAY, companyStripeRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -101,10 +101,14 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     available: [{ amount: 300, currency: "usd" }], pending: [{ amount: 100, currency: "usd" }],
     onTheirWay: [{ amount: 50, currency: "usd" }], payouts: [{ amount: 450, currency: "usd", paid: true }],
   }, null);
-  const s = checkTotal(figures, "mixed D1 + owed");
+  // What the owner's page shows: the database's figures plus only what sits
+  // in its own Stripe account (withStripePart). A member reads the database.
+  const s = checkTotal(withStripePart(db, figures), "mixed D1 + owed");
+  const member = checkTotal(db, "mixed, as a member reads it");
   assert.equal(s.available, 800, "mixed: TSC's $5 + the $3 in its Stripe account");
-  assert.equal(s.pending, 250 + 100 + 50, "mixed: clearing card payment + Stripe pending + payout on its way");
-  assert.equal(s.paid, 450, "mixed: what Stripe paid to the bank, not the transfers");
+  assert.equal(s.pending, 250 + 100, "mixed: clearing card payment + Stripe's pending balance");
+  assert.equal(s.paid, member.paid, "mixed: owner and member read the same Paid out (the database's, fees off)");
+  assert.equal(s.approval, member.approval, "and the same Awaiting approval");
   assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
   const placed = figuresByPayment(figures);
   const clearingStep = pay("o2", 250, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
@@ -200,6 +204,44 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(staffBankNote(byPaypal), null, "and no staff reference on it");
   const byBank = pay("w4", 1000, "released", { ...base, released_note: "Wire 9", bank_payouts: { paid_to_bank: "Demo Bank", paid_to_last4: "0001" } });
   assert.equal(withdrawalRows([byBank]).length, 1, "staff's bank payout keeps its row");
+}
+
+// Fix round 5 (local tester).
+{
+  // M5: a disputed step is On hold, never "Available <day>", on both pages.
+  const disputed = pay("d1", 500, "confirmed", { ...APPROVED, disputed_at: "2026-11-20T00:00:00Z", funds_available_at: "2099-01-05T12:00:00Z" });
+  assert.equal(earningStatus(disputed), ON_HOLD);
+  assert.equal(earningStatus(disputed, null, new Map([["d1", new Set(["pending"])]])), ON_HOLD);
+  assert.equal(owedClearingNote(disputed, new Map([["d1", new Set(["pending"])]])), null, "no date for held money");
+  // M4: a step all withdrawn reads Paid, whichever road took it.
+  const sentByStripe = pay("s1", 6500, "released", { ...APPROVED, stripe_transfer_id: "tr_1", released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });
+  assert.equal(earningStatus(sentByStripe), "Paid", "a step a Stripe withdrawal took and sent is paid");
+  assert.equal(earningStatus(pay("s2", 6500, "released", { stripe_transfer_id: "tr_2" })), "Added to your balance", "an old transfer to the Stripe balance is as before");
+  // M3/M4: the company's Stripe withdrawals, for owner and member alike, from stripe_withdrawals.
+  const now = new Date("2026-11-20T12:00:00Z");
+  const rows = companyStripeRows([
+    { id: "a", payout_id: "po_1", usd_cents: 1000, fee_cents: 32, payout_status: "paid", payout_arrives_at: "2026-11-23T00:00:00Z", created_at: "2026-11-20T10:00:00Z" },
+    { id: "b", payout_id: "po_2", usd_cents: 2000, fee_cents: 50, payout_status: "paid", payout_arrives_at: "2026-11-19T00:00:00Z", created_at: "2026-11-18T10:00:00Z" },
+    { id: "c", payout_id: "po_3", usd_cents: 500, fee_cents: 0, payout_status: "failed", created_at: "2026-11-18T10:00:00Z" },
+    { id: "d", payout_id: null, usd_cents: 500, created_at: "2026-11-18T10:00:00Z" },
+  ], () => null, now);
+  assert.equal(rows.length, 3, "only withdrawals that made a payout");
+  assert.equal(rows[0].status, ON_ITS_WAY, "paid by Stripe but not at the bank until its arrival day");
+  assert.equal(rows[0].note, "Your bank is processing the payout.", "the processing sentence sits on its own row");
+  assert.equal(rows[0].amount, -968, "what reaches the bank: the withdrawal less Stripe's fee");
+  assert.equal(rows[1].status, "Paid out to your bank");
+  assert.equal(rows[1].note, "Fee $0.50, taken from it", "the fee in the PayPal row's words");
+  assert.equal(rows[2].failed, true);
+  // Minor: the amount is read as typed, never clamped.
+  assert.equal(parseWithdrawAmount("65.01", 6500).problem, "You can withdraw up to $65.00.");
+  assert.equal(parseWithdrawAmount("1,000", 200000).cents, 100000, "a thousands comma is read as meant");
+  assert.equal(parseWithdrawAmount("0.001", 6500).problem, "Enter the amount in dollars and cents, like 45.50.");
+  for (const bad of ["-5", "abc", "", "0"]) assert.equal(parseWithdrawAmount(bad, 6500).problem, "Enter an amount to withdraw.", bad);
+  // M7: the fee and what arrives, before asking, in the factory's existing sentence.
+  assert.equal(withdrawFeeLine(89, 4411), "Payout fee $0.89 is taken from this payment: you receive $44.11.");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes('data-testid="withdraw-fee"') && !form.includes("Reload the page to see it"), "the PayPal/Wise dialog shows its fee; a refusal needs no reload");
+  assert.ok(!/setAmountText\(Number\(value\) > available/.test(form), "the amount is never clamped");
 }
 
 // Money held on a cancelled order is in no figure; approved before the
@@ -380,9 +422,9 @@ assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline i
 // server's Available, the page's four figures the same read. No second card
 // version, no figure summed from payments in the browser.
 assert.ok(!card.includes("Balance (USD)") && !/isHandPaid|handFigures|handPaid/.test(card), "one card: no hand-paid version");
-assert.ok(card.includes('figures?.estimated ? "Available balance (estimated USD)" : "Available balance (USD)"'), "the label, estimated only when Stripe money was converted");
+assert.ok(card.includes('heldCurrency ? "Available balance (estimated USD)" : "Available balance (USD)"'), "the label says estimated only while the Stripe account holds money in another currency");
 assert.ok(card.includes("formatMoney(Number(figures.available_cents) || 0, \"USD\")"), "the big number is the server's Available");
-assert.ok(card.includes("figures ? Boolean(figures.has_method)"), "Withdraw or Add withdrawal method by has_method (D6)");
+assert.ok(card.includes("Boolean(figures?.has_method) || balanceChoices.length > 0"), "Withdraw or Add withdrawal method by has_method (D6), and at once after the first method is saved (M1)");
 assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still shows them");
 {
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");

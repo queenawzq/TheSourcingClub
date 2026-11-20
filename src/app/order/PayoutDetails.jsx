@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { askedWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -162,6 +162,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // null until each read answers. Each source has its own error, so one that
   // fails does not hide what the others found.
   const [earnings, setEarnings] = useState(null);
+  // The company's withdrawals to its Stripe bank (stripe_withdrawals): every
+  // member reads the same list, not only an owner who can ask Stripe.
+  const [stripeWithdrawals, setStripeWithdrawals] = useState([]);
   // The one balance (factory_balance()), all clients, read with the earnings:
   // the four figures, the card's balance and each row's word come from it.
   const [balanceFigures, setBalanceFigures] = useState(null);
@@ -250,8 +253,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       // Best effort: the figures are read whatever it answers.
       await refreshClearingDates(org.id).catch(() => null);
     }
-    const figures = await supabase.rpc("factory_balance", { target_org: org.id });
-    if (figures.error) throw new Error("Couldn't load your balance. Try again shortly.");
+    const [figures, toBank] = await Promise.all([
+      supabase.rpc("factory_balance", { target_org: org.id }),
+      supabase.from("stripe_withdrawals")
+        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, state, payout_status, payout_arrives_at, created_at")
+        .eq("org_id", org.id).not("payout_id", "is", null).order("created_at", { ascending: false }).limit(200),
+    ]);
+    if (figures.error || toBank.error) throw new Error("Couldn't load your balance. Try again shortly.");
 
     // By id batches, a page at a time: past ~195 orders one `in` list was
     // longer than the address allows (read-pages.js).
@@ -260,7 +268,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         orders.map((order) => order.id),
         (batch) => supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)")
           .in("order_id", batch)
           .order("created_at", { ascending: false })
           .order("id", { ascending: false }),
@@ -270,8 +278,21 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
     setBalanceFigures(figures.data);
+    setStripeWithdrawals(toBank.data ?? []);
     setEarningsError(null);
   }, [org.id]);
+
+  // A withdrawal method saved or removed changes has_method: read the
+  // figures again at once, so Withdraw appears without a reload.
+  const methodsKey = (payouts.accounts ?? []).map((row) => `${row.id}:${row.is_primary ? 1 : 0}`).join(",");
+  const methodsSeen = useRef(null);
+  useEffect(() => {
+    if (payouts.accounts == null) return;
+    if (methodsSeen.current === null) { methodsSeen.current = methodsKey; return; }
+    if (methodsSeen.current === methodsKey) return;
+    methodsSeen.current = methodsKey;
+    loadEarnings().catch(setEarningsError);
+  }, [methodsKey, payouts.accounts, loadEarnings]);
 
   // The card has said nobody reads Stripe here: read again, with the dates asked for first.
   useEffect(() => {
@@ -387,7 +408,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // Old step-by-step payouts still being sent (changeover): "$X on its way" on the card.
   const onItsWayCents = allFigures ? legacyOnItsWayCents(earnings, placed) : 0;
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
-  const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
+  // Withdrawals to the Stripe bank, from the company's own records, for
+  // owner and member alike (companyStripeRows). Stripe's answer adds only
+  // payouts made before those records existed (owner only).
+  const recorded = new Set(stripeWithdrawals.map((w) => w.payout_id));
+  const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
     if (client === "All clients") return [row];
     const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
       .reduce((sum, part) => sum + part.amount, 0);
@@ -427,13 +452,18 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       type: "withdrawal",
       available: !row.failed,
     })),
+    ...(client === "All clients" ? companyStripeRows(stripeWithdrawals, (w) => {
+      const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
+      return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
+    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? dateLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,
       type: "withdrawal",
       date: row.created ? new Date(row.created * 1000).toISOString() : null,
       title: "Bank transfer",
       meta: [payoutDestination(row, stripeBalance), row.arrival_date ? stripeDateLabel(row.arrival_date) : null].filter(Boolean).join(" · "),
-      status: PAYOUT_STATUS[row.status] || row.status,
+      // Paid by Stripe once it leaves; at the bank only from its arrival day.
+      status: row.status === "paid" && row.arrival_date && row.arrival_date * 1000 > Date.now() ? ON_ITS_WAY : PAYOUT_STATUS[row.status] || row.status,
       // Why the bank did not take it; Stripe puts the money back in the balance.
       note: row.status === "failed" ? payoutFailureSentence("stripe", row.failure_code) : null,
       failed: row.status === "failed",

@@ -89,8 +89,16 @@ const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "paid
  */
 export function withStripePart(database, viaStripe) {
   if (!viaStripe?.tsc || !database) return viaStripe ?? database ?? null;
-  const merged = { ...viaStripe, has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
-  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
+  // Only the money sitting in the factory's own Stripe account is added (its
+  // available and pending balance). Everything else, Paid out included, is
+  // the database's, so an owner and a member read the same figures.
+  const own = viaStripe.stripe ?? null;
+  const merged = { ...viaStripe, ...Object.fromEntries(FIGURE_KEYS.map((key) => [key, Number(database[key] ?? 0)])),
+    has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
+  if (own) {
+    merged.available_cents += Math.max(0, Number(own.available_cents) || 0);
+    merged.pending_cents += Math.max(0, Number(own.pending_cents) || 0);
+  }
   merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
   return merged;
 }
@@ -178,6 +186,7 @@ export function askedWithdrawalRows(withdrawals = []) {
 }
 
 export const ADDED_TO_BALANCE = "Added to your balance";
+export const ON_HOLD = "On hold";
 /** Earned and the factory's to withdraw or already sent: "Paid", or in its balance. */
 export const earningPaid = (row, clearing = null, figures = null) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row, clearing, figures));
 
@@ -227,8 +236,12 @@ export function earningStatus(row, clearing = null, figures = null) {
   if (isClearing(row, clearing)) return "Pending";
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
   // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
-  if (row.state === "released") return row.stripe_transfer_id ? ADDED_TO_BALANCE : "Paid";
+  // Taken by one-balance withdrawals and sent: paid, whichever road took it.
+  if (row.state === "released") return row.stripe_transfer_id && !withdrawnByTakes(row) ? ADDED_TO_BALANCE : "Paid";
   if (!toBeSent(row)) return "Awaiting approval";
+  // The brand disputed its card charge: held until the dispute is settled,
+  // never "available on" a day (the factory is told by its notification).
+  if (row.disputed_at) return ON_HOLD;
   // The brand's card payment is still clearing: the same word on the order
   // page and on Payments, from the payment's own date.
   if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
@@ -353,4 +366,75 @@ export function withdrawalProblem(earnings, method) {
 export function staffBankNote(row) {
   if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by || withdrawnByTakes(row)) return null;
   return row.released_note?.trim() || null;
+}
+
+export const ENTER_AMOUNT = "Enter an amount to withdraw.";
+export const DOLLARS_AND_CENTS = "Enter the amount in dollars and cents, like 45.50.";
+
+/**
+ * A withdrawal amount as typed, in cents, and what is wrong with it, if
+ * anything. "1,000" and "$45" are read as meant; a negative, a word or a
+ * third decimal place are not guessed at. More than `maxCents` is said, never
+ * quietly changed. `format` writes the most for the sentence.
+ */
+export function parseWithdrawAmount(text, maxCents, format = (cents) => `$${(cents / 100).toFixed(2)}`) {
+  const typed = String(text ?? "").trim().replace(/^\$/, "").replace(/[,\s]/g, "");
+  if (!typed) return { cents: NaN, problem: ENTER_AMOUNT };
+  if (/^\d*\.\d{3,}$/.test(typed)) return { cents: NaN, problem: DOLLARS_AND_CENTS };
+  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(typed)) return { cents: NaN, problem: ENTER_AMOUNT };
+  const cents = Math.round(Number(typed) * 100);
+  if (!(cents > 0)) return { cents, problem: ENTER_AMOUNT };
+  if (maxCents != null && cents > maxCents) return { cents, problem: `You can withdraw up to ${format(maxCents)}.` };
+  return { cents, problem: null };
+}
+
+/**
+ * Payout fee and what arrives, in the factory's existing sentence
+ * (payoutFeeSentence's words): the receive amount may be in the provider's
+ * currency (Wise quotes a CNY amount).
+ */
+export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD") {
+  if (!(Number(feeCents) >= 0) || !(Number(receivesMinor) > 0)) return null;
+  const money = (cents, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  return `Payout fee ${money(Number(feeCents), "USD")} is taken from this payment: you receive ${money(Number(receivesMinor), String(receivesCurrency || "USD").toUpperCase())}.`;
+}
+
+/** A Stripe payout that has left and not yet reached the bank (until its arrival day). */
+export const ON_ITS_WAY = "On its way";
+export const BANK_PROCESSING = "Your bank is processing the payout.";
+const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Canceled" };
+
+/**
+ * The company's withdrawals to its Stripe bank, from stripe_withdrawals (any
+ * member reads them), as Transactions rows: what reached the bank, the
+ * withdrawal less Stripe's fee, in US$. "On its way" until its arrival day,
+ * then "Paid out to your bank". `methodName(w)` names the bank where the
+ * reader knows it (an owner's Stripe read), else nothing.
+ */
+export function companyStripeRows(withdrawals = [], methodName = () => null, now = new Date()) {
+  return (withdrawals ?? []).filter((w) => w?.payout_id && w.usd_cents != null).map((w) => {
+    const status = String(w.payout_status ?? "").toLowerCase();
+    const arrives = w.payout_arrives_at ? new Date(w.payout_arrives_at) : null;
+    // A payout that failed or was cancelled, or a withdrawal that ended without one, didn't go.
+    const failed = status === "failed" || status === "canceled" || ["refused", "fee_returned"].includes(w.state);
+    const arrived = status === "paid" && !(arrives && arrives > now);
+    const fee = Math.max(0, Number(w.fee_cents) || 0);
+    return {
+      id: `stripe-${w.id}`,
+      brandOrgId: null,
+      currency: "USD",
+      date: w.created_at,
+      arrives: failed ? null : w.payout_arrives_at ?? null,
+      title: "Bank transfer",
+      meta: methodName(w),
+      status: failed ? STRIPE_PAYOUT_WORD[status] ?? "Failed" : arrived ? STRIPE_PAYOUT_WORD.paid : ON_ITS_WAY,
+      note: failed ? null
+        : arrived ? (fee ? `Fee ${(fee / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}, taken from it` : null)
+        : BANK_PROCESSING,
+      failed,
+      amount: -(Number(w.usd_cents) - fee),
+      type: "withdrawal",
+      available: !failed,
+    };
+  });
 }

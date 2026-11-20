@@ -1,5 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { cardPendingCents, withdrawReach } from "./payment-summary.mjs";
+import { cardPendingCents, parseWithdrawAmount, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -15,7 +16,7 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
-import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, cancelWithdrawal, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
+import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
 import { methodProviderOn, providerOnFor, usePayoutProviders } from "./payout-providers.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -386,12 +387,10 @@ export default function StripePayoutCard({
   // A notice said in Withdrawal methods only (a new default), not on the card.
   const shownInDialogOnly = useRef(null);
   const [withdrawal, setWithdrawal] = useState(null);
-  const [withdrawn, setWithdrawn] = useState(false);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
   const fromBalance = useWithdrawalBalance(org.id, figures !== undefined && renderCard, manualAccount?.id);
   // PayPal and Wise as staff have switched them for this company's region.
   const providers = usePayoutProviders(org.id, isOwner);
-  const [cancellingWithdrawal, setCancellingWithdrawal] = useState(false);
   const [withdrawalError, setWithdrawalError] = useState(null);
   const [cancelFirst, setCancelFirst] = useState(null);
   // Remove and Add are TSC's own steps; Stripe's form does the last part,
@@ -553,7 +552,6 @@ export default function StripePayoutCard({
         { amount: sendAmount, currency: sendCurrency, requestId, ...(withdrawal.previous || !destination ? {} : { destination }) });
       setWithdrawal(null);
       setModal(null);
-      setWithdrawn(true);
       // Never leave an already-withdrawn amount available if refreshing fails.
       setBalance(null);
       onBalanceChange?.(undefined);
@@ -929,6 +927,10 @@ export default function StripePayoutCard({
   // What each method can reach, from the server: the balance read's `reach`
   // (owners with a Stripe account), else my_withdrawal_balance(), which
   // request_withdrawal() checks.
+  // Money held now in the Stripe account in another currency: only then are the USD figures estimates.
+  const heldElsewhere = [...(balance?.available ?? []), ...(balance?.pending ?? [])]
+    .find((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount) !== 0);
+  const heldCurrency = heldElsewhere ? String(heldElsewhere.currency).toUpperCase() : null;
   const reach = withdrawReach(figures, balance?.reach ?? null, fromBalance.available);
   // The earliest day money still clearing can be withdrawn: a card payment
   // TSC holds (the database's), or Stripe's for money in the factory's own
@@ -942,7 +944,9 @@ export default function StripePayoutCard({
   // card lists on their own rows, so no amount is said twice on the card.
   const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
   const openListed = (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0);
-  const cardPending = cardPendingCents(pendingTotal, openListed + (Number(onItsWayCents) || 0));
+  // A step whose card charge is disputed is held: in Pending, but never "available on" a day.
+  const onHoldCents = Math.max(0, Number((figures?.tsc ?? figures)?.parts?.disputed_cents) || 0);
+  const cardPending = cardPendingCents(pendingTotal, openListed + (Number(onItsWayCents) || 0) + onHoldCents);
 
   // One balance, one Withdraw (D5). Every saved method withdraws from it;
   // Withdraw opens on the default, and "Withdraw to" lists every method,
@@ -963,6 +967,13 @@ export default function StripePayoutCard({
     setWithdrawFromId(methodId);
     setModal("withdraw-balance");
   };
+  // The Stripe dialog's amount, as typed, and its fee before asking (the
+  // published Stripe fee, in US$; an estimate where the account is not US$).
+  const amountProblem = withdrawal && !withdrawal.previous && withdrawal.amountText
+    ? parseWithdrawAmount(withdrawal.amountText, withdrawal.max, (most) => formatMoney(most, withdrawal.currency)).problem : null;
+  const stripeFee = withdrawal && !withdrawal.previous && withdrawal.amount > 0
+    ? withdrawalFee({ provider: "stripe", amountCents: withdrawal.amount, currency: "USD", country: String(account?.country ?? "").toUpperCase() }) : null;
+  const stripeFeeLine = stripeFee && !stripeFee.refused ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
   // Opens on the default; when the default's method can reach nothing and
   // another can, on that one, so it never opens at $0.
   const openWithdraw = () => {
@@ -975,7 +986,8 @@ export default function StripePayoutCard({
   // saying what is missing.
   // Until the figures answer, a usable saved method decides, so the button
   // does not change once they do.
-  const showWithdraw = Boolean(account?.transfers_active) || (figures ? Boolean(figures.has_method) : balanceChoices.length > 0);
+  // A method saved just now counts at once, before the figures are read again.
+  const showWithdraw = Boolean(account?.transfers_active) || Boolean(figures?.has_method) || balanceChoices.length > 0;
   const withdrawTitle = stripeCan || balanceCan ? undefined
     : paused ? "Withdrawals paused"
     : account?.transfers_active && !account.payouts_enabled && !figures?.has_method ? "Finish setup to withdraw"
@@ -986,7 +998,7 @@ export default function StripePayoutCard({
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          <span className="payment-metric-label">{figures?.estimated ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
+          <span className="payment-metric-label">{heldCurrency ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
           <strong data-testid="payout-balance">{figures ? formatMoney(Number(figures.available_cents) || 0, "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the figures answer.
@@ -1000,11 +1012,12 @@ export default function StripePayoutCard({
               // Its "?" sits right after it, not on a line of its own.
               pendingWords(cardPending ?? 0),
               // Orders are in USD; an account is credited in its own currency.
-              balance && currency !== "USD" ? `USD figures are estimates; withdrawals stay in ${currency}.` : null,
+              heldCurrency ? `Part of your balance is held in ${heldCurrency}, so USD amounts are estimates.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
-          {figures && onItsWayCents > 0 && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(onItsWayCents, "USD")} on its way</p> : null}
+          {figures && onItsWayCents > 0 && !failedLine ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayCents, "USD")} on its way`}</p> : null}
+          {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -1016,7 +1029,7 @@ export default function StripePayoutCard({
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
-          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
+          {/* "Your bank is processing the payout." is said on that withdrawal's own row (companyStripeRows). */}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
           {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -1040,18 +1053,12 @@ export default function StripePayoutCard({
             <button className={`${showWithdraw ? "secondary-btn" : "primary-btn"} compact-btn`} type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>
           </>}
         </div>
-        <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} busy={cancellingWithdrawal} onCancel={async (row) => {
+        <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner} onCancel={(row) => {
               setWithdrawalError(null);
-              // More than one waiting: choose which to cancel.
-              if (fromBalance.opens.filter((w) => w.status === "requested").length > 1) {
-                setCancelFirst(row.id);
-                setModal("cancel-withdrawals");
-                return;
-              }
-              setCancellingWithdrawal(true);
-              try { await cancelWithdrawal(row.id); } catch (failure) { setWithdrawalError(failure.message); }
-              setCancellingWithdrawal(false);
-              fromBalance.load();
+              // Cancelling is asked first, like any step that can't be undone:
+              // the dialog that chooses among several, with this one ticked.
+              setCancelFirst(row.id);
+              setModal("cancel-withdrawals");
             }} /></div>
       </section> : null}
 
@@ -1099,16 +1106,17 @@ export default function StripePayoutCard({
                 </div>
                 <input id="stripe-withdraw-amount" name="Amount" inputMode="decimal" value={withdrawal.amountText} disabled={busy} aria-describedby="stripe-withdraw-available"
                   onChange={(event) => {
-                    const typed = event.target.value;
-                    const text = Number(typed) > withdrawal.max / 100 ? (withdrawal.max / 100).toFixed(2) : typed;
-                    const cents = /^\d+(\.\d{0,2})?$/.test(text.trim()) ? Math.round(Number(text.trim()) * 100) : NaN;
-                    setWithdrawal((was) => ({ ...was, amountText: text, amount: Number.isFinite(cents) ? cents : 0 }));
+                    // Read as typed, never changed under the person: more than available is said.
+                    const text = event.target.value;
+                    const { cents, problem } = parseWithdrawAmount(text, withdrawal.max, (most) => formatMoney(most, withdrawal.currency));
+                    setWithdrawal((was) => ({ ...was, amountText: text, amount: problem ? 0 : cents }));
                   }} />
                 <p id="stripe-withdraw-available" className="withdraw-available">{`Available: ${formatMoney(withdrawal.max, withdrawal.currency)}`}</p>
+                {stripeFeeLine ? <p className="withdraw-available" data-testid="withdraw-fee">{stripeFeeLine}</p> : null}
               </div>
             </div>
           )}
-          {!withdrawal.previous && withdrawal.amountText && !(withdrawal.amount > 0) ? <p className="live-stripe-error" role="alert">Enter an amount to withdraw.</p> : null}
+          {!withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}
@@ -1268,7 +1276,7 @@ export default function StripePayoutCard({
           <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal"
             actions={<button className="secondary-btn" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>}>
             {removeError && (modal === "add" || modal === "setup") ? <ModalMessage>{removeError.message}</ModalMessage> : null}
-            <p className="payout-modal-intro">{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}</p>
+            <p className="payout-modal-intro">Earnings stay in your balance until you withdraw them.</p>
             <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} providers={providers} onBank={() => { if (supported) { chooseStripeBank(); return; } setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
           </PayoutModal>
         );
