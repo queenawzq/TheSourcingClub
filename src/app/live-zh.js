@@ -147,6 +147,9 @@ const PATTERNS = [
   [/^due (.+)$/, (m, inner) => `截止 ${inner(m[1])}`],
   [/^Updated (.+)$/, (m, inner) => `更新于 ${inner(m[1])}`],
   [new RegExp(`^Available to withdraw on ${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现`],
+  // A step still clearing, on its Payments row: "Available Nov 22.", alone or
+  // before the row's other sentences, which are translated on their own.
+  [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],
   // Counts on cards and tabs.
   [/^(\d+) awaiting brand review$/, (m) => `${m[1]} 个待品牌审核`],
   [/^(\d+) need updates?$/, (m) => `${m[1]} 个需要更新`],

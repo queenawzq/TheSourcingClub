@@ -187,10 +187,25 @@ export const earningPaid = (row, clearing = null, figures = null) => [ADDED_TO_B
  * reader's zone (funds_available_at is an instant).
  */
 export function owedClearingNote(row, figures) {
-  if (earningStatus(row, null, figures) !== "Pending" || !row.funds_available_at) return null;
-  const when = new Date(row.funds_available_at);
-  return Number.isNaN(when.getTime()) || when <= new Date() ? null
-    : `Available ${when.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  if (earningStatus(row, null, figures) !== "Pending" || !stillClearing(row)) return null;
+  return `Available ${new Date(row.funds_available_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+/**
+ * N4: an approved step paid the old way, one step at a time, whose payout is
+ * still under way (an attempt processing, or one that failed and waits for
+ * staff), and which the server counts in Pending. That money is being sent,
+ * not processed for withdrawal: the card says "$X on its way", as before, and
+ * leaves it out of "$X pending". US$ cents.
+ */
+export function legacyOnItsWayCents(earnings, figures) {
+  return (earnings ?? []).filter((row) => {
+    if (!toBeSent(row) || row.withdrawal_pool) return false;
+    const where = figures instanceof Map ? figures.get(row.id) : null;
+    if (!where || where.size !== 1 || !where.has("pending")) return false;
+    const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    return latest?.status === "processing" || latest?.status === "failed";
+  }).reduce((sum, row) => sum + factoryAmount(row), 0);
 }
 
 /**
@@ -214,9 +229,19 @@ export function earningStatus(row, clearing = null, figures = null) {
   // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
   if (row.state === "released") return row.stripe_transfer_id ? ADDED_TO_BALANCE : "Paid";
   if (!toBeSent(row)) return "Awaiting approval";
+  // The brand's card payment is still clearing: the same word on the order
+  // page and on Payments, from the payment's own date.
+  if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
   const where = figures instanceof Map ? figures.get(row.id) : null;
   if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
   return ADDED_TO_BALANCE;
+}
+
+/** The brand's charge for this step is not yet available to TSC (funds_available_at, an instant). */
+export function stillClearing(row, now = new Date()) {
+  if (!row?.funds_available_at) return false;
+  const when = new Date(row.funds_available_at);
+  return !Number.isNaN(when.getTime()) && when > now;
 }
 
 const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
@@ -253,6 +278,10 @@ const detailsChangedSince = (attempt, method) => (Boolean(attempt.asked_to_check
 
 const when = (row) => row.released_at || row.confirmed_at || row.created_at;
 
+/** Released by one-balance withdrawals: its takes were sent (released_note "Withdrawn"). */
+const withdrawnByTakes = (row) => (row.payment_takes ?? []).some((take) => take.status === "sent")
+  || (row.released_note === "Withdrawn" && !row.bank_payouts && !row.payoneer_payouts);
+
 /**
  * A payment sent by anything but Stripe, as rows of its own: one per Wise or
  * PayPal attempt, or one for what staff marked paid by hand. Stripe's own
@@ -275,8 +304,11 @@ export function withdrawalRows(earnings, method = null) {
       // What left for the factory: the attempt less the payout fee taken from it.
       amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
-    // A balance step is paid by the withdrawal it was in, listed on its own.
-    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
+    // A balance step is paid by the withdrawal it was in, listed on its own:
+    // the old pool, or one-balance withdrawals that took it (payment_takes
+    // `sent`, by PayPal, Wise or both roads). Never a second "Bank transfer".
+    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")
+      || withdrawnByTakes(row)) return tried;
     const bank = row.bank_payouts;
     const payoneer = row.payoneer_payouts;
     return [...tried, {
@@ -319,6 +351,6 @@ export function withdrawalProblem(earnings, method) {
  * of their own into the same column, with nobody in released_by.
  */
 export function staffBankNote(row) {
-  if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by) return null;
+  if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by || withdrawnByTakes(row)) return null;
   return row.released_note?.trim() || null;
 }

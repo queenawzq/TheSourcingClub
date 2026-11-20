@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { askedWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { askedWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -250,7 +250,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         orders.map((order) => order.id),
         (batch) => supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)")
           .in("order_id", batch)
           .order("created_at", { ascending: false })
           .order("id", { ascending: false }),
@@ -367,6 +367,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   ];
   // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
   const pendingTotal = allFigures ? Number(allFigures.pending_cents) || 0 : null;
+  // Old step-by-step payouts still being sent (changeover): "$X on its way" on the card.
+  const onItsWayCents = allFigures ? legacyOnItsWayCents(earnings, placed) : 0;
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
     if (client === "All clients") return [row];
@@ -502,6 +504,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
             pendingTotal={pendingTotal}
+            onItsWayCents={onItsWayCents}
           />}
           <label className="payments-client-filter">
             <span>Filter by client</span>

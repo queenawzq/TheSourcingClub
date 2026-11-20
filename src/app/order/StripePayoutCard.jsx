@@ -360,6 +360,8 @@ export default function StripePayoutCard({
   problem = null,
   // The page's Pending figure (all clients, US$ cents): the card's "$X pending" is read from it.
   pendingTotal = null,
+  // Old step-by-step payouts still being sent (legacyOnItsWayCents): said on their own line.
+  onItsWayCents = 0,
   renderCard = true,
   initialAction = null,
   initialMethodId = null,
@@ -940,7 +942,7 @@ export default function StripePayoutCard({
   // card lists on their own rows, so no amount is said twice on the card.
   const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
   const openListed = (fromBalance.opens ?? []).reduce((sum, w) => sum + Number(w.amount_cents ?? 0), 0);
-  const cardPending = cardPendingCents(pendingTotal, openListed);
+  const cardPending = cardPendingCents(pendingTotal, openListed + (Number(onItsWayCents) || 0));
 
   // One balance, one Withdraw (D5). Every saved method withdraws from it;
   // Withdraw opens on the default, and "Withdraw to" lists every method,
@@ -1002,6 +1004,7 @@ export default function StripePayoutCard({
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
+          {figures && onItsWayCents > 0 && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(onItsWayCents, "USD")} on its way</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">

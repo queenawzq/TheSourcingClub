@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
-  owedClearingNote, refundPendingWord, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
+  legacyOnItsWayCents, owedClearingNote, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -160,6 +160,46 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const p = checkTotal(paid, "partial, paid");
   assert.equal(p.paid, 390, "partial: Paid out is what arrived");
   assert.equal(p.total, 990, "partial: Total less the fee");
+}
+
+// N7: a step still clearing reads Pending from the payment alone, so the order
+// page (no figures) and Payments say the same word.
+{
+  const clearingStep = pay("c1", 500, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
+  assert.equal(stillClearing(clearingStep), true);
+  assert.equal(earningStatus(clearingStep), "Pending", "the order page: Pending while the card payment clears");
+  assert.equal(earningStatus(clearingStep, null, new Map([["c1", new Set(["pending"])]])), "Pending", "Payments: the same word");
+  const cleared = { ...clearingStep, funds_available_at: "2020-01-01T00:00:00Z" };
+  assert.equal(earningStatus(cleared), "Added to your balance", "once cleared, in the balance on both");
+  assert.equal(earningStatus({ ...clearingStep, withdrawal_pool: true }), "Added to your balance", "old pool money is never clearing");
+}
+
+// N4: an old step-by-step payout still being sent is "on its way", not
+// "pending … once processing finishes"; one failed and waiting for staff too.
+{
+  const attemptOf = (status) => ({ id: `a-${status}`, provider: "wise", status, amount_cents: 300, created_at: "2026-11-02T00:00:00Z", money_left_at: "2026-11-02T00:00:00Z" });
+  const rows = [
+    pay("sending", 300, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("processing")] }),
+    pay("bounced", 500, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("failed")] }),
+    pay("clearing", 700, "confirmed", APPROVED),
+    pay("free", 900, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("failed")] }),
+  ];
+  const placed = new Map([["sending", new Set(["pending"])], ["bounced", new Set(["pending"])], ["clearing", new Set(["pending"])], ["free", new Set(["available"])]]);
+  assert.equal(legacyOnItsWayCents(rows, placed), 800, "processing and failed-for-staff steps the server holds in Pending");
+  assert.equal(legacyOnItsWayCents(rows, new Map()), 0, "nothing without the server's figures");
+}
+
+// F6: a step released by one-balance withdrawals is listed once, by its
+// withdrawal, never as an extra "Bank transfer — Completed".
+{
+  const base = { order: { brand_org_id: "brand-1", status: "active" }, released_by: "staff-1", released_at: "2026-11-20T00:00:00Z" };
+  const byPaypal = pay("w1", 1000, "released", { ...base, released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });
+  const mixed = pay("w2", 1000, "released", { ...base, released_note: "Withdrawn", payment_takes: [{ status: "sent" }, { status: "sent" }] });
+  const noEmbed = pay("w3", 1000, "released", { ...base, released_note: "Withdrawn" });
+  assert.deepEqual(withdrawalRows([byPaypal, mixed, noEmbed]), [], "no second withdrawal row for money a withdrawal took");
+  assert.equal(staffBankNote(byPaypal), null, "and no staff reference on it");
+  const byBank = pay("w4", 1000, "released", { ...base, released_note: "Wire 9", bank_payouts: { paid_to_bank: "Demo Bank", paid_to_last4: "0001" } });
+  assert.equal(withdrawalRows([byBank]).length, 1, "staff's bank payout keeps its row");
 }
 
 // Money held on a cancelled order is in no figure; approved before the
