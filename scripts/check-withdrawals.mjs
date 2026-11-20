@@ -554,42 +554,77 @@ for (const [why, row] of [
   assert.match(board, /get\("tab"\)/, "?tab= opens the tab asked for");
   assert.match(board, /\? chosen : "payout"/, "and with none asked for, the board opens on Payout owed");
   assert.doesNotMatch(board, /firstWithRows/, "the board no longer picks a tab of its own");
+  // One rule for the board's queues and the overview's link (43273dc1).
+  const { boardSections, countedByOverview, countedQueue } = await import("../src/shared/payments-board-sections.mjs");
   const admin = fs.readFileSync(new URL("../src/lib/domain/admin.js", import.meta.url), "utf8");
+  assert.match(admin, /from "\.\.\/\.\.\/shared\/payments-board-sections\.mjs"/, "the link uses the board's own rule");
+  assert.match(board, /payments-board-sections\.mjs/, "and so does the board");
   const start = admin.indexOf("export async function paymentsQueueHref");
   const end = admin.indexOf("\n}\n", start) + 2;
-  // Run the real function against a fake client (the module itself needs the browser build).
+  // The real function, run against a fake client (the module itself needs the browser build).
   // eslint-disable-next-line no-new-func
-  const paymentsQueueHref = new Function("supabase", `${admin.slice(start, end).replace("export ", "")}; return paymentsQueueHref;`);
+  const paymentsQueueHref = new Function("supabase", "countedQueue", `${admin.slice(start, end).replace("export ", "")}; return paymentsQueueHref;`);
   const BOARD = "/app.html/admin/payments";
-  const owed = (over = {}) => ({ payment_id: `p${Math.random()}`, state: "confirmed", release_requested_at: "x", order_status: "active", ...over });
-  const hrefFor = ({ rows = [], withdrawals = [], pool = [], disputed = [], stuck = [], fail = null } = {}) => paymentsQueueHref({
+  let n = 0;
+  const owed = (over = {}) => ({ payment_id: `p${++n}`, state: "confirmed", release_requested_at: "2026-11-01", order_status: "active",
+    stripe_payment_intent_id: `pi_${n}`, factory_stripe_ready: false, payout_method: "paypal", ...over });
+  const fake = ({ rows = [], attempts = [], withdrawals = [], pool = [], disputed = [], stuck = [], fail = null } = {}) => ({
     rpc: async (name) => {
-      if (fail === name) return { data: null, error: { message: "down" } };
       if (fail === "throw") throw new Error("offline");
+      if (fail === name) return { data: null, error: { message: "down" } };
       if (name === "admin_payment_board") return { data: rows, error: null };
+      if (name === "admin_provider_attempts") return { data: attempts, error: null };
       if (name === "admin_withdrawals") return { data: { withdrawals, pool_payment_ids: pool }, error: null };
       if (name === "admin_balance_attention") return { data: { disputed, stuck }, error: null };
       throw new Error(`unexpected ${name}`);
     },
-  })();
-  const all = {
-    rows: [owed({ stripe_release_started: true }), owed({ provider_status: "failed" }), owed({ provider_status: "processing" })],
-    withdrawals: [{ status: "requested" }], disputed: [{}], stuck: [{}],
+  });
+  const hrefFor = (world) => paymentsQueueHref(fake(world), countedQueue)();
+  const sectionOf = (world, row) => {
+    const sections = boardSections(world.rows ?? [], new Map((world.attempts ?? []).map((a) => [a.payment_id, a])), new Set(world.pool ?? []));
+    return Object.keys(sections).find((id) => sections[id].includes(row)) ?? null;
   };
-  assert.equal(await hrefFor(all), BOARD, "Payout owed first, when it has rows");
-  assert.equal(await hrefFor({ ...all, rows: all.rows.slice(1) }), `${BOARD}?tab=failed`, "else Failed");
+
+  // One row per queue: a Stripe release started (Payout owed), a PayPal payout
+  // that failed (Failed), a Wise payout under way (Processing).
+  const stripeStarted = owed({ stripe_release_started: true, factory_stripe_ready: true, payout_method: null });
+  const paypalFailed = owed({ payout_method: "paypal" });
+  const wiseMoving = owed({ payout_method: "bank", wise_recipient_type: "iban" });
+  const attempts = [
+    { payment_id: paypalFailed.payment_id, status: "failed", updated_at: "2026-11-10T00:00:00Z" },
+    { payment_id: wiseMoving.payment_id, status: "processing", updated_at: "2026-11-10T00:00:00Z" },
+  ];
+  const all = { rows: [stripeStarted, paypalFailed, wiseMoving], attempts, withdrawals: [{ status: "requested" }], disputed: [{}], stuck: [{}] };
+  assert.deepEqual([sectionOf(all, stripeStarted), sectionOf(all, paypalFailed), sectionOf(all, wiseMoving)], ["payout", "failed", "clearing"],
+    "the board puts each in its queue");
+  assert.equal(await hrefFor(all), BOARD, "Payout owed first, when it has a counted row");
+  assert.equal(await hrefFor({ ...all, rows: [paypalFailed, wiseMoving] }), `${BOARD}?tab=failed`, "else Failed");
   assert.equal(await hrefFor({ rows: [owed({ state: "processing", order_status: "cancelled", refund_failed_at: "x" })] }), `${BOARD}?tab=failed`,
     "a cancelled order's refund Stripe refused is under Failed");
-  assert.equal(await hrefFor({ ...all, rows: all.rows.slice(2) }), `${BOARD}?tab=processing`, "else Processing");
+  assert.equal(await hrefFor({ ...all, rows: [wiseMoving] }), `${BOARD}?tab=processing`, "else Processing");
   assert.equal(await hrefFor({ ...all, rows: [] }), `${BOARD}?tab=withdrawals`, "else Withdrawals");
   assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], disputed: [{}] }), `${BOARD}?tab=needs_checking`,
     "else Needs checking (a finished withdrawal is not waiting)");
   assert.equal(await hrefFor({}), BOARD, "nothing waiting: the board");
-  assert.equal(await hrefFor({ rows: [owed()], pool: [] }), BOARD, "owed money waiting in a balance is no queue of staff's: the board");
-  const pooled = owed({ provider_status: "failed" });
-  assert.equal(await hrefFor({ rows: [pooled], pool: [pooled.payment_id], stuck: [{}] }), `${BOARD}?tab=needs_checking`,
+  // Owed money waiting in a balance is no queue of staff's.
+  const waiting = owed();
+  assert.equal(countedByOverview(waiting), false);
+  assert.equal(await hrefFor({ rows: [waiting] }), BOARD, "owed money in a balance: the board");
+  assert.equal(await hrefFor({ rows: [paypalFailed], attempts, pool: [paypalFailed.payment_id], stuck: [{}] }), `${BOARD}?tab=needs_checking`,
     "a step in a withdrawal's balance is not counted under Failed");
-  for (const fail of ["admin_payment_board", "admin_withdrawals", "admin_balance_attention", "throw"]) {
+
+  // A PayPal payout that failed, and the factory changed its details since:
+  // no longer under Failed (Pay again would use the old details) but under
+  // Payout owed, still counted; the board and the link agree on it.
+  {
+    const changed = owed({ payout_method: "paypal", payout_changed_at: "2026-11-12T00:00:00Z" });
+    const world = { rows: [changed], attempts: [{ payment_id: changed.payment_id, status: "failed", updated_at: "2026-11-10T00:00:00Z" }] };
+    assert.equal(sectionOf(world, changed), "payout", "failed, then details changed: Payout owed on the board");
+    assert.equal(countedByOverview(changed, new Map(world.attempts.map((a) => [a.payment_id, a]))), true, "still counted for staff");
+    assert.equal(await hrefFor(world), BOARD, "and the link opens Payout owed, where the board shows it");
+  }
+
+  for (const fail of ["admin_payment_board", "admin_provider_attempts", "admin_withdrawals", "admin_balance_attention", "throw"]) {
     assert.equal(await hrefFor({ ...all, fail }), BOARD, `a failed read (${fail}): the plain board link`);
   }
 }
