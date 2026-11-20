@@ -306,6 +306,84 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     "R10: and the dispute Stripe holds on the charge");
 }
 
+// Fix round 10 (b): the backfill's per-payment decision (api/_backfill.js),
+// with no stack and no Stripe.
+{
+  const { decideBackfill, applyBackfill } = await import("../api/_backfill.js");
+  const row = (over = {}) => ({ id: "pay-b", state: "confirmed", funds_available_at: "2026-11-01T00:00:00Z", disputed_at: null, ...over });
+  const charge = (over = {}) => ({ id: "ch_b", payment_intent: "pi_b", amount: 10000, amount_refunded: 0, refunded: false, disputed: false,
+    balance_transaction: { available_on: 1795478400 }, ...over });
+  const world = () => {
+    const calls = [];
+    const refundsMade = [];
+    const db = {
+      rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "pay-b", state: "confirmed", order_id: "o1", stripe_payment_intent_id: "pi_b", stripe_charge_id: "ch_b" }, error: null }) }) }) }),
+    };
+    const stripe = { refunds: { list: async () => ({ data: [{ id: "re_1", metadata: {} }] }), create: async (args) => (refundsMade.push(args), { id: "re_new" }) } };
+    return { calls, refundsMade, db, stripe };
+  };
+
+  // Nothing differs: nothing to do.
+  assert.deepEqual(decideBackfill({ row: row(), charge: charge() }), {}, "in line with Stripe: nothing");
+  // No clearing date: Stripe's, or null while Stripe has none.
+  assert.equal(decideBackfill({ row: row({ funds_available_at: null }), charge: charge() }).date, new Date(1795478400 * 1000).toISOString());
+  assert.equal(decideBackfill({ row: row({ funds_available_at: null }), charge: charge({ balance_transaction: null }) }).date, null);
+
+  // Disputed in Stripe (open), not recorded: record it, on hold.
+  {
+    const d = decideBackfill({ row: row(), charge: charge({ disputed: true, dispute: "du_1" }), dispute: { id: "du_1", status: "needs_response" } });
+    assert.deepEqual(d, { disputed: true }, "disputed and not recorded: disputed true");
+    const w = world();
+    await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge({ disputed: true }), decision: d, write: true });
+    assert.deepEqual(w.calls, [["record_payment_disputed", { target_payment: "pay-b", disputed: true }]]);
+    const dry = world();
+    const lines = await applyBackfill({ stripe: dry.stripe, db: dry.db, row: row(), charge: charge(), decision: d, write: false });
+    assert.equal(dry.calls.length, 0, "a dry run writes nothing");
+    assert.match(lines[0], /on hold \(not written\)/);
+  }
+  // Recorded as disputed, won in Stripe (disputed stays true there): hold lifted.
+  {
+    for (const status of ["won", "warning_closed"]) {
+      const d = decideBackfill({ row: row({ disputed_at: "2026-11-19T00:00:00Z" }), charge: charge({ disputed: true }), dispute: { status } });
+      assert.deepEqual(d, { disputed: false }, `${status}: disputed false`);
+    }
+    const w = world();
+    await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge(), decision: { disputed: false }, write: true });
+    assert.deepEqual(w.calls, [["record_payment_disputed", { target_payment: "pay-b", disputed: false }]]);
+  }
+  // Won and not recorded, or open and recorded: nothing to change.
+  assert.deepEqual(decideBackfill({ row: row(), charge: charge({ disputed: true }), dispute: { status: "won" } }), {});
+  assert.deepEqual(decideBackfill({ row: row({ disputed_at: "2026-11-19T00:00:00Z" }), charge: charge({ disputed: true }), dispute: { status: "lost" } }), {});
+
+  // Refunded in full in Stripe, still confirmed here: the refund is recorded, no new refund is made.
+  {
+    const c = charge({ amount_refunded: 10000, refunded: true });
+    const d = decideBackfill({ row: row(), charge: c });
+    assert.equal(d.refund, "full");
+    const w = world();
+    await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: c, decision: d, write: true });
+    assert.ok(w.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-b"), "the refund is recorded");
+    assert.equal(w.refundsMade.length, 0, "no refunds.create: the charge is refunded already");
+  }
+  // Partly refunded: reported for staff, nothing written.
+  {
+    const c = charge({ amount_refunded: 2500, refunded: false });
+    const d = decideBackfill({ row: row(), charge: c });
+    assert.equal(d.refund, "partial");
+    const w = world();
+    const lines = await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: c, decision: d, write: true });
+    assert.equal(w.calls.length, 0, "a partial refund writes nothing");
+    assert.equal(w.refundsMade.length, 0);
+    assert.match(lines.join(" "), /for staff, not changed/);
+  }
+  // A released step's refund is not this script's to record.
+  assert.equal(decideBackfill({ row: row({ state: "released" }), charge: charge({ amount_refunded: 10000, refunded: true }) }).refund, undefined);
+  // The script uses this module, not a copy of the rules.
+  const script = (await import("node:fs")).readFileSync(new URL("./backfill-funds-available.mjs", import.meta.url), "utf8");
+  assert.ok(script.includes("decideBackfill") && script.includes("applyBackfill"), "the backfill script runs these two functions");
+}
+
 // (d) A Stripe withdrawal records who asked from the token's subject when the
 // auth server gives no user for it (the database had just accepted it).
 {
