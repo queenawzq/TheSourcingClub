@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyChargeUpdated, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -100,13 +100,27 @@ export default async function handler(request, response) {
         try {
           const payment = await applyPaymentIntent({ stripe, db, intent });
           if (!payment) console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id);
-          // When the brand's money clears decides Available or Pending: a
-          // failure to record it fails this delivery, so Stripe sends it again.
-          else if (event.type === "payment_intent.succeeded") await ensureFundsAvailable({ stripe, db, paymentId: payment.id });
+          // When the brand's money clears decides Available or Pending.
+          // applyPaymentIntent already waited a few seconds for Stripe's
+          // balance transaction; if there is still no date (or recording it
+          // failed), this delivery fails so Stripe sends it again. The
+          // payment itself is recorded either way.
+          else if (event.type === "payment_intent.succeeded") {
+            const at = await ensureFundsAvailable({ stripe, db, paymentId: payment.id });
+            if (!at && ["confirmed", "released"].includes(payment.state) && payment.stripe_charge_id) {
+              throw new Error("the charge has no clearing date from Stripe yet");
+            }
+          }
         } catch (failure) {
           if (!ORPHANED.has(failure.code)) throw failure;
           console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id, failure.code);
         }
+        break;
+      }
+      case "charge.updated": {
+        // Stripe adds the balance transaction a few seconds after the charge:
+        // its clearing date is recorded here if nothing recorded it yet.
+        await applyChargeUpdated({ stripe, db, charge: event.data.object });
         break;
       }
       case "charge.refunded": {

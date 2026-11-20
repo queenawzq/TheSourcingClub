@@ -2,7 +2,7 @@ import { payoutBankOptions } from "./_payout-bank-options.js";
 import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js";
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
-import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { PAYOUT_COUNTRIES, appOrigin, callerClient, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import { balanceFigures, usdCents } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
@@ -230,6 +230,8 @@ export default async function handler(request, response) {
         .catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
       // A payout that failed or was cancelled gives its fee back even if its webhook never came.
       await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
+      // Funded payments Stripe gave a clearing date after they were recorded.
+      await ensureFundsAvailableFor({ stripe, db, orgId });
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const [balance, allocation, methods, onTheirWay, displayFx, tscBalance, owedReach, poolLeft] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),

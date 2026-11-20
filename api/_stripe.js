@@ -409,7 +409,9 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     // A payment-only step is owed to the factory the moment it is funded, but
     // nothing is sent: it waits in the factory's balance until it withdraws.
     // When the charge's money becomes available decides Available or Pending.
-    await recordFundsAvailable({ stripe, db, paymentId, charge })
+    // Stripe attaches the charge's balance transaction a few seconds after
+    // the payment succeeds: waited for briefly. Never fails the recording.
+    await recordFundsAvailable({ stripe, db, paymentId, charge, waitMs: FUNDS_WAIT_MS })
       .catch((failure) => logStripeFailure("funds-available", failure, { paymentId }));
     return result.payment;
   }
@@ -420,20 +422,35 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
   return data;
 }
 
+/** How long a fresh payment waits for Stripe to attach its balance transaction (about 1.5 to 5 s after confirming). */
+export const FUNDS_WAIT_MS = 10_000;
+const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 /**
  * Record when a charge's money is available on TSC's Stripe account (its
  * balance transaction's available_on): until then the factory's owed money
  * for it is Pending, not Available, and cannot be withdrawn through Stripe.
+ * A charge that has no balance transaction yet (Stripe adds it a few seconds
+ * after the payment succeeds) is read again, backing off, for up to `waitMs`.
  * Returns the date, or null when Stripe has none yet.
  */
-export async function recordFundsAvailable({ stripe, db, paymentId, charge }) {
+export async function recordFundsAvailable({ stripe, db, paymentId, charge, waitMs = 0 }) {
   if (!charge) return null;
-  let transaction = charge.balance_transaction;
-  if (!transaction) {
-    const fresh = await stripe.charges.retrieve(charge.id ?? charge, { expand: ["balance_transaction"] });
-    transaction = fresh.balance_transaction;
-  } else if (typeof transaction === "string") {
-    transaction = await stripe.balanceTransactions.retrieve(transaction);
+  const chargeId = typeof charge === "string" ? charge : charge.id;
+  let transaction = typeof charge === "string" ? null : charge.balance_transaction;
+  const deadline = Date.now() + waitMs;
+  let delay = 500;
+  for (;;) {
+    if (!transaction) {
+      const fresh = await stripe.charges.retrieve(chargeId, { expand: ["balance_transaction"] });
+      transaction = fresh.balance_transaction;
+    } else if (typeof transaction === "string") {
+      transaction = await stripe.balanceTransactions.retrieve(transaction);
+    }
+    if (Number(transaction?.available_on) || Date.now() + delay > deadline) break;
+    transaction = null;
+    await pause(delay);
+    delay = Math.min(delay * 2, 3000);
   }
   const seconds = Number(transaction?.available_on);
   if (!seconds) return null;
@@ -443,18 +460,59 @@ export async function recordFundsAvailable({ stripe, db, paymentId, charge }) {
 }
 
 /**
- * A funded Stripe payment whose clearing date is still missing (recording it
- * failed, or it was cleared because the charge changed) gets it now. Throws
- * when Stripe or the database fails, so a webhook delivery is tried again.
- * Returns the date, or null when there is nothing to record.
+ * A funded Stripe payment whose clearing date is still missing (Stripe had
+ * none yet, recording it failed, or it was cleared because the charge
+ * changed) gets it now. Throws when Stripe or the database fails, so a
+ * webhook delivery is tried again. Returns the date, or null when there is
+ * nothing to record or Stripe has no date yet.
  */
-export async function ensureFundsAvailable({ stripe, db, paymentId }) {
+export async function ensureFundsAvailable({ stripe, db, paymentId, waitMs = 0 }) {
   const { data: payment, error } = await db.from("order_payments")
     .select("id, state, stripe_charge_id, funds_available_at").eq("id", paymentId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!payment || !["confirmed", "released"].includes(payment.state) || !payment.stripe_charge_id) return null;
   if (payment.funds_available_at) return payment.funds_available_at;
-  return recordFundsAvailable({ stripe, db, paymentId, charge: { id: payment.stripe_charge_id } });
+  return recordFundsAvailable({ stripe, db, paymentId, charge: payment.stripe_charge_id, waitMs });
+}
+
+/**
+ * Before a factory's balance is read: its funded Stripe payments still
+ * without a clearing date get one (a few per read, within `budgetMs`), so a
+ * date Stripe added after the payment was recorded is never missed for long.
+ * Never throws; returns how many were recorded in time.
+ */
+export async function ensureFundsAvailableFor({ stripe, db, orgId, limit = 5, budgetMs = 4000 }) {
+  const work = (async () => {
+    const { data, error } = await db.from("order_payments")
+      .select("id, production_orders!inner(factory_org_id)")
+      .eq("production_orders.factory_org_id", orgId).in("state", ["confirmed", "released"])
+      .not("stripe_charge_id", "is", null).is("funds_available_at", null)
+      .order("confirmed_at", { ascending: true }).limit(limit);
+    if (error) return 0;
+    const done = await Promise.all((data ?? []).map((row) => ensureFundsAvailable({ stripe, db, paymentId: row.id })
+      .catch((failure) => { logStripeFailure("funds-available", failure, { paymentId: row.id }); return null; })));
+    return done.filter(Boolean).length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Stripe's charge.updated: the balance transaction has appeared on a charge
+ * whose payment is recorded with no clearing date. Returns the date or null.
+ */
+export async function applyChargeUpdated({ stripe, db, charge }) {
+  if (!charge?.id || !charge.balance_transaction) return null;
+  const { data: payment, error } = await db.from("order_payments")
+    .select("id, state, funds_available_at").eq("stripe_charge_id", charge.id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment || !["confirmed", "released"].includes(payment.state) || payment.funds_available_at) return null;
+  return recordFundsAvailable({ stripe, db, paymentId: payment.id, charge });
 }
 
 /**
