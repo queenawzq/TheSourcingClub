@@ -565,10 +565,21 @@ for (const [why, row] of [
           take.attempted_at ??= new Date().toISOString();
           return { data: take.attempted_at, error: null };
         }
-        if (name === "return_take") {
+        if (name === "return_take" || name === "return_take_leased") {
+          // Only the call holding the withdrawal's live lease may hand a part back (20261120230000).
           const take = takes.find((t) => t.id === args.target_take);
+          const row = rows.find((r) => r.id === take.stripe_withdrawal_id);
+          if (row && leased(row) && row.lease_until !== (args.lease ?? null)) {
+            return { data: null, error: { message: "this withdrawal is being processed", code: "22023", hint: "withdrawal_busy" } };
+          }
           if (take.status === "held") take.status = "returned";
           return { data: null, error: null };
+        }
+        if (name === "lease_stripe_withdrawal") {
+          const row = rows.find((r) => r.id === args.target);
+          if (!row || leased(row)) return { data: null, error: null };
+          row.lease_until = lease();
+          return { data: structuredClone(row), error: null };
         }
         if (name === "record_payment_refunded") {
           steps.find((st) => st.id === args.target_payment).refundRecorded = true;
@@ -940,6 +951,27 @@ for (const [why, row] of [
       const answer = await check(x);
       assert.equal(x.take.status, "held", "R2-3: a key clash on Check again leaves the part held");
       assert.equal(answer.unsure, 5000);
+    }
+    // R3-1: another call holds the withdrawal's lease: Check again touches no
+    // part and says it is still not settled.
+    {
+      const x = stuck({ attemptedAgo: DAY + 3600_000 });
+      x.row.lease_until = new Date(Date.now() + 90_000).toISOString();
+      let asked = 0;
+      x.w.stripe.onTransfer = () => { asked += 1; return undefined; };
+      const answer = await check(x);
+      assert.equal(x.take.status, "held", "R3-1: a part of a withdrawal another call holds is not touched");
+      assert.equal(asked, 0, "and Stripe is not asked");
+      assert.equal(answer.done, false);
+      assert.match(answer.sentence, /\$50\.00 is still not settled/, "said as still not settled");
+      assert.ok(Date.parse(x.row.lease_until) > Date.now(), "the other call's lease is left as it was");
+    }
+    // And a stale return (no lease) while another call holds it is refused by the database.
+    {
+      const x = stuck();
+      x.row.lease_until = new Date(Date.now() + 90_000).toISOString();
+      const refusedReturn = await x.w.db.rpc("return_take", { target_take: x.take.id });
+      assert.equal(refusedReturn.error?.hint, "withdrawal_busy", "the fake database models the lease rule");
     }
     // Nothing held: said so.
     {

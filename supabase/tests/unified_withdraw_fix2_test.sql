@@ -127,7 +127,7 @@ values ('cb2a2000-0000-0000-0000-000000000001', 'cb2b0000-0000-0000-0000-0000000
 insert into public.stripe_withdrawals (id, org_id, stripe_account_id, request_key, request_id, amount_minor, currency, usd_cents, state)
 select ('cb280000-0000-0000-0000-00000000000' || k)::uuid, 'cb2b0000-0000-0000-0000-0000000000e2', 'acct_pgtap_uw2_2',
        'pgtap-uw2-sw-' || k, gen_random_uuid(), 100, 'USD', 100, 'claimed'
-  from generate_series(1, 6) k;
+  from generate_series(1, 7) k;
 set local session_replication_role = origin;
 
 -- F3: the $1,000 step's PayPal attempt (its $20 fee recorded before PayPal was
@@ -302,6 +302,31 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
   (select format('select public.return_take(%L)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5))),
   'the server confirmed no transfer exists: return_take');
 select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5)), 'returned', 'F5: now it is back in the balance');
+-- R3-1: only the call holding the withdrawal's live lease hands a part back.
+select lives_ok($$select pg_temp.stripe_claim(2, 300, pg_temp.sw(7))$$, 'a seventh claims $3');
+select lives_ok(format($$select pg_temp.as_server(%L)$$,
+  (select format('select public.mark_take_attempted(%L)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
+  'its transfer is asked for');
+set local session_replication_role = replica;
+update public.stripe_withdrawals set lease_until = '2999-01-01 00:00:00+00' where id = pg_temp.sw(7);
+set local session_replication_role = origin;
+select throws_ok(format($$select pg_temp.as_server(%L)$$,
+  (select format('select public.return_take(%L)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
+  '22023', null, 'R3-1: return_take is refused while another call holds the withdrawal');
+select throws_ok(format($$select pg_temp.as_server(%L)$$,
+  (select format('select public.return_take_leased(%L, %L)', id, '2000-01-01 00:00:00+00') from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
+  '22023', null, 'R3-1: and return_take_leased with someone else''s lease');
+select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7)), 'held', 'R3-1: the part stays held');
+select is(public.lease_stripe_withdrawal(pg_temp.sw(7)), null::public.stripe_withdrawals,
+  'R3-1: and nobody else can take the lease while it is live');
+select lives_ok(format($$select pg_temp.as_server(%L)$$,
+  (select format('select public.return_take_leased(%L, %L)', id, '2999-01-01 00:00:00+00') from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
+  'R3-1: the call holding the lease returns it');
+select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7)), 'returned', 'R3-1: returned');
+select ok(not has_function_privilege('authenticated', 'public.return_take_leased(uuid, timestamptz)', 'execute')
+      and not has_function_privilege('authenticated', 'public.lease_stripe_withdrawal(uuid)', 'execute')
+      and not has_function_privilege('anon', 'public.return_take_leased(uuid, timestamptz)', 'execute')
+      and not has_function_privilege('anon', 'public.lease_stripe_withdrawal(uuid)', 'execute'), 'R3-1: both are the server''s');
 select ok(not has_function_privilege('authenticated', 'public.mark_take_attempted(uuid)', 'execute')
       and not has_function_privilege('anon', 'public.mark_take_attempted(uuid)', 'execute'), 'mark_take_attempted is the server''s');
 
