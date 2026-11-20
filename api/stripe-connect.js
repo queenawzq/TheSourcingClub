@@ -93,6 +93,12 @@ export default async function handler(request, response) {
   if (tokenRefused(owner) || tokenRefused(orgRead)) return reply(response, 401, { error: "sign in is required" });
   const { data: isOwner } = owner;
   const { data: org } = orgRead;
+  // Any member of a factory reads the same figures the owner's card shows
+  // (Stripe's balance amounts included); nothing that can change the account.
+  if (action === "figures") {
+    if (!org || org.type === "brand") return reply(response, 403, { error: "that company is not available to you" });
+    return memberFigures({ stripe, db, caller, orgId, response });
+  }
   if (!isOwner || !org || org.type === "brand") {
     return reply(response, 403, { error: "only an owner of a factory or trading company can set up its payouts" });
   }
@@ -367,6 +373,74 @@ export default async function handler(request, response) {
     return reply(response, 502, {
       error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes."),
       ...(figures ? { figures } : {}),
+    });
+  }
+}
+
+/**
+ * The `figures` (and `reach`) of the `balance` action, for any member of the
+ * factory: read only. No withdrawal is settled, no fee returned, no account,
+ * method or session touched. The database decides membership
+ * (factory_balance() refuses a non-member, read with the caller's token).
+ */
+async function memberFigures({ stripe, db, caller, orgId, response }) {
+  const tsc = await caller.rpc("factory_balance", { target_org: orgId });
+  if (tokenRefused(tsc)) return reply(response, 401, { error: "sign in is required" });
+  if (tsc.error) return reply(response, tsc.error.code === "42501" ? 403 : 502, { error: tsc.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
+  const [owedReach, poolLeft, existingRead] = await Promise.all([
+    db.rpc("owed_reachable", { target_org: orgId }),
+    db.rpc("factory_withdrawable", { target_org: orgId }),
+    db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).maybeSingle(),
+  ]);
+  const poolCents = Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0);
+  const existing = existingRead.data;
+  if (!existing) {
+    return reply(response, 200, {
+      figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: false },
+      reach: { stripe_cents: 0, pool_cents: poolCents, estimated: false },
+    });
+  }
+  try {
+    // Funded payments Stripe gave a clearing date after they were recorded.
+    await ensureFundsAvailableFor({ stripe, db, orgId });
+    const fresh = await caller.rpc("factory_balance", { target_org: orgId });
+    const upgrade = await connectUpgrade(db, orgId);
+    const [balance, allocation, onTheirWay, displayFx] = await Promise.all([
+      stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+      payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
+      payoutsOnTheirWay(stripe, existing.stripe_account_id),
+      payoutDisplayRates(),
+    ]);
+    let recovery = null;
+    if (upgrade?.completed_at) {
+      const funds = await stripe.balance.retrieve({}, { stripeAccount: upgrade.old_account_id });
+      recovery = { available: funds.available, pending: funds.pending };
+      const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
+      allocation.payouts.push(...historical.payouts);
+    }
+    const figures = { ...balanceFigures(fresh.error ? tsc.data : fresh.data, {
+      available: [...balance.available, ...(recovery?.available ?? [])],
+      pending: [...balance.pending, ...(recovery?.pending ?? [])],
+      onTheirWay,
+      payouts: allocation.payouts,
+    }, displayFx), stripe_unavailable: false };
+    let inStripeUsd = 0;
+    let estimated = false;
+    for (const entry of balance.available) {
+      const cents = usdCents(entry.amount, entry.currency, displayFx);
+      if (cents == null) continue;
+      if (entry.currency.toLowerCase() !== "usd" && entry.amount) estimated = true;
+      inStripeUsd += cents;
+    }
+    return reply(response, 200, {
+      figures,
+      reach: { stripe_cents: Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd, pool_cents: poolCents, estimated },
+    });
+  } catch (failure) {
+    logStripeFailure("stripe-connect figures", failure, { orgId });
+    return reply(response, 502, {
+      error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes."),
+      figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: true },
     });
   }
 }

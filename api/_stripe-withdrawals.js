@@ -623,17 +623,25 @@ export const payoutFields = (payout) => ({
  */
 async function tellWithdrawalAsked(stripe, db, row, payout) {
   try {
+    let to = row.destination_label ?? null;
+    // Where it went, kept on the row for every member's list (they cannot
+    // read the Stripe account's methods), in the list's own words.
+    if (!to) {
+      const destination = typeof payout?.destination === "string" ? payout.destination : payout?.destination?.id;
+      const method = destination
+        ? await stripe.accounts.retrieveExternalAccount(row.stripe_account_id, destination).catch(() => null) : null;
+      if (method?.last4) {
+        to = `${method.object === "card" ? "Debit card" : "Bank account"} ending in ${method.last4}`;
+        await update(db, row, { destination_label: to, destination_bank: method.bank_name ?? method.brand ?? null })
+          .catch((failure) => console.error("stripe-withdrawals destination", row.id, failure?.message));
+      }
+    }
     const { data: already } = await db.from("notifications").select("id")
       .eq("kind", "withdrawal").eq("subject_type", "withdrawal").eq("subject_id", row.id).limit(1);
     if (already?.length) return;
     const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
     const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
-    let to = "your bank account";
-    const destination = typeof payout?.destination === "string" ? payout.destination : payout?.destination?.id;
-    if (destination) {
-      const method = await stripe.accounts.retrieveExternalAccount(row.stripe_account_id, destination).catch(() => null);
-      if (method?.last4) to = `${method.object === "card" ? "Debit card" : "Bank account"} ending in ${method.last4}`;
-    }
+    to = to ?? "your bank account";
     await db.from("notifications").insert({
       org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
       title: `Withdrawal of ${asked} requested`, body: `To ${to}.`,
