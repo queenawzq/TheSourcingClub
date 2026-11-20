@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(166);
+select plan(168);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -500,6 +500,12 @@ reset role;
 -- Order A's balance is held and owed to the factory (funding it asked for
 -- its payout), which is exactly what the server claims before a transfer.
 
+-- F1 (20261120110000): an owed step nobody started cannot be claimed for a
+-- Stripe transfer on its own; only a withdrawal's claim (tsc.withdrawal_claim) can.
+select is(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')), null::timestamptz, 'outside a withdrawal: an owed, unstarted step cannot be claimed for a Stripe transfer');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')), 'outside a withdrawal: and it stays unclaimed');
+select set_config('tsc.withdrawal_claim', 'on', true);
+-- What follows is a withdrawal's claim.
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is not null,
   'the first caller claims the payout');
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is null,

@@ -1440,6 +1440,13 @@ console.log("\nphase 3 — the order runs");
         unmoved && !unmoved.withdrawal_pool && !unmoved.stripe_transfer_id && !unmoved.release_claimed_at && !unmoved.stripe_release_started
           ? ok("approval transfers nothing and puts nothing in the withdrawal pool")
           : fail("approval moved the money", unmoved && { message: JSON.stringify(unmoved) });
+        // F1 (20261120110000): even the server key cannot claim an owed step for a
+        // Stripe transfer outside a withdrawal (an old deployment's /api/stripe-release).
+        const claim = await admin.rpc("claim_payment_release", { target_payment: deposit.id });
+        const { data: afterClaim } = await admin.from("order_payments").select("release_claimed_at").eq("id", deposit.id).single();
+        !claim.error && claim.data === null && !afterClaim?.release_claimed_at
+          ? ok("claim_payment_release refuses an owed step nobody started, and leaves it unclaimed")
+          : fail("LEAK: an owed step was claimed for a Stripe transfer outside a withdrawal", claim.error ?? { message: JSON.stringify(claim.data) });
         const balance = await factoryClient.rpc("factory_balance", { target_org: winner.factory_org_id });
         if (balance.error) fail("the factory reads its one balance", balance.error);
         else {

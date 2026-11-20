@@ -290,6 +290,25 @@ for (const [why, row] of [
     assert.equal(noRate.paid_out_cents, 500, "and the database's own figures stand");
     assert.equal(noRate.total_cents, sum(noRate));
   }
+  // F6: Stripe can't be read. The balance action answers with the database's
+  // figures alone (balanceFigures(db, null)): never empty, never guessed.
+  {
+    const db = tsc({ awaiting_cents: 300, available_cents: 10000, pending_cents: 2000, paid_out_cents: 8000, has_method: true,
+      next_cleared_at: "2026-11-22T00:00:00Z", parts: { stripe_released_cents: 8000 } });
+    const f = balanceFigures(db, null, null);
+    assert.equal(f.stripe, null, "no Stripe part");
+    assert.equal(f.estimated, false);
+    assert.deepEqual([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents], [300, 10000, 2000, 8000],
+      "the database's four figures, unchanged (Stripe-transferred steps stay in Paid out)");
+    assert.equal(f.total_cents, 300 + 10000 + 2000 + 8000);
+    assert.equal(f.has_method, true);
+    assert.equal(f.next_cleared_at, "2026-11-22T00:00:00Z");
+    assert.equal(f.tsc, db, "the database's own answer is passed through");
+    const empty = balanceFigures(null, null, null);
+    assert.equal(empty.total_cents, 0, "nothing at all reads as zero, not as an error");
+    const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    assert.ok(/balanceFigures\(data, null, null\), stripe_unavailable: true/.test(connect), "the balance action falls back to it when Stripe can't be read");
+  }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
     const f = balanceFigures(db, { available: [], pending: [], onTheirWay: [], payouts: [] }, null);

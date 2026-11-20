@@ -532,5 +532,92 @@ select pg_temp.act_as('5'); set local role authenticated;
 select throws_ok($$select * from public.admin_payment_board()$$, '42501', null, 'the board stays staff only');
 reset role;
 
+-- ===========================================================================
+-- 9. Fixes round 1 (20261120110000).
+-- ===========================================================================
+
+-- F1: the database refuses a Stripe claim on an owed step nobody started,
+-- whatever the JavaScript does (an old deployment, a stray caller).
+select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz,
+  'F1: an owed, unstarted step on a Stripe factory cannot be claimed for a transfer');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = pg_temp.pay(1, 1)),
+  'F1: and the row stays unclaimed');
+set local role service_role;
+select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz, 'F1: not even with the server key');
+reset role;
+select ok(pg_temp.owed_untouched(pg_temp.pay(1, 1)), 'F1: still owed and untouched');
+savepoint ub_claim;
+select set_config('tsc.withdrawal_claim', 'on', true);
+select ok(public.claim_payment_release(pg_temp.pay(1, 1)) is not null, 'F1: a withdrawal''s claim (tsc.withdrawal_claim) can claim it');
+select ok((select release_claimed_at is not null from public.order_payments where id = pg_temp.pay(1, 1)), 'F1: and the claim is recorded');
+rollback to savepoint ub_claim;
+select set_config('tsc.withdrawal_claim', '', true);
+select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz, 'F1: the setting is the transaction''s own: off again, refused again');
+
+-- F2: legacy per-step attempts stay staff's after the factory changes its details
+-- or its default. A failed Wise payout (f3) and a processing PayPal payout (f2).
+select pg_temp.act_as('b'); set local role authenticated;
+select set_config('tsc.ub_f2_before', (select payments_awaiting_confirmation::text from public.admin_overview_metrics()), true);
+reset role;
+set local session_replication_role = replica;
+insert into public.provider_payouts (id, payment_id, factory_org_id, account_id, provider, status, paid_to, amount_cents, currency, failure_code, created_at)
+values ('ba1a1000-0000-0000-0000-000000000003', pg_temp.pay(3, 1), pg_temp.org(3), 'ba190000-0000-0000-0000-000000000003', 'wise', 'failed', 'UB WISE LTD', 10000, 'USD', 'details_rejected', now() - interval '1 hour'),
+       ('ba1a1000-0000-0000-0000-000000000002', pg_temp.pay(2, 1), pg_temp.org(2), 'ba190000-0000-0000-0000-000000000002', 'paypal', 'processing', 'pgtap-ub-paypal@example.com', 10000, 'USD', null, now() - interval '1 hour');
+set local session_replication_role = origin;
+-- The Wise factory fixes its details; the PayPal factory moves to Stripe.
+update public.factory_payout_accounts set account_name = 'UB WISE LIMITED', details_changed_at = now() where id = 'ba190000-0000-0000-0000-000000000003';
+insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active, payouts_enabled, details_submitted)
+values (pg_temp.org(2), 'acct_pgtap_ub_2', 'US', true, true, true);
+select pg_temp.act_as('2'); set local role authenticated;
+select lives_ok($$select public.choose_payout_method(pg_temp.org(2), null)$$, 'F2: the PayPal factory switches its default to Stripe mid-payout');
+reset role;
+select pg_temp.act_as('b'); set local role authenticated;
+select is((select provider_status from public.admin_payment_board() where payment_id = pg_temp.pay(3, 1)), 'failed',
+  'F2: the failed Wise payout is still on the board after the factory edited its details');
+select is((select provider || '/' || provider_status from public.admin_payment_board() where payment_id = pg_temp.pay(2, 1)), 'paypal/processing',
+  'F2: the PayPal payout in flight is still on the board, as PayPal, after the switch to Stripe');
+select is((select payments_awaiting_confirmation from public.admin_overview_metrics()), current_setting('tsc.ub_f2_before')::int + 2,
+  'F2: the overview counts both');
+-- One rule in both places: for these fixtures, overview rows = board rows waiting on staff.
+select is(
+  (select count(*)::int from public.admin_payment_board() b
+    where b.payment_id in (select pg_temp.pay(n, s) from generate_series(1, 7) n, generate_series(1, 2) s)
+      and b.state = 'confirmed' and b.release_requested_at is not null
+      and (b.stripe_release_started or b.provider_status in ('processing', 'failed'))),
+  3, 'F2: the board''s waiting-on-staff rows for these fixtures are the three attempts (f2, f3, f4)');
+reset role;
+select pg_temp.act_as('2'); set local role authenticated;
+select is(pg_temp.bal(2, 'pending_cents'), 15000::bigint, 'F2: the factory sees the payout in flight as Pending, with its clearing step');
+select is(pg_temp.bal(2, 'available_cents'), 0::bigint, 'F2: not Available, so it cannot be taken twice');
+reset role;
+
+-- F4: a refunded-then-repaid payment forgets the old charge's cleared date.
+select ok((select funds_available_at is not null from public.order_payments where id = pg_temp.pay(6, 1)), 'F4: the first charge cleared');
+select lives_ok($$select public.record_payment_refunded(pg_temp.pay(6, 1), 'pi_pgtap_ub_1_6', 'The payment was refunded.')$$, 'F4: the charge is refunded');
+select ok((select state::text <> 'confirmed' and funds_available_at is null from public.order_payments where id = pg_temp.pay(6, 1)),
+  'F4: it leaves confirmed and its cleared date is forgotten');
+select lives_ok($$select public.record_payment_funded(pg_temp.pay(6, 1), 'ch_pgtap_ub_repaid_6', 'card', 'Visa ···4242', 10000)$$, 'F4: the brand pays again');
+select ok((select state = 'confirmed' and funds_available_at is null and stripe_charge_id = 'ch_pgtap_ub_repaid_6' from public.order_payments where id = pg_temp.pay(6, 1)),
+  'F4: the new charge has no cleared date until the server records one');
+select pg_temp.approve(6, 1);
+select pg_temp.act_as('a'); set local role authenticated;
+select is(pg_temp.bal(6, 'pending_cents'), 10000::bigint, 'F4: approved on a new, uncleared charge: Pending');
+select is(pg_temp.bal(6, 'available_cents'), 0::bigint, 'F4: not Available on the old charge''s date');
+reset role;
+set local role service_role;
+select public.record_payment_funds_available(pg_temp.pay(6, 1), now() - interval '1 minute');
+reset role;
+select pg_temp.act_as('a'); set local role authenticated;
+select is(pg_temp.bal(6, 'available_cents'), 10000::bigint, 'F4: once the new date is recorded it is Available');
+reset role;
+-- And the trigger on its own: a changed charge id forgets the date; the same
+-- statement writing a date keeps it.
+update public.order_payments set stripe_charge_id = 'ch_pgtap_ub_other' where id = pg_temp.pay(7, 1);
+update public.order_payments set funds_available_at = now() - interval '1 day' where id = pg_temp.pay(1, 2);
+update public.order_payments set stripe_charge_id = 'ch_pgtap_ub_swapped' where id = pg_temp.pay(1, 2);
+select ok((select funds_available_at is null from public.order_payments where id = pg_temp.pay(1, 2)), 'F4: a new charge id forgets the old date');
+update public.order_payments set stripe_charge_id = 'ch_pgtap_ub_swapped2', funds_available_at = now() - interval '2 hours' where id = pg_temp.pay(1, 2);
+select ok((select funds_available_at is not null from public.order_payments where id = pg_temp.pay(1, 2)), 'F4: a date written with the new charge is kept');
+
 select * from finish();
 rollback;
