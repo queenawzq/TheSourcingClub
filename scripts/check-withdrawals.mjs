@@ -416,7 +416,17 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
         if (table === "payment_takes") return chain(heldIds.map((id) => ({ payment_id: id })));
         throw new Error(`unexpected table ${table}`);
       },
-      rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
+      rpc: async (name, args) => {
+        calls.push([name, args]);
+        if (name === "record_charges_checked") {
+          const at = new Date().toISOString();
+          for (const id of args.targets) {
+            const row = checks.find((c) => c.payment_id === id);
+            if (row) row.checked_at = at; else checks.push({ payment_id: id, checked_at: at });
+          }
+        }
+        return { data: null, error: null };
+      },
     };
     const stripe = {
       charges: { retrieve: async (id) => (reads.push(id), { id, payment_intent: `pi_${id}`, amount: 1000, amount_refunded: 0, refunded: false, disputed: false, ...charges[id] }) },
@@ -473,6 +483,17 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     assert.ok(h.reads.includes("ch_1"), "an unheld step checked long ago is");
     assert.ok(h.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-2"),
       "so a refund under a waiting withdrawal is recorded on the next read");
+  }
+  // 4a445bb2: with 7 held steps, two reads in a row read 5, then the other 2 first.
+  {
+    const seven = Array.from({ length: 7 }, (_, i) => ({ id: `held-${i}`, stripe_charge_id: `chh_${i}` }));
+    const checks7 = seven.map((r, i) => ({ payment_id: r.id, checked_at: new Date(Date.now() - (20 - i) * 60_000).toISOString() }));
+    const h7 = make({ owed: seven, checks: checks7, charges: {}, heldIds: seven.map((r) => r.id) });
+    await checkChargesFor({ stripe: h7.stripe, db: h7.db, orgId: "org" });
+    assert.deepEqual(h7.reads, ["chh_0", "chh_1", "chh_2", "chh_3", "chh_4"], "first read: the 5 least recently checked");
+    h7.reads.length = 0;
+    await checkChargesFor({ stripe: h7.stripe, db: h7.db, orgId: "org" });
+    assert.deepEqual(h7.reads.slice(0, 2), ["chh_5", "chh_6"], "second read: the other 2 first, so every held step is read in turn");
   }
   // claimStripeRead: true only when the database grants the read; false on a
   // refusal, an error or an exception.
@@ -973,12 +994,15 @@ for (const [why, row] of [
     assert.equal(all.available_cents, 500, "Available is only TSC's");
     assert.equal(all.pending_cents, 175597, "and the held $1,755.97 is Pending");
     assert.equal(all.total_cents, 500 + 200000, "Total is the server's");
+    assert.equal(all.stripe.held_cents, 175597, "stripe.held_cents: the held amount moved to Pending");
     const capped = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [], held: [{ amount: 5000, currency: "usd" }] }, null);
     assert.equal(capped.stripe.available_cents, 0, "held beyond what is available is capped");
     assert.equal(capped.pending_cents, 1000, "only what is there moves to Pending");
+    assert.equal(capped.stripe.held_cents, 1000, "and held_cents is capped at what is available");
     assert.equal(capped.total_cents, 500 + 200000);
     const none = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [] }, null);
     assert.equal(none.available_cents, 1500, "nothing held: unchanged");
+    assert.equal(none.stripe.held_cents, 0);
     // The owner's balance and the members' figures pass the same `held`, so they agree during an open withdrawal.
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     assert.equal(connect.split("held: heldRows(balance.available, heldElsewhere)").length - 1, 2, "owner's balance and members' figures pass the same held");
@@ -1233,7 +1257,8 @@ for (const [why, row] of [
         retrieve: async (id) => {
           if (id.startsWith("py_")) {
             const transfer = s.transfers.find((t) => t.destination_payment === id);
-            return { id, balance_transaction: { currency, exchange_rate: currency === "usd" ? 1 : rate, amount: transfer.local } };
+            return { id, balance_transaction: { currency, exchange_rate: currency === "usd" ? 1 : rate, amount: transfer.local,
+              status: transfer.landedPending ? "pending" : "available" } };
           }
           const isRefunded = refunded.includes(id);
           return { id, payment_intent: `pi_${id.slice(3)}`, amount_refunded: isRefunded ? 1 : 0, refunded: isRefunded,
@@ -1891,10 +1916,23 @@ for (const [why, row] of [
     w.db.rows.push({ ...base, id: "eur", request_key: "eur", state: "claimed", currency: "EUR", amount_minor: 9100, usd_cents: 10000,
       d1_minor: 0, transfers_done_at: null });
     w.db.takes.push({ id: "t-eur", payment_id: "p1", stripe_withdrawal_id: "eur", amount_cents: 1000, status: "sent" });
+    // Its sent part's transfer, landed as Stripe available.
+    w.stripe.transfers.push({ id: "tr_mid", amount: 2500, currency: "usd", destination: "acct_f", destination_payment: "py_mid", local: 2500, metadata: {} });
+    w.db.takes.find((t) => t.id === "t-sent").stripe_transfer_id = "tr_mid";
     const held = await heldByOpenWithdrawals(w.db, "acct_f");
     assert.equal(held.usd, (1500 + 2500) + (4000 - 120), "mid-transfer: Stripe part + parts sent; fee taken: amount less the fee; refused and paid out ignored");
     assert.equal(held.eur, 910, "a non-US$ row: its sent parts at its own rate");
     assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", "mid")).usd, 4000 - 120, "the withdrawal being made is not counted against itself");
+    // 4a445bb2: with Stripe at hand, a sent part still clearing (its landed
+    // balance transaction pending) is Stripe's pending, not held of available.
+    assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", null, { stripe: w.api })).usd, (1500 + 2500) + (4000 - 120),
+      "landed as available: still held");
+    w.stripe.transfers.find((t) => t.id === "tr_mid").landedPending = true;
+    assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", null, { stripe: w.api })).usd, 1500 + (4000 - 120),
+      "landed as pending: left out; the withdrawal's own Stripe-account part stays in");
+    w.api.transfers.retrieve = async () => { throw new Error("Stripe down"); };
+    assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", null, { stripe: w.api })).usd, (1500 + 2500) + (4000 - 120),
+      "Stripe unreadable: nothing is left out (never throws)");
   }
   // Reach: $1,343.03 in the account, all held by another open withdrawal:
   // Stripe reaches only owed money; never below zero per currency.
@@ -1902,7 +1940,8 @@ for (const [why, row] of [
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     const freeLine = "const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));";
     assert.equal(connect.split(freeLine).length - 1, 2, "the balance answer and the members' figures both leave out what other withdrawals hold");
-    assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id)").length - 1, 2);
+    assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe })").length - 1, 2,
+      "both ask with Stripe at hand, so money still clearing is not counted as held (4a445bb2)");
     // The same rule, on the tester's numbers.
     const free = (entry, held) => Math.max(0, Number(entry.amount) - (held[entry.currency.toLowerCase()] ?? 0));
     const available = [{ amount: 134303, currency: "usd" }, { amount: 500, currency: "eur" }];
