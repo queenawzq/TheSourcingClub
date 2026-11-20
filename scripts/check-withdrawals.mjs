@@ -229,13 +229,15 @@ for (const [why, row] of [
 // money, never D1. The server's answers come first when the page has them.
 {
   const figures = { tsc: { parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }, stripe: { available_cents: 2500 } };
-  assert.deepEqual(withdrawReach(figures), { stripe: 12500, balance: 13000 }, "Stripe: owed + D1; PayPal/Wise: owed + pool, never D1");
-  assert.deepEqual(withdrawReach({ parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }), { stripe: 10000, balance: 13000 },
+  assert.deepEqual(withdrawReach(figures), { stripe: 12500, balance: 13000, estimated: false }, "Stripe: owed + D1; PayPal/Wise: owed + pool, never D1");
+  assert.deepEqual(withdrawReach({ parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }), { stripe: 10000, balance: 13000, estimated: false },
     "no Stripe account: Stripe reaches only owed money");
-  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }), { stripe: 9000, balance: 11000 }, "the server's reach wins");
-  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }, 10500), { stripe: 9000, balance: 10500 },
-    "and my_withdrawal_balance (what request_withdrawal checks) wins for PayPal/Wise");
-  assert.deepEqual(withdrawReach(null), { stripe: null, balance: null }, "unknown until the figures answer");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }), { stripe: 9000, balance: 11000, estimated: false }, "the server's reach wins");
+  assert.deepEqual(withdrawReach(figures, null, 10500), { stripe: 12500, balance: 10500, estimated: false },
+    "without the server's reach, my_withdrawal_balance (what request_withdrawal checks) decides PayPal/Wise");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000, estimated: true }), { stripe: 9000, balance: 11000, estimated: true },
+    "a Stripe reach converted from the account's currency is said to be an estimate");
+  assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: false }, "unknown until the figures answer");
 }
 
 // The Withdraw dialog never moves a withdrawal to another method by itself:
