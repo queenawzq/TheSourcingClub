@@ -609,6 +609,8 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
     }
     const fresh = Date.now() - 5 * 60 * 1000;
     const due = owed.filter((row) => held.has(row.id) || !((last.get(row.id) ?? 0) > fresh))
+      // Held first; within each group the least recently checked first, so
+      // with more than `limit` held steps they are all read in turn.
       .sort((a, b) => (held.has(b.id) - held.has(a.id)) || ((last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)))
       .slice(0, limit);
     const read = await Promise.all(due.map(async (row) => {

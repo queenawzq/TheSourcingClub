@@ -222,7 +222,7 @@ async function withdrawableNow(stripe, db, row, currency) {
  * claiming or transferring holds its own Stripe part and what it has landed
  * so far; any other holds its amount less the fee already taken back.
  */
-export async function heldByOpenWithdrawals(db, accountId, except = null) {
+export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null } = {}) {
   const { data, error } = await db.from("stripe_withdrawals")
     .select("id, currency, amount_minor, fee_local_minor, reversals, state, usd_cents, d1_minor, transfers_done_at")
     .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]);
@@ -243,9 +243,35 @@ export async function heldByOpenWithdrawals(db, accountId, except = null) {
         : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
       claim = Math.max(0, Number(other.amount_minor) - taken);
     }
+    // With Stripe at hand, only the part of the claim in Stripe's AVAILABLE
+    // balance: owed money it transferred that is still clearing sits in
+    // Stripe's pending, already counted there.
+    if (stripe && other.usd_cents != null) {
+      claim = Math.max(0, claim - await stillClearing(stripe, db, accountId, other.id, currency));
+    }
     held[currency] = (held[currency] ?? 0) + claim;
   }
   return held;
+}
+
+/** What a withdrawal's transferred parts landed as that Stripe still has as pending, in the balance's currency. Never throws. */
+async function stillClearing(stripe, db, accountId, withdrawalId, currency) {
+  try {
+    const { data: parts } = await db.from("payment_takes").select("stripe_transfer_id")
+      .eq("stripe_withdrawal_id", withdrawalId).eq("status", "sent").not("stripe_transfer_id", "is", null);
+    let pending = 0;
+    for (const part of parts ?? []) {
+      const transfer = await stripe.transfers.retrieve(part.stripe_transfer_id);
+      const id = typeof transfer.destination_payment === "string" ? transfer.destination_payment : transfer.destination_payment?.id;
+      if (!id) continue;
+      const payment = await stripe.charges.retrieve(id, { expand: ["balance_transaction"] }, { stripeAccount: accountId });
+      const tx = payment.balance_transaction;
+      if (tx && typeof tx === "object" && tx.status === "pending" && tx.currency === currency) pending += Number(tx.amount);
+    }
+    return pending;
+  } catch {
+    return 0;
+  }
 }
 
 /** The currency and rate a transfer landed at in the factory's balance. */

@@ -79,6 +79,8 @@ export function balanceFigures(tsc, stripe, displayFx) {
   const parts = stripe ? {
     available_cents: availableRaw == null ? null : availableRaw - heldKnown,
     pending_cents: pendingRaw == null ? null : pendingRaw + heldKnown,
+    // Of Pending, the Stripe money an open withdrawal holds (on its way).
+    held_cents: heldKnown,
     // Kept for readers of the old shape: the database now holds these.
     in_transit_cents: 0,
     paid_out_cents: 0,

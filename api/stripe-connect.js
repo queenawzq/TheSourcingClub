@@ -288,7 +288,7 @@ export default async function handler(request, response) {
       // What open withdrawals hold of the Stripe account (their own Stripe
       // part, and owed money they transferred for a payout not yet made):
       // on its way, not available, in the figures and in what Withdraw offers.
-      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
+      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe }).catch(() => ({}));
       const figures = { ...balanceFigures(tscBalance.data, {
         available: [...balance.available, ...(recovery?.available ?? [])],
         pending: [...balance.pending, ...(recovery?.pending ?? [])],
@@ -455,7 +455,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
       allocation.payouts.push(...historical.payouts);
     }
-    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id).catch(() => ({}));
+    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe }).catch(() => ({}));
     const figures = { ...balanceFigures(fresh.error ? tsc.data : fresh.data, {
       available: [...balance.available, ...(recovery?.available ?? [])],
       pending: [...balance.pending, ...(recovery?.pending ?? [])],
