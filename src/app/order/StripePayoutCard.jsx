@@ -1108,7 +1108,7 @@ export default function StripePayoutCard({
       </section> : null}
 
       {modal === "cancel-withdrawals" ? (
-        <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} Modal={PayoutModal} onClose={closeModal}
+        <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} returnable={fromBalance.returnable} Modal={PayoutModal} onClose={closeModal}
           onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
       ) : null}
 

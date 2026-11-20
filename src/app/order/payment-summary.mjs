@@ -1,4 +1,5 @@
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
+import { dateFrom } from "../../lib/dates.js";
 
 /** The step as earned, before any payout fee. */
 export const grossAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
@@ -417,9 +418,13 @@ const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", ca
 export function companyStripeRows(withdrawals = [], methodName = () => null, now = new Date()) {
   return (withdrawals ?? []).filter((w) => w?.payout_id && w.usd_cents != null).map((w) => {
     const status = String(w.payout_status ?? "").toLowerCase();
-    const arrives = w.payout_arrives_at ? new Date(w.payout_arrives_at) : null;
+    // Stripe's arrival is a day (payout_arrives_on), read as that day where
+    // the reader is; older rows kept the instant, midnight UTC of that day.
+    const arrives = w.payout_arrives_on ? dateFrom(w.payout_arrives_on)
+      : w.payout_arrives_at ? dateFrom(String(w.payout_arrives_at).slice(0, 10)) : null;
     // A payout that failed or was cancelled, or a withdrawal that ended without one, didn't go.
     const failed = status === "failed" || status === "canceled" || ["refused", "fee_returned"].includes(w.state);
+    // On its way until its arrival day, even once Stripe calls it paid.
     const arrived = status === "paid" && !(arrives && arrives > now);
     const fee = Math.max(0, Number(w.fee_cents) || 0);
     return {
@@ -427,7 +432,7 @@ export function companyStripeRows(withdrawals = [], methodName = () => null, now
       brandOrgId: null,
       currency: "USD",
       date: w.created_at,
-      arrives: failed ? null : w.payout_arrives_at ?? null,
+      arrives: failed ? null : arrives,
       title: "Bank transfer",
       meta: methodName(w),
       status: failed ? STRIPE_PAYOUT_WORD[status] ?? "Failed" : arrived ? STRIPE_PAYOUT_WORD.paid : ON_ITS_WAY,

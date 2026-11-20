@@ -217,7 +217,20 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(earningStatus(refunded), "Refunded");
   assert.equal(earningPaid(refunded), false);
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
-  assert.ok(page.includes('|| refundedEarning(row));') && page.includes('timeZone: "UTC" });'), "refunded rows stay on the list; Stripe's arrival is read as its day");
+  assert.ok(page.includes('|| refundedEarning(row));') && page.includes("payout_arrives_on"), "refunded rows stay on the list; Stripe's arrival is read as its day");
+}
+
+// Fix round 6b: Stripe's arrival is a day; "On its way" until that day, even once paid.
+{
+  const now = new Date(2026, 10, 22, 23, 0); // Nov 22, 11 pm where the reader is
+  const [row] = companyStripeRows([{ id: "z", payout_id: "po_z", usd_cents: 2000, fee_cents: 40, payout_status: "paid", payout_arrives_on: "2026-11-23", created_at: "2026-11-20T10:00:00Z" }], () => null, now);
+  assert.equal(row.status, ON_ITS_WAY, "paid by Stripe, but its arrival day is tomorrow");
+  assert.equal(row.arrives.getDate(), 23, "the arrival day is read as that day, not an instant");
+  const [arrived] = companyStripeRows([{ id: "y", payout_id: "po_y", usd_cents: 2000, fee_cents: 40, payout_status: "paid", payout_arrives_on: "2026-11-23", created_at: "2026-11-20T10:00:00Z" }], () => null, new Date(2026, 10, 23, 9, 0));
+  assert.equal(arrived.status, "Paid out to your bank", "and at the bank from that day");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes("returnable.get(w.id)") && form.includes("total > 0 ? `Back to your balance: ${formatMoney(total, \"USD\")}` : NOTHING_BACK"),
+    "cancelling says what really comes back, or that nothing does after a refund");
 }
 
 // Fix round 5 (local tester).

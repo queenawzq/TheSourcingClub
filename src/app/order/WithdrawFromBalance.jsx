@@ -61,7 +61,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 
 /** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), stripeFees: 0, error: null });
+  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), returnable: new Map(), stripeFees: 0, error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const [balance, rows, stripeRows] = await Promise.all([
@@ -88,6 +88,9 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
       last: list[0] ?? null,
       rows: list,
       withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
+      // What cancelling each open withdrawal gives back (less, or nothing, when
+      // a step under it was refunded to the brand).
+      returnable: new Map(Object.entries(balance.data?.returnable ?? {}).map(([id, cents]) => [id, Number(cents)])),
       stripeFees: (stripeRows.data ?? []).reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0),
       error: null,
     });
@@ -183,14 +186,17 @@ export async function cancelWithdrawals(ids) {
  * The choice of which waiting withdrawals to cancel, in the payouts page's own
  * PayoutModal. `first` is ticked to start with (the row whose Cancel was pressed).
  */
-export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) {
+export const NOTHING_BACK = "Nothing goes back to your balance: the brand's payment was refunded.";
+
+export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, returnable = null }) {
   const waiting = opens.filter((w) => w.status === "requested");
   const [chosen, setChosen] = useState(() => new Set(first ? [first] : []));
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const [error, setError] = useState(null);
   const ticked = waiting.filter((w) => chosen.has(w.id));
-  const total = ticked.reduce((sum, w) => sum + Number(w.amount_cents), 0);
+  // The server's figure for each, when it has one: the amount less what a refund took.
+  const total = ticked.reduce((sum, w) => sum + (returnable instanceof Map && returnable.has(w.id) ? returnable.get(w.id) : Number(w.amount_cents)), 0);
   const toggle = (id) => setChosen((was) => {
     const next = new Set(was);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -230,7 +236,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
           </label>
         ))}
       </fieldset>
-      {ticked.length ? <p className="cancel-withdrawals-total">{`Back to your balance: ${formatMoney(total, "USD")}`}</p> : null}
+      {ticked.length ? <p className="cancel-withdrawals-total">{total > 0 ? `Back to your balance: ${formatMoney(total, "USD")}` : NOTHING_BACK}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>
   );

@@ -47,8 +47,6 @@ const dateLabel = (value) => value
 
 // Stripe's arrival_date is a day (midnight UTC), not an instant: read in the
 // Americas as an instant it is the day before.
-/** Stripe's arrival day (stripe_withdrawals.payout_arrives_at, midnight UTC): the day, not the instant. */
-const stripeDayLabel = (value) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const stripeDateLabel = (value) => value
   ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
   : "Date pending";
@@ -269,7 +267,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     const [figures, toBank] = await Promise.all([
       supabase.rpc("factory_balance", { target_org: org.id }),
       supabase.from("stripe_withdrawals")
-        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, destination_label, destination_bank, state, payout_status, payout_arrives_at, created_at")
+        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, destination_label, destination_bank, state, payout_status, payout_arrives_at, payout_arrives_on, created_at")
         .eq("org_id", org.id).not("payout_id", "is", null).order("created_at", { ascending: false }).limit(200),
     ]);
     if (figures.error || toBank.error) throw new Error("Couldn't load your balance. Try again shortly.");
@@ -475,7 +473,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
       const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
       return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
-    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? stripeDayLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
+    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? dateLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,
       type: "withdrawal",
