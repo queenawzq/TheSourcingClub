@@ -26,6 +26,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { applyBackfill, decideBackfill } from "../api/_backfill.js";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 const args = new Set(process.argv.slice(2));
@@ -91,53 +92,16 @@ for (let from = 0; ; from += 1000) {
 
 console.log(`${rows.length} confirmed or released Stripe payment(s) (${write ? "writing" : "dry run: pass --write to record"}).`);
 const done = { dates: 0, noDate: 0, disputed: 0, undisputed: 0, refunded: 0, partlyRefunded: 0, failed: 0 };
-const { applyChargeRefund } = write ? await import("../api/_stripe.js") : {};
 for (const row of rows) {
   try {
     const charge = await stripe.charges.retrieve(row.stripe_charge_id, { expand: ["balance_transaction"] });
-    const say = (what) => console.log(`  ${row.id}: ${what}${write ? "" : " (not written)"}`);
-    // 1. The clearing date.
-    if (!row.funds_available_at) {
-      const seconds = Number(charge.balance_transaction?.available_on);
-      if (!seconds) {
-        done.noDate += 1;
-        console.log(`  ${row.id}: Stripe has no date yet`);
-      } else {
-        const at = new Date(seconds * 1000).toISOString();
-        say(`clears ${at}`);
-        if (write) {
-          const { error } = await db.rpc("record_payment_funds_available", { target_payment: row.id, available_at: at });
-          if (error) throw new Error(error.message);
-        }
-        done.dates += 1;
-      }
-    }
-    // 2. The dispute, as it is now (Stripe keeps `disputed` true after a win).
-    let disputed = false;
-    if (charge.disputed) {
-      const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-      const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
-      disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
-    }
-    if (disputed !== Boolean(row.disputed_at)) {
-      say(disputed ? "disputed in Stripe, not recorded: on hold" : "recorded as disputed, settled in Stripe: hold lifted");
-      if (write) {
-        const { error } = await db.rpc("record_payment_disputed", { target_payment: row.id, disputed });
-        if (error) throw new Error(error.message);
-      }
-      done[disputed ? "disputed" : "undisputed"] += 1;
-    }
-    // 3. A refund in Stripe the database does not know of.
-    if (Number(charge.amount_refunded) > 0 && row.state === "confirmed") {
-      if (charge.refunded) {
-        say("refunded in full in Stripe, still held here: recorded as refunded");
-        if (write) await applyChargeRefund({ stripe, db, charge });
-        done.refunded += 1;
-      } else {
-        console.log(`  ${row.id}: partly refunded in Stripe (${charge.amount_refunded} of ${charge.amount}): for staff, not changed`);
-        done.partlyRefunded += 1;
-      }
-    }
+    const disputeId = charge.disputed ? (typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id) : null;
+    const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+    const decision = decideBackfill({ row, charge, dispute });
+    for (const line of await applyBackfill({ stripe, db, row, charge, decision, write })) console.log(`  ${row.id}: ${line}`);
+    if ("date" in decision) done[decision.date ? "dates" : "noDate"] += 1;
+    if ("disputed" in decision) done[decision.disputed ? "disputed" : "undisputed"] += 1;
+    if (decision.refund) done[decision.refund === "full" ? "refunded" : "partlyRefunded"] += 1;
   } catch (failure) {
     done.failed += 1;
     console.log(`  ${row.id}: failed (${failure?.code ?? failure?.statusCode ?? "error"}: ${String(failure?.message ?? "").slice(0, 120)})`);
