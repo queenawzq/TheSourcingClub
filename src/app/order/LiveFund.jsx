@@ -328,7 +328,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           // A brand with a saved card is asked to choose one, as the design
           // draws it; "Card details" promised a card form that was not there.
           title: addingCard ? "Card details" : "Select billing method",
-          agreements: [paymentOnly
+          // An already-approved step (paying again after a refund) goes straight
+          // to the factory's balance, as a payment-only step does.
+          agreements: [paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"
             ? `I understand this step is added to ${factory}'s balance once it is funded.`
             : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."],
           agreed,
