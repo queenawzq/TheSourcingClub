@@ -198,7 +198,8 @@ set local session_replication_role = replica;
 update public.stripe_withdrawals set lease_until = '2999-01-01 00:00:00+00' where id = 'cd680000-0000-0000-0000-000000000001';
 set local session_replication_role = origin;
 select throws_ok(format($$select pg_temp.as_server(%L)$$, format('select public.return_sent_take(%L, null, %L)', current_setting('tsc.r6_take'), 'trr_pgtap_r6')),
-  '22023', null, 'and not while another call holds the withdrawal');
+  '22023', 'this withdrawal is being processed', 'and not while another call holds the withdrawal (withdrawal_busy)');
+select ok((select state = 'released' from public.order_payments where id = pg_temp.pay(2, 1)), 'the step is still released while it waits');
 select is((select status from public.payment_takes where id = current_setting('tsc.r6_take')::uuid), 'sent', 'it stays sent');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.return_sent_take(%L, %L, %L)', current_setting('tsc.r6_take'), '2999-01-01 00:00:00+00', 'trr_pgtap_r6')),
