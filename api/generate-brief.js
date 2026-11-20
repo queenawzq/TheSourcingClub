@@ -27,8 +27,7 @@
  * soft shape ({ fields: null, error }), so the composer still opens the card
  * from the text alone.
  */
-import { createClient } from "@supabase/supabase-js";
-import { supabaseServerEnv } from "./_supabase-env.js";
+import { aiBudget, aiCaller } from "./_ai-gate.js";
 
 const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -37,9 +36,8 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 // than the soft null this file is built around — the one failure mode the
 // design says must never happen.
 const TIMEOUT_MS = 9000;
-// Far above a brand writing requests, far below a script. Counted in
-// claim_email_probe's fixed window, under a key of its own.
-const BRIEFS_PER_HOUR = 20;
+// Far above a brand writing requests, far below a script (api/_ai-gate.js).
+const BRIEFS_PER_HOUR = 30;
 // The taxonomy has at most ~20 terms of a kind, plus a brand's own. The lists
 // come from the browser, and each one goes into the prompt whole. A custom
 // term's slug is its label slugified, with no length cap (addCustomTerm), so
@@ -69,16 +67,6 @@ function bodyOf(request) {
     return JSON.parse(Buffer.isBuffer(request.body) ? request.body.toString("utf8") : request.body || "{}");
   } catch {
     return {};
-  }
-}
-
-/** The user id a token names, unverified: the database verifies it when it is used. */
-function tokenSubject(token) {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-    return typeof payload?.sub === "string" && payload.sub ? payload.sub : null;
-  } catch {
-    return null;
   }
 }
 
@@ -166,63 +154,6 @@ function soft(reason) {
   return { fields: null, error: reason };
 }
 
-/**
- * Who may ask: a member of a brand, read through the database with their own
- * token (see screen-message.js for why not auth.getUser()), who may write a
- * request: the Quote flow permission (has_org_permission), the same rule as
- * the composer itself. Answers { userId, supabaseUrl, serviceKey } when the
- * caller may ask, or { refused: [status, body] }.
- */
-async function caller(request) {
-  const token = String(request.headers?.authorization ?? "").replace(/^Bearer\s+/i, "");
-  const userId = tokenSubject(token);
-  if (!userId) return { refused: [401, soft("sign in is required")] };
-
-  const { supabaseUrl, anonKey, serviceKey } = supabaseServerEnv();
-  if (!supabaseUrl || !anonKey || !serviceKey) {
-    console.error("generate-brief: no database settings, so every brief is refused");
-    return { refused: [200, soft("the server is not set up for this")] };
-  }
-
-  const asCaller = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: memberships, error } = await asCaller.from("org_members").select("org_id, orgs!inner(type)").eq("user_id", userId);
-  if (error) {
-    const signIn = /^PGRST30/.test(error.code ?? "") || /jwt|token/i.test(error.message ?? "");
-    if (signIn) return { refused: [401, soft("sign in is required")] };
-    console.error("generate-brief membership", error.message);
-    return { refused: [200, soft("could not check who is asking")] };
-  }
-  const brands = (memberships ?? []).filter((row) => row.orgs?.type === "brand").map((row) => row.org_id);
-  for (const org of brands) {
-    const { data: may, error: permissionError } = await asCaller.rpc("has_org_permission", { target_org: org, perm: "rfqFlow" });
-    if (permissionError) console.error("generate-brief permission", permissionError.message);
-    if (may === true) return { userId, supabaseUrl, serviceKey };
-  }
-  return { refused: [403, soft("brand access required")] };
-}
-
-/**
- * Counts this brief against the person's hour, in one statement, so
- * concurrent calls cannot all read the same count and all go through.
- * Answers null when it may go ahead, or the refusal to send.
- */
-async function overLimit({ userId, supabaseUrl, serviceKey }) {
-  const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: allowed, error } = await service.rpc("claim_email_probe", {
-    probe_ip: `generate-brief:${userId}`,
-    max_attempts: BRIEFS_PER_HOUR,
-    window_seconds: 3600,
-  });
-  if (error) {
-    console.error("generate-brief limit", error.message);
-    return [200, soft("could not check the limit")];
-  }
-  return allowed ? null : [429, soft("too many briefs, try again later")];
-}
-
 export default async function handler(request, response) {
   response.setHeader?.("Cache-Control", "private, no-store");
   if (request.method !== "POST") {
@@ -238,9 +169,13 @@ export default async function handler(request, response) {
     return;
   }
 
-  const who = await caller(request);
+  // Who may ask (api/_ai-gate.js): a member of a brand who may write a
+  // request, the Quote flow permission, the same rule as the composer.
+  const who = await aiCaller(request, { side: "brand", permission: "rfqFlow" });
   if (who.refused) {
-    response.status(who.refused[0]).json(who.refused[1]);
+    const [status, reason] = who.refused;
+    // A server that cannot check is the soft null the composer reads, not an error.
+    response.status(status === 503 ? 200 : status).json(soft(reason));
     return;
   }
 
@@ -254,9 +189,8 @@ export default async function handler(request, response) {
 
   // Counted only once the model is about to be asked: a description too short
   // to work from costs the person nothing.
-  const limited = await overLimit(who);
-  if (limited) {
-    response.status(limited[0]).json(limited[1]);
+  if ((await aiBudget(who, "generate-brief", BRIEFS_PER_HOUR)) === "over") {
+    response.status(429).json(soft("too many briefs, try again later"));
     return;
   }
 

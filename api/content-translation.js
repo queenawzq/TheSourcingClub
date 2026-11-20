@@ -20,16 +20,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { translateIntoChinese, translateText } from "./_translate.js";
-
-/** The user id a token names, unverified: the database verifies it when it is used (as api/profile-translation.js). */
-function tokenSubject(token) {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-    return typeof payload?.sub === "string" && payload.sub ? payload.sub : null;
-  } catch {
-    return null;
-  }
-}
+import { aiBudget, aiCaller } from "./_ai-gate.js";
 
 export const config = { maxDuration: 60 };
 
@@ -37,6 +28,8 @@ const DEADLINE_MS = 8000;
 const MAX_RFQS = 50;
 const MAX_BRANDS = 20;
 const MAX_MESSAGES = 100;
+// Cached text costs nothing: far above a person reading, far below a script.
+const REQUESTS_PER_HOUR = 600;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 const hashOf = (source) => createHash("sha256").update(`content-zh-v1:${source}`).digest("hex");
@@ -134,14 +127,6 @@ export default async function handler(request, response) {
   if (request.method !== "POST") return response.status(405).json({ error: "Method not allowed" });
   const { supabaseUrl, anonKey, serviceKey } = supabaseServerEnv();
   if (!supabaseUrl || !anonKey || !serviceKey) return response.status(503).json({ error: "Translation unavailable" });
-  const token = String(request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-  const userId = tokenSubject(token);
-  if (!userId) return response.status(401).json({ error: "Sign in required" });
-  const caller = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
   let body;
   try { body = typeof request.body === "string" ? JSON.parse(request.body) : request.body; }
   catch { return response.status(400).json({ error: "Invalid request" }); }
@@ -161,9 +146,16 @@ export default async function handler(request, response) {
 
   // Chinese is for a factory's people; English for a brand's.
   const side = toEnglish ? "brand" : "factory";
-  const { data: memberships, error: membershipError } = await caller.from("org_members").select("orgs!inner(type)").eq("user_id", userId);
-  if (membershipError) return response.status(/jwt|token/i.test(membershipError.message ?? "") || membershipError.code === "PGRST301" ? 401 : 503).json({ error: "Sign in required" });
-  if (!memberships?.some((row) => row.orgs?.type === side)) return response.status(403).json({ error: `${side === "brand" ? "Brand" : "Factory"} access required` });
+  // Who is asking (api/_ai-gate.js), once the side is known from the body.
+  const who = await aiCaller(request, { side });
+  if (who.refused) {
+    const status = who.refused[0];
+    return response.status(status).json({ error: status === 403 ? `${side === "brand" ? "Brand" : "Factory"} access required` : status === 401 ? "Sign in required" : "Translation unavailable" });
+  }
+  if ((await aiBudget(who, "content-translation", REQUESTS_PER_HOUR)) === "over") {
+    return response.status(429).json({ error: "Too many translation requests, try again later" });
+  }
+  const { caller } = who;
 
   const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   if (toEnglish) return english(caller, service, { quoteIds, orderIds, factoryOrgIds }, response);
