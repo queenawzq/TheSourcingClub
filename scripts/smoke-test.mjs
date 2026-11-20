@@ -1548,6 +1548,46 @@ console.log("\nphase 3 — the order runs");
         stripeCols.error ? fail("stripe_withdrawals has the stage 2 columns", stripeCols.error) : ok("stripe_withdrawals has the stage 2 columns");
         const poolCols = await factoryClient.from("factory_withdrawals").select("id, pool_cents").limit(1);
         poolCols.error ? fail("factory_withdrawals has pool_cents", poolCols.error) : ok("factory_withdrawals has pool_cents");
+
+        // Fix rounds 2 and 3: the staff board for money nobody else would see,
+        // and staff's "Check again" (api/withdrawal.js action check_stripe).
+        const attention = await factoryClient.rpc("admin_balance_attention");
+        attention.error?.code === "42501"
+          ? ok("admin_balance_attention is refused to a factory's owner")
+          : fail("LEAK: a factory read admin_balance_attention", attention.error ?? { message: "no error" });
+        const checkStaff = await signedInUser(`uw-check-admin-${stamp}@example.com`);
+        await admin.from("platform_admins").insert({ user_id: checkStaff.id });
+        const checkAs = async (client) => {
+          const { default: route } = await import("../api/withdrawal.js");
+          const { data } = client ? await client.auth.getSession() : { data: null };
+          const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "STRIPE_SECRET_KEY"];
+          const saved = { ...process.env };
+          // No Stripe key: the route never reaches Stripe, whoever asks.
+          Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, STRIPE_SECRET_KEY: "" });
+          let status = 0;
+          let body = null;
+          const response = { status(code) { status = code; return response; }, json(payload) { body = payload; return response; } };
+          try {
+            const token = data?.session?.access_token;
+            await route({ method: "POST", headers: { authorization: token ? `Bearer ${token}` : "" },
+              body: { action: "check_stripe", withdrawalId: "00000000-0000-0000-0000-000000000000" } }, response);
+          } finally {
+            for (const key of keys) { if (key in saved) process.env[key] = saved[key]; else delete process.env[key]; }
+          }
+          return { status, ...body };
+        };
+        const byFactory = await checkAs(factoryClient);
+        byFactory.status === 403
+          ? ok("Check again (check_stripe) is refused to a factory's owner")
+          : fail("LEAK: a factory reached Check again", { message: JSON.stringify(byFactory) });
+        const byBrand = await checkAs(brand.client);
+        byBrand.status === 403 ? ok("and to the brand") : fail("LEAK: a brand reached Check again", { message: JSON.stringify(byBrand) });
+        const signedOutCheck = await checkAs(null);
+        signedOutCheck.status === 401 ? ok("and to a signed-out caller") : fail("LEAK: signed out reached Check again", { message: JSON.stringify(signedOutCheck) });
+        const byStaff = await checkAs(checkStaff.client);
+        byStaff.status === 503 && byStaff.kind === "not_set_up"
+          ? ok("staff pass the staff check (and, with no Stripe key here, are told payments are not set up)")
+          : fail("staff's Check again", { message: JSON.stringify(byStaff) });
       }
 
       const { data: paid } = await admin

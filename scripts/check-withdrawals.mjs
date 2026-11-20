@@ -456,7 +456,7 @@ for (const [why, row] of [
 // what the transfers landed as (non-US$ accounts); and nothing claimed is left
 // held when the withdrawal is refused.
 {
-  const { withdrawWithFee, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
+  const { withdrawWithFee, checkStripeWithdrawal, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
   const { PayoutMethodRefusal } = await import("../api/_stripe-payouts.js");
   const { stripeWithdrawalFee } = await import("../src/shared/withdrawal-fees.mjs");
   const { randomUUID } = await import("node:crypto");
@@ -838,6 +838,122 @@ for (const [why, row] of [
     assert.equal(w.stripe.transfers.length, 0);
     assert.equal(w.stripe.payouts.length, 0);
     assert.equal(w.db.rows[0].state, "claimed", "the row stays open for staff to see");
+  }
+
+  // R2-3: Stripe's "key reused with other values" says nothing about whether
+  // the first request made anything: never a refusal. The part stays held and
+  // the withdrawal waits for staff, nothing is paid out.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    w.stripe.onTransfer = () => Object.assign(new Error("Keys for idempotent requests can only be used with the same parameters"),
+      { type: "StripeIdempotencyError", rawType: "idempotency_error", statusCode: 400 });
+    await assert.rejects(withdraw(w, 5000), (failure) => !(failure instanceof PayoutMethodRefusal), "an idempotency clash is not a refusal");
+    assert.equal(w.db.takes[0].status, "held", "R2-3: the part stays held");
+    assert.ok(w.db.takes[0].attempted_at, "marked attempted");
+    assert.equal(w.db.rows[0].state, "claimed", "the row stays open for staff");
+    assert.equal(w.stripe.payouts.length, 0);
+  }
+
+  // R2-1: staff's "Check again" (checkStripeWithdrawal) on a withdrawal left
+  // with a part asked of Stripe and never recorded. It never sends money of
+  // its own accord: a transfer found is recorded; none after Stripe's key
+  // window is returned; a refunded step's same-key ask refused by Stripe is
+  // returned; a disputed step inside the window stays held.
+  {
+    const DAY = 24 * 3600 * 1000;
+    const stuck = ({ attemptedAgo = 60_000, stepExtra = {}, refundedState = false, disputed = false } = {}) => {
+      const st = step("p1", 10000, stepExtra);
+      if (refundedState) st.refundRecorded = true;
+      if (disputed) st.disputedRecorded = true;
+      const w = oneBalanceWorld({ steps: [st] });
+      const row = { id: randomUUID(), org_id: "org", stripe_account_id: "acct_f", request_key: "k-stuck", request_id: randomUUID(),
+        amount_minor: 5000, currency: "USD", state: "refused", reason: "x", usd_cents: 5000, owed_cents: 5000, d1_minor: 0, fee_cents: null,
+        reversals: [], payout_id: null, lease_until: null, created_at: new Date(Date.now() - attemptedAgo).toISOString() };
+      w.db.rows.push(row);
+      w.db.takes.push({ id: randomUUID(), payment_id: "p1", org_id: "org", road: "stripe", stripe_withdrawal_id: row.id, amount_cents: 5000,
+        status: "held", stripe_transfer_id: null, attempted_at: new Date(Date.now() - attemptedAgo).toISOString(), created_at: row.created_at });
+      return { w, row, take: w.db.takes[0] };
+    };
+    const check = (x) => checkStripeWithdrawal({ stripe: x.w.api, db: x.w.db, withdrawalId: x.row.id });
+
+    // A transfer exists (its answer was lost): recorded as sent.
+    {
+      const x = stuck();
+      const made = await x.w.api.transfers.create({ amount: 5000, currency: "usd", destination: "acct_f", source_transaction: "ch_p1",
+        transfer_group: "order-p1", metadata: { take_id: x.take.id, take_withdrawal_id: x.row.id, payment_id: "p1" } },
+        { idempotencyKey: `release-p1-${x.row.id}` });
+      const answer = await check(x);
+      assert.equal(x.take.status, "sent", "R2-1: a transfer found: the part is recorded sent");
+      assert.equal(x.take.stripe_transfer_id, made.id);
+      assert.equal(answer.sent, 5000);
+      assert.equal(x.w.stripe.transfers.length, 1, "and nothing more is transferred");
+      assert.match(answer.sentence, /\$50\.00 was sent to the factory's Stripe account/);
+    }
+    // No transfer, asked over 24 hours ago: Stripe keeps no key that old, so none exists: returned.
+    {
+      const x = stuck({ attemptedAgo: DAY + 3600_000 });
+      const answer = await check(x);
+      assert.equal(x.take.status, "returned", "R2-1: no transfer after the key window: back in the balance");
+      assert.equal(x.w.stripe.transfers.length, 0, "nothing transferred");
+      assert.equal(answer.returned, 5000);
+      assert.match(answer.sentence, /\$50\.00 is back in the factory's balance/);
+    }
+    // Refunded since, no transfer, inside the window: asked again under the same key; Stripe refuses: returned.
+    {
+      const x = stuck({ refundedState: true });
+      x.w.stripe.onTransfer = () => Object.assign(new Error("must not exceed the source amount"), { statusCode: 400 });
+      const answer = await check(x);
+      assert.equal(x.take.status, "returned", "R2-1: a refunded step with no transfer: back in the balance");
+      assert.equal(x.w.stripe.transfers.length, 0);
+      assert.equal(answer.returned, 5000);
+    }
+    // Refunded, no transfer, after the window: returned without asking Stripe again.
+    {
+      const x = stuck({ refundedState: true, attemptedAgo: DAY + 3600_000 });
+      let asked = 0;
+      x.w.stripe.onTransfer = () => { asked += 1; return undefined; };
+      await check(x);
+      assert.equal(x.take.status, "returned", "R2-1: refunded, after the window: returned");
+      assert.equal(asked, 0, "without asking Stripe to transfer");
+    }
+    // Disputed, no transfer, inside the window: asking again could move disputed money: stays held.
+    {
+      const x = stuck({ disputed: true });
+      let asked = 0;
+      x.w.stripe.onTransfer = () => { asked += 1; return undefined; };
+      const answer = await check(x);
+      assert.equal(x.take.status, "held", "R2-1: disputed inside the key window: stays held (accepted deviation)");
+      assert.equal(asked, 0, "and Stripe is not asked to transfer");
+      assert.equal(answer.unsure, 5000);
+      assert.match(answer.sentence, /still not settled/);
+    }
+    // Disputed, after the window: returned (no transfer can exist).
+    {
+      const x = stuck({ disputed: true, attemptedAgo: DAY + 3600_000 });
+      await check(x);
+      assert.equal(x.take.status, "returned", "R2-1: disputed with no transfer after the window: returned");
+    }
+    // A key clash on the staff check: unsure, held.
+    {
+      const x = stuck();
+      x.w.stripe.onTransfer = () => Object.assign(new Error("clash"), { type: "StripeIdempotencyError", statusCode: 400 });
+      const answer = await check(x);
+      assert.equal(x.take.status, "held", "R2-3: a key clash on Check again leaves the part held");
+      assert.equal(answer.unsure, 5000);
+    }
+    // Nothing held: said so.
+    {
+      const x = stuck();
+      x.take.status = "returned";
+      const answer = await check(x);
+      assert.equal(answer.sentence, "Nothing is waiting on this withdrawal.");
+    }
+    // A withdrawal no longer there.
+    {
+      const x = stuck();
+      const answer = await checkStripeWithdrawal({ stripe: x.w.api, db: x.w.db, withdrawalId: randomUUID() });
+      assert.equal(answer.done, false);
+    }
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.

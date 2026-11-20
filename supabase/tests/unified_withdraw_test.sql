@@ -293,8 +293,20 @@ select ok(not has_column_privilege('authenticated', 'public.order_payments', 'di
       and not has_column_privilege('authenticated', 'public.stripe_withdrawals', 'owed_cents', 'update'),
   'the new columns cannot be written by clients');
 -- Both roads take the same lock before claiming (situation 8).
-select ok(pg_get_functiondef('public.claim_owed_steps(uuid, bigint, text, uuid)'::regprocedure) ~* 'public\.orgs[^;]*for update',
-  'claim_owed_steps locks the company row, the same lock request_withdrawal takes');
+-- R2-2 (fix round 3): the lock is FOR NO KEY UPDATE, so a notification
+-- (a foreign key to orgs) written while a withdrawal holds it does not wait.
+select ok(pg_get_functiondef('public.claim_owed_steps(uuid, bigint, text, uuid)'::regprocedure) ~* 'public\.orgs[^;]*for no key update',
+  'claim_owed_steps locks the company row (for no key update), the same lock request_withdrawal takes');
+select ok(pg_get_functiondef('public.request_withdrawal(uuid, bigint, uuid)'::regprocedure) ~* 'public\.orgs[^;]*for no key update',
+  'request_withdrawal takes the same lock');
+select ok(pg_get_functiondef('public.claim_withdrawal(uuid)'::regprocedure) ~* 'public\.orgs[^;]*for no key update',
+  'claim_withdrawal takes the same lock');
+select ok(pg_get_functiondef('public.claim_provider_payout(uuid, text, timestamptz, boolean)'::regprocedure) ~* 'public\.orgs[^;]*for no key update',
+  'claim_provider_payout takes the same lock (staff "Pay again" and a withdrawal are serialised)');
+select ok(not exists (select 1 from unnest(array['public.claim_owed_steps(uuid, bigint, text, uuid)', 'public.request_withdrawal(uuid, bigint, uuid)',
+                                                 'public.claim_withdrawal(uuid)', 'public.claim_provider_payout(uuid, text, timestamptz, boolean)']) f
+                       where pg_get_functiondef(f::regprocedure) ~* 'public\.orgs[^;]*for update'),
+  'none of them still takes the stronger FOR UPDATE on orgs');
 
 -- What each road can reach, before anything is withdrawn.
 select pg_temp.act_as('07'); set local role authenticated;
