@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -425,6 +425,17 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // owner and member alike (companyStripeRows). Stripe's answer adds only
   // payouts made before those records existed (owner only).
   const recorded = new Set(stripeWithdrawals.map((w) => w.payout_id));
+  // The server's list of withdrawals (all clients), with the company's own rows by id.
+  const serverList = (allFigures?.tsc ?? allFigures)?.withdrawals ?? balanceFigures?.withdrawals ?? null;
+  const poolById = new Map((fromBalance.rows ?? []).map((w) => [w.id, w]));
+  const stripeById = new Map(stripeWithdrawals.map((w) => [w.id, w]));
+  // Where a Stripe payout went, as the server recorded it for everyone ("To
+  // Bank account ending in 0154."); older rows only an owner's Stripe read can name.
+  const stripeMethodName = (w) => {
+    if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
+    const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
+    return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
+  };
   const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
     if (client === "All clients") return [row];
     const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
@@ -456,24 +467,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       // Refunded to the brand: listed, struck through, in no figure.
       failed: refundedEarning(row),
     })),
-    // A withdrawal is across clients, so it is listed under All clients only.
-    ...(client === "All clients" ? askedWithdrawalRows(fromBalance.rows) : []).map((row) => ({
-      ...row,
-      type: "withdrawal",
-      available: !row.failed,
-    })),
+    // Withdrawals span clients, so they are listed under All clients only:
+    // from the server's own list (the card's lines read the same one), or
+    // from the company's rows where the server sends none.
+    ...(client !== "All clients" ? [] : serverList
+      ? serverWithdrawalRows(serverList, { pool: poolById, stripe: stripeById, methodName: stripeMethodName })
+      : [...askedWithdrawalRows(fromBalance.rows).map((row) => ({ ...row, type: "withdrawal", available: !row.failed })),
+        ...companyStripeRows(stripeWithdrawals, stripeMethodName)])
+      .map((row) => (row.arrives ? { ...row, meta: [row.meta, dateLabel(row.arrives)].filter(Boolean).join(" · ") } : row)),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,
       type: "withdrawal",
       available: !row.failed,
     })),
-    ...(client === "All clients" ? companyStripeRows(stripeWithdrawals, (w) => {
-      // Where it went, as the server recorded it for everyone ("To Bank account
-      // ending in 0154."); older rows only an owner's Stripe read can name.
-      if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
-      const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
-      return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
-    }) : []).map((row) => ({ ...row, date: row.date, meta: [row.meta, row.arrives ? dateLabel(row.arrives) : null].filter(Boolean).join(" · ") })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,
       type: "withdrawal",

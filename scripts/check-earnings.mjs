@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
-  ON_HOLD, ON_ITS_WAY, companyStripeRows, pendingParts, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
+  ON_HOLD, ON_ITS_WAY, companyStripeRows, pendingParts, serverWithdrawalRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -110,6 +110,11 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   // The server decides where a payout on its way sits (api/_balance-figures.js);
   // the card shows its answer to the cent, never a sum of its own.
   assert.equal(s.pending, figures.pending_cents, "mixed: the card's Pending is the server's");
+  // The server's rule (round 8): only money in the factory's own Stripe account
+  // now is added; a payout on its way is already in the database's Pending.
+  assert.equal(figures.pending_cents, db.pending_cents + 100, "mixed: Pending = server pending + Stripe pending");
+  assert.equal(figures.paid_out_cents, db.paid_out_cents - (300 + 100), "mixed: Paid out = server paid out − (Stripe available + pending)");
+  assert.equal(s.total, db.awaiting_cents + db.available_cents + db.pending_cents + db.paid_out_cents, "mixed: Total = the database's total, to the cent");
   assert.equal(s.total, figures.total_cents, "mixed: the card's Total is the server's, to the cent");
   assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
   const placed = figuresByPayment(figures);
@@ -238,6 +243,25 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.deepEqual(pendingParts(round8, opens), { pending: 109500, clearing: 0, onHold: 9500, waiting: 100000, onItsWay: 0 },
     "dispute + refunded-under-withdrawal on hold, the rest waiting for staff, nothing called on its way");
   assert.ok(cardCode.includes("pendingParts(figures, fromBalance.opens)") && cardCode.includes("waiting`}</p>"), "the card draws the waiting line");
+  // With the server's list (factory_balance().withdrawals): its words decide the lines, and the rows.
+  const listed = { pending_cents: 289094, parts: { owed_clearing_cents: 5000, disputed_cents: 0 }, withdrawals: [
+    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, fee_cents: 1406, to: "Bank account ending in 0154", arrives_on: "2026-11-23", created_at: "2026-11-20T15:29:58Z" },
+    { id: "s2", road: "stripe", word: "returned", amount_cents: 185500, created_at: "2026-11-20T15:29:58Z" },
+    { id: "p1", road: "pool", provider: "paypal", word: "returned", amount_cents: 4500, to: "a@b.c", created_at: "2026-11-20T15:23:57Z" },
+    { id: "p2", road: "pool", provider: "paypal", word: "waiting", amount_cents: 100000, to: "a@b.c", created_at: "2026-11-20T15:32:07Z" },
+    { id: "p3", road: "pool", provider: "wise", word: "on_hold", amount_cents: 4500, to: "Bank ending 0148", created_at: "2026-11-20T15:33:07Z" },
+  ] };
+  listed.pending_cents += 4500;
+  assert.deepEqual(pendingParts(listed, []), { pending: 293594, clearing: 5000, onHold: 4500, waiting: 100000, onItsWay: 184094 },
+    "on its way is only what the server calls on its way; waiting and on hold from its words");
+  const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
+  assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
+    ["stripe-s1", "On its way", -184094],
+    ["asked-p2", "Waiting", -100000],
+    ["asked-p3", "On hold", -4500],
+  ], "rows from the server's list: a cancelled request and a Stripe withdrawal refused before any payout are not listed");
+  assert.equal(listedRows[0].meta, "To Bank account ending in 0154.", "where it went, in the notices' words");
+  assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
   assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
   assert.ok(cardCode.includes("withdrawal.amount > 0 && !amountProblem"), "the fee line follows the dialog's Available");
   assert.equal(pendingParts(cases[1]).clearing, 0, "only withdrawals pending: no 'available to withdraw on' line");

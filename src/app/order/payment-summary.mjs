@@ -467,12 +467,72 @@ export function pendingParts(figures, opens = []) {
   const base = figures.tsc ?? figures;
   const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
-  // A refunded step's part held under a waiting withdrawal (factory_balance rows).
-  const refundedHeld = (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
+  const list = base.withdrawals ?? figures.withdrawals ?? null;
+  const sumOf = (word) => (list ?? []).filter((w) => w?.word === word).reduce((sum, w) => sum + n(w.amount_cents), 0);
+  // The server's list says which withdrawals wait for staff and which are held;
+  // without it (an older server), the open requests and the refunded rows do.
+  const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
     .reduce((sum, row) => sum + n(row.amount_cents), 0);
   const onHold = Math.min(pending, n(parts.disputed_cents) + refundedHeld);
   const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + n(figures.stripe?.pending_cents));
-  const asked = (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0);
-  const waiting = Math.min(pending - onHold - clearing, Math.max(0, asked - refundedHeld));
+  const asked = list ? sumOf("waiting")
+    : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
+  const waiting = Math.min(pending - onHold - clearing, asked);
+  // The rest: withdrawals the server calls on their way, and old step-by-step payouts being sent.
   return { pending, clearing, onHold, waiting, onItsWay: pending - onHold - clearing - waiting };
+}
+
+/**
+ * Every withdrawal as a Transactions row, from the server's own list
+ * (factory_balance().withdrawals: one entry per PayPal / Wise / bank and
+ * Stripe withdrawal, amounts already in US$, `word` its state). The card's
+ * lines and these rows are one source, so they never disagree.
+ *
+ * `pool` and `stripe` are the company's own rows by id (factory_withdrawals,
+ * stripe_withdrawals), for what only they say: a cancelled request (never
+ * listed), the reason staff declined, where a Stripe payout went. A
+ * withdrawal that ended with nothing sent and no payout made is not listed.
+ */
+export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new Map(), methodName = () => null } = {}) {
+  const money = (cents) => (Number(cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return (list ?? []).flatMap((w) => {
+    const fee = Math.max(0, Number(w.fee_cents) || 0);
+    const base = { brandOrgId: null, currency: "USD", date: w.created_at, type: "withdrawal" };
+    if (w.road === "pool") {
+      const own = pool.get(w.id);
+      if (own?.status === "cancelled") return [];
+      const paid = w.word === "paid";
+      return [{
+        ...base,
+        id: `asked-${w.id}`,
+        title: ASKED_TITLE[w.provider] ?? "Bank transfer",
+        meta: w.to ?? own?.paid_to ?? null,
+        note: own?.status === "declined" ? own.reason
+          : own?.status === "failed" ? WITHDRAWAL_FAILED_NOTE
+          : paid && w.fee_cents != null ? `Fee ${money(fee)}, taken from it`
+          : null,
+        status: w.word === "waiting" ? "Waiting" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
+          : paid ? "Completed" : ASKED_STATUS[own?.status] ?? "Failed",
+        failed: w.word === "returned",
+        amount: -(Number(w.amount_cents) - (paid ? fee : 0)),
+        available: w.word !== "returned",
+      }];
+    }
+    const own = stripe.get(w.id);
+    // A Stripe withdrawal refused before any payout never happened.
+    if (w.word === "returned" && !own?.payout_id) return [];
+    const arrives = w.arrives_on ? dateFrom(w.arrives_on) : null;
+    return [{
+      ...base,
+      id: `stripe-${w.id}`,
+      title: "Bank transfer",
+      meta: w.to ? [`To ${w.to}.`, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
+      arrives: w.word === "returned" ? null : arrives,
+      note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
+      status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",
+      failed: w.word === "returned",
+      amount: -Number(w.amount_cents),
+      available: w.word !== "returned",
+    }];
+  });
 }
