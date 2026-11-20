@@ -195,8 +195,10 @@ select ok(pg_temp.approved_note(2) like '%$100.00 added to your balance%' and pg
   'PayPal factory: added to your balance, no ask for a method');
 select ok(pg_temp.approved_note(3) like '%$100.00 added to your balance%' and pg_temp.approved_note(3) not like '%Add a withdrawal method%',
   'Wise factory: added to your balance, no ask for a method');
-select ok(pg_temp.approved_note(4) like '%$100.00 added to your balance%Add a withdrawal method to receive earnings.%',
-  'staff-paid bank only: added to your balance, and asked to add a method it can withdraw to');
+-- N3 (fix round 2): the ask is only for a factory with no saved method at all;
+-- a staff-paid bank account is a saved method (the card offers its own way on).
+select ok(pg_temp.approved_note(4) like '%$100.00 added to your balance%' and pg_temp.approved_note(4) not like '%Add a withdrawal method%',
+  'staff-paid bank only: added to your balance, not asked to add a method (it has one saved)');
 select ok(pg_temp.approved_note(5) like '%$100.00 added to your balance%', 'no method: "$100.00 added to your balance"');
 select ok(pg_temp.approved_note(5) like '%Add a withdrawal method to receive earnings.%', 'and "Add a withdrawal method to receive earnings."');
 select ok(pg_temp.approved_note(5) not like '%on its way%', 'and not "on its way"');

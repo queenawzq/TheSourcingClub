@@ -982,7 +982,7 @@ console.log("\nphase 3 — the order runs");
     // exact strings milestone.js, order.js and payment.js select.
     {
       const milestoneEmbed = await brand.client.from("order_milestones")
-        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id, withdrawal_pool)")
+        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id, withdrawal_pool, funds_available_at)")
         .eq("order_id", order.id);
       const orderEmbed = await brand.client.from("production_order_summary")
         .select("id, order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents))")
@@ -1273,6 +1273,17 @@ console.log("\nphase 3 — the order runs");
         !error && rows?.length === 1 && rows[0].payoneer_payouts === null
           ? ok(`the ${who} reads the Payoneer embed on a payment, null when there is none`)
           : fail(`the ${who}'s Payoneer embed`, error);
+      }
+      // The factory's Payments read, as PayoutDetails makes it: each payment's
+      // takes (payment_takes (status), 20261120200000) so a step withdrawn by
+      // the one balance is never listed as a second withdrawal. Several FKs
+      // point at order_payments; an ambiguous embed is refused, not guessed.
+      {
+        const paymentsSelect = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status)";
+        const { data: rows, error } = await factoryClient.from("order_payments").select(paymentsSelect).eq("id", deposit.id);
+        !error && rows?.length === 1 && Array.isArray(rows[0].payment_takes)
+          ? ok("the factory's Payments read embeds payment_takes (status) as a list")
+          : fail("the factory's Payments select with payment_takes", error ?? { message: JSON.stringify(rows) });
       }
       const notStaff = await factoryClient.rpc("release_payment_by_payoneer", {
         target_payment: deposit.id, paid_to: "x@example.com", payoneer_payment_id: "PO-1", note: null,

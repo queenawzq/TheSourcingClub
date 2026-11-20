@@ -15,7 +15,7 @@ import { BACK_IN_BALANCE, REFERENCE_MAX, approveWithdrawal, previewWithdrawal, w
 import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
-import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, figuresByPayment, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, figuresByPayment, staffBankNote, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
 function world({ balance = 100000, fee = 80, payFails = null, status = "paid", feeOnTop = false } = {}) {
   const recorded = [];
@@ -99,6 +99,94 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(w.recorded.at(-1).outcome, "requeue");
   await approveWithdrawal({ ...w, id: "w1" });
   assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-2"]);
+}
+
+// F2 (stage 2 money review): a PayPal / Wise withdrawal that took owed steps
+// is paid from TSC's own provider balance, so every brand charge behind its
+// held parts is checked in Stripe before the provider is asked. Refunded or
+// disputed (not won): nothing is sent, and it is recorded, so the database
+// then refuses to approve it and staff decline it.
+{
+  const withTakes = (w, takes, charges, disputes = {}) => {
+    const rpcs = [];
+    const db = {
+      ...w.db,
+      from(table) {
+        if (table !== "payment_takes") return w.db.from(table);
+        const q = { select: () => q, eq: () => q,
+          then: (resolve, reject) => Promise.resolve({ data: takes.map((t) => ({ payment_id: t.payment, order_payments: { stripe_charge_id: t.charge } })), error: null }).then(resolve, reject) };
+        return q;
+      },
+      async rpc(name, args) {
+        if (name === "record_withdrawal") return w.db.rpc(name, args);
+        rpcs.push([name, args]);
+        return { data: null, error: null };
+      },
+    };
+    const stripe = {
+      charges: { retrieve: async (id) => ({ id, payment_intent: `pi_${id}`, ...charges[id] }) },
+      disputes: { retrieve: async (id) => ({ id, status: disputes[id] ?? "needs_response" }) },
+      refunds: { list: async () => ({ data: [{ metadata: {} }] }), create: async () => { throw new Error("no refund here"); } },
+    };
+    return { db, rpcs, build: () => stripe };
+  };
+  const clean = { amount_refunded: 0, disputed: false };
+
+  // Disputed: nothing sent, the dispute recorded.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_ok" }, { payment: "s2", charge: "ch_d" }], { ch_ok: clean, ch_d: { amount_refunded: 0, disputed: true, dispute: "du_1" } });
+    await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /disputed/i.test(failure.message));
+    assert.equal(w.paid.length, 0, "F2: a disputed charge behind the withdrawal: the provider is never asked");
+    assert.deepEqual(x.rpcs.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "s2", disputed: true }, "and the dispute is recorded");
+  }
+  // A dispute TSC won does not stop it.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_w" }], { ch_w: { amount_refunded: 0, disputed: true, dispute: "du_w" } }, { du_w: "won" });
+    assert.equal((await approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build })).done, "paid", "a won dispute: paid");
+  }
+  // Refunded: nothing sent, the refund recorded.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_r" }], { ch_r: { amount_refunded: 5000, refunded: true, disputed: false } });
+    const before = w.db.from;
+    let recorded = false;
+    x.db.from = (table) => (table === "order_payments"
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "s1", state: "confirmed", order_id: "o1", stripe_payment_intent_id: "pi_ch_r", stripe_charge_id: "ch_r" }, error: null }) }) }) }
+      : table === "payment_takes" ? withTakes(w, [{ payment: "s1", charge: "ch_r" }], {}).db.from(table) : before(table));
+    const rpc = x.db.rpc;
+    x.db.rpc = async (name, args) => { if (name === "record_payment_refunded") recorded = true; return rpc(name, args); };
+    await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /refunded/i.test(failure.message));
+    assert.equal(w.paid.length, 0, "F2: a refunded charge behind the withdrawal: the provider is never asked");
+    assert.ok(recorded, "and the refund is recorded");
+  }
+  // Stripe can't be read: nothing sent, said in words.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_x" }], {});
+    const broken = { ...x.build(), charges: { retrieve: async () => { throw Object.assign(new Error("down"), { statusCode: 500 }); } } };
+    await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: () => broken }), (failure) => failure instanceof PayoutFailure && /nothing was sent/i.test(failure.message));
+    assert.equal(w.paid.length, 0, "F2: unchecked charges: nothing sent");
+  }
+  // Pool money only (no takes), or clean charges: paid as before.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_ok" }], { ch_ok: clean });
+    assert.equal((await approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build })).done, "paid", "clean charges: paid");
+  }
+}
+
+// Dispute events out of order ("closed" before "created"): the webhook reads
+// the dispute back from Stripe and records what it is now, never what the
+// event's type says, so a dispute won before its "created" arrives never
+// holds the step for good (pgTAP pins the database side).
+{
+  const hook = (await import("node:fs")).readFileSync(new URL("../api/stripe-webhook.js", import.meta.url), "utf8");
+  const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "charge.dispute.created"') + 1500);
+  assert.match(disputeCase, /stripe\.disputes\.retrieve\(event\.data\.object\.id\)/, "the dispute is read back from Stripe");
+  assert.doesNotMatch(disputeCase, /disputed\s*=\s*event\.type/, "the event's type never decides");
+  assert.match(disputeCase, /\["won", "warning_closed"\]\.includes\(dispute\.status\)/, "only its current status does");
 }
 
 // The reference fits every Wise route: GBP takes 18 characters, others fewer or
@@ -222,6 +310,24 @@ for (const [why, row] of [
   const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
+}
+
+// F6: the history lists each withdrawal once. A step released by one-balance
+// withdrawals (PayPal / Wise, or Stripe and PayPal together) is released with
+// no Stripe transfer and not in the old pool; its money left on the
+// withdrawals' own rows, never on a second "Bank transfer" row.
+{
+  const base = { id: "p9", state: "released", amount_cents: 10000, currency: "USD", withdrawal_pool: false, stripe_transfer_id: null,
+    released_by: "staff-1", released_note: "Withdrawn", order: { brand_org_id: "b" } };
+  assert.equal(withdrawalRows([{ ...base, payment_takes: [{ status: "sent", road: "pool" }] }]).length, 0, "taken by a PayPal withdrawal: no extra row");
+  assert.equal(withdrawalRows([{ ...base, payment_takes: [{ status: "sent", road: "stripe" }, { status: "sent", road: "pool" }] }]).length, 0,
+    "taken by both roads: no extra row");
+  assert.equal(withdrawalRows([base]).length, 0, "released as Withdrawn, takes not read: still no extra row");
+  assert.equal(staffBankNote({ ...base, payment_takes: [{ status: "sent" }] }), null, "and no \"Reference Withdrawn\"");
+  // Paid by staff by hand: still its own row, with the bank's reference.
+  const byHand = withdrawalRows([{ ...base, released_note: "BANKREF-1", bank_payouts: { paid_to_bank: "Bank", paid_to_last4: "1234" } }]);
+  assert.equal(byHand.length, 1, "a step staff paid by bank still has its row");
+  assert.equal(byHand[0].note, "Reference BANKREF-1");
 }
 
 // What each method can withdraw (D5): Stripe reaches owed money and the
@@ -355,7 +461,7 @@ for (const [why, row] of [
 
   const iterable = (items) => ({ data: items, has_more: false, async *[Symbol.asyncIterator]() { yield* items; } });
 
-  function oneBalanceWorld({ currency = "usd", rate = 1, d1 = 0, platform = 1_000_000, steps, disputed = [] }) {
+  function oneBalanceWorld({ currency = "usd", rate = 1, d1 = 0, platform = 1_000_000, steps, disputed = [], refunded = [] }) {
     const rows = [];
     const takes = [];
     const calls = [];
@@ -387,7 +493,8 @@ for (const [why, row] of [
     const withdrawalsTable = table(() => rows);
     const takesTable = table(() => takes.map((take) => {
       const step = steps.find((s) => s.id === take.payment_id);
-      return { ...take, order_payments: { stripe_charge_id: step.charge, order_id: step.order, production_orders: { order_number: step.number ?? "TSC-1" } } };
+      return { ...take, order_payments: { stripe_charge_id: step.charge, order_id: step.order, state: step.refundRecorded ? "failed" : "confirmed",
+        disputed_at: step.disputedRecorded ? new Date().toISOString() : null, production_orders: { order_number: step.number ?? "TSC-1" } } };
     }));
     const db = {
       rows, takes, calls,
@@ -395,6 +502,8 @@ for (const [why, row] of [
         if (name === "stripe_withdrawals") return withdrawalsTable();
         if (name === "payment_takes") return takesTable();
         if (name === "stripe_connect_accounts") return table(() => [])();
+        if (name === "order_payments") return table(() => steps.map((step) => ({ id: step.id, state: "confirmed", order_id: step.order,
+          stripe_payment_intent_id: `pi_${step.id}`, stripe_charge_id: step.charge })))();
         throw new Error(`unexpected table ${name}`);
       },
       async rpc(name, args) {
@@ -429,7 +538,7 @@ for (const [why, row] of [
             const part = Math.min(left(step), need);
             if (part <= 0) continue;
             const take = { id: randomUUID(), payment_id: step.id, org_id: args.target_org, road: "stripe", stripe_withdrawal_id: row.id,
-              amount_cents: part, status: "held", stripe_transfer_id: null, created_at: new Date().toISOString() };
+              amount_cents: part, status: "held", stripe_transfer_id: null, attempted_at: null, created_at: new Date().toISOString() };
             takes.push(take);
             made.push({ take_id: take.id, payment_id: step.id, amount_cents: part, charge_id: step.charge, order_id: step.order });
             need -= part;
@@ -445,7 +554,22 @@ for (const [why, row] of [
           return { data: null, error: null };
         }
         if (name === "return_stripe_takes") {
-          for (const take of takes) if (take.stripe_withdrawal_id === args.target_withdrawal && take.status === "held") take.status = "returned";
+          // Parts already asked of Stripe are the server's to settle (return_take), never returned here.
+          for (const take of takes) if (take.stripe_withdrawal_id === args.target_withdrawal && take.status === "held" && !take.attempted_at) take.status = "returned";
+          return { data: null, error: null };
+        }
+        if (name === "mark_take_attempted") {
+          const take = takes.find((t) => t.id === args.target_take);
+          take.attempted_at ??= new Date().toISOString();
+          return { data: take.attempted_at, error: null };
+        }
+        if (name === "return_take") {
+          const take = takes.find((t) => t.id === args.target_take);
+          if (take.status === "held") take.status = "returned";
+          return { data: null, error: null };
+        }
+        if (name === "record_payment_refunded") {
+          steps.find((st) => st.id === args.target_payment).refundRecorded = true;
           return { data: null, error: null };
         }
         if (name === "record_payment_disputed") {
@@ -467,6 +591,18 @@ for (const [why, row] of [
     // D1: an older transfer is what put the D1 money there (the fee can be reversed from it).
     if (d1 > 0) s.transfers.push({ id: "tr_old", amount: Math.ceil(d1 / rate), amount_reversed: 0, currency: "usd", destination: "acct_f", destination_payment: "py_old", metadata: {}, local: d1 });
     const refused = (message, code = 402) => Object.assign(new Error(message), { statusCode: code });
+    s.failedKeys = new Map();
+    const makeTransfer = (params, options) => once(options?.idempotencyKey, () => {
+      if (params.source_transaction) {
+        if (params.amount > s.platform) throw refused("insufficient available funds");
+        s.platform -= params.amount;
+      }
+      const local = currency === "usd" ? params.amount : Math.round(params.amount * rate);
+      const transfer = { id: `tr_${++n}`, ...params, amount_reversed: 0, destination_payment: `py_${n}`, local, key: options?.idempotencyKey };
+      s.transfers.push(transfer);
+      s.balance[currency] = (s.balance[currency] ?? 0) + local;
+      return structuredClone(transfer);
+    });
     const api = {
       accounts: { update: async () => ({}), retrieveExternalAccount: async () => null },
       balance: {
@@ -475,20 +611,25 @@ for (const [why, row] of [
           : { available: [{ currency: "usd", amount: s.platform }], pending: [] },
       },
       transfers: {
-        list: (params) => iterable([...s.transfers].reverse().filter((t) =>
+        // groupListMisses: Stripe's list by transfer_group not yet showing a transfer just made.
+        list: (params) => iterable(params.transfer_group && s.groupListMisses ? [] : [...s.transfers].reverse().filter((t) =>
           (!params.destination || t.destination === params.destination) && (!params.transfer_group || t.transfer_group === params.transfer_group))),
         retrieve: async (id) => structuredClone(s.transfers.find((t) => t.id === id)),
-        create: async (params, options) => once(options?.idempotencyKey, () => {
-          if (params.source_transaction) {
-            if (params.amount > s.platform) throw refused("insufficient available funds");
-            s.platform -= params.amount;
+        // onTransfer(params, key) → undefined (made), "timeout" (made, but the answer is lost),
+        // or an error to throw (nothing made); an error marked stored is replayed for that key, as Stripe does for 24 h.
+        create: async (params, options) => {
+          const key = options?.idempotencyKey;
+          if (key && s.failedKeys.has(key)) throw s.failedKeys.get(key);
+          if (key && s.keys.has(key)) return s.keys.get(key);
+          const what = s.onTransfer?.(params, key);
+          if (what instanceof Error) {
+            if (what.stored && key) s.failedKeys.set(key, what);
+            throw what;
           }
-          const local = currency === "usd" ? params.amount : Math.round(params.amount * rate);
-          const transfer = { id: `tr_${++n}`, ...params, amount_reversed: 0, destination_payment: `py_${n}`, local, key: options?.idempotencyKey };
-          s.transfers.push(transfer);
-          s.balance[currency] = (s.balance[currency] ?? 0) + local;
-          return structuredClone(transfer);
-        }),
+          const made = makeTransfer(params, options);
+          if (what === "timeout") throw Object.assign(new Error("Stripe did not answer"), { type: "StripeConnectionError" });
+          return made;
+        },
         listReversals: (id) => iterable(s.reversals.filter((r) => r.transfer === id)),
         createReversal: async (id, params, options) => once(options?.idempotencyKey, () => {
           const transfer = s.transfers.find((t) => t.id === id);
@@ -506,11 +647,15 @@ for (const [why, row] of [
             const transfer = s.transfers.find((t) => t.destination_payment === id);
             return { id, balance_transaction: { currency, exchange_rate: currency === "usd" ? 1 : rate, amount: transfer.local } };
           }
-          return { id, amount_refunded: 0, disputed: disputed.includes(id), dispute: disputed.includes(id) ? `du_${id}` : null };
+          const isRefunded = refunded.includes(id);
+          return { id, payment_intent: `pi_${id.slice(3)}`, amount_refunded: isRefunded ? 1 : 0, refunded: isRefunded,
+            disputed: disputed.includes(id), dispute: disputed.includes(id) ? `du_${id}` : null };
         },
       },
       disputes: { retrieve: async () => ({ status: "needs_response" }) },
       refunds: {
+        list: async () => ({ data: [{ id: "re_1", metadata: {} }] }),
+        create: async () => { throw new Error("no refund is made here: the charge is already refunded"); },
         retrieve: async (id) => {
           const reversal = s.reversals.find((r) => r.destination_payment_refund === id);
           return { id, balance_transaction: { currency, amount: -reversal.local } };
@@ -614,6 +759,82 @@ for (const [why, row] of [
     const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
     await assert.rejects(withdraw(w, 5000, { transfersActive: false }), (failure) => failure.message === "Finish payout verification before withdrawing.");
     assert.equal(w.db.takes.length, 0);
+  }
+
+  // Fix round 2 (stage 2 money review). Refunded at the click: the charge is
+  // checked before any transfer, the refund is recorded, the claim returned.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)], refunded: ["ch_p2"] });
+    await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
+    assert.equal(w.stripe.transfers.length, 0, "a refunded charge among the claimed steps: no transfer at all");
+    assert.ok(w.db.calls.includes("record_payment_refunded"), "the refund is recorded");
+    assert.equal(held(w).length, 0, "the claim is returned");
+    assert.equal(w.stripe.payouts.length, 0);
+  }
+
+  // A transfer refused mid-sequence: what went before stays sent (it is in the
+  // factory's Stripe account), the rest goes back, nothing is paid out.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)] });
+    let made = 0;
+    // Stripe keeps a refusal under its key and answers it again for 24 hours.
+    w.stripe.onTransfer = () => (++made === 2 ? Object.assign(new Error("refused"), { statusCode: 400, stored: true }) : undefined);
+    await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
+    assert.deepEqual(w.db.takes.map((t) => [t.payment_id, t.status]), [["p1", "sent"], ["p2", "returned"]],
+      "the transferred part stays sent, the refused part is returned");
+    assert.equal(w.stripe.transfers.length, 1);
+    assert.equal(w.stripe.payouts.length, 0, "nothing paid out");
+  }
+
+  // F5: a transfer whose answer was lost (timeout). On resume Stripe's list by
+  // transfer group does not show it yet, and the charge is now disputed. The
+  // take must never go back to the balance while its transfer exists: the
+  // create under the same key finds it.
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    w.stripe.onTransfer = () => "timeout";
+    const requestId = randomUUID();
+    await assert.rejects(withdraw(w, 5000, { requestId }), (failure) => !(failure instanceof PayoutMethodRefusal), "a lost answer is not a refusal");
+    assert.equal(w.stripe.transfers.length, 1, "the transfer was made");
+    assert.equal(held(w).length, 1, "and its take is still held, not returned");
+    w.stripe.onTransfer = null;
+    w.stripe.groupListMisses = true;
+    w.db.rows[0].lease_until = null;
+    await withdraw(w, 5000, { requestId }).catch(() => null);
+    const take = w.db.takes[0];
+    assert.notEqual(take.status, "returned", "F5: a take whose transfer exists is never returned to the balance");
+    assert.equal(w.stripe.transfers.length, 1, "and no second transfer was made");
+    if (take.status === "sent") assert.equal(take.stripe_transfer_id, w.stripe.transfers[0].id, "it is recorded with the transfer that went");
+  }
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)], disputed: [] });
+    w.stripe.onTransfer = () => "timeout";
+    const requestId = randomUUID();
+    await withdraw(w, 5000, { requestId }).catch(() => null);
+    w.stripe.onTransfer = null;
+    w.stripe.groupListMisses = true;
+    w.db.rows[0].lease_until = null;
+    w.stripe.platform = 0; // and TSC's platform balance is now short
+    await withdraw(w, 5000, { requestId }).catch(() => null);
+    assert.notEqual(w.db.takes[0].status, "returned", "F5: nor when the resume finds the platform balance short");
+    assert.equal(w.stripe.transfers.length, 1);
+  }
+
+  // A Stripe 500 stored under the transfer's key is replayed on every resume:
+  // the take stays held (nothing is known to have gone), nothing is paid out,
+  // and the withdrawal waits for staff (the board; pgTAP).
+  {
+    const w = oneBalanceWorld({ steps: [step("p1", 10000)] });
+    w.stripe.onTransfer = () => Object.assign(new Error("Stripe API error"), { statusCode: 500, stored: true });
+    const requestId = randomUUID();
+    await assert.rejects(withdraw(w, 5000, { requestId }), (failure) => !(failure instanceof PayoutMethodRefusal));
+    w.stripe.onTransfer = null;
+    w.db.rows[0].lease_until = null;
+    await assert.rejects(withdraw(w, 5000, { requestId }), (failure) => !(failure instanceof PayoutMethodRefusal), "the replayed 500 again");
+    assert.equal(w.db.takes[0].status, "held", "the take stays held: it may have gone");
+    assert.equal(w.stripe.transfers.length, 0);
+    assert.equal(w.stripe.payouts.length, 0);
+    assert.equal(w.db.rows[0].state, "claimed", "the row stays open for staff to see");
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.
