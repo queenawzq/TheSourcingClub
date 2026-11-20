@@ -117,6 +117,10 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   }
   const row = data?.row;
   if (!row) throw new Error("the withdrawal could not be claimed");
+  // Who asked, on every row, refused ones included.
+  if (!row.requested_by && userId && data.claimed) {
+    await update(db, row, { requested_by: userId }).catch(() => null);
+  }
   if (!data.claimed) {
     if (row.state === "paid_out") return { id: row.payout_id, amount: Number(row.payout_minor), currency: row.currency.toLowerCase(), status: "pending" };
     if (row.state === "refused" || row.state === "fee_returned") {

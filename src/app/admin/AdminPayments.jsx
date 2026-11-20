@@ -1035,7 +1035,9 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   // in it (the overview counts these same queues), unless a tab is asked for.
   const [chosen, setChosen] = useState(() => {
     try {
-      return new URLSearchParams(window.location.search).get("tab");
+      const asked = new URLSearchParams(window.location.search).get("tab");
+      // The tab's words, as a link may say them.
+      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout" }[asked] ?? asked;
     } catch {
       return null;
     }

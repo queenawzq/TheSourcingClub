@@ -109,6 +109,7 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance." },
   { kind: "payment_disputed", title: 'Payment for "Deposit" on hold', body: "The brand disputed the charge. $1,200.00 is held until the dispute is settled." },
   { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is back in your balance." },
+  { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is no longer on hold." },
   { kind: "withdrawal", title: "Withdrawal of $10.00 requested", body: "To Bank account ending in 6789." },
   { kind: "withdrawal", title: "Withdrawal of $45.00 on hold", body: 'The brand\'s payment for "Fit sample" was refunded. Cancel this withdrawal and withdraw again.' },
   { kind: "withdrawal", title: "Withdrawal of $45.00 cancelled", body: "Nothing goes back to your balance: the brand's payment was refunded." },

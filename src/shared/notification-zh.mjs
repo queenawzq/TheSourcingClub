@@ -238,6 +238,7 @@ const SENTENCES = [
   [amountRe("^AMT is held until the dispute is settled\\.$"), (amount) => `${amount} 将暂缓，直至争议解决。`],
   [/^The dispute is settled\.$/, () => "争议已解决。"],
   [amountRe("^AMT is back in your balance\\.$"), (amount) => `${amount} 已回到你的余额。`],
+  [amountRe("^AMT is no longer on hold\\.$"), (amount) => `${amount} 已不再暂缓。`],
   [/^Add a withdrawal method to receive earnings\.$/, () => "添加提现方式以接收收入。"],
   [/^You can carry on to the next step\.$/, () => "你可以继续进行下一步。"],
   [/^(.+) accepted your quote for "(.+)"\.$/, (who, rfq) => `${who} 接受了你对${quoted(rfq)}的报价。`],

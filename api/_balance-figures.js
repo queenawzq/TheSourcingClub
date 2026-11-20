@@ -5,10 +5,10 @@
  * /api/stripe-connect. Each dollar in exactly one figure:
  *
  *   available  TSC's Available + Stripe's available balance
- *   pending    TSC's Pending + Stripe's pending balance + payouts on their way
- *   paid out   TSC's Paid out, with the steps it paid by Stripe transfer
- *              replaced by Stripe's paid payouts (what reached the bank)
- *   total      the four added up, never worked out separately
+ *   pending    TSC's Pending (which holds payouts on their way) + Stripe's
+ *              pending balance
+ *   paid out   TSC's Paid out less what is still in the Stripe account
+ *   total      the four added up: the database's total, to the cent
  *
  * Stripe amounts in another currency are converted with the indicative
  * display rates (payoutDisplayRates), and `estimated` says so. A currency
@@ -44,8 +44,17 @@ const converted = (rows) => (rows ?? []).some((row) => String(row.currency ?? ""
 
 /**
  * @param tsc       factory_balance(org) as the database returned it
- * @param stripe    { available, pending, onTheirWay, payouts } from Stripe, or null
+ * @param stripe    { available, pending } from Stripe (the money in the
+ *                  factory's own Stripe account now), or null. Other keys
+ *                  (onTheirWay, payouts) are ignored: the database counts
+ *                  every payout, on its way or arrived, in the US dollars it
+ *                  took from the balance.
  * @param displayFx payoutDisplayRates() (may be null)
+ *
+ * The total is the database's to the cent. Only where the money sits moves:
+ * what is in the factory's Stripe account now (which the database counts as
+ * sent, in Paid out) moves to Available and Pending, at the indicative rate
+ * (`estimated` when converted).
  */
 export function balanceFigures(tsc, stripe, displayFx) {
   const n = (value) => Number(value) || 0;
@@ -57,23 +66,23 @@ export function balanceFigures(tsc, stripe, displayFx) {
     paid_out_cents: n(tsc?.paid_out_cents),
     has_method: Boolean(tsc?.has_method),
     next_cleared_at: tsc?.next_cleared_at ?? null,
+    withdrawals: tsc?.withdrawals ?? [],
   };
-  const paidRows = (stripe?.payouts ?? []).filter((payout) => payout.paid).map(({ amount, currency }) => ({ amount, currency }));
   const parts = stripe ? {
     available_cents: usdTotal(stripe.available, displayFx),
     pending_cents: usdTotal(stripe.pending, displayFx),
-    in_transit_cents: usdTotal(stripe.onTheirWay, displayFx),
-    paid_out_cents: usdTotal(paidRows, displayFx),
+    // Kept for readers of the old shape: the database now holds these.
+    in_transit_cents: 0,
+    paid_out_cents: 0,
   } : null;
-  const known = parts && Object.values(parts).every((value) => value != null);
+  const known = parts && parts.available_cents != null && parts.pending_cents != null;
+  const inStripe = known ? parts.available_cents + parts.pending_cents : 0;
   const figures = known ? {
     ...base,
     available_cents: base.available_cents + parts.available_cents,
-    pending_cents: base.pending_cents + parts.pending_cents + parts.in_transit_cents,
-    // The database already took Stripe's payout fees out of Paid out; the
-    // Stripe payouts below are net of them, so the fees are put back first.
-    paid_out_cents: base.paid_out_cents + n(tsc?.parts?.stripe_withdrawal_fees_cents) - n(tsc?.parts?.stripe_released_cents) + parts.paid_out_cents,
-    estimated: [stripe.available, stripe.pending, stripe.onTheirWay, paidRows].some(converted),
+    pending_cents: base.pending_cents + parts.pending_cents,
+    paid_out_cents: base.paid_out_cents - inStripe,
+    estimated: [stripe.available, stripe.pending].some(converted),
   } : { ...base, estimated: false };
   return {
     ...figures,
