@@ -431,12 +431,23 @@ select is(
   'Payoneer: new@p31.example.com',
   'the board reads the current default'
 );
-reset role; select pg_temp.act_as(4); set local role authenticated;
+-- Money on its way to that account (20261120330000: owed money in the
+-- balance alone goes to no account until the factory withdraws). Payoneer
+-- has no withdrawal road of its own, so the waiting request is recorded
+-- straight onto the account: the guard reads any request to it.
+reset role;
+insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('31700000-0000-0000-0000-000000000001', '31b00000-0000-0000-0000-0000000000f2', '31c00000-0000-0000-0000-000000000002', 'bank', 'requested', 100, 'USD', 'other@p31.example.com');
+select pg_temp.act_as(4); set local role authenticated;
 select throws_ok(
   $$ select public.remove_payout_account('31c00000-0000-0000-0000-000000000002') $$,
   'P0001', 'TSC is about to pay this account, so it cannot be removed until that payment is sent',
-  'the only Payoneer account cannot be removed while a payout is owed'
+  'the only Payoneer account cannot be removed while money is on its way to it'
 );
+-- That withdrawal ends (staff declined it): nothing is on its way any more.
+reset role;
+update public.factory_withdrawals set status = 'cancelled' where id = '31700000-0000-0000-0000-000000000001';
+select pg_temp.act_as(4); set local role authenticated;
 select lives_ok(
   $$ insert into public.factory_payout_accounts (org_id, is_primary, bank_name, account_name) values ('31b00000-0000-0000-0000-0000000000f2', false, 'P31 B', 'P31 Other Ltd') $$,
   'the factory adds a bank account beside it'

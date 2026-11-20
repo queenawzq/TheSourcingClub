@@ -1,20 +1,21 @@
 /**
  * What a factory's Earnings page says about where its money is.
  *
- * A factory paid by hand once read "By Payoneer" where its balance belongs, and
- * money held on a cancelled order counted as earnings while staff refunded it
- * to the brand. This pins: every payment state lands in one figure at most, the
- * figures add up to Total earnings, they follow the staff board's buckets, and
- * a factory paid through Stripe keeps Stripe's answer.
+ * One balance (D3): the four figures and the card's Available balance come
+ * from the server only (factory_balance(), plus the factory's own Stripe
+ * money from /api/stripe-connect `balance`), Total earnings is the four added
+ * up, and each row's word agrees with where the server put its money. This
+ * pins those, the cases a person saw wrong (IMG 75, 76, 45), and the words
+ * each payment state reads, on Payments and the order page alike.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
-  refundPendingWord, staffBankNote, withdrawalProblem, withdrawalRows,
+  awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
+  ON_HOLD, ON_ITS_WAY, companyStripeRows, pendingParts, serverWithdrawalRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withStripePart, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
+import { balanceFigures } from "../api/_balance-figures.js";
 
-const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
 const pay = (id, amount, state, extra = {}) => ({
   id, amount_cents: amount, currency: "USD", state, charged_cents: amount, release_requested_at: null, stripe_transfer_id: null,
   order: { brand_org_id: "brand-1", status: "active" }, ...extra,
@@ -31,27 +32,343 @@ const earnings = [
   pay("paid", 1600, "released", { payoneer_payouts: { payoneer_payment_id: "X" } }),
 ];
 
-const hand = handPaidFigures(earnings);
-assert.equal(usd(hand.pending), 100, "pending is funded and waiting for the brand");
-assert.equal(usd(hand.balance), 600, "balance is approved and not sent, also when cancelled after the approval");
-
-const summary = earningsSummaryFor(earnings, "All clients");
-assert.equal(usd(summary.approval), usd(hand.pending), "Awaiting approval is the card's pending");
-assert.equal(usd(summary.pending), usd(hand.balance), "the strip's Pending is the card's balance while nothing is being sent");
-assert.equal(usd(summary.paid), 1600, "Paid out is what TSC sent");
-assert.equal(usd(summary.total), usd(hand.balance) + usd(hand.pending) + usd(summary.paid), "total = balance + pending + paid out");
-
-// Approved into the balance TSC holds for PayPal/Wise (withdrawal_pool): the
-// factory can withdraw it now, so the row, the strip and the card agree it is in
-// the balance, as Stripe money in the factory's own balance is (Nov 19).
-{
-  const pooled = [pay("pool", 4500, "confirmed", { ...APPROVED, withdrawal_pool: true }), pay("held-p", 100, "confirmed")];
-  const pooledSummary = earningsSummaryFor(pooled, "All clients", new Map([["pool", 1000]]));
-  assert.equal(earningStatus(pooled[0]), "Added to your balance", "money in the balance is not called Pending");
-  assert.equal(usd(pooledSummary.pending), 0, "nor counted in Pending");
-  assert.equal(usd(pooledSummary.paid), 4500, "it is in Paid out, whole, however much has been withdrawn");
-  assert.equal(usd(pooledSummary.total), usd(pooledSummary.approval) + usd(pooledSummary.pending) + usd(pooledSummary.paid), "and the figures still add up");
+/** factory_balance() as the database answers it, with only what a case sets. */
+const tsc = (over = {}, parts = {}, rows = []) => ({
+  currency: "USD", client: null, awaiting_cents: 0, available_cents: 0, pending_cents: 0, paid_out_cents: 0, has_method: true, next_cleared_at: null,
+  parts: { owed_cleared_cents: 0, owed_clearing_cents: 0, owed_moving_cents: 0, pool_available_cents: 0, pool_open_cents: 0, pool_paid_cents: 0,
+    withdrawal_fees_cents: 0, stripe_released_cents: 0, other_released_cents: 0, ...parts },
+  rows, ...over,
+});
+const sumOfFour = (s) => s.approval + s.available + s.pending + s.paid;
+/** Every case: Total is the four added up, on the page and in the server's answer. */
+function checkTotal(figures, label) {
+  const s = summaryFrom(figures);
+  assert.equal(s.total, sumOfFour(s), `${label}: Total earnings is the sum of the four figures`);
+  if (figures.total_cents != null) assert.equal(s.total, Number(figures.total_cents), `${label}: and the server's own total`);
+  return s;
 }
+const row = (payment_id, figure, amount_cents) => ({ payment_id, figure, amount_cents, stripe: false });
+
+// Nothing until the figures answer: placeholders, never a guess.
+assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
+assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: false });
+
+// IMG 75: a $1 step approved, no withdrawal method. Available $1, Pending $0,
+// and the row says "Added to your balance", never "Pending". The card offers
+// "Add withdrawal method" (has_method false).
+{
+  const owed = pay("bulk", 100, "confirmed", APPROVED);
+  const figures = balanceFigures(tsc({ available_cents: 100, has_method: false }, { owed_cleared_cents: 100 }, [row("bulk", "available", 100)]), null, null);
+  const s = checkTotal(figures, "IMG 75");
+  assert.equal(s.available, 100, "IMG 75: Available $1");
+  assert.equal(s.pending, 0, "IMG 75: Pending $0");
+  assert.equal(s.total, 100, "IMG 75: Total $1");
+  assert.equal(figures.has_method, false, "IMG 75: no method, so Add withdrawal method");
+  assert.equal(earningStatus(owed, null, figuresByPayment(figures)), "Added to your balance", "IMG 75: the row is in the balance");
+  assert.equal(earningStatus(owed), "Added to your balance", "and the order page says the same without the figures");
+  assert.equal(earningPaid(owed, null, figuresByPayment(figures)), true, "drawn as money the factory has");
+}
+
+// IMG 76: PayPal added. Nothing moves: still Available $1, Paid out $0.
+{
+  const figures = balanceFigures(tsc({ available_cents: 100 }, { owed_cleared_cents: 100 }, [row("bulk", "available", 100)]), null, null);
+  const s = checkTotal(figures, "IMG 76");
+  assert.equal(s.available, 100, "IMG 76: Available $1");
+  assert.equal(s.paid, 0, "IMG 76: Paid out $0, adding a method pays nothing out");
+  assert.equal(figures.has_method, true, "IMG 76: Withdraw");
+  assert.deepEqual(withdrawReach(figures), { stripe: 100, balance: 100, estimated: false }, "IMG 76: PayPal reaches the $1");
+}
+
+// IMG 45: $1 withdrawn by PayPal, $0.02 fee. Paid out $0.98, Total $0.98:
+// the fee is in no figure.
+{
+  const figures = balanceFigures(tsc({ paid_out_cents: 98 }, { pool_paid_cents: 100, withdrawal_fees_cents: 2 }, [row("y1", "paid_out", 100)]), null, null);
+  const s = checkTotal(figures, "IMG 45");
+  assert.equal(s.paid, 98, "IMG 45: Paid out $0.98");
+  assert.equal(s.total, 98, "IMG 45: Total $0.98");
+  assert.equal(s.available, 0, "IMG 45: nothing left to withdraw");
+  const asked = withdrawalRows([]);
+  assert.deepEqual(asked, [], "a balance withdrawal is listed from factory_withdrawals, not from its step");
+}
+
+// A factory with money already in its own Stripe account (D1) and money TSC
+// owes it. Stripe reaches both; PayPal or Wise reaches only what TSC holds.
+{
+  const db = tsc({ awaiting_cents: 700, available_cents: 500, pending_cents: 250, paid_out_cents: 900 },
+    { owed_cleared_cents: 500, owed_clearing_cents: 250, stripe_released_cents: 900 },
+    [row("a1", "awaiting", 700), row("o1", "available", 500), row("o2", "pending", 250), row("s1", "paid_out", 900)]);
+  const figures = balanceFigures(db, {
+    available: [{ amount: 300, currency: "usd" }], pending: [{ amount: 100, currency: "usd" }],
+    onTheirWay: [{ amount: 50, currency: "usd" }], payouts: [{ amount: 450, currency: "usd", paid: true }],
+  }, null);
+  // The owner's page (the balance answer, kept fresh by withStripePart) and a
+  // member's (the figures action) are the same function's answer: identical.
+  const s = checkTotal(withStripePart(db, figures), "mixed D1 + owed");
+  const member = checkTotal(figures, "mixed, as a member reads it (figures action)");
+  assert.deepEqual(s, member, "owner and member read the same four figures");
+  assert.equal(s.available, 800, "mixed: TSC's $5 + the $3 in its Stripe account");
+  // The server decides where a payout on its way sits (api/_balance-figures.js);
+  // the card shows its answer to the cent, never a sum of its own.
+  assert.equal(s.pending, figures.pending_cents, "mixed: the card's Pending is the server's");
+  // The server's rule (round 8): only money in the factory's own Stripe account
+  // now is added; a payout on its way is already in the database's Pending.
+  assert.equal(figures.pending_cents, db.pending_cents + 100, "mixed: Pending = server pending + Stripe pending");
+  assert.equal(figures.paid_out_cents, db.paid_out_cents - (300 + 100), "mixed: Paid out = server paid out − (Stripe available + pending)");
+  assert.equal(s.total, db.awaiting_cents + db.available_cents + db.pending_cents + db.paid_out_cents, "mixed: Total = the database's total, to the cent");
+  assert.equal(s.total, figures.total_cents, "mixed: the card's Total is the server's, to the cent");
+  assert.deepEqual(withdrawReach(figures), { stripe: 800, balance: 500, estimated: false }, "mixed: Stripe reaches $8, PayPal/Wise $5 (never the Stripe account's)");
+  const placed = figuresByPayment(figures);
+  const clearingStep = pay("o2", 250, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
+  assert.equal(earningStatus(clearingStep, null, placed), "Pending", "a card payment still clearing reads Pending, as its figure does");
+  assert.match(owedClearingNote(clearingStep, placed) ?? "", /^Available [A-Z][a-z]{2} \d{1,2}$/, "with the day it can be withdrawn");
+  assert.equal(owedClearingNote(pay("o1", 500, "confirmed", APPROVED), placed), null, "an available step has no such note");
+  assert.equal(earningStatus(pay("o1", 500, "confirmed", APPROVED), null, placed), "Added to your balance");
+  assert.equal(earningStatus(pay("a1", 700, "confirmed"), null, placed), "Awaiting approval");
+  // A brand approves while the page is open: the database is read again and
+  // the Stripe part is kept, so the figures move without asking Stripe.
+  const later = { ...db, awaiting_cents: 0, available_cents: 1200, parts: { ...db.parts, owed_cleared_cents: 1200 } };
+  const merged = withStripePart(later, figures);
+  const m = checkTotal(merged, "after an approval");
+  assert.equal(m.approval, 0, "the approved step leaves Awaiting approval");
+  assert.equal(m.available, 1500, "and joins Available, the Stripe $3 kept");
+  assert.equal(m.total, s.total, "Total is unchanged: the money only moved");
+  assert.deepEqual(withdrawReach(merged), { stripe: 1500, balance: 1200, estimated: false });
+  // The server's own reach comes first: Stripe's from the balance read (only
+  // steps paid by card count), PayPal's and Wise's from my_withdrawal_balance().
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 500, estimated: false }, null), { stripe: 700, balance: 500, estimated: false }, "the balance read's top-level reach");
+  assert.deepEqual(withdrawReach(figures, { stripe_cents: 700, pool_cents: 450, estimated: true }, 500), { stripe: 700, balance: 450, estimated: true }, "reach.pool_cents first; the Stripe amount says when it was converted");
+  assert.deepEqual(withdrawReach(figures, null, 500), { stripe: 800, balance: 500, estimated: false }, "no Stripe read (members, no Stripe account): my_withdrawal_balance() for PayPal and Wise");
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  assert.ok(cardCode.includes("withdrawReach(figures, freshReach ?? balance?.reach ?? null, fromBalance.available)") && !cardCode.includes("figures?.reach"), "reach is read only at the server's top level");
+  // Re-test: the dialog's Available is read again after anything that moves money and when Withdraw opens.
+  assert.ok(cardCode.includes('connectAction(org.id, "figures")') && cardCode.includes("await Promise.all([readReach(), fromBalance.load()])")
+    && cardCode.includes("setWithdrawal((was) => (was ? { ...was, max: liveStripeMax } : was))"), "each method's Available is never stale");
+  assert.ok(cardCode.includes('withdrawal.estimated ? "Amount (estimated USD)"'), "a converted Stripe reach says estimated USD");
+  assert.equal(withStripePart(db, null), db, "no Stripe read: the database's figures as they are");
+  assert.equal(withStripePart(null, figures), figures, "no database read yet: the Stripe answer as it is");
+}
+
+// Stripe unreachable: the server answers 502 with the database's figures; the
+// card shows them rather than a blank.
+{
+  const fallback = { ...balanceFigures(tsc({ available_cents: 100 }, { owed_cleared_cents: 100 }), null, null), stripe_unavailable: true };
+  const s = checkTotal(fallback, "Stripe unreachable");
+  assert.equal(s.available, 100);
+  assert.equal(withdrawReach(fallback).stripe, 100, "only what TSC holds, never a guess at the Stripe account");
+}
+
+// A partial withdrawal (P1, exact amount): $10 owed, $4 asked for by PayPal.
+// $6 stays Available, $4 is Pending until paid; once paid with a $0.10 fee,
+// Paid out $3.90 and Total $9.90.
+{
+  const step = pay("p1", 1000, "confirmed", { ...APPROVED, withdrawal_pool: true });
+  const asked = balanceFigures(tsc({ available_cents: 600, pending_cents: 400 }, { pool_available_cents: 600, pool_open_cents: 400 },
+    [row("p1", "pending", 400), row("p1", "available", 600)]), null, null);
+  const a = checkTotal(asked, "partial, asked");
+  assert.equal(a.available, 600, "partial: the rest of the step stays Available");
+  assert.equal(a.pending, 400, "partial: exactly the amount asked for is Pending");
+  assert.equal(withdrawReach(asked).balance, 600, "partial: the rest can be withdrawn by any method");
+  assert.equal(earningStatus(step, null, figuresByPayment(asked)), "Added to your balance", "partial: the step is still in the balance, not Pending");
+  const paid = balanceFigures(tsc({ available_cents: 600, paid_out_cents: 390 }, { pool_available_cents: 600, pool_paid_cents: 400, withdrawal_fees_cents: 10 },
+    [row("p1", "paid_out", 400), row("p1", "available", 600)]), null, null);
+  const p = checkTotal(paid, "partial, paid");
+  assert.equal(p.paid, 390, "partial: Paid out is what arrived");
+  assert.equal(p.total, 990, "partial: Total less the fee");
+}
+
+// N7: a step still clearing reads Pending from the payment alone, so the order
+// page (no figures) and Payments say the same word.
+{
+  const clearingStep = pay("c1", 500, "confirmed", { ...APPROVED, funds_available_at: "2099-01-05T12:00:00Z" });
+  assert.equal(stillClearing(clearingStep), true);
+  assert.equal(earningStatus(clearingStep), "Pending", "the order page: Pending while the card payment clears");
+  assert.equal(earningStatus(clearingStep, null, new Map([["c1", new Set(["pending"])]])), "Pending", "Payments: the same word");
+  const cleared = { ...clearingStep, funds_available_at: "2020-01-01T00:00:00Z" };
+  assert.equal(earningStatus(cleared), "Added to your balance", "once cleared, in the balance on both");
+  assert.equal(earningStatus({ ...clearingStep, withdrawal_pool: true }), "Added to your balance", "old pool money is never clearing");
+}
+
+// N4: an old step-by-step payout still being sent is "on its way", not
+// "pending … once processing finishes"; one failed and waiting for staff too.
+{
+  const attemptOf = (status) => ({ id: `a-${status}`, provider: "wise", status, amount_cents: 300, created_at: "2026-11-02T00:00:00Z", money_left_at: "2026-11-02T00:00:00Z" });
+  const rows = [
+    pay("sending", 300, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("processing")] }),
+    pay("bounced", 500, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("failed")] }),
+    pay("clearing", 700, "confirmed", APPROVED),
+    pay("free", 900, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("failed")] }),
+  ];
+  const placed = new Map([["sending", new Set(["pending"])], ["bounced", new Set(["pending"])], ["clearing", new Set(["pending"])], ["free", new Set(["available"])]]);
+  assert.equal(legacyOnItsWayCents(rows, placed), 800, "processing and failed-for-staff steps the server holds in Pending");
+  assert.equal(legacyOnItsWayCents(rows, new Map()), 0, "nothing without the server's figures");
+}
+
+// F6: a step released by one-balance withdrawals is listed once, by its
+// withdrawal, never as an extra "Bank transfer — Completed".
+{
+  const base = { order: { brand_org_id: "brand-1", status: "active" }, released_by: "staff-1", released_at: "2026-11-20T00:00:00Z" };
+  const byPaypal = pay("w1", 1000, "released", { ...base, released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });
+  const mixed = pay("w2", 1000, "released", { ...base, released_note: "Withdrawn", payment_takes: [{ status: "sent" }, { status: "sent" }] });
+  const noEmbed = pay("w3", 1000, "released", { ...base, released_note: "Withdrawn" });
+  assert.deepEqual(withdrawalRows([byPaypal, mixed, noEmbed]), [], "no second withdrawal row for money a withdrawal took");
+  assert.equal(staffBankNote(byPaypal), null, "and no staff reference on it");
+  const byBank = pay("w4", 1000, "released", { ...base, released_note: "Wire 9", bank_payouts: { paid_to_bank: "Demo Bank", paid_to_last4: "0001" } });
+  assert.equal(withdrawalRows([byBank]).length, 1, "staff's bank payout keeps its row");
+}
+
+// Re-test (fix round 6): the card's "$X pending" is the Pending figure itself.
+{
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  // The card's lines under the balance add up to the Pending figure exactly:
+  // clearing ("$X pending. Available to withdraw on …"), on its way, on hold.
+  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures, fromBalance.opens)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws the three lines from pendingParts");
+  const sum = (p) => p.clearing + p.onItsWay + p.onHold + p.waiting;
+  const cases = [
+    { pending_cents: 187079, parts: { owed_clearing_cents: 11500, disputed_cents: 0 }, stripe: { pending_cents: 0 } },
+    { pending_cents: 2000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } },
+    { pending_cents: 16500, parts: { owed_clearing_cents: 6500, disputed_cents: 5000 }, stripe: { pending_cents: 1000 } },
+    { pending_cents: 500, parts: { owed_clearing_cents: 6500, disputed_cents: 5000 } },
+  ];
+  for (const figures of cases) {
+    const p = pendingParts(figures, [{ status: "requested", amount_cents: 1000 }, { status: "paying", amount_cents: 300 }]);
+    assert.equal(sum(p), figures.pending_cents, `the lines add up to Pending (${figures.pending_cents})`);
+    assert.ok(p.clearing >= 0 && p.onItsWay >= 0 && p.onHold >= 0 && p.waiting >= 0, "no line below zero");
+  }
+  assert.deepEqual(pendingParts(cases[0]), { pending: 187079, clearing: 11500, onHold: 0, waiting: 0, onItsWay: 175579 }, "withdrawals on their way are not 'available to withdraw'");
+  // Round 8: a PayPal/Wise withdrawal waiting for staff is "waiting", not "on its way";
+  // the part of one whose step was refunded is "on hold"; only what was sent is "on its way".
+  const round8 = { pending_cents: 9500 + 100000, parts: { owed_clearing_cents: 0, disputed_cents: 5000 },
+    rows: [{ payment_id: "p447", figure: "pending", amount_cents: 4500, refunded: true }] };
+  const opens = [{ status: "requested", amount_cents: 4500 }, { status: "requested", amount_cents: 100000 }];
+  assert.deepEqual(pendingParts(round8, opens), { pending: 109500, clearing: 0, onHold: 9500, waiting: 100000, onItsWay: 0 },
+    "dispute + refunded-under-withdrawal on hold, the rest waiting for staff, nothing called on its way");
+  assert.ok(cardCode.includes("pendingParts(figures, fromBalance.opens)") && cardCode.includes("waiting`}</p>"), "the card draws the waiting line");
+  // With the server's list (factory_balance().withdrawals): its words decide the lines, and the rows.
+  const listed = { pending_cents: 289094, parts: { owed_clearing_cents: 5000, disputed_cents: 0 }, withdrawals: [
+    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, fee_cents: 1406, to: "Bank account ending in 0154", arrives_on: "2026-11-23", created_at: "2026-11-20T15:29:58Z" },
+    { id: "s2", road: "stripe", word: "returned", amount_cents: 185500, created_at: "2026-11-20T15:29:58Z" },
+    { id: "p1", road: "pool", provider: "paypal", word: "returned", amount_cents: 4500, to: "a@b.c", created_at: "2026-11-20T15:23:57Z" },
+    { id: "p2", road: "pool", provider: "paypal", word: "waiting", amount_cents: 100000, to: "a@b.c", created_at: "2026-11-20T15:32:07Z" },
+    { id: "p3", road: "pool", provider: "wise", word: "on_hold", amount_cents: 4500, to: "Bank ending 0148", created_at: "2026-11-20T15:33:07Z" },
+  ] };
+  listed.pending_cents += 4500;
+  assert.deepEqual(pendingParts(listed, []), { pending: 293594, clearing: 5000, onHold: 4500, waiting: 100000, onItsWay: 184094 },
+    "on its way is only what the server calls on its way; waiting and on hold from its words");
+  // A waiting withdrawal partly held because a step under it was refunded: the
+  // held part on hold, the rest waiting, as two entries or one with held_cents.
+  const split = { pending_cents: 10000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } };
+  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "on_hold", amount_cents: 4500 }, { id: "w", road: "pool", word: "waiting", amount_cents: 5500 }] }, []),
+    { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "split into two entries");
+  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, held_cents: 4500 }] }, []),
+    { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "one entry with its held part");
+  // The server's parts (round 11): $75 asked, $50 of it on a step refunded since.
+  const withParts = { pending_cents: 7500 + 184094, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, withdrawals: [
+    { id: "w75", road: "pool", word: "waiting", amount_cents: 7500, parts: [{ word: "waiting", amount_cents: 2500 }, { word: "on_hold", amount_cents: 5000 }] },
+    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, parts: [{ word: "on_its_way", amount_cents: 184094 }] },
+  ] };
+  const p75 = pendingParts(withParts, []);
+  assert.deepEqual(p75, { pending: 191594, clearing: 0, onHold: 5000, waiting: 2500, onItsWay: 184094 }, "lines from parts: $25 waiting + $50 on hold");
+  assert.equal(p75.clearing + p75.onHold + p75.waiting + p75.onItsWay, withParts.pending_cents, "and they add up to Pending");
+  // Round 12: Stripe money an open withdrawal holds is on its way, not clearing.
+  const held = pendingParts({ pending_cents: 11467, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, stripe: { pending_cents: 1467, held_cents: 1467 },
+    withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, parts: [{ word: "waiting", amount_cents: 5000 }, { word: "on_hold", amount_cents: 5000 }] }] }, []);
+  assert.deepEqual(held, { pending: 11467, clearing: 0, onHold: 5000, waiting: 5000, onItsWay: 1467 }, "held Stripe money reads on its way, never 'withdraw once processing finishes'");
+  const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
+  assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
+    ["stripe-s1", "On its way", -184094],
+    ["asked-p2", "Waiting", -100000],
+    ["asked-p3-held", "On hold", -4500],
+  ], "rows from the server's list: a cancelled request and a Stripe withdrawal refused before any payout are not listed");
+  assert.equal(listedRows[0].meta, "To Bank account ending in 0154.", "where it went, in the notices' words");
+  assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
+  assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
+  assert.ok(cardCode.includes("withdrawal.amount > 0 && !amountProblem"), "the fee line follows the dialog's Available");
+  assert.equal(pendingParts(cases[1]).clearing, 0, "only withdrawals pending: no 'available to withdraw on' line");
+  assert.equal(pendingParts(null), null);
+  // A refunded earning stays listed, in no figure.
+  const refunded = pay("r1", 6500, "failed", { ...APPROVED, confirmed_at: "2026-11-19T00:00:00Z", refunded_at: "2026-11-20T00:00:00Z" });
+  assert.equal(earningStatus(refunded), "Refunded");
+  assert.equal(earningPaid(refunded), false);
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes('|| refundedEarning(row));') && page.includes("payout_arrives_on"), "refunded rows stay on the list; Stripe's arrival is read as its day");
+}
+
+// Fix round 6b: Stripe's arrival is a day; "On its way" until that day, even once paid.
+{
+  const now = new Date(2026, 10, 22, 23, 0); // Nov 22, 11 pm where the reader is
+  const [row] = companyStripeRows([{ id: "z", payout_id: "po_z", usd_cents: 2000, fee_cents: 40, payout_status: "paid", payout_arrives_on: "2026-11-23", created_at: "2026-11-20T10:00:00Z" }], () => null, now);
+  assert.equal(row.status, ON_ITS_WAY, "paid by Stripe, but its arrival day is tomorrow");
+  assert.equal(row.arrives.getDate(), 23, "the arrival day is read as that day, not an instant");
+  const [arrived] = companyStripeRows([{ id: "y", payout_id: "po_y", usd_cents: 2000, fee_cents: 40, payout_status: "paid", payout_arrives_on: "2026-11-23", created_at: "2026-11-20T10:00:00Z" }], () => null, new Date(2026, 10, 23, 9, 0));
+  assert.equal(arrived.status, "Paid out to your bank", "and at the bank from that day");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes("returnable.get(w.id)") && form.includes("total > 0 ? `Back to your balance: ${formatMoney(total, \"USD\")}` : NOTHING_BACK"),
+    "cancelling says what really comes back, or that nothing does after a refund");
+}
+
+// Round 9: a request the server marks on_hold reads "On hold" in the Pending withdrawal block, for owner and member.
+{
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes('words.get(row.id) === "on_hold"') && form.includes('{onHold(row) ? "On hold" : row.status === "requested" ? "Waiting" : "Processing"}')
+    && form.includes('data-testid="withdrawal-on-hold">On hold</span>'), "On hold for the owner and the member");
+}
+
+// Round 11: after any withdrawal answer, refusals included, the balance is read
+// again at once, and the newer answer wins over an older database read.
+{
+  const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(/setFreshReach\(null\);\s*fromBalance\.load\(\);\s*await load\(\)\.catch/.test(cardCode), "a refused withdrawal re-reads the balance, Stripe part included");
+  assert.ok(page.includes("const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));"), "the newer read wins");
+}
+
+// A declined or failed withdrawal banner shows while new, not in every later visit.
+{
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes("<NewOnly id={`${last.id}:declined`}>") && form.includes("tscWithdrawalNoticeSeen:"), "the declined banner is shown once per withdrawal");
+}
+
+// Fix round 5 (local tester).
+{
+  // M5: a disputed step is On hold, never "Available <day>", on both pages.
+  const disputed = pay("d1", 500, "confirmed", { ...APPROVED, disputed_at: "2026-11-20T00:00:00Z", funds_available_at: "2099-01-05T12:00:00Z" });
+  assert.equal(earningStatus(disputed), ON_HOLD);
+  assert.equal(earningStatus(disputed, null, new Map([["d1", new Set(["pending"])]])), ON_HOLD);
+  assert.equal(owedClearingNote(disputed, new Map([["d1", new Set(["pending"])]])), null, "no date for held money");
+  // M4: a step all withdrawn reads Paid, whichever road took it.
+  const sentByStripe = pay("s1", 6500, "released", { ...APPROVED, stripe_transfer_id: "tr_1", released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });
+  assert.equal(earningStatus(sentByStripe), "Paid", "a step a Stripe withdrawal took and sent is paid");
+  assert.equal(earningStatus(pay("s2", 6500, "released", { stripe_transfer_id: "tr_2" })), "Added to your balance", "an old transfer to the Stripe balance is as before");
+  // M3/M4: the company's Stripe withdrawals, for owner and member alike, from stripe_withdrawals.
+  const now = new Date("2026-11-20T12:00:00Z");
+  const rows = companyStripeRows([
+    { id: "a", payout_id: "po_1", usd_cents: 1000, fee_cents: 32, payout_status: "paid", payout_arrives_at: "2026-11-23T00:00:00Z", created_at: "2026-11-20T10:00:00Z" },
+    { id: "b", payout_id: "po_2", usd_cents: 2000, fee_cents: 50, payout_status: "paid", payout_arrives_at: "2026-11-19T00:00:00Z", created_at: "2026-11-18T10:00:00Z" },
+    { id: "c", payout_id: "po_3", usd_cents: 500, fee_cents: 0, payout_status: "failed", created_at: "2026-11-18T10:00:00Z" },
+    { id: "d", payout_id: null, usd_cents: 500, created_at: "2026-11-18T10:00:00Z" },
+  ], () => null, now);
+  assert.equal(rows.length, 3, "only withdrawals that made a payout");
+  assert.equal(rows[0].status, ON_ITS_WAY, "paid by Stripe but not at the bank until its arrival day");
+  assert.equal(rows[0].note, "Your bank is processing the payout.", "the processing sentence sits on its own row");
+  assert.equal(rows[0].amount, -968, "what reaches the bank: the withdrawal less Stripe's fee");
+  assert.equal(rows[1].status, "Paid out to your bank");
+  assert.equal(rows[1].note, "Fee $0.50, taken from it", "the fee in the PayPal row's words");
+  assert.equal(rows[2].failed, true);
+  // Minor: the amount is read as typed, never clamped.
+  assert.equal(parseWithdrawAmount("65.01", 6500).problem, "You can withdraw up to $65.00.");
+  assert.equal(parseWithdrawAmount("1,000", 200000).cents, 100000, "a thousands comma is read as meant");
+  assert.equal(parseWithdrawAmount("0.001", 6500).problem, "Enter the amount in dollars and cents, like 45.50.");
+  for (const bad of ["-5", "abc", "", "0"]) assert.equal(parseWithdrawAmount(bad, 6500).problem, "Enter an amount to withdraw.", bad);
+  // M7: the fee and what arrives, before asking, in the factory's existing sentence.
+  assert.equal(withdrawFeeLine(89, 4411), "Payout fee $0.89 is taken from this payment: you receive $44.11.");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes('data-testid="withdraw-fee"') && !form.includes("Reload the page to see it"), "the PayPal/Wise dialog shows its fee; a refusal needs no reload");
+  assert.ok(!/setAmountText\(Number\(value\) > available/.test(form), "the amount is never clamped");
+}
+
+// Money held on a cancelled order is in no figure; approved before the
+// cancellation it is still owed.
+assert.equal(earningStatus(earnings.find((r) => r.id === "approved-then-cancelled")), "Added to your balance");
 
 // Nothing is in two figures, and money held on a cancelled order is in none.
 for (const row of earnings) {
@@ -62,7 +379,7 @@ for (const row of earnings) {
 // The words, in each branch.
 const held = earnings.find((row) => row.id === "held");
 const approved = earnings.find((row) => row.id === "approved");
-assert.equal(earningStatus(approved), "Pending");
+assert.equal(earningStatus(approved), "Added to your balance", "approved money is in the balance (D3), never Pending");
 assert.equal(earningStatus(held), "Awaiting approval");
 assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled")), "Order cancelled");
 assert.equal(earningStatus(earnings.find((row) => row.id === "paid")), "Paid");
@@ -91,7 +408,6 @@ const sentOut = rows.filter((row) => !row.failed).reduce((sum, row) => sum - row
 assert.equal(sentOut, 300 + 700 + 900 + 1100 + 1300, "each payment sent is one withdrawal; Stripe's come from Stripe; failures never count");
 assert.equal(rows.filter((row) => row.failed).length, 2, "a failed attempt keeps its row");
 assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing");
-assert.equal(usd(earningsSummaryFor(money, "All clients").paid), 700 + 900 + 1100 + 1300 + 1500, "every Paid row is in Paid out, Stripe's too");
 assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
 assert.ok(rows.find((row) => row.id === "provider-b").amount < 0, "a failed row keeps its sign, struck through");
 assert.equal(rows.find((row) => row.id === "provider-d").note, "The payment did not go through. Check your payout details or contact TSC operations", "and one with no known reason says what to do");
@@ -116,14 +432,9 @@ assert.equal(withdrawalProblem(unclaimed, corrected)?.line, "Your payment of $12
 assert.equal(withdrawalProblem(unclaimed, corrected)?.fixable, false);
 assert.equal(withdrawalRows(unclaimed, corrected)[0].note, "TSC will send it again");
 assert.equal(withdrawalProblem(unclaimed, { paypal_email: "A@example.com" })?.line.endsWith("Check your PayPal address."), true, "saving the same address changes nothing");
-assert.equal(usd(handPaidFigures(unclaimed).onItsWay), 0, "PayPal holding it for an address is not on its way");
-assert.equal(usd(handPaidFigures(unclaimed).balance), 12000, "it is still the balance");
 // A Wise transfer nobody has funded has not left: no row, not on its way, still the balance.
 const unfunded = [pay("unfunded", 6500, "confirmed", { ...APPROVED, provider_payouts: [attempt("u", "processing", { amount_cents: 6500 })] })];
 assert.deepEqual(withdrawalRows(unfunded), [], "an unfunded transfer is no withdrawal");
-assert.equal(usd(handPaidFigures(unfunded).onItsWay), 0, "nor on its way");
-assert.equal(usd(handPaidFigures(unfunded).balance), 6500);
-assert.equal(usd(handPaidFigures([{ ...unfunded[0], provider_payouts: [attempt("u", "processing", { amount_cents: 6500, money_left_at: "2026-11-03T00:00:00Z" })] }]).onItsWay), 6500, "funded, it is");
 // The detail Wise refused, in our words, on the row and the card.
 const named = [pay("named", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("n", "failed", { failure_code: "details_rejected", amount_cents: 500, asked_to_check: "Check your SWIFT code" })] })];
 assert.equal(withdrawalRows(named)[0].note, "Check your SWIFT code");
@@ -131,14 +442,6 @@ assert.equal(withdrawalProblem(named)?.line, "A withdrawal failed. Check your SW
 assert.equal(withdrawalProblem(named)?.zh, undefined, "one language: the factory's screens are English");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].note, null, "fixed since: the row stops asking, and stays failed");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].failed, true);
-const moneyFigures = handPaidFigures(money);
-assert.equal(usd(moneyFigures.onItsWay), 300, "being sent is on its way");
-assert.equal(usd(moneyFigures.balance), 500, "a failed one is owed again");
-const moneySummary = earningsSummaryFor(money, "All clients");
-assert.equal(usd(moneySummary.pending), usd(moneyFigures.balance) + usd(moneyFigures.onItsWay), "Pending is balance + on its way");
-const buckets = (rows) => { const s = earningsSummaryFor(rows, "All clients"); return usd(s.approval) + usd(s.pending) + usd(s.paid); };
-assert.equal(buckets(money), usd(earningsSummaryFor(money, "All clients").total), "with a Stripe payout among them, the figures add up");
-assert.equal(usd(moneySummary.total), usd(moneySummary.approval) + usd(moneySummary.pending) + usd(moneySummary.paid), "total = awaiting + pending + paid out");
 assert.equal(factoryAmount(money[0]), 300);
 // A payout fee (src/shared/withdrawal-fees.mjs) comes off the one figure: the row,
 // the summary and the withdrawal all say what the factory received.
@@ -146,7 +449,6 @@ assert.equal(factoryAmount(money[0]), 300);
   const paidWithFee = { id: "fee1", state: "released", amount_cents: 6500, charged_cents: 7194, payout_fee_cents: 128, currency: "USD", released_at: "2026-11-16T10:00:00Z",
     order: { brand_org_id: "b1" }, provider_payouts: [{ id: "x1", provider: "paypal", status: "paid", paid_to: "p@example.com", amount_cents: 6500, money_left_at: "t", paid_at: "2026-11-16T10:00:00Z" }] };
   assert.equal(factoryAmount(paidWithFee), 6372, "the earning is what arrived");
-  assert.equal(usd(earningsSummaryFor([paidWithFee], "All clients").paid), 6372, "Paid out is what arrived");
   assert.equal(withdrawalRows([paidWithFee])[0].amount, -6372, "the withdrawal is what left for the factory");
   assert.equal(factoryAmount({ ...paidWithFee, payout_fee_cents: null }), 6500, "no fee, the step");
 }
@@ -160,18 +462,7 @@ assert.equal(staffBankNote({ ...bankPaid, released_by: null }), null, "written b
 assert.equal(staffBankNote({ ...bankPaid, payoneer_payouts: { payoneer_payment_id: "X" } }), null, "a Payoneer row says its ID instead");
 assert.equal(staffBankNote({ ...bankPaid, state: "confirmed" }), null, "not paid yet");
 
-// Who is paid by hand. Loading earnings (null) does not count as Stripe-paid.
 const transferred = [pay("t", 5, "released", { stripe_transfer_id: "tr_1" })];
-assert.equal(isHandPaid(null, earnings), true, "no Stripe account");
-assert.equal(isHandPaid({ transfers_active: false }, earnings), true, "Stripe setup not finished, nothing paid through it");
-assert.equal(isHandPaid({ transfers_active: true }, earnings), false, "Stripe can take transfers");
-assert.equal(isHandPaid({ transfers_active: false }, transferred), false, "paid through Stripe before");
-assert.equal(isHandPaid(null, null), true);
-
-// A factory paid through Stripe reads the same figures as anyone else, owner or member.
-const answered = earningsSummaryFor(transferred, "All clients");
-assert.equal(usd(answered.pending), 0, "paid through Stripe is not Pending");
-assert.equal(usd(answered.paid), 5, "it is Paid out, the word on its row, with no answer from Stripe");
 assert.equal(earningStatus(transferred[0]), "Added to your balance", "the same word as the order page: in its Stripe balance, not its bank");
 assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8"), /case "released":\s*\/\/[^\n]*\n\s*return isFactory \? earningStatus\(payment\)/, "the order page uses that word for the factory");
 
@@ -194,36 +485,21 @@ assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import
   const balance = { pendingEarnings: [{ paymentId: "s-clearing", available_on: nov19 }, { paymentId: "s-clearing-2", available_on: nov19 }] };
   const clearing = clearingFor(balance);
   assert.equal(clearingFor(undefined).size, 0, "no Stripe read, nothing clearing");
-  for (const client of ["All clients", "brand-1", "brand-2"]) {
-    const shown = stripeEarnings.filter((row) => client === "All clients" || row.order.brand_org_id === client);
-    const owner = earningsSummaryFor(stripeEarnings, client, new Map(), 0, clearing);
-    const member = earningsSummaryFor(stripeEarnings, client);
-    const before = earningsSummaryFor(stripeEarnings, client, new Map(), 0, null);
-    const sumOf = (word) => shown.filter((row) => earningStatus(row, clearing) === word).reduce((sum, row) => sum + factoryAmount(row), 0);
-    assert.equal(usd(owner.pending), sumOf("Pending"), `${client}: the rows that say Pending add up to the Pending figure`);
-    assert.equal(usd(owner.approval), sumOf("Awaiting approval"), `${client}: and Awaiting approval to its figure`);
-    assert.equal(usd(owner.paid), sumOf("Added to your balance") + sumOf("Paid"), `${client}: and Paid out to its figure`);
-    assert.equal(usd(owner.total), usd(member.total), `${client}: Total earnings is the same with money clearing`);
-    assert.equal(usd(owner.approval) + usd(owner.pending) + usd(owner.paid), usd(owner.total), `${client}: the three add up to Total`);
-    assert.deepEqual(member, before, `${client}: someone who can't read Stripe sees the figures as before`);
-  }
   assert.equal(earningStatus(stripeEarnings[0], clearing), "Pending", "a clearing earning reads Pending");
   assert.equal(earningStatus(stripeEarnings[0]), "Added to your balance", "without the read, it reads as before");
   assert.equal(earningStatus(stripeEarnings[2], clearing), "Added to your balance", "one Stripe has made available reads as before");
   assert.equal(earningPaid(stripeEarnings[0], clearing), false, "a clearing earning is not drawn as paid");
   assert.equal(clearingNote(stripeEarnings[0], clearing), "Available Nov 19", "its note says the day, read in UTC");
   assert.equal(clearingNote(stripeEarnings[2], clearing), null, "no note once available");
-  assert.equal(usd(earningsSummaryFor(stripeEarnings, "All clients", new Map(), 0, clearing).pending), 124800 + 21000 + 9000,
-    "Pending is what is owed plus what Stripe is clearing");
   // The page builds both from the same map.
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
   assert.ok(page.includes("const clearing = clearingFor(stripeBalance);")
-    && /earningsSummaryFor\([^;]*clearing\);/.test(page)
-    && page.includes("status: earningStatus(row, clearing)"), "the page feeds the rows and the figures the same clearing map");
+    && page.includes("status: earningStatus(row, clearing, placed)")
+    && page.includes("const placed = figuresByPayment(balanceFigures);"), "each row's word comes from the same reads as the figures");
 }
 
 // The same rules as the staff board's buckets. A change there must change here.
-const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
+const board = readFileSync(new URL("../src/shared/payments-board-sections.mjs", import.meta.url), "utf8");
 for (const rule of [
   // Owed, whichever tab draws it: a Wise or PayPal payout underway is shown under Processing.
   'const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
@@ -264,6 +540,27 @@ for (const rule of [
 // A hand-paid card never goes back to saying how it is paid in place of a figure.
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
+// One card for every factory (D3): "Available balance (USD)", its number the
+// server's Available, the page's four figures the same read. No second card
+// version, no figure summed from payments in the browser.
+assert.ok(!card.includes("Balance (USD)") && !/isHandPaid|handFigures|handPaid/.test(card), "one card: no hand-paid version");
+assert.ok(card.includes('estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"'), "the label says estimated only while the Stripe account holds money in another currency");
+assert.ok(card.includes("formatMoney(Number(figures.available_cents) || 0, \"USD\")"), "the big number is the server's Available");
+assert.ok(card.includes("Boolean(figures?.has_method) || balanceChoices.length > 0"), "Withdraw or Add withdrawal method by has_method (D6), and at once after the first method is saved (M1)");
+assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still shows them");
+{
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes("summaryFrom(transactionsReady ? shownFigures : null)"), "the four figures come from the one balance");
+  assert.ok(page.includes('rpc("factory_balance", { target_org: org.id, target_client: client })'), "a client's figures from the same function");
+  assert.ok(page.includes("figures={earningsError ? null : allFigures}"), "the card and the figures read the same answer");
+  assert.ok(!/earningsSummaryFor|handPaidFigures|inBalance/.test(page), "no figure is summed from payments in the browser");
+  // Members and factories with no Stripe account read the server's figures
+  // action (the same answer as an owner's balance read; it records missing
+  // clearing dates itself), at most once a minute, and wait for its first answer.
+  assert.ok(page.includes('connectAction(org.id, "figures")') && /clearingAskedAt\.current > 60_000/.test(page)
+    && page.includes("setViaFigures(failure?.details?.figures ?? null)") && !page.includes("refreshClearingDates"), "the figures action on the non-Stripe path");
+  assert.ok(page.includes("if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank]"), "a Stripe withdrawal row says where it went, for owner and member");
+}
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
 // The one exception: a withdrawal method names the provider that pays it

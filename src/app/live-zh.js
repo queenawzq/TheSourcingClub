@@ -105,6 +105,7 @@ const PATTERNS = [
   [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
   // The Withdraw dialog's refusal when the fee would take everything (withdrawalFee, src/shared/withdrawal-fees.mjs).
   [/^This payment of (\S+) is too small: the fee to send it is (\S+), so nothing would arrive\. Nothing was sent\.$/, (m) => `该笔款项 ${m[1]} 金额过低：转账手续费为 ${m[2]}，到账金额为零。未发送任何款项。`],
+  [/^This payment of (\S+) is too small to send\. The fee is (\S+)\.$/, (m) => `该笔款项 ${m[1]} 金额过低，无法发送。手续费为 ${m[2]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
@@ -147,6 +148,17 @@ const PATTERNS = [
   [/^due (.+)$/, (m, inner) => `截止 ${inner(m[1])}`],
   [/^Updated (.+)$/, (m, inner) => `更新于 ${inner(m[1])}`],
   [new RegExp(`^Available to withdraw on ${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现`],
+  // Where a Stripe withdrawal went (stripe_withdrawals.destination_label), in the notices' words.
+  [/^To (Bank account|Debit card) ending in (\d+)\.$/, (m) => `转至${m[1] === "Bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）。`],
+  // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
+  [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待处理。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
+  [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待处理。处理完成后即可提现。`],
+  [/^Part of your balance is held in ([A-Z]{3}), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1]} 持有，因此美元金额为估算值。`],
+  [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
+  [/^(\$[\d,.]+) waiting$/, (m) => `${m[1]} 等待中`],
+  // A step still clearing, on its Payments row: "Available Nov 22.", alone or
+  // before the row's other sentences, which are translated on their own.
+  [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],
   // Counts on cards and tabs.
   [/^(\d+) awaiting brand review$/, (m) => `${m[1]} 个待品牌审核`],
   [/^(\d+) need updates?$/, (m) => `${m[1]} 个需要更新`],

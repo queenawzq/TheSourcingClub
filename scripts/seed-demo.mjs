@@ -44,6 +44,7 @@ import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
 import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
+import { FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
 
 // The local stack, or a test database named with --remote; never production.
 const { URL, ANON, SERVICE, isLocal } = demoTarget();
@@ -1428,9 +1429,15 @@ async function fundedByStripe(payment, method) {
     transfer_group: payment.order_id, metadata: { payment_id: payment.id },
   });
   must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent.id, charged: total }), "the real test charge");
-  return must(await admin.rpc("record_payment_funded", {
+  const held = must(await admin.rpc("record_payment_funded", {
     target_payment: payment.id, charge: intent.latest_charge, method_type: method[0], method_label: method[1], received: total,
   }), "a payment held by TSC, charged in Stripe");
+  // When the charge clears, as the server records it: Stripe adds the date a
+  // few seconds after the charge. Without it the step reads Pending for a week.
+  const at = await recordFundsAvailable({ stripe, db: admin, paymentId: payment.id, charge: intent.latest_charge, waitMs: FUNDS_WAIT_MS })
+    .catch((failure) => { console.warn(`clearing date not recorded: ${failure.message}`); return null; });
+  if (!at) console.warn("Stripe gave this charge no clearing date in time: the step reads Pending until a balance read records it.");
+  return held;
 }
 /** The factory posts on the open step and the brand approves it (it must be funded). */
 async function approveOpenStep(order, title, vendor = factory) {

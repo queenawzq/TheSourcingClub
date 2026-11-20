@@ -177,7 +177,10 @@ export async function addPayoutMethod(stripe, accountId, { token, makeDefault })
 export async function payoutsOnTheirWay(stripe, accountId) {
   const recent = await stripe.payouts.list({ limit: 20 }, { stripeAccount: accountId });
   return recent.data
-    .filter((payout) => payout.status === "pending" || payout.status === "in_transit")
+    // Stripe can mark a payout paid before its arrival day (test mode does at
+    // once): until that day it is on its way.
+    .filter((payout) => payout.status === "pending" || payout.status === "in_transit"
+      || (payout.status === "paid" && Number(payout.arrival_date) * 1000 > Date.now()))
     .map((payout) => ({
       id: payout.id,
       amount: payout.amount,

@@ -2411,12 +2411,14 @@ async function main() {
       "the note typed in the approve dialog is stored with the approval");
     check(approvedStep.state === "complete", "approving a funded step completes it");
     const { data: owed } = await db.from("order_payments")
-      .select("state, release_requested_at").eq("id", dueNow.id).single();
-    check(Boolean(owed.release_requested_at), "and asks for the factory's payout");
-    // This factory has no Stripe account, so nothing is transferred: the
-    // payout waits for staff.
-    check(owed.state === "confirmed",
-      `a factory with no Stripe account is not paid automatically; staff pay it (${owed.state})`);
+      .select("state, release_requested_at, withdrawal_pool, stripe_transfer_id, release_claimed_at, funds_available_at").eq("id", dueNow.id).single();
+    check(Boolean(owed.release_requested_at), "and the step's money is owed to the factory");
+    // One balance (20261120100000): approving moves nothing, on any road. The
+    // money waits in the factory's balance until an owner withdraws it.
+    check(owed.state === "confirmed" && !owed.withdrawal_pool && !owed.stripe_transfer_id && !owed.release_claimed_at,
+      `approval transfers nothing and puts nothing in the withdrawal pool (${owed.state})`);
+    const { data: takenAtApproval } = await db.from("payment_takes").select("id").eq("payment_id", dueNow.id);
+    check((takenAtApproval ?? []).length === 0, "and no withdrawal has taken any of it");
     const { data: opened } = await db.from("order_milestones")
       .select("state").eq("id", secondStep.id).single();
     check(opened.state === "active", "the next step opened on the approval");
@@ -2429,7 +2431,37 @@ async function main() {
     // here, decline it with a reason. There is no "Paid by bank" for it.
     console.log("\nTHE FACTORY WITHDRAWS TO WISE; STAFF DECLINE IT");
     const { data: pooled } = await db.from("order_payments").select("withdrawal_pool").eq("id", dueNow.id).single();
-    check(pooled?.withdrawal_pool === true, "the approved step goes into the factory's balance");
+    check(pooled?.withdrawal_pool === false, "the approved step stays owed in the factory's balance, outside the old pool");
+    // A card payment Stripe has not cleared yet is Pending, not Available, on
+    // every road (situation 9). Once Stripe's clearing date passes, it is
+    // Available. The date is recorded here as the server would on that day,
+    // and put back after this section, so the Stripe road below never
+    // transfers from a charge Stripe has not cleared.
+    let realClearingDate = null;
+    {
+      const factoryReader = await clientAs(`e2e-factory-${stamp}@example.com`);
+      const figureOf = async () => {
+        const { data } = await factoryReader.client.rpc("factory_balance", { target_org: factoryOrg.id });
+        return (data?.rows ?? []).filter((row) => row.payment_id === dueNow.id).map((row) => row.figure).join(",");
+      };
+      // The server records Stripe's clearing date once the charge's balance
+      // transaction exists, which can be a moment after the payment is confirmed.
+      let clearing = null;
+      for (let waited = 0; waited < 15000; waited += 500) {
+        ({ data: clearing } = await db.from("order_payments").select("funds_available_at, stripe_charge_id").eq("id", dueNow.id).single());
+        if (clearing?.funds_available_at || !clearing?.stripe_charge_id) break;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (clearing?.stripe_charge_id) check(Boolean(clearing.funds_available_at), "Stripe's clearing date is recorded for the card payment");
+      if (clearing?.funds_available_at && new Date(clearing.funds_available_at) > new Date()) {
+        check(await figureOf() === "pending", "money Stripe is still clearing is Pending, not Available");
+        realClearingDate = clearing.funds_available_at;
+        const { error: clearedError } = await db.rpc("record_payment_funds_available", {
+          target_payment: dueNow.id, available_at: new Date(Date.now() - 60_000).toISOString() });
+        check(!clearedError, `Stripe's clearing date is reached (${clearedError?.message ?? "ok"})`);
+      }
+      check(await figureOf() === "available", "the approved, cleared step is Available in the factory's balance");
+    }
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory withdrawing", "factory");
     await page.goto(`${APP}/payout`);
@@ -2452,6 +2484,14 @@ async function main() {
       "the request waits for TSC: the owner can cancel it from the card");
     const { data: asked } = await db.from("factory_withdrawals").select("id, status, provider").eq("org_id", factoryOrg.id);
     check(asked.length === 1 && asked[0].status === "requested" && asked[0].provider === "wise", "a double click asks once, by Wise");
+    {
+      // The request claimed the step in the same transaction: exactly $95, held.
+      const { data: held } = await db.from("payment_takes")
+        .select("road, status, amount_cents, factory_withdrawal_id").eq("payment_id", dueNow.id);
+      check((held ?? []).length === 1 && held[0].road === "pool" && held[0].status === "held"
+        && held[0].factory_withdrawal_id === asked[0]?.id && Number(held[0].amount_cents) === Number(dueNow.amount_cents),
+        `the request takes the step for the Wise withdrawal, exactly its amount (${JSON.stringify(held)})`);
+    }
 
     await signOutFully(page);
     await signIn(page, adminEmail, "Admin paying out");
@@ -2490,6 +2530,11 @@ async function main() {
     check(declinedWithdrawal?.status === "declined" && declinedWithdrawal.reason === declineReason, "the withdrawal is declined, with the reason");
     const { data: stillHeld } = await db.from("order_payments").select("state").eq("id", dueNow.id).single();
     check(stillHeld.state === "confirmed", "and the step stays in the factory's balance, not paid out");
+    {
+      const { data: back } = await db.from("payment_takes").select("status").eq("payment_id", dueNow.id);
+      check((back ?? []).length > 0 && back.every((take) => take.status === "returned"), "the declined withdrawal's take is returned to the balance");
+    }
+    if (realClearingDate) await db.from("order_payments").update({ funds_available_at: realClearingDate }).eq("id", dueNow.id);
 
     // ================= WISE, PAYPAL, AND NOTHING SET UP =================
     // Needs the demo data (seed-demo.mjs). Nothing here calls Wise or PayPal:
@@ -2606,14 +2651,28 @@ async function main() {
 
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
       await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
-      const { data: open } = await db.from("factory_withdrawals").select("id").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
+      const { data: open } = await db.from("factory_withdrawals").select("id, amount_cents, pool_cents").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
+      {
+        // The PayPal request reaches staff, and what it takes is exactly what was asked:
+        // pool money first, then owed steps (payment_takes), never more.
+        const board = await staffClient.rpc("admin_withdrawals");
+        const listed = (board.data?.withdrawals ?? []).find((w) => w.id === open.id);
+        check(Boolean(listed) && listed.status === "requested" && /paypal/i.test(listed.provider ?? ""),
+          "the PayPal withdrawal is on staff's Withdrawals board, waiting");
+        const { data: itsTakes } = await db.from("payment_takes").select("amount_cents, status").eq("factory_withdrawal_id", open.id);
+        const taken = (itsTakes ?? []).filter((t) => t.status === "held").reduce((sum, t) => sum + Number(t.amount_cents), 0);
+        check(Number(open.amount_cents) === Number(open.pool_cents ?? open.amount_cents) + taken,
+          `it is exactly its pool money plus its takes (${open.amount_cents} = ${open.pool_cents} + ${taken})`);
+      }
       const reason = `E2E: confirm your PayPal address ${stamp}`;
       const declined = await staffClient.rpc("decline_withdrawal", { target_withdrawal: open.id, why: reason });
       check(!declined.error, "staff decline it with a reason");
       const reasonShown = await within(page, async () => (await page.locator('[data-testid="withdrawal-declined"]').innerText().catch(() => "")).includes(reason), 20000);
       check(reasonShown !== null, "the factory reads the reason on its card, without reloading");
-      const paypalEarnings = await page.locator(".payout-transaction-table").first().innerText();
-      check(/\bcompleted\b/i.test(paypalEarnings) && /\bdeclined\b/i.test(paypalEarnings),
+      // The list re-reads on the change too: waited for, as the reason above is.
+      const listed = (text) => /\bcompleted\b/i.test(text) && /\bdeclined\b/i.test(text);
+      const bothListed = await within(page, async () => listed(await page.locator(".payout-transaction-table").first().innerText().catch(() => "")), 20000);
+      check(bothListed !== null,
         "its withdrawals are listed: the one paid by PayPal, Completed, and this one, Declined");
       await record(page, "A factory's earnings", "the balance, a declined withdrawal with TSC's reason, and the paid one");
 
@@ -2639,6 +2698,221 @@ async function main() {
       check(added?.method === "paypal" && added?.is_primary === false, "a new PayPal account is added and the default stays");
       if (added?.id) await db.from("factory_payout_accounts").delete().eq("id", added.id);
 
+      await signOutFully(page);
+      await signIn(page, adminEmail, "Admin paying out");
+    }
+
+    // ================= THE FIRST WITHDRAWAL METHOD, AND WITHDRAW =================
+    // A factory with money in its balance and no method adds its first one
+    // (PayPal): Withdraw appears on the card at once, without a reload
+    // (the local tester's finding, fix round 5). Hangzhou Test Knit is the
+    // demo factory with nothing set up (seed-demo.mjs); the method added here
+    // is removed again, so the demo stays as the seed left it.
+    console.log("\nTHE FIRST WITHDRAWAL METHOD, AND WITHDRAW");
+    {
+      const { data: chinaOrg } = await db.from("orgs").select("id").eq("name", "Hangzhou Test Knit").maybeSingle();
+      const { data: chinaMethods } = chinaOrg
+        ? await db.from("factory_payout_accounts").select("id").eq("org_id", chinaOrg.id) : { data: null };
+      if (!chinaOrg || (chinaMethods ?? []).length > 0) {
+        console.log("  (no Hangzhou Test Knit with nothing set up: skipped; run seed:demo)");
+      } else {
+        await signOutFully(page);
+        await page.goto(portalUrl("factory"));
+        await waitFor(page, 'input[name="email"]', 30000);
+        await page.locator('input[name="email"]').first().fill("demo-factory-china@example.com");
+        await page.locator('input[name="password"]').first().fill("demo password 8");
+        await clickButton(page, "log in");
+        await page.waitForTimeout(4000);
+        await page.goto(`${APP}/payout`);
+        await waitFor(page, '[data-testid="payout-balance"]', 25000);
+        check((await page.locator('[data-testid="withdraw-balance"]').count()) === 0, "no method yet: the card offers no Withdraw");
+        await page.locator('[data-testid="add-payout-method"]').first().click();
+        const paypalOffered = await within(page, async () => (await page.locator('[data-testid="payout-set-up-paypal"]').count()) > 0, 5000);
+        if (paypalOffered === null) await clickButton(page, "add withdrawal method");
+        await waitFor(page, '[data-testid="payout-set-up-paypal"]', 10000);
+        await page.locator('[data-testid="payout-set-up-paypal"]').click();
+        await waitFor(page, '[data-field="payout_paypal_email"]', 10000);
+        const firstPaypal = `e2e-first-${stamp}@example.com`;
+        await page.locator('[data-field="payout_paypal_email"]').fill(firstPaypal);
+        await page.locator('[data-field="payout_paypal_email_confirm"]').fill(firstPaypal);
+        await page.locator('[data-testid="save-payout"]').click();
+        // No reload: the card must offer Withdraw by itself once the method is saved.
+        const withdrawShown = await within(page, async () => page.evaluate(() => {
+          const button = document.querySelector('[data-testid="withdraw-balance"]');
+          return Boolean(button) && !button.disabled;
+        }), 15000);
+        check(withdrawShown !== null, "after saving its first method, the card offers Withdraw without a reload");
+        await record(page, "First method saved", "Withdraw is on the card at once");
+        const { data: firstAdded } = await db.from("factory_payout_accounts").select("id").eq("paypal_email", firstPaypal);
+        const { data: noWithdrawal } = await db.from("factory_withdrawals").select("id").eq("org_id", chinaOrg.id).in("status", ["requested", "paying"]);
+        check((noWithdrawal ?? []).length === 0, "saving a method withdrew nothing (D6)");
+        for (const added of firstAdded ?? []) await db.from("factory_payout_accounts").delete().eq("id", added.id);
+        await signOutFully(page);
+        await signIn(page, adminEmail, "Admin paying out");
+      }
+    }
+
+    // ================= THE FACTORY WITHDRAWS TO STRIPE =================
+    // One balance, stage 2 (20261120200000): nothing moves at approval. The
+    // owner presses Withdraw, and only then are the oldest cleared owed steps
+    // claimed (exactly the amount asked), transferred from the brand's charge
+    // to the factory's Stripe account, and paid out to its bank. Stripe test
+    // mode only: a TSC-managed test account verified with Stripe's test values,
+    // and a brand charge that clears at once (pm_card_bypassPending).
+    console.log("\nTHE FACTORY WITHDRAWS TO STRIPE");
+    const { data: nextDue } = await db.from("order_payments")
+      .select("id, milestone_id, amount_cents, payout_fee_cents").eq("order_id", bornOrder.id).eq("state", "due")
+      .order("created_at").limit(1).maybeSingle();
+    if (!STRIPE.stripe) {
+      console.log("  (no sk_test_ key here: the Stripe road is covered by supabase/tests/unified_withdraw_test.sql and check:withdrawals)");
+    } else if (!nextDue) {
+      console.log("  (no further paid step is due on this order: skipped)");
+    } else {
+      const factoryEmail = `e2e-factory-${stamp}@example.com`;
+      const apiWith = async (token, route, body) => {
+        const response = await fetch(`${API}/api/${route}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+        return { status: response.status, body: await response.json().catch(() => ({})) };
+      };
+      const brandPerson = await clientAs(brandEmail);
+      const factoryPerson = await clientAs(factoryEmail);
+
+      // A Stripe account for the factory, held the way TSC holds new ones.
+      const account = await STRIPE.stripe.accounts.create({
+        country: "US",
+        email: factoryEmail,
+        controller: { stripe_dashboard: { type: "none" }, losses: { payments: "application" }, fees: { payer: "application" }, requirement_collection: "application" },
+        capabilities: { transfers: { requested: true } },
+        business_type: "individual",
+        individual: {
+          first_name: "E2E", last_name: "Factory", email: factoryEmail, phone: "0000000000",
+          dob: { day: 1, month: 1, year: 1901 }, id_number: "000000000", ssn_last_4: "0000",
+          address: { line1: "address_full_match", city: "San Francisco", state: "CA", postal_code: "94103", country: "US" },
+        },
+        business_profile: { mcc: "5734", url: "https://sourcing-club.com" },
+        external_account: "btok_us_verified",
+        tos_acceptance: { date: Math.floor(Date.now() / 1000), ip: "127.0.0.1" },
+        settings: { payouts: { schedule: { interval: "manual" } } },
+        metadata: { e2e: String(stamp) },
+      });
+      let ready = null;
+      for (let tries = 0; tries < 30; tries += 1) {
+        ready = await STRIPE.stripe.accounts.retrieve(account.id);
+        if (ready.payouts_enabled && ready.capabilities?.transfers === "active") break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      check(ready?.payouts_enabled && ready?.capabilities?.transfers === "active",
+        `the factory's Stripe test account can take transfers and pay out (${ready?.capabilities?.transfers})`);
+      await db.from("stripe_connect_accounts").upsert({
+        org_id: factoryOrg.id, stripe_account_id: account.id, country: "US",
+        details_submitted: true, payouts_enabled: Boolean(ready?.payouts_enabled), transfers_active: ready?.capabilities?.transfers === "active",
+      });
+      const { data: stillOwedFirst } = await db.from("order_payments").select("state, stripe_transfer_id").eq("id", dueNow.id).single();
+      check(stillOwedFirst.state === "confirmed" && !stillOwedFirst.stripe_transfer_id, "adding a Stripe account moves nothing (D6)");
+
+      // The brand funds the next step; the charge clears at once in test mode.
+      const checkout = await apiWith(brandPerson.token, "stripe-checkout", { paymentId: nextDue.id });
+      check(checkout.status === 200 && Boolean(checkout.body.clientSecret), `the brand checks out the next step (${checkout.status})`);
+      const intentId = String(checkout.body.clientSecret ?? "").split("_secret_")[0];
+      await STRIPE.stripe.paymentIntents.confirm(intentId, { payment_method: "pm_card_bypassPending", return_url: APP });
+      const synced = await apiWith(brandPerson.token, "stripe-sync", { paymentId: nextDue.id });
+      check(synced.body.state === "confirmed", `held by TSC (${synced.body.state})`);
+      // Stripe's clearing date can be recorded a moment after the payment: wait for it.
+      let clearedNext = null;
+      for (let waited = 0; waited < 15000 && !clearedNext?.funds_available_at; waited += 500) {
+        if (waited) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (waited % 3000 === 0) await apiWith(brandPerson.token, "stripe-sync", { paymentId: nextDue.id });
+        }
+        ({ data: clearedNext } = await db.from("order_payments").select("funds_available_at").eq("id", nextDue.id).single());
+      }
+      check(Boolean(clearedNext?.funds_available_at) && new Date(clearedNext.funds_available_at) <= new Date(),
+        `the charge cleared at once, and its date is recorded (${clearedNext?.funds_available_at})`);
+      const posted = await factoryPerson.client.rpc("post_milestone_update", {
+        target_milestone: nextDue.milestone_id, body: "Bulk cutting finished.", document_ids: [] });
+      check(!posted.error, `the factory posts its update on the step (${posted.error?.message ?? "ok"})`);
+      const approved = await brandPerson.client.rpc("approve_milestone", { target_milestone: nextDue.milestone_id, note: "Approved." });
+      check(!approved.error, `the brand approves it (${approved.error?.message ?? "ok"})`);
+      const { data: owedNext } = await db.from("order_payments")
+        .select("state, release_requested_at, stripe_transfer_id, release_claimed_at, funds_available_at").eq("id", nextDue.id).single();
+      check(owedNext.state === "confirmed" && owedNext.release_requested_at && !owedNext.stripe_transfer_id && !owedNext.release_claimed_at,
+        "approving a Stripe factory's step transfers nothing: it is owed, in the balance");
+      const { data: noTransfers } = await STRIPE.stripe.transfers.list({ destination: account.id, limit: 5 });
+      check(noTransfers.length === 0, "and Stripe holds no transfer to the factory yet");
+
+      // The balance: Available, and what Withdraw can reach by Stripe.
+      const factoryAmount = Number(nextDue.amount_cents) - Number(nextDue.payout_fee_cents ?? 0);
+      const rowOf = (figures) => (figures?.tsc?.rows ?? []).filter((row) => row.payment_id === nextDue.id).map((row) => row.figure).join(",");
+      let before = null;
+      for (let waited = 0; waited < 15000; waited += 1000) {
+        before = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "balance" });
+        if (before.status === 200 && rowOf(before.body.figures) === "available") break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      check(before.status === 200, `the factory reads its balance (${before.status})`);
+      check(rowOf(before.body.figures) === "available", `the approved step is Available (${rowOf(before.body.figures)})`);
+      check(Number(before.body.reach?.stripe_cents) >= factoryAmount, `Withdraw can reach it by Stripe (${before.body.reach?.stripe_cents})`);
+      await signOutFully(page);
+      await signIn(page, factoryEmail, "Factory withdrawing to Stripe", "factory");
+      await page.goto(`${APP}/payout`);
+      await waitFor(page, '[data-testid="payout-balance"]', 25000);
+      const dollars = `$${(Number(before.body.figures?.available_cents ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+      const balanceOnCard = await within(page, async () => (await page.locator('[data-testid="payout-balance"]').innerText()).includes(dollars), 15000);
+      check(balanceOnCard !== null, `the card shows the Available balance (${dollars})`);
+      await record(page, "Available", "approved money waits in the balance; nothing has been transferred");
+
+      // Withdraw exactly the step, pressed twice in the same instant: one payout.
+      const requestId = crypto.randomUUID();
+      const ask = () => apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "withdraw", amount: factoryAmount, currency: "usd", requestId });
+      const [first, second] = await Promise.all([ask(), ask()]);
+      const done = [first, second].filter((answer) => answer.status === 200);
+      check(done.length >= 1 && done.every((answer) => answer.body.payout?.id === done[0].body.payout?.id),
+        `Withdraw to Stripe pays out once, whatever the double press (${first.status}/${second.status})`);
+      const payoutId = done[0]?.body.payout?.id;
+      const { data: takes } = await db.from("payment_takes").select("road, status, amount_cents, stripe_transfer_id").eq("payment_id", nextDue.id);
+      check((takes ?? []).length === 1 && takes[0].road === "stripe" && takes[0].status === "sent" && Number(takes[0].amount_cents) === factoryAmount,
+        `the withdrawal took exactly the step, by Stripe (${JSON.stringify(takes)})`);
+      const { data: paidStep } = await db.from("order_payments").select("state, stripe_transfer_id").eq("id", nextDue.id).single();
+      check(paidStep.state === "released" && paidStep.stripe_transfer_id === takes?.[0]?.stripe_transfer_id,
+        "the step is released, with the transfer that carried it");
+      const transfer = takes?.[0]?.stripe_transfer_id ? await STRIPE.stripe.transfers.retrieve(takes[0].stripe_transfer_id) : null;
+      check(transfer?.destination === account.id && Boolean(transfer?.source_transaction),
+        "the transfer went to the factory's account, from the brand's charge");
+      const { data: stripeRow } = await db.from("stripe_withdrawals").select("state, owed_cents, fee_cents, payout_id").eq("org_id", factoryOrg.id)
+        .order("created_at", { ascending: false }).limit(1).single();
+      check(stripeRow.state === "paid_out" && Number(stripeRow.owed_cents) === factoryAmount && stripeRow.payout_id === payoutId,
+        `the withdrawal row owns its claim and its payout (${stripeRow.state})`);
+      const { data: firstStepAfter } = await db.from("order_payments").select("state, stripe_transfer_id").eq("id", dueNow.id).single();
+      check(firstStepAfter.state === "confirmed" && !firstStepAfter.stripe_transfer_id,
+        "the older step, Stripe's charge still clearing, was not taken");
+
+      // Asking again: nothing left Stripe can reach, refused in words, nothing sent.
+      const again = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "withdraw", amount: 100, currency: "usd", requestId: crypto.randomUUID() });
+      check(again.status === 422 && /withdraw up to|can't be processed/i.test(again.body.error ?? ""), `a second withdrawal is refused (${again.body.error})`);
+
+      // Paid out: the payout reaches the bank (test mode marks it paid soon after).
+      let after = null;
+      for (let tries = 0; tries < 15; tries += 1) {
+        after = await apiWith(factoryPerson.token, "stripe-connect", { orgId: factoryOrg.id, action: "balance" });
+        const payout = payoutId ? await STRIPE.stripe.payouts.retrieve(payoutId, {}, { stripeAccount: account.id }) : null;
+        if (payout?.status === "paid") break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      const fee = Number(stripeRow.fee_cents ?? 0);
+      const f0 = before.body.figures ?? {};
+      const f1 = after?.body.figures ?? {};
+      check(Number(f1.available_cents) === Number(f0.available_cents) - factoryAmount, "Available drops by exactly the amount withdrawn");
+      check(Number(f1.total_cents) === Number(f0.total_cents) - fee, `the payout fee ($${(fee / 100).toFixed(2)}) is in no figure`);
+      check(Number(f1.total_cents) === ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"].reduce((sum, key) => sum + Number(f1[key]), 0),
+        "each dollar in exactly one figure");
+      check(Number(f1.pending_cents) + Number(f1.paid_out_cents) === Number(f0.pending_cents) + Number(f0.paid_out_cents) + factoryAmount - fee,
+        "what was withdrawn, less the fee, is Pending on its way or Paid out");
+      await page.reload();
+      await waitFor(page, '[data-testid="payout-balance"]', 25000);
+      await record(page, "Withdrawn to Stripe", "the step left the balance in one click; the payout is on its way or paid");
       await signOutFully(page);
       await signIn(page, adminEmail, "Admin paying out");
     }

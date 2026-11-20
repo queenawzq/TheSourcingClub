@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "../../lib/supabase.js";
+import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
+import { parseWithdrawAmount, withdrawFeeLine } from "./payment-summary.mjs";
 
 /**
- * A factory paid by Wise or PayPal withdraws from its balance:
- * approved earnings, less what it has asked for or been paid. The balance is
+ * A factory withdraws to Wise or PayPal from its one balance: cleared
+ * approved earnings and the older pool money, less what it has asked for or
+ * been paid (my_withdrawal_balance().available_cents, the balance read's
+ * `reach.pool_cents`). The balance is
  * the database's (my_withdrawal_balance, one source with the staff board); the
  * request and its cancelling are RPCs that check the owner, the amount and the
  * one open request again. The fee shown is the one fee rule
@@ -25,7 +28,7 @@ const REFUSALS = {
   withdraw_owner_only: "Only a company owner can withdraw.",
   withdrawal_open: "You already have a withdrawal waiting. Cancel it first to ask for a different amount.",
   withdrawal_amount: "Enter an amount to withdraw.",
-  withdrawal_over_balance: "That is more than your balance. Reload the page to see it.",
+  withdrawal_over_balance: "That is more than your balance.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
@@ -58,7 +61,7 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 
 /** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), stripeFees: 0, error: null });
+  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), returnable: new Map(), stripeFees: 0, error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
     const [balance, rows, stripeRows] = await Promise.all([
@@ -85,6 +88,9 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
       last: list[0] ?? null,
       rows: list,
       withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
+      // What cancelling each open withdrawal gives back (less, or nothing, when
+      // a step under it was refunded to the brand).
+      returnable: new Map(Object.entries(balance.data?.returnable ?? {}).map(([id, cents]) => [id, Number(cents)])),
       stripeFees: (stripeRows.data ?? []).reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0),
       error: null,
     });
@@ -96,17 +102,18 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
-      // A brand approving a step moves its payment into the balance
-      // (join_withdrawal_pool) with no factory_withdrawals row changing: the
-      // first such payment is what reveals Withdraw. order_payments has no org
+      // A brand approving a step adds it to the balance (it becomes owed;
+      // my_withdrawal_balance counts it once cleared) with no
+      // factory_withdrawals row changing: the first such payment is what
+      // reveals Withdraw. order_payments has no org
       // column to filter on; Realtime applies order_payments_read per
       // subscriber, so only this company's orders are heard.
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, () => load())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  // Saving the first default method moves owed payments into the pool, even
-  // though no factory_withdrawals row changes yet. Re-read after that save.
+  // Saving the first default method moves nothing (owed money stays owed),
+  // but it is what makes the balance withdrawable. Re-read after that save.
   }, [orgId, enabled, load, defaultMethodId]);
 
   return { ...state, load };
@@ -139,27 +146,50 @@ export const withdrawOptionLabel = (row, language = "en") => {
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
+    // The server's word for it (factory_balance().withdrawals): a request whose
+    // step was refunded underneath is on hold, for the owner and members alike.
+    const onHold = (row) => words instanceof Map && words.get(row.id) === "on_hold";
     return list.map((row) => (
       <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
           <span className="payout-pending-label">Pending withdrawal</span>
           <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
           <span className="payout-pending-destination">{destination(row)}</span>
+          {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
-        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button> : <span className="billing-status">Processing</span>}
+        {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
+          // Someone who can't cancel sees the owner's word: still waiting for TSC, or being sent.
+          : <span className="billing-status">{onHold(row) ? "On hold" : row.status === "requested" ? "Waiting" : "Processing"}</span>}
       </div>
     ));
   }
   if (last?.status === "declined") {
-    return <p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p>;
+    return <NewOnly id={`${last.id}:declined`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p></NewOnly>;
   }
   if (last?.status === "failed") {
-    return <p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p>;
+    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p></NewOnly>;
   }
   return null;
+}
+
+/**
+ * A declined or failed withdrawal is said on the card while it is new: on the
+ * page where this browser first shows it, not again in later visits (its row
+ * in Transactions and the bell keep it). Browser storage only remembers what
+ * was seen; without it the notice simply shows.
+ */
+function NewOnly({ id, children }) {
+  const key = `tscWithdrawalNoticeSeen:${id}`;
+  const [seenBefore] = useState(() => {
+    try { return window.localStorage.getItem(key) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(key, "1"); } catch { /* shown, nothing remembered */ }
+  }, [key]);
+  return seenBefore ? null : children;
 }
 
 export async function cancelWithdrawal(id) {
@@ -177,14 +207,17 @@ export async function cancelWithdrawals(ids) {
  * The choice of which waiting withdrawals to cancel, in the payouts page's own
  * PayoutModal. `first` is ticked to start with (the row whose Cancel was pressed).
  */
-export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) {
+export const NOTHING_BACK = "Nothing goes back to your balance: the brand's payment was refunded.";
+
+export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, returnable = null }) {
   const waiting = opens.filter((w) => w.status === "requested");
   const [chosen, setChosen] = useState(() => new Set(first ? [first] : []));
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   const [error, setError] = useState(null);
   const ticked = waiting.filter((w) => chosen.has(w.id));
-  const total = ticked.reduce((sum, w) => sum + Number(w.amount_cents), 0);
+  // The server's figure for each, when it has one: the amount less what a refund took.
+  const total = ticked.reduce((sum, w) => sum + (returnable instanceof Map && returnable.has(w.id) ? returnable.get(w.id) : Number(w.amount_cents)), 0);
   const toggle = (id) => setChosen((was) => {
     const next = new Set(was);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -200,7 +233,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
       await cancelWithdrawals(ticked.map((w) => w.id));
       onDone();
     } catch (failure) {
-      setError(failure.message);
+      setError((await supabase.auth.getSession()).data?.session ? failure.message : SIGN_IN_ENDED);
     } finally {
       sending.current = false;
       setBusy(false);
@@ -224,7 +257,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone }) 
           </label>
         ))}
       </fieldset>
-      {ticked.length ? <p className="cancel-withdrawals-total">{`Back to your balance: ${formatMoney(total, "USD")}`}</p> : null}
+      {ticked.length ? <p className="cancel-withdrawals-total">{total > 0 ? `Back to your balance: ${formatMoney(total, "USD")}` : NOTHING_BACK}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>
   );
@@ -288,14 +321,18 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   }, [offered]);
   const method = choices.find((m) => m.id === methodId) ?? null;
   const provider = providerOf(method);
-  const amountCents = /^\d+(\.\d{0,2})?$/.test(amountText.trim()) ? Math.round(Number(amountText.trim()) * 100) : NaN;
-  const amountProblem = !Number.isFinite(amountCents) || amountCents <= 0 ? "Enter an amount to withdraw."
-    : amountCents > available ? `You can withdraw up to ${formatMoney(available, "USD")}.` : null;
+  // Read as typed, never changed under the person: more than available is said.
+  const { cents: amountCents, problem: amountProblem } = parseWithdrawAmount(amountText, available, (cents) => formatMoney(cents, "USD"));
   const fee = amountProblem || !method ? null : withdrawalFee({ provider, amountCents, currency: "USD", country });
   // The provider's own figure when it can give one (Wise quotes per transfer);
   // otherwise the fee line, and the exact figure comes when TSC sends it.
   const exact = useExactQuote(orgId, method?.id, amountCents, Boolean(fee));
   const asking = Boolean(fee) && !exact;
+  // What it costs and what arrives, before asking: the provider's own figure
+  // when it gives one, else the published fee.
+  const feeLine = amountProblem || !method ? null
+    : exact && !exact.refused && exact.feeCents != null ? withdrawFeeLine(exact.feeCents, exact.receivesMinor, exact.receivesCurrency)
+    : fee && !fee.refused && fee.feeCents != null ? withdrawFeeLine(fee.feeCents, fee.receivesCents, "USD") : null;
 
 
   async function confirm() {
@@ -306,6 +343,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
     const { error: refused } = await supabase.rpc("request_withdrawal", { target_org: orgId, amount: amountCents, target_account: method.id });
     sending.current = false;
     setBusy(false);
+    // Signed out meanwhile (in another tab): say so, not "try again".
+    if (refused && !(await supabase.auth.getSession()).data?.session) return setError(SIGN_IN_ENDED);
     if (refused) return setError(sentence(refused));
     onDone();
   }
@@ -344,9 +383,10 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
             onChange={(event) => {
               const value = event.target.value;
               setAmountTouched(true);
-              setAmountText(Number(value) > available / 100 ? (available / 100).toFixed(2) : value);
+              setAmountText(value);
             }} aria-describedby="withdraw-available" />
           <p id="withdraw-available" className="withdraw-available">{`Available: ${formatMoney(available, "USD")}`}</p>
+          {feeLine ? <p className="withdraw-available" data-testid="withdraw-fee">{feeLine}</p> : null}
         </div>
       </div>
       )}

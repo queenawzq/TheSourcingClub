@@ -53,16 +53,23 @@ function WithdrawalActions({ row, onChanged, BankDetails }) {
     setStep("review");
   });
   const pay = () => run(async () => {
-    const result = await approveWithdrawal(row.id, statement);
-    setHeard(result.done === "paid" ? "Paid." : result.done === "short_balance" ? result.sentence : "Sent. Waiting for the provider to confirm.");
-    setStep(null);
+    try {
+      const result = await approveWithdrawal(row.id, statement);
+      setHeard(result.done === "paid" ? "Paid." : result.done === "short_balance" ? result.sentence : "Sent. Waiting for the provider to confirm.");
+    } finally {
+      // Refused or not, the review is over: the row is read again (run's
+      // onChanged), so its buttons are the row's as it is now.
+      setStep(null);
+      setPreview(null);
+    }
   });
 
   if (!["requested", "paying"].includes(row.status)) return null;
   const said = <>
     {problem ? <span className="admin-error admin-row-message" role="alert" data-testid="withdrawal-refusal">{problem}</span> : null}
     {heard ? <span className="admin-sub admin-row-message" role="status">{heard}</span> : null}
-    {row.staff_sentence && !heard ? <span className="admin-sub admin-row-message">{row.staff_sentence}</span> : null}
+    {/* The server keeps a refusal as the row's sentence too: said once. */}
+    {row.staff_sentence && !heard && row.staff_sentence !== problem ? <span className="admin-sub admin-row-message">{row.staff_sentence}</span> : null}
   </>;
 
   // The provider has it: its answer is read back every 30 s, nothing to press.
@@ -149,7 +156,9 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                 const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: Number(row.amount_cents), currency: row.currency }) : null;
                 return (
                   <tr key={row.id} data-withdrawal={row.id}>
-                    <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}</td>
+                    <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}
+                      {/* Said before Pay is pressed: the same refusal claim_withdrawal would give. */}
+                      {row.status === "requested" && row.covered === false ? <span className="admin-error" data-testid="withdrawal-not-covered">The factory's balance no longer covers this. Decline it with a reason.</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
                       <strong>{moneyIn(row.amount_cents, row.currency)}</strong>

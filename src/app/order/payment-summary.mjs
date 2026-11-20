@@ -1,4 +1,5 @@
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
+import { dateFrom } from "../../lib/dates.js";
 
 /** The step as earned, before any payout fee. */
 export const grossAmount = (row) => row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents;
@@ -28,13 +29,6 @@ export function currencyTotals(rows) {
  */
 export const awaitingApproval = (row) => row.state === "confirmed" && !row.release_requested_at && row.order?.status !== "cancelled";
 export const toBeSent = (row) => row.state === "confirmed" && Boolean(row.release_requested_at);
-/**
- * Approved, and in the balance TSC holds for the factory's saved methods
- * (withdrawal_pool): the factory can withdraw it now, so it reads as Stripe
- * money in the factory's own balance does, "Added to your balance", in Paid
- * out; a withdrawal from it is a withdrawal row, not a move between figures.
- */
-export const inBalance = (row) => toBeSent(row) && Boolean(row.withdrawal_pool);
 /** Provider attempts, as the embed gives them: a list, or nothing for a brand. */
 const attempts = (row) => row.provider_payouts ?? [];
 /**
@@ -49,24 +43,16 @@ export const heldOnCancelledOrder = (row) => row.state === "confirmed" && !row.r
 export const refundPendingWord = (payment, order) => (heldOnCancelledOrder({ ...payment, order }) ? "Refund pending" : null);
 
 /**
- * Whether Stripe's answer changes this factory's figures: only once TSC has
- * paid one of its earnings through Stripe. A bank-paid factory, or one paid
- * nothing through Stripe yet, never waits for it.
+ * Whether this factory has had money paid through Stripe: its withdrawals
+ * from Stripe are then listed from Stripe's answer, which only an owner reads.
  */
 export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.state === "released" && row.stripe_transfer_id));
 
 /**
- * Not paid through Stripe (Wise, PayPal, by hand, or no method yet): no Stripe account that can
- * take transfers, and nothing paid through Stripe so far. The factory's money
- * is then wherever its payments say, and Stripe has nothing to add.
- */
-export const isHandPaid = (account, earnings) => !account?.transfers_active && !stripeRelevant(earnings);
-
-/**
- * The card's "$X pending" amount, in US$ cents, for every payout method: the
- * Pending figure on the page (earningsSummaryFor, all clients) less what the
- * card already shows elsewhere (the balance it offers to withdraw, and money
- * already on its way). Null until the page's figure is known; never below 0.
+ * The card's "$X pending" amount, in US$ cents: the Pending figure (all
+ * clients) less what the card already lists on its own rows (withdrawals
+ * waiting or being sent), so no amount is said twice on the card. Null until
+ * the figure is known; never below 0.
  */
 export function cardPendingCents(pendingTotal, shownElsewhere = 0) {
   if (pendingTotal == null) return null;
@@ -74,27 +60,91 @@ export function cardPendingCents(pendingTotal, shownElsewhere = 0) {
 }
 
 /**
- * The card's figures for a factory paid by hand, across all clients. Balance is
- * approved and not moving yet; on its way has left TSC; pending is waiting for
- * the brand. Balance + on its way is the strip's Pending.
- * Null until the earnings answer.
+ * The one balance (D3), from the server only: factory_balance() for every
+ * factory, or the `figures` of /api/stripe-connect `balance` for an owner
+ * with a Stripe account (its own Stripe money added). The page never sums
+ * payments into a figure.
+ *
+ * The four figures over the Transactions list, in US$ cents. Total earnings
+ * is the four added up, never worked out on its own. Undefined (each) until
+ * the figures answer.
  */
-export function handPaidFigures(earnings) {
-  if (!earnings) return { balance: null, onItsWay: null, pending: null };
-  const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
+export function summaryFrom(figures) {
+  if (!figures) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
+  const n = (value) => Number(value) || 0;
+  const approval = n(figures.awaiting_cents);
+  const available = n(figures.available_cents);
+  const pending = n(figures.pending_cents);
+  const paid = n(figures.paid_out_cents);
+  return { total: approval + available + pending + paid, approval, available, pending, paid };
+}
+
+const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"];
+
+/**
+ * The Stripe answer's figures kept up to date with the database's: the
+ * database part (`viaStripe.tsc`) replaced by a newer factory_balance() read,
+ * the factory's own Stripe money (the difference) kept. So a step a brand
+ * approves while the page is open moves the figures without asking Stripe
+ * again. Either alone is used as it is.
+ */
+export function withStripePart(database, viaStripe) {
+  if (!viaStripe?.tsc || !database) return viaStripe ?? database ?? null;
+  // The server's own answer (api/_balance-figures.js), with its database part
+  // swapped for a newer read: what the Stripe account adds is kept exactly as
+  // the server worked it out, so an owner (balance) and a member (figures)
+  // read the same figures.
+  const merged = { ...viaStripe, has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
+  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
+  merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
+  return merged;
+}
+
+/**
+ * payment id → the figures its money is in (factory_balance()'s `rows`): one
+ * payment can be split, part available and part in a withdrawal.
+ */
+export function figuresByPayment(figures) {
+  const map = new Map();
+  for (const row of figures?.tsc?.rows ?? figures?.rows ?? []) {
+    if (!row?.payment_id || !(Number(row.amount_cents) > 0)) continue;
+    if (!map.has(row.payment_id)) map.set(row.payment_id, new Set());
+    map.get(row.payment_id).add(row.figure);
+  }
+  return map;
+}
+
+/**
+ * What each method can withdraw, in US$ cents (D5): the factory's Stripe
+ * account reaches the cleared money TSC owes it and the money already in its
+ * Stripe account; PayPal and Wise reach the same cleared money and what is
+ * left in the balance kept for them, never the Stripe account's.
+ *
+ * The server's own answers come first: `server` is the balance action's
+ * top-level `reach` ({ stripe_cents, pool_cents, estimated }), for an owner
+ * with a Stripe account; `poolCents` is my_withdrawal_balance()'s
+ * available_cents, the same number as reach.pool_cents, for everyone else.
+ * Without them it is worked out from the figures' parts. Null until known.
+ */
+export function withdrawReach(figures, server = null, poolCents = null) {
+  const parts = figures?.tsc?.parts ?? figures?.parts ?? null;
+  const owed = Math.max(0, Number(parts?.owed_cleared_cents) || 0);
+  const pool = Math.max(0, Number(parts?.pool_available_cents) || 0);
+  const ownStripe = figures?.stripe ? Math.max(0, Number(figures.stripe.available_cents) || 0) : 0;
+  const known = (value) => value != null && Number.isFinite(Number(value));
   return {
-    balance: amounts(earnings.filter((row) => toBeSent(row) && !onItsWay(row))),
-    onItsWay: amounts(earnings.filter(onItsWay)),
-    pending: amounts(earnings.filter(awaitingApproval)),
+    stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? owed + ownStripe : null,
+    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? owed + pool : null,
+    // The Stripe amount was converted from the account's currency.
+    estimated: Boolean(server?.estimated),
   };
 }
 
 /**
  * Stripe earnings still clearing: payment id → the day Stripe makes them
  * available (its available_on, a day at midnight UTC, in seconds). From the
- * owner's balance read (stripe-connect `balance`, pendingEarnings), the one
- * source for both a row's "Pending" and the Pending figure. Empty when Stripe
- * was not read: only an owner can.
+ * owner's balance read (stripe-connect `balance`, pendingEarnings). Empty
+ * when Stripe was not read: only an owner can.
  */
 export const clearingFor = (stripeBalance) => new Map((stripeBalance?.pendingEarnings ?? [])
   .filter((entry) => entry?.paymentId).map((entry) => [entry.paymentId, Number(entry.available_on) || null]));
@@ -104,42 +154,6 @@ export const isClearing = (row, clearing) => clearing instanceof Map && row?.sta
 export function clearingNote(row, clearing) {
   const day = isClearing(row, clearing) ? clearing.get(row.id) : null;
   return day ? `Available ${new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : null;
-}
-
-/**
- * The four figures over the Transactions list: each earning in exactly one of
- * Awaiting approval, Pending and Paid out, by the word on its own row, so they
- * add up to Total earnings for whoever reads them. All from the payments, in the
- * orders' currency, never from Stripe: what a factory later moved from its
- * Stripe balance to its bank is a withdrawal, not a second kind of paid. Each is
- * undefined until the earnings answer.
- *
- * `clearing` (clearingFor(), the owner's Stripe balance) moves a Stripe earning
- * still clearing from Paid out to Pending, as its row says; Total is the same
- * with or without it. Nobody else can read Stripe, so they pass none.
- */
-export function earningsSummaryFor(earnings, client, withdrawn = new Map(), withdrawalFees = 0, clearing = null) {
-  if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
-  const all = client === "All clients";
-  const selected = (row) => all || row?.order?.brand_org_id === client;
-  const funded = earnings.filter((row) => ["confirmed", "released"].includes(row.state) && !heldOnCancelledOrder(row) && selected(row));
-  const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
-  // A step still owed that paid withdrawals have taken part of: that part is
-  // Paid out, not Pending (withdrawn_by_payment(), the balance's own source).
-  // (A payment in the balance is already Paid out whole: nothing is taken from Pending for it.)
-  const taken = funded.filter((row) => toBeSent(row) && !inBalance(row) && withdrawn.get(row.id) > 0)
-    .map((row) => ({ amount: Math.min(Number(withdrawn.get(row.id)), factoryAmount(row)), currency: row.currency }));
-  return {
-    total: currencyTotals([...funded.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
-      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
-    approval: amounts(funded.filter(awaitingApproval)),
-    pending: currencyTotals([...funded.filter((row) => (toBeSent(row) && !inBalance(row)) || isClearing(row, clearing)).map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
-      ...taken.map((part) => ({ ...part, amount: -part.amount }))]),
-    // Net, like factoryAmount(): the fee a paid withdrawal took never reached the
-    // factory. Withdrawals span clients, so only All clients carries their fees.
-    paid: currencyTotals([...funded.filter((row) => (row.state === "released" && !isClearing(row, clearing)) || inBalance(row)).map((row) => ({ amount: factoryAmount(row), currency: row.currency })), ...taken,
-      ...(all && withdrawalFees ? [{ amount: -withdrawalFees, currency: "USD" }] : [])]),
-  };
 }
 
 /** The bell's words for a failed withdrawal, as a row's note. No trailing full stop, like the short asks. */
@@ -169,26 +183,82 @@ export function askedWithdrawalRows(withdrawals = []) {
 }
 
 export const ADDED_TO_BALANCE = "Added to your balance";
-/** Earned and the factory's to withdraw or already sent: "Paid", or in its Stripe balance. */
-export const earningPaid = (row, clearing = null) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row, clearing));
+export const ON_HOLD = "On hold";
+export const REFUNDED = "Refunded";
+/**
+ * Funded, then refunded to the brand (a refund or a lost dispute): it stays on
+ * the list as "Refunded", in no figure, so an earning never vanishes silently.
+ */
+export const refundedEarning = (row) => Boolean(row?.refunded_at && !["confirmed", "released"].includes(row.state));
+/** Earned and the factory's to withdraw or already sent: "Paid", or in its balance. */
+export const earningPaid = (row, clearing = null, figures = null) => [ADDED_TO_BALANCE, "Paid"].includes(earningStatus(row, clearing, figures));
 
 /**
- * Where one earning stands: Awaiting approval, Pending, Paid. The one word for
- * this money, on Payments and the factory's order page, whoever reads it: it
- * comes from the payment alone, never from Stripe's answer, which only an owner
- * can read. Money Stripe is still clearing is Paid here and on the order page;
- * on the owner's Payments page, which reads Stripe, `clearing` (clearingFor())
- * makes it Pending until Stripe makes it available. How it was sent is on its
- * withdrawal row.
+ * "Available Nov 22" on an approved step whose card payment is still
+ * clearing (its money is in Pending): the day it becomes withdrawable, in the
+ * reader's zone (funds_available_at is an instant).
  */
-export function earningStatus(row, clearing = null) {
+export function owedClearingNote(row, figures) {
+  if (earningStatus(row, null, figures) !== "Pending" || !stillClearing(row)) return null;
+  return `Available ${new Date(row.funds_available_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+/**
+ * N4: an approved step paid the old way, one step at a time, whose payout is
+ * still under way (an attempt processing, or one that failed and waits for
+ * staff), and which the server counts in Pending. That money is being sent,
+ * not processed for withdrawal: the card says "$X on its way", as before, and
+ * leaves it out of "$X pending". US$ cents.
+ */
+export function legacyOnItsWayCents(earnings, figures) {
+  return (earnings ?? []).filter((row) => {
+    if (!toBeSent(row) || row.withdrawal_pool) return false;
+    const where = figures instanceof Map ? figures.get(row.id) : null;
+    if (!where || where.size !== 1 || !where.has("pending")) return false;
+    const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    return latest?.status === "processing" || latest?.status === "failed";
+  }).reduce((sum, row) => sum + factoryAmount(row), 0);
+}
+
+/**
+ * Where one earning stands: Awaiting approval, Added to your balance, Pending,
+ * Paid. The one word for this money, on Payments and the factory's order page,
+ * whoever reads it. Approved money is in the factory's balance whatever its
+ * withdrawal method, or none (D3, D6): "Added to your balance", never
+ * "Pending".
+ *
+ * On Payments, `figures` (figuresByPayment()) is where the server put it: an
+ * approved step whose money is all in Pending (still clearing, or being sent
+ * the old way, step by step) reads "Pending", as its figure does. `clearing`
+ * (clearingFor()) does the same for a Stripe earning still clearing in the
+ * factory's Stripe account. Without them (the order page), the payment alone
+ * decides. How it was sent is on its withdrawal row.
+ */
+export function earningStatus(row, clearing = null, figures = null) {
+  if (refundedEarning(row)) return REFUNDED;
   if (heldOnCancelledOrder(row)) return "Order cancelled";
   if (isClearing(row, clearing)) return "Pending";
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
   // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
-  if (row.state === "released") return row.stripe_transfer_id ? ADDED_TO_BALANCE : "Paid";
-  if (inBalance(row)) return ADDED_TO_BALANCE;
-  return row.release_requested_at ? "Pending" : "Awaiting approval";
+  // Taken by one-balance withdrawals and sent: paid, whichever road took it.
+  if (row.state === "released") return row.stripe_transfer_id && !withdrawnByTakes(row) ? ADDED_TO_BALANCE : "Paid";
+  if (!toBeSent(row)) return "Awaiting approval";
+  // The brand disputed its card charge: held until the dispute is settled,
+  // never "available on" a day (the factory is told by its notification).
+  if (row.disputed_at) return ON_HOLD;
+  // The brand's card payment is still clearing: the same word on the order
+  // page and on Payments, from the payment's own date.
+  if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
+  const where = figures instanceof Map ? figures.get(row.id) : null;
+  if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
+  return ADDED_TO_BALANCE;
+}
+
+/** The brand's charge for this step is not yet available to TSC (funds_available_at, an instant). */
+export function stillClearing(row, now = new Date()) {
+  if (!row?.funds_available_at) return false;
+  const when = new Date(row.funds_available_at);
+  return !Number.isNaN(when.getTime()) && when > now;
 }
 
 const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
@@ -225,6 +295,10 @@ const detailsChangedSince = (attempt, method) => (Boolean(attempt.asked_to_check
 
 const when = (row) => row.released_at || row.confirmed_at || row.created_at;
 
+/** Released by one-balance withdrawals: its takes were sent (released_note "Withdrawn"). */
+const withdrawnByTakes = (row) => (row.payment_takes ?? []).some((take) => take.status === "sent")
+  || (row.released_note === "Withdrawn" && !row.bank_payouts && !row.payoneer_payouts);
+
 /**
  * A payment sent by anything but Stripe, as rows of its own: one per Wise or
  * PayPal attempt, or one for what staff marked paid by hand. Stripe's own
@@ -247,8 +321,11 @@ export function withdrawalRows(earnings, method = null) {
       // What left for the factory: the attempt less the payout fee taken from it.
       amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
-    // A balance step is paid by the withdrawal it was in, listed on its own.
-    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
+    // A balance step is paid by the withdrawal it was in, listed on its own:
+    // the old pool, or one-balance withdrawals that took it (payment_takes
+    // `sent`, by PayPal, Wise or both roads). Never a second "Bank transfer".
+    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")
+      || withdrawnByTakes(row)) return tried;
     const bank = row.bank_payouts;
     const payoneer = row.payoneer_payouts;
     return [...tried, {
@@ -291,6 +368,183 @@ export function withdrawalProblem(earnings, method) {
  * of their own into the same column, with nobody in released_by.
  */
 export function staffBankNote(row) {
-  if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by) return null;
+  if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by || withdrawnByTakes(row)) return null;
   return row.released_note?.trim() || null;
+}
+
+export const ENTER_AMOUNT = "Enter an amount to withdraw.";
+export const DOLLARS_AND_CENTS = "Enter the amount in dollars and cents, like 45.50.";
+
+/**
+ * A withdrawal amount as typed, in cents, and what is wrong with it, if
+ * anything. "1,000" and "$45" are read as meant; a negative, a word or a
+ * third decimal place are not guessed at. More than `maxCents` is said, never
+ * quietly changed. `format` writes the most for the sentence.
+ */
+export function parseWithdrawAmount(text, maxCents, format = (cents) => `$${(cents / 100).toFixed(2)}`) {
+  const typed = String(text ?? "").trim().replace(/^\$/, "").replace(/[,\s]/g, "");
+  if (!typed) return { cents: NaN, problem: ENTER_AMOUNT };
+  if (/^\d*\.\d{3,}$/.test(typed)) return { cents: NaN, problem: DOLLARS_AND_CENTS };
+  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(typed)) return { cents: NaN, problem: ENTER_AMOUNT };
+  const cents = Math.round(Number(typed) * 100);
+  if (!(cents > 0)) return { cents, problem: ENTER_AMOUNT };
+  if (maxCents != null && cents > maxCents) return { cents, problem: `You can withdraw up to ${format(maxCents)}.` };
+  return { cents, problem: null };
+}
+
+/**
+ * Payout fee and what arrives, in the factory's existing sentence
+ * (payoutFeeSentence's words): the receive amount may be in the provider's
+ * currency (Wise quotes a CNY amount).
+ */
+export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD") {
+  if (!(Number(feeCents) >= 0) || !(Number(receivesMinor) > 0)) return null;
+  const money = (cents, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  return `Payout fee ${money(Number(feeCents), "USD")} is taken from this payment: you receive ${money(Number(receivesMinor), String(receivesCurrency || "USD").toUpperCase())}.`;
+}
+
+/** A Stripe payout that has left and not yet reached the bank (until its arrival day). */
+export const ON_ITS_WAY = "On its way";
+export const BANK_PROCESSING = "Your bank is processing the payout.";
+const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Canceled" };
+
+/**
+ * The company's withdrawals to its Stripe bank, from stripe_withdrawals (any
+ * member reads them), as Transactions rows: what reached the bank, the
+ * withdrawal less Stripe's fee, in US$. "On its way" until its arrival day,
+ * then "Paid out to your bank". `methodName(w)` names the bank where the
+ * reader knows it (an owner's Stripe read), else nothing.
+ */
+export function companyStripeRows(withdrawals = [], methodName = () => null, now = new Date()) {
+  return (withdrawals ?? []).filter((w) => w?.payout_id && w.usd_cents != null).map((w) => {
+    const status = String(w.payout_status ?? "").toLowerCase();
+    // Stripe's arrival is a day (payout_arrives_on), read as that day where
+    // the reader is; older rows kept the instant, midnight UTC of that day.
+    const arrives = w.payout_arrives_on ? dateFrom(w.payout_arrives_on)
+      : w.payout_arrives_at ? dateFrom(String(w.payout_arrives_at).slice(0, 10)) : null;
+    // A payout that failed or was cancelled, or a withdrawal that ended without one, didn't go.
+    const failed = status === "failed" || status === "canceled" || ["refused", "fee_returned"].includes(w.state);
+    // On its way until its arrival day, even once Stripe calls it paid.
+    const arrived = status === "paid" && !(arrives && arrives > now);
+    const fee = Math.max(0, Number(w.fee_cents) || 0);
+    return {
+      id: `stripe-${w.id}`,
+      brandOrgId: null,
+      currency: "USD",
+      date: w.created_at,
+      arrives: failed ? null : arrives,
+      title: "Bank transfer",
+      meta: methodName(w),
+      status: failed ? STRIPE_PAYOUT_WORD[status] ?? "Failed" : arrived ? STRIPE_PAYOUT_WORD.paid : ON_ITS_WAY,
+      note: failed ? null
+        : arrived ? (fee ? `Fee ${(fee / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}, taken from it` : null)
+        : BANK_PROCESSING,
+      failed,
+      amount: -(Number(w.usd_cents) - fee),
+      type: "withdrawal",
+      available: !failed,
+    };
+  });
+}
+
+/**
+ * The card's lines under the balance, from the Pending figure, in US$ cents,
+ * adding up to it exactly:
+ *   clearing  card payments not yet cleared (TSC's, and the factory's own
+ *             Stripe pending balance): "$X pending. Available to withdraw on …"
+ *   onHold    steps whose card charge is disputed, and parts of a waiting
+ *             withdrawal whose step was refunded: "$Z on hold"
+ *   waiting   PayPal / Wise withdrawals asked for and waiting for staff:
+ *             "$W waiting"
+ *   onItsWay  the rest: withdrawals sent and on their way to the bank, and
+ *             old step-by-step payouts being sent: "$Y on its way"
+ * `opens` are the open PayPal / Wise withdrawals (factory_withdrawals).
+ * Null until the figures answer.
+ */
+export function pendingParts(figures, opens = []) {
+  if (!figures) return null;
+  const n = (value) => Math.max(0, Number(value) || 0);
+  const base = figures.tsc ?? figures;
+  const parts = base.parts ?? {};
+  const pending = n(figures.pending_cents);
+  const list = base.withdrawals ?? figures.withdrawals ?? null;
+  // Each withdrawal's parts (factory_balance().withdrawals[].parts): a waiting
+  // request with a step under it refunded or disputed since is split into its
+  // waiting rest and its on-hold part. A server without parts gives the whole
+  // row its word (or a held_cents part).
+  const partsOf = (w) => (Array.isArray(w?.parts) ? w.parts
+    : w?.word === "on_hold" ? [{ word: "on_hold", amount_cents: w.amount_cents }]
+    : n(w?.held_cents) > 0 ? [{ word: "on_hold", amount_cents: Math.min(n(w.amount_cents), n(w.held_cents)) }, { word: w.word, amount_cents: n(w.amount_cents) - Math.min(n(w.amount_cents), n(w.held_cents)) }]
+    : [{ word: w?.word, amount_cents: w?.amount_cents }]);
+  const sumOf = (word) => (list ?? []).flatMap(partsOf).filter((part) => part?.word === word).reduce((sum, part) => sum + n(part.amount_cents), 0);
+  // The server's list says which withdrawals wait for staff and which are held;
+  // without it (an older server), the open requests and the refunded rows do.
+  const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
+    .reduce((sum, row) => sum + n(row.amount_cents), 0);
+  const onHold = Math.min(pending, n(parts.disputed_cents) + refundedHeld);
+  // Stripe's pending part, less what an open withdrawal holds there (on its
+  // way, not clearing: api/_balance-figures.js `held_cents`).
+  const stripeClearing = Math.max(0, n(figures.stripe?.pending_cents) - n(figures.stripe?.held_cents));
+  const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + stripeClearing);
+  const asked = list ? sumOf("waiting")
+    : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
+  const waiting = Math.min(pending - onHold - clearing, asked);
+  // The rest: withdrawals the server calls on their way, and old step-by-step payouts being sent.
+  return { pending, clearing, onHold, waiting, onItsWay: pending - onHold - clearing - waiting };
+}
+
+/**
+ * Every withdrawal as a Transactions row, from the server's own list
+ * (factory_balance().withdrawals: one entry per PayPal / Wise / bank and
+ * Stripe withdrawal, amounts already in US$, `word` its state). The card's
+ * lines and these rows are one source, so they never disagree.
+ *
+ * `pool` and `stripe` are the company's own rows by id (factory_withdrawals,
+ * stripe_withdrawals), for what only they say: a cancelled request (never
+ * listed), the reason staff declined, where a Stripe payout went. A
+ * withdrawal that ended with nothing sent and no payout made is not listed.
+ */
+export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new Map(), methodName = () => null } = {}) {
+  const money = (cents) => (Number(cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return (list ?? []).flatMap((w) => {
+    const fee = Math.max(0, Number(w.fee_cents) || 0);
+    const base = { brandOrgId: null, currency: "USD", date: w.created_at, type: "withdrawal" };
+    if (w.road === "pool") {
+      const own = pool.get(w.id);
+      if (own?.status === "cancelled") return [];
+      const paid = w.word === "paid";
+      return [{
+        ...base,
+        // A partly held withdrawal can come as two entries: one row each.
+        id: `asked-${w.id}${w.word === "on_hold" ? "-held" : ""}`,
+        title: ASKED_TITLE[w.provider] ?? "Bank transfer",
+        meta: w.to ?? own?.paid_to ?? null,
+        note: own?.status === "declined" ? own.reason
+          : own?.status === "failed" ? WITHDRAWAL_FAILED_NOTE
+          : paid && w.fee_cents != null ? `Fee ${money(fee)}, taken from it`
+          : null,
+        status: w.word === "waiting" ? "Waiting" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
+          : paid ? "Completed" : ASKED_STATUS[own?.status] ?? "Failed",
+        failed: w.word === "returned",
+        amount: -(Number(w.amount_cents) - (paid ? fee : 0)),
+        available: w.word !== "returned",
+      }];
+    }
+    const own = stripe.get(w.id);
+    // A Stripe withdrawal refused before any payout never happened.
+    if (w.word === "returned" && !own?.payout_id) return [];
+    const arrives = w.arrives_on ? dateFrom(w.arrives_on) : null;
+    return [{
+      ...base,
+      id: `stripe-${w.id}`,
+      title: "Bank transfer",
+      meta: w.to ? [`To ${w.to}.`, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
+      arrives: w.word === "returned" ? null : arrives,
+      note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
+      status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",
+      failed: w.word === "returned",
+      amount: -Number(w.amount_cents),
+      available: w.word !== "returned",
+    }];
+  });
 }

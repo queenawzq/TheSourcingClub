@@ -9,23 +9,26 @@ for (const label of ["Total earnings", "Awaiting approval", "Pending", "Paid out
   assert.match(page, new RegExp(`\\["${label}", summary\\.\\w+, "[^"\\n]+"\\]`), `${label} keeps its explanation`);
 }
 assert.ok(page.includes('<PaymentHelp label={label}>{help}</PaymentHelp>'), "summary helpers remain reachable");
-for (const label of ["Balance", "Available balance", "Pending balance"]) {
+for (const label of ["Available balance", "Pending balance"]) {
   assert.ok(card.includes(`<PaymentHelp label="${label}">`), `${label} keeps its help button`);
 }
+// One card for every factory (D3, Nov 20): the hand-paid "Balance (USD)" and its
+// help went with the second card version; "Available balance" is everyone's.
+assert.ok(!card.includes('<PaymentHelp label="Balance">'), "no second balance help: one card");
 for (const text of ["Earnings stay in your balance until you withdraw them.", "Our payment partner securely verifies"]) {
   assert.ok(card.includes(text), `preserve payout guidance: ${text}`);
 }
 // Every payout method's card says both (Nov 19): the sentence, and "$X pending"
-// from the page's Pending figure. The Stripe card and the balance card each carry them.
+// from the page's Pending figure. One card carries them for every method (D3).
 const sentence = "Earnings stay in your balance until you withdraw them.";
-assert.ok(card.split(sentence).length - 1 >= 2, "the sentence is on the Stripe card and on the balance card (PayPal, Wise)");
-assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 2, "both cards say what is pending, with the one helper");
+assert.ok(card.split(sentence).length - 1 >= 1, "the sentence is on the card, whatever the method");
+assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 1, "the card says what is pending, with the one helper");
 assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page's Pending figure");
 {
   const { cardPendingCents } = await import("../src/app/order/payment-summary.mjs");
   assert.equal(cardPendingCents(null, 100), null, "nothing until the page's figure is known");
   assert.equal(cardPendingCents(360, 0), 360, "Pending $3.60 with nothing shown elsewhere: the card says $3.60 pending");
-  assert.equal(cardPendingCents(360, 360), 0, "money the card offers to withdraw is not called pending");
+  assert.equal(cardPendingCents(360, 360), 0, "a withdrawal the card lists on its own row is not called pending again");
   assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
   assert.equal(cardPendingCents(100, 360), 0, "never below zero");
 }
@@ -108,21 +111,28 @@ assert.ok(card.includes('export const transferName = (country) => (PAYOUT_COUNTR
 assert.ok(card.includes('const manualListLabel = (row) => (row?.method === "bank" && row.wise_recipient_type ? '), "the saved list says (Wise) only on a row Wise pays (the balance card has no method line)");
 // Nov 13: Stripe's "Bank account" holds payouts (holdPayouts) until the factory
 // withdraws, so the chooser's intro says so where that option is offered.
-assert.ok(card.includes('{supported ? "Released earnings are sent to your default method, or to your balance to withdraw with a Bank account." : "Released earnings are sent to your default method."}'), "the chooser intro is true of the Stripe route and the others");
+// Nov 20 (one balance): nothing is sent until the owner withdraws, whatever the method.
+assert.ok(card.includes('<p className="payout-modal-intro">Earnings stay in your balance until you withdraw them.</p>') && !card.includes("Released earnings are sent"), "the chooser intro says money waits in the balance");
 for (const option of ["bank", "wise", "paypal"]) {
   assert.ok(card.includes(`<MethodLines method={chooserMethod("${option}", { supported, country: picked })} />`), `the ${option} option draws the lines of its route`);
 }
 assert.ok(!/<MethodLines method="/.test(card), "no option hardcodes its lines");
 const liveFund = read("src/app/order/LiveFund.jsx");
-assert.ok(liveFund.includes("once it is funded, and it takes a few business days to arrive."), "the deposit agreement says a payout takes days");
+assert.ok(liveFund.includes("I understand this step is added to ${factory}'s balance once it is funded."), "the deposit agreement says where the money goes (one balance)");
 // Nov 13: a deposit or balance is released once funded, so the live Fund
 // subtitle and success text must not borrow the design's "after you approve"
 // words for it. Approval steps keep the design's; the prototype's text stays.
-assert.ok(liveFund.includes("The step amount, without fees, is released to ${factory} once funded."), "the payment-only Fund subtitle says it is released once funded");
-assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
-assert.ok(liveFund.includes("Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only success text says TSC releases it");
-assert.ok(liveFund.includes("Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive."), "the payment-only processing text says TSC releases it");
-assert.equal((liveFund.match(/\.\.\.\(paymentOnly \? \{ description: paymentOnlySuccess\(factory, (true|false)\) \} : \{\}\)/g) ?? []).length, 2, "both success headings pass the payment-only text");
+assert.ok(liveFund.includes("The step amount, without fees, is added to ${factory}'s balance once funded."), "the payment-only Fund subtitle says it goes to the balance once funded");
+assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \|\| [\s\S]*?\? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
+assert.ok(liveFund.includes("Your payment is funded. It is added to ${factory}'s balance."), "the payment-only success text says it goes to the balance");
+assert.ok(liveFund.includes("Once your payment clears, it is added to ${factory}'s balance."), "the payment-only processing text says it goes to the balance");
+assert.equal((liveFund.match(/description: paymentOnly \|\| approvedAlready \? paymentOnlySuccess\(factory, (true|false), disputed\) : approvalStepSuccess\((true|false), disputed\),/g) ?? []).length, 2, "both success headings pass the live text, never the design's sample sentence");
+assert.ok(liveFund.includes('"Your payment is funded. The factory can start work, and funds are only released after you approve this step."'), "an approval step's success names no sample");
+// An already-approved step is never told it waits for approval (Nov 20).
+assert.ok(liveFund.includes('...(paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"\n      ? { fundNote: paymentOnlyFundNote('), "an approved step's top line says it goes to the factory's balance");
+assert.ok(liveFund.includes('agreements: [paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"'), "an approved step's agreement says it goes to the factory's balance");
+// A disputed charge is never promised to the factory's balance (Nov 20, round 9).
+assert.ok(liveFund.includes('export const DISPUTED_CHARGE = "This charge is disputed. It is held until the dispute is settled.";') && liveFund.includes("if (disputed) return DISPUTED_CHARGE;"), "the Fund page says a disputed charge is held");
 const prototype = read("src/prototype/main.jsx");
 assert.ok(prototype.includes("funds are only released after you approve the sample."), "the prototype keeps its own success text");
 assert.equal((prototype.match(/Funds stay protected until the related step is approved\./g) ?? []).length, 2, "the prototype keeps its own Fund subtitle");

@@ -185,12 +185,16 @@ reset role; select pg_temp.act_as(4); set local role authenticated;
 select is((select count(*)::int from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1'), 0, 'the brand reads none of these');
 select throws_ok($$select public.admin_withdrawals()$$, '42501', null, 'the board is staff only');
 
--- Joining the pool on approval.
+-- Approval no longer joins the pool (20261120100000): the step is owed, in the
+-- one balance (factory_balance), and the pool keeps only what was already in it.
 reset role;
 update public.order_payments set release_requested_at = now() where id = '16f00000-0000-0000-0000-000000000004';
-select ok((select withdrawal_pool from public.order_payments where id = '16f00000-0000-0000-0000-000000000004'), 'an approved step joins the balance');
-select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 280000::bigint, 'and adds to it');
-select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000004'$$, '22023', null, 'it stays in the balance');
+select ok(not (select withdrawal_pool from public.order_payments where id = '16f00000-0000-0000-0000-000000000004'), 'an approved step stays owed, outside the pool');
+select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 180000::bigint, 'the pool money is unchanged');
+select pg_temp.act_as(1); set local role authenticated;
+select is((public.factory_balance('16b00000-0000-0000-0000-0000000000f1') ->> 'available_cents')::bigint, 280000::bigint, 'the one balance holds the pool money and the owed step');
+reset role;
+select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000002'$$, '22023', null, 'a pool payment stays in the pool');
 
 -- A bank account staff would pay by hand (no Wise form) is no longer a way to
 -- withdraw (20261117500000): refused, whatever the amount.

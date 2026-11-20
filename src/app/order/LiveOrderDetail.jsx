@@ -36,7 +36,7 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
-import { connectAccountFor, requestRelease } from "../../lib/domain/stripe.js";
+import { connectAccountFor } from "../../lib/domain/stripe.js";
 import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
 import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
@@ -159,7 +159,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
       if (!payment.release_requested_at) return "Funded: held by TSC";
-      return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
+      // One balance: approved money waits in the factory's balance until it withdraws.
+      return kind === "payment_only" ? "Funded: added to the factory's balance" : "Approved: added to the factory's balance";
     case "released":
       // The factory's word, as on Payments: a Stripe transfer is in its balance.
       return isFactory ? earningStatus(payment) : "Paid";
@@ -179,7 +180,9 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
 
   if (milestone.state === "cancelled") return money ? `Cancelled · ${money}` : "Cancelled";
   if (milestone.state === "complete") {
-    return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
+    // Approved, then refunded (one balance: nothing was paid out yet): the
+    // payment's own words, as on the payment page, not a bare "Done".
+    return payment?.state === "confirmed" || payment?.state === "released" || (payment?.state === "failed" && payment.refunded_at) ? `Done · ${money}` : "Done";
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
@@ -766,14 +769,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
-        // Approving a funded step asks for its payout straight away. A payout
-        // that cannot go now (the factory has no Stripe account yet, or
-        // Stripe is down) stays owed and shows on the staff payments page;
-        // it never undoes the approval.
-        onApprove={(milestone, note) => fromDialog(async () => {
-          await approveMilestone(milestone.id, note);
-          if (milestone.paymentId) await requestRelease(milestone.paymentId).catch(() => null);
-        })}
+        // Approving makes the step's money owed: it waits in the factory's
+        // balance until the factory withdraws. Nothing is sent from here.
+        onApprove={(milestone, note) => fromDialog(() => approveMilestone(milestone.id, note))}
         onPostComment={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}

@@ -20,9 +20,11 @@ import { cardReason } from "./_card-words.js";
  *                              longer wants (a changed amount, a cancelled
  *                              order) is refunded, and a refund made in
  *                              Stripe is recorded (applyChargeRefund)
- *   the brand approves      -> the database asks for the payout
- *                              (release_requested_at); releasePayment() sends
- *                              a Transfer to the factory's Express account
+ *   the brand approves      -> the money is owed (release_requested_at): it
+ *                              stays with TSC, in the factory's balance
+ *                              (factory_balance()), until the factory
+ *                              withdraws. Nothing is transferred on approval;
+ *                              releasePayment() is for the withdrawal
  *
  * Only this code, holding the service key, can move a payment through those
  * states; the database refuses everyone else. The browser never decides a
@@ -395,6 +397,14 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
       const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
       return data;
     }
+    // Disputed in the same second it was paid (its dispute event can come
+    // before this): recorded first, from Stripe, so the funded notice says
+    // the money is on hold, never "added to your balance". Never fails the
+    // recording; the dispute webhook retries until the payment is known.
+    if (charge?.id) {
+      await recordChargeDispute({ stripe, db, paymentId, charge })
+        .catch((failure) => logStripeFailure("charge-dispute", failure, { paymentId }));
+    }
     const result = await rpc(db, "record_payment_succeeded", {
       target_payment: paymentId,
       payment_intent: full.id,
@@ -404,19 +414,264 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
       received: full.amount_received ?? full.amount,
     });
     if (!result.funded) return refundIntent({ stripe, db, intent: full, charge, result });
-    const funded = result.payment;
-    // A payment-only step (or one approved under the old rules) is owed to
-    // the factory the moment it is funded.
-    if (funded?.release_requested_at && funded.state === "confirmed") {
-      await releasePayment({ stripe, db, paymentId }).catch(() => null);
-    }
-    return funded;
+    // A payment-only step is owed to the factory the moment it is funded, but
+    // nothing is sent: it waits in the factory's balance until it withdraws.
+    // When the charge's money becomes available decides Available or Pending.
+    // Stripe attaches the charge's balance transaction a few seconds after
+    // the payment succeeds: waited for briefly. Never fails the recording.
+    await recordFundsAvailable({ stripe, db, paymentId, charge, waitMs: FUNDS_WAIT_MS })
+      .catch((failure) => logStripeFailure("funds-available", failure, { paymentId }));
+    return result.payment;
   }
   if (full.status === "requires_payment_method" && full.last_payment_error) {
     return rpc(db, "record_payment_failed", { target_payment: paymentId, reason: failureReason(full) });
   }
   const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
   return data;
+}
+
+/** How long a fresh payment waits for Stripe to attach its balance transaction (about 1.5 to 5 s after confirming). */
+export const FUNDS_WAIT_MS = 10_000;
+const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * The order payment a dispute is about: by its charge, else by its
+ * PaymentIntent (a charge can be disputed before its payment is recorded;
+ * the intent is attached at checkout). An order payment Stripe knows but this
+ * database does not yet throws, so the event is not marked processed and
+ * Stripe sends it again. Another app's charge, or a credit pack, is null.
+ */
+export async function paymentForDispute({ stripe, db, dispute }) {
+  const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const intentId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id ?? null;
+  let { data: payment, error } = await db.from("order_payments").select("id").eq("stripe_charge_id", chargeId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment && intentId) {
+    ({ data: payment, error } = await db.from("order_payments").select("id").eq("stripe_payment_intent_id", intentId).maybeSingle());
+    if (error) throw new Error(error.message);
+  }
+  if (!payment && intentId) {
+    const intent = await stripe.paymentIntents.retrieve(intentId);
+    if (intent.metadata?.payment_id) throw new Error("the disputed charge's payment is not recorded yet");
+  }
+  return payment ?? null;
+}
+
+/**
+ * Whether a charge's dispute is open or lost (Stripe keeps `disputed` true
+ * after a win), recorded on its payment. Returns true when it is disputed.
+ */
+export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
+  const chargeId = typeof charge === "string" ? charge : charge?.id;
+  if (!chargeId) return false;
+  const fresh = typeof charge === "object" && "disputed" in charge ? charge : await stripe.charges.retrieve(chargeId);
+  if (!fresh.disputed) return false;
+  const disputeId = typeof fresh.dispute === "string" ? fresh.dispute : fresh.dispute?.id;
+  const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+  const disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
+  await rpc(db, "record_payment_disputed", { target_payment: paymentId, disputed });
+  return disputed;
+}
+
+/**
+ * Record when a charge's money is available on TSC's Stripe account (its
+ * balance transaction's available_on): until then the factory's owed money
+ * for it is Pending, not Available, and cannot be withdrawn through Stripe.
+ * A charge that has no balance transaction yet (Stripe adds it a few seconds
+ * after the payment succeeds) is read again, backing off, for up to `waitMs`.
+ * Returns the date, or null when Stripe has none yet.
+ */
+export async function recordFundsAvailable({ stripe, db, paymentId, charge, waitMs = 0 }) {
+  if (!charge) return null;
+  const chargeId = typeof charge === "string" ? charge : charge.id;
+  let transaction = typeof charge === "string" ? null : charge.balance_transaction;
+  const deadline = Date.now() + waitMs;
+  let delay = 500;
+  for (;;) {
+    if (!transaction) {
+      const fresh = await stripe.charges.retrieve(chargeId, { expand: ["balance_transaction"] });
+      transaction = fresh.balance_transaction;
+    } else if (typeof transaction === "string") {
+      transaction = await stripe.balanceTransactions.retrieve(transaction);
+    }
+    if (Number(transaction?.available_on) || Date.now() + delay > deadline) break;
+    transaction = null;
+    await pause(delay);
+    delay = Math.min(delay * 2, 3000);
+  }
+  const seconds = Number(transaction?.available_on);
+  if (!seconds) return null;
+  const availableAt = new Date(seconds * 1000).toISOString();
+  await rpc(db, "record_payment_funds_available", { target_payment: paymentId, available_at: availableAt });
+  return availableAt;
+}
+
+/**
+ * A funded Stripe payment whose clearing date is still missing (Stripe had
+ * none yet, recording it failed, or it was cleared because the charge
+ * changed) gets it now. Throws when Stripe or the database fails, so a
+ * webhook delivery is tried again. Returns the date, or null when there is
+ * nothing to record or Stripe has no date yet.
+ */
+export async function ensureFundsAvailable({ stripe, db, paymentId, waitMs = 0 }) {
+  const { data: payment, error } = await db.from("order_payments")
+    .select("id, state, stripe_charge_id, funds_available_at").eq("id", paymentId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment || !["confirmed", "released"].includes(payment.state) || !payment.stripe_charge_id) return null;
+  if (payment.funds_available_at) return payment.funds_available_at;
+  return recordFundsAvailable({ stripe, db, paymentId, charge: payment.stripe_charge_id, waitMs });
+}
+
+/**
+ * Before a factory's balance is read: its funded Stripe payments still
+ * without a clearing date get one (a few per read, within `budgetMs`), so a
+ * date Stripe added after the payment was recorded is never missed for long.
+ * Never throws; returns how many were recorded in time.
+ */
+export async function ensureFundsAvailableFor({ stripe, db, orgId, limit = 5, budgetMs = 4000 }) {
+  const work = (async () => {
+    const { data, error } = await db.from("order_payments")
+      .select("id, production_orders!inner(factory_org_id)")
+      .eq("production_orders.factory_org_id", orgId).in("state", ["confirmed", "released"])
+      .not("stripe_charge_id", "is", null).is("funds_available_at", null)
+      .order("confirmed_at", { ascending: true }).limit(limit);
+    if (error) return 0;
+    const done = await Promise.all((data ?? []).map(async (row) => {
+      const at = await ensureFundsAvailable({ stripe, db, paymentId: row.id })
+        .catch((failure) => { logStripeFailure("funds-available", failure, { paymentId: row.id }); return null; });
+      // The same few payments, freshly paid: a dispute Stripe already holds
+      // on the charge is recorded too.
+      const { data: payment } = await db.from("order_payments").select("stripe_charge_id").eq("id", row.id).maybeSingle();
+      if (payment?.stripe_charge_id) {
+        await recordChargeDispute({ stripe, db, paymentId: row.id, charge: payment.stripe_charge_id })
+          .catch((failure) => logStripeFailure("charge-dispute", failure, { paymentId: row.id }));
+      }
+      return at;
+    }));
+    return done.filter(Boolean).length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Whether this balance read may ask Stripe about the company's charges and
+ * payouts: at most once a minute per company, decided by the database
+ * (claim_balance_stripe_read), so owners and members reloading cannot exhaust
+ * Stripe's rate limit. False on any failure: the next read tries again.
+ */
+export async function claimStripeRead(db, orgId) {
+  try {
+    const { data, error } = await db.rpc("claim_balance_stripe_read", { target_org: orgId });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Before a factory's balance is read, without waiting for webhooks: the few
+ * owed steps whose brand charge was checked least recently are read from
+ * Stripe, and a refund or dispute there is recorded as its webhook would
+ * (applyChargeRefund, recordChargeDispute), so refunded or disputed money
+ * leaves the balance even when charge.refunded or charge.dispute.* never
+ * arrives. Writes only on a change. Never throws; bounded by `budgetMs`.
+ * Returns how many charges were read in time.
+ */
+export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs = 4000 }) {
+  const work = (async () => {
+    const { data: owed, error } = await db.from("order_payments")
+      .select("id, stripe_charge_id, production_orders!inner(factory_org_id)")
+      .eq("production_orders.factory_org_id", orgId).eq("state", "confirmed")
+      .not("release_requested_at", "is", null).not("stripe_charge_id", "is", null).eq("withdrawal_pool", false)
+      .limit(500);
+    if (error || !owed?.length) return 0;
+    const { data: checks } = await db.from("payment_charge_checks").select("payment_id, checked_at")
+      .in("payment_id", owed.map((row) => row.id));
+    const last = new Map((checks ?? []).map((row) => [row.payment_id, Date.parse(row.checked_at)]));
+    // Steps an open withdrawal holds are read first, on every read the
+    // company's once-a-minute claim allows: staff could pay them out. Any
+    // other step read in the last 5 minutes is not read again.
+    let held = new Set();
+    try {
+      const { data: heldRows } = await db.from("payment_takes")
+        .select("payment_id, factory_withdrawals!inner(status)")
+        .eq("org_id", orgId).eq("status", "held").eq("road", "pool")
+        .in("factory_withdrawals.status", ["requested", "paying"]);
+      held = new Set((heldRows ?? []).map((row) => row.payment_id));
+    } catch {
+      // Read as no step held: the least recently checked still go first.
+    }
+    const fresh = Date.now() - 5 * 60 * 1000;
+    const due = owed.filter((row) => held.has(row.id) || !((last.get(row.id) ?? 0) > fresh))
+      // Held first; within each group the least recently checked first, so
+      // with more than `limit` held steps they are all read in turn.
+      .sort((a, b) => (held.has(b.id) - held.has(a.id)) || ((last.get(a.id) ?? 0) - (last.get(b.id) ?? 0)))
+      .slice(0, limit);
+    const read = await Promise.all(due.map(async (row) => {
+      try {
+        const charge = await stripe.charges.retrieve(row.stripe_charge_id);
+        if (Number(charge.amount_refunded) > 0) await applyChargeRefund({ stripe, db, charge });
+        else if (charge.disputed) await recordChargeDispute({ stripe, db, paymentId: row.id, charge });
+        return row.id;
+      } catch (failure) {
+        logStripeFailure("charge-check", failure, { paymentId: row.id });
+        return null;
+      }
+    }));
+    const done = read.filter(Boolean);
+    if (done.length) await db.rpc("record_charges_checked", { targets: done });
+    return done.length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Stripe's charge.updated: the balance transaction has appeared on a charge
+ * whose payment is recorded with no clearing date. Returns the date or null.
+ */
+export async function applyChargeUpdated({ stripe, db, charge }) {
+  if (!charge?.id || !charge.balance_transaction) return null;
+  const { data: payment, error } = await db.from("order_payments")
+    .select("id, state, funds_available_at").eq("stripe_charge_id", charge.id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment || !["confirmed", "released"].includes(payment.state) || payment.funds_available_at) return null;
+  return recordFundsAvailable({ stripe, db, paymentId: payment.id, charge });
+}
+
+/**
+ * A release an earlier version started on approval (a claim and a Stripe
+ * call), settled without sending anything new: a transfer that went is
+ * recorded, and one that did not is unpinned so the money stays in the
+ * factory's balance. Never creates a transfer.
+ *
+ * Returns { released, reason }.
+ */
+export async function settleRelease({ stripe, db, paymentId }) {
+  const { data: payment, error } = await db
+    .from("order_payments")
+    .select("id, state, amount_cents, order_id, stripe_release_started, release_claimed_at")
+    .eq("id", paymentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!payment) return { released: false, reason: "no such payment" };
+  if (payment.state === "released") return { released: true, reason: "already paid out" };
+  if (payment.state !== "confirmed" || !payment.stripe_release_started) {
+    return { released: false, reason: "in the factory's balance until it withdraws" };
+  }
+  const settled = await settleStartedRelease({ stripe, db, payment });
+  return settled ?? { released: false, reason: "in the factory's balance until it withdraws" };
 }
 
 /**
@@ -649,27 +904,4 @@ export async function saveConnectAccount(db, orgId, account) {
 /** Answer with a status and a JSON body, the same shape on Vercel and in dev. */
 export function reply(response, status, body) {
   response.status(status).json(body);
-}
-
-/**
- * Pay out everything a factory is owed that is still waiting: run when its
- * Stripe account starts accepting transfers, or when staff press Retry.
- */
-export async function releaseOwedTo({ stripe, db, factoryOrgId }) {
-  const { data: owed, error } = await db
-    .from("order_payments")
-    .select("id, production_orders!inner (factory_org_id)")
-    .eq("state", "confirmed")
-    .not("release_requested_at", "is", null)
-    .eq("production_orders.factory_org_id", factoryOrgId);
-  if (error) throw new Error(error.message);
-  const results = [];
-  for (const payment of owed ?? []) {
-    results.push({ id: payment.id, ...(await releasePayment({ stripe, db, paymentId: payment.id }).catch((failure) => {
-      // Read by the factory's page: the raw text stays in the log.
-      logStripeFailure("release-owed", failure, { paymentId: payment.id });
-      return { released: false, reason: "not sent yet" };
-    })) });
-  }
-  return results;
 }

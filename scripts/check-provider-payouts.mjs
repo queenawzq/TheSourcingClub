@@ -296,7 +296,7 @@ for (const lag of [1, 5]) {
 
   // A payment no bigger than its fee is refused with a sentence, nothing sent.
   const fake3 = fakeWise(); const db3 = fakeDb(); db3.amount = 1000;
-  await assert.rejects(pay(wiseFrom(WISE_ENV, fake3.fetchImpl), db3), /too small: the fee to send it is US\$14\.74/);
+  await assert.rejects(pay(wiseFrom(WISE_ENV, fake3.fetchImpl), db3), /too small to send\. The fee is US\$14\.74/);
   assert.equal(fake3.state.transfers.size, 0, "no transfer made");
   assert.equal(db3.payout.status, "cancelled", "the attempt ends: nothing was sent");
   assert.deepEqual(db3.fees, [], "no fee recorded for a payment that did not go");
