@@ -468,12 +468,15 @@ export function pendingParts(figures, opens = []) {
   const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
   const list = base.withdrawals ?? figures.withdrawals ?? null;
-  // A withdrawal partly held (a step under it refunded) may come as two entries
-  // (on_hold and waiting) or as one carrying its held part (held_cents): either
-  // way the held part is on hold and the rest keeps its word.
-  const heldOf = (w) => (w?.word === "on_hold" ? n(w.amount_cents) : Math.min(n(w?.amount_cents), n(w?.held_cents ?? w?.on_hold_cents)));
-  const sumOf = (word) => (list ?? []).reduce((sum, w) => sum + (word === "on_hold" ? heldOf(w)
-    : w?.word === word ? n(w.amount_cents) - heldOf(w) : 0), 0);
+  // Each withdrawal's parts (factory_balance().withdrawals[].parts): a waiting
+  // request with a step under it refunded or disputed since is split into its
+  // waiting rest and its on-hold part. A server without parts gives the whole
+  // row its word (or a held_cents part).
+  const partsOf = (w) => (Array.isArray(w?.parts) ? w.parts
+    : w?.word === "on_hold" ? [{ word: "on_hold", amount_cents: w.amount_cents }]
+    : n(w?.held_cents) > 0 ? [{ word: "on_hold", amount_cents: Math.min(n(w.amount_cents), n(w.held_cents)) }, { word: w.word, amount_cents: n(w.amount_cents) - Math.min(n(w.amount_cents), n(w.held_cents)) }]
+    : [{ word: w?.word, amount_cents: w?.amount_cents }]);
+  const sumOf = (word) => (list ?? []).flatMap(partsOf).filter((part) => part?.word === word).reduce((sum, part) => sum + n(part.amount_cents), 0);
   // The server's list says which withdrawals wait for staff and which are held;
   // without it (an older server), the open requests and the refunded rows do.
   const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")

@@ -261,6 +261,14 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "split into two entries");
   assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, held_cents: 4500 }] }, []),
     { pending: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "one entry with its held part");
+  // The server's parts (round 11): $75 asked, $50 of it on a step refunded since.
+  const withParts = { pending_cents: 7500 + 184094, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, withdrawals: [
+    { id: "w75", road: "pool", word: "waiting", amount_cents: 7500, parts: [{ word: "waiting", amount_cents: 2500 }, { word: "on_hold", amount_cents: 5000 }] },
+    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, parts: [{ word: "on_its_way", amount_cents: 184094 }] },
+  ] };
+  const p75 = pendingParts(withParts, []);
+  assert.deepEqual(p75, { pending: 191594, clearing: 0, onHold: 5000, waiting: 2500, onItsWay: 184094 }, "lines from parts: $25 waiting + $50 on hold");
+  assert.equal(p75.clearing + p75.onHold + p75.waiting + p75.onItsWay, withParts.pending_cents, "and they add up to Pending");
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "On its way", -184094],
