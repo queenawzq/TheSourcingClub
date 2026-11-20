@@ -461,6 +461,10 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
     const again = setTimeout(read, 4000);
     return () => { live = false; clearTimeout(again); };
   }, [payment.id]);
+  // A step the brand already approved (paying again after a refund): the money
+  // goes straight to the factory's balance, so the design's "released after you
+  // approve" is not said; the payment-only words are.
+  const approvedAlready = Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete";
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   // Each fee as checkout or the database computed it: the total less the
@@ -495,11 +499,11 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, false, disputed) } : {}),
+        ...(paymentOnly || approvedAlready ? { description: paymentOnlySuccess(factory, false, disputed) } : {}),
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, true, disputed) } : {}),
+        ...(paymentOnly || approvedAlready ? { description: paymentOnlySuccess(factory, true, disputed) } : {}),
       }}
       onBack={onBack}
       onNext={onBack}
