@@ -555,7 +555,7 @@ update public.factory_payout_accounts set account_number_last4 = '9999' where ba
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'The bank account TSC pays changed: it is now P31 D ending 9999, in the name of P31 Other Ltd.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 D ending 9999 is now your default withdrawal method.%'),
   1,
   'editing the default bank account in place is the same swap, and is said'
 );
@@ -563,7 +563,7 @@ update public.factory_payout_accounts set swift = 'P31XUS33' where bank_name = '
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'The bank account TSC pays changed: it is now P31 D ending 9999,%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'Your bank account at P31 D ending 9999 is now your default withdrawal method.%'),
   2,
   'so is changing only its SWIFT code, which is where the money goes too'
 );
@@ -579,7 +579,7 @@ update public.factory_payout_accounts set is_primary = false where bank_name = '
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC no longer pays your bank account at P31 D ending 9999, and you have no default payout method.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 D ending 9999 was removed.%'),
   1,
   'clearing a default bank account is said, so a two-step swap cannot pass unnoticed'
 );

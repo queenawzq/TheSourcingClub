@@ -195,7 +195,11 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     return <NewOnly id={`${last.id}:declined`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p></NewOnly>;
   }
   if (last?.status === "failed") {
-    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. ${backSentence(last, back)}`}</p></NewOnly>;
+    // Said once the figures are read (`back` null until then), so it is never
+    // marked seen with a guess about what came back.
+    if (!(back instanceof Map)) return null;
+    const said = backSentence(last, back);
+    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through.${said ? ` ${said}` : ""}`}</p></NewOnly>;
   }
   return null;
 }
@@ -206,8 +210,10 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
  * same words as its notice (withdrawal_back_sentence).
  */
 function backSentence(row, back) {
+  // Not kept (failed before it was recorded): nothing said, never a guess.
   const cents = back instanceof Map && back.has(row.id) ? Number(back.get(row.id)) : null;
-  if (cents == null || cents >= Number(row.amount_cents)) return "The amount is back in your balance.";
+  if (cents == null) return null;
+  if (cents >= Number(row.amount_cents)) return "The amount is back in your balance.";
   return cents > 0 ? `${formatMoney(cents, row.currency)} is back in your balance.` : NOTHING_BACK;
 }
 

@@ -731,8 +731,9 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
 {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const form = read("../src/app/order/WithdrawFromBalance.jsx");
-  assert.ok(form.includes("did not go through. ${backSentence(last, back)}") && !form.includes("did not go through. The amount is back in your balance.`"),
-    "the failed line reads what came back");
+  assert.ok(form.includes("did not go through.${said ? ` ${said}` : \"\"}") && form.includes("if (!(back instanceof Map)) return null;")
+    && form.includes("if (cents == null) return null;") && !form.includes("did not go through. The amount is back in your balance.`"),
+    "the failed line reads what came back, and says nothing before the figures are read (round 26)");
   const staff = read("../src/app/admin/AdminWithdrawals.jsx");
   assert.ok(staff.includes('const holds = row.status === "requested" ? Number(row.amount_cents) - refunded : Number(row.amount_cents);'), "a row being sent keeps the amount in flight");
   const order = read("../src/app/order/LiveOrderDetail.jsx");

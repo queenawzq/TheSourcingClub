@@ -320,7 +320,7 @@ select ok((select disputed_at is null and dispute_lost_cents = 53500 and dispute
              from public.order_payments where id = pg_temp.pay(5)), 'recorded as the disputed amount gone back; the hold ends; the fee kept');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(5)),
   'Payment for "R17 bulk deposit" on hold | The brand disputed the charge. $100.00 is held until the dispute is settled. || '
-  || 'Payment for "R17 bulk deposit" reversed | The brand''s bank reversed the payment. Your earnings from R17 request 3 (R17-3) went down by $500.00. You''d already withdrawn that money, so you now owe TSC $400.00.',
+  || 'Payment for "R17 bulk deposit" reversed | The brand''s bank reversed the payment. Your earnings from R17 request 3 (R17-3) went down by $500.00. You''d already withdrawn $400.00 of that, so you now owe TSC $400.00.',
   'the factory is told, with what it had already withdrawn');
 select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(5)),
   'Your bank reversed your payment for "R17 bulk deposit" | $535.00 went back to your card.', 'the brand is told');
@@ -339,7 +339,7 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
 select ok((select state = 'released' and refunded_cents = 16050 and factory_refund_cents = 15000 from public.order_payments where id = pg_temp.pay(6)),
   'it stays paid out; the whole charge is recorded as refunded');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(6)),
-  'Payment for "R17 fit sample" refunded | The brand was refunded $160.50. Your earnings from R17 request 3 (R17-3) went down by $150.00. You''d already withdrawn that money, so you now owe TSC $150.00.',
+  'Payment for "R17 fit sample" refunded | The brand was refunded $160.50. Your earnings from R17 request 3 (R17-3) went down by $150.00. You''d already withdrawn $150.00 of that, so you now owe TSC $150.00.',
   'the factory is told');
 
 select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available -55000, pending 0, processing 0, paid out 54000, total -1000',

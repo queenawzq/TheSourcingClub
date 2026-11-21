@@ -171,6 +171,12 @@ const ZH_SAMPLES = [
   { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of this payment, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of this payment, so you now owe TSC $40.00." },
+  // Round 26.
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of that, so you now owe TSC $535.00." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of that, so you now owe TSC $40.00." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 was removed. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank was removed. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   // Round 25.
   { kind: "funds_released", title: "$588.23 paid out to you", body: "Sent to a@b.com. Payout fee $11.77 is taken from this payment: you receive $588.23. You now owe TSC $335.03, the part that went back to the brand after it was sent." },
   { kind: "withdrawal", title: "Withdrawal of $500.00 did not go through", body: "This amount was returned to the brand." },
