@@ -28,8 +28,16 @@ const DB_WORDS = {
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
   payout_own_company: "You belong to this company, so someone else on the staff must pay it.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must pay it.",
+  // Money refunded after the factory withdrew it, more than its other earnings
+  // cover (20261121210000); the amount comes in the error's detail.
+  withdrawal_owes_tsc: (error) => owesTscSentence(error.details ?? error.detail),
 };
-const refusalFrom = (error) => new PayoutFailure("database", DB_WORDS[error.hint] ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
+/** Staff's words when a withdrawal waits on money the factory owes TSC (also the board's row). */
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"}, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.`;
+const refusalFrom = (error) => {
+  const words = DB_WORDS[error.hint];
+  return new PayoutFailure("database", (typeof words === "function" ? words(error) : words) ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
+};
 
 const log = (where, failure, context = {}) => console.error(`${where}:`, withoutSecrets(failure?.message), {
   kind: failure?.kind ?? null, status: failure?.status ?? null, detail: withoutSecrets(failure?.detail ?? ""), ...context,

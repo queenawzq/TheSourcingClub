@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { formatMoney } from "../../lib/money.js";
-import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, previewWithdrawal, withdrawalBankAccount } from "../../lib/domain/withdrawals.js";
+import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, owesTscSentence, previewWithdrawal, withdrawalBankAccount } from "../../lib/domain/withdrawals.js";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
@@ -158,7 +158,10 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                   <tr key={row.id} data-withdrawal={row.id}>
                     <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}
                       {/* Said before Pay is pressed: the same refusal claim_withdrawal would give. */}
-                      {row.status === "requested" && row.covered === false ? <span className="admin-error" data-testid="withdrawal-not-covered">The factory's balance no longer covers this. Decline it with a reason.</span> : null}</td>
+                      {row.status === "requested" && row.covered === false ? <span className="admin-error" data-testid="withdrawal-not-covered">{Number(row.owes_tsc_cents) > 0
+                        // Linked to its "To recover" row: the debt is why Pay is refused.
+                        ? owesTscSentence(moneyIn(row.owes_tsc_cents, "USD"))
+                        : "The factory's balance no longer covers this. Decline it with a reason."}</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
                       <strong>{moneyIn(row.amount_cents, row.currency)}</strong>

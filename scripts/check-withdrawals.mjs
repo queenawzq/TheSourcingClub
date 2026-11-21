@@ -65,6 +65,22 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(w.recorded.at(-1).outcome, "requeue");
 }
 
+// Fix round 17b: the factory owes TSC more than its other earnings cover
+// (a refund after it withdrew): claim_withdrawal refuses, and staff read the
+// debt and where it is, never the generic sentence. Nothing is sent.
+{
+  const w = world();
+  w.caller = { rpc: async () => ({ data: null, error: { code: "22023", hint: "withdrawal_owes_tsc", message: "the factory owes TSC $500.00", details: "$500.00" } }) };
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure
+    && failure.message === "The factory owes TSC $500.00, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.");
+  assert.equal(w.paid.length, 0, "nothing paid while the factory owes TSC");
+  const { owesTscSentence } = await import("../api/_withdrawals.js");
+  const { owesTscSentence: boardSentence } = await import("../src/lib/domain/withdrawals.js").catch(() => ({}));
+  const board = (await import("node:fs")).readFileSync(new URL("../src/lib/domain/withdrawals.js", import.meta.url), "utf8");
+  assert.ok(board.includes(owesTscSentence("${amount || \"money\"}")) || boardSentence?.("$1.00") === owesTscSentence("$1.00"),
+    "the board's row says it in the same words");
+}
+
 // Paid: the factory gets the amount less the fee, and it is recorded paid.
 {
   const w = world();

@@ -18,7 +18,10 @@ const REFUSALS = {
   // The same sentence api/_withdrawals.js gives for claim_withdrawal's refusal.
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
 };
-const said = (error) => new Error(REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
+/** Staff's words when a withdrawal waits on money the factory owes TSC (api/_withdrawals.js says the same). */
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"}, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.`;
+const said = (error) => new Error(error?.hint === "withdrawal_owes_tsc" ? owesTscSentence(error.details)
+  : REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
 
 async function call(body) {
   const { data: { session } } = await supabase.auth.getSession();
