@@ -279,7 +279,8 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, on
         {waiting.map((w) => (
           <label className="cancel-withdrawals-option" key={w.id}>
             <input type="checkbox" name="Cancel withdrawal" value={w.id} checked={chosen.has(w.id)} disabled={busy} onChange={() => toggle(w.id)} />
-            <span className="payout-pending-amount">{formatMoney(w.amount_cents, w.currency)}</span>
+            {/* What it still holds (less a part refunded since), as the total below counts it. */}
+            <span className="payout-pending-amount">{formatMoney(returnable instanceof Map && returnable.has(w.id) ? returnable.get(w.id) : w.amount_cents, w.currency)}</span>
             <span className="payout-pending-destination">{destination(w)}</span>
           </label>
         ))}

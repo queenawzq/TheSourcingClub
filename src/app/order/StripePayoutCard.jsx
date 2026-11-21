@@ -16,7 +16,7 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
-import { CancelWithdrawalsForm, WithdrawForm, WithdrawalStatus, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
+import { CancelWithdrawalsForm, METHOD_OFF, WithdrawForm, WithdrawalStatus, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
 import { methodProviderOn, providerOnFor, usePayoutProviders } from "./payout-providers.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -1269,12 +1269,14 @@ export default function StripePayoutCard({
                   ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
                   : <><strong>{manualListLabel(row)}</strong><span>{row.number_changed_at ? row.bank_name : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
+                {/* Its provider is switched off for this country: said here too, as in the Withdraw dialog. */}
+                {usable(row) && !methodProviderOn(providers, row) ? <span className="payout-method-default" data-testid="method-off">{METHOD_OFF}</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
                   {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>
-                      {!row.is_primary || payoutRoute !== "manual" ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
+                      {(!row.is_primary || payoutRoute !== "manual") && methodProviderOn(providers, row) ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
                       <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); onMethodsChanged?.(); }}>{cardWords.remove}</button>
                     </div>
                   ) : null}

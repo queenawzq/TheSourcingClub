@@ -152,6 +152,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
       refund.lost > 0 ? `${money(refund.lost)} reversed by your bank` : null].filter(Boolean).join(" · ");
   }
   if (refund.factory <= 0) return line;
+  // All of the factory's part went back to the brand: the existing word.
+  if (refund.factory >= Number(payment.amount_cents)) return "Refunded";
   if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} back to the brand`;
   return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${reversedByBankLine(money(refund.factory))}`;
 }
@@ -595,7 +597,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
       amount: milestone.amount_cents ? money(charged?.steps.get(milestone.id) ?? milestone.amount_cents) : "",
       // Approving releases the step amount to the factory; the fee stays with TSC.
-      releaseAmount: milestone.amount_cents ? money(milestone.amount_cents) : "",
+      // Less the factory's part of a refund made before approval: what approving adds.
+      releaseAmount: milestone.amount_cents ? money(Math.max(0, Number(milestone.amount_cents) - Number(milestone.payment?.factory_refund_cents ?? 0))) : "",
       description: milestone.description ?? "",
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}${fileCount ? `, ${fileCount} ${fileCount === 1 ? "file" : "files"}` : ""} posted on this step`
@@ -644,6 +647,13 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     location,
   };
   const refundPendingCents = milestones.reduce((sum, { payment }) => sum + (refundPendingWord(payment ?? {}, order) ? Number(payment.amount_cents) : 0), 0);
+  // What went back to the brand on funded payments (refunds, lost disputes):
+  // the brand's whole amount on its charged figures, the factory's part on
+  // its step figures. Funded is what is still paid.
+  const wentBack = milestones.reduce((sum, { payment }) => {
+    if (!["confirmed", "released"].includes(payment?.state)) return sum;
+    return sum + (charged && !isFactory ? Number(payment.refunded_cents ?? 0) + Number(payment.dispute_lost_cents ?? 0) : Number(payment.factory_refund_cents ?? 0));
+  }, 0);
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
@@ -651,7 +661,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       .join(" · "),
     total: money(charged ? charged.order.total_charged_cents : order.total_cents),
     // Money going back to the brand was never the factory's (as on its Payments page).
-    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)),
+    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)) - wentBack)),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),

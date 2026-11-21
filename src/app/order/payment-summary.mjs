@@ -600,7 +600,8 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
         status: w.word === "waiting" ? "Processing" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
           : paid ? "Completed" : ASKED_STATUS[own?.status] ?? "Failed",
         failed: w.word === "returned",
-        amount: -(Number(w.amount_cents) - (paid ? fee : 0)),
+        // What it still holds: less the part that went back to the brand since (its "refunded" part).
+        amount: -(Number(w.amount_cents) - (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0) - (paid ? fee : 0)),
         available: w.word !== "returned",
       }];
     }

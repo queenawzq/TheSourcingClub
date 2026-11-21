@@ -695,4 +695,33 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(block22.includes("returned to the brand`"), "the withdrawal block in round 22's words");
 }
 
+// Fix round 24: a withdrawal part of which went back to the brand shows what
+// it still holds everywhere; the methods list says a switched-off method is
+// unavailable and offers no Make default; the order page uses what approving
+// adds; a fully refunded deposit reads Refunded; staff see the amount at risk.
+{
+  const { serverWithdrawalRows } = await import("../src/app/order/payment-summary.mjs");
+  const rows = serverWithdrawalRows([{ id: "w", road: "pool", provider: "paypal", created_at: "2026-11-21T10:00:00Z", amount_cents: 50000, word: "on_hold",
+    parts: [{ word: "on_hold", amount_cents: 6500 }, { word: "refunded", amount_cents: 43500 }] },
+    { id: "s", road: "pool", provider: "paypal", created_at: "2026-11-21T10:00:00Z", amount_cents: 60000, word: "on_its_way",
+      parts: [{ word: "on_its_way", amount_cents: 6500 }, { word: "refunded", amount_cents: 53500 }] }]);
+  assert.deepEqual(rows.map((row) => row.amount), [-6500, -6500], "Transactions rows show what each withdrawal still holds");
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const css = read("../src/app/order/payout.css");
+  assert.ok(css.includes('.payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-refunded"] { grid-column: 1; grid-row: 3; }'),
+    "the refunded line has its own row, never on top of the method line");
+  const form = read("../src/app/order/WithdrawFromBalance.jsx");
+  assert.ok(form.includes("formatMoney(returnable instanceof Map && returnable.has(w.id) ? returnable.get(w.id) : w.amount_cents, w.currency)"),
+    "the cancel dialog lists what each withdrawal still holds");
+  const card = read("../src/app/order/StripePayoutCard.jsx");
+  assert.ok(card.includes('data-testid="method-off">{METHOD_OFF}') && card.includes("&& methodProviderOn(providers, row) ? <button type=\"button\" role=\"menuitem\" onClick={() => { setMethodMenu(null); makePrimary(row); }}"),
+    "a switched-off method is said unavailable, with no Make default");
+  const order = read("../src/app/order/LiveOrderDetail.jsx");
+  assert.ok(order.includes("Number(milestone.payment?.factory_refund_cents ?? 0)") && order.includes('if (refund.factory >= Number(payment.amount_cents)) return "Refunded";')
+    && order.includes(" - wentBack))"), "Release and Funded figures net of refunds; a fully refunded deposit reads Refunded");
+  const staff = read("../src/app/admin/AdminWithdrawals.jsx");
+  assert.ok(staff.includes("of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC")
+    && staff.includes("<strong>{moneyIn(holds, row.currency)}</strong>"), "staff see what a withdrawal still holds, and the amount at risk while it is sent");
+}
+
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

@@ -153,7 +153,10 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
             <thead><tr><th>Company</th><th>To</th><th>Amount</th><th>Status</th><th className="payments-action-heading">Actions</th></tr></thead>
             <tbody>
               {rows.map((row) => {
-                const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: Number(row.amount_cents), currency: row.currency }) : null;
+                // What it still holds: the asked amount less any part that went back to the brand since.
+                const refunded = Math.min(Number(row.amount_cents) || 0, Math.max(0, Number(row.refunded_cents) || 0));
+                const holds = Number(row.amount_cents) - refunded;
+                const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: holds, currency: row.currency }) : null;
                 return (
                   <tr key={row.id} data-withdrawal={row.id}>
                     <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}
@@ -164,7 +167,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                         : "The factory's balance no longer covers this. Decline it with a reason."}</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
-                      <strong>{moneyIn(row.amount_cents, row.currency)}</strong>
+                      <strong>{moneyIn(holds, row.currency)}</strong>
                       <span className="admin-sub">
                         {row.fee_cents != null
                           ? `Fee ${moneyIn(row.fee_cents, row.currency)} · receives ${moneyIn(row.receives_minor, row.receives_currency ?? row.currency)}`
@@ -172,7 +175,10 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                           : estimate?.basis === "quote_needed" ? "Fee: quoted on Approve" : ""}
                       </span>
                     </td>
-                    <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}</td>
+                    <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}
+                      {refunded > 0 && row.status === "requested" ? <span className="admin-sub" data-testid="withdrawal-refunded-part">{`${moneyIn(refunded, row.currency)} went back to the brand.`}</span> : null}
+                      {/* Already sent: if the payout completes, that part is owed to TSC (To recover). */}
+                      {refunded > 0 && row.status === "paying" ? <span className="admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC ${moneyIn(refunded, row.currency)}.`}</span> : null}</td>
                     <td><WithdrawalActions row={row} onChanged={onChanged} BankDetails={BankDetails} /></td>
                   </tr>
                 );

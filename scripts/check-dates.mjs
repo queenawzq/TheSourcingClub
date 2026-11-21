@@ -171,6 +171,10 @@ const ZH_SAMPLES = [
   { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of this payment, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of this payment, so you now owe TSC $40.00." },
+  // Round 24.
+  { kind: "withdrawal", title: "Withdrawal of $600.00 being checked", body: "$535.00 of it went back to the brand after it was sent. TSC is checking this withdrawal." },
+  { kind: "payment_refunded", title: "Your payment for \"Fit sample\" was refunded", body: "The payment was refunded. Pay again from the step's payment page on TSC-1042." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   // Round 23.
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn that money, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn that money, so you now owe TSC $40.00." },

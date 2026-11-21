@@ -17,6 +17,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 
 select plan(97);
+-- Wise and PayPal on everywhere: these steps make a Wise account the default
+-- (round 24 refuses a default whose provider is off).
+update public.payout_provider_settings set enabled = true where provider in ('wise', 'paypal');
 
 set local session_replication_role = replica;
 
@@ -528,12 +531,12 @@ select lives_ok(
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body = 'TSC now pays your bank account at P31 D ending 5678. If nobody at your company made this change, email operations@contact.sourcing-club.com now.'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body = 'Your bank account at P31 D ending 5678 is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now.'),
   1,
   'bank to bank tells the company, once, by bank and last four'
 );
 select is(
-  (select public.notification_email_category(kind) from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'TSC now pays your bank account at P31 D%'),
+  (select public.notification_email_category(kind) from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'Your bank account at P31 D%'),
   'account',
   'and it is the kind that is always emailed'
 );
@@ -544,7 +547,7 @@ select lives_ok(
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'TSC now pays your bank account at P31 D%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'Your bank account at P31 D%'),
   1,
   'changes nothing and says nothing'
 );
@@ -584,7 +587,7 @@ update public.factory_payout_accounts set is_primary = true where bank_name = 'P
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 C ending 1111.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 C ending 1111 is now your default withdrawal method.%'),
   1,
   'and so is the next one taking it'
 );
