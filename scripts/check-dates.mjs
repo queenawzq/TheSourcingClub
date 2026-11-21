@@ -163,6 +163,7 @@ const ZH_SAMPLES = [
   { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "The $30.00 refund to your card failed, so the payment stays on this order." },
   { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "The refund to the brand failed. Your earnings from Spring jackets (TSC-000015) went back up by $28.04." },
   { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "The $107.00 refund to your card failed, so TSC still holds your payment for this step. You don't need to pay again." },
+  { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "The $570.00 refund to your card failed. TSC will send it again." },
   { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 cancelled", body: "The amount is back in your balance." },

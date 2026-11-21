@@ -562,14 +562,34 @@ for (const status of ["failed", "canceled"]) {
     const calls = [];
     const db = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
       rpc: async (name, args) => { calls.push([name, args]); return { data: { id: "pay-f", stripe_payment_intent_id: "pi_f" }, error: null }; } };
-    const stripe = { refunds: { retrieve: async (id) => ({ id, status: "failed" }), list: async () => ({ data: [] }) },
-      charges: { retrieve: async (id) => ({ id, payment_intent: "pi_f", amount: 10700, amount_captured: 10700, amount_refunded: 0, refunded: false }) },
+    // Fix round 21: the failed refund's own amount ($570 of a $1,070 charge,
+    // $500 lost in a dispute) and what Stripe still counts are passed on.
+    const stripe = { refunds: { retrieve: async (id) => ({ id, status: "failed", amount: 57000, metadata: {} }), list: async () => ({ data: [] }) },
+      charges: { retrieve: async (id) => ({ id, payment_intent: "pi_f", amount: 107000, amount_captured: 107000, amount_refunded: 0, refunded: false,
+        disputed: true, dispute: "du_f" }) },
+      disputes: { retrieve: async (id) => ({ id, status: "lost", amount: 50000, balance_transactions: [{ fee: 1500 }] }) },
       paymentIntents: { retrieve: async (id) => ({ id, metadata: { payment_id: "pay-f" } }) } };
     await applyRefundUpdate({ stripe, db, refund: { id: "re_f", status: "failed", charge: "ch_f", metadata: {} } });
-    assert.deepEqual(calls, [["record_full_refund_failed", { target_payment: "pay-f", payment_intent: "pi_f", charge: "ch_f", charged: 10700 }]]);
+    assert.deepEqual(calls, [["record_full_refund_failed", { target_payment: "pay-f", payment_intent: "pi_f", charge: "ch_f", charged: 107000,
+      refunded_now: 0, failed_cents: 57000, lost_cents: 50000, fee_cents: 1500 }]]);
+    // A cancelled order's payment keeps its charge: found by it, the same function decides (staff, the brand told).
+    calls.length = 0;
+    const cancelledDb = { ...db, from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "pay-c", state: "cancelled", order_id: "o-c",
+      stripe_payment_intent_id: "pi_f", stripe_charge_id: "ch_f", refunded_cents: 0 }, error: null }) }) }) }) };
+    await applyRefundUpdate({ stripe, db: cancelledDb, refund: { id: "re_f", status: "failed", charge: "ch_f", metadata: {} } });
+    assert.equal(calls[0]?.[0], "record_full_refund_failed", "a cancelled order's failed refund reaches staff");
+    assert.equal(calls[0]?.[1].target_payment, "pay-c");
+    // Our own refund of a stray intent that failed is not one of these.
+    calls.length = 0;
+    const ours = { ...stripe, refunds: { ...stripe.refunds, retrieve: async (id) => ({ id, status: "failed", amount: 10700, metadata: { tsc_problem: "amount_changed" } }) } };
+    await applyRefundUpdate({ stripe: ours, db, refund: { id: "re_o", status: "failed", charge: "ch_f", metadata: {} } });
+    assert.ok(!calls.some(([name]) => name === "record_full_refund_failed"), "a stray intent's refund is never restored as a payment");
     calls.length = 0;
     await applyChargeRefund({ stripe, db, charge: { id: "ch_f", payment_intent: "pi_f", amount: 10700, amount_refunded: 10700, refunded: true } });
     assert.deepEqual(calls, [["record_refund_failure_resolved", { payment_intent: "pi_f" }]], "staff refunded the old charge again: the row goes");
+    // A sync whose charge read fails keeps the funding (fix round 21).
+    const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe.js", import.meta.url), "utf8");
+    assert.match(source, /stripe\.charges\.retrieve\(charge\.id\)\.catch\(/, "the charge read after funding never fails the sync");
   }
   // The event says failed, Stripe now says it succeeded: nothing lowered.
   {

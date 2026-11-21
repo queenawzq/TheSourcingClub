@@ -249,9 +249,12 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   const { payment, intentId } = await paymentForCharge(db, charge);
   // Nothing refunded, and nothing recorded as refunded: nothing to say.
   if (!(Number(charge.amount_refunded) > 0) && !(Number(payment?.refunded_cents) > 0)) return null;
-  // An old charge staff refunded again after its first refund failed (the
-  // brand had paid again): its Needs checking row goes (20261121240000).
-  if (!payment && intentId && charge.refunded) await rpc(db, "record_refund_failure_resolved", { payment_intent: intentId });
+  // A charge staff refunded again after a refund recorded as full failed
+  // (the brand had paid again, or the order is cancelled): its Needs
+  // checking row goes (20261121240000, 20261121250000).
+  if (intentId && charge.refunded && (!payment || payment.state === "cancelled")) {
+    await rpc(db, "record_refund_failure_resolved", { payment_intent: intentId });
+  }
   if (!payment || !intentId) return payment ?? null;
 
   // Our own refund of a stray intent (refundIntent) can get here before it
@@ -368,23 +371,32 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
     const charge = await stripe.charges.retrieve(chargeId);
     const { payment, intentId } = await paymentForCharge(db, charge);
     if (!intentId) return null;
-    if (!payment) {
-      // A full refund before approval sent the brand back to pay, and the
-      // payment no longer names this charge: funded again with it, or (paid
-      // again already) staff refund it (20261121240000).
+    // A refund recorded as full that failed: the brand was sent back to pay
+    // (the payment no longer names this charge), or the order was cancelled
+    // and the payment kept it. record_full_refund_failed decides: funded
+    // again with it, or staff refund it again (20261121240000, 20261121250000).
+    // Our own refund of a stray intent is not one of these.
+    if ((!payment || payment.state === "cancelled") && !fresh.metadata?.tsc_problem) {
       if (charge.refunded) return null;
-      const intent = await stripe.paymentIntents.retrieve(intentId);
-      const paymentId = intent.metadata?.payment_id;
-      if (!paymentId) return null;
-      const restored = await rpc(db, "record_full_refund_failed", {
-        target_payment: paymentId, payment_intent: intentId, charge: charge.id,
-        charged: Number(charge.amount_captured ?? charge.amount) || 0,
-      });
-      if (restored?.stripe_payment_intent_id === intentId && Number(charge.amount_refunded) > 0) {
-        return applyChargeRefund({ stripe, db, charge });
+      const paymentIdOf = payment?.id ?? (await stripe.paymentIntents.retrieve(intentId)).metadata?.payment_id;
+      if (!paymentIdOf) return null;
+      // What Stripe still counts as lost on this charge, kept on a payment
+      // funded again (each side was told when it happened).
+      let lost = null;
+      if (charge.disputed) {
+        const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
+        const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+        if (dispute?.status === "lost") lost = { cents: Number(dispute.amount) || 0, fee: disputeFeeCents(dispute) };
       }
-      return restored;
+      return rpc(db, "record_full_refund_failed", {
+        target_payment: paymentIdOf, payment_intent: intentId, charge: charge.id,
+        charged: Number(charge.amount_captured ?? charge.amount) || 0,
+        refunded_now: Number(charge.amount_refunded) || 0,
+        failed_cents: Number(fresh.amount) || 0,
+        lost_cents: lost?.cents ?? 0, fee_cents: lost?.fee ?? null,
+      });
     }
+    if (!payment) return null;
     await rpc(db, "record_payment_refund_failed", {
       target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
     });
@@ -485,7 +497,12 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     // The charge as it is now, read after the funding is saved: a refund or
     // a dispute made while this ran found the payment still processing and
     // recorded nothing then (20261121240000).
-    const now = charge?.id ? await stripe.charges.retrieve(charge.id) : null;
+    // A read that fails keeps the funding as saved: the copy read before it
+    // is used, and the next read of this charge (a webhook, a balance read,
+    // a payout's check) records the rest.
+    const now = charge?.id
+      ? await stripe.charges.retrieve(charge.id).catch((failure) => { logStripeFailure("charge-reread", failure, { paymentId }); return charge; })
+      : null;
     // A dispute lost while the payment was still processing was only noted
     // then: recorded now that it is funded. A later read of the charge tries
     // again if this fails.

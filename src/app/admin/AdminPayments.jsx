@@ -980,7 +980,10 @@ function AttentionSection({ attention, onChanged }) {
                   <td>{row.factory_name}<br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></td>
                   <td>{moneyIn(row.amount_cents, row.currency)}</td>
                   <td>
-                    {`A ${moneyIn(row.amount_cents, row.currency)} refund failed after the brand paid again. Refund the first payment in Stripe.`}
+                    {/* amount_cents is what is left to refund: the failed refund's own amount. */}
+                    {row.cause === "cancelled"
+                      ? `A ${moneyIn(row.amount_cents, row.currency)} refund on this cancelled order failed. Refund the brand again in Stripe.`
+                      : `A ${moneyIn(row.amount_cents, row.currency)} refund failed after the brand paid again. Refund the first payment in Stripe.`}
                     {" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>

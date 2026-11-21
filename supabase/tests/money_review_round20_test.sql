@@ -234,7 +234,7 @@ select is((select body from public.notifications where subject_id = current_sett
 -- ===========================================================================
 select lives_ok($$select pg_temp.refund(31, 10700)$$, 'the trims charge is refunded in full before approval');
 select is((pg_temp.p(31)).state::text, 'failed', 'the brand is sent back to pay');
-select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700)')$$,
+select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700, 0, 10700, 0, null)')$$,
   'Stripe says that refund failed, before the brand paid again');
 select is(row((pg_temp.p(31)).state::text, (pg_temp.p(31)).stripe_payment_intent_id, (pg_temp.p(31)).charged_cents),
   row('confirmed'::text, 'pi_pgtap_r20_31'::text, 10700::bigint), 'funded again with the charge TSC still holds');
@@ -243,7 +243,7 @@ select is((select title || ' | ' || body from public.notifications where org_id 
   'the brand is told not to pay again');
 select ok(exists (select 1 from public.notifications where org_id = pg_temp.org(3) and subject_id = pg_temp.pay(31) and title = 'Payment held for "R20 trims"'),
   'and the factory that the money is held again');
-select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700)')$$, 'told again');
+select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700, 0, 10700, 0, null)')$$, 'told again');
 select is((select count(*)::int from public.notifications where subject_id = pg_temp.pay(31) and title like 'Refund for%'), 1, 'nothing changes the second time');
 
 select lives_ok($$select pg_temp.refund(32, 10700)$$, 'the labels charge is refunded in full before approval');
@@ -252,7 +252,7 @@ set local session_replication_role = replica;
 update public.order_payments set state = 'confirmed', confirmed_at = now(), stripe_payment_intent_id = 'pi_pgtap_r20_32b', stripe_charge_id = 'ch_pgtap_r20_32b',
        charged_cents = 10700, amount_received_cents = 10700, refunded_at = null where id = pg_temp.pay(32);
 set local session_replication_role = origin;
-select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0032-0000-0000-0000-000000000000'', ''pi_pgtap_r20_32'', ''ch_pgtap_r20_32'', 10700)')$$,
+select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0032-0000-0000-0000-000000000000'', ''pi_pgtap_r20_32'', ''ch_pgtap_r20_32'', 10700, 0, 10700, 0, null)')$$,
   'then Stripe says the first refund failed');
 select is((pg_temp.p(32)).stripe_payment_intent_id, 'pi_pgtap_r20_32b', 'the new payment stays as it is');
 create function pg_temp.refund_failed_rows() returns jsonb language plpgsql as $f$
@@ -275,7 +275,7 @@ select is(jsonb_array_length(pg_temp.refund_failed_rows()), 0, 'the row goes');
 -- ===========================================================================
 select ok(not has_function_privilege('authenticated', f, 'execute') and not has_function_privilege('anon', f, 'execute')
       and has_function_privilege('service_role', f, 'execute'), f || ' is the server''s')
-  from unnest(array['public.record_full_refund_failed(uuid, text, text, bigint)', 'public.record_refund_failure_resolved(text)']) f;
+  from unnest(array['public.record_full_refund_failed(uuid, text, text, bigint, bigint, bigint, bigint, bigint)', 'public.record_refund_failure_resolved(text)']) f;
 select ok(not has_table_privilege('authenticated', 'public.payment_refund_failures', 'select')
       and not has_table_privilege('anon', 'public.payment_refund_failures', 'select'), 'payment_refund_failures is staff''s, through the board only');
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = f), 1, f || ': one function, no overloads')
