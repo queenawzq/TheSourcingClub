@@ -147,6 +147,15 @@ const ZH_SAMPLES = [
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by bank transfer against TSC-1042. TSC's note: Ref. 7781" },
   { kind: "funds_released", title: "$65.00 paid out to you", body: "Sent to Ningbo Test Bank ending 1234. Payout fee $9.54 is taken from this payment: you receive CNY 369.72." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 requested", body: "To a@b.com. TSC will send it after checking." },
+  // Refunds and lost disputes recorded at their amount (20261121200000).
+  { kind: "payment_refunded", title: "Your payment for \"Bulk deposit\" was refunded", body: "$50.00 was refunded to your card." },
+  { kind: "payment_refunded", title: "Refund to the brand on \"Bulk deposit\"", body: "$45.36 less in your earnings from Spring jackets (TSC-000015). You had already withdrawn $400.00 of it." },
+  { kind: "payment_refunded", title: "Dispute lost on \"Bulk deposit\"", body: "$900.00 went back to the brand and is no longer in your earnings. You had already withdrawn $535.00 of it." },
+  { kind: "payment_refunded", title: "Dispute lost on \"Trims\"", body: "TSC no longer holds money for this step on Spring jackets (TSC-000016). The brand has been asked to pay again; we will tell you when it is held." },
+  { kind: "payment_refunded", title: "Your bank reversed your payment for \"Bulk deposit\"", body: "$992.08 went back to your card. Pay again from the step's payment page on Spring jackets (TSC-000016)." },
+  { kind: "withdrawal", title: "Withdrawal of $250.00 on hold", body: "The brand's bank reversed the payment for \"Bulk deposit\". Cancel this withdrawal and withdraw again." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 cancelled", body: "The amount is back in your balance." },
   { kind: "withdrawal", title: "Withdrawal of $25.00 declined", body: "The amount is back in your balance. TSC's reason: Please confirm your PayPal address first." },
   { kind: "withdrawal", title: "Withdrawal of $25.00 did not go through", body: "The amount is back in your balance. Check your withdrawal method, then withdraw again." },
@@ -281,6 +290,21 @@ async function formatters() {
     const email = await load("/scripts/generate-notification-email.mjs");
     const { ZH_TITLE_KINDS } = await load("/src/shared/notification-zh.mjs");
 
+    // The activity line for a funded deposit (payment-only step): added to the
+    // balance, never "held by TSC"; a paid step stays held until approved.
+    {
+      const { activityLines } = await load("/src/app/order/order-view.js");
+      const order = { brand_org_id: "b", factory_org_id: "f", currency: "USD", brand: { name: "Brand" }, factory: { name: "Factory" } };
+      const rows = [{ kind: "payment_confirmed", milestone_title: "Bulk deposit", detail: "90000", at: new Date().toISOString() },
+        { kind: "payment_confirmed", milestone_title: "Fit sample", detail: "6500", at: new Date().toISOString() }];
+      const paymentOnlySteps = new Set(["Bulk deposit"]);
+      const brandLines = activityLines(rows, { order, viewerOrgId: "b", paymentOnlySteps }).map((line) => line.split(" · ")[0]);
+      const factoryLines = activityLines(rows, { order, viewerOrgId: "f", paymentOnlySteps }).map((line) => line.split(" · ")[0]);
+      expect("deposit funded, brand", brandLines[0], "$900.00 funded for Bulk deposit, added to the factory's balance");
+      expect("deposit funded, factory", factoryLines[0], "$900.00 funded for Bulk deposit, added to your balance");
+      expect("paid step funded", brandLines[1], "$65.00 funded for Fit sample, held by TSC");
+    }
+
     const calendar = dateFrom("2026-10-26");
     expect("dateFrom day", [calendar.getFullYear(), calendar.getMonth(), calendar.getDate()].join("-"), "2026-9-26");
     // An instant stays an instant: 03:00 UTC is still the 25th in New York.
@@ -317,6 +341,20 @@ async function formatters() {
     expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Paid,ok:Approved,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$1,181.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$54.00");
+    // Refunds (20261121200000): a partial one nets the figure; a full one
+    // after it was the factory's reads Refunded, a lost dispute Reversed by your bank.
+    const refunds = brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-9", factory: { name: "F" } }],
+      payments: [
+        { id: "part", order_id: "o", state: "confirmed", amount_cents: 10000, charged_cents: 10700, refunded_cents: 5350, dispute_lost_cents: 0, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", order_milestones: { title: "Fit", kind: "approval_and_payment" } },
+        { id: "full", order_id: "o", state: "confirmed", amount_cents: 20000, charged_cents: 21400, refunded_cents: 21400, dispute_lost_cents: 0, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", release_requested_at: "2026-11-19T10:00:00Z", order_milestones: { title: "Deposit", kind: "payment_only" } },
+        { id: "lost", order_id: "o", state: "released", amount_cents: 5000, charged_cents: 5350, refunded_cents: 0, dispute_lost_cents: 5350, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
+      ],
+    });
+    expect("brand payments: refunds", refunds.rows.map((row) => `${row.id}:${row.status}:${row.amount}`).sort().join(","),
+      "full:Refunded:$0.00,lost:Reversed by your bank:$0.00,part:Funded:$53.50");
+    expect("brand payments: Held, net", refunds.metrics.find(([name]) => name === "Held")?.[1], "$53.50");
+    expect("brand payments: Paid, net", refunds.metrics.find(([name]) => name === "Paid")?.[1], "$0.00");
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",

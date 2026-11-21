@@ -120,8 +120,11 @@ export function orderFiles(rfqDocuments, updates, milestones) {
  * brand pays for a step, the fee included: a payment due, sent or funded is
  * said at that figure, as everywhere else the brand sees it. A payout stays
  * at the step amount, which is what the factory is paid.
+ *
+ * `paymentOnlySteps` (step titles): steps whose funding adds the money to the
+ * factory's balance at once, never "held by TSC".
  */
-export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null }) {
+export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null, paymentOnlySteps = null }) {
   const names = {
     [order.brand_org_id]: order.brand?.name ?? "The brand",
     [order.factory_org_id]: order.factory?.name ?? "The factory",
@@ -144,7 +147,10 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "payment_processing": return `The payment for ${step} is processing`;
       // The card is the brand's business: to the factory the step is simply not funded yet.
       case "payment_failed": return viewerOrgId === order.factory_org_id ? null : `The payment for ${step} did not go through`;
-      case "payment_confirmed": return `${paid(row)} funded for ${step}, held by TSC`;
+      // A payment-only step (a deposit) is the factory's once funded: TSC holds nothing.
+      case "payment_confirmed": return paymentOnlySteps?.has(step)
+        ? `${paid(row)} funded for ${step}, added to ${viewerOrgId === order.factory_org_id ? "your" : "the factory's"} balance`
+        : `${paid(row)} funded for ${step}, held by TSC`;
       case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "payment_refunded": return `The payment for ${step} was refunded to the brand`;
       case "payment_refunded_after_payout": return `The payment for ${step} was refunded to the brand after it was paid out`;

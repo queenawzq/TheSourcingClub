@@ -117,6 +117,41 @@ export function figuresByPayment(figures) {
 }
 
 /**
+ * Money refunded to the brand (or a dispute lost) after the factory had
+ * withdrawn it, in US$ cents: owed to TSC, already taken off Available
+ * (factory_balance().owed_to_tsc_cents). 0 when none or not known.
+ */
+export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed_to_tsc_cents ?? figures?.owed_to_tsc_cents) || 0);
+/** The card's line for it (Available already counts it). */
+export const owedToTscLine = (cents, formatMoney) => (cents > 0 ? `${formatMoney(cents, "USD")} owed to TSC: refunded after you withdrew it.` : null);
+
+/**
+ * The dated rows a refund or a lost dispute adds to an earning (factory_balance()
+ * rows with figure "refunded" below zero): the factory's part, on the day it
+ * went back. The step's own row is never rewritten. `cause` "refund" or
+ * "dispute_lost".
+ */
+export function refundRows(figures) {
+  return (figures?.tsc?.rows ?? figures?.rows ?? [])
+    .filter((row) => row?.figure === "refunded" && Number(row.amount_cents) < 0 && row.payment_id)
+    .map((row) => ({ paymentId: row.payment_id, cause: row.cause === "dispute_lost" ? "dispute_lost" : "refund", at: row.at ?? null, amount: Number(row.amount_cents) }));
+}
+export const DISPUTE_LOST = "Dispute lost";
+
+/**
+ * What a refund or a lost dispute took from one payment, for its order-page
+ * line: the brand's whole amount (refunded_cents, dispute_lost_cents) and the
+ * factory's part (factory_refund_cents, the database's proportional split).
+ */
+export function paymentRefund(payment) {
+  const n = (value) => Math.max(0, Number(value) || 0);
+  const refunded = n(payment?.refunded_cents);
+  const lost = n(payment?.dispute_lost_cents);
+  const charged = n(payment?.charged_cents ?? payment?.amount_received_cents);
+  return { refunded, lost, brand: refunded + lost, factory: n(payment?.factory_refund_cents), full: charged > 0 && refunded + lost >= charged };
+}
+
+/**
  * What each method can withdraw, in US$ cents (D5): the factory's Stripe
  * account reaches the cleared money TSC owes it and the money already in its
  * Stripe account; PayPal and Wise reach the same cleared money and what is
@@ -134,9 +169,11 @@ export function withdrawReach(figures, server = null, poolCents = null) {
   const pool = Math.max(0, Number(parts?.pool_available_cents) || 0);
   const ownStripe = figures?.stripe ? Math.max(0, Number(figures.stripe.available_cents) || 0) : 0;
   const known = (value) => value != null && Number.isFinite(Number(value));
+  // Refunded after it was withdrawn: owed to TSC, taken off what can be withdrawn.
+  const debt = Math.max(0, Number(owedToTscCents(figures)) || 0);
   return {
-    stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? owed + ownStripe : null,
-    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? owed + pool : null,
+    stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? Math.max(0, owed + ownStripe - debt) : null,
+    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? Math.max(0, owed + pool - debt) : null,
     // The Stripe amount was converted from the account's currency.
     estimated: Boolean(server?.estimated),
   };

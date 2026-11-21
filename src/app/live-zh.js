@@ -157,6 +157,10 @@ const PATTERNS = [
   [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待处理。处理完成后即可提现。`],
   [/^Part of your balance is held in ([A-Z]{3}), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1]} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
+  // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
+  [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
+  // Refunded after it was withdrawn: owed to TSC, inside Available.
+  [/^(\$[\d,.]+) owed to TSC: refunded after you withdrew it\.$/, (m) => `欠 TSC ${m[1]}：提现后被退款。`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],
@@ -185,6 +189,8 @@ const PATTERNS = [
   [/^(.+) confirmed the production steps$/, (m) => `${m[1]} 已确认生产步骤`],
   [/^(\$[\d,.]+) is due for (.+)$/, (m, inner) => `${inner(m[2])} 应付 ${m[1]}`],
   [/^(\$[\d,.]+) funded for (.+), held by TSC$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，由 TSC 托管`],
+  [/^(\$[\d,.]+) funded for (.+), added to your balance$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，已计入你的余额`],
+  [/^(\$[\d,.]+) funded for (.+), added to the factory's balance$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，已计入工厂的余额`],
   [/^(.+) is complete$/, (m, inner) => `${inner(m[1])} 已完成`],
   [/^You posted on (.+)$/, (m, inner) => `你在「${inner(m[1])}」发布了更新`],
   [/^(.+) posted on (.+)$/, (m, inner) => `${m[1]} 在「${inner(m[2])}」发布了更新`],

@@ -164,17 +164,22 @@ export const withdrawOptionLabel = (row, language = "en") => {
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
     // The server's word for it (factory_balance().withdrawals): a request whose
     // step was refunded underneath is on hold, for the owner and members alike.
     const onHold = (row) => words instanceof Map && words.get(row.id) === "on_hold";
+    // The part of it refunded to the brand since it was asked (its parts'
+    // "refunded"): no longer the factory's, so the block shows what it still
+    // holds, and the refunded part on its own line.
+    const refundedOf = (row) => Math.min(Number(row.amount_cents) || 0, Math.max(0, Number(refunded instanceof Map ? refunded.get(row.id) : 0) || 0));
     return list.map((row) => (
       <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
           <span className="payout-pending-label">Processing withdrawal</span>
-          <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
+          <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)}</span>
+          {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{`${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
           <span className="payout-pending-destination">{destination(row)}</span>
           {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>

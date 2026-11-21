@@ -1543,10 +1543,10 @@ must(await secondFactory.client.from("factory_payout_accounts").insert({
 // Lakeside Mills is in mainland China and paid through PayPal.
 // PAYPAL_TEST_RECEIVER is a real sandbox account, without which PayPal holds the
 // money as unclaimed and it never reaches "paid".
-must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
+const lakesidePaypal = must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
   org_id: otherDomainOrg.id, method: "paypal",
   paypal_email: process.env.PAYPAL_TEST_RECEIVER?.trim().toLowerCase() || "lakeside-payouts@example.net", is_primary: true,
-}), "Lakeside's PayPal account");
+}).select("id, paypal_email").single(), "Lakeside's PayPal account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,
@@ -1583,6 +1583,34 @@ const cord = await runningOrder({
   vendor: tradingCompany, vendorOrg: tradingOrg,
 });
 await funded(await dueNow(cord, cordTitle), CARD);
+// 7b. Refunded after it was withdrawn: Lakeside Mills withdrew its whole fit
+//    sample by PayPal (paid), then staff refunded half of the brand's charge
+//    in Stripe for a short shipment. Recorded the way the server records what
+//    Stripe reports (record_payment_refund_amount, 20261121200000): the step
+//    stays done, Paid out is unchanged, and the factory's part of the refund
+//    is owed to TSC, inside its Available; staff see it on Needs checking. The
+//    payment carries a demo PaymentIntent id (no Stripe charge behind it).
+{
+  const title = "Washed silk slip dress, AW27";
+  const order = await runningOrder({
+    title, brief: "80 washed silk slip dresses, bias cut.", quantity: 80, unitPrice: 5200,
+    vendor: otherDomainFactory, vendorOrg: otherDomainOrg,
+  });
+  const fit = await dueNow(order, title);
+  const intent = `pi_demo_refund_${fit.id.slice(0, 8)}`;
+  const total = await charged(fit);
+  must(await admin.rpc("attach_payment_intent", { target_payment: fit.id, payment_intent: intent, charged: total }), "the demo charge's intent");
+  must(await admin.rpc("record_payment_funded", {
+    target_payment: fit.id, charge: null, method_type: CARD[0], method_label: CARD[1], received: total,
+  }), "a payment held by TSC");
+  await approveOpenStep(order, title, otherDomainFactory);
+  await withdrawnByPaypal(otherDomainOrg, otherDomainFactory, lakesidePaypal, "CN", fit, "DEMO-20260002");
+  const refunded = must(await admin.rpc("record_payment_refund_amount", {
+    target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
+  }), "half refunded after it was withdrawn");
+  const debt = must(await admin.rpc("factory_debt_cents", { target_org: otherDomainOrg.id }), "what Lakeside owes TSC");
+  if (!(Number(refunded.refunded_cents) > 0) || !(Number(debt) > 0)) throw new Error("the refund after a withdrawal should leave Lakeside owing TSC");
+}
 // 8. Lakeside Mills (China, PayPal) has an approved fit sample waiting on staff.
 //    Hangzhou Test Knit (China) has one too and no withdrawal method: its money
 //    waits until it sets one up.

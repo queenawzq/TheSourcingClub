@@ -55,7 +55,7 @@ async function call(body) {
 export async function adminBalanceAttention() {
   const { data, error } = await supabase.rpc("admin_balance_attention");
   if (error) throw new Error("The board couldn't read the payments that need checking. Reload the page.");
-  return { disputed: data?.disputed ?? [], stuck: data?.stuck ?? [] };
+  return { disputed: data?.disputed ?? [], stuck: data?.stuck ?? [], recover: data?.recover ?? [] };
 }
 
 export async function adminWithdrawals() {

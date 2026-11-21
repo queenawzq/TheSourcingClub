@@ -982,13 +982,13 @@ console.log("\nphase 3 — the order runs");
     // exact strings milestone.js, order.js and payment.js select.
     {
       const milestoneEmbed = await brand.client.from("order_milestones")
-        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id, withdrawal_pool, funds_available_at, disputed_at)")
+        .select("id, title, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, charge_cents, payment_method_label, failure_reason, processing_at, release_requested_at, refunded_at, stripe_transfer_id, withdrawal_pool, funds_available_at, disputed_at, amount_received_cents, refunded_cents, dispute_lost_cents, factory_refund_cents)")
         .eq("order_id", order.id);
       const orderEmbed = await brand.client.from("production_order_summary")
         .select("id, order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents))")
         .eq("id", order.id).maybeSingle();
       const paymentRows = await brand.client.from("order_payments")
-        .select("id, order_id, milestone_id, amount_cents, currency, fee_bps, state, due_at, brand_reference, sent_at, sent_note, confirmed_at, confirmed_note, amount_received_cents, released_at, released_note, created_at, charged_cents, payment_method_type, payment_method_label, failure_reason, processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at, service_fee_cents, processing_fee_cents, charge_cents, order_milestones (title, sort, due_on, kind)")
+        .select("id, order_id, milestone_id, amount_cents, currency, fee_bps, state, due_at, brand_reference, sent_at, sent_note, confirmed_at, confirmed_note, amount_received_cents, released_at, released_note, created_at, charged_cents, payment_method_type, payment_method_label, failure_reason, processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at, service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, dispute_lost_cents, factory_refund_cents, order_milestones (title, sort, due_on, kind)")
         .eq("order_id", order.id);
       const stepCharges = await brand.client.from("order_step_charges")
         .select("order_id, milestone_id, payment_id, charged_cents").eq("order_id", order.id);

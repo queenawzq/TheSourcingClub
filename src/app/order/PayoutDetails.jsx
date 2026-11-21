@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { ON_ITS_WAY, askedWithdrawalRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -485,6 +485,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       // Refunded to the brand: listed, struck through, in no figure.
       failed: refundedEarning(row),
     })),
+    // A refund (or a lost dispute) after it was funded: a dated row of its
+    // own, below zero, for the factory's part; the step's row is unchanged.
+    ...refundRows(balanceFigures).filter((part) => visibleEarnings.some((row) => row.id === part.paymentId)).map((part) => {
+      const row = paymentById.get(part.paymentId);
+      return {
+        id: `refund-${part.paymentId}-${part.cause}`,
+        type: "earning",
+        date: part.at || row?.released_at || row?.confirmed_at || row?.created_at,
+        title: row?.order_milestones?.title || row?.order?.order_number || "Order payment",
+        meta: `${row?.order?.orgs?.name || "Brand"} · ${row?.order?.order_number || "Production order"}`,
+        note: null,
+        status: part.cause === "dispute_lost" ? DISPUTE_LOST : REFUNDED,
+        amount: part.amount,
+        currency: row?.currency ?? "USD",
+        available: true,
+        failed: false,
+      };
+    }),
     // Withdrawals span clients, so they are listed under All clients only:
     // from the server's own list (the card's lines read the same one), or
     // from the company's rows where the server sends none.

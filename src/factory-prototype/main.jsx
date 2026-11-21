@@ -1141,6 +1141,7 @@ export const factoryMainZhText = {
   "Your sign-in has ended. Sign in again.": "你的登录已结束，请重新登录。",
   "This IBAN isn't valid. Check each character.": "此 IBAN 无效，请逐个核对字符。",
   "Refunded": "已退款",
+  "Dispute lost": "争议败诉",
   "Nothing goes back to your balance: the brand's payment was refunded.": "没有款项回到你的余额：品牌的付款已退款。",
   // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
   "Processing withdrawal": "处理中的提现",

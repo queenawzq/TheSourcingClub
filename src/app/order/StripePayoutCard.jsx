@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1101,6 +1101,8 @@ export default function StripePayoutCard({
           ) : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
+          {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
+          {figures && owedToTscCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(owedToTscCents(figures), formatMoney)}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -1137,6 +1139,7 @@ export default function StripePayoutCard({
           </>}
         </div>
         <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner}
+          refunded={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0)]))}
           words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold" || Number(w.held_cents) > 0 || (w.parts ?? []).some((part) => part.word === "on_hold")).map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
               setWithdrawalError(null);
               // Cancelling is asked first, like any step that can't be undone:

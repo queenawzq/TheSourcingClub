@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { earningStatus, refundPendingWord } from "./payment-summary.mjs";
+import { DISPUTE_LOST, earningStatus, paymentRefund, refundPendingWord } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -138,6 +138,22 @@ function actionFor(milestone, viewer) {
  * deposit or balance) has nothing to approve and is paid out once funded.
  */
 function paymentLine(payment, isFactory, kind, needsMethod = null, order = null) {
+  const line = paymentStateLine(payment, isFactory, kind, needsMethod, order);
+  if (!["confirmed", "released"].includes(payment?.state) || !line) return line;
+  // Refunded to the brand (by staff in Stripe), or a dispute lost, since it
+  // was funded: the brand reads what went back to it, the factory its part.
+  const refund = paymentRefund(payment);
+  const money = (cents) => formatMoney(cents, payment.currency ?? "USD");
+  if (!isFactory) {
+    if (refund.brand <= 0) return line;
+    if (refund.full) return refund.refunded > 0 ? "Refunded" : "Reversed by your bank";
+    return `${line} · ${money(refund.brand)} refunded`;
+  }
+  if (refund.factory <= 0) return line;
+  return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${DISPUTE_LOST}`;
+}
+
+function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = null) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
@@ -646,6 +662,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       .filter((milestone) => titleCounts.get(milestone.title) === 1 && charged.steps.has(milestone.id))
       .map((milestone) => [milestone.title, charged.steps.get(milestone.id)]))
     : null;
+  // Deposits and balances (payment-only steps), by title, for the activity panel's funding line.
+  const paymentOnlySteps = new Set(milestones.filter((milestone) => milestone.kind === "payment_only" && titleCounts.get(milestone.title) === 1)
+    .map((milestone) => milestone.title));
   const onTabChange = (next) => navigate(next === "overview" ? `/orders/${orderId}` : `/orders/${orderId}/${next}`);
   const contract = describeOrderContract({
     order,
@@ -704,7 +723,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id })}
+        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
@@ -765,7 +784,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, chargedByStep })}
+        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, chargedByStep, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
