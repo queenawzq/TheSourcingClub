@@ -615,7 +615,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
 // had already been withdrawn is owed to TSC inside Available, which can read
 // below zero, and nothing more can be withdrawn while it is not covered.
 {
-  const { DISPUTE_LOST, REFUNDED, owedToTscCents, owedToTscLine, paymentRefund, refundRows } = await import("../src/app/order/payment-summary.mjs");
+  const { DISPUTE_LOST, REFUNDED, owedToTscCause, owedToTscCents, owedToTscLine, paymentRefund, refundRows } = await import("../src/app/order/payment-summary.mjs");
   const fmt = (cents) => `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toFixed(2)}`;
   // F3's state from the pgTAP suite: $400 withdrawn by PayPal then a lost
   // dispute on the $500 deposit, $150 withdrawn by Stripe then refunded.
@@ -637,6 +637,12 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.equal(owedToTscCents(balanceFigures(tsc, null, null)), 55000, "and kept by the server's balance answer");
   assert.equal(owedToTscLine(55000, fmt), "You owe TSC $550.00. A payment was refunded after you withdrew it.");
   assert.equal(owedToTscLine(0, fmt), null, "no line without a debt");
+  // Fix round 19: a lost dispute is said as one, never as a refund.
+  assert.equal(owedToTscLine(50000, fmt, "dispute_lost"), "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.");
+  assert.equal(owedToTscLine(50000, fmt, "both"), "You owe TSC $500.00. Money went back to the brand after you withdrew it.");
+  const rowsOf = (...causes) => ({ rows: causes.map((cause, i) => ({ figure: "refunded", amount_cents: -100, payment_id: `p${i}`, cause, at: "2026-11-21T10:00:00Z" })) });
+  assert.deepEqual([owedToTscCause(rowsOf("dispute_lost")), owedToTscCause(rowsOf("refund")), owedToTscCause(rowsOf("refund", "dispute_lost"))],
+    ["dispute_lost", "refund", "both"], "the cause comes from the dated refund rows");
   assert.doesNotMatch(owedToTscLine(55000, fmt), /next earnings/i, "never promises to take it from later earnings (not decided)");
   assert.deepEqual(refundRows(tsc), [
     { paymentId: "dep", cause: "dispute_lost", at: "2026-11-21T10:00:00Z", amount: -50000 },
@@ -659,7 +665,11 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.deepEqual([parts.onHold, parts.waiting], [0, 20000], "the block holds $200; the refunded $50 is on no line");
   // The card and the block, in the page's code.
   const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(card.includes("owedToTscLine(owedToTscCents(figures), formatMoney)"), "the card says what is owed to TSC");
+  assert.ok(card.includes("owedToTscLine(owedToTscCents(figures), formatMoney, owedToTscCause(figures))"), "the card says what is owed to TSC, and why");
+  // The order page: a lost dispute is never "refunded" (fix round 19).
+  const orderPage = readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8");
+  const line = orderPage.slice(orderPage.indexOf("function paymentLine("), orderPage.indexOf("function paymentStateLine("));
+  assert.ok(line.includes("reversed by your bank`") && line.includes("back to the brand`"), "a partial lost dispute and a refund plus a dispute, each in its words");
   const block = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(block.includes("formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)") && block.includes("refunded`"),
     "a waiting withdrawal's block shows what it still holds, and its refunded part");
@@ -668,7 +678,8 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Chinese for the new screen words: the live patterns and the factory's dictionary.
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
-  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$900.00 funded for Bulk deposit, added to your balance",
+  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 back to the brand",
+    "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money went back to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }

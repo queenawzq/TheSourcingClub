@@ -19,7 +19,7 @@ const REFUSALS = {
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
 };
 /** Staff's words when a withdrawal waits on money the factory owes TSC (api/_withdrawals.js says the same). */
-export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"}, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.`;
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). Decline this withdrawal.`;
 const said = (error) => new Error(error?.hint === "withdrawal_owes_tsc" ? owesTscSentence(error.details)
   : REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
 

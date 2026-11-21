@@ -245,6 +245,10 @@ const SENTENCES = [
   [amountRe("^Your earnings from (.+) went down by AMT\\.$"), (order, amount) => `你在 ${order} 的收入减少了 ${amount}。`],
   [amountRe("^AMT went back to the brand and is no longer in your earnings\\.$"), (amount) => `${amount} 已退回品牌，不再计入你的收入。`],
   [amountRe("^You had already withdrawn AMT of it\\.$"), (amount) => `其中 ${amount} 你已提现。`],
+  // A withdrawal on hold because of money owed to TSC (20261121230000).
+  [amountRe("^You owe TSC AMT\\.$"), (amount) => `你欠 TSC ${amount}。`],
+  [/^A payment was refunded after you withdrew it\.$/, () => "你提现后，有一笔付款被退款。"],
+  [/^The brand's bank reversed a payment after you withdrew it\.$/, () => "你提现后，品牌的银行撤回了一笔付款。"],
   [/^Nothing goes back to your balance: the brand's payment was refunded\.$/, () => "没有款项回到你的余额：品牌的付款已退款。"],
   [/^PayPal (\S+) was added as a withdrawal method\.$/, (email) => `已添加 PayPal ${email} 作为提现方式。`],
   [/^PayPal (\S+) was removed from your withdrawal methods\.$/, (email) => `PayPal ${email} 已从你的提现方式中移除。`],

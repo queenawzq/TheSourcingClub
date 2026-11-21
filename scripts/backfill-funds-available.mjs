@@ -3,12 +3,13 @@
  * Stripe says now, for payments recorded before the server kept these:
  *   - when the charge's money became available on TSC's Stripe account
  *     (order_payments.funds_available_at), where none is recorded;
- *   - whether the charge is disputed (open or lost) or no longer is
+ *   - whether the charge is disputed (open) or no longer is
  *     (record_payment_disputed: a dispute answered before the server could
- *     match it was never recorded);
- *   - a charge refunded in full in Stripe that is still recorded as money
- *     held (the server's own refund recording, which makes no new refund).
- *     A partial refund is only reported: it is staff's decision.
+ *     match it was never recorded); a dispute lost is recorded as lost
+ *     (record_payment_dispute_lost);
+ *   - a refund in Stripe beyond what is recorded, in full or in part,
+ *     recorded at Stripe's amount (the server's own refund recording, which
+ *     makes no new refund).
  *
  *   node scripts/backfill-funds-available.mjs            # local stack, dry run
  *   node scripts/backfill-funds-available.mjs --write    # local stack, writes
@@ -82,7 +83,7 @@ const db = createClient(url, service, { auth: { autoRefreshToken: false, persist
 const rows = [];
 for (let from = 0; ; from += 1000) {
   const { data, error } = await db.from("order_payments")
-    .select("id, state, stripe_charge_id, funds_available_at, confirmed_at, disputed_at")
+    .select("id, state, stripe_charge_id, funds_available_at, confirmed_at, disputed_at, refunded_cents, dispute_lost_at")
     .in("state", ["confirmed", "released"]).not("stripe_charge_id", "is", null)
     .order("id").range(from, from + 999);
   if (error) stop(`Could not read payments: ${error.message}`);
@@ -91,21 +92,22 @@ for (let from = 0; ; from += 1000) {
 }
 
 console.log(`${rows.length} confirmed or released Stripe payment(s) (${write ? "writing" : "dry run: pass --write to record"}).`);
-const done = { dates: 0, noDate: 0, disputed: 0, undisputed: 0, refunded: 0, partlyRefunded: 0, failed: 0 };
+const done = { dates: 0, noDate: 0, disputed: 0, undisputed: 0, lost: 0, refunded: 0, partlyRefunded: 0, failed: 0 };
 for (const row of rows) {
   try {
     const charge = await stripe.charges.retrieve(row.stripe_charge_id, { expand: ["balance_transaction"] });
     const disputeId = charge.disputed ? (typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id) : null;
     const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
     const decision = decideBackfill({ row, charge, dispute });
-    for (const line of await applyBackfill({ stripe, db, row, charge, decision, write })) console.log(`  ${row.id}: ${line}`);
+    for (const line of await applyBackfill({ stripe, db, row, charge, dispute, decision, write })) console.log(`  ${row.id}: ${line}`);
     if ("date" in decision) done[decision.date ? "dates" : "noDate"] += 1;
     if ("disputed" in decision) done[decision.disputed ? "disputed" : "undisputed"] += 1;
     if (decision.refund) done[decision.refund === "full" ? "refunded" : "partlyRefunded"] += 1;
+    if (decision.lost) done.lost += 1;
   } catch (failure) {
     done.failed += 1;
     console.log(`  ${row.id}: failed (${failure?.code ?? failure?.statusCode ?? "error"}: ${String(failure?.message ?? "").slice(0, 120)})`);
   }
 }
-console.log(`Done: ${done.dates} clearing dates, ${done.noDate} with no date yet, ${done.disputed} disputes recorded, ${done.undisputed} holds lifted, ${done.refunded} refunds recorded, ${done.partlyRefunded} partial refunds for staff, ${done.failed} failed${write ? "" : " (dry run: nothing written)"}.`);
+console.log(`Done: ${done.dates} clearing dates, ${done.noDate} with no date yet, ${done.disputed} disputes recorded, ${done.undisputed} holds lifted, ${done.lost} lost disputes recorded, ${done.refunded} full refunds recorded, ${done.partlyRefunded} partial refunds recorded, ${done.failed} failed${write ? "" : " (dry run: nothing written)"}.`);
 process.exit(done.failed ? 1 : 0);

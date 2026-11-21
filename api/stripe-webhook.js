@@ -126,10 +126,13 @@ export default async function handler(request, response) {
       case "charge.refunded": {
         // A refund made in Stripe (staff by hand, a dispute, or our own of a
         // stray intent). Another app's charge matches no payment and is left.
-        const payment = await applyChargeRefund({ stripe, db, charge: event.data.object });
+        // Read back from Stripe, never from the event: two refunds' events
+        // can arrive in either order, and the charge as it is now decides.
+        const charge = await stripe.charges.retrieve(event.data.object.id);
+        const payment = await applyChargeRefund({ stripe, db, charge });
         if (payment) break;
         // Not an order payment: a refunded credit pack takes its credits back.
-        const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
+        const purchase = await applyCreditPurchaseRefund({ db, charge });
         if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
         break;
       }

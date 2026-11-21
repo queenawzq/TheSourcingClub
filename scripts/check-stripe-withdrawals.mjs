@@ -517,4 +517,61 @@ for (const status of ["failed", "canceled"]) {
   }
 }
 
+// 16. Fix round 19 (H1, L5): the charge as it is now decides, never an
+// event's copy; a refund that failed lowers the total only when Stripe, read
+// again, says so; a refund before the payment is funded records nothing
+// until it is (a full one sends the brand back to pay).
+{
+  const { applyChargeRefund, applyRefundUpdate } = await import("../api/_stripe.js");
+  const hook = (await import("node:fs")).readFileSync(new URL("../api/stripe-webhook.js", import.meta.url), "utf8");
+  const refundCase = hook.slice(hook.indexOf('case "charge.refunded"'), hook.indexOf('case "charge.dispute.created"'));
+  assert.match(refundCase, /stripe\.charges\.retrieve\(event\.data\.object\.id\)/, "charge.refunded reads the charge again from Stripe");
+  assert.doesNotMatch(refundCase, /charge: event\.data\.object/, "never records the event's copy");
+
+  const dbFor = (state) => {
+    const calls = [];
+    return { calls,
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "pay-h", state, order_id: "o-h",
+        stripe_payment_intent_id: "pi_h", stripe_charge_id: "ch_h", refunded_cents: 8000 }, error: null }) }) }) }),
+      rpc: async (name, args) => { calls.push([name, args]); return { data: { id: "pay-h" }, error: null }; } };
+  };
+  const stripeFor = ({ refundStatus = "failed", amountRefunded = 5000 } = {}) => ({
+    refunds: { list: async () => ({ data: [{ id: "re_1", metadata: {} }] }), retrieve: async (id) => ({ id, status: refundStatus }),
+      create: async () => { throw new Error("no refund is made here"); } },
+    charges: { retrieve: async (id) => ({ id, payment_intent: "pi_h", amount: 10700, amount_refunded: amountRefunded, refunded: false }) },
+  });
+  // A refund failed, and Stripe read again agrees: the charge's total now is recorded, by the lowering function only.
+  {
+    const db = dbFor("confirmed");
+    await applyRefundUpdate({ stripe: stripeFor(), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
+    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 5000 }]]);
+  }
+  // The event says failed, Stripe now says it succeeded: nothing lowered.
+  {
+    const db = dbFor("confirmed");
+    await applyRefundUpdate({ stripe: stripeFor({ refundStatus: "succeeded" }), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
+    assert.deepEqual(db.calls, [], "a stale failure event lowers nothing");
+  }
+  // charge.refunded only ever raises (the database ignores a smaller total).
+  {
+    const db = dbFor("confirmed");
+    await applyChargeRefund({ stripe: stripeFor(), db, charge: { id: "ch_h", payment_intent: "pi_h", amount: 10700, amount_refunded: 5000, refunded: false } });
+    assert.deepEqual(db.calls.map(([name]) => name), ["record_payment_refund_amount"], "never the lowering function");
+  }
+  // Before the payment is funded: a partial refund records nothing yet; a full one sends the brand back to pay.
+  {
+    const db = dbFor("processing");
+    await applyChargeRefund({ stripe: stripeFor(), db, charge: { id: "ch_h", payment_intent: "pi_h", amount: 10700, amount_refunded: 10000, refunded: false } });
+    assert.deepEqual(db.calls, [], "a $100 refund of a $107 charge is not a full refund, and waits for the funding");
+    await applyChargeRefund({ stripe: stripeFor(), db, charge: { id: "ch_h", payment_intent: "pi_h", amount: 10700, amount_refunded: 10700, refunded: true } });
+    assert.deepEqual(db.calls.map(([name]) => name), ["record_payment_refunded"], "refunded in full: back to Due");
+  }
+  // Funded later: the dispute is read again after the payment is recorded (a loss noted while processing is recorded then).
+  {
+    const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe.js", import.meta.url), "utf8");
+    const succeeded = source.slice(source.indexOf('rpc(db, "record_payment_succeeded"'), source.indexOf("return result.payment;", source.indexOf('rpc(db, "record_payment_succeeded"')));
+    assert.match(succeeded, /charge\?\.disputed[\s\S]*recordChargeDispute/, "after funding, a disputed charge is read again");
+  }
+}
+
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small; refunds recorded, never added to");

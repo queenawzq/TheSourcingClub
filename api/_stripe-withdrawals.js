@@ -605,7 +605,9 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
     // Money refunded after the factory had withdrawn it is owed to TSC:
     // nothing more leaves, its own Stripe money included, until its
     // earnings cover that (owed_reachable is net of it).
+    // Not read: refused, never skipped (the database refuses the claim too).
     const reach = await call(db, "owed_reachable", { target_org: row.org_id }).catch(() => null);
+    if (!reach) await refuse(db, row, CANNOT_PROCESS, { stripe });
     if (Number(reach?.debt_cents) > 0 && usd > inStripeUsd + Number(reach.stripe_cents ?? 0)) {
       await refuse(db, row, upToSentence(Math.max(0, inStripeUsd + Number(reach.stripe_cents ?? 0)), "usd"), { stripe });
     }
@@ -618,7 +620,7 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
         const claimed = await call(db, "claim_owed_steps", { target_org: row.org_id, amount: owed, road: "stripe", withdrawal: row.id });
         row.owed_cents = Number(claimed?.claimed_cents ?? owed);
       } catch (failure) {
-        if (failure.hint === "withdrawal_over_balance") {
+        if (failure.hint === "withdrawal_over_balance" || failure.hint === "withdrawal_owes_tsc") {
           const reach = await call(db, "owed_reachable", { target_org: row.org_id }).catch(() => null);
           await refuse(db, row, upToSentence(inStripeUsd + Number(reach?.stripe_cents ?? 0), "usd"), { stripe });
         }

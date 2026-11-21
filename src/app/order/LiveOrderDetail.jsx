@@ -147,9 +147,12 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   if (!isFactory) {
     if (refund.brand <= 0) return line;
     if (refund.full) return refund.refunded > 0 ? "Refunded" : "Reversed by your bank";
-    return `${line} · ${money(refund.brand)} refunded`;
+    // Each part in its own words: refunded by TSC, or reversed by the bank.
+    return [line, refund.refunded > 0 ? `${money(refund.refunded)} refunded` : null,
+      refund.lost > 0 ? `${money(refund.lost)} reversed by your bank` : null].filter(Boolean).join(" · ");
   }
   if (refund.factory <= 0) return line;
+  if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} back to the brand`;
   return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${DISPUTE_LOST}`;
 }
 

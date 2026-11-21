@@ -72,7 +72,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const w = world();
   w.caller = { rpc: async () => ({ data: null, error: { code: "22023", hint: "withdrawal_owes_tsc", message: "the factory owes TSC $500.00", details: "$500.00" } }) };
   await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure
-    && failure.message === "The factory owes TSC $500.00, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.");
+    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Decline this withdrawal.");
   assert.equal(w.paid.length, 0, "nothing paid while the factory owes TSC");
   const { owesTscSentence } = await import("../api/_withdrawals.js");
   const { owesTscSentence: boardSentence } = await import("../src/lib/domain/withdrawals.js").catch(() => ({}));
@@ -224,6 +224,28 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     assert.ok(!x.rpcs.some(([name, args]) => name === "record_payment_disputed" && args.disputed), "never put on hold again");
     assert.equal(w.paid.length, 0, "and what it no longer covers is not sent");
   }
+  // Fix round 19 (M1): Stripe says refunded or lost, but recording it fails
+  // (the database refused or was unreachable): nothing is sent, ever.
+  for (const [label, charges, disputes, failing] of [
+    ["a refund", { ch_f: { amount_refunded: 5000, refunded: false, disputed: false } }, {}, "record_payment_refund_amount"],
+    ["a lost dispute", { ch_f: { amount_refunded: 0, disputed: true, dispute: "du_f" } }, { du_f: "lost" }, "record_payment_dispute_lost"],
+  ]) {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_f" }], charges, disputes);
+    const before = w.db.from;
+    x.db.from = (table) => (table === "order_payments"
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "s1", state: "confirmed", order_id: "o1", stripe_payment_intent_id: "pi_ch_f", stripe_charge_id: "ch_f" }, error: null }) }) }) }
+      : table === "payment_takes" ? withTakes(w, [{ payment: "s1", charge: "ch_f" }], {}).db.from(table) : before(table));
+    const rpc = x.db.rpc;
+    x.db.rpc = async (name, args) => {
+      if (name === failing) return { data: null, error: { code: "55P03", message: "lock timeout" } };
+      if (name === "withdrawal_refunded_part") return { data: 0, error: null };
+      return rpc(name, args);
+    };
+    await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }),
+      (failure) => failure instanceof PayoutFailure && /nothing was sent/i.test(failure.message), `${label} not recorded: refused`);
+    assert.equal(w.paid.length, 0, `${label} not recorded: the provider is never asked`);
+  }
   // Stripe can't be read: nothing sent, said in words.
   {
     const w = world();
@@ -297,9 +319,12 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
 // throws (the event is delivered again); anything else is null.
 {
   const { paymentForDispute, applyPaymentIntent } = await import("../api/_stripe.js");
-  const dbWith = (rows) => ({
-    from: () => ({ select: () => ({ eq: (column, value) => ({
+  const dbWith = (rows, events = []) => ({
+    from: (table) => ({ select: () => ({ eq: (column, value) => ({
       maybeSingle: async () => ({ data: rows.find((row) => row[column] === value) ?? null, error: null }),
+      // payment_events: a lost dispute recorded on that payment, by its note.
+      like: (_, pattern) => ({ limit: async () => ({ data: table === "payment_events"
+        ? events.filter((event) => event.payment_id === value && event.note.endsWith(pattern.split("%").at(-1))) : [], error: null }) }),
     }) }) }),
   });
   const stripeWith = (metadata) => ({ paymentIntents: { retrieve: async (id) => ({ id, metadata }) } });
@@ -311,6 +336,14 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     "pay-intent", "found by its PaymentIntent when the charge is not recorded yet");
   await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-unknown" }), db: dbWith(rows), dispute: { charge: "ch_x", payment_intent: "pi_x" } }),
     /not recorded yet/, "an order payment Stripe knows and the database doesn't yet: thrown, so Stripe sends the event again");
+  // Fix round 19 (L7): lost before approval already, so the payment no
+  // longer names the charge: a late event about it is done, not retried.
+  assert.equal(await paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
+    db: dbWith(rows, [{ payment_id: "pay-lost", note: "Dispute lost: $107.00 went back to the brand. Stripe's dispute fee $15.00 is TSC's. (Stripe du_late)" }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "a late dispute event after a loss: nothing to do, no retry");
+  await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
+    db: dbWith(rows, [{ payment_id: "pay-lost", note: "Dispute lost: … (Stripe du_other)" }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "another dispute's note does not count");
   assert.equal(await paymentForDispute({ stripe: stripeWith({ kind: "credits" }), db: dbWith(rows), dispute: { charge: "ch_y", payment_intent: "pi_y" } }),
     null, "another app's charge or a credit pack: nothing");
   assert.equal(await paymentForDispute({ stripe: stripeWith({}), db: dbWith(rows), dispute: { charge: "ch_z" } }), null, "no intent: nothing");
@@ -422,7 +455,18 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   }
   // Won and not recorded, or open and recorded: nothing to change.
   assert.deepEqual(decideBackfill({ row: row(), charge: charge({ disputed: true }), dispute: { status: "won" } }), {});
-  assert.deepEqual(decideBackfill({ row: row({ disputed_at: "2026-11-19T00:00:00Z" }), charge: charge({ disputed: true }), dispute: { status: "lost" } }), {});
+  // Lost in Stripe (Stripe keeps `disputed` true): recorded as lost, once (fix round 19).
+  {
+    const lostDispute = { id: "du_l", status: "lost", amount: 10000, balance_transactions: [{ fee: 1500 }] };
+    const d = decideBackfill({ row: row({ disputed_at: "2026-11-19T00:00:00Z" }), charge: charge({ disputed: true }), dispute: lostDispute });
+    assert.deepEqual(d, { lost: true }, "lost and not recorded: recorded as lost, not put on hold");
+    assert.deepEqual(decideBackfill({ row: row({ dispute_lost_at: "2026-11-20T00:00:00Z" }), charge: charge({ disputed: true }), dispute: lostDispute }), {},
+      "recorded already: nothing");
+    const w = world();
+    const lines = await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge({ disputed: true }), dispute: lostDispute, decision: d, write: true });
+    assert.deepEqual(w.calls, [["record_payment_dispute_lost", { target_payment: "pay-b", dispute_id: "du_l", lost_cents: 10000, fee_cents: 1500 }]]);
+    assert.match(lines[0], /dispute lost in Stripe, not recorded: recorded as lost/);
+  }
 
   // Refunded in full in Stripe, still confirmed here: the refund is recorded, no new refund is made.
   {
@@ -435,19 +479,21 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       "the refund is recorded, at Stripe's amount");
     assert.equal(w.refundsMade.length, 0, "no refunds.create: the charge is refunded already");
   }
-  // Partly refunded: reported for staff, nothing written.
+  // Partly refunded: recorded at Stripe's amount too (fix round 19), never added to.
   {
     const c = charge({ amount_refunded: 2500, refunded: false });
     const d = decideBackfill({ row: row(), charge: c });
     assert.equal(d.refund, "partial");
     const w = world();
     const lines = await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: c, decision: d, write: true });
-    assert.equal(w.calls.length, 0, "a partial refund writes nothing");
+    assert.ok(w.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.refunded_cents === 2500), "recorded at Stripe's amount");
     assert.equal(w.refundsMade.length, 0);
-    assert.match(lines.join(" "), /for staff, not changed/);
+    assert.match(lines.join(" "), /recorded at Stripe's amount/);
+    assert.doesNotMatch(lines.join(" "), /still held here/, "never says it is still held");
   }
-  // A released step's refund is not this script's to record.
-  assert.equal(decideBackfill({ row: row({ state: "released" }), charge: charge({ amount_refunded: 10000, refunded: true }) }).refund, undefined);
+  // Recorded already at that amount: nothing. A released step's refund is recorded too.
+  assert.equal(decideBackfill({ row: row({ refunded_cents: 2500 }), charge: charge({ amount_refunded: 2500 }) }).refund, undefined);
+  assert.equal(decideBackfill({ row: row({ state: "released" }), charge: charge({ amount_refunded: 10000, refunded: true }) }).refund, "full");
   // The script uses this module, not a copy of the rules.
   const script = (await import("node:fs")).readFileSync(new URL("./backfill-funds-available.mjs", import.meta.url), "utf8");
   assert.ok(script.includes("decideBackfill") && script.includes("applyBackfill"), "the backfill script runs these two functions");
@@ -1216,6 +1262,8 @@ for (const [why, row] of [
         }
         if (name === "claim_owed_steps") {
           assert.equal(args.road, "stripe", "the Stripe road claims as stripe");
+          // A debt recorded after the server read the reach: the database refuses (20261121230000).
+          if (db.claimOwes) return { data: null, error: { message: "the factory owes TSC $50.00", code: "22023", hint: "withdrawal_owes_tsc" } };
           const row = rows.find((r) => r.id === args.withdrawal);
           if (!row || row.owed_cents != null) return { data: null, error: { message: "not waiting", code: "22023", hint: "withdrawal_not_waiting" } };
           if (!(args.amount > 0)) return { data: null, error: { message: "Enter an amount to withdraw.", code: "22023", hint: "withdrawal_amount" } };
@@ -1236,7 +1284,10 @@ for (const [why, row] of [
           row.owed_cents = args.amount;
           return { data: { claimed_cents: args.amount, takes: made }, error: null };
         }
-        if (name === "owed_reachable") return { data: { any_cents: stripeReach(), stripe_cents: stripeReach() }, error: null };
+        if (name === "owed_reachable") {
+          if (db.reachFails) return { data: null, error: { message: "database did not answer", code: "08006" } };
+          return { data: { any_cents: stripeReach(), stripe_cents: stripeReach() }, error: null };
+        }
         if (name === "record_take_sent") {
           const take = takes.find((t) => t.id === args.target_take);
           assert.equal(take.status, "held", "only a held take is sent");
@@ -1407,6 +1458,17 @@ for (const [why, row] of [
   const withdraw = (w, amount, extra = {}) => withdrawWithFee({ stripe: w.api, db: w.db, orgId: "org", accountId: "acct_f", country: "US",
     amount, currency: "usd", requestId: randomUUID(), oneBalance: true, payoutCurrency: "usd", transfersActive: true, ...extra });
   const held = (w) => w.db.takes.filter((t) => t.status === "held");
+
+  // Fix round 19 (M2): what the factory may reach could not be read, or the
+  // database refuses the claim (a debt recorded since): refused, nothing moves.
+  for (const [label, flag] of [["the reach unread", "reachFails"], ["a debt the database sees", "claimOwes"]]) {
+    const w = oneBalanceWorld({ steps: [step("q1", 10000)] });
+    w.db[flag] = true;
+    await assert.rejects(withdraw(w, 5000), (failure) => failure instanceof PayoutMethodRefusal, `${label}: refused`);
+    assert.equal(w.stripe.transfers.length, 0, `${label}: nothing transferred`);
+    assert.equal(w.stripe.payouts.length, 0, `${label}: nothing paid out`);
+    assert.equal(held(w).length, 0, `${label}: nothing held`);
+  }
 
   // Exact amount: $150 from two $100 steps is $100 + $50, each from its own
   // charge, under a key per step and withdrawal; the payout is $150 less the fee.

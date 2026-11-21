@@ -157,6 +157,8 @@ const ZH_SAMPLES = [
   { kind: "payment_refunded", title: "Dispute lost on \"Trims\"", body: "TSC no longer holds money for this step on Spring jackets (TSC-000016). The brand has been asked to pay again; we will tell you when it is held." },
   { kind: "payment_refunded", title: "Your bank reversed your payment for \"Bulk deposit\"", body: "$992.08 went back to your card. Pay again from the step's payment page on Spring jackets (TSC-000016)." },
   { kind: "withdrawal", title: "Withdrawal of $250.00 on hold", body: "The brand's bank reversed the payment for \"Bulk deposit\". Cancel this withdrawal and withdraw again." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00. A payment was refunded after you withdrew it." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it." },
   { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 cancelled", body: "The amount is back in your balance." },

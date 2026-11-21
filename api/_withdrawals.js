@@ -33,7 +33,7 @@ const DB_WORDS = {
   withdrawal_owes_tsc: (error) => owesTscSentence(error.details ?? error.detail),
 };
 /** Staff's words when a withdrawal waits on money the factory owes TSC (also the board's row). */
-export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"}, refunded after it withdrew it (To recover, in Needs checking). Decline this withdrawal, or recover that first.`;
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). Decline this withdrawal.`;
 const refusalFrom = (error) => {
   const words = DB_WORDS[error.hint];
   return new PayoutFailure("database", (typeof words === "function" ? words(error) : words) ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
@@ -199,13 +199,18 @@ export async function refuseIfTakenChargesReturned({ db, id, build = stripeFrom 
     }
     // A refund (or a lost dispute) is recorded at its amount; this
     // withdrawal stops only if part of what it holds is no longer the
-    // factory's (asked below, once every charge is recorded).
+    // factory's (asked below, once every charge is recorded). Not recorded
+    // (the database refused or was unreachable): nothing is sent.
+    const unrecorded = (where) => (failure) => {
+      log(where, failure, { id, paymentId });
+      throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+    };
     if (Number(charge.amount_refunded) > 0) {
-      await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { id, paymentId }));
+      await applyChargeRefund({ stripe, db, charge }).catch(unrecorded("charge refund"));
       refunded = true;
     }
     if (dispute?.status === "lost") {
-      await applyDispute({ db, paymentId, dispute }).catch((failure) => log("record dispute lost", failure, { id, paymentId }));
+      await applyDispute({ db, paymentId, dispute }).catch(unrecorded("record dispute lost"));
       refunded = true;
     } else if (dispute && !["won", "warning_closed"].includes(dispute.status)) {
       const recorded = await db.rpc("record_payment_disputed", { target_payment: paymentId, disputed: true });

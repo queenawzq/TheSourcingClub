@@ -122,8 +122,22 @@ export function figuresByPayment(figures) {
  * (factory_balance().owed_to_tsc_cents). 0 when none or not known.
  */
 export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed_to_tsc_cents ?? figures?.owed_to_tsc_cents) || 0);
-/** The card's line for it (Available already counts it). */
-export const owedToTscLine = (cents, formatMoney) => (cents > 0 ? `You owe TSC ${formatMoney(cents, "USD")}. A payment was refunded after you withdrew it.` : null);
+/**
+ * The card's line for it (Available already counts it), in the words of what
+ * sent the money back: a refund, a dispute lost, or both.
+ */
+export const owedToTscLine = (cents, formatMoney, cause = "refund") => {
+  if (!(cents > 0)) return null;
+  const owed = `You owe TSC ${formatMoney(cents, "USD")}.`;
+  if (cause === "dispute_lost") return `${owed} The brand's bank reversed a payment after you withdrew it.`;
+  if (cause === "both") return `${owed} Money went back to the brand after you withdrew it.`;
+  return `${owed} A payment was refunded after you withdrew it.`;
+};
+/** What sent it back, from the dated refund rows: "refund", "dispute_lost" or "both". */
+export function owedToTscCause(figures) {
+  const causes = new Set(refundRows(figures).map((row) => (row.cause === "dispute_lost" ? "dispute_lost" : "refund")));
+  return causes.size > 1 ? "both" : causes.has("dispute_lost") ? "dispute_lost" : "refund";
+}
 
 /**
  * The dated rows a refund or a lost dispute adds to an earning (factory_balance()

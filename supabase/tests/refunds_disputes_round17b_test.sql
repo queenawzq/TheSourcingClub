@@ -207,8 +207,8 @@ select is((select status from public.factory_withdrawals where id = current_sett
 select is(pg_temp.wd(1, current_setting('tsc.r17b_w1')::uuid) ->> 'word', 'on_hold', 'the factory''s withdrawal reads on hold');
 select is((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal'
             and subject_id = current_setting('tsc.r17b_w1')::uuid and title = 'Withdrawal of $100.00 on hold'
-            and body = 'The brand''s payment for "R17b bulk deposit" was refunded. Cancel this withdrawal and withdraw again.'), 1,
-  'and the factory is told, once, in the existing words');
+            and body = 'You owe TSC $500.00. A payment was refunded after you withdrew it.'), 1,
+  'and the factory is told, once, what it owes (20261121230000: not the refunded step, not to withdraw again)');
 select ok(pg_temp.adds_up(pg_temp.bal(1)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 
 -- A small debt the factory's other earnings cover: paid as before.

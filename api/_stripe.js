@@ -235,13 +235,18 @@ async function refundIntent({ stripe, db, intent, charge, result }) {
  *
  * Returns the payment row as it now stands, or null when it is not ours.
  */
-export async function applyChargeRefund({ stripe, db, charge }) {
+async function paymentForCharge(db, charge) {
   const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
   const columns = "id, state, order_id, stripe_payment_intent_id, stripe_charge_id, refunded_cents";
   let { data: payment } = await db.from("order_payments").select(columns).eq("stripe_charge_id", charge.id).maybeSingle();
   if (!payment && intentId) {
     ({ data: payment } = await db.from("order_payments").select(columns).eq("stripe_payment_intent_id", intentId).maybeSingle());
   }
+  return { payment: payment ?? null, intentId };
+}
+
+export async function applyChargeRefund({ stripe, db, charge }) {
+  const { payment, intentId } = await paymentForCharge(db, charge);
   // Nothing refunded, and nothing recorded as refunded: nothing to say.
   if (!(Number(charge.amount_refunded) > 0) && !(Number(payment?.refunded_cents) > 0)) return null;
   if (!payment || !intentId) return payment ?? null;
@@ -255,6 +260,14 @@ export async function applyChargeRefund({ stripe, db, charge }) {
     const reason = REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? REFUNDED;
     return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
   }
+  // Not funded here yet: refunded in full, the brand pays again; in part,
+  // nothing yet. applyPaymentIntent records it at its amount once the
+  // payment is funded, and everyone is told then.
+  if (!["confirmed", "released"].includes(payment.state)) {
+    if (!charge.refunded) return payment;
+    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason: REFUNDED });
+  }
+  // Only ever raises the total: an older copy of the charge never lowers it.
   return rpc(db, "record_payment_refund_amount", {
     target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
   });
@@ -343,9 +356,18 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
   if (!["failed", "canceled"].includes(refund?.status)) return null;
   const paymentId = refund.metadata?.tsc_problem === "cancelled_order" ? refund.metadata.payment_id : null;
   if (!paymentId) {
+    // Lowered only when Stripe, read again now, says this refund failed;
+    // then the charge's total as it is now is recorded.
     const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
-    if (!stripe || !chargeId) return null;
-    return applyChargeRefund({ stripe, db, charge: await stripe.charges.retrieve(chargeId) });
+    if (!stripe || !chargeId || !refund.id) return null;
+    const fresh = await stripe.refunds.retrieve(refund.id);
+    if (!["failed", "canceled"].includes(fresh?.status)) return null;
+    const charge = await stripe.charges.retrieve(chargeId);
+    const { payment, intentId } = await paymentForCharge(db, charge);
+    if (!payment || !intentId) return null;
+    return rpc(db, "record_payment_refund_failed", {
+      target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
+    });
   }
   const failure = new Error(`refund ${refund.status}`);
   failure.refundStatus = refund.status;
@@ -437,6 +459,13 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     // the payment succeeds: waited for briefly. Never fails the recording.
     await recordFundsAvailable({ stripe, db, paymentId, charge, waitMs: FUNDS_WAIT_MS })
       .catch((failure) => logStripeFailure("funds-available", failure, { paymentId }));
+    // A dispute lost while the payment was still processing was only noted
+    // then: recorded now that it is funded. A later read of the charge tries
+    // again if this fails.
+    if (charge?.disputed) {
+      await recordChargeDispute({ stripe, db, paymentId, charge: charge.id })
+        .catch((failure) => logStripeFailure("charge-dispute", failure, { paymentId }));
+    }
     if (charge && Number(charge.amount_refunded) > 0) {
       return (await applyChargeRefund({ stripe, db, charge })) ?? result.payment;
     }
@@ -471,7 +500,16 @@ export async function paymentForDispute({ stripe, db, dispute }) {
   }
   if (!payment && intentId) {
     const intent = await stripe.paymentIntents.retrieve(intentId);
-    if (intent.metadata?.payment_id) throw new Error("the disputed charge's payment is not recorded yet");
+    const ownId = intent.metadata?.payment_id;
+    if (ownId) {
+      // Lost before approval already: the payment went back to Due and no
+      // longer names this charge. A late event about it changes nothing.
+      const { data: events, error: eventsError } = await db.from("payment_events").select("id")
+        .eq("payment_id", ownId).like("note", `Dispute lost%(Stripe ${dispute.id})`).limit(1);
+      if (eventsError) throw new Error(eventsError.message);
+      if (events?.length) return null;
+      throw new Error("the disputed charge's payment is not recorded yet");
+    }
   }
   return payment ?? null;
 }

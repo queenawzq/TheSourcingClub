@@ -8,15 +8,16 @@
  */
 
 /**
- * @param row     { id, state, funds_available_at, disputed_at } from order_payments
+ * @param row     { id, state, funds_available_at, disputed_at, refunded_cents, dispute_lost_at } from order_payments
  * @param charge  the Stripe charge, balance_transaction expanded
  * @param dispute the charge's dispute (Stripe object) when charge.disputed, else null
- * @returns {{ date?: string|null, disputed?: boolean, refund?: "full"|"partial" }}
+ * @returns {{ date?: string|null, disputed?: boolean, lost?: true, refund?: "full"|"partial" }}
  *   date      the clearing date to record (ISO), or null when Stripe has none yet;
  *             absent when one is already recorded
  *   disputed  the dispute flag to record, only when it differs from the row's
- *   refund    "full": refunded in full in Stripe while still held here (record it);
- *             "partial": partly refunded (report only, staff decide)
+ *   lost      a dispute lost in Stripe and not recorded: record the loss
+ *   refund    refunded in Stripe beyond what is recorded, in full or in
+ *             part: recorded at Stripe's amount (the server decides the rest)
  */
 export function decideBackfill({ row, charge, dispute = null }) {
   const decision = {};
@@ -24,10 +25,14 @@ export function decideBackfill({ row, charge, dispute = null }) {
     const seconds = Number(charge?.balance_transaction?.available_on);
     decision.date = seconds ? new Date(seconds * 1000).toISOString() : null;
   }
-  // Stripe keeps `disputed` true after a win.
-  const disputed = Boolean(charge?.disputed) && (!dispute || !["won", "warning_closed"].includes(dispute.status));
-  if (disputed !== Boolean(row.disputed_at)) decision.disputed = disputed;
-  if (Number(charge?.amount_refunded) > 0 && row.state === "confirmed") {
+  // Stripe keeps `disputed` true after a win, and after a loss.
+  if (charge?.disputed && dispute?.status === "lost") {
+    if (!row.dispute_lost_at) decision.lost = true;
+  } else {
+    const disputed = Boolean(charge?.disputed) && (!dispute || !["won", "warning_closed"].includes(dispute.status));
+    if (disputed !== Boolean(row.disputed_at)) decision.disputed = disputed;
+  }
+  if (Number(charge?.amount_refunded) > Number(row.refunded_cents ?? 0) && ["confirmed", "released"].includes(row.state)) {
     decision.refund = charge.refunded ? "full" : "partial";
   }
   return decision;
@@ -37,7 +42,7 @@ export function decideBackfill({ row, charge, dispute = null }) {
  * Record a decision, or only describe it (write false). Returns the lines to
  * print, each a sentence about this payment. Throws on a failed write.
  */
-export async function applyBackfill({ stripe, db, row, charge, decision, write }) {
+export async function applyBackfill({ stripe, db, row, charge, dispute = null, decision, write }) {
   const lines = [];
   const note = write ? "" : " (not written)";
   if ("date" in decision) {
@@ -58,16 +63,20 @@ export async function applyBackfill({ stripe, db, row, charge, decision, write }
       if (error) throw new Error(error.message);
     }
   }
-  if (decision.refund === "full") {
-    lines.push(`refunded in full in Stripe, still held here: recorded as refunded${note}`);
-    // The server's own recording: the charge is refunded already, so it
-    // makes no new refund.
+  if (decision.lost) {
+    lines.push(`dispute lost in Stripe, not recorded: recorded as lost${note}`);
+    if (write) {
+      const { applyDispute } = await import("./_stripe.js");
+      await applyDispute({ db, paymentId: row.id, dispute });
+    }
+  }
+  if (decision.refund) {
+    lines.push(`refunded in Stripe (${charge.amount_refunded} of ${charge.amount}): recorded at Stripe's amount${note}`);
+    // The server's own recording: it makes no new refund.
     if (write) {
       const { applyChargeRefund } = await import("./_stripe.js");
       await applyChargeRefund({ stripe, db, charge });
     }
-  } else if (decision.refund === "partial") {
-    lines.push(`partly refunded in Stripe (${charge.amount_refunded} of ${charge.amount}): for staff, not changed`);
   }
   return lines;
 }

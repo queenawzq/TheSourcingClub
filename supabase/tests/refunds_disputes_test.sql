@@ -202,7 +202,10 @@ select lives_ok($$select pg_temp.refund(1, 5350)$$, 'the same refund reported ag
 select ok((select count(*) from public.notifications where subject_id = pg_temp.pay(1))::int = (select notes from r17_seen)
       and (select count(*) from public.payment_events where payment_id = pg_temp.pay(1))::int = (select events from r17_seen),
   'changes nothing and tells nobody');
-select lives_ok($$select pg_temp.refund(1, 2675)$$, 'Stripe now reports less refunded (a refund failed)');
+select lives_ok($$select pg_temp.refund(1, 2675)$$, 'an older copy of the charge reports less refunded');
+select ok((select refunded_cents = 5350 from public.order_payments where id = pg_temp.pay(1)), 'never lowers it (20261121230000)');
+select lives_ok($$select pg_temp.as_server(format('select public.record_payment_refund_failed(%L, %L, 2675)', pg_temp.pay(1), 'pi_pgtap_r17_1'))$$,
+  'Stripe, read again, says a refund failed: $26.75 in all');
 select ok((select refunded_cents = 2675 and factory_refund_cents = 2500 from public.order_payments where id = pg_temp.pay(1)),
   'the smaller total is recorded');
 select is((pg_temp.bal(1) ->> 'awaiting_cents')::bigint, 20500::bigint, 'and the factory''s earning comes back up');
