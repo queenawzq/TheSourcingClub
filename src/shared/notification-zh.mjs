@@ -170,6 +170,7 @@ const TITLES = [
   // Refunds and lost disputes recorded at their amount (20261121200000).
   ["payment_refunded", /^Refund to the brand on "(.+)"$/, (step) => `品牌退款：${quoted(step)}`],
   ["payment_refunded", /^Payment for "(.+)" refunded$/, (step) => `${quoted(step)}的付款已退款`],
+  ["payment_refunded", /^Refund for "(.+)" didn't go through$/, (step) => `${quoted(step)}的退款未成功`],
   ["payment_refunded", /^Dispute lost on "(.+)"$/, (step) => `${quoted(step)}争议败诉`],
   ["payment_refunded", /^Your bank reversed your payment for "(.+)"$/, (step) => `你的银行撤回了你为${quoted(step)}支付的款项`],
   ["payment_rejected", /^We could not find your payment on (.+)$/, (order) => `我们未找到你在 ${order} 的付款`],
@@ -249,6 +250,13 @@ const SENTENCES = [
   [amountRe("^You owe TSC AMT\\.$"), (amount) => `你欠 TSC ${amount}。`],
   [/^A payment was refunded after you withdrew it\.$/, () => "你提现后，有一笔付款被退款。"],
   [/^The brand's bank reversed a payment after you withdrew it\.$/, () => "你提现后，品牌的银行撤回了一笔付款。"],
+  [/^Money went back to the brand after you withdrew it\.$/, () => "你提现后，有款项退回了品牌。"],
+  // A refund that did not go through (20261121240000).
+  [amountRe("^The AMT refund to your card failed, so the payment stays on this order\\.$"), (amount) => `退回你银行卡的 ${amount} 退款未成功，这笔款项仍保留在此订单中。`],
+  [/^The refund to the brand failed\.$/, () => "给品牌的退款未成功。"],
+  [amountRe("^Your earnings from (.+) went back up by AMT\\.$"), (order, amount) => `你在 ${order} 的收入回升了 ${amount}。`],
+  [amountRe("^The AMT refund to your card failed, so TSC still holds your payment for this step\\.$"), (amount) => `退回你银行卡的 ${amount} 退款未成功，TSC 仍为此步骤托管你的付款。`],
+  [/^You don't need to pay again\.$/, () => "你无需再次付款。"],
   [/^Nothing goes back to your balance: the brand's payment was refunded\.$/, () => "没有款项回到你的余额：品牌的付款已退款。"],
   [/^PayPal (\S+) was added as a withdrawal method\.$/, (email) => `已添加 PayPal ${email} 作为提现方式。`],
   [/^PayPal (\S+) was removed from your withdrawal methods\.$/, (email) => `PayPal ${email} 已从你的提现方式中移除。`],

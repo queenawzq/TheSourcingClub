@@ -678,7 +678,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Chinese for the new screen words: the live patterns and the factory's dictionary.
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
-  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 back to the brand",
+  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 back to the brand", "$50.00 reversed by your bank",
     "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money went back to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);

@@ -190,7 +190,7 @@ select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal(1) -> 'rows') r
 select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(1)),
   'Your payment for "R17 fit sample" was refunded | $53.50 was refunded to your card.', 'the brand is told what went back');
 select is(pg_temp.told(pg_temp.org(1), pg_temp.pay(1)),
-  'Payment for "R17 fit sample" refunded | The brand was refunded $50.00. Your earnings from R17 request 1 (R17-1) went down by $50.00.', 'the factory is told its part');
+  'Payment for "R17 fit sample" refunded | The brand was refunded $53.50. Your earnings from R17 request 1 (R17-1) went down by $50.00.', 'the factory is told its part');
 select ok((select count(*) = 0 from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(1)
             and body like '%Pay again%'), 'no "pay again" for a partial refund');
 
@@ -209,8 +209,8 @@ select lives_ok($$select pg_temp.as_server(format('select public.record_payment_
 select ok((select refunded_cents = 2675 and factory_refund_cents = 2500 from public.order_payments where id = pg_temp.pay(1)),
   'the smaller total is recorded');
 select is((pg_temp.bal(1) ->> 'awaiting_cents')::bigint, 20500::bigint, 'and the factory''s earning comes back up');
-select ok((select count(*) from public.notifications where subject_id = pg_temp.pay(1))::int = (select notes from r17_seen),
-  'nobody is told of a smaller total');
+select is((select count(*) from public.notifications where subject_id = pg_temp.pay(1))::int, (select notes from r17_seen) + 2,
+  'the brand and the factory are told the refund did not go through (20261121240000)');
 
 -- Refunded in full before approval: as before, back to Due; the brand pays again.
 select lives_ok($$select pg_temp.refund(2, 5350)$$, 'the lab dip''s charge is refunded in full');
@@ -246,7 +246,7 @@ select is((select state from public.order_milestones where id = 'c17e0003-0000-0
 select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(3)),
   'Your payment for "R17 deposit" was refunded | $214.00 was refunded to your card.', 'the brand is told, and not asked to pay again');
 select is(pg_temp.told(pg_temp.org(1), pg_temp.pay(3)),
-  'Payment for "R17 deposit" refunded | The brand was refunded $200.00. Your earnings from R17 request 1 (R17-1) went down by $200.00.', 'the factory is told');
+  'Payment for "R17 deposit" refunded | The brand was refunded $214.00. Your earnings from R17 request 1 (R17-1) went down by $200.00.', 'the factory is told');
 select is(pg_temp.line(pg_temp.bal(1)), 'awaiting 7500, available 0, pending 0, processing 0, paid out 0, total 7500',
   'F1 after: the fit sample at $75.00; the deposit, the lab dip and the trims in no figure');
 select ok(pg_temp.adds_up(pg_temp.bal(1)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
@@ -276,7 +276,7 @@ select is((select title || ' | ' || body from public.notifications where org_id 
   'Withdrawal of $250.00 on hold | The brand''s payment for "R17 bulk deposit" was refunded. Cancel this withdrawal and withdraw again.',
   'the factory is told, once');
 select is(pg_temp.told(pg_temp.org(2), pg_temp.pay(4)),
-  'Payment for "R17 bulk deposit" refunded | The brand was refunded $100.00. Your earnings from R17 request 2 (R17-2) went down by $100.00.', 'and of the refund');
+  'Payment for "R17 bulk deposit" refunded | The brand was refunded $107.00. Your earnings from R17 request 2 (R17-2) went down by $100.00.', 'and of the refund');
 select pg_temp.act_as('02'); set local role authenticated;
 select throws_ok($$select public.claim_withdrawal(current_setting('tsc.r17_w2')::uuid)$$, '22023', null, 'staff cannot pay it');
 reset role;
@@ -339,7 +339,7 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
 select ok((select state = 'released' and refunded_cents = 16050 and factory_refund_cents = 15000 from public.order_payments where id = pg_temp.pay(6)),
   'it stays paid out; the whole charge is recorded as refunded');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(6)),
-  'Payment for "R17 fit sample" refunded | The brand was refunded $150.00. Your earnings from R17 request 3 (R17-3) went down by $150.00. You had already withdrawn $150.00 of it.',
+  'Payment for "R17 fit sample" refunded | The brand was refunded $160.50. Your earnings from R17 request 3 (R17-3) went down by $150.00. You had already withdrawn $150.00 of it.',
   'the factory is told');
 
 select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available -55000, pending 0, processing 0, paid out 54000, total -1000',

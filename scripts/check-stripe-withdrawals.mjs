@@ -535,16 +535,41 @@ for (const status of ["failed", "canceled"]) {
         stripe_payment_intent_id: "pi_h", stripe_charge_id: "ch_h", refunded_cents: 8000 }, error: null }) }) }) }),
       rpc: async (name, args) => { calls.push([name, args]); return { data: { id: "pay-h" }, error: null }; } };
   };
-  const stripeFor = ({ refundStatus = "failed", amountRefunded = 5000 } = {}) => ({
-    refunds: { list: async () => ({ data: [{ id: "re_1", metadata: {} }] }), retrieve: async (id) => ({ id, status: refundStatus }),
-      create: async () => { throw new Error("no refund is made here"); } },
-    charges: { retrieve: async (id) => ({ id, payment_intent: "pi_h", amount: 10700, amount_refunded: amountRefunded, refunded: false }) },
-  });
-  // A refund failed, and Stripe read again agrees: the charge's total now is recorded, by the lowering function only.
+  // amountRefunded: one figure, or a list read in turn (a refund made between two reads).
+  const stripeFor = ({ refundStatus = "failed", amountRefunded = 5000 } = {}) => {
+    const totals = [].concat(amountRefunded);
+    let reads = 0;
+    return {
+      refunds: { list: async () => ({ data: [{ id: "re_1", metadata: {} }] }), retrieve: async (id) => ({ id, status: refundStatus }),
+        create: async () => { throw new Error("no refund is made here"); } },
+      charges: { retrieve: async (id) => ({ id, payment_intent: "pi_h", amount: 10700, refunded: false,
+        amount_refunded: totals[Math.min(reads++, totals.length - 1)] }) },
+    };
+  };
+  // A refund failed, and Stripe read again agrees: the charge's total then is
+  // recorded by the lowering function, then the charge as it is now by the
+  // raising one (fix round 20: a refund made between the two is never lost).
   {
     const db = dbFor("confirmed");
-    await applyRefundUpdate({ stripe: stripeFor(), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
-    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 5000 }]]);
+    await applyRefundUpdate({ stripe: stripeFor({ amountRefunded: [0, 2000] }), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
+    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 0 }],
+      ["record_payment_refund_amount", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 2000 }]]);
+  }
+  // Fix round 20: a full refund before approval that failed, the payment no
+  // longer naming the charge: record_full_refund_failed decides (funded
+  // again, or staff). An old charge refunded again: its staff row goes.
+  {
+    const calls = [];
+    const db = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (name, args) => { calls.push([name, args]); return { data: { id: "pay-f", stripe_payment_intent_id: "pi_f" }, error: null }; } };
+    const stripe = { refunds: { retrieve: async (id) => ({ id, status: "failed" }), list: async () => ({ data: [] }) },
+      charges: { retrieve: async (id) => ({ id, payment_intent: "pi_f", amount: 10700, amount_captured: 10700, amount_refunded: 0, refunded: false }) },
+      paymentIntents: { retrieve: async (id) => ({ id, metadata: { payment_id: "pay-f" } }) } };
+    await applyRefundUpdate({ stripe, db, refund: { id: "re_f", status: "failed", charge: "ch_f", metadata: {} } });
+    assert.deepEqual(calls, [["record_full_refund_failed", { target_payment: "pay-f", payment_intent: "pi_f", charge: "ch_f", charged: 10700 }]]);
+    calls.length = 0;
+    await applyChargeRefund({ stripe, db, charge: { id: "ch_f", payment_intent: "pi_f", amount: 10700, amount_refunded: 10700, refunded: true } });
+    assert.deepEqual(calls, [["record_refund_failure_resolved", { payment_intent: "pi_f" }]], "staff refunded the old charge again: the row goes");
   }
   // The event says failed, Stripe now says it succeeded: nothing lowered.
   {
@@ -570,7 +595,8 @@ for (const status of ["failed", "canceled"]) {
   {
     const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe.js", import.meta.url), "utf8");
     const succeeded = source.slice(source.indexOf('rpc(db, "record_payment_succeeded"'), source.indexOf("return result.payment;", source.indexOf('rpc(db, "record_payment_succeeded"')));
-    assert.match(succeeded, /charge\?\.disputed[\s\S]*recordChargeDispute/, "after funding, a disputed charge is read again");
+    assert.match(succeeded, /stripe\.charges\.retrieve\(charge\.id\)[\s\S]*now\?\.disputed[\s\S]*recordChargeDispute[\s\S]*applyChargeRefund\(\{ stripe, db, charge: now \}\)/,
+      "after funding is saved, the charge is read again: its dispute and any refund made meanwhile are recorded (fix round 20)");
   }
 }
 
