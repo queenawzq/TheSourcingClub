@@ -10,7 +10,7 @@
 -- 2. request_withdrawal(): the chosen account row is read `for share`, so a
 --    removal at the same instant waits and is then refused by its guard
 --    instead of the withdrawal failing on the foreign key.
---    20261120200000's body otherwise unchanged.
+--    20261120220000's body otherwise unchanged.
 -- Safe with the live site while applied: replaced functions, same
 -- signatures; one key added to factory_balance()'s answer.
 -- ============================================================================
@@ -318,12 +318,12 @@ $function$;
 revoke all on function public.factory_balance(uuid, uuid) from public, anon;
 grant execute on function public.factory_balance(uuid, uuid) to authenticated, service_role;
 
-create or replace function public.request_withdrawal(target_org uuid, amount bigint, target_account uuid)
-returns public.factory_withdrawals
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
+CREATE OR REPLACE FUNCTION public.request_withdrawal(target_org uuid, amount bigint, target_account uuid)
+ RETURNS factory_withdrawals
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
 declare
   a public.factory_payout_accounts;
   w public.factory_withdrawals;
@@ -337,7 +337,7 @@ begin
   end if;
   -- Two tabs, or a Stripe withdrawal at the same instant, are checked one
   -- after the other against the balance (claim_owed_steps takes the same lock).
-  perform 1 from public.orgs where id = target_org for update;
+  perform 1 from public.orgs where id = target_org for no key update;
   if amount is null or amount <= 0 then
     raise exception 'Enter an amount to withdraw.' using errcode = '22023', hint = 'withdrawal_amount';
   end if;
@@ -379,6 +379,6 @@ begin
     format('To %s. TSC will send it after checking.', w.paid_to));
   return w;
 end;
-$$;
+$function$;
 revoke all on function public.request_withdrawal(uuid, bigint, uuid) from public, anon;
 grant execute on function public.request_withdrawal(uuid, bigint, uuid) to authenticated;
