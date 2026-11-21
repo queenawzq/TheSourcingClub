@@ -770,8 +770,9 @@ for (const [why, row] of [
   // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
   assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
   const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
-  assert.equal(rows.length, 1);
+  assert.equal(rows.length, 2, "a cancelled withdrawal stays listed (round 28)");
   assert.equal(rows[0].amount, -3921, "a paid withdrawal shows what reached the factory");
+  assert.deepEqual([rows[1].status, rows[1].failed], ["Cancelled", true], "cancelled: its word, the amount muted");
 }
 
 // F6: the history lists each withdrawal once. A step released by one-balance
@@ -1200,9 +1201,138 @@ for (const [why, row] of [
     assert.equal(connect.split("consistentMoneyRead(db, existing.stripe_account_id, async () => {").length - 1, 2,
       "the balance and the members' figures read Stripe and the database from one moment");
     assert.equal(connect.split("held_by: heldByRows(heldById),").length - 1, 2, "both pass the held part per withdrawal");
-    assert.ok(connect.includes("if (before != null && before === after) break;"), "a withdrawal that changed during the read is read again");
+    const withdrawalsSource = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
+    assert.ok(withdrawalsSource.includes("if (before === after) return { ...result, consistent: true };"), "a withdrawal that changed during the read is read again");
     const card = (await import("node:fs")).readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
     assert.ok(card.includes("const heldElsewhere = stripeCounted === 0 ? null :"), "no estimate line when the figures count no Stripe money");
+  }
+  // Fix round 28 (money review r27). The page kept the last server answer's
+  // Stripe part and merged it with a newer database read. That is only right
+  // while nothing moved money in the factory's Stripe account; when a Stripe
+  // withdrawal changed, the page now asks the server again.
+  {
+    const { withStripePart, stripePartStale, askUntilConsistent } = await import("../src/app/order/payment-summary.mjs");
+    const { consistentMoneyRead, openWithdrawalsKey } = await import("../api/_stripe-withdrawals.js");
+    const fs = await import("node:fs");
+    // F1: tab A read at S: $300 of the factory's own money back in its Stripe
+    // account (a payout that failed), $495 owed. Another tab then withdrew
+    // both by Stripe and the payout was made. Tab A's newer database read has
+    // that withdrawal on its way; S's Stripe part still has the $300.
+    const atS = tsc({ available_cents: 49500, paid_out_cents: 100000, withdrawals: [] });
+    const server = balanceFigures(atS, { available: [{ amount: 30000, currency: "usd" }], pending: [], held: [], held_by: [] }, null);
+    assert.deepEqual([server.available_cents, server.paid_out_cents], [79500, 70000], "F1 at S: $795 available, $700 paid out");
+    const later = tsc({ available_cents: 0, processing_cents: 79500, paid_out_cents: 70000,
+      withdrawals: [{ id: "w-other-tab", road: "stripe", word: "on_its_way", amount_cents: 79500 }] });
+    assert.equal(stripePartStale(later, server), true, "F1: a Stripe withdrawal the answer never saw: its Stripe part is stale");
+    const merged = withStripePart(later, server);
+    assert.equal(merged.stripe_part_stale, true, "F1: the merge says so, and the page asks the server again");
+    assert.equal(merged.total_cents, 149500, "F1: Total is still the newer database's");
+    // What the server answers when asked again (Stripe now empty): the truth.
+    const again = balanceFigures(later, { available: [], pending: [], held: [], held_by: [] }, null);
+    assert.deepEqual([again.available_cents, again.processing_cents, again.paid_out_cents], [0, 79500, 70000], "F1: asked again, nothing counted twice");
+    assert.equal(again.consistent, undefined, "and that answer is consistent");
+    // F2: W held $300 of the factory's own Stripe money at S, then was refused
+    // (or its fee given back, or its payout failed): the money is back in
+    // Stripe's available, which only the server can read.
+    const openAtS = tsc({ paid_out_cents: 100000, withdrawals: [] });
+    const heldAtS = balanceFigures(openAtS, { available: [{ amount: 30000, currency: "usd" }], pending: [], held: [{ amount: 30000, currency: "usd" }],
+      held_by: [{ id: "w-refused", amount: 30000, currency: "usd" }] }, null);
+    for (const word of ["returned"]) {
+      const refused = tsc({ paid_out_cents: 100000, withdrawals: [{ id: "w-refused", road: "stripe", word, amount_cents: 30000 }] });
+      assert.equal(stripePartStale(refused, heldAtS), true, `F2: a withdrawal the answer had open, now ${word}: ask again`);
+      assert.equal(withStripePart(refused, heldAtS).stripe_part_stale, true, "F2: the merge says so");
+    }
+    const failedLater = { ...server, tsc: { ...server.tsc, withdrawals: [{ id: "w-p", road: "stripe", word: "on_its_way" }] } };
+    assert.equal(stripePartStale(tsc({ withdrawals: [{ id: "w-p", road: "stripe", word: "returned" }] }), failedLater), true,
+      "F2: a payout that was on its way and failed: ask again");
+    assert.equal(stripePartStale(tsc({ withdrawals: [{ id: "w-p", road: "stripe", word: "paid" }] }), failedLater), false,
+      "a payout that arrived moves nothing in Stripe: no need to ask");
+    assert.equal(stripePartStale(tsc({ withdrawals: [{ id: "w-p", road: "stripe", word: "on_its_way" }, { id: "p1", road: "pool", word: "waiting" }] }), failedLater), false,
+      "nothing new by Stripe (a PayPal or Wise withdrawal is the database's own): the merge is kept");
+    assert.equal(withStripePart(tsc({ paid_out_cents: 100000, withdrawals: [] }), server).stripe_part_stale, undefined, "a merge that can be kept is not marked");
+    // F5: the clamp is a bridge only: a merge that had to clamp asks again.
+    const clamped = withStripePart(tsc({ paid_out_cents: 1000, withdrawals: [] }), server);
+    assert.equal(clamped.paid_out_cents, 0, "F5: Paid out never below zero");
+    assert.equal(clamped.stripe_part_stale, true, "F5: and the page asks the server again");
+    // The server's own clamp with every amount in US dollars: not consistent.
+    const usdClamp = balanceFigures(tsc({ paid_out_cents: 1000 }), { available: [{ amount: 30000, currency: "usd" }], pending: [], held: [] }, null);
+    assert.equal(usdClamp.consistent, false, "F5: a US$ clamp on the server says the reads disagree");
+    const fxClamp = balanceFigures(tsc({ paid_out_cents: 32990 }), { available: [{ amount: 30000, currency: "eur" }], pending: [], held: [] }, { rates: { EUR: 1.1 } });
+    assert.equal(fxClamp.consistent, undefined, "a clamp at an indicative rate is the rate, not a disagreement");
+
+    // The page: a stripe_withdrawals change, or a stale merge, asks the server again.
+    const page = fs.readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+    assert.ok(/table: "stripe_withdrawals", filter: `org_id=eq\.\$\{org\.id\}` \}, \(\) => \{\s*refresh\(\);\s*askStripeAgain\(\);/.test(page),
+      "F1: a Stripe withdrawal changing asks the server again, not only the database");
+    assert.ok(page.includes("const partStale = Boolean(allFigures?.stripe_part_stale);") && page.includes("if (staleAsks.current >= 2) return;"),
+      "a stale merge asks again, at most twice in a row");
+    assert.ok(page.includes("if (clearingPath.current) askFigures();") && page.includes("setRereadKey((key) => key + 1)"),
+      "members ask the figures action past its limit; the owner's card reads its balance again");
+    const cardSource = fs.readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+    assert.ok(cardSource.includes("if (!rereadKey || !isOwner || !account) return;"), "the card reads again when the page asks");
+    assert.ok(/setWithdrawal\(\{ previous: true[^\n]*\n\s*setError\(null\);\s*\n\s*setModal\("withdraw"\)/.test(cardSource),
+      "nit: Withdraw previous balance clears an earlier error when it opens");
+
+    // F3: the key changes when a take turns sent or a fee reversal is written,
+    // though the withdrawal's state and transfers_done_at do not.
+    const fakeDb = (states) => {
+      let call = 0;
+      return {
+        reads: () => call,
+        from(table) {
+          const chain = {
+            select() { return chain; }, eq() { return chain; }, in() { return chain; }, order() { return chain; },
+            then(resolve) {
+              const state = states[Math.min(call, states.length - 1)];
+              if (table === "payment_takes") call += 1;
+              resolve({ data: table === "stripe_withdrawals" ? state.rows : state.takes, error: null });
+            },
+          };
+          return chain;
+        },
+      };
+    };
+    const open = [{ id: "w1", state: "claimed", transfers_done_at: null, updated_at: "t0", reversals: [] }];
+    const heldTake = { rows: open, takes: [{ id: "k1", stripe_withdrawal_id: "w1", status: "held" }] };
+    const sentTake = { rows: open, takes: [{ id: "k1", stripe_withdrawal_id: "w1", status: "sent" }] };
+    assert.notEqual(await openWithdrawalsKey(fakeDb([heldTake]), "acct"), await openWithdrawalsKey(fakeDb([sentTake]), "acct"),
+      "F3: a take landing changes the key");
+    const reversed = { rows: [{ ...open[0], updated_at: "t1", reversals: [{ transfer: "tr", amount: 300, reversal: "trr", local: 300 }] }], takes: heldTake.takes };
+    assert.notEqual(await openWithdrawalsKey(fakeDb([heldTake]), "acct"), await openWithdrawalsKey(fakeDb([reversed]), "acct"),
+      "F3: a fee reversal changes the key");
+    // A take landing between the key reads: read again, then consistent.
+    let reads = 0;
+    const db3 = fakeDb([heldTake, sentTake, sentTake, sentTake]);
+    const result = await consistentMoneyRead(db3, "acct", async () => { reads += 1; return { n: reads }; });
+    assert.equal(reads, 2, "F3: a read during a transfer is read again");
+    assert.equal(result.consistent, true);
+    // F4: still changing after three reads: said, never silently returned.
+    reads = 0;
+    const churn = await consistentMoneyRead(fakeDb([heldTake, sentTake, heldTake, sentTake, heldTake, sentTake, heldTake]), "acct", async () => { reads += 1; return {}; });
+    assert.equal(reads, 3, "F4: at most three reads");
+    assert.equal(churn.consistent, false, "F4: and the answer says it is not consistent");
+    // F4: the key cannot be read: one read, not three, and said.
+    reads = 0;
+    const broken = { from() { const c = { select: () => c, eq: () => c, in: () => c, order: () => c, then: (ok) => ok({ data: null, error: { message: "down" } }) }; return c; } };
+    const once = await consistentMoneyRead(broken, "acct", async () => { reads += 1; return {}; });
+    assert.equal(reads, 1, "F4: no key, one read");
+    assert.equal(once.consistent, false);
+    // F4: the page asks again shortly, a bounded number of times.
+    let asks = 0;
+    const answers = [{ figures: { consistent: false } }, { figures: { consistent: false } }, { figures: {} }];
+    const final = await askUntilConsistent(async () => answers[asks++], { wait: async () => {} });
+    assert.equal(asks, 3, "F4: asked again while not consistent");
+    assert.equal(final, answers[2]);
+    asks = 0;
+    await askUntilConsistent(async () => { asks += 1; return { figures: { consistent: false } }; }, { wait: async () => {} });
+    assert.equal(asks, 3, "F4: never more than three asks");
+    asks = 0;
+    const kept = await askUntilConsistent(async () => { asks += 1; if (asks > 1) throw new Error("down"); return { figures: { consistent: false }, first: true }; }, { wait: async () => {} });
+    assert.equal(kept.first, true, "a later ask that fails keeps the answer before it");
+    const connectSource = fs.readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    assert.equal(connectSource.split("checkedFigures(figures, consistent, orgId);").length - 1, 2, "F4: both reads say when they are not consistent");
+    assert.ok(cardSource.includes("askUntilConsistent(() => connectAction(org.id, \"balance\"))") && page.includes("askUntilConsistent(() => connectAction(org.id, \"figures\"))"),
+      "F4: the owner's balance and the members' figures are asked again when not consistent");
   }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {

@@ -84,6 +84,46 @@ export function summaryFrom(figures) {
 const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "processing_cents", "paid_out_cents"];
 
 /**
+ * Whether a newer factory_balance() read knows of a Stripe withdrawal the
+ * server's answer (`viaStripe.tsc`) did not know in that state: a new one, or
+ * one since closed, refused, given its fee back or whose payout failed. Each
+ * moves money in or out of the factory's Stripe account, which only the
+ * server can read, so the Stripe part of that answer can no longer be patched
+ * (withStripePart): the page asks the server again. A payout that was on its
+ * way and has arrived moves nothing in Stripe.
+ */
+export function stripePartStale(database, viaStripe) {
+  if (!viaStripe?.tsc || !database) return false;
+  const known = new Map((viaStripe.tsc.withdrawals ?? []).filter((w) => w?.road === "stripe").map((w) => [w.id, w.word]));
+  return (database.withdrawals ?? []).some((w) => {
+    if (w?.road !== "stripe") return false;
+    if (!known.has(w.id)) return true;
+    const before = known.get(w.id);
+    return before !== w.word && !(before === "on_its_way" && w.word === "paid");
+  });
+}
+
+/**
+ * The server's balance answer, asked again (at most `tries` times in all,
+ * `waitMs` apart) while it says its reads were not of one moment
+ * (`figures.consistent === false`: a withdrawal moved money while it read).
+ * The last answer is returned either way; a later ask that fails keeps the
+ * one before it.
+ */
+export async function askUntilConsistent(ask, { tries = 3, waitMs = 1500, wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) } = {}) {
+  let answer = await ask();
+  for (let attempt = 1; attempt < tries && answer?.figures?.consistent === false; attempt += 1) {
+    await wait(waitMs);
+    try {
+      answer = await ask();
+    } catch {
+      break;
+    }
+  }
+  return answer;
+}
+
+/**
  * The Stripe answer's figures kept up to date with the database's: the
  * database part (`viaStripe.tsc`) replaced by a newer factory_balance() read,
  * the factory's own Stripe money (the difference) kept. So a step a brand
@@ -109,8 +149,12 @@ export function withStripePart(database, viaStripe) {
   part.processing_cents -= drop;
   part.paid_out_cents += drop;
   // Never more in the Stripe account than the newer read counts as sent:
-  // Paid out never goes below zero (the same order as the server's).
+  // Paid out never goes below zero (the same order as the server's). Which
+  // Stripe figure the excess came from cannot be known without reading
+  // Stripe, so this is only what shows until the server is asked again
+  // (`stripe_part_stale`), never the answer.
   let over = Math.max(0, -(Number(database.paid_out_cents ?? 0) + part.paid_out_cents));
+  const clamped = over > 0;
   for (const key of ["available_cents", "pending_cents", "processing_cents"]) {
     const take = Math.min(over, Math.max(0, part[key]));
     part[key] -= take;
@@ -119,6 +163,8 @@ export function withStripePart(database, viaStripe) {
   }
   for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + part[key];
   merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
+  // The Stripe part is a bridge here, not known: the page asks the server again.
+  if (clamped || stripePartStale(database, viaStripe)) merged.stripe_part_stale = true;
   if (viaStripe.stripe) {
     merged.stripe = { ...viaStripe.stripe, available_cents: part.available_cents, pending_cents: part.pending_cents,
       processing_cents: part.processing_cents, held_cents: part.processing_cents,
@@ -255,12 +301,18 @@ export function failedWithdrawalNote(back, amount, currency = "USD") {
   if (!(cents > 0)) return "This amount was returned to the brand.";
   return `${(cents / 100).toLocaleString("en-US", { style: "currency", currency })} is back in your balance. Check your withdrawal method, then withdraw again.`;
 }
-const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
+const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
+/**
+ * A withdrawal that ended without the money leaving the balance (failed,
+ * declined by staff, or cancelled by the factory): listed, its amount muted
+ * and struck through, in no figure.
+ */
+const ENDED_UNSENT = ["failed", "declined", "cancelled"];
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
-/** A withdrawal the factory asked for, as a Transactions row. A cancelled one never happened. */
+/** A withdrawal the factory asked for, as a Transactions row; a cancelled or declined one stays listed. */
 export function askedWithdrawalRows(withdrawals = []) {
-  return withdrawals.filter((w) => w.status !== "cancelled").map((w) => ({
+  return withdrawals.map((w) => ({
     brandOrgId: null,
     currency: w.currency,
     id: `asked-${w.id}`,
@@ -273,7 +325,7 @@ export function askedWithdrawalRows(withdrawals = []) {
       : w.fee_cents != null && w.receives_minor != null ? `Fee ${(Number(w.fee_cents) / 100).toLocaleString("en-US", { style: "currency", currency: w.currency })}, taken from it`
       : null,
     status: ASKED_STATUS[w.status] ?? w.status,
-    failed: ["failed", "declined"].includes(w.status),
+    failed: ENDED_UNSENT.includes(w.status),
     // What reached the factory, like the provider rows: the amount less its fee once paid.
     amount: -(Number(w.amount_cents) - (w.status === "paid" ? Number(w.fee_cents ?? 0) : 0)),
   }));
@@ -613,9 +665,10 @@ export function pendingParts(figures, opens = []) {
  * lines and these rows are one source, so they never disagree.
  *
  * `pool` and `stripe` are the company's own rows by id (factory_withdrawals,
- * stripe_withdrawals), for what only they say: a cancelled request (never
- * listed), the reason staff declined, where a Stripe payout went. A
- * withdrawal that ended with nothing sent and no payout made is not listed.
+ * stripe_withdrawals), for what only they say: a cancelled request, the
+ * reason staff declined, where a Stripe payout went. A cancelled or declined
+ * request stays listed, muted, in no figure; a Stripe withdrawal that ended
+ * with nothing sent and no payout made is not listed.
  */
 export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new Map(), methodName = () => null } = {}) {
   const money = (cents) => (Number(cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -624,7 +677,6 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
     const base = { brandOrgId: null, currency: "USD", date: w.created_at, type: "withdrawal" };
     if (w.road === "pool") {
       const own = pool.get(w.id);
-      if (own?.status === "cancelled") return [];
       const paid = w.word === "paid";
       return [{
         ...base,

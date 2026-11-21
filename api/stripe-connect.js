@@ -9,7 +9,7 @@ import {
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -263,7 +263,7 @@ export default async function handler(request, response) {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       // Stripe's balance, the database's figures and what open withdrawals
       // hold, from one moment (consistentMoneyRead).
-      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById }, allocation, methods, onTheirWay, displayFx, owedReach, poolLeft] = await Promise.all([
+      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById, consistent }, allocation, methods, onTheirWay, displayFx, owedReach, poolLeft] = await Promise.all([
         consistentMoneyRead(db, existing.stripe_account_id, async () => {
           const [balanceRead, tscRead] = await Promise.all([
             stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
@@ -303,6 +303,7 @@ export default async function handler(request, response) {
         held: heldRows(balance.available, heldElsewhere),
         held_by: heldByRows(heldById),
       }, displayFx), stripe_unavailable: false };
+      checkedFigures(figures, consistent, orgId);
       // What Withdraw can offer by each road, in US$: Stripe reaches owed
       // steps paid by card and the money already in this Stripe account
       // (an estimate when that is in another currency), less what is held;
@@ -452,7 +453,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
     // Funded payments Stripe gave a clearing date after they were recorded.
     await ensureFundsAvailableFor({ stripe, db, orgId });
     const upgrade = await connectUpgrade(db, orgId);
-    const [{ balance, fresh, held: heldElsewhere, heldById }, allocation, onTheirWay, displayFx] = await Promise.all([
+    const [{ balance, fresh, held: heldElsewhere, heldById, consistent }, allocation, onTheirWay, displayFx] = await Promise.all([
       consistentMoneyRead(db, existing.stripe_account_id, async () => {
         const [balanceRead, freshRead] = await Promise.all([
           stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
@@ -479,6 +480,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       held: heldRows(balance.available, heldElsewhere),
       held_by: heldByRows(heldById),
     }, displayFx), stripe_unavailable: false };
+    checkedFigures(figures, consistent, orgId);
     let inStripeUsd = 0;
     let estimated = false;
     for (const entry of balance.available) {
@@ -506,29 +508,17 @@ function heldByRows(byId) {
   return Object.entries(byId ?? {}).map(([id, row]) => ({ id, amount: Number(row.amount) || 0, currency: row.currency }));
 }
 
-/** The open Stripe withdrawals on this account and their states, as one key. */
-async function openWithdrawalsKey(db, accountId) {
-  const { data, error } = await db.from("stripe_withdrawals").select("id, state, transfers_done_at")
-    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]).order("id");
-  if (error) throw new Error(error.message);
-  return JSON.stringify(data ?? []);
-}
-
 /**
- * Stripe's balance, the database's figures and what open withdrawals hold,
- * read again (at most twice more) when a Stripe withdrawal started, made its
- * payout or was refused while they were being read: its money would otherwise
- * be in Stripe's answer and in the database's at once, counted twice.
+ * Says on the figures when they may not be one moment's (`consistent:
+ * false`): the reads kept changing, or Stripe held more than the database
+ * counts as sent and the figures had to be clamped. The page then asks
+ * again; the clamp is only what shows until then. Logged, so a clamp that
+ * keeps firing is seen rather than flattened.
  */
-async function consistentMoneyRead(db, accountId, read) {
-  let result;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const before = await openWithdrawalsKey(db, accountId).catch(() => null);
-    result = await read();
-    const after = await openWithdrawalsKey(db, accountId).catch(() => null);
-    if (before != null && before === after) break;
-  }
-  return result;
+function checkedFigures(figures, consistent, orgId) {
+  if (figures.consistent === false) console.warn("stripe-connect figures clamped", { orgId, total: figures.total_cents });
+  if (!consistent) figures.consistent = false;
+  return figures;
 }
 
 /** What open withdrawals hold, per currency, as { amount, currency } rows, never more than is available. */

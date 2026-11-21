@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { askUntilConsistent, owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -340,6 +340,10 @@ export default function StripePayoutCard({
   isOwner,
   onBalanceChange,
   onBalanceStatus,
+  // Bumped by the page when its last balance answer's Stripe part can no
+  // longer be kept (a Stripe withdrawal changed): read the balance again,
+  // without the card going back to loading.
+  rereadKey = 0,
   onAccountKnown,
   // The one balance (the page's figures, all clients): null while they load,
   // undefined where the card is mounted for its dialogs only (Settings).
@@ -470,7 +474,7 @@ export default function StripePayoutCard({
     if (saved && isOwner) {
       setBalanceStatus("loading");
       try {
-        const nextBalance = await connectAction(org.id, "balance");
+        const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
         setBalance(nextBalance);
         setFreshReach(null);
         setBalanceStatus("ready");
@@ -491,6 +495,40 @@ export default function StripePayoutCard({
     onBalanceChange?.(null);
     return null;
   }, [org.id, isOwner, onBalanceChange, manualCountry]);
+
+  // The page's ask to read the balance again: the figures stay as they are
+  // until the answer comes, and a failure keeps the last answer. One at a
+  // time; an ask made meanwhile reads once more after it.
+  const rereading = useRef(false);
+  const rereadAgain = useRef(false);
+  const statusNow = useRef(balanceStatus);
+  statusNow.current = balanceStatus;
+  const reread = useCallback(async () => {
+    if (rereading.current) { rereadAgain.current = true; return; }
+    rereading.current = true;
+    try {
+      do {
+        rereadAgain.current = false;
+        // A full read already running answers it.
+        if (statusNow.current === "loading" || statusNow.current === "slow") break;
+        try {
+          const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
+          setBalance(nextBalance);
+          setFreshReach(null);
+          setBalanceStatus("ready");
+          onBalanceChange?.(nextBalance);
+        } catch {
+          // The last answer stays, its Stripe part bridged by the page (withStripePart).
+        }
+      } while (rereadAgain.current);
+    } finally {
+      rereading.current = false;
+    }
+  }, [org.id, onBalanceChange]);
+  useEffect(() => {
+    if (!rereadKey || !isOwner || !account) return;
+    reread();
+  }, [rereadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1121,6 +1159,7 @@ export default function StripePayoutCard({
             <p>Your previous payout account still has funds.</p>
             {recoveryAvailable > 0 && balance.recovery.payoutsEnabled ? <button className="secondary-btn compact-btn" disabled={busy} onClick={() => {
               setWithdrawal({ previous: true, amount: recoveryAvailable, currency: recoveryCurrency.toLowerCase(), requestId: crypto.randomUUID() });
+              setError(null);
               setModal("withdraw");
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}

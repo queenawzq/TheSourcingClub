@@ -107,12 +107,18 @@ export function balanceFigures(tsc, stripe, displayFx) {
     paid_out_cents: 0,
   } : null;
   const known = parts && parts.available_cents != null && parts.pending_cents != null;
+  // How much the clamp below took (US cents). At an indicative rate a little
+  // is expected; with every Stripe amount in US dollars it means the two
+  // reads disagree (a withdrawal moved between them), so the answer says it
+  // is not consistent and the page asks again (`consistent`).
+  let clamped = 0;
   if (known) {
     // At an indicative rate, what is in the Stripe account can read a little
     // more than the database counted as sent: Paid out never goes below
     // zero, and the excess comes off the Stripe part of Available (then of
     // Pending), so the total stays the database's.
     let over = Math.max(0, parts.available_cents + parts.pending_cents + parts.processing_cents - base.paid_out_cents);
+    clamped = over;
     const fromAvailable = Math.min(over, parts.available_cents);
     parts.available_cents -= fromAvailable;
     over -= fromAvailable;
@@ -135,8 +141,11 @@ export function balanceFigures(tsc, stripe, displayFx) {
     paid_out_cents: base.paid_out_cents - inStripe,
     estimated: [stripe.available, stripe.pending].some(converted),
   } : { ...base, estimated: false };
+  const suspect = known && clamped > 0 && ![stripe.available, stripe.pending, stripe.held].some(converted);
   return {
     ...figures,
+    // Only when false: the page asks again (askUntilConsistent).
+    ...(suspect ? { consistent: false } : {}),
     total_cents: figures.awaiting_cents + figures.available_cents + figures.pending_cents + figures.processing_cents + figures.paid_out_cents,
     tsc: tsc ?? null,
     stripe: known ? parts : null,

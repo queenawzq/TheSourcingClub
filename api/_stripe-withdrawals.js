@@ -1082,3 +1082,47 @@ export async function returnFeesOnFailedPayouts({ stripe, db, accountId, days = 
     clearTimeout(timer);
   }
 }
+
+/**
+ * The open Stripe withdrawals on this account, as one key: each one's state,
+ * transfers and fee reversals (its `reversals` and `updated_at`, which every
+ * step writes), and each of its takes' status. A take turning `sent` (its
+ * transfer landed) or a fee reversal moves Stripe's balance while the
+ * withdrawal's state stays the same, so those are in the key too.
+ */
+export async function openWithdrawalsKey(db, accountId) {
+  const { data, error } = await db.from("stripe_withdrawals").select("id, state, transfers_done_at, updated_at, reversals")
+    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]).order("id");
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  let takes = [];
+  if (rows.length) {
+    const read = await db.from("payment_takes").select("id, stripe_withdrawal_id, status")
+      .in("stripe_withdrawal_id", rows.map((row) => row.id)).order("id");
+    if (read.error) throw new Error(read.error.message);
+    takes = read.data ?? [];
+  }
+  return JSON.stringify([rows, takes]);
+}
+
+/**
+ * Stripe's balance, the database's figures and what open withdrawals hold,
+ * read again (at most twice more) when a Stripe withdrawal started, moved
+ * money (a transfer landed, a fee was reversed), made its payout or was
+ * refused while they were being read: its money would otherwise be in
+ * Stripe's answer and in the database's at once, counted twice. Returns the
+ * last read and whether it was checked (`consistent`): false when the reads
+ * kept changing, or when the key could not be read (then read once only),
+ * and the page asks again shortly.
+ */
+export async function consistentMoneyRead(db, accountId, read) {
+  let result;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await openWithdrawalsKey(db, accountId).catch(() => null);
+    result = await read();
+    if (before == null) return { ...result, consistent: false };
+    const after = await openWithdrawalsKey(db, accountId).catch(() => null);
+    if (before === after) return { ...result, consistent: true };
+  }
+  return { ...result, consistent: false };
+}

@@ -305,9 +305,35 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "On its way", -184094],
+    ["asked-p1", "Cancelled", -4500],
     ["asked-p2", "Processing", -100000],
     ["asked-p3-held", "On hold", -4500],
-  ], "rows from the server's list: a cancelled request and a Stripe withdrawal refused before any payout are not listed");
+  ], "rows from the server's list: a cancelled request stays listed (round 28); a Stripe withdrawal refused before any payout is not");
+  // Round 28: a cancelled or declined withdrawal stays a row: its word, its
+  // amount muted (payout-amount-failed), declined with staff's reason as the
+  // note, and in no figure.
+  {
+    const ended = { pending_cents: 0, processing_cents: 0, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, withdrawals: [
+      { id: "c1", road: "pool", provider: "paypal", word: "returned", amount_cents: 2500, to: "a@b.c", created_at: "2026-11-21T10:00:00Z" },
+      { id: "d1", road: "pool", provider: "wise", word: "returned", amount_cents: 7000, to: "Bank ending 0148", created_at: "2026-11-21T11:00:00Z" },
+    ] };
+    const own = new Map([["c1", { id: "c1", status: "cancelled" }], ["d1", { id: "d1", status: "declined", reason: "The account name does not match your company." }]]);
+    const rows = serverWithdrawalRows(ended.withdrawals, { pool: own, stripe: new Map() });
+    assert.deepEqual(rows.map((r) => [r.id, r.status, r.failed, r.available, r.note]), [
+      ["asked-c1", "Cancelled", true, false, null],
+      ["asked-d1", "Declined", true, false, "The account name does not match your company."],
+    ], "cancelled and declined withdrawals stay listed, muted, declined with staff's reason");
+    assert.deepEqual(pendingParts(ended, []), { pending: 0, processing: 0, clearing: 0, onHold: 0, waiting: 0, onItsWay: 0 }, "and add nothing to any figure");
+    const { askedWithdrawalRows: askedRows } = await import("../src/app/order/payment-summary.mjs");
+    const fallback = askedRows([{ id: "c2", status: "cancelled", amount_cents: 2500, currency: "USD", provider: "paypal" },
+      { id: "d2", status: "declined", amount_cents: 7000, currency: "USD", provider: "wise", reason: "Wrong account." }]);
+    assert.deepEqual(fallback.map((r) => [r.status, r.failed, r.note]), [["Cancelled", true, null], ["Declined", true, "Wrong account."]],
+      "the fallback rows (no server list) do the same");
+    const pageCode = (await import("node:fs")).readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+    assert.ok(pageCode.includes('row.failed ? "payout-amount-failed"'), "a failed row's amount is muted (--text-muted)");
+    const zh = (await import("node:fs")).readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
+    assert.ok(zh.includes('"Cancelled": "已取消"') && zh.includes('"Declined": "已拒绝"'), "both words already have their Chinese");
+  }
   assert.equal(listedRows[0].meta, "To bank account ending in 0154.", "where it went, in the notices' words");
   assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
   assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");

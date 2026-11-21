@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -250,6 +250,20 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // Earnings, credits and payout accounts are read side by side, and each
   // shows as soon as it answers: one spinner held the whole page, and the
   // Stripe balance, for the slowest of the three.
+  // The server's figures action (own Stripe money included), asked until its
+  // reads are of one moment (askUntilConsistent).
+  const askFigures = useCallback(async () => {
+    clearingAskedAt.current = Date.now();
+    try {
+      setViaFigures((await askUntilConsistent(() => connectAction(org.id, "figures"))).figures ?? null);
+      setViaAt(Date.now());
+    } catch (failure) {
+      // Stripe unreachable: the database's figures, as the server sent them.
+      setViaFigures(failure?.details?.figures ?? null);
+      setViaAt(Date.now());
+    }
+  }, [org.id]);
+
   const loadEarnings = useCallback(async () => {
     const orders = await readEveryPage(
       () => supabase
@@ -266,17 +280,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     // gives, own Stripe money included; it also records missing clearing
     // dates. At most once a minute; in between, the database is read and the
     // last answer's Stripe part kept (withStripePart).
-    if (clearingPath.current && Date.now() - clearingAskedAt.current > 60_000) {
-      clearingAskedAt.current = Date.now();
-      try {
-        setViaFigures((await connectAction(org.id, "figures")).figures ?? null);
-        setViaAt(Date.now());
-      } catch (failure) {
-        // Stripe unreachable: the database's figures, as the server sent them.
-        setViaFigures(failure?.details?.figures ?? null);
-        setViaAt(Date.now());
-      }
-    }
+    if (clearingPath.current && Date.now() - clearingAskedAt.current > 60_000) await askFigures();
     const [figures, toBank] = await Promise.all([
       supabase.rpc("factory_balance", { target_org: org.id }),
       supabase.from("stripe_withdrawals")
@@ -305,7 +309,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     setDatabaseAt(Date.now());
     setStripeWithdrawals(toBank.data ?? []);
     setEarningsError(null);
-  }, [org.id]);
+  }, [org.id, askFigures]);
+
+  // The Stripe part of the last server answer can only be kept while nothing
+  // moved money in the factory's Stripe account. When a Stripe withdrawal
+  // changes (realtime), or a newer database read shows one the answer did not
+  // know (`stripe_part_stale`), the server is asked again: the owner's card
+  // reads its balance again (`rereadKey`), anyone else the figures action,
+  // past its once-a-minute limit. Calls close together become one.
+  const [rereadKey, setRereadKey] = useState(0);
+  const rereadTimer = useRef(null);
+  const askStripeAgain = useCallback(() => {
+    clearTimeout(rereadTimer.current);
+    rereadTimer.current = setTimeout(() => {
+      if (clearingPath.current) askFigures();
+      else setRereadKey((key) => key + 1);
+    }, 1500);
+  }, [askFigures]);
+  useEffect(() => () => clearTimeout(rereadTimer.current), []);
 
   // A withdrawal method saved or removed changes has_method: read the
   // figures again at once, so Withdraw appears without a reload.
@@ -372,10 +393,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "provider_payouts" }, refresh)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "provider_payouts" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${org.id}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${org.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${org.id}` }, () => {
+        refresh();
+        askStripeAgain();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isFactory, org.id, loadEarnings, loadClientFigures]);
+  }, [isFactory, org.id, loadEarnings, loadClientFigures, askStripeAgain]);
 
   // After a credit purchase: the balance and ledger, read again.
   // A purchase with a new card also saves that card, so Billing reloads too.
@@ -422,6 +446,16 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       : viaFigures === undefined && clearingPath.current ? null
       : figuresAsOf(viaFigures ?? null, viaAt)
     : null;
+  // A merge that cannot be trusted: ask the server again, at most twice
+  // until a merge can be (the clamp in withStripePart is what shows then).
+  const partStale = Boolean(allFigures?.stripe_part_stale);
+  const staleAsks = useRef(0);
+  useEffect(() => {
+    if (!partStale) { staleAsks.current = 0; return; }
+    if (staleAsks.current >= 2) return;
+    staleAsks.current += 1;
+    askStripeAgain();
+  }, [partStale, databaseAt, askStripeAgain]);
   const shownFigures = client === "All clients" ? allFigures
     : allFigures && clientFigures?.client === client ? clientFigures.figures : null;
   // The figures wait with the rows, so they never jump.
@@ -592,6 +626,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             org={org}
             isOwner={isOwner}
             onBalanceChange={balanceChanged}
+            rereadKey={rereadKey}
             onBalanceStatus={setStripeStatus}
             onAccountKnown={settleCard}
             figures={earningsError ? null : allFigures}
