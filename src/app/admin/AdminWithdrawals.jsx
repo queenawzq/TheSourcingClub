@@ -154,8 +154,9 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
             <tbody>
               {rows.map((row) => {
                 // What it still holds: the asked amount less any part that went back to the brand since.
+                // Being sent: the asked amount is what is in flight; the red line carries the rest.
                 const refunded = Math.min(Number(row.amount_cents) || 0, Math.max(0, Number(row.refunded_cents) || 0));
-                const holds = Number(row.amount_cents) - refunded;
+                const holds = row.status === "requested" ? Number(row.amount_cents) - refunded : Number(row.amount_cents);
                 const estimate = row.fee_cents == null ? withdrawalFee({ provider: row.provider, amountCents: holds, currency: row.currency }) : null;
                 return (
                   <tr key={row.id} data-withdrawal={row.id}>

@@ -164,7 +164,7 @@ export const withdrawOptionLabel = (row, language = "en") => {
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null, reversed = null }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null, reversed = null, back = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
     // The server's word for it (factory_balance().withdrawals): a request whose
@@ -195,9 +195,20 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     return <NewOnly id={`${last.id}:declined`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p></NewOnly>;
   }
   if (last?.status === "failed") {
-    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. The amount is back in your balance.`}</p></NewOnly>;
+    return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through. ${backSentence(last, back)}`}</p></NewOnly>;
   }
   return null;
+}
+
+/**
+ * What a failed withdrawal gave back (factory_balance().withdrawals back_cents):
+ * all of it, part, or nothing when it went to the brand while being sent. The
+ * same words as its notice (withdrawal_back_sentence).
+ */
+function backSentence(row, back) {
+  const cents = back instanceof Map && back.has(row.id) ? Number(back.get(row.id)) : null;
+  if (cents == null || cents >= Number(row.amount_cents)) return "The amount is back in your balance.";
+  return cents > 0 ? `${formatMoney(cents, row.currency)} is back in your balance.` : NOTHING_BACK;
 }
 
 /**

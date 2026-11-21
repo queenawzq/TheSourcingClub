@@ -717,11 +717,30 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(card.includes('data-testid="method-off">{METHOD_OFF}') && card.includes("&& methodProviderOn(providers, row) ? <button type=\"button\" role=\"menuitem\" onClick={() => { setMethodMenu(null); makePrimary(row); }}"),
     "a switched-off method is said unavailable, with no Make default");
   const order = read("../src/app/order/LiveOrderDetail.jsx");
-  assert.ok(order.includes("Number(milestone.payment?.factory_refund_cents ?? 0)") && order.includes('if (refund.factory >= Number(payment.amount_cents)) return "Refunded";')
+  assert.ok(order.includes("Number(milestone.payment?.factory_refund_cents ?? 0)") && order.includes('if (refund.factory >= Number(payment.amount_cents)) return refund.refunded > 0 ? "Refunded" : DISPUTE_LOST;')
     && order.includes(" - wentBack))"), "Release and Funded figures net of refunds; a fully refunded deposit reads Refunded");
   const staff = read("../src/app/admin/AdminWithdrawals.jsx");
   assert.ok(staff.includes("of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC")
     && staff.includes("<strong>{moneyIn(holds, row.currency)}</strong>"), "staff see what a withdrawal still holds, and the amount at risk while it is sent");
+}
+
+// Fix round 25: a failed withdrawal's card line says what came back; staff
+// keep the asked amount on a row being sent; a dispute fully lost reads the
+// bank-reversal word; a held cancelled-order payment is taken off once; a
+// switched-off method is never offered as the next default.
+{
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const form = read("../src/app/order/WithdrawFromBalance.jsx");
+  assert.ok(form.includes("did not go through. ${backSentence(last, back)}") && !form.includes("did not go through. The amount is back in your balance.`"),
+    "the failed line reads what came back");
+  const staff = read("../src/app/admin/AdminWithdrawals.jsx");
+  assert.ok(staff.includes('const holds = row.status === "requested" ? Number(row.amount_cents) - refunded : Number(row.amount_cents);'), "a row being sent keeps the amount in flight");
+  const order = read("../src/app/order/LiveOrderDetail.jsx");
+  assert.ok(order.includes('return refund.refunded > 0 ? "Refunded" : DISPUTE_LOST;') && order.includes("if (isFactory && refundPendingWord(payment, order)) return sum;"),
+    "a fully lost dispute reads Reversed by the brand's bank; no double subtraction");
+  const card = read("../src/app/order/StripePayoutCard.jsx");
+  assert.ok(card.includes("const promotable = otherManual.filter((row) => methodProviderOn(providers, row));") && card.includes("{promotable.map((row) => <option"),
+    "removing the default never offers a switched-off method");
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

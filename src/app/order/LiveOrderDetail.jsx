@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { earningStatus, paymentRefund, refundPendingWord, reversedByBankLine } from "./payment-summary.mjs";
+import { DISPUTE_LOST, earningStatus, paymentRefund, refundPendingWord, reversedByBankLine } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -153,7 +153,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   }
   if (refund.factory <= 0) return line;
   // All of the factory's part went back to the brand: the existing word.
-  if (refund.factory >= Number(payment.amount_cents)) return "Refunded";
+  // (A lost dispute, not a refund: the bank-reversal word.)
+  if (refund.factory >= Number(payment.amount_cents)) return refund.refunded > 0 ? "Refunded" : DISPUTE_LOST;
   if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} back to the brand`;
   return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${reversedByBankLine(money(refund.factory))}`;
 }
@@ -652,6 +653,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // its step figures. Funded is what is still paid.
   const wentBack = milestones.reduce((sum, { payment }) => {
     if (!["confirmed", "released"].includes(payment?.state)) return sum;
+    // Held on a cancelled order: already taken off whole (refundPendingCents).
+    if (isFactory && refundPendingWord(payment, order)) return sum;
     return sum + (charged && !isFactory ? Number(payment.refunded_cents ?? 0) + Number(payment.dispute_lost_cents ?? 0) : Number(payment.factory_refund_cents ?? 0));
   }, 0);
   const header = {

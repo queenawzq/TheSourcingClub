@@ -902,8 +902,10 @@ export default function StripePayoutCard({
   const manualRemovalRefusal = !removingManual ? null
     : sendingToRemoved.length ? `${bankOwedSentence(sendingToRemoved)} Remove it after that payment is sent.`
     : null;
-  const manualSuccessor = removingManual?.is_primary && otherManual.length
-    ? otherManual.find((row) => row.id === promoteId) ?? otherManual[0]
+  // Never a method whose provider is switched off (remove_payout_account skips them too).
+  const promotable = otherManual.filter((row) => methodProviderOn(providers, row));
+  const manualSuccessor = removingManual?.is_primary && promotable.length
+    ? promotable.find((row) => row.id === promoteId) ?? promotable[0]
     : null;
   // Removing the last manual method hands payouts back to the banks below it.
   const otherProviderMethods = account?.transfers_active ? providerMethodRows : [];
@@ -1140,6 +1142,7 @@ export default function StripePayoutCard({
         </div>
         <div className="payout-withdrawal-status-row"><WithdrawalStatus open={fromBalance.open} opens={fromBalance.opens} last={fromBalance.last} isOwner={isOwner}
           refunded={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0)]))}
+          back={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.back_cents != null).map((w) => [w.id, Number(w.back_cents)]))}
           reversed={new Set(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.refund_cause === "reversed").map((w) => w.id))}
           words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold" || Number(w.held_cents) > 0 || (w.parts ?? []).some((part) => part.word === "on_hold")).map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
               setWithdrawalError(null);
@@ -1321,11 +1324,11 @@ export default function StripePayoutCard({
           {/* Once the refusal is known it is the dialog's one line. */}
           {removeError && !manualRemovalRefusal ? <ModalMessage>{removeError.message}</ModalMessage> : null}
           {manualRemovalLine ? <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalLine}</p> : null}
-          {!manualRemovalRefusal && otherManual.length > 1 && removingManual.is_primary ? (
+          {!manualRemovalRefusal && promotable.length > 1 && removingManual.is_primary ? (
             <label className="payout-country-field">
               <span>New default</span>
               <select value={manualSuccessor?.id ?? ""} onChange={(event) => setPromoteId(event.target.value)}>
-                {otherManual.map((row) => <option key={row.id} value={row.id}>{manualLabel(row)}{row.bank_name ? ` · ${row.bank_name}` : ""}</option>)}
+                {promotable.map((row) => <option key={row.id} value={row.id}>{manualLabel(row)}{row.bank_name ? ` · ${row.bank_name}` : ""}</option>)}
               </select>
             </label>
           ) : null}

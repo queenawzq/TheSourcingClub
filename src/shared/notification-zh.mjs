@@ -269,6 +269,7 @@ const SENTENCES = [
   [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
   [amountRe("^AMT of it went back to the brand after it was sent\\.$"), (amount) => `其中 ${amount} 在发出后已退回品牌。`],
   [/^TSC is checking this withdrawal\.$/, () => "TSC 正在核查这笔提现。"],
+  [amountRe("^You now owe TSC AMT, the part that went back to the brand after it was sent\\.$"), (amount) => `你现在欠 TSC ${amount}，即发出后退回品牌的那部分。`],
   // The brand's reason when a refund made in Stripe sends it back to pay.
   [/^The payment was refunded\.$/, () => "该款项已退款。"],
   [amountRe("^You'd already withdrawn that money, so you now owe TSC AMT\\.$"), (owed) => `这笔款项你已提现，因此你现在欠 TSC ${owed}。`],
@@ -389,7 +390,7 @@ const SENTENCES = [
   [/^TSC now pays your connected payout account\.$/, () => "TSC 现在向你已连接的收款账户付款。"],
   [/^Your connected payout account is now your default withdrawal method\.$/, () => "你已连接的收款账户现在是你的默认提现方式。"],
   [/^PayPal account (\S+) is now your default withdrawal method\.$/, (account) => `PayPal 账户 ${account} 现在是你的默认提现方式。`],
-  [/^Your bank account at (.+) is now your default withdrawal method\.$/, (named) => `你在 ${bank(named)} 的银行账户现在是你的默认提现方式。`],
+  [/^Your bank account at (.+) is now your default withdrawal method\.$/, (named) => `你在 ${bank(named)}的银行账户现在是你的默认提现方式。`],
   [/^TSC now pays your bank account at (.+), instead of Payoneer account (.+)\.$/, (named, old) => `TSC 现在向你在 ${bank(named)} 的银行账户付款，不再向 Payoneer 账户 ${old} 付款。`],
   [/^TSC now pays your bank account at (.+)\.$/, (named) => `TSC 现在向你在 ${bank(named)} 的银行账户付款。`],
   [/^TSC now pays (PayPal|Payoneer) account (.+)\.$/, (provider, account) => `TSC 现在向 ${provider} 账户 ${account} 付款。`],

@@ -17,9 +17,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 
 select plan(97);
--- Wise and PayPal on everywhere: these steps make a Wise account the default
--- (round 24 refuses a default whose provider is off).
-update public.payout_provider_settings set enabled = true where provider in ('wise', 'paypal');
+-- Wise on everywhere: these steps make a Wise account the default (round 24
+-- refuses a default whose provider is off).
+update public.payout_provider_settings set enabled = true where provider = 'wise';
 
 set local session_replication_role = replica;
 
