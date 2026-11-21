@@ -433,4 +433,88 @@ for (const status of ["failed", "canceled"]) {
   assert.equal(db.rows[0].state, "paid_out");
 }
 
-console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small");
+// 15. Refunds and lost disputes (20261121200000): a refund staff make in
+// Stripe is recorded at Stripe's amount and never made bigger; a lost
+// dispute is recorded as lost, with Stripe's fee.
+{
+  const { applyChargeRefund, applyDispute, recordChargeDispute, refundCancelledPayment, disputeFeeCents } = await import("../api/_stripe.js");
+  const payment = { id: "pay-r", state: "confirmed", order_id: "o-r", stripe_payment_intent_id: "pi_r", stripe_charge_id: "ch_r", refunded_cents: 0 };
+  const refundDb = () => {
+    const calls = [];
+    return {
+      calls,
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { ...payment }, error: null }) }) }) }),
+      rpc: async (name, args) => { calls.push([name, args]); return { data: { ...payment }, error: null }; },
+    };
+  };
+  const refundStripe = (refunds) => ({
+    made: [],
+    refunds: {
+      list: async () => ({ data: refunds }),
+      create: async function create(args) { throw new Error(`refunds.create must not be called: ${JSON.stringify(args)}`); },
+    },
+  });
+  // Staff refund $50.00 of a $992.08 charge (F2): recorded as $50.00; nothing more is refunded.
+  {
+    const db = refundDb();
+    const stripe = refundStripe([{ id: "re_staff", amount: 5000, metadata: {} }]);
+    await applyChargeRefund({ stripe, db, charge: { id: "ch_r", payment_intent: "pi_r", amount: 99208, amount_refunded: 5000, refunded: false } });
+    assert.deepEqual(db.calls, [["record_payment_refund_amount", { target_payment: "pay-r", payment_intent: "pi_r", refunded_cents: 5000 }]],
+      "a partial staff refund: its amount recorded, no refunds.create");
+  }
+  // Refunded in full by staff: the amount too (the database decides: Due again before approval, the step stays done after).
+  {
+    const db = refundDb();
+    await applyChargeRefund({ stripe: refundStripe([{ id: "re_staff", amount: 99208, metadata: {} }]), db,
+      charge: { id: "ch_r", payment_intent: "pi_r", amount: 99208, amount_refunded: 99208, refunded: true } });
+    assert.deepEqual(db.calls.map(([name, args]) => [name, args.refunded_cents]), [["record_payment_refund_amount", 99208]], "a full staff refund: the amount");
+  }
+  // Our own refund of a stray intent keeps its reason.
+  {
+    const db = refundDb();
+    await applyChargeRefund({ stripe: refundStripe([{ id: "re_ours", amount: 1000, metadata: { tsc_problem: "amount_changed" } }]), db,
+      charge: { id: "ch_r", payment_intent: "pi_r", amount: 1000, amount_refunded: 1000, refunded: true } });
+    assert.deepEqual(db.calls[0][0], "record_payment_refunded");
+    assert.match(db.calls[0][1].reason, /The amount changed while you were paying/);
+  }
+  // The server never refunds the rest of a charge on its own.
+  {
+    const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe.js", import.meta.url), "utf8");
+    const body = source.slice(source.indexOf("export async function applyChargeRefund"), source.indexOf("/** What the brand reads when a cancelled order"));
+    assert.doesNotMatch(body, /refunds\.create/, "applyChargeRefund makes no refund");
+  }
+  // A cancelled order's held money after staff refunded part of it: only the rest is refunded.
+  {
+    const calls = [];
+    const db = { rpc: async (name, args) => { calls.push([name, args]); return { data: name === "claim_cancellation_refund" ? { payment_id: "pay-r", order_id: "o-r", intent: "pi_r", key: "k-1" } : null, error: null }; } };
+    const made = [];
+    const stripe = {
+      refunds: { list: async () => ({ data: [{ id: "re_staff", amount: 5000, status: "succeeded", metadata: {} }] }),
+        create: async (args) => { made.push(args); return { id: "re_rest", status: "succeeded" }; } },
+      paymentIntents: { retrieve: async () => ({ id: "pi_r", amount_received: 99208 }) },
+    };
+    assert.equal(await refundCancelledPayment({ stripe, db, paymentId: "pay-r" }), "refunded");
+    assert.equal(made.length, 1, "the rest is refunded");
+    assert.equal(made[0].amount, undefined, "with no amount: Stripe refunds what is left, never the whole charge again");
+  }
+  // Disputes: lost is recorded as lost, with Stripe's fee; won lifts the hold; open holds.
+  {
+    const lost = { id: "du_l", status: "lost", amount: 99208, balance_transactions: [{ fee: 1500, amount: -99208 }] };
+    assert.equal(disputeFeeCents(lost), 1500);
+    assert.equal(disputeFeeCents({ balance_transactions: [] }), null);
+    const calls = [];
+    const db = { rpc: async (name, args) => { calls.push([name, args]); return { data: null, error: null }; } };
+    assert.equal(await applyDispute({ db, paymentId: "pay-d", dispute: lost }), false, "a lost dispute is no longer on hold");
+    assert.deepEqual(calls, [["record_payment_dispute_lost", { target_payment: "pay-d", dispute_id: "du_l", lost_cents: 99208, fee_cents: 1500 }]]);
+    calls.length = 0;
+    const stripe = { disputes: { retrieve: async () => lost } };
+    await recordChargeDispute({ stripe, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true, dispute: "du_l" } });
+    assert.equal(calls[0][0], "record_payment_dispute_lost", "a charge read later (no webhook) records the loss too");
+    const hook = (await import("node:fs")).readFileSync(new URL("../api/stripe-webhook.js", import.meta.url), "utf8");
+    const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "refund.updated"'));
+    assert.match(disputeCase, /applyDispute\(/, "the dispute webhook records a loss as lost");
+    assert.doesNotMatch(disputeCase, /record_payment_disputed/, "never as 'still disputed'");
+  }
+}
+
+console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small; refunds recorded, never added to");

@@ -179,8 +179,9 @@ select is((select body from public.notifications where org_id = pg_temp.org(1) a
             and subject_id = current_setting('tsc.r6_w')::uuid and title like '%cancelled'),
   'Nothing goes back to your balance: the brand''s payment was refunded.', 'and is told truthfully that nothing comes back');
 select is((pg_temp.bal_as('01', 1) ->> 'total_cents')::bigint, pg_temp.sum4(pg_temp.bal_as('01', 1)), 'Total is still the sum of the four');
-select ok(not exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2)),
-  'once the withdrawal ended, the refunded step is in no figure');
+select ok(not exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2)
+                       and (r ->> 'amount_cents')::bigint > 0),
+  'once the withdrawal ended, the refunded step is in no figure (only its Refunded line, below zero: 20261121200000)');
 
 -- ===========================================================================
 -- 3. A Stripe part taken back by reversal returns to the balance, and its

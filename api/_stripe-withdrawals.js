@@ -431,14 +431,6 @@ async function readTakes(db, row) {
   }));
 }
 
-/** Whether a disputed charge's dispute is still open or was lost (Stripe keeps `disputed` true after a win). */
-async function openDispute(stripe, charge) {
-  const id = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-  if (!id) return true;
-  const dispute = await stripe.disputes.retrieve(id);
-  return !["won", "warning_closed"].includes(dispute.status);
-}
-
 /** A transfer an earlier call made for this take (it reached Stripe, not our database), else null. */
 async function findTakeTransfer(stripe, take, row) {
   if (!take.order_id) return null;
@@ -610,6 +602,13 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
       if (!rate) await refuse(db, row, CANNOT_PROCESS, { stripe });
     }
     const inStripeUsd = currency === "usd" ? inStripe : Math.floor(inStripe / rate);
+    // Money refunded after the factory had withdrawn it is owed to TSC:
+    // nothing more leaves, its own Stripe money included, until its
+    // earnings cover that (owed_reachable is net of it).
+    const reach = await call(db, "owed_reachable", { target_org: row.org_id }).catch(() => null);
+    if (Number(reach?.debt_cents) > 0 && usd > inStripeUsd + Number(reach.stripe_cents ?? 0)) {
+      await refuse(db, row, upToSentence(Math.max(0, inStripeUsd + Number(reach.stripe_cents ?? 0)), "usd"), { stripe });
+    }
     const owed = Math.max(0, usd - inStripeUsd);
     const fromStripe = owed > 0 ? inStripe : (currency === "usd" ? usd : Math.min(inStripe, Math.round(usd * rate)));
     await update(db, row, { d1_minor: fromStripe });
@@ -645,19 +644,22 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
   }
   if (held.length) {
     // Every charge before any transfer: Stripe does not refuse a transfer
-    // from a disputed charge, and a refunded one has nothing to pay from.
+    // from a disputed charge, and a refunded one may no longer cover it. A
+    // refund (or a lost dispute) is recorded at its amount; only a part this
+    // withdrawal holds that is no longer the factory's stops it.
     let unsafe = false;
     for (const take of held) {
       const charge = await stripe.charges.retrieve(take.charge_id);
       if (Number(charge.amount_refunded) > 0) {
         const { applyChargeRefund } = await import("./_stripe.js");
         await applyChargeRefund({ stripe, db, charge });
-        unsafe = true;
-      } else if (charge.disputed && await openDispute(stripe, charge)) {
-        await call(db, "record_payment_disputed", { target_payment: take.payment_id, disputed: true });
-        unsafe = true;
+      }
+      if (charge.disputed) {
+        const { recordChargeDispute } = await import("./_stripe.js");
+        if (await recordChargeDispute({ stripe, db, paymentId: take.payment_id, charge })) unsafe = true;
       }
     }
+    if (!unsafe && Number(await call(db, "withdrawal_refunded_part", { target_withdrawal: row.id })) > 0) unsafe = true;
     if (unsafe) await refuse(db, row, CANNOT_PROCESS, { stripe });
     // A cleared charge's money is in TSC's available balance, or nowhere.
     const platform = await stripe.balance.retrieve();

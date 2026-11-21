@@ -1,6 +1,6 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { ADAPTERS } from "./_withdrawal-adapters.js";
-import { applyChargeRefund, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyDispute, stripeFrom } from "./_stripe.js";
 
 /**
  * The withdrawal core: staff approve a factory's request, and its adapter pays
@@ -175,28 +175,39 @@ export async function refuseIfTakenChargesReturned({ db, id, build = stripeFrom 
   if (error) throw new PayoutFailure("database", CHARGE_UNCHECKED);
   const charges = (takes ?? []).map((take) => ({ paymentId: take.payment_id, chargeId: take.order_payments?.stripe_charge_id }))
     .filter((item) => item.chargeId);
+  let refunded = false;
   for (const { paymentId, chargeId } of charges) {
     let charge;
-    let open = false;
+    let dispute = null;
     try {
       charge = await stripe.charges.retrieve(chargeId);
       if (charge.disputed) {
         const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-        open = !disputeId || !["won", "warning_closed"].includes((await stripe.disputes.retrieve(disputeId)).status);
+        dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : { status: "needs_response" };
       }
     } catch (failure) {
       log("charge check", failure, { id, paymentId });
       throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
     }
+    // A refund (or a lost dispute) is recorded at its amount; this
+    // withdrawal stops only if part of what it holds is no longer the
+    // factory's (asked below, once every charge is recorded).
     if (Number(charge.amount_refunded) > 0) {
       await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { id, paymentId }));
-      throw new PayoutFailure("charge_refunded", CHARGE_REFUNDED);
+      refunded = true;
     }
-    if (open) {
+    if (dispute?.status === "lost") {
+      await applyDispute({ db, paymentId, dispute }).catch((failure) => log("record dispute lost", failure, { id, paymentId }));
+      refunded = true;
+    } else if (dispute && !["won", "warning_closed"].includes(dispute.status)) {
       const recorded = await db.rpc("record_payment_disputed", { target_payment: paymentId, disputed: true });
       if (recorded.error) log("record disputed", recorded.error, { id, paymentId });
       throw new PayoutFailure("charge_disputed", CHARGE_DISPUTED);
     }
+  }
+  if (refunded) {
+    const { data: short, error: shortError } = await db.rpc("withdrawal_refunded_part", { target_withdrawal: id });
+    if (shortError || Number(short) > 0) throw new PayoutFailure("charge_refunded", CHARGE_REFUNDED);
   }
 }
 

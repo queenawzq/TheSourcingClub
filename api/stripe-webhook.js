@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyChargeUpdated, applyPaymentIntent, paymentForDispute, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyChargeUpdated, applyDispute, applyPaymentIntent, paymentForDispute, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -136,26 +136,26 @@ export default async function handler(request, response) {
       case "charge.dispute.created":
       case "charge.dispute.closed": {
         // A disputed charge's step is never withdrawn while the dispute is
-        // open; one the brand lost stays out (its money went back). Read back
+        // open; one TSC lost is recorded as a refund of the disputed amount
+        // (its money went back to the brand). Read back
         // from Stripe, never from the event: "closed" can arrive before
         // "created", and the dispute as it is now decides.
         const dispute = await stripe.disputes.retrieve(event.data.object.id);
         // Found by its charge, else its PaymentIntent; an order payment not
         // recorded yet throws, so Stripe sends the event again.
         const payment = await paymentForDispute({ stripe, db, dispute });
-        if (payment) {
-          const disputed = !["won", "warning_closed"].includes(dispute.status);
-          const recorded = await db.rpc("record_payment_disputed", { target_payment: payment.id, disputed });
-          if (recorded.error) throw new Error(recorded.error.message);
-        }
+        // Lost: the disputed amount went back to the brand, as a refund
+        // (record_payment_dispute_lost); the hold ends and everyone is told.
+        if (payment) await applyDispute({ db, paymentId: payment.id, dispute });
         break;
       }
       case "refund.updated":
       case "refund.failed":
       case "charge.refund.updated": {
-        // Our refund of a cancelled order's held money, failed after Stripe
-        // accepted it: the money is held again and staff see why.
-        await applyRefundUpdate({ db, refund: event.data.object });
+        // A refund that failed after Stripe accepted it: our refund of a
+        // cancelled order's held money is held again and staff see why; any
+        // other is read back from its charge (the smaller total).
+        await applyRefundUpdate({ stripe, db, refund: event.data.object });
         break;
       }
       case "account.external_account.created":

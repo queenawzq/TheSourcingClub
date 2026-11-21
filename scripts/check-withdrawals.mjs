@@ -166,11 +166,47 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "s1", state: "confirmed", order_id: "o1", stripe_payment_intent_id: "pi_ch_r", stripe_charge_id: "ch_r" }, error: null }) }) }) }
       : table === "payment_takes" ? withTakes(w, [{ payment: "s1", charge: "ch_r" }], {}).db.from(table) : before(table));
     const rpc = x.db.rpc;
-    x.db.rpc = async (name, args) => { if (name === "record_payment_refunded") recorded = true; return rpc(name, args); };
+    // The database says $50 of what this withdrawal holds was refunded.
+    x.db.rpc = async (name, args) => {
+      if (name === "record_payment_refund_amount") recorded = args;
+      if (name === "withdrawal_refunded_part") return { data: 5000, error: null };
+      return rpc(name, args);
+    };
     await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /refunded/i.test(failure.message));
     assert.equal(w.paid.length, 0, "F2: a refunded charge behind the withdrawal: the provider is never asked");
-    assert.ok(recorded, "and the refund is recorded");
+    assert.deepEqual(recorded, { target_payment: "s1", payment_intent: "pi_ch_r", refunded_cents: 5000 }, "and the refund is recorded at Stripe's amount");
     assert.equal(w.recorded.at(-1)?.outcome, "requeue", "back to waiting");
+  }
+  // Partly refunded, and what the withdrawal holds is still the factory's
+  // (the refund came out of money still with TSC): recorded, then paid. A
+  // partial refund never stops a step for good.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_p" }], { ch_p: { amount_refunded: 1000, refunded: false, disputed: false } });
+    const before = w.db.from;
+    let recorded = null;
+    x.db.from = (table) => (table === "order_payments"
+      ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "s1", state: "confirmed", order_id: "o1", stripe_payment_intent_id: "pi_ch_p", stripe_charge_id: "ch_p" }, error: null }) }) }) }
+      : table === "payment_takes" ? withTakes(w, [{ payment: "s1", charge: "ch_p" }], {}).db.from(table) : before(table));
+    const rpc = x.db.rpc;
+    x.db.rpc = async (name, args) => {
+      if (name === "record_payment_refund_amount") recorded = args;
+      if (name === "withdrawal_refunded_part") return { data: 0, error: null };
+      return rpc(name, args);
+    };
+    assert.equal((await approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build })).done, "paid", "still covered: paid");
+    assert.equal(recorded?.refunded_cents, 1000, "the $10 refund is recorded as it is");
+  }
+  // A lost dispute: recorded as lost (the hold ends), then the same test.
+  {
+    const w = world();
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_l" }], { ch_l: { amount_refunded: 0, disputed: true, dispute: "du_l" } }, { du_l: "lost" });
+    const rpc = x.db.rpc;
+    x.db.rpc = async (name, args) => (name === "withdrawal_refunded_part" ? { data: 6500, error: null } : rpc(name, args));
+    await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /refunded/i.test(failure.message));
+    assert.equal(x.rpcs.find(([name]) => name === "record_payment_dispute_lost")?.[1]?.target_payment, "s1", "a lost dispute is recorded as lost");
+    assert.ok(!x.rpcs.some(([name, args]) => name === "record_payment_disputed" && args.disputed), "never put on hold again");
+    assert.equal(w.paid.length, 0, "and what it no longer covers is not sent");
   }
   // Stripe can't be read: nothing sent, said in words.
   {
@@ -197,7 +233,14 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "charge.dispute.created"') + 1500);
   assert.match(disputeCase, /stripe\.disputes\.retrieve\(event\.data\.object\.id\)/, "the dispute is read back from Stripe");
   assert.doesNotMatch(disputeCase, /disputed\s*=\s*event\.type/, "the event's type never decides");
-  assert.match(disputeCase, /\["won", "warning_closed"\]\.includes\(dispute\.status\)/, "only its current status does");
+  assert.match(disputeCase, /applyDispute\(\{ db, paymentId: payment\.id, dispute \}\)/, "only its current status does (applyDispute)");
+  const { applyDispute } = await import("../api/_stripe.js");
+  const seen = [];
+  const db = { rpc: async (name, args) => { seen.push([name, args]); return { data: null, error: null }; } };
+  assert.equal(await applyDispute({ db, paymentId: "p", dispute: { id: "du_w", status: "won" } }), false);
+  assert.equal(await applyDispute({ db, paymentId: "p", dispute: { id: "du_o", status: "needs_response" } }), true);
+  assert.deepEqual(seen.map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false], ["record_payment_disputed", true]],
+    "won: the hold is lifted; open: on hold");
 }
 
 // The clearing date (funds_available_at) is Stripe's available_on, read from
@@ -372,7 +415,8 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     assert.equal(d.refund, "full");
     const w = world();
     await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: c, decision: d, write: true });
-    assert.ok(w.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-b"), "the refund is recorded");
+    assert.ok(w.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-b" && args.refunded_cents === 10000),
+      "the refund is recorded, at Stripe's amount");
     assert.equal(w.refundsMade.length, 0, "no refunds.create: the charge is refunded already");
   }
   // Partly refunded: reported for staff, nothing written.
@@ -444,11 +488,12 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   } });
   await checkChargesFor({ stripe: x.stripe, db: x.db, orgId: "org" });
   assert.deepEqual(x.reads, ["ch_0", "ch_1", "ch_2", "ch_3", "ch_4"], "R11: least recently checked first (never checked first), at most 5");
-  assert.ok(x.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-0"), "R11: a refunded charge is recorded (applyChargeRefund)");
+  assert.ok(x.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-0" && args.refunded_cents === 1000),
+    "R11: a refunded charge is recorded (applyChargeRefund), at Stripe's amount");
   assert.deepEqual(x.calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-1", disputed: true }, "R11: a disputed one is recorded");
-  const others = x.calls.filter(([name]) => !["record_payment_refunded", "record_payment_disputed", "record_charges_checked"].includes(name));
+  const others = x.calls.filter(([name]) => !["record_payment_refund_amount", "record_payment_disputed", "record_charges_checked"].includes(name));
   assert.deepEqual(others, [], "R11: nothing else is written");
-  assert.equal(x.calls.filter(([name]) => name === "record_payment_refunded" || name === "record_payment_disputed").length, 2,
+  assert.equal(x.calls.filter(([name]) => name === "record_payment_refund_amount" || name === "record_payment_disputed").length, 2,
     "R11: the charges with neither change are not written");
   assert.deepEqual(x.calls.find(([name]) => name === "record_charges_checked")?.[1].targets.sort(), ["pay-0", "pay-1", "pay-2", "pay-3", "pay-4"],
     "R11: the five read are recorded as checked");
@@ -481,7 +526,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     assert.equal(h.reads[0], "ch_2", "the held step is read first, though checked a minute ago");
     assert.ok(!h.reads.includes("ch_0"), "an unheld step checked a minute ago is not read");
     assert.ok(h.reads.includes("ch_1"), "an unheld step checked long ago is");
-    assert.ok(h.calls.some(([name, args]) => name === "record_payment_refunded" && args.target_payment === "pay-2"),
+    assert.ok(h.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-2"),
       "so a refund under a waiting withdrawal is recorded on the next read");
   }
   // 4a445bb2: with 7 held steps, two reads in a row read 5, then the other 2 first.
@@ -1220,9 +1265,15 @@ for (const [why, row] of [
           row.lease_until = lease();
           return { data: structuredClone(row), error: null };
         }
-        if (name === "record_payment_refunded") {
+        if (name === "record_payment_refunded" || name === "record_payment_refund_amount") {
           steps.find((st) => st.id === args.target_payment).refundRecorded = true;
           return { data: null, error: null };
+        }
+        // Here a refund takes the whole step: every part held on it is no longer covered.
+        if (name === "withdrawal_refunded_part") {
+          const short = takes.filter((t) => t.stripe_withdrawal_id === args.target_withdrawal && t.status === "held"
+            && steps.find((st) => st.id === t.payment_id)?.refundRecorded).reduce((sum, t) => sum + t.amount_cents, 0);
+          return { data: short, error: null };
         }
         if (name === "record_payment_disputed") {
           steps.find((s) => s.id === args.target_payment).disputedRecorded = true;
@@ -1443,7 +1494,7 @@ for (const [why, row] of [
     const w = oneBalanceWorld({ steps: [step("p1", 10000), step("p2", 10000)], refunded: ["ch_p2"] });
     await assert.rejects(withdraw(w, 15000), (failure) => failure.message === CANNOT);
     assert.equal(w.stripe.transfers.length, 0, "a refunded charge among the claimed steps: no transfer at all");
-    assert.ok(w.db.calls.includes("record_payment_refunded"), "the refund is recorded");
+    assert.ok(w.db.calls.includes("record_payment_refund_amount"), "the refund is recorded, at Stripe's amount");
     assert.equal(held(w).length, 0, "the claim is returned");
     assert.equal(w.stripe.payouts.length, 0);
   }
@@ -2025,8 +2076,9 @@ for (const [why, row] of [
   // reach owed steps plus pool money, never D1.
   {
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
-    assert.match(connect, /stripe_cents:\s*Number\(owedReach\.data\?\.stripe_cents \?\? 0\)\s*\+\s*inStripeUsd/, "Stripe: owed with a charge + D1");
-    assert.match(connect, /pool_cents:\s*Math\.max\(0, Number\(poolLeft\.data \?\? 0\)\)\s*\+\s*Number\(owedReach\.data\?\.any_cents \?\? 0\)/,
+    // Net of what the company owes TSC (owed_reachable can be below zero), never below zero (20261121200000).
+    assert.match(connect, /stripe_cents:\s*Math\.max\(0, Number\(owedReach\.data\?\.stripe_cents \?\? 0\)\s*\+\s*inStripeUsd\)/, "Stripe: owed with a charge + D1");
+    assert.match(connect, /pool_cents:\s*Math\.max\(0, Math\.max\(0, Number\(poolLeft\.data \?\? 0\)\)\s*\+\s*Number\(owedReach\.data\?\.any_cents \?\? 0\)\)/,
       "PayPal / Wise: pool money + owed, never D1");
     assert.ok(!/pool_cents:[^\n]*inStripe/.test(connect), "D1 never reaches the pool road");
   }

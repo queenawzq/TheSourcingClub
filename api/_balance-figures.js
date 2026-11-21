@@ -69,6 +69,8 @@ export function balanceFigures(tsc, stripe, displayFx) {
     pending_cents: n(tsc?.pending_cents),
     processing_cents: n(tsc?.processing_cents),
     paid_out_cents: n(tsc?.paid_out_cents),
+    // Refunded after it was withdrawn: inside Available (already taken off it).
+    owed_to_tsc_cents: n(tsc?.owed_to_tsc_cents),
     has_method: Boolean(tsc?.has_method),
     next_cleared_at: tsc?.next_cleared_at ?? null,
     withdrawals: tsc?.withdrawals ?? [],

@@ -213,32 +213,37 @@ async function refundIntent({ stripe, db, intent, charge, result }) {
 }
 
 /**
- * Record that Stripe refunded a charge (charge.refunded, or a payout that
- * found its charge refunded). Only a charge that is a payment's own counts
- * (its recorded charge, or its attached intent); anything else is another
- * app's, or a stray intent of ours already recorded by refundIntent.
+ * Record that Stripe refunded a charge (charge.refunded, a refund that failed
+ * later, or a payout that found its charge refunded). Only a charge that is a
+ * payment's own counts (its recorded charge, or its attached intent);
+ * anything else is another app's, or a stray intent of ours already recorded
+ * by refundIntent.
  *
- *   held (or clearing)  back to failed so the brand pays again, or
- *                       cancelled on a cancelled order
- *   paid out            stays paid out, with a line in its history and a
- *                       row on the staff board: TSC already paid the factory
+ * Nothing is ever refunded here: what Stripe says was refunded in all
+ * (charge.amount_refunded) is recorded as it is (record_payment_refund_amount),
+ * so a partial refund staff make for a short shipment stays partial.
  *
- * Any refund of held money counts, a partial one too. TSC must not pay the
- * factory more than it holds, and the payout is drawn on this charge
- * (source_transaction), which Stripe refuses once it is short. So the brand
- * pays the step again in full, and the rest of this charge is refunded too
- * so it is never charged twice for one step.
+ *   refunded in full before approval  back to Due, so the brand pays again
+ *                                     (cancelled on a cancelled order)
+ *   anything else                     the amount; the step stays as it is and
+ *                                     only the factory's earning goes down.
+ *                                     What it had already withdrawn is owed
+ *                                     to TSC, and staff see it.
+ *
+ * Our own refunds (tsc_problem: a stray intent, a cancelled order) keep the
+ * reason they were made for.
  *
  * Returns the payment row as it now stands, or null when it is not ours.
  */
 export async function applyChargeRefund({ stripe, db, charge }) {
-  if (!(Number(charge.amount_refunded) > 0)) return null;
   const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
-  const columns = "id, state, order_id, stripe_payment_intent_id, stripe_charge_id";
+  const columns = "id, state, order_id, stripe_payment_intent_id, stripe_charge_id, refunded_cents";
   let { data: payment } = await db.from("order_payments").select(columns).eq("stripe_charge_id", charge.id).maybeSingle();
   if (!payment && intentId) {
     ({ data: payment } = await db.from("order_payments").select(columns).eq("stripe_payment_intent_id", intentId).maybeSingle());
   }
+  // Nothing refunded, and nothing recorded as refunded: nothing to say.
+  if (!(Number(charge.amount_refunded) > 0) && !(Number(payment?.refunded_cents) > 0)) return null;
   if (!payment || !intentId) return payment ?? null;
 
   // Our own refund of a stray intent (refundIntent) can get here before it
@@ -246,15 +251,13 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   // it was made for. Recording twice writes nothing the second time.
   const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
   const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem);
-  const reason = ours ? REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? REFUNDED : REFUNDED;
-
-  if (!ours && payment.state !== "released" && !charge.refunded) {
-    await stripe.refunds.create(
-      { payment_intent: intentId, metadata: { payment_id: payment.id, order_id: payment.order_id } },
-      { idempotencyKey: `refund-${intentId}` },
-    );
+  if (ours && charge.refunded) {
+    const reason = REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? REFUNDED;
+    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
   }
-  return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
+  return rpc(db, "record_payment_refund_amount", {
+    target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
+  });
 }
 
 /** What the brand reads when a cancelled order's held money goes back. */
@@ -285,8 +288,9 @@ const OUTAGE_TYPES = new Set(["StripeConnectionError", "StripeAPIError", "Stripe
  * included). Claimed first (claim_cancellation_refund), so the webhook, the
  * accepting page and the daily job never refund twice; the claim's time is in
  * the idempotency key, so a refusal Stripe stored is never replayed on the next
- * try. A refund already made on the charge (by staff, or a try whose reply was
- * lost) is recorded instead of making another.
+ * try. A refund already made on the charge in full (by staff, or a try whose
+ * reply was lost) is recorded instead of making another; after a partial one,
+ * only the rest is refunded.
  *
  * Returns "refunded", "failed", "retry" (Stripe unreachable: the lease runs
  * out and the next try goes again) or the claim's refusal.
@@ -296,9 +300,14 @@ export async function refundCancelledPayment({ stripe, db, paymentId }) {
   if (claim?.refused) return claim.refused;
 
   try {
+    // A partial refund staff made first (or a try whose reply was lost)
+    // counts; only the rest is refunded (no amount: Stripe refunds what is
+    // left), never the whole charge again.
     const existing = await stripe.refunds.list({ payment_intent: claim.intent, limit: 100 });
-    const made = existing.data.find((refund) => ["succeeded", "pending"].includes(refund.status));
-    if (!made) {
+    const made = existing.data.filter((refund) => ["succeeded", "pending"].includes(refund.status))
+      .reduce((sum, refund) => sum + Number(refund.amount || 0), 0);
+    const intent = made > 0 ? await stripe.paymentIntents.retrieve(claim.intent) : null;
+    if (!made || made < Number(intent?.amount_received ?? 0)) {
       const refund = await stripe.refunds.create(
         {
           payment_intent: claim.intent,
@@ -325,13 +334,19 @@ export async function refundCancelledPayment({ stripe, db, paymentId }) {
 
 /**
  * A refund Stripe accepted and later failed (refund.updated, refund.failed,
- * charge.refund.updated). Only our own cancelled-order refunds: the money is
- * held again, and staff see why. Returns the payment row, or null.
+ * charge.refund.updated). Our own cancelled-order refund: the money is held
+ * again, and staff see why. Any other (a refund staff made in Stripe): its
+ * charge is read again and the smaller total recorded. Returns the payment
+ * row, or null.
  */
-export async function applyRefundUpdate({ db, refund }) {
+export async function applyRefundUpdate({ stripe = null, db, refund }) {
   if (!["failed", "canceled"].includes(refund?.status)) return null;
   const paymentId = refund.metadata?.tsc_problem === "cancelled_order" ? refund.metadata.payment_id : null;
-  if (!paymentId) return null;
+  if (!paymentId) {
+    const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
+    if (!stripe || !chargeId) return null;
+    return applyChargeRefund({ stripe, db, charge: await stripe.charges.retrieve(chargeId) });
+  }
   const failure = new Error(`refund ${refund.status}`);
   failure.refundStatus = refund.status;
   return rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
@@ -389,9 +404,10 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     });
   }
   if (full.status === "succeeded") {
-    // Already refunded in Stripe (that event can arrive before this one):
-    // record the refund, never the money.
-    if (charge && Number(charge.amount_refunded) > 0) {
+    // Already refunded in full in Stripe (that event can arrive before this
+    // one): record the refund, never the money. A partial refund is recorded
+    // after the money, below.
+    if (charge?.refunded) {
       const refunded = await applyChargeRefund({ stripe, db, charge });
       if (refunded) return refunded;
       const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
@@ -421,6 +437,9 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     // the payment succeeds: waited for briefly. Never fails the recording.
     await recordFundsAvailable({ stripe, db, paymentId, charge, waitMs: FUNDS_WAIT_MS })
       .catch((failure) => logStripeFailure("funds-available", failure, { paymentId }));
+    if (charge && Number(charge.amount_refunded) > 0) {
+      return (await applyChargeRefund({ stripe, db, charge })) ?? result.payment;
+    }
     return result.payment;
   }
   if (full.status === "requires_payment_method" && full.last_payment_error) {
@@ -457,9 +476,37 @@ export async function paymentForDispute({ stripe, db, dispute }) {
   return payment ?? null;
 }
 
+/** Stripe's dispute fees on a dispute, in its balance transactions (US cents); null when it lists none. */
+export function disputeFeeCents(dispute) {
+  const rows = dispute?.balance_transactions ?? [];
+  if (!rows.length) return null;
+  return Math.max(0, rows.reduce((sum, row) => sum + Number(row?.fee || 0), 0));
+}
+
 /**
- * Whether a charge's dispute is open or lost (Stripe keeps `disputed` true
- * after a win), recorded on its payment. Returns true when it is disputed.
+ * A dispute as it is now, recorded on its payment: open (on hold), won or
+ * closed in TSC's favour (hold lifted), or lost (the disputed amount went
+ * back to the brand, as a refund: record_payment_dispute_lost, which also
+ * ends the hold). Returns true while it is on hold.
+ */
+export async function applyDispute({ db, paymentId, dispute }) {
+  if (dispute?.status === "lost") {
+    await rpc(db, "record_payment_dispute_lost", {
+      target_payment: paymentId, dispute_id: dispute.id,
+      lost_cents: Number.isFinite(Number(dispute.amount)) ? Number(dispute.amount) : null,
+      fee_cents: disputeFeeCents(dispute),
+    });
+    return false;
+  }
+  const disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
+  await rpc(db, "record_payment_disputed", { target_payment: paymentId, disputed });
+  return disputed;
+}
+
+/**
+ * Whether a charge's dispute is open, won or lost (Stripe keeps `disputed`
+ * true after a decision), recorded on its payment. Returns true while it is
+ * on hold.
  */
 export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
   const chargeId = typeof charge === "string" ? charge : charge?.id;
@@ -468,9 +515,7 @@ export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
   if (!fresh.disputed) return false;
   const disputeId = typeof fresh.dispute === "string" ? fresh.dispute : fresh.dispute?.id;
   const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
-  const disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
-  await rpc(db, "record_payment_disputed", { target_payment: paymentId, disputed });
-  return disputed;
+  return applyDispute({ db, paymentId, dispute });
 }
 
 /**

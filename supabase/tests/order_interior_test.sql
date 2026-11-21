@@ -150,7 +150,7 @@ select throws_ok(
 -- Asked before the funding, so the brand hears what it is waiting for.
 select throws_ok(
   $$select public.approve_milestone((select first_step from p10), null)$$,
-  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  '22023', 'fund "Fit sample" first: the step amount is added to the factory''s balance when you approve',
   'an unfunded paying step still cannot be approved'
 );
 

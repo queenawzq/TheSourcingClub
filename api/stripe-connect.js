@@ -309,8 +309,9 @@ export default async function handler(request, response) {
         inStripeUsd += cents;
       }
       const reach = {
-        stripe_cents: Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd,
-        pool_cents: Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0),
+        // Net of what the company owes TSC (owed_reachable), never below zero.
+        stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd),
+        pool_cents: Math.max(0, Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0)),
         estimated: reachEstimated,
       };
       return reply(response, 200, {
@@ -429,7 +430,8 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
     db.rpc("factory_withdrawable", { target_org: orgId }),
     db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).maybeSingle(),
   ]);
-  const poolCents = Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0);
+  // Net of what the company owes TSC (owed_reachable), never below zero.
+  const poolCents = Math.max(0, Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0));
   const existing = existingRead.data;
   if (!existing) {
     return reply(response, 200, {
@@ -472,7 +474,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
     }
     return reply(response, 200, {
       figures,
-      reach: { stripe_cents: Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd, pool_cents: poolCents, estimated },
+      reach: { stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd), pool_cents: poolCents, estimated },
     });
   } catch (failure) {
     logStripeFailure("stripe-connect figures", failure, { orgId });

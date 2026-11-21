@@ -242,7 +242,7 @@ set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select throws_ok(
   $$select public.approve_milestone(pg_temp.p18_step('order_a', 'Fit sample'), null)$$,
-  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  '22023', 'fund "Fit sample" first: the step amount is added to the factory''s balance when you approve',
   'the brand cannot approve a paid step before it is funded');
 reset role;
 
@@ -467,11 +467,13 @@ select is(
             and (b.stripe_release_started or b.provider_status in ('processing', 'failed')))
        or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)))
   -- Also staff's (20261120210000): withdrawals waiting to be approved or paid,
-  -- and the Needs checking rows (disputed owed steps, stuck Stripe withdrawals).
+  -- and the Needs checking rows (disputed owed steps, stuck Stripe withdrawals,
+  -- and money to recover after a refund, 20261121200000).
   -- Counted from the same sources, so the identity holds whatever else the
   -- shared stack holds.
   + (select count(*)::integer from public.factory_withdrawals w where w.status in ('requested', 'paying'))
-  + jsonb_array_length(public.admin_balance_attention() -> 'disputed') + jsonb_array_length(public.admin_balance_attention() -> 'stuck'),
+  + jsonb_array_length(public.admin_balance_attention() -> 'disputed') + jsonb_array_length(public.admin_balance_attention() -> 'stuck')
+  + jsonb_array_length(public.admin_balance_attention() -> 'recover'),
   'the overview counts every payment waiting on staff, and not money owed in a balance');
 -- And for this file's fixtures alone: the owed Balance step adds nothing.
 select ok(not exists (select 1 from jsonb_array_elements(public.admin_balance_attention() -> 'disputed') d
