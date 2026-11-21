@@ -1451,16 +1451,27 @@ async function approveOpenStep(order, title, vendor = factory) {
 
 /**
  * For a factory paid by PayPal or Wise: its approved steps are its withdrawal
- * balance, so the step is paid by a withdrawal, recorded as the server would
- * after PayPal paid it, less PayPal's fee (src/shared/withdrawal-fees.mjs).
- * Never by bank: TSC no longer pays a bank by hand (20261117500000).
+ * balance, so the step is paid by a withdrawal made the way the real one is:
+ * the owner asks for the step's amount (request_withdrawal, which ties the
+ * withdrawal to the step), staff approve it (claim_withdrawal) and the server
+ * records what PayPal paid, less PayPal's fee (src/shared/withdrawal-fees.mjs).
+ * A withdrawal inserted by hand has no step behind it, and the balance then
+ * counts it against money the factory never had: its next withdrawal reads
+ * "On hold". Never by bank: TSC no longer pays a bank by hand (20261117500000).
  */
-async function withdrawnByPaypal(org, account, country, payment, reference) {
-  const fee = withdrawalFee({ provider: "paypal", amountCents: Number(payment.amount_cents), currency: payment.currency ?? "USD", country });
-  const withdrawal = must(await admin.from("factory_withdrawals").insert({
-    org_id: org.id, account_id: account.id, provider: "paypal", amount_cents: payment.amount_cents, currency: payment.currency ?? "USD",
-    paid_to: account.paypal_email, decided_by: adminUser.id,
-  }).select("id").single(), `a withdrawal for ${reference}`);
+async function withdrawnByPaypal(org, owner, account, country, payment, reference) {
+  const reach = must(await admin.rpc("owed_reachable", { target_org: org.id }), `what ${reference} can withdraw`);
+  const amount = Number(reach.any_cents);
+  const withdrawal = must(await owner.client.rpc("request_withdrawal", {
+    target_org: org.id, amount, target_account: account.id,
+  }), `the owner asks to withdraw ${reference}`);
+  const takes = must(await admin.from("payment_takes").select("payment_id, amount_cents")
+    .eq("factory_withdrawal_id", withdrawal.id), `the steps ${reference} takes`);
+  if (amount <= 0 || takes.length !== 1 || takes[0].payment_id !== payment.id || Number(takes[0].amount_cents) !== amount) {
+    throw new Error(`${reference} should take exactly the approved step (${amount} cents); it took ${JSON.stringify(takes)}`);
+  }
+  must(await adminUser.client.rpc("claim_withdrawal", { target_withdrawal: withdrawal.id }), `staff approve ${reference}`);
+  const fee = withdrawalFee({ provider: "paypal", amountCents: amount, currency: payment.currency ?? "USD", country });
   must(await admin.rpc("record_withdrawal", {
     target_withdrawal: withdrawal.id, outcome: "paid", ref: reference, fee: fee.feeCents, receives: fee.receivesCents, receives_in: "USD",
   }), `paid by PayPal: ${reference}`);
@@ -1558,7 +1569,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-await withdrawnByPaypal(tradingOrg, kowloonPaypal, "HK", hopsackFit, "DEMO-20260001");
+await withdrawnByPaypal(tradingOrg, tradingCompany, kowloonPaypal, "HK", hopsackFit, "DEMO-20260001");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,

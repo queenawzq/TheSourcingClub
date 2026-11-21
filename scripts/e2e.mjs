@@ -2694,12 +2694,14 @@ async function main() {
         const headerCents = headerPending ? asCents(headerPending) : 0;
         check(earnings.pendingCard !== null && asCents(earnings.pendingCard) === headerCents,
           `the Pending card (${earnings.pendingCard}) is the card's pending amount (${money(headerCents)}): the waiting withdrawal is in neither`);
-        // The server's word decides: "waiting" reads Processing; a request it
-        // calls on hold (its card row shows "On hold") reads On hold.
+        // Nothing under it is refunded or disputed, and the seed's paid PayPal
+        // withdrawal took its own step (round 15): it is never "On hold", on
+        // the card or in Transactions.
         const cardSaysOnHold = earnings.open.some((text) => /\bOn hold\b/.test(text));
+        check(!cardSaysOnHold && !/\bon hold\b/i.test(earnings.cardText), "the card does not call the waiting withdrawal on hold");
         const thisRow = earnings.rows.find(isThisRow);
-        check(thisRow?.status === (cardSaysOnHold ? "On hold" : "Processing"),
-          `Transactions: the withdrawal waiting for staff reads "${cardSaysOnHold ? "On hold" : "Processing"}", as its card row (${thisRow?.status ?? "no row"})`);
+        check(thisRow?.status === "Processing",
+          `Transactions: the withdrawal waiting for staff reads "Processing" (${thisRow?.status ?? "no row"})`);
         check(!earnings.rows.some((row) => row.type === "Withdrawal" && row.status === "Waiting"), "no withdrawal in Transactions reads \"Waiting\"");
         await record(page, "Processing withdrawal", "a PayPal withdrawal waiting for staff: Processing, not Pending");
 
