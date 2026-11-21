@@ -1010,6 +1010,48 @@ for (const [why, row] of [
     assert.equal(JSON.stringify(balanceFigures(db, { available: [{ amount: 175597, currency: "usd" }], pending: [], held: [{ amount: 175597, currency: "usd" }] }, null)),
       JSON.stringify(all), "same inputs, same figures, owner or member");
   }
+  // Round 14 (b2d6d425): the reported state with Stripe money as well. The
+  // database: $1,313 clearing (Pending), a $1,000 PayPal withdrawal waiting
+  // (Processing), $3,000 already sent to the Stripe account (Paid out). In
+  // the Stripe account: $500 available of which $200 an open withdrawal
+  // holds, and $100 still pending at Stripe.
+  {
+    const { withStripePart } = await import("../src/app/order/payment-summary.mjs");
+    const db = tsc({ available_cents: 0, pending_cents: 131300, processing_cents: 100000, paid_out_cents: 300000 });
+    const f = balanceFigures(db, { available: [{ amount: 50000, currency: "usd" }], pending: [{ amount: 10000, currency: "usd" }], held: [{ amount: 20000, currency: "usd" }] }, null);
+    assert.equal(f.pending_cents, 131300 + 10000, "Pending: the database's clearing + Stripe's own pending, never the held money");
+    assert.equal(f.processing_cents, 100000 + 20000, "Processing: the waiting withdrawal + the Stripe money it holds");
+    assert.equal(f.available_cents, 30000, "Available: the Stripe money nothing holds");
+    assert.equal(f.paid_out_cents, 300000 - 60000, "Paid out less what is still in the Stripe account");
+    assert.equal(f.stripe.processing_cents, 20000, "the Stripe part of Processing is the held money");
+    assert.equal(f.total_cents, 131300 + 100000 + 300000, "Total is the database's to the cent");
+    assert.equal(f.total_cents, sum(f), "and the five added up");
+    const s = summaryFrom(f);
+    assert.equal(s.processing, 120000, "the summary carries Processing");
+    assert.equal(s.total, s.approval + s.available + s.pending + s.processing + s.paid, "the summary's Total includes Processing");
+    assert.equal(s.total, f.total_cents, "and is the server's Total");
+    // A newer database read (the withdrawal paid: Processing 0, Paid out +$999.60)
+    // keeps the Stripe part exactly: the held $200 stays in Processing.
+    const later = tsc({ available_cents: 0, pending_cents: 131300, processing_cents: 0, paid_out_cents: 300000 + 99960 });
+    const merged = withStripePart(later, f);
+    assert.equal(merged.processing_cents, 20000, "merged: only the Stripe-held part is still Processing");
+    assert.equal(merged.pending_cents, 141300, "merged: Pending unchanged");
+    assert.equal(merged.total_cents, later.awaiting_cents + later.available_cents + later.pending_cents + later.processing_cents + later.paid_out_cents,
+      "merged: Total is the newer database total");
+    // At a rate, Stripe can read more than was counted as sent: the excess
+    // comes off Available, then Pending, then Processing; never below zero.
+    const short = balanceFigures(tsc({ pending_cents: 0, processing_cents: 0, paid_out_cents: 25000 }),
+      { available: [{ amount: 30000, currency: "usd" }], pending: [{ amount: 10000, currency: "usd" }], held: [{ amount: 20000, currency: "usd" }] }, null);
+    assert.deepEqual([short.stripe.available_cents, short.stripe.pending_cents, short.stripe.processing_cents, short.paid_out_cents], [0, 5000, 20000, 0],
+      "over by $150: $100 off Available, $50 off Pending, Processing kept");
+    assert.equal(short.total_cents, 25000, "Total still the database's");
+    const shorter = balanceFigures(tsc({ paid_out_cents: 5000 }),
+      { available: [{ amount: 30000, currency: "usd" }], pending: [{ amount: 10000, currency: "usd" }], held: [{ amount: 20000, currency: "usd" }] }, null);
+    assert.deepEqual([shorter.stripe.available_cents, shorter.stripe.pending_cents, shorter.stripe.processing_cents, shorter.paid_out_cents], [0, 0, 5000, 0],
+      "over by $350: Available and Pending to 0, then $150 off Processing");
+    assert.equal(shorter.stripe.held_cents, shorter.stripe.processing_cents, "held_cents follows what is left in Processing");
+    assert.equal(shorter.total_cents, 5000);
+  }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
     const f = balanceFigures(db, { available: [], pending: [], onTheirWay: [], payouts: [] }, null);

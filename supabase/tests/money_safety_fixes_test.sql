@@ -314,7 +314,11 @@ select pg_temp.reset(true);
 insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
 values ('97700000-0000-0000-0000-000000000001', '97b00000-0000-0000-0000-0000000000f1', '97a10000-0000-0000-0000-000000000001', 'bank', 'requested', 100, 'USD', 'P97 Bank');
 select pg_temp.act_as(1); set local role authenticated;
-select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001', null, 'with money on its way to it the account cannot go');
+-- The message is pinned (round 14, A2): a payout_primary refusal is also
+-- P0001 and would pass a null message.
+select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001',
+  'TSC is about to pay this account, so it cannot be removed until that payment is sent',
+  'with money on its way to it the account cannot go');
 reset role;
 select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'manual', 'and the preference stays');
 delete from public.factory_withdrawals where id = '97700000-0000-0000-0000-000000000001';

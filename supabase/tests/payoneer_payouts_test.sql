@@ -442,7 +442,7 @@ select pg_temp.act_as(4); set local role authenticated;
 select throws_ok(
   $$ select public.remove_payout_account('31c00000-0000-0000-0000-000000000002') $$,
   'P0001', 'TSC is about to pay this account, so it cannot be removed until that payment is sent',
-  'the only Payoneer account cannot be removed while money is on its way to it'
+  'the only Payoneer account cannot be removed while money is on its way to it (a request recorded straight onto it: request_withdrawal offers Payoneer no road, so this state proves only that the guard reads account_id)'
 );
 -- That withdrawal ends (staff declined it): nothing is on its way any more.
 reset role;

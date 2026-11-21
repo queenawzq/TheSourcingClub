@@ -282,6 +282,15 @@ async function waitForHeading(page, text, timeout = 25000) {
   throw new Error(`timed out waiting for heading "${text}"`);
 }
 
+/** Opens a withdrawal method's "…" menu by the text on its row, then Remove method. */
+async function pressRemove(page, text) {
+  await page.evaluate((words) => [...document.querySelectorAll(".payout-method-row")]
+    .find((row) => row.innerText.includes(words))?.querySelector(".payout-more-button")?.click(), text);
+  await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector(".payout-method-popover button.danger")?.click());
+  await page.waitForTimeout(600);
+}
+
 async function clickButton(page, text) {
   const total = await page.locator("button").count();
   for (let index = 0; index < total; index += 1) {
@@ -2649,6 +2658,86 @@ async function main() {
       await waitFor(page, '[data-testid="withdrawal-open"]', 15000);
       check(/Cancel withdrawal/.test(await page.locator('[data-testid="withdrawal-open"]').innerText()), "the request waits for TSC: the owner can cancel it");
 
+      // Round 14 (b2d6d425): a PayPal withdrawal waiting for staff is
+      // Processing, never Pending, and the account it goes to is the only one
+      // kept while it waits.
+      {
+        const { data: waitingNow } = await db.from("factory_withdrawals").select("id, amount_cents, account_id")
+          .eq("org_id", kowloonOrg.id).eq("status", "requested").single();
+        const money = (value) => `$${(Number(value) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const asCents = (text) => Math.round(Number(String(text).replace(/[^0-9.]/g, "")) * 100);
+        const readEarnings = () => page.evaluate(() => {
+          const metric = [...document.querySelectorAll(".metric")]
+            .find((m) => /^Pending\b/.test(m.querySelector(".payment-metric-label")?.innerText.trim() ?? ""));
+          return {
+            cardText: document.querySelector('[data-testid="stripe-payout-card"]')?.innerText ?? "",
+            line: document.querySelector('[data-testid="payout-balance-line"]')?.innerText ?? "",
+            pendingCard: metric?.querySelector(".payment-currency-value")?.innerText ?? null,
+            open: [...document.querySelectorAll('[data-testid="withdrawal-open"]')].map((row) => row.innerText),
+            rows: [...document.querySelectorAll(".payout-transaction-row")].map((row) => ({
+              type: row.querySelector(".payout-transaction-type")?.innerText.trim(),
+              status: row.querySelector(".billing-status")?.innerText.trim(),
+              amount: row.querySelector(":scope > strong")?.innerText.trim() ?? "",
+            })),
+          };
+        });
+        const isThisRow = (row) => row.type === "Withdrawal" && row.amount.includes(money(waitingNow.amount_cents)) && /^(Processing|Waiting|On hold)$/.test(row.status ?? "");
+        let earnings = null;
+        await within(page, async () => {
+          earnings = await readEarnings();
+          return earnings.pendingCard !== null && earnings.rows.some(isThisRow);
+        }, 20000);
+        check(!/\$[\d,.]+ waiting/i.test(earnings.cardText), "the card has no \"$X waiting\" line: the withdrawal's own row says it");
+        check(earnings.open.some((text) => /Processing withdrawal/.test(text)) && !earnings.open.some((text) => /Pending withdrawal/.test(text)),
+          "its row reads \"Processing withdrawal\"");
+        const headerPending = /\$([\d,]+\.\d{2}) pending\./.exec(earnings.line)?.[1];
+        const headerCents = headerPending ? asCents(headerPending) : 0;
+        check(earnings.pendingCard !== null && asCents(earnings.pendingCard) === headerCents,
+          `the Pending card (${earnings.pendingCard}) is the card's pending amount (${money(headerCents)}): the waiting withdrawal is in neither`);
+        // The server's word decides: "waiting" reads Processing; a request it
+        // calls on hold (its card row shows "On hold") reads On hold.
+        const cardSaysOnHold = earnings.open.some((text) => /\bOn hold\b/.test(text));
+        const thisRow = earnings.rows.find(isThisRow);
+        check(thisRow?.status === (cardSaysOnHold ? "On hold" : "Processing"),
+          `Transactions: the withdrawal waiting for staff reads "${cardSaysOnHold ? "On hold" : "Processing"}", as its card row (${thisRow?.status ?? "no row"})`);
+        check(!earnings.rows.some((row) => row.type === "Withdrawal" && row.status === "Waiting"), "no withdrawal in Transactions reads \"Waiting\"");
+        await record(page, "Processing withdrawal", "a PayPal withdrawal waiting for staff: Processing, not Pending");
+
+        // A second PayPal address beside the default the withdrawal goes to.
+        const spareEmail = `e2e-spare-${stamp}@example.com`;
+        const { data: defaultMethod } = await db.from("factory_payout_accounts").select("paypal_email").eq("id", waitingNow.account_id).single();
+        const { data: spare, error: spareError } = await db.from("factory_payout_accounts")
+          .insert({ org_id: kowloonOrg.id, method: "paypal", paypal_email: spareEmail, is_primary: false }).select("id").single();
+        check(!spareError, `a second PayPal address is saved beside the default (${spareError?.message ?? "ok"})`);
+        await page.reload();
+        await waitFor(page, '[data-testid="payout-balance"]', 25000);
+        await page.locator('[data-testid="add-payout-method"]').first().click();
+        await waitFor(page, ".payout-method-row", 10000);
+        const removeDialog = async (email) => {
+          await pressRemove(page, email);
+          return page.evaluate(() => ({ text: document.querySelector(".payout-modal")?.innerText ?? "", canRemove: Boolean(document.querySelector(".payout-remove-confirm")) }));
+        };
+        const kept = await removeDialog(defaultMethod.paypal_email);
+        check(!kept.canRemove && kept.text.includes(`TSC is about to pay ${money(waitingNow.amount_cents)} to this account.`),
+          "the account the withdrawal is going to can't be removed while it waits, and the dialog says what TSC is about to pay it");
+        await record(page, "Remove refused", "the default, with a withdrawal waiting to it");
+        await clickButton(page, "back");
+        await waitFor(page, ".payout-method-row", 10000);
+        const free = await removeDialog(spareEmail);
+        check(free.canRemove && !/TSC is about to pay/.test(free.text), "the other address, with nothing on its way to it, can be removed");
+        await page.locator(".payout-remove-confirm").click();
+        const spareGone = await within(page, async () => {
+          const { data } = await db.from("factory_payout_accounts").select("id").eq("id", spare?.id ?? "00000000-0000-0000-0000-000000000000");
+          return (data ?? []).length === 0;
+        }, 15000);
+        check(spareGone !== null, "and it is removed from the dialog, the waiting withdrawal untouched");
+        if (spare?.id) await db.from("factory_payout_accounts").delete().eq("id", spare.id);
+        const { data: stillWaiting } = await db.from("factory_withdrawals").select("status").eq("id", waitingNow.id).single();
+        check(stillWaiting?.status === "requested", "the withdrawal still waits for staff");
+        await page.reload();
+        await waitFor(page, '[data-testid="withdrawal-open"]', 25000);
+      }
+
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
       await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
       const { data: open } = await db.from("factory_withdrawals").select("id, amount_cents, pool_cents").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
@@ -2746,6 +2835,23 @@ async function main() {
         const { data: firstAdded } = await db.from("factory_payout_accounts").select("id").eq("paypal_email", firstPaypal);
         const { data: noWithdrawal } = await db.from("factory_withdrawals").select("id").eq("org_id", chinaOrg.id).in("status", ["requested", "paying"]);
         check((noWithdrawal ?? []).length === 0, "saving a method withdrew nothing (D6)");
+        // Round 14 (A1): money in the balance is on its way to no account, so
+        // the last method, the default, can be removed while no withdrawal is open.
+        await page.locator('[data-testid="add-payout-method"]').first().click();
+        await waitFor(page, ".payout-method-row", 10000);
+        await pressRemove(page, firstPaypal);
+        const lastDialog = await page.evaluate(() => ({ text: document.querySelector(".payout-modal")?.innerText ?? "", canRemove: Boolean(document.querySelector(".payout-remove-confirm")) }));
+        check(lastDialog.canRemove && !/TSC is about to pay/.test(lastDialog.text),
+          "with money in its balance and no withdrawal open, the last method is offered for removal");
+        if (lastDialog.canRemove) {
+          await page.locator(".payout-remove-confirm").click();
+          const lastGone = await within(page, async () => {
+            const { data } = await db.from("factory_payout_accounts").select("id").eq("paypal_email", firstPaypal);
+            return (data ?? []).length === 0;
+          }, 15000);
+          check(lastGone !== null, "and it is removed from the dialog");
+          await record(page, "Last method removed", "money in the balance did not keep it");
+        }
         for (const added of firstAdded ?? []) await db.from("factory_payout_accounts").delete().eq("id", added.id);
         await signOutFully(page);
         await signIn(page, adminEmail, "Admin paying out");
