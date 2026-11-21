@@ -477,6 +477,16 @@ for (const status of ["failed", "canceled"]) {
     assert.deepEqual(db.calls[0][0], "record_payment_refunded");
     assert.match(db.calls[0][1].reason, /The amount changed while you were paying/);
   }
+  // Round 23 (I-a): our own refund for a reason with no sentence of its own is
+  // never recorded as "The payment was refunded." (a refund made in Stripe,
+  // which may be funded again if it fails), but as not needed any more.
+  {
+    const db = refundDb();
+    await applyChargeRefund({ stripe: refundStripe([{ id: "re_ours", amount: 1000, metadata: { tsc_problem: "order_completed" } }]), db,
+      charge: { id: "ch_r", payment_intent: "pi_r", amount: 1000, amount_refunded: 1000, refunded: true } });
+    assert.equal(db.calls[0][0], "record_payment_refunded");
+    assert.equal(db.calls[0][1].reason, "This payment was not needed any more. You were refunded.", "an unlisted reason of ours is never REFUNDED");
+  }
   // The server never refunds the rest of a charge on its own.
   {
     const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe.js", import.meta.url), "utf8");

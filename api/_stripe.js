@@ -165,6 +165,8 @@ const REFUND_REASONS = {
   cancelled_order: "The order was cancelled. You were refunded.",
 };
 const REFUNDED = "The payment was refunded.";
+/** TSC's own refund for a reason not listed above: never REFUNDED, which means a refund made in Stripe. */
+const NOT_NEEDED = "This payment was not needed any more. You were refunded.";
 
 /**
  * Send back a PaymentIntent that was paid when its payment no longer wanted
@@ -192,7 +194,7 @@ async function refundIntent({ stripe, db, intent, charge, result }) {
   }
 
   const problem = result.problem;
-  const reason = REFUND_REASONS[problem] ?? "This payment was not needed any more. You were refunded.";
+  const reason = REFUND_REASONS[problem] ?? NOT_NEEDED;
   if (!charge?.refunded) {
     // One refund per intent, however many times this runs. The webhook and
     // the brand's page can get here at the same moment: Stripe then answers
@@ -263,7 +265,9 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
   const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem);
   if (ours && charge.refunded) {
-    const reason = REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? REFUNDED;
+    // Never REFUNDED: that note means a refund made in Stripe, which
+    // record_full_refund_failed may fund again if it fails (20261121260000).
+    const reason = REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? NOT_NEEDED;
     return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
   }
   // Not funded here yet: refunded in full, the brand pays again; in part,

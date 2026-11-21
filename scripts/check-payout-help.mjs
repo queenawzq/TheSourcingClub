@@ -132,7 +132,7 @@ assert.ok(liveFund.includes('"Your payment is funded. The factory can start work
 assert.ok(liveFund.includes('...(paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"\n      ? { fundNote: paymentOnlyFundNote('), "an approved step's top line says it goes to the factory's balance");
 assert.ok(liveFund.includes('agreements: [paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"'), "an approved step's agreement says it goes to the factory's balance");
 // A disputed charge is never promised to the factory's balance (Nov 20, round 9).
-assert.ok(liveFund.includes('export const DISPUTED_CHARGE = "This payment is disputed with your bank. TSC holds it until the dispute is resolved.";') && liveFund.includes("if (disputed) return DISPUTED_CHARGE;"), "the Fund page says a disputed charge is held");
+assert.ok(liveFund.includes(`export const DISPUTED_CHARGE = "This payment is disputed with your bank. It isn't paid to the factory until the dispute is resolved.";`) && liveFund.includes("if (disputed) return DISPUTED_CHARGE;"), "the Fund page says a disputed charge is not paid to the factory yet");
 const prototype = read("src/prototype/main.jsx");
 assert.ok(prototype.includes("funds are only released after you approve the sample."), "the prototype keeps its own success text");
 assert.equal((prototype.match(/Funds stay protected until the related step is approved\./g) ?? []).length, 2, "the prototype keeps its own Fund subtitle");

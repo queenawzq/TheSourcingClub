@@ -439,7 +439,7 @@ function paymentOnlyFundNote(amount, title, factory) {
 }
 
 /** A charge the brand's bank disputed is held, not added to the factory's balance. */
-export const DISPUTED_CHARGE = "This payment is disputed with your bank. TSC holds it until the dispute is resolved.";
+export const DISPUTED_CHARGE = "This payment is disputed with your bank. It isn't paid to the factory until the dispute is resolved.";
 
 /**
  * A step the brand approves: the design's sentence, said of this step rather

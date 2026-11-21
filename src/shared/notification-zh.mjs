@@ -266,6 +266,7 @@ const SENTENCES = [
   [/^TSC will send it again\.$/, () => "TSC 会重新退款。"],
   [/^Nothing goes back to your balance: the brand's payment was refunded\.$/, () => "没有款项回到你的余额：品牌的付款已退款。"],
   [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
+  [amountRe("^You'd already withdrawn that money, so you now owe TSC AMT\\.$"), (owed) => `这笔款项你已提现，因此你现在欠 TSC ${owed}。`],
   [/^The brand's bank reversed the payment\.$/, () => "品牌的银行撤回了这笔付款。"],
   [amountRe("^You'd already withdrawn AMT of this payment, so you now owe TSC AMT\\.$"), (amount, owed) => `这笔付款中有 ${amount} 你已提现，因此你现在欠 TSC ${owed}。`],
   [amountRe("^You owe TSC AMT for a payment refunded after you withdrew it\\.$"), (amount) => `你欠 TSC ${amount}，因为你提现后有一笔付款被退款。`],

@@ -171,6 +171,9 @@ const ZH_SAMPLES = [
   { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of this payment, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of this payment, so you now owe TSC $40.00." },
+  // Round 23.
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn that money, so you now owe TSC $535.00." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn that money, so you now owe TSC $40.00." },
   { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "Your $30.00 refund didn't go through. That amount stays on this order." },
   { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "The refund to the brand didn't go through. Your earnings from Spring jackets (TSC-000015) went back up by $28.04." },
   { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "Your $570.00 refund didn't go through, so TSC still holds your payment for this step. You don't need to pay again." },
