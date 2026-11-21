@@ -4513,12 +4513,21 @@ async function main() {
     // all its orders: Paid has reached the factory, Held is with TSC.
     const { data: everyBrandOrder } = await db.from("production_orders").select("id").eq("brand_org_id", brandOrg.id);
     const { data: everyBrandPayment } = await db.from("order_payments")
-      .select("state, amount_cents, fee_bps, charged_cents, charge_cents").in("order_id", everyBrandOrder.map((order) => order.id));
-    const figure = (state) => moneyWords(everyBrandPayment.filter((payment) => payment.state === state).reduce((total, payment) => total + chargedOf(payment), 0));
+      .select("state, release_requested_at, amount_cents, fee_bps, charged_cents, charge_cents, refunded_cents, dispute_lost_cents")
+      .in("order_id", everyBrandOrder.map((order) => order.id));
+    // The page's split (brand-payments-view.js): approved, or a funded deposit
+    // (release_requested_at set), is the factory's and reads Paid; only money
+    // TSC holds before approval is Held. Each at what the brand paid, less
+    // what went back to it.
+    const toFactory = (payment) => payment.state === "released" || (payment.state === "confirmed" && Boolean(payment.release_requested_at));
+    const netOf = (payment) => Math.max(0, chargedOf(payment) - Number(payment.refunded_cents ?? 0) - Number(payment.dispute_lost_cents ?? 0));
+    const figure = (which) => moneyWords(everyBrandPayment
+      .filter((payment) => (which === "paid" ? toFactory(payment) : payment.state === "confirmed" && !toFactory(payment)))
+      .reduce((total, payment) => total + netOf(payment), 0));
     const paymentFigures = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".billing-payment-strip .metric")]
       .map((metric) => [metric.querySelector("span")?.innerText.trim().toLowerCase(), metric.querySelector("strong")?.innerText.trim()])));
-    check(paymentFigures.paid === figure("released"), `Paid is what has been paid out, fee included (${paymentFigures.paid}, expected ${figure("released")})`);
-    check(paymentFigures.held === figure("confirmed"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("confirmed")})`);
+    check(paymentFigures.paid === figure("paid"), `Paid is what has reached the factory's balance, fee included (${paymentFigures.paid}, expected ${figure("paid")})`);
+    check(paymentFigures.held === figure("held"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("held")})`);
     check("due now" in paymentFigures && "remaining" in paymentFigures, "with Due now and Remaining beside them");
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
     // Discount codes can't be applied to a payment yet, so the tab is hidden until they can.
