@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { DISPUTE_LOST, earningStatus, paymentRefund, refundPendingWord } from "./payment-summary.mjs";
+import { earningStatus, paymentRefund, refundPendingWord, reversedByBankLine } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -153,7 +153,7 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   }
   if (refund.factory <= 0) return line;
   if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} back to the brand`;
-  return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${DISPUTE_LOST}`;
+  return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${reversedByBankLine(money(refund.factory))}`;
 }
 
 function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = null) {

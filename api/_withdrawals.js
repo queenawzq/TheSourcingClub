@@ -157,7 +157,7 @@ export async function factoryQuote({ adapter, client, db, orgId, account, amount
 }
 
 /** _provider-payouts.js's sentences for the same check on a step paid by itself. */
-const CHARGE_UNCHECKED = "We couldn't check the brand's payment just now, so nothing was sent. Press again in a minute.";
+const CHARGE_UNCHECKED = "We couldn't check the brand's payment just now, so nothing was sent. Try again in a minute.";
 const CHARGE_DISPUTED = "The brand disputed this charge, so nothing was sent.";
 const CHARGE_REFUNDED = "The brand's payment was refunded, so there is nothing to pay out. Reload the board.";
 

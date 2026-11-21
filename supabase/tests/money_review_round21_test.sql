@@ -215,7 +215,7 @@ select lives_ok($$select pg_temp.failed(11, 107000, 0, 57000, 50000)$$, 'then th
 select is(row((pg_temp.p(11)).state::text, (pg_temp.p(11)).charged_cents, (pg_temp.p(11)).dispute_lost_cents, (pg_temp.p(11)).refunded_cents),
   row('confirmed'::text, 107000::bigint, 50000::bigint, 0::bigint), 'funded again with the charge, the $500 loss kept');
 select is((select body from public.notifications where org_id = 'b21b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(11) and title like 'Refund for%'),
-  'The $570.00 refund to your card failed, so TSC still holds your payment for this step. You don''t need to pay again.', 'the brand reads the failed refund''s own amount');
+  'Your $570.00 refund didn''t go through, so TSC still holds your payment for this step. You don''t need to pay again.', 'the brand reads the failed refund''s own amount');
 select is((select body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11) and title = 'Payment held for "R21 fit sample"'
             order by created_at desc limit 1),
   'TSC holds $532.71 for this step on R21 request 1 (R21-1). You can start this work; it is added to your balance when the brand approves it.',
@@ -233,7 +233,7 @@ select is(row((pg_temp.p(21)).state::text, (pg_temp.p(21)).stripe_payment_intent
 select lives_ok($$select pg_temp.failed(21, 10700, 0, 10700, 0)$$, 'that refund fails');
 select is((pg_temp.staff_rows(21) -> 0 ->> 'cause') || ' ' || (pg_temp.staff_rows(21) -> 0 ->> 'amount_cents'), 'cancelled 10700', 'staff see it, as a cancelled order''s');
 select is((select title || ' | ' || body from public.notifications where org_id = 'b21b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(21) and title like 'Refund for%'),
-  'Refund for "R21 trims" didn''t go through | The $107.00 refund to your card failed. TSC will send it again.', 'the brand is told');
+  'Refund for "R21 trims" didn''t go through | Your $107.00 refund didn''t go through. TSC will send it again.', 'the brand is told');
 select lives_ok($$select pg_temp.as_server('select public.record_refund_failure_resolved(''pi_pgtap_r21_21'')')$$, 'staff refund it again in Stripe');
 select is(jsonb_array_length(pg_temp.staff_rows(21)), 0, 'the row goes');
 select lives_ok($$select pg_temp.failed(21, 10700, 0, 10700, 0)$$, 'and that refund fails too');

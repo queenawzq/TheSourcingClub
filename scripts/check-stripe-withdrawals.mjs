@@ -579,11 +579,19 @@ for (const status of ["failed", "canceled"]) {
     await applyRefundUpdate({ stripe, db: cancelledDb, refund: { id: "re_f", status: "failed", charge: "ch_f", metadata: {} } });
     assert.equal(calls[0]?.[0], "record_full_refund_failed", "a cancelled order's failed refund reaches staff");
     assert.equal(calls[0]?.[1].target_payment, "pay-c");
-    // Our own refund of a stray intent that failed is not one of these.
+    // Round 22 (I1): TSC's own refund of an extra payment that failed reaches
+    // the database too, which never funds the step with it (staff row, cause
+    // stray; pinned in money_review_round22_test.sql).
     calls.length = 0;
     const ours = { ...stripe, refunds: { ...stripe.refunds, retrieve: async (id) => ({ id, status: "failed", amount: 10700, metadata: { tsc_problem: "amount_changed" } }) } };
     await applyRefundUpdate({ stripe: ours, db, refund: { id: "re_o", status: "failed", charge: "ch_f", metadata: {} } });
-    assert.ok(!calls.some(([name]) => name === "record_full_refund_failed"), "a stray intent's refund is never restored as a payment");
+    assert.equal(calls[0]?.[0], "record_full_refund_failed", "a stray intent's failed refund reaches staff");
+    // Round 22 (G1): TSC's own refund on a cancelled order (order_cancelled) of
+    // the payment's own charge that fails reaches staff and the brand.
+    calls.length = 0;
+    const ownCancelled = { ...stripe, refunds: { ...stripe.refunds, retrieve: async (id) => ({ id, status: "failed", amount: 10700, metadata: { tsc_problem: "order_cancelled" } }) } };
+    await applyRefundUpdate({ stripe: ownCancelled, db: cancelledDb, refund: { id: "re_c", status: "failed", charge: "ch_f", metadata: {} } });
+    assert.equal(calls[0]?.[1]?.target_payment, "pay-c", "a cancelled order's own refund that failed reaches record_full_refund_failed");
     calls.length = 0;
     await applyChargeRefund({ stripe, db, charge: { id: "ch_f", payment_intent: "pi_f", amount: 10700, amount_refunded: 10700, refunded: true } });
     assert.deepEqual(calls, [["record_refund_failure_resolved", { payment_intent: "pi_f" }]], "staff refunded the old charge again: the row goes");

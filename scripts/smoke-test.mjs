@@ -1248,7 +1248,7 @@ console.log("\nphase 3 — the order runs");
     const unfundedApproval = await brand.client.rpc("approve_milestone", {
       target_milestone: first.id, note: "Approved from the smoke test",
     });
-    /fund .* first/.test(unfundedApproval.error?.message ?? "")
+    /^Fund ".*" before you approve it\./.test(unfundedApproval.error?.message ?? "")
       ? ok("the brand CANNOT approve a paid step before its money is held")
       : fail("approving an unfunded paid step was not refused", unfundedApproval.error);
 

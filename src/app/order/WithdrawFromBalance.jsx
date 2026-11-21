@@ -164,7 +164,7 @@ export const withdrawOptionLabel = (row, language = "en") => {
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null, reversed = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
     // The server's word for it (factory_balance().withdrawals): a request whose
@@ -179,7 +179,9 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
         <div className="payout-pending-details">
           <span className="payout-pending-label">Processing withdrawal</span>
           <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)}</span>
-          {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{`${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
+          {/* The brand's bank took part of it back (refund_cause "reversed"): returned, not refunded. */}
+          {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{reversed instanceof Set && reversed.has(row.id)
+            ? `${formatMoney(refundedOf(row), row.currency)} returned to the brand` : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
           <span className="payout-pending-destination">{destination(row)}</span>
           {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
@@ -230,7 +232,7 @@ export async function cancelWithdrawals(ids) {
  * The choice of which waiting withdrawals to cancel, in the payouts page's own
  * PayoutModal. `first` is ticked to start with (the row whose Cancel was pressed).
  */
-export const NOTHING_BACK = "Nothing goes back to your balance: the brand's payment was refunded.";
+export const NOTHING_BACK = "This amount was returned to the brand.";
 
 // `onChanged`: read the balance again (a refusal means it moved meanwhile).
 export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, onChanged, returnable = null }) {

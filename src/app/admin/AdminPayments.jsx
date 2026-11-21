@@ -948,7 +948,7 @@ function AttentionSection({ attention, onChanged }) {
                     {Number(row.in_withdrawal_cents) > 0
                       ? `The brand disputed this charge. ${moneyIn(Math.max(0, Number(row.amount_cents) - Number(row.in_withdrawal_cents)), row.currency)} waits in the factory's balance; ${moneyIn(Math.min(Number(row.amount_cents), Number(row.in_withdrawal_cents)), row.currency)} was already in a withdrawal being sent or paid to the factory.`
                       : "The brand disputed this charge, so it waits in the factory's balance."}
-                    {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it again.{" "}
+                    {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it.{" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>
                   <td><PaymentDate value={row.disputed_at} /></td>
@@ -981,7 +981,9 @@ function AttentionSection({ attention, onChanged }) {
                   <td>{moneyIn(row.amount_cents, row.currency)}</td>
                   <td>
                     {/* amount_cents is what is left to refund: the failed refund's own amount. */}
-                    {row.cause === "cancelled"
+                    {row.cause === "stray"
+                      ? `A ${moneyIn(row.amount_cents, row.currency)} refund of an extra payment failed. Refund it again in Stripe.`
+                      : row.cause === "cancelled"
                       ? `A ${moneyIn(row.amount_cents, row.currency)} refund on this cancelled order failed. Refund the brand again in Stripe.`
                       : `A ${moneyIn(row.amount_cents, row.currency)} refund failed after the brand paid again. Refund the first payment in Stripe.`}
                     {" "}

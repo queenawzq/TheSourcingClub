@@ -161,6 +161,9 @@ const PATTERNS = [
   [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
   // A refund and a lost dispute on one step: the factory's part of both.
   [/^(\$[\d,.]+) back to the brand$/, (m) => `${m[1]} 已退回品牌`],
+  // A waiting withdrawal's part the brand's bank took back, and a lost dispute's order-page line.
+  [/^(\$[\d,.]+) returned to the brand$/, (m) => `${m[1]} 已退回品牌`],
+  [/^(\$[\d,.]+) reversed by the brand's bank$/, (m) => `${m[1]} 已被品牌的银行撤回`],
   // The brand's line for part of a payment its bank took back.
   [/^(\$[\d,.]+) reversed by your bank$/, (m) => `${m[1]} 已被你的银行撤回`],
   // Refunded after it was withdrawn: owed to TSC, inside Available.

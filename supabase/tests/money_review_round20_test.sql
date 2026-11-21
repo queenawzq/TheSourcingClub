@@ -201,9 +201,9 @@ select is((select body from public.notifications where org_id = pg_temp.org(1) a
   'The brand was refunded $50.00. Your earnings from R20 request 1 (R20-1) went down by $46.73.', 'the factory reads what the brand got, then its own part');
 select lives_ok($$select pg_temp.refund_failed(11, 2000)$$, 'Stripe says $30 of it failed: $20 in all');
 select is((select title || ' | ' || body from public.notifications where org_id = 'b20b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(11)
-            and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | The $30.00 refund to your card failed, so the payment stays on this order.', 'the brand is told');
+            and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | Your $30.00 refund didn''t go through. That amount stays on this order.', 'the brand is told');
 select is((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11)
-            and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | The refund to the brand failed. Your earnings from R20 request 1 (R20-1) went back up by $28.04.',
+            and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | The refund to the brand didn''t go through. Your earnings from R20 request 1 (R20-1) went back up by $28.04.',
   'and the factory, whose earnings went back up');
 
 -- ===========================================================================
@@ -227,7 +227,7 @@ select lives_ok($$select pg_temp.refund(21, 42800)$$, '$428 of the deposit is re
 select is((select count(*)::int from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'), 0, 'not on hold yet');
 select lives_ok($$select pg_temp.lost(23, 32100)$$, 'then the lab dip (never withdrawn) is lost in a dispute after approval');
 select is((select body from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'),
-  'You owe TSC $400.00. A payment was refunded after you withdrew it.', 'the waiting withdrawal is told the debt''s cause: a refund, not the dispute');
+  'You owe TSC $400.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.', 'the waiting withdrawal is told the debt''s cause: a refund, not the dispute');
 
 -- ===========================================================================
 -- Pre-existing: a full refund before approval that fails later.
@@ -239,7 +239,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_full_refund_fai
 select is(row((pg_temp.p(31)).state::text, (pg_temp.p(31)).stripe_payment_intent_id, (pg_temp.p(31)).charged_cents),
   row('confirmed'::text, 'pi_pgtap_r20_31'::text, 10700::bigint), 'funded again with the charge TSC still holds');
 select is((select title || ' | ' || body from public.notifications where org_id = 'b20b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(31)
-            and title like 'Refund for%'), 'Refund for "R20 trims" didn''t go through | The $107.00 refund to your card failed, so TSC still holds your payment for this step. You don''t need to pay again.',
+            and title like 'Refund for%'), 'Refund for "R20 trims" didn''t go through | Your $107.00 refund didn''t go through, so TSC still holds your payment for this step. You don''t need to pay again.',
   'the brand is told not to pay again');
 select ok(exists (select 1 from public.notifications where org_id = pg_temp.org(3) and subject_id = pg_temp.pay(31) and title = 'Payment held for "R20 trims"'),
   'and the factory that the money is held again');

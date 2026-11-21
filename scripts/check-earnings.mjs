@@ -649,7 +649,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
     { paymentId: "fit", cause: "refund", at: "2026-11-21T11:00:00Z", amount: -15000 },
   ], "one dated row per refund or lost dispute, below zero");
   assert.equal(figuresByPayment(tsc).get("dep").has("refunded"), false, "a row below zero never decides a step's word");
-  assert.deepEqual([DISPUTE_LOST, REFUNDED], ["Dispute lost", "Refunded"]);
+  assert.deepEqual([DISPUTE_LOST, REFUNDED], ["Reversed by the brand's bank", "Refunded"]);
   // Withdraw offers nothing while the debt is not covered, even without the server's reach.
   assert.deepEqual(withdrawReach({ ...tsc, parts: { owed_cleared_cents: 30000, pool_available_cents: 0 } }), { stripe: 0, balance: 0, estimated: false },
     "owed $300 cleared but $550 owed to TSC: nothing to withdraw");
@@ -679,12 +679,20 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
   for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 back to the brand", "$50.00 reversed by your bank",
+    "$50.00 returned to the brand", "$46.73 reversed by the brand's bank",
     "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money went back to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }
   const dictionary = readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
-  assert.ok(dictionary.includes('"Dispute lost": "争议败诉"'), "Chinese for Dispute lost");
+  assert.ok(dictionary.includes('"Dispute lost": "争议败诉"'), "Chinese for Dispute lost (rows read before round 22)");
+  assert.ok(dictionary.includes(`"Reversed by the brand's bank": "已被品牌的银行撤回"`) && dictionary.includes('"This amount was returned to the brand.": "这笔金额已退回品牌。"')
+    && dictionary.includes('"Order payment": "订单付款"') && dictionary.includes('"Only a company owner can withdraw": "只有公司所有者可以提现"')
+    && dictionary.includes('"Only an owner can set up or change payouts": "只有所有者可以设置或更改收款方式"'),
+    "Chinese for the round 22 words");
+  // Round 22: a part the brand's bank took back reads "returned to the brand".
+  const block22 = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(block22.includes("returned to the brand`"), "the withdrawal block in round 22's words");
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

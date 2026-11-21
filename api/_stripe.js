@@ -375,8 +375,10 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
     // (the payment no longer names this charge), or the order was cancelled
     // and the payment kept it. record_full_refund_failed decides: funded
     // again with it, or staff refund it again (20261121240000, 20261121250000).
-    // Our own refund of a stray intent is not one of these.
-    if ((!payment || payment.state === "cancelled") && !fresh.metadata?.tsc_problem) {
+    // TSC's own refund of an extra payment (a stray intent) goes there too:
+    // the database never funds the step again with it, staff refund it again
+    // (20261121260000).
+    if (!payment || payment.state === "cancelled") {
       if (charge.refunded) return null;
       const paymentIdOf = payment?.id ?? (await stripe.paymentIntents.retrieve(intentId)).metadata?.payment_id;
       if (!paymentIdOf) return null;

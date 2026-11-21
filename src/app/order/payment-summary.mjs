@@ -150,7 +150,9 @@ export function refundRows(figures) {
     .filter((row) => row?.figure === "refunded" && Number(row.amount_cents) < 0 && row.payment_id)
     .map((row) => ({ paymentId: row.payment_id, cause: row.cause === "dispute_lost" ? "dispute_lost" : "refund", at: row.at ?? null, amount: Number(row.amount_cents) }));
 }
-export const DISPUTE_LOST = "Dispute lost";
+/** A lost dispute's word on a Transactions row (the amount is beside it), and its order-page line. */
+export const DISPUTE_LOST = "Reversed by the brand's bank";
+export const reversedByBankLine = (amount) => `${amount} reversed by the brand's bank`;
 
 /**
  * What a refund or a lost dispute took from one payment, for its order-page

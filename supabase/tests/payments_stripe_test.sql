@@ -242,7 +242,7 @@ set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select throws_ok(
   $$select public.approve_milestone(pg_temp.p18_step('order_a', 'Fit sample'), null)$$,
-  '22023', 'fund "Fit sample" first: the step amount is added to the factory''s balance when you approve',
+  '22023', 'Fund "Fit sample" before you approve it. When you approve, the payment goes to the factory''s balance.',
   'the brand cannot approve a paid step before it is funded');
 reset role;
 

@@ -247,7 +247,7 @@ select lives_ok($$select pg_temp.refund(21, 53500)$$, 'the deposit''s charge is 
 select is((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, 50000::bigint, 'F2 owes TSC $500, and has $200 more earned');
 select is((select string_agg(title || ' | ' || body, ' || ') from public.notifications where org_id = pg_temp.org(2)
             and subject_id = current_setting('tsc.r19_w2')::uuid and title like '% on hold'),
-  'Withdrawal of $100.00 on hold | You owe TSC $500.00. A payment was refunded after you withdrew it.',
+  'Withdrawal of $100.00 on hold | You owe TSC $500.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
   'the waiting $100 withdrawal is told what is owed: no unrelated step, no "withdraw again"');
 select is((pg_temp.staff_row(current_setting('tsc.r19_w2')::uuid) ->> 'owes_tsc_cents')::bigint, 50000::bigint,
   'staff read all the factory owes');
