@@ -638,4 +638,39 @@ for (const status of ["failed", "canceled"]) {
   }
 }
 
+// Fix round 30 (G2): "Withdraw full amount" offers what the server allows.
+// After a payout came back in EUR the dialog offered $65.13 (EUR 59.26 at the
+// indicative rate) and the withdrawal refused anything over $64.99 (the same
+// euros at the rate of the newest transfer, rounded down). Both now reckon
+// the Stripe money one way (stripeMoneyUsd).
+{
+  const { stripeMoneyUsd } = await import("../api/_stripe-withdrawals.js");
+  const rate = 0.9118; // EUR per US$, as Stripe converted the last transfer
+  const stripe = {
+    transfers: {
+      async *list() { yield { id: "tr_last", currency: "usd", destination_payment: "py_last" }; },
+    },
+    charges: { retrieve: async () => ({ balance_transaction: { currency: "eur", exchange_rate: rate, amount: 5926 } }) },
+  };
+  const displayFx = { rates: { EUR: 1.0991 } }; // US$ per EUR, indicative
+  const reach = await stripeMoneyUsd(stripe, "acct_f", [{ amount: 5926, currency: "eur" }], {}, displayFx);
+  assert.equal(reach.cents, Math.floor(5926 / rate), "the euros at the transfer's rate, rounded down, as gatherOwed reckons them");
+  assert.equal(reach.cents, 6499, "$64.99, the server's own limit, not the $65.13 the dialog offered");
+  assert.equal(reach.estimated, true);
+  // What another open withdrawal holds is left out; US$ counts as itself.
+  assert.deepEqual(await stripeMoneyUsd(stripe, "acct_f", [{ amount: 5926, currency: "eur" }, { amount: 300, currency: "usd" }], { eur: 926, usd: 100 }, displayFx),
+    { cents: Math.floor(5000 / rate) + 200, estimated: true });
+  // No transfer gives a rate: the indicative one, as before.
+  const noRate = { transfers: { async *list() {} }, charges: { retrieve: async () => null } };
+  assert.deepEqual(await stripeMoneyUsd(noRate, "acct_f", [{ amount: 5926, currency: "eur" }], {}, displayFx), { cents: Math.round(5926 * 1.0991), estimated: true });
+  assert.deepEqual(await stripeMoneyUsd(noRate, "acct_f", [{ amount: 0, currency: "eur" }, { amount: 4200, currency: "usd" }], {}, displayFx), { cents: 4200, estimated: false });
+  // The withdrawal itself divides by the same rate and rounds down.
+  const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
+  assert.match(source, /const inStripeUsd = currency === "usd" \? inStripe : Math\.floor\(inStripe \/ rate\);/, "gatherOwed: floor(inStripe / localPerUsd)");
+  const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+  assert.equal((connect.match(/await stripeMoneyUsd\(stripe, existing\.stripe_account_id, balance\.available, heldElsewhere, displayFx\)/g) ?? []).length, 2,
+    "the owner's balance read and the members' figures both reckon the Stripe part that way");
+  assert(!/usdCents\(free, entry\.currency, displayFx\)/.test(connect), "never the indicative rate for what Withdraw can reach");
+}
+
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small; refunds recorded, never added to");

@@ -387,6 +387,8 @@ const SENTENCES = [
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
   [amountRe("^Your payment of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 款项未成功。`],
   [amountRe("^Your withdrawal of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 提现未成功。`],
+  // A payout Stripe said was paid, then failed (20261121320000, fix round 30).
+  [amountRe("^Your withdrawal of AMT did not reach your bank after all\\.$"), (amount) => `你的一笔 ${amount} 提现最终未到达你的银行。`],
   [/^Check your (.+)\.$/, (list) => (details(list) ? `请检查你的${details(list)}。` : null)],
   // Payout methods
   [/^If nobody at your company made this change, email (\S+) now\.$/, (address) => `如果这不是你公司的人员所做的更改，请立即发邮件至 ${address}。`],

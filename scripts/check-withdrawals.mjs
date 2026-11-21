@@ -2107,7 +2107,8 @@ for (const [why, row] of [
       assert.equal(answer.unsure, 5000);
     }
     // R3-1: another call holds the withdrawal's lease: Check again touches no
-    // part and says it is still not settled.
+    // part. Fix round 30 (L1): it says the withdrawal is being processed, not
+    // "still not settled … check again tomorrow" (the lease lasts 2 minutes).
     {
       const x = stuck({ attemptedAgo: DAY + 3600_000 });
       x.row.lease_until = new Date(Date.now() + 90_000).toISOString();
@@ -2117,7 +2118,8 @@ for (const [why, row] of [
       assert.equal(x.take.status, "held", "R3-1: a part of a withdrawal another call holds is not touched");
       assert.equal(asked, 0, "and Stripe is not asked");
       assert.equal(answer.done, false);
-      assert.match(answer.sentence, /\$50\.00 is still not settled/, "said as still not settled");
+      assert.equal(answer.sentence, "This withdrawal is being processed. Try again in a few minutes.", "L1: said as being processed");
+      assert.equal(answer.unsure, 5000, "the part still counted as not settled");
       assert.ok(Date.parse(x.row.lease_until) > Date.now(), "the other call's lease is left as it was");
     }
     // And a stale return (no lease) while another call holds it is refused by the database.
@@ -2470,8 +2472,11 @@ for (const [why, row] of [
   // Stripe reaches only owed money; never below zero per currency.
   {
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
-    const freeLine = "const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));";
-    assert.equal(connect.split(freeLine).length - 1, 2, "the balance answer and the members' figures both leave out what other withdrawals hold");
+    // Since fix round 30 both reckon it in stripeMoneyUsd (api/_stripe-withdrawals.js), held part left out.
+    const lib = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
+    assert.ok(lib.includes("const free = Math.max(0, Number(entry.amount) - (held?.[currency] ?? 0));"), "stripeMoneyUsd leaves out what other withdrawals hold");
+    assert.equal(connect.split("stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx)").length - 1, 2,
+      "the balance answer and the members' figures both leave out what other withdrawals hold");
     assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId })").length - 1, 2,
       "both ask with Stripe at hand, so money still clearing is not counted as held (4a445bb2)");
     // The same rule, on the tester's numbers.

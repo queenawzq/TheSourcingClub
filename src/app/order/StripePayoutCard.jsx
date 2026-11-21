@@ -745,9 +745,11 @@ export default function StripePayoutCard({
   // An open Stripe dialog follows: its Available is never older than the card.
   const liveStripeMax = (freshReach ?? balance?.reach)?.stripe_cents;
   useEffect(() => {
-    if (modal !== "withdraw" || !withdrawal || withdrawal.previous || liveStripeMax == null || liveStripeMax === withdrawal.max) return;
+    // Not while it is being withdrawn: a read made mid-request already counts
+    // the money as gone, and the amount would read as over the balance.
+    if (busy || modal !== "withdraw" || !withdrawal || withdrawal.previous || liveStripeMax == null || liveStripeMax === withdrawal.max) return;
     setWithdrawal((was) => (was ? { ...was, max: liveStripeMax } : was));
-  }, [modal, withdrawal, liveStripeMax]);
+  }, [busy, modal, withdrawal, liveStripeMax]);
 
   if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
@@ -1273,8 +1275,9 @@ export default function StripePayoutCard({
             </div>
           )}
           {/* One message: the server's refusal, when there is one, is the truth. */}
-          {!error && !withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
-          {!error && stripeMinimumProblem ? <p className="live-stripe-error" role="alert" data-testid="stripe-withdraw-minimum">{stripeMinimumProblem}</p> : null}
+          {/* Never while the withdrawal is being made: it would read as a refusal. */}
+          {!busy && !error && !withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+          {!busy && !error && stripeMinimumProblem ? <p className="live-stripe-error" role="alert" data-testid="stripe-withdraw-minimum">{stripeMinimumProblem}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}

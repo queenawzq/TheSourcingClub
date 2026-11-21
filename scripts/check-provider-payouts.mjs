@@ -611,6 +611,7 @@ assert.equal(paypalFrom({}), null);
 
 // Nothing in the flow branches on which account it is: only the guard reads the base.
 const read = (path) => readFileSync(path, "utf8");
+const { zhNotificationBody: zhNotificationBodyR30 } = await import("../src/shared/notification-zh.mjs");
 for (const path of ["api/_wise.js", "api/_paypal.js", "api/_provider-payouts.js", "api/_wise-recipient.js", "api/wise-payout.js", "api/paypal-payout.js"]) {
   const code = read(path).replace(/\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gm, "");
   assert(!/sandbox|simulation/i.test(code), `${path} has a sandbox path in the flow`);
@@ -703,6 +704,76 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   const steps = read("src/app/order/PayoutSetupSteps.jsx");
   assert.match(steps, /\{bankList \? null : <label>/, "our own Bank name field steps aside for Wise's list");
   assert.match(steps, /bankName: savedBankName/, "and the bank chosen is what is saved");
+}
+
+// Fix round 30: a Stripe payout's notices, in an order and words that stay
+// true when Stripe says "paid" and then "failed" (G4), and its status kept
+// even when Stripe says so before the withdrawal saved its payout id (G6).
+{
+  const { tellPayoutEvent } = await import("../api/_stripe-payout-events.js");
+  const tables = {
+    stripe_connect_accounts: [{ stripe_account_id: "acct_known", org_id: "org-1" }],
+    notifications: [],
+    stripe_withdrawals: [
+      { id: "0f0c1d2e-0000-4000-8000-000000000001", stripe_account_id: "acct_known", payout_id: null, payout_status: null },
+      { id: "0f0c1d2e-0000-4000-8000-000000000002", stripe_account_id: "acct_other", payout_id: null, payout_status: null },
+    ],
+  };
+  const fieldOf = (row, column) => (column.includes("->>") ? row[column.split("->>")[0]]?.[column.split("->>")[1]] : row[column]);
+  const fake = {
+    from(table) {
+      const filters = [];
+      let patch = null;
+      let inserting = null;
+      const run = () => {
+        if (inserting) { tables[table].push(structuredClone(inserting)); return { error: null }; }
+        const rows = tables[table].filter((row) => filters.every((f) => f(row)));
+        if (patch) rows.forEach((row) => Object.assign(row, structuredClone(patch)));
+        return { data: rows, error: null };
+      };
+      const q = {
+        select() { return q; },
+        update(fields) { patch = fields; return q; },
+        insert(row) { inserting = row; return q; },
+        eq(column, value) { filters.push((row) => fieldOf(row, column) === value); return q; },
+        in(column, values) { filters.push((row) => values.includes(fieldOf(row, column))); return q; },
+        is(column, value) { filters.push((row) => (row[column] ?? null) === value); return q; },
+        maybeSingle: async () => ({ data: run().data[0] ?? null, error: null }),
+        then(resolve, reject) { return Promise.resolve(run()).then(resolve, reject); },
+      };
+      return q;
+    },
+  };
+  const event = (type, payout, account = "acct_known") => ({ type, account, data: { object: { amount: 5859, currency: "eur", arrival_date: 1795392000, ...payout } } });
+  const ownRow = tables.stripe_withdrawals[0];
+
+  // G6: payout.paid before the withdrawal saved its payout id.
+  const early = { id: "po_early", status: "paid", metadata: { stripe_withdrawal_id: ownRow.id } };
+  assert.equal(await tellPayoutEvent(fake, event("payout.paid", early)), true);
+  assert.equal(ownRow.payout_status, "paid", "matched by the payout's own record of its withdrawal: no longer left pending");
+  assert.equal(ownRow.payout_arrives_on, "2026-11-23");
+  assert.equal(ownRow.payout_id, null, "its id is still the withdrawal call's to save");
+  await tellPayoutEvent(fake, event("payout.paid", { id: "po_stranger", status: "paid", metadata: { stripe_withdrawal_id: tables.stripe_withdrawals[1].id } }));
+  assert.equal(tables.stripe_withdrawals[1].payout_status, null, "never another account's withdrawal");
+
+  // G4: "paid out", then failed: the failure says it did not arrive after all.
+  assert.equal(await tellPayoutEvent(fake, event("payout.failed", { ...early, status: "failed", failure_code: "no_account" })), true);
+  const failed = tables.notifications.at(-1);
+  assert.equal(failed.title, "A withdrawal did not go through");
+  assert.equal(failed.body, "Your withdrawal of EUR 58.59 did not reach your bank after all. Your bank has no account with these details. Check the account number, then withdraw again. The money is back in your balance.");
+  assert.equal(zhNotificationBodyR30(failed), "你的一笔 EUR 58.59 提现最终未到达你的银行。你的银行没有与这些信息相符的账户。请检查账号，然后重新提现。款项已退回你的余额。");
+  // Failed first (Stripe sends both in the same second in test mode), then paid: "paid out" is never said.
+  const quick = { id: "po_quick", status: "failed", failure_code: "no_account" };
+  assert.equal(await tellPayoutEvent(fake, event("payout.failed", quick)), true);
+  assert.match(tables.notifications.at(-1).body, /^Your withdrawal of EUR 58\.59 did not go through\./, "nothing was said before: did not go through");
+  const before = tables.notifications.length;
+  assert.equal(await tellPayoutEvent(fake, event("payout.paid", { ...quick, status: "paid" })), false, "paid after its failure: not said");
+  assert.equal(tables.notifications.length, before);
+
+  // "Withdrawal of $X requested" is dated when it was asked for, so it is listed before its payout's notices.
+  const source = read("api/_stripe-withdrawals.js");
+  const asked = source.slice(source.indexOf("async function tellWithdrawalAsked"), source.indexOf("async function balanceShortSentence"));
+  assert.match(asked, /\.\.\.\(row\.created_at \? \{ created_at: row\.created_at \} : \{\}\)/, "the requested notice keeps the request's time");
 }
 
 console.log("check:provider-payouts ok");

@@ -492,7 +492,7 @@ export function earningStatus(row, clearing = null, figures = null) {
   // Part of it went in a Stripe withdrawal whose payout has not reached the
   // bank yet: on its way until it lands, like that withdrawal's own row.
   if (row.state === "released" && where?.has("on_its_way")) return ON_ITS_WAY;
-  if (row.state === "released") return row.stripe_transfer_id && !withdrawnByTakes(row) ? ADDED_TO_BALANCE : "Paid";
+  if (row.state === "released") return (row.stripe_transfer_id && !withdrawnByTakes(row)) || backInStripeBalance(row) ? ADDED_TO_BALANCE : "Paid";
   if (!toBeSent(row)) return "Awaiting approval";
   // The brand disputed its card charge: held until the dispute is settled,
   // never "available on" a day (the factory is told by its notification).
@@ -546,6 +546,21 @@ const detailsChangedSince = (attempt, method) => (Boolean(attempt.asked_to_check
   && Boolean(method?.details_changed_at) && new Date(method.details_changed_at) > new Date(attempt.updated_at ?? attempt.created_at);
 
 const when = (row) => row.released_at || row.confirmed_at || row.created_at;
+
+/**
+ * A one-balance Stripe withdrawal's part that came back: transferred to the
+ * factory's Stripe account, and its payout failed, was cancelled or was
+ * refused, so the money is in that account's balance again (the take's
+ * `stripe_withdrawals` embed: state and payout_status).
+ */
+const takeCameBack = (take) => take.status === "sent" && Boolean(take.stripe_withdrawals)
+  && (["refused", "fee_returned"].includes(take.stripe_withdrawals.state)
+    || ["failed", "canceled"].includes(take.stripe_withdrawals.payout_status));
+/** Every part withdrawals sent of it came back to the balance: it is in the balance, not paid. */
+export const backInStripeBalance = (row) => {
+  const sent = (row.payment_takes ?? []).filter((take) => take.status === "sent");
+  return sent.length > 0 && sent.every(takeCameBack);
+};
 
 /** Released by one-balance withdrawals: its takes were sent (released_note "Withdrawn"). */
 const withdrawnByTakes = (row) => (row.payment_takes ?? []).some((take) => take.status === "sent")

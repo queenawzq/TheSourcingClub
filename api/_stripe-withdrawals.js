@@ -1,4 +1,5 @@
 import { PayoutMethodRefusal, checkWithdrawalRequest, holdPayouts, withdrawBalance } from "./_stripe-payouts.js";
+import { usdCents } from "./_balance-figures.js";
 
 /**
  * A factory's withdrawal from its Stripe balance, with Stripe's payout fee
@@ -300,6 +301,39 @@ async function localPerUsd(stripe, accountId, currency) {
   return null;
 }
 
+/**
+ * What the money free in a Stripe account's available balance lets a
+ * withdrawal take, in US cents, reckoned exactly as the withdrawal reckons it
+ * (gatherOwed): per currency, the free part divided by the rate Stripe last
+ * converted a transfer to this account at, rounded down. So "Withdraw full
+ * amount" offers what the server allows. A currency no transfer gives a rate
+ * for falls back to the indicative rate (`displayFx`), as before; one with
+ * neither is left out. `estimated` is true while money in another currency
+ * than US$ is counted. Returns { cents, estimated }.
+ */
+export async function stripeMoneyUsd(stripe, accountId, available, held = {}, displayFx = null) {
+  let cents = 0;
+  let estimated = false;
+  for (const entry of available ?? []) {
+    const currency = String(entry.currency ?? "").toLowerCase();
+    const free = Math.max(0, Number(entry.amount) - (held?.[currency] ?? 0));
+    if (currency === "usd") {
+      cents += free;
+      continue;
+    }
+    if (Number(entry.amount)) estimated = true;
+    if (!free) continue;
+    const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
+    if (rate > 0) {
+      cents += Math.floor(free / rate);
+      continue;
+    }
+    const indicative = usdCents(free, currency, displayFx);
+    if (indicative != null) cents += indicative;
+  }
+  return { cents, estimated };
+}
+
 async function carryOut({ stripe, db, row, country, requestId, destination, transfersActive = false }) {
   const accountId = row.stripe_account_id;
   const currency = row.currency.toLowerCase();
@@ -519,6 +553,9 @@ async function settleAttempted(stripe, db, row, { staff = false } = {}) {
   return result;
 }
 
+/** What staff read after "Check again" while another call holds the withdrawal (staff only). */
+export const BEING_PROCESSED = "This withdrawal is being processed. Try again in a few minutes.";
+
 /** What staff read after "Check again" (new sentences, staff only). */
 export function checkedSentence({ sent, returned, unsure }) {
   const usd = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
@@ -545,10 +582,11 @@ export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
   if (leased.error) throw new Error(leased.error.message);
   const mine = Array.isArray(leased.data) ? leased.data[0] : leased.data;
   if (!mine?.id) {
+    // Another call is on it now (a lease lasts 2 minutes): not "still not
+    // settled", which sent staff to Stripe for a row about to move.
     const unsure = (await readTakes(db, row)).filter((take) => take.status === "held")
       .reduce((sum, take) => sum + Number(take.amount_cents), 0);
-    const result = { sent: 0, returned: 0, unsure };
-    return { done: false, ...result, sentence: checkedSentence(result) };
+    return { done: false, sent: 0, returned: 0, unsure, sentence: BEING_PROCESSED };
   }
   try {
     if (["claimed", "fee_taken"].includes(mine.state)) await settleOne(stripe, db, mine);
@@ -808,6 +846,9 @@ async function tellWithdrawalAsked(stripe, db, row, payout) {
     to = to ?? "your bank account";
     await db.from("notifications").insert({
       org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
+      // When it was asked for: listed before its payout's own notices, which
+      // Stripe can send before this call gets here (at once, in test mode).
+      ...(row.created_at ? { created_at: row.created_at } : {}),
       title: `Withdrawal of ${asked} requested`, body: `To ${to.replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`,
       data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
         receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },

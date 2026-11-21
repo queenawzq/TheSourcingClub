@@ -3,13 +3,13 @@ import { logStripeFailure, sentenceFor, withoutKeys } from "./_stripe-errors.js"
 import { payoutDisplayRates } from "./_payout-display-rates.js";
 import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, checkChargesFor, claimStripeRead, ensureFundsAvailableFor, jsonBody, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
-import { balanceFigures, usdCents } from "./_balance-figures.js";
+import { balanceFigures } from "./_balance-figures.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, stripeMoneyUsd, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -309,15 +309,9 @@ export default async function handler(request, response) {
       // (an estimate when that is in another currency), less what is held;
       // PayPal and Wise reach owed steps and pool money, never the Stripe
       // account's.
-      let inStripeUsd = 0;
-      let reachEstimated = false;
-      for (const entry of balance.available) {
-        const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));
-        const cents = usdCents(free, entry.currency, displayFx);
-        if (cents == null) continue;
-        if (entry.currency.toLowerCase() !== "usd" && entry.amount) reachEstimated = true;
-        inStripeUsd += cents;
-      }
+      // At the rate the withdrawal itself uses (stripeMoneyUsd), so the
+      // dialog's full amount is what the server allows.
+      const { cents: inStripeUsd, estimated: reachEstimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx);
       const reach = {
         // Net of what the company owes TSC (owed_reachable), never below zero.
         stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd),
@@ -481,15 +475,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       held_by: heldByRows(heldById),
     }, displayFx), stripe_unavailable: false };
     checkedFigures(figures, consistent, orgId);
-    let inStripeUsd = 0;
-    let estimated = false;
-    for (const entry of balance.available) {
-      const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));
-      const cents = usdCents(free, entry.currency, displayFx);
-      if (cents == null) continue;
-      if (entry.currency.toLowerCase() !== "usd" && entry.amount) estimated = true;
-      inStripeUsd += cents;
-    }
+    const { cents: inStripeUsd, estimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx);
     return reply(response, 200, {
       figures,
       reach: { stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd), pool_cents: poolCents, estimated },

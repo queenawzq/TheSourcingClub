@@ -145,6 +145,7 @@ const ZH_SAMPLES = [
   { kind: "funds_released", title: "$1,200.00 paid out to your bank", body: "Withdrawn from your balance." },
   { kind: "payout_method_changed", title: "A payment to you did not go through", body: "Your payment of $250.00 did not go through. Your bank returned the payment. Check your bank details: TSC pays again once they are right." },
   { kind: "payout_method_changed", title: "A withdrawal did not go through", body: "Your withdrawal of EUR 99.10 did not go through. The account number is wrong. Check your bank details, then withdraw again. The money is back in your balance." },
+  { kind: "payout_method_changed", title: "A withdrawal did not go through", body: "Your withdrawal of EUR 58.59 did not reach your bank after all. The account number is wrong. Check your bank details, then withdraw again. The money is back in your balance." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by Payoneer against TSC-1042. Payoneer payment ID 88412." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by bank transfer against TSC-1042. TSC's note: Ref. 7781" },
   { kind: "funds_released", title: "$65.00 paid out to you", body: "Sent to Ningbo Test Bank ending 1234. Payout fee $9.54 is taken from this payment: you receive CNY 369.72." },

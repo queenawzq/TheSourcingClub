@@ -361,7 +361,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   }
   assert.equal(listedRows[0].meta, "To bank account ending in 0154.", "where it went, in the notices' words");
   assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
-  assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
+  assert.ok(cardCode.includes("{!busy && !error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
   assert.ok(cardCode.includes("withdrawal.amount > 0 && !amountProblem"), "the fee line follows the dialog's Available");
   assert.equal(pendingParts(cases[1]).clearing, 0, "only withdrawals pending: no 'available to withdraw on' line");
   assert.equal(pendingParts(null), null);
@@ -825,6 +825,37 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const card = read("../src/app/order/StripePayoutCard.jsx");
   assert.ok(card.includes("if (manualSaved) setMethodNotice(null);")
     && card.includes("manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current)"), "only the latest status line under the balance");
+}
+
+// Fix round 30 (G3): a step whose only withdrawal's Stripe payout failed is
+// back in the balance: "Added to your balance", never "Paid".
+{
+  const summary = await import("../src/app/order/payment-summary.mjs");
+  const step = (withdrawal) => ({ id: "p-g3", state: "released", released_note: "Withdrawn", release_requested_at: "2026-11-20T00:00:00Z",
+    amount_cents: 6500, currency: "USD", stripe_transfer_id: null, payment_takes: [{ status: "sent", stripe_withdrawals: withdrawal }] });
+  for (const withdrawal of [{ state: "fee_returned", payout_status: "failed" }, { state: "paid_out", payout_status: "failed" },
+    { state: "paid_out", payout_status: "canceled" }, { state: "refused", payout_status: null }]) {
+    assert.equal(summary.earningStatus(step(withdrawal)), summary.ADDED_TO_BALANCE, `payout ${withdrawal.state}/${withdrawal.payout_status}: the money is back in the balance`);
+    assert.equal(summary.earningStatus(step(withdrawal), null, new Map()), summary.ADDED_TO_BALANCE, "with the server's figures too");
+  }
+  assert.equal(summary.earningStatus(step({ state: "paid_out", payout_status: "paid" })), "Paid", "paid out: Paid");
+  assert.equal(summary.earningStatus({ ...step(null), payment_takes: [{ status: "sent" }] }), "Paid", "no embed (an older read): as before");
+  const twoRoads = { ...step({ state: "fee_returned", payout_status: "failed" }) };
+  twoRoads.payment_takes = [...twoRoads.payment_takes, { status: "sent", stripe_withdrawals: null }];
+  assert.equal(summary.earningStatus(twoRoads), "Paid", "part of it paid by PayPal or Wise: Paid");
+  // Still never listed as a second "Bank transfer" withdrawal.
+  assert.deepEqual(summary.withdrawalRows([step({ state: "fee_returned", payout_status: "failed" })]), [], "no second withdrawal row");
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes("payment_takes (status, stripe_withdrawals (state, payout_status))"), "Payments reads each take's Stripe withdrawal");
+}
+
+// Fix round 30 (G8): no red "You can withdraw up to …" while a withdrawal is
+// being made (a read mid-request already counts the money as gone).
+{
+  const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  assert.ok(card.includes("if (busy || modal !== \"withdraw\" || !withdrawal || withdrawal.previous || liveStripeMax == null"), "the dialog's Available is not moved mid-request");
+  assert.ok(card.includes("{!busy && !error && !withdrawal.previous && withdrawal.amountText && amountProblem ?"), "the over-balance line is not drawn mid-request");
+  assert.ok(card.includes("{!busy && !error && stripeMinimumProblem ?"), "nor the minimum line");
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");
