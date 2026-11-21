@@ -65,6 +65,7 @@ const ZH_SAMPLES = [
   { kind: "verification_reopened", title: "Your registration number changed: TSC will verify it again", body: "" },
   { kind: "order_completed", title: "TSC-1042 is complete", body: "Every step on this order is done." },
   { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; TSC holds it until the step is done.' },
+  { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; the step amount is added to the factory\'s balance once funded.' },
   { kind: "schedule_agreed", title: "The factory agreed the production steps on TSC-1042", body: "Confirm them and the order starts." },
   { kind: "schedule_updated", title: "The brand changed the production steps on TSC-1042", body: "Nothing starts until the brand confirms them. If something does not work for you, message the brand." },
   { kind: "schedule_updated", title: "The brand updated milestones on TSC-1042", body: "Review the updated production steps, payment amounts, and due dates." },
@@ -123,6 +124,10 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: 'Payment held for "Fit sample"', body: "TSC holds $1,200.00 for this step on TSC-1042. You can start this work; it is added to your balance when the brand approves it." },
   { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. TSC will pay the factory." },
   { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and pays the factory when you approve this step." },
+  { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. The step amount is added to the factory's balance." },
+  { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and adds it to the factory's balance when you approve this step." },
+  { kind: "payment_confirmed", title: "$1,200.00 added to your balance", body: '$1,200.00 added to your balance for "Deposit" on TSC-1042. Add a withdrawal method to receive earnings.' },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your connected payout account is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "payment_failed", title: 'Your payment for "Deposit" did not go through', body: "Your card was declined. Pay again from the step's payment page on TSC-1042." },
   { kind: "payment_failed", title: 'The payment for "Deposit" did not go through', body: "Nothing is held for this step on TSC-1042 yet. The brand has been asked to pay again." },
   { kind: "payment_processing", title: 'A payment for "Deposit" is on its way', body: "$1,200.00 on TSC-1042. It is still being confirmed. We will tell you when TSC holds it; please do not start this work yet." },
@@ -297,6 +302,21 @@ async function formatters() {
       payments: [{ id: "p", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "Deposit", sort: 1, due_on: "2026-10-26" } }],
     });
     expect("brand payments: due row", payments.rows?.[0]?.date, "Oct 26, 2026");
+    // Round 16 (one balance): a funded deposit (nothing to approve) and an
+    // approved step are the factory's, in its balance: the brand reads them
+    // in Paid, never Held; only money waiting for its approval is Held.
+    const oneBalance = brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
+      payments: [
+        { id: "dep", order_id: "o", state: "confirmed", amount_cents: 100000, charged_cents: 110000, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-20T10:00:00Z", order_milestones: { title: "Bulk deposit", kind: "payment_only" } },
+        { id: "ok", order_id: "o", state: "confirmed", amount_cents: 6500, charged_cents: 7000, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", release_requested_at: "2026-11-20T11:00:00Z", order_milestones: { title: "Fit sample", kind: "approval_and_payment" } },
+        { id: "wait", order_id: "o", state: "confirmed", amount_cents: 5000, charged_cents: 5400, currency: "USD", confirmed_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Lab dip", kind: "approval_and_payment" } },
+        { id: "out", order_id: "o", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
+      ],
+    });
+    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Paid,ok:Approved,out:Paid,wait:Funded");
+    expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$1,181.00");
+    expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$54.00");
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",

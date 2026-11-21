@@ -139,10 +139,15 @@ select is(pg_temp.word(current_setting('tsc.r8_back')::uuid), 'returned', 'a can
 -- are not Pending; every step cleared, none disputed, no Stripe money on its way yet).
 select is((pg_temp.bal() ->> 'pending_cents')::bigint, 0::bigint, 'no withdrawal is Pending');
 select is((pg_temp.bal() ->> 'processing_cents')::bigint,
-  (select sum((x ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x
-    where x ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
+  (select sum((p ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x,
+    jsonb_array_elements(coalesce(x -> 'parts', jsonb_build_array(jsonb_build_object('word', x -> 'word', 'amount_cents', x -> 'amount_cents')))) p
+    where p ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
   'waiting + on hold + on its way = Processing, to the cent');
-select is((pg_temp.bal() ->> 'processing_cents')::bigint, (10000 + 4500 + 1000)::bigint, 'that is $100 + $45 + $10');
+-- Round 16: the $45 on the refunded step went back to the brand: in no figure.
+select is((pg_temp.bal() ->> 'processing_cents')::bigint, (10000 + 1000)::bigint, 'that is $100 + $10; the refunded $45 is in none');
+select is((select p from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x, jsonb_array_elements(x -> 'parts') p
+            where (x ->> 'id')::uuid = current_setting('tsc.r8_hold')::uuid),
+  '{"word": "refunded", "amount_cents": 4500}'::jsonb, 'its part reads refunded, never on hold');
 
 -- Stripe: on its way before its arrival day, paid after, returned when refused
 -- or its payout failed.
@@ -156,8 +161,9 @@ select is(pg_temp.word('ce880000-0000-0000-0000-000000000003'), 'returned', 'Str
 select is((select (x ->> 'amount_cents')::bigint from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x where x ->> 'id' = 'ce880000-0000-0000-0000-000000000001'),
   2950::bigint, 'a Stripe withdrawal''s amount is the US dollars that left, net of the fee');
 select is((pg_temp.bal() ->> 'processing_cents')::bigint,
-  (select sum((x ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x
-    where x ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
+  (select sum((p ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x,
+    jsonb_array_elements(coalesce(x -> 'parts', jsonb_build_array(jsonb_build_object('word', x -> 'word', 'amount_cents', x -> 'amount_cents')))) p
+    where p ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
   'with Stripe on its way too, the lines still add up to Processing');
 select is((pg_temp.bal() -> 'parts' ->> 'stripe_on_way_cents')::bigint, 2950::bigint, 'the Stripe part on its way is in parts');
 select is((pg_temp.bal() ->> 'total_cents')::bigint,
@@ -307,8 +313,8 @@ select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid), '[{"word": "
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refunded(''ce8f1002-0000-0000-0000-000000000002'', ''pi_pgtap_r8p_2'', ''The payment was refunded.'')')$$,
   'the $50 step is refunded');
 select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid),
-  '[{"word": "waiting", "amount_cents": 2500}, {"word": "on_hold", "amount_cents": 5000}]'::jsonb,
-  'the $75 request: $25 still waiting, $50 on hold');
+  '[{"word": "waiting", "amount_cents": 2500}, {"word": "refunded", "amount_cents": 5000}]'::jsonb,
+  'the $75 request: $25 still waiting, $50 refunded (round 16: never on hold)');
 select is((select sum((p ->> 'amount_cents')::bigint)::bigint from jsonb_array_elements(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid)) p),
   7500::bigint, 'its parts add up to its amount');
 select is(pg_temp.parts_of(current_setting('tsc.r8p_clean')::uuid), '[{"word": "waiting", "amount_cents": 4000}]'::jsonb,
