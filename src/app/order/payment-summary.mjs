@@ -123,7 +123,7 @@ export function figuresByPayment(figures) {
  */
 export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed_to_tsc_cents ?? figures?.owed_to_tsc_cents) || 0);
 /** The card's line for it (Available already counts it). */
-export const owedToTscLine = (cents, formatMoney) => (cents > 0 ? `${formatMoney(cents, "USD")} owed to TSC: refunded after you withdrew it.` : null);
+export const owedToTscLine = (cents, formatMoney) => (cents > 0 ? `You owe TSC ${formatMoney(cents, "USD")}. A payment was refunded after you withdrew it.` : null);
 
 /**
  * The dated rows a refund or a lost dispute adds to an earning (factory_balance()

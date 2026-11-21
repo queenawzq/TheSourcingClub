@@ -66,6 +66,7 @@ const ZH_SAMPLES = [
   { kind: "order_completed", title: "TSC-1042 is complete", body: "Every step on this order is done." },
   { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; TSC holds it until the step is done.' },
   { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; the step amount is added to the factory\'s balance once funded.' },
+  { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card. Once you pay, $1,200.00 goes to the factory\'s balance.' },
   { kind: "schedule_agreed", title: "The factory agreed the production steps on TSC-1042", body: "Confirm them and the order starts." },
   { kind: "schedule_updated", title: "The brand changed the production steps on TSC-1042", body: "Nothing starts until the brand confirms them. If something does not work for you, message the brand." },
   { kind: "schedule_updated", title: "The brand updated milestones on TSC-1042", body: "Review the updated production steps, payment amounts, and due dates." },
@@ -125,6 +126,7 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. TSC will pay the factory." },
   { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and pays the factory when you approve this step." },
   { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. The step amount is added to the factory's balance." },
+  { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. We add $1,200.00 to the factory's balance." },
   { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and adds it to the factory's balance when you approve this step." },
   { kind: "payment_confirmed", title: "$1,200.00 added to your balance", body: '$1,200.00 added to your balance for "Deposit" on TSC-1042. Add a withdrawal method to receive earnings.' },
   { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your connected payout account is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
@@ -150,6 +152,7 @@ const ZH_SAMPLES = [
   // Refunds and lost disputes recorded at their amount (20261121200000).
   { kind: "payment_refunded", title: "Your payment for \"Bulk deposit\" was refunded", body: "$50.00 was refunded to your card." },
   { kind: "payment_refunded", title: "Refund to the brand on \"Bulk deposit\"", body: "$45.36 less in your earnings from Spring jackets (TSC-000015). You had already withdrawn $400.00 of it." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $45.36. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You had already withdrawn $400.00 of it." },
   { kind: "payment_refunded", title: "Dispute lost on \"Bulk deposit\"", body: "$900.00 went back to the brand and is no longer in your earnings. You had already withdrawn $535.00 of it." },
   { kind: "payment_refunded", title: "Dispute lost on \"Trims\"", body: "TSC no longer holds money for this step on Spring jackets (TSC-000016). The brand has been asked to pay again; we will tell you when it is held." },
   { kind: "payment_refunded", title: "Your bank reversed your payment for \"Bulk deposit\"", body: "$992.08 went back to your card. Pay again from the step's payment page on Spring jackets (TSC-000016)." },

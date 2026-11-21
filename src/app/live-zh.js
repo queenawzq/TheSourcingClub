@@ -160,7 +160,7 @@ const PATTERNS = [
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
   [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
   // Refunded after it was withdrawn: owed to TSC, inside Available.
-  [/^(\$[\d,.]+) owed to TSC: refunded after you withdrew it\.$/, (m) => `欠 TSC ${m[1]}：提现后被退款。`],
+  [/^You owe TSC (\$[\d,.]+)\. A payment was refunded after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有一笔付款被退款。`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],

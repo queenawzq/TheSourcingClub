@@ -127,7 +127,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(
 select is(pg_temp.body('c16b0000-0000-0000-0000-0000000000e1', 'payment_confirmed', 'c16f0003-0000-0000-0000-000000000001'),
   '$70.00 added to your balance for "R16 deposit" on R16 request 1 (R16-1).', 'the factory''s notice names the step and the order');
 select matches(pg_temp.body('c16b0000-0000-0000-0000-00000000000b', 'payment_confirmed', 'c16f0003-0000-0000-0000-000000000001'),
-  ' received on R16 request 1 \(R16-1\)\. The step amount is added to the factory''s balance\.$', 'the brand is told it is added to the factory''s balance');
+  ' received on R16 request 1 \(R16-1\)\. We add \$70\.00 to the factory''s balance\.$', 'the brand is told the amount added to the factory''s balance');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''c16f0004-0000-0000-0000-000000000001'', ''ch_pgtap_r16_4'', ''card'', ''Visa ···4242'', 4000)')$$,
   'the paid step is funded');
 select matches(pg_temp.body('c16b0000-0000-0000-0000-00000000000b', 'payment_confirmed', 'c16f0004-0000-0000-0000-000000000001'),
@@ -142,7 +142,7 @@ select is((select count(*)::int from public.notifications where org_id = 'c16b00
 -- ===========================================================================
 select lives_ok($$select pg_temp.as_server('select public.advance_order_chain(''c16d0000-0000-0000-0000-000000000002'')')$$, 'order 2 opens its deposit');
 select is(pg_temp.body('c16b0000-0000-0000-0000-00000000000b', 'payment_due', 'c16f0001-0000-0000-0000-000000000002'),
-  '"R16 opening deposit". Fund it by card; the step amount is added to the factory''s balance once funded.',
+  '"R16 opening deposit". Fund it by card. Once you pay, $20.00 goes to the factory''s balance.',
   'a deposit due: added to the factory''s balance once funded, not "held until the step is done"');
 
 -- ===========================================================================

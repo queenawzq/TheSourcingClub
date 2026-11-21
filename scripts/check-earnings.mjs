@@ -635,7 +635,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.equal(owedToTscCents(tsc), 55000);
   assert.equal(owedToTscCents({ tsc }), 55000, "read through the Stripe answer's database part too");
   assert.equal(owedToTscCents(balanceFigures(tsc, null, null)), 55000, "and kept by the server's balance answer");
-  assert.equal(owedToTscLine(55000, fmt), "$550.00 owed to TSC: refunded after you withdrew it.");
+  assert.equal(owedToTscLine(55000, fmt), "You owe TSC $550.00. A payment was refunded after you withdrew it.");
   assert.equal(owedToTscLine(0, fmt), null, "no line without a debt");
   assert.doesNotMatch(owedToTscLine(55000, fmt), /next earnings/i, "never promises to take it from later earnings (not decided)");
   assert.deepEqual(refundRows(tsc), [
@@ -668,7 +668,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Chinese for the new screen words: the live patterns and the factory's dictionary.
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
-  for (const text of ["$550.00 owed to TSC: refunded after you withdrew it.", "$50.00 refunded", "$900.00 funded for Bulk deposit, added to your balance",
+  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }
