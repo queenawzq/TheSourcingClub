@@ -392,7 +392,7 @@
 .payout-withdrawal-status-row .payout-pending-withdrawal { margin-top: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 16px 0 0; }
 .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: auto minmax(0, 1fr); gap: 4px 20px; align-items: center; }
 .payout-withdrawal-status-row .payout-pending-label { grid-column: 1; }
-.payout-withdrawal-status-row .payout-pending-amount { grid-column: 1; grid-row: 2; }
+.payout-withdrawal-status-row .payout-pending-amount { grid-column: 1; grid-row: 2; color: var(--text-muted); font-size: 12px; line-height: 18px; font-weight: 400; }
 .payout-withdrawal-status-row .payout-pending-destination { grid-column: 2; grid-row: 1 / span 2; }
 /* Several pending rows: the same space above and below each divider. */
 .payout-withdrawal-status-row .payout-pending-withdrawal + .payout-pending-withdrawal { margin-top: 16px; }

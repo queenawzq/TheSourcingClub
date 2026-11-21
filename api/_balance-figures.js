@@ -5,10 +5,12 @@
  * /api/stripe-connect. Each dollar in exactly one figure:
  *
  *   available  TSC's Available + Stripe's available balance
- *   pending    TSC's Pending (which holds payouts on their way) + Stripe's
+ *   pending    TSC's Pending (earnings not yet available) + Stripe's
  *              pending balance
+ *   processing TSC's withdrawals in progress (asked for, or on their way)
+ *              + the Stripe money an open withdrawal holds
  *   paid out   TSC's Paid out less what is still in the Stripe account
- *   total      the four added up: the database's total, to the cent
+ *   total      the five added up: the database's total, to the cent
  *
  * Stripe amounts in another currency are converted with the indicative
  * display rates (payoutDisplayRates), and `estimated` says so. A currency
@@ -47,7 +49,7 @@ const converted = (rows) => (rows ?? []).some((row) => String(row.currency ?? ""
  * @param stripe    { available, pending, held? } from Stripe (the money in the
  *                  factory's own Stripe account now; `held`, rows of
  *                  { amount, currency }, is the part of `available` an open
- *                  withdrawal holds, counted in Pending), or null. Other keys
+ *                  withdrawal holds, counted in Processing), or null. Other keys
  *                  (onTheirWay, payouts) are ignored: the database counts
  *                  every payout, on its way or arrived, in the US dollars it
  *                  took from the balance.
@@ -65,21 +67,23 @@ export function balanceFigures(tsc, stripe, displayFx) {
     awaiting_cents: n(tsc?.awaiting_cents),
     available_cents: n(tsc?.available_cents),
     pending_cents: n(tsc?.pending_cents),
+    processing_cents: n(tsc?.processing_cents),
     paid_out_cents: n(tsc?.paid_out_cents),
     has_method: Boolean(tsc?.has_method),
     next_cleared_at: tsc?.next_cleared_at ?? null,
     withdrawals: tsc?.withdrawals ?? [],
   };
   // Money in the Stripe account an open withdrawal holds (its own part, or
-  // owed money transferred for its payout) is on its way: Pending.
+  // owed money transferred for its payout) is on its way: Processing.
   const heldCents = stripe ? usdTotal(stripe.held ?? [], displayFx) : 0;
   const availableRaw = stripe ? usdTotal(stripe.available, displayFx) : null;
   const pendingRaw = stripe ? usdTotal(stripe.pending, displayFx) : null;
   const heldKnown = heldCents == null ? 0 : Math.min(heldCents, availableRaw ?? 0);
   const parts = stripe ? {
     available_cents: availableRaw == null ? null : availableRaw - heldKnown,
-    pending_cents: pendingRaw == null ? null : pendingRaw + heldKnown,
-    // Of Pending, the Stripe money an open withdrawal holds (on its way).
+    pending_cents: pendingRaw,
+    // The Stripe money an open withdrawal holds (on its way): Processing.
+    processing_cents: heldKnown,
     held_cents: heldKnown,
     // Kept for readers of the old shape: the database now holds these.
     in_transit_cents: 0,
@@ -91,23 +95,28 @@ export function balanceFigures(tsc, stripe, displayFx) {
     // more than the database counted as sent: Paid out never goes below
     // zero, and the excess comes off the Stripe part of Available (then of
     // Pending), so the total stays the database's.
-    let over = Math.max(0, parts.available_cents + parts.pending_cents - base.paid_out_cents);
+    let over = Math.max(0, parts.available_cents + parts.pending_cents + parts.processing_cents - base.paid_out_cents);
     const fromAvailable = Math.min(over, parts.available_cents);
     parts.available_cents -= fromAvailable;
     over -= fromAvailable;
-    parts.pending_cents -= Math.min(over, parts.pending_cents);
+    const fromPending = Math.min(over, parts.pending_cents);
+    parts.pending_cents -= fromPending;
+    over -= fromPending;
+    parts.processing_cents -= Math.min(over, parts.processing_cents);
+    parts.held_cents = parts.processing_cents;
   }
-  const inStripe = known ? parts.available_cents + parts.pending_cents : 0;
+  const inStripe = known ? parts.available_cents + parts.pending_cents + parts.processing_cents : 0;
   const figures = known ? {
     ...base,
     available_cents: base.available_cents + parts.available_cents,
     pending_cents: base.pending_cents + parts.pending_cents,
+    processing_cents: base.processing_cents + parts.processing_cents,
     paid_out_cents: base.paid_out_cents - inStripe,
     estimated: [stripe.available, stripe.pending].some(converted),
   } : { ...base, estimated: false };
   return {
     ...figures,
-    total_cents: figures.awaiting_cents + figures.available_cents + figures.pending_cents + figures.paid_out_cents,
+    total_cents: figures.awaiting_cents + figures.available_cents + figures.pending_cents + figures.processing_cents + figures.paid_out_cents,
     tsc: tsc ?? null,
     stripe: known ? parts : null,
   };

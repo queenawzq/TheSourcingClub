@@ -1143,7 +1143,7 @@ export const factoryMainZhText = {
   "Refunded": "已退款",
   "Nothing goes back to your balance: the brand's payment was refunded.": "没有款项回到你的余额：品牌的付款已退款。",
   // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
-  "Pending withdrawal": "待处理提现",
+  "Processing withdrawal": "处理中的提现",
   "Withdraw full amount": "提取全部金额",
   "Cancelling…": "正在取消…",
   "Nothing to withdraw yet": "暂无可提现金额",
@@ -1151,7 +1151,7 @@ export const factoryMainZhText = {
   "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval.": "所选客户（或全部客户）已付款项中的收入，包括待审批的款项。",
   "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance.": "等待品牌审批该里程碑的款项。审批后将转入你的可提现余额。",
   "Pending payments become available to withdraw after processing.": "待处理款项处理完成后即可提现。",
-  "Payments still processing and withdrawals on their way to you.": "仍在处理中的款项，以及正在发给你的提现。",
+  "Payments still processing and money on hold.": "仍在处理中的款项，以及暂扣的款项。",
   "Money that has been paid out to you": "已支付给你的款项",
   // Withdrawal methods: the chooser, the method menu, and the bank and Wise forms.
   "Unified Social Credit Code": "统一社会信用代码",

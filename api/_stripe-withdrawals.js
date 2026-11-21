@@ -801,7 +801,7 @@ async function tellWithdrawalAsked(stripe, db, row, payout) {
     to = to ?? "your bank account";
     await db.from("notifications").insert({
       org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
-      title: `Withdrawal of ${asked} requested`, body: `To ${to}.`,
+      title: `Withdrawal of ${asked} requested`, body: `To ${to.replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`,
       data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
         receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },
     });

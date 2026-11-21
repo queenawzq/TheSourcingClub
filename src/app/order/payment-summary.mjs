@@ -66,20 +66,22 @@ export function cardPendingCents(pendingTotal, shownElsewhere = 0) {
  * payments into a figure.
  *
  * The four figures over the Transactions list, in US$ cents. Total earnings
- * is the four added up, never worked out on its own. Undefined (each) until
- * the figures answer.
+ * is the server's figures added up, never worked out on its own: the four,
+ * plus withdrawals in progress (processing_cents), which are in no card.
+ * Undefined (each) until the figures answer.
  */
 export function summaryFrom(figures) {
-  if (!figures) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
+  if (!figures) return { total: undefined, approval: undefined, pending: undefined, processing: undefined, paid: undefined };
   const n = (value) => Number(value) || 0;
   const approval = n(figures.awaiting_cents);
   const available = n(figures.available_cents);
   const pending = n(figures.pending_cents);
+  const processing = n(figures.processing_cents);
   const paid = n(figures.paid_out_cents);
-  return { total: approval + available + pending + paid, approval, available, pending, paid };
+  return { total: approval + available + pending + processing + paid, approval, available, pending, processing, paid };
 }
 
-const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"];
+const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "processing_cents", "paid_out_cents"];
 
 /**
  * The Stripe answer's figures kept up to date with the database's: the
@@ -156,9 +158,12 @@ export function clearingNote(row, clearing) {
   return day ? `Available ${new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : null;
 }
 
+/** "To bank account ending in 0154.": a Stripe destination label mid-sentence, lower case. */
+export const toDestination = (label) => `To ${String(label).replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`;
+
 /** The bell's words for a failed withdrawal, as a row's note. No trailing full stop, like the short asks. */
 export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
-const ASKED_STATUS = { requested: "Waiting", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
+const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
 /** A withdrawal the factory asked for, as a Transactions row. A cancelled one never happened. */
@@ -448,16 +453,18 @@ export function companyStripeRows(withdrawals = [], methodName = () => null, now
 }
 
 /**
- * The card's lines under the balance, from the Pending figure, in US$ cents,
- * adding up to it exactly:
+ * The card's lines under the balance, in US$ cents, from the Pending figure
+ * (earnings not yet available) and the Processing one (withdrawals in
+ * progress), adding up to the two exactly:
  *   clearing  card payments not yet cleared (TSC's, and the factory's own
  *             Stripe pending balance): "$X pending. Available to withdraw on …"
+ *             Pending is clearing plus the disputed part of onHold.
  *   onHold    steps whose card charge is disputed, and parts of a waiting
  *             withdrawal whose step was refunded: "$Z on hold"
- *   waiting   PayPal / Wise withdrawals asked for and waiting for staff:
- *             "$W waiting"
- *   onItsWay  the rest: withdrawals sent and on their way to the bank, and
- *             old step-by-step payouts being sent: "$Y on its way"
+ *   waiting   PayPal / Wise withdrawals asked for and waiting for staff
+ *             (shown by their own row, no line)
+ *   onItsWay  the rest of Processing: withdrawals sent and on their way to
+ *             the bank, and old step-by-step payouts being sent: "$Y on its way"
  * `opens` are the open PayPal / Wise withdrawals (factory_withdrawals).
  * Null until the figures answer.
  */
@@ -467,6 +474,7 @@ export function pendingParts(figures, opens = []) {
   const base = figures.tsc ?? figures;
   const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
+  const processing = n(figures.processing_cents);
   const list = base.withdrawals ?? figures.withdrawals ?? null;
   // Each withdrawal's parts (factory_balance().withdrawals[].parts): a waiting
   // request with a step under it refunded or disputed since is split into its
@@ -481,16 +489,17 @@ export function pendingParts(figures, opens = []) {
   // without it (an older server), the open requests and the refunded rows do.
   const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
     .reduce((sum, row) => sum + n(row.amount_cents), 0);
-  const onHold = Math.min(pending, n(parts.disputed_cents) + refundedHeld);
-  // Stripe's pending part, less what an open withdrawal holds there (on its
-  // way, not clearing: api/_balance-figures.js `held_cents`).
-  const stripeClearing = Math.max(0, n(figures.stripe?.pending_cents) - n(figures.stripe?.held_cents));
-  const clearing = Math.min(pending - onHold, n(parts.owed_clearing_cents) + stripeClearing);
+  // Pending is what is clearing and the disputed steps; Processing holds the
+  // withdrawals, held parts included.
+  const disputed = Math.min(pending, n(parts.disputed_cents));
+  const heldInWithdrawals = Math.min(processing, refundedHeld);
+  const onHold = disputed + heldInWithdrawals;
+  const clearing = pending - disputed;
   const asked = list ? sumOf("waiting")
     : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
-  const waiting = Math.min(pending - onHold - clearing, asked);
+  const waiting = Math.min(processing - heldInWithdrawals, asked);
   // The rest: withdrawals the server calls on their way, and old step-by-step payouts being sent.
-  return { pending, clearing, onHold, waiting, onItsWay: pending - onHold - clearing - waiting };
+  return { pending, processing, clearing, onHold, waiting, onItsWay: processing - heldInWithdrawals - waiting };
 }
 
 /**
@@ -523,7 +532,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
           : own?.status === "failed" ? WITHDRAWAL_FAILED_NOTE
           : paid && w.fee_cents != null ? `Fee ${money(fee)}, taken from it`
           : null,
-        status: w.word === "waiting" ? "Waiting" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
+        status: w.word === "waiting" ? "Processing" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
           : paid ? "Completed" : ASKED_STATUS[own?.status] ?? "Failed",
         failed: w.word === "returned",
         amount: -(Number(w.amount_cents) - (paid ? fee : 0)),
@@ -538,7 +547,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       ...base,
       id: `stripe-${w.id}`,
       title: "Bank transfer",
-      meta: w.to ? [`To ${w.to}.`, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
+      meta: w.to ? [toDestination(w.to), own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
       arrives: w.word === "returned" ? null : arrives,
       note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
       status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",

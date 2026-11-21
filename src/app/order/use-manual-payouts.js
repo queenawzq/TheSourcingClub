@@ -57,9 +57,11 @@ export const validPaypalEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pay
 
 export function useManualPayouts(orgId) {
   const [accounts, setAccounts] = useState(null);
-  // Bank payouts TSC owes this factory: approved, still held. The one TSC
-  // pays cannot be removed while there are any (the same rule as the
-  // database's guard, 20261029000300), so the dialog refuses before asking.
+  // Money being sent to an account now, by account: a withdrawal to it
+  // waiting or being paid, or a payout per step to it under way. That account
+  // cannot be removed until it is sent (the same rule as the database's guard,
+  // 20261120330000), so the dialog refuses before asking. Approved money in
+  // the balance is on its way to no account and never stops a removal.
   const [owed, setOwed] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(blankPayout());
@@ -68,16 +70,18 @@ export function useManualPayouts(orgId) {
 
   // The one TSC pays first, then the rest as they were added.
   const load = useCallback(async () => {
-    const [rows, owedRows] = await Promise.all([
+    const [rows, asked, perStep] = await Promise.all([
       supabase.from("factory_payout_accounts").select(COLUMNS).eq("org_id", orgId)
         .order("is_primary", { ascending: false }).order("created_at"),
-      supabase.from("order_payments").select("amount_cents, payout_fee_cents, currency, production_orders!inner (factory_org_id)")
-        .eq("state", "confirmed").not("release_requested_at", "is", null)
-        .eq("production_orders.factory_org_id", orgId),
+      supabase.from("factory_withdrawals").select("account_id, amount_cents, currency")
+        .eq("org_id", orgId).in("status", ["requested", "paying"]).not("account_id", "is", null),
+      supabase.from("provider_payouts").select("account_id, amount_cents, currency")
+        .eq("factory_org_id", orgId).eq("status", "processing").not("account_id", "is", null),
     ]);
     const list = unwrap(rows, "load your payout accounts");
     setAccounts(list);
-    setOwed(unwrap(owedRows, "load what TSC owes you").map((row) => ({ amount: Number(row.amount_cents) - (Number(row.payout_fee_cents) || 0), currency: row.currency })));
+    setOwed([...unwrap(asked, "load what TSC is sending you"), ...unwrap(perStep, "load what TSC is sending you")]
+      .map((row) => ({ accountId: row.account_id, amount: Number(row.amount_cents) || 0, currency: row.currency })));
     return list;
   }, [orgId]);
 

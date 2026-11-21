@@ -149,13 +149,12 @@ const PATTERNS = [
   [/^Updated (.+)$/, (m, inner) => `更新于 ${inner(m[1])}`],
   [new RegExp(`^Available to withdraw on ${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现`],
   // Where a Stripe withdrawal went (stripe_withdrawals.destination_label), in the notices' words.
-  [/^To (Bank account|Debit card) ending in (\d+)\.$/, (m) => `转至${m[1] === "Bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）。`],
+  [/^To (bank account|debit card) ending in (\d+)\.$/, (m) => `转至${m[1] === "bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）。`],
   // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
   [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待处理。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
   [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待处理。处理完成后即可提现。`],
   [/^Part of your balance is held in ([A-Z]{3}), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1]} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
-  [/^(\$[\d,.]+) waiting$/, (m) => `${m[1]} 等待中`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],

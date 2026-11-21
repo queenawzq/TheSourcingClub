@@ -106,7 +106,7 @@ begin
 end;
 $f$;
 create function pg_temp.sum4(j jsonb) returns bigint language sql as $f$
-  select (j ->> 'awaiting_cents')::bigint + (j ->> 'available_cents')::bigint + (j ->> 'pending_cents')::bigint + (j ->> 'paid_out_cents')::bigint;
+  select (j ->> 'awaiting_cents')::bigint + (j ->> 'available_cents')::bigint + (j ->> 'pending_cents')::bigint + (j ->> 'processing_cents')::bigint + (j ->> 'paid_out_cents')::bigint;
 $f$;
 create function pg_temp.notes(k text, subject uuid) returns text language sql as $f$
   select string_agg(title || ' | ' || body, ' || ' order by created_at, title like 'Hold lifted%') from public.notifications

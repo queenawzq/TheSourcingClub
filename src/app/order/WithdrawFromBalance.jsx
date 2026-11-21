@@ -142,7 +142,7 @@ export const withdrawOptionLabel = (row, language = "en") => {
 };
 
 /**
- * Pending withdrawal details and the owner’s cancellation action: one row per
+ * Processing withdrawal details and the owner’s cancellation action: one row per
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
@@ -155,7 +155,7 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     return list.map((row) => (
       <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
-          <span className="payout-pending-label">Pending withdrawal</span>
+          <span className="payout-pending-label">Processing withdrawal</span>
           <span className="payout-pending-amount">{formatMoney(row.amount_cents, row.currency)}</span>
           <span className="payout-pending-destination">{destination(row)}</span>
           {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}

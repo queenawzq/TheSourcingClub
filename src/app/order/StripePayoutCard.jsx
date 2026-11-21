@@ -670,7 +670,7 @@ export default function StripePayoutCard({
       return failure?.details?.reach ?? null;
     }
   }, [org.id, isOwner, account?.transfers_active]);
-  const movedKey = `${fromBalance.available}|${fromBalance.rows?.length}|${(fromBalance.opens ?? []).length}|${figures?.available_cents}|${figures?.pending_cents}|${figures?.paid_out_cents}|${manualAccounts.length}`;
+  const movedKey = `${fromBalance.available}|${fromBalance.rows?.length}|${(fromBalance.opens ?? []).length}|${figures?.available_cents}|${figures?.pending_cents}|${figures?.processing_cents}|${figures?.paid_out_cents}|${manualAccounts.length}`;
   const movedSeen = useRef(null);
   useEffect(() => {
     if (movedSeen.current === null) { movedSeen.current = movedKey; return; }
@@ -733,8 +733,8 @@ export default function StripePayoutCard({
     setMethodNotice(null);
     setModal("account");
   };
-  // Owed by bank only while Stripe is not the one paying this factory.
-  const bankOwed = payoutRoute === "stripe" && account?.transfers_active ? [] : manualOwed;
+  // Money being sent to a saved method now, by account (useManualPayouts).
+  const bankOwed = manualOwed;
   // The account as Stripe lists it now (Settings passes only its id).
   const removingMethod = removing ? connectedMethods.find((method) => method.id === removing.id) ?? null : null;
   const removalRefusal = removingMethod
@@ -887,10 +887,12 @@ export default function StripePayoutCard({
 
   // Which bank account is being removed, and why it may not be yet.
   const otherManual = removingManual ? manualAccounts.filter((row) => row.id !== removingManual.id) : [];
-  // The one TSC pays may go: another takes its place, or (the last one)
-  // TSC holds the earnings. Only money TSC is sending to it now keeps it.
+  // Any method may go (the default: another takes its place, or the last one
+  // and TSC holds the earnings). Only money TSC is sending to it now keeps it;
+  // the database's payout_owed refusal is the backstop (payoutRemovalError).
+  const sendingToRemoved = removingManual ? bankOwed.filter((row) => row.accountId === removingManual.id) : [];
   const manualRemovalRefusal = !removingManual ? null
-    : removingManual.is_primary && !otherManual.length && bankOwed.length ? `${bankOwedSentence(bankOwed)} Remove it after that payment is sent.`
+    : sendingToRemoved.length ? `${bankOwedSentence(sendingToRemoved)} Remove it after that payment is sent.`
     : null;
   const manualSuccessor = removingManual?.is_primary && otherManual.length
     ? otherManual.find((row) => row.id === promoteId) ?? otherManual[0]
@@ -975,7 +977,7 @@ export default function StripePayoutCard({
   // Someone who reads no Stripe balance (a member) is told the same by the
   // server's figures: converted, and money sitting in the Stripe account now.
   const estimatedLabel = Boolean(heldCurrency) || (!balance && Boolean(figures?.estimated)
-    && (Number(figures?.stripe?.available_cents) || 0) + (Number(figures?.stripe?.pending_cents) || 0) > 0);
+    && (Number(figures?.stripe?.available_cents) || 0) + (Number(figures?.stripe?.pending_cents) || 0) + (Number(figures?.stripe?.processing_cents) || 0) > 0);
   const reach = withdrawReach(figures, freshReach ?? balance?.reach ?? null, fromBalance.available);
   // The earliest day money still clearing can be withdrawn: a card payment
   // TSC holds (the database's), or Stripe's for money in the factory's own
@@ -987,9 +989,10 @@ export default function StripePayoutCard({
     : availableFrom(balance);
   // "$X pending": only card payments still clearing, with the day they can be withdrawn.
   const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
-  // The Pending figure in its three lines, adding up to it exactly: money
-  // clearing ("$X pending. Available to withdraw on …"), withdrawals and old
-  // payouts on their way ("$Y on its way"), disputed steps ("$Z on hold").
+  // The Pending and Processing figures in their lines: money clearing ("$X
+  // pending. Available to withdraw on …"), withdrawals and old payouts on
+  // their way ("$Y on its way"), disputed steps ("$Z on hold"). A withdrawal
+  // waiting for staff is said by its own row only.
   // A withdrawal on its way is never called available to withdraw.
   const pendingLines = pendingParts(figures, fromBalance.opens) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
   const cardPending = pendingLines.clearing;
@@ -1070,7 +1073,6 @@ export default function StripePayoutCard({
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
-          {figures && pendingLines.waiting > 0 ? <p data-testid="payout-waiting">{`${formatMoney(pendingLines.waiting, "USD")} waiting`}</p> : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}

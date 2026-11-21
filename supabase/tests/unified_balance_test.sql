@@ -337,11 +337,12 @@ set local session_replication_role = origin;
 select pg_temp.act_as('c'); set local role authenticated;
 select is(pg_temp.bal(7, 'awaiting_cents'), 800::bigint, 'Awaiting approval: only the funded step not yet approved');
 select is(pg_temp.bal(7, 'available_cents'), (1600 + 6400)::bigint, 'Available: owed and cleared, plus pool money not in a withdrawal');
-select is(pg_temp.bal(7, 'pending_cents'), (3200 + 12800)::bigint, 'Pending: owed money still clearing, plus a requested pool withdrawal');
+select is(pg_temp.bal(7, 'pending_cents'), 3200::bigint, 'Pending: owed money still clearing');
+select is(pg_temp.bal(7, 'processing_cents'), 12800::bigint, 'Processing: a requested pool withdrawal, not Pending');
 select is(pg_temp.bal(7, 'paid_out_cents'), 25400::bigint, 'Paid out: the paid withdrawal, net of its fee');
 select is(pg_temp.bal(7, 'total_cents'),
-  pg_temp.bal(7, 'awaiting_cents') + pg_temp.bal(7, 'available_cents') + pg_temp.bal(7, 'pending_cents') + pg_temp.bal(7, 'paid_out_cents'),
-  'Total is the sum of the four figures');
+  pg_temp.bal(7, 'awaiting_cents') + pg_temp.bal(7, 'available_cents') + pg_temp.bal(7, 'pending_cents') + pg_temp.bal(7, 'processing_cents') + pg_temp.bal(7, 'paid_out_cents'),
+  'Total is the sum of the figures, withdrawals in progress included');
 select is(pg_temp.bal(7, 'total_cents'), (800 + 1600 + 3200 + 6400 + 12800 + 25400)::bigint,
   'and every dollar is in exactly one: refunded and cancelled money is in none, the fee in none');
 reset role;
@@ -350,7 +351,7 @@ reset role;
 update public.order_payments set funds_available_at = now() - interval '1 minute' where id = 'ba1f0005-0000-0000-0000-000000000077';
 select pg_temp.act_as('c'); set local role authenticated;
 select is(pg_temp.bal(7, 'available_cents'), (1600 + 3200 + 6400)::bigint, 'cleared: the step moves to Available');
-select is(pg_temp.bal(7, 'pending_cents'), 12800::bigint, 'and out of Pending');
+select is(pg_temp.bal(7, 'pending_cents'), 0::bigint, 'and out of Pending');
 reset role;
 
 -- A step whose charge was never given a cleared date (approved before this
@@ -587,7 +588,8 @@ select is(
   3, 'F2: the board''s waiting-on-staff rows for these fixtures are the three attempts (f2, f3, f4)');
 reset role;
 select pg_temp.act_as('2'); set local role authenticated;
-select is(pg_temp.bal(2, 'pending_cents'), 15000::bigint, 'F2: the factory sees the payout in flight as Pending, with its clearing step');
+select is(pg_temp.bal(2, 'pending_cents'), 5000::bigint, 'F2: its clearing step is Pending');
+select is(pg_temp.bal(2, 'processing_cents'), 10000::bigint, 'F2: the payout in flight is processing, not Pending');
 select is(pg_temp.bal(2, 'available_cents'), 0::bigint, 'F2: not Available, so it cannot be taken twice');
 reset role;
 

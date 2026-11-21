@@ -1462,9 +1462,9 @@ console.log("\nphase 3 — the order runs");
         if (balance.error) fail("the factory reads its one balance", balance.error);
         else {
           const b = balance.data;
-          const four = ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"].map((k) => Number(b[k]));
+          const four = ["awaiting_cents", "available_cents", "pending_cents", "processing_cents", "paid_out_cents"].map((k) => Number(b[k]));
           four.every(Number.isFinite) && Number(b.total_cents) === four.reduce((a, c) => a + c, 0)
-            ? ok("factory_balance returns the four figures, and total is their sum")
+            ? ok("factory_balance returns its figures (withdrawals in progress included), and total is their sum")
             : fail("factory_balance figures do not add up", { message: JSON.stringify(b) });
           const mine = (b.rows ?? []).filter((r) => r.payment_id === deposit.id);
           mine.length === 1 && ["available", "pending"].includes(mine[0].figure)

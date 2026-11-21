@@ -659,7 +659,7 @@ for (const [why, row] of [
   assert.equal(summary.pending, 0);
   assert.equal(summary.total, 6421, "total is the four added up: the step less the fee");
   assert.deepEqual([...figuresByPayment(figures).get("p1")].sort(), ["available", "paid_out"], "the split step is in both figures, each part once");
-  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined }, "no figures yet: nothing guessed");
+  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, processing: undefined, paid: undefined }, "no figures yet: nothing guessed");
   // A step released by its withdrawal is not a second, "Bank transfer" withdrawal.
   assert.equal(withdrawalRows([{ ...step, state: "released", released_by: "u", released_note: "Withdrawn" }]).length, 0);
   const rows = askedWithdrawalRows([{ id: "w", status: "paid", amount_cents: 4000, currency: "USD", provider: "paypal", paid_to: "a@b.c", fee_cents: 79, receives_minor: 3921, paid_at: "2026-11-16" }, { id: "x", status: "cancelled", amount_cents: 1, currency: "USD" }]);
@@ -842,7 +842,7 @@ for (const [why, row] of [
 // Stripe money (D1), each dollar in exactly one figure, total the sum of four.
 {
   const { balanceFigures } = await import("../api/_balance-figures.js");
-  const sum = (f) => f.awaiting_cents + f.available_cents + f.pending_cents + f.paid_out_cents;
+  const sum = (f) => f.awaiting_cents + f.available_cents + f.pending_cents + f.processing_cents + f.paid_out_cents;
   const tsc = (over = {}) => ({ awaiting_cents: 0, available_cents: 0, pending_cents: 0, paid_out_cents: 0, has_method: true, next_cleared_at: null,
     parts: { stripe_released_cents: 0 }, ...over });
 
@@ -985,19 +985,20 @@ for (const [why, row] of [
     assert.ok([f.awaiting_cents, f.available_cents, f.pending_cents, f.paid_out_cents].every((x) => x >= 0), `no figure below zero (${avail}/${pend}/${paid})`);
   }
   // 94eaef7a: money in the Stripe account an open withdrawal holds is on its
-  // way: moved from Available to Pending, the total unchanged, never more
-  // than is available.
+  // way: moved from Available to Processing (round 14: withdrawals in
+  // progress are not Pending), the total unchanged, never more than is available.
   {
     const db = tsc({ awaiting_cents: 0, available_cents: 500, pending_cents: 0, paid_out_cents: 200000 });
     const all = balanceFigures(db, { available: [{ amount: 175597, currency: "usd" }], pending: [], held: [{ amount: 175597, currency: "usd" }] }, null);
     assert.equal(all.stripe.available_cents, 0, "all of it held: the Stripe part of Available is 0");
     assert.equal(all.available_cents, 500, "Available is only TSC's");
-    assert.equal(all.pending_cents, 175597, "and the held $1,755.97 is Pending");
+    assert.equal(all.pending_cents, 0, "the held $1,755.97 is not Pending");
+    assert.equal(all.processing_cents, 175597, "it is Processing");
     assert.equal(all.total_cents, 500 + 200000, "Total is the server's");
-    assert.equal(all.stripe.held_cents, 175597, "stripe.held_cents: the held amount moved to Pending");
+    assert.equal(all.stripe.held_cents, 175597, "stripe.held_cents: the held amount moved to Processing");
     const capped = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [], held: [{ amount: 5000, currency: "usd" }] }, null);
     assert.equal(capped.stripe.available_cents, 0, "held beyond what is available is capped");
-    assert.equal(capped.pending_cents, 1000, "only what is there moves to Pending");
+    assert.equal(capped.processing_cents, 1000, "only what is there moves to Processing");
     assert.equal(capped.stripe.held_cents, 1000, "and held_cents is capped at what is available");
     assert.equal(capped.total_cents, 500 + 200000);
     const none = balanceFigures(db, { available: [{ amount: 1000, currency: "usd" }], pending: [] }, null);

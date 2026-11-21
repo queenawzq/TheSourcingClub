@@ -228,7 +228,7 @@ create function pg_temp.figures_add_up(n int) returns boolean language sql as $f
   with b as (select public.factory_balance(pg_temp.org(n)) j)
   select (j ->> 'total_cents')::bigint
            = (j ->> 'awaiting_cents')::bigint + (j ->> 'available_cents')::bigint
-             + (j ->> 'pending_cents')::bigint + (j ->> 'paid_out_cents')::bigint
+             + (j ->> 'pending_cents')::bigint + (j ->> 'processing_cents')::bigint + (j ->> 'paid_out_cents')::bigint
      and not exists (
        select 1 from public.order_payments p join public.production_orders o on o.id = p.order_id
         where o.factory_org_id = pg_temp.org(n) and p.state in ('confirmed', 'released') and not p.withdrawal_pool
@@ -389,7 +389,8 @@ select ok((select not withdrawal_pool from public.order_payments where id = pg_t
 select pg_temp.act_as('01'); set local role authenticated;
 select is(pg_temp.reach(1, 'available_cents'), 15000::bigint, 'the $50 left on the step and the newest step are still reachable');
 select is(pg_temp.bal(1, 'available_cents'), 15000::bigint, 'Available $150');
-select is(pg_temp.bal(1, 'pending_cents'), 15000::bigint, 'Pending $150: the withdrawal');
+select is(pg_temp.bal(1, 'pending_cents'), 0::bigint, 'Pending $0: a withdrawal is not Pending');
+select is(pg_temp.bal(1, 'processing_cents'), 15000::bigint, 'Processing $150: the withdrawal');
 select is(pg_temp.bal(1, 'total_cents'), 30000::bigint, 'total unchanged');
 select ok(pg_temp.figures_add_up(1), 'each dollar in exactly one figure');
 select is(pg_temp.fig(1, pg_temp.pay(1, 2)), 'available,pending', 'the half-taken step is half Pending, half Available');
@@ -463,7 +464,7 @@ select ok((select state = 'confirmed' from public.order_payments where id = pg_t
   'the step half-sent (the other half still held) is not released yet');
 select pg_temp.act_as('01'); set local role authenticated;
 select is(pg_temp.bal(1, 'paid_out_cents'), (15000 - 300)::bigint, 'Paid out is the withdrawal less its fee');
-select is(pg_temp.bal(1, 'pending_cents'), 5000::bigint, 'Pending is the other withdrawal');
+select is(pg_temp.bal(1, 'processing_cents'), 5000::bigint, 'Processing is the other withdrawal');
 select is(pg_temp.bal(1, 'available_cents'), 10000::bigint, 'Available is the newest step');
 select is(pg_temp.bal(1, 'total_cents'), (30000 - 300)::bigint, 'the fee is in no figure');
 reset role;
@@ -574,7 +575,7 @@ select is((select count(*)::int from public.factory_withdrawals where org_id = p
 select pg_temp.act_as('05'); set local role authenticated;
 select is(pg_temp.reach(3, 'available_cents'), 0::bigint, 'e3: PayPal reaches nothing');
 select is(pg_temp.bal(3, 'available_cents'), 0::bigint, 'e3: Available $0');
-select is(pg_temp.bal(3, 'pending_cents'), 20000::bigint, 'e3: Pending $200 while Stripe sends it');
+select is(pg_temp.bal(3, 'processing_cents'), 20000::bigint, 'e3: Processing $200 while Stripe sends it');
 select ok(pg_temp.figures_add_up(3), 'e3: each dollar in one figure');
 reset role;
 
@@ -653,17 +654,17 @@ reset role;
 -- 6. Each dollar in exactly one figure, through every step of both roads (e7).
 -- ===========================================================================
 create function pg_temp.four(n int) returns text language sql as $f$
-  select format('%s/%s/%s/%s=%s', j ->> 'awaiting_cents', j ->> 'available_cents', j ->> 'pending_cents', j ->> 'paid_out_cents', j ->> 'total_cents')
+  select format('%s/%s/%s/%s/%s=%s', j ->> 'awaiting_cents', j ->> 'available_cents', j ->> 'pending_cents', j ->> 'processing_cents', j ->> 'paid_out_cents', j ->> 'total_cents')
     from (select public.factory_balance(pg_temp.org(n)) j) b;
 $f$;
 grant execute on function pg_temp.four(int) to authenticated;
 
 select pg_temp.act_as('09'); set local role authenticated;
-select is(pg_temp.four(7), '0/30000/0/0=30000', 'figures start: $300 Available');
+select is(pg_temp.four(7), '0/30000/0/0/0=30000', 'figures start: $300 Available');
 reset role;
 select lives_ok($$select pg_temp.stripe_claim(7, 15000, pg_temp.sw(7, 1))$$, 'Stripe claims $150');
 select pg_temp.act_as('09'); set local role authenticated;
-select is(pg_temp.four(7), '0/15000/15000/0=30000', 'claimed by Stripe: Pending, not Available');
+select is(pg_temp.four(7), '0/15000/0/15000/0=30000', 'claimed by Stripe: processing, not Available or Pending');
 select ok(pg_temp.figures_add_up(7), 'rows add up');
 reset role;
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
@@ -671,7 +672,7 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
      from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7, 1))),
   'the transfers are recorded');
 select pg_temp.act_as('09'); set local role authenticated;
-select is(pg_temp.four(7), '0/15000/0/15000=30000', 'sent to Stripe: Paid out here (the server re-splits it from Stripe)');
+select is(pg_temp.four(7), '0/15000/0/0/15000=30000', 'sent to Stripe: Paid out here (the server re-splits it from Stripe)');
 select is((public.factory_balance(pg_temp.org(7)) -> 'parts' ->> 'stripe_released_cents')::bigint, 15000::bigint,
   'and counted as Stripe-released, including the partial step');
 select ok(exists (select 1 from jsonb_array_elements(public.factory_balance(pg_temp.org(7)) -> 'rows') r
@@ -684,14 +685,14 @@ select set_config('tsc.uw_p7', pg_temp.ask('09', 7, 10000)::text, true);
 select is(pg_temp.take_of(pg_temp.pay(7, 2), current_setting('tsc.uw_p7')::uuid), 5000::bigint, 'PayPal takes the $50 left first');
 select is(pg_temp.take_of(pg_temp.pay(7, 3), current_setting('tsc.uw_p7')::uuid), 5000::bigint, 'then $50 of the newest');
 select pg_temp.act_as('09'); set local role authenticated;
-select is(pg_temp.four(7), '0/5000/10000/15000=30000', 'PayPal asked: Pending');
+select is(pg_temp.four(7), '0/5000/0/10000/15000=30000', 'PayPal asked: processing, not Pending');
 select ok(pg_temp.figures_add_up(7), 'rows add up');
 reset role;
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_withdrawal(%L, ''paid'', ''pp-uw-7'', 200, 9800, ''USD'', null)', current_setting('tsc.uw_p7'))),
   'PayPal pays it, fee $2');
 select pg_temp.act_as('09'); set local role authenticated;
-select is(pg_temp.four(7), '0/5000/0/24800=29800', 'paid: Paid out net of the fee; the fee is in no figure');
+select is(pg_temp.four(7), '0/5000/0/0/24800=29800', 'paid: Paid out net of the fee; the fee is in no figure');
 reset role;
 select ok((select state = 'released' and stripe_transfer_id is not null from public.order_payments where id = pg_temp.pay(7, 1)),
   'the step Stripe paid in full is released with its transfer');

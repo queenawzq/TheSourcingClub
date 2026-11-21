@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { ON_ITS_WAY, askedWithdrawalRows, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { ON_ITS_WAY, askedWithdrawalRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -424,7 +424,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
-    ["Pending", summary.pending, "Payments still processing and withdrawals on their way to you."],
+    ["Pending", summary.pending, "Payments still processing and money on hold."],
     ["Paid out", summary.paid, "Money that has been paid out to you"],
   ];
   // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
@@ -441,9 +441,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const poolById = new Map((fromBalance.rows ?? []).map((w) => [w.id, w]));
   const stripeById = new Map(stripeWithdrawals.map((w) => [w.id, w]));
   // Where a Stripe payout went, as the server recorded it for everyone ("To
-  // Bank account ending in 0154."); older rows only an owner's Stripe read can name.
+  // bank account ending in 0154."); older rows only an owner's Stripe read can name.
   const stripeMethodName = (w) => {
-    if (w.destination_label) return [`To ${w.destination_label}.`, w.destination_bank].filter(Boolean).join(" · ");
+    if (w.destination_label) return [toDestination(w.destination_label), w.destination_bank].filter(Boolean).join(" · ");
     const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
     return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
   };

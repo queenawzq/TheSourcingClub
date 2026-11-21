@@ -2906,10 +2906,10 @@ async function main() {
       const f1 = after?.body.figures ?? {};
       check(Number(f1.available_cents) === Number(f0.available_cents) - factoryAmount, "Available drops by exactly the amount withdrawn");
       check(Number(f1.total_cents) === Number(f0.total_cents) - fee, `the payout fee ($${(fee / 100).toFixed(2)}) is in no figure`);
-      check(Number(f1.total_cents) === ["awaiting_cents", "available_cents", "pending_cents", "paid_out_cents"].reduce((sum, key) => sum + Number(f1[key]), 0),
+      check(Number(f1.total_cents) === ["awaiting_cents", "available_cents", "pending_cents", "processing_cents", "paid_out_cents"].reduce((sum, key) => sum + Number(f1[key]), 0),
         "each dollar in exactly one figure");
-      check(Number(f1.pending_cents) + Number(f1.paid_out_cents) === Number(f0.pending_cents) + Number(f0.paid_out_cents) + factoryAmount - fee,
-        "what was withdrawn, less the fee, is Pending on its way or Paid out");
+      check(Number(f1.processing_cents ?? 0) + Number(f1.paid_out_cents) === Number(f0.processing_cents ?? 0) + Number(f0.paid_out_cents) + factoryAmount - fee,
+        "what was withdrawn, less the fee, is processing on its way or Paid out");
       await page.reload();
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
       await record(page, "Withdrawn to Stripe", "the step left the balance in one click; the payout is on its way or paid");

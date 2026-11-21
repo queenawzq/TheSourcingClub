@@ -135,13 +135,14 @@ select is(pg_temp.word(current_setting('tsc.r8_way')::uuid), 'on_its_way', 'one 
 select is(pg_temp.word(current_setting('tsc.r8_paid')::uuid), 'paid', 'a paid one: paid');
 select is(pg_temp.word(current_setting('tsc.r8_back')::uuid), 'returned', 'a cancelled one: returned');
 
--- The lines under the balance add up to Pending (nothing else is pending here:
--- every step cleared, none disputed, no Stripe money on its way yet).
-select is((pg_temp.bal() ->> 'pending_cents')::bigint,
+-- The withdrawal lines add up to Processing (round 14: withdrawals in progress
+-- are not Pending; every step cleared, none disputed, no Stripe money on its way yet).
+select is((pg_temp.bal() ->> 'pending_cents')::bigint, 0::bigint, 'no withdrawal is Pending');
+select is((pg_temp.bal() ->> 'processing_cents')::bigint,
   (select sum((x ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x
     where x ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
-  'waiting + on hold + on its way = Pending, to the cent');
-select is((pg_temp.bal() ->> 'pending_cents')::bigint, (10000 + 4500 + 1000)::bigint, 'that is $100 + $45 + $10');
+  'waiting + on hold + on its way = Processing, to the cent');
+select is((pg_temp.bal() ->> 'processing_cents')::bigint, (10000 + 4500 + 1000)::bigint, 'that is $100 + $45 + $10');
 
 -- Stripe: on its way before its arrival day, paid after, returned when refused
 -- or its payout failed.
@@ -154,14 +155,14 @@ select is(pg_temp.word('ce880000-0000-0000-0000-000000000002'), 'paid', 'Stripe,
 select is(pg_temp.word('ce880000-0000-0000-0000-000000000003'), 'returned', 'Stripe, refused: returned');
 select is((select (x ->> 'amount_cents')::bigint from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x where x ->> 'id' = 'ce880000-0000-0000-0000-000000000001'),
   2950::bigint, 'a Stripe withdrawal''s amount is the US dollars that left, net of the fee');
-select is((pg_temp.bal() ->> 'pending_cents')::bigint,
+select is((pg_temp.bal() ->> 'processing_cents')::bigint,
   (select sum((x ->> 'amount_cents')::bigint) from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x
     where x ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
-  'with Stripe on its way too, the lines still add up to Pending');
+  'with Stripe on its way too, the lines still add up to Processing');
 select is((pg_temp.bal() -> 'parts' ->> 'stripe_on_way_cents')::bigint, 2950::bigint, 'the Stripe part on its way is in parts');
 select is((pg_temp.bal() ->> 'total_cents')::bigint,
   (pg_temp.bal() ->> 'awaiting_cents')::bigint + (pg_temp.bal() ->> 'available_cents')::bigint
-  + (pg_temp.bal() ->> 'pending_cents')::bigint + (pg_temp.bal() ->> 'paid_out_cents')::bigint, 'Total is the sum of the four');
+  + (pg_temp.bal() ->> 'pending_cents')::bigint + (pg_temp.bal() ->> 'processing_cents')::bigint + (pg_temp.bal() ->> 'paid_out_cents')::bigint, 'Total is the sum of the figures');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x), 8, 'every withdrawal listed once');
 
 -- ===========================================================================

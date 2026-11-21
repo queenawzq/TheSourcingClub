@@ -77,12 +77,12 @@ test("the ledger is fully paginated and the database query is factory-scoped", a
 // target_client): the page never sums payments itself (D3, 20261120100000).
 // The per-client and "paid out by bank" rules these tests pinned on the
 // retired earningsSummaryFor() are pinned in supabase/tests/unified_balance_test.sql.
-test("the four figures are the server's, and Total is their sum", () => {
-  const figures = { awaiting_cents: 2000, available_cents: 1000, pending_cents: 300, paid_out_cents: 6500 };
-  assert.deepEqual(summaryFrom(figures), { total: 9800, approval: 2000, available: 1000, pending: 300, paid: 6500 });
+test("the figures are the server's, and Total is their sum (withdrawals in progress included)", () => {
+  const figures = { awaiting_cents: 2000, available_cents: 1000, pending_cents: 300, processing_cents: 400, paid_out_cents: 6500 };
+  assert.deepEqual(summaryFrom(figures), { total: 10200, approval: 2000, available: 1000, pending: 300, processing: 400, paid: 6500 });
 });
 test("before the figures are read, every figure is unknown, never zero", () => {
-  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
+  assert.deepEqual(summaryFrom(null), { total: undefined, approval: undefined, pending: undefined, processing: undefined, paid: undefined });
 });
 test("a step split between figures is in each once", () => {
   const map = figuresByPayment({ rows: [
