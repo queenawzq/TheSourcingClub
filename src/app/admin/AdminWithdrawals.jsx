@@ -179,7 +179,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                     <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}
                       {refunded > 0 && row.status === "requested" ? <span className="admin-sub" data-testid="withdrawal-refunded-part">{`${moneyIn(refunded, row.currency)} went back to the brand.`}</span> : null}
                       {/* Already sent: if the payout completes, that part is owed to TSC (To recover). */}
-                      {refunded > 0 && row.status === "paying" ? <span className="admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC ${moneyIn(refunded, row.currency)}.`}</span> : null}</td>
+                      {refunded > 0 && row.status === "paying" ? <span className="admin-sub admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC ${moneyIn(refunded, row.currency)}.`}</span> : null}</td>
                     <td><WithdrawalActions row={row} onChanged={onChanged} BankDetails={BankDetails} /></td>
                   </tr>
                 );

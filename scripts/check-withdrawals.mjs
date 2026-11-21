@@ -678,7 +678,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.doesNotMatch(sentence, /pay again/i, sentence);
   assert.match(sentence, /PayPal address/);
   assert.ok(sentence.endsWith(BACK_IN_BALANCE));
-  const [row] = askedWithdrawalRows([{ id: "f", status: "failed", amount_cents: 100, currency: "USD", provider: "paypal", fee_cents: 2, receives_minor: 98, reason: sentence }]);
+  const [row] = askedWithdrawalRows([{ id: "f", status: "failed", amount_cents: 100, currency: "USD", provider: "paypal", fee_cents: 2, receives_minor: 98, reason: sentence, back_cents: 100 }]);
   assert.equal(row.note, WITHDRAWAL_FAILED_NOTE);
   assert.doesNotMatch(row.note, /pay again|Fee/i);
 }
@@ -1158,6 +1158,51 @@ for (const [why, row] of [
       "over by $350: Available and Pending to 0, then $150 off Processing");
     assert.equal(shorter.stripe.held_cents, shorter.stripe.processing_cents, "held_cents follows what is left in Processing");
     assert.equal(shorter.total_cents, 5000);
+  }
+  // Fix round 27 (re-test 2, shot 01): the server read Stripe while a
+  // withdrawal's $1,293.18 sat in the Stripe account, its payout not yet made
+  // (held: Processing, out of Paid out). A newer database read has recorded
+  // the payout (on its way: the database's Processing). The Stripe part must
+  // drop what that withdrawal held, or it is counted twice: "$3,083.99 on its
+  // way", Paid out -$1,293.18, "(estimated USD)".
+  {
+    const { withStripePart } = await import("../src/app/order/payment-summary.mjs");
+    const atRead = tsc({ processing_cents: 49763, paid_out_cents: 129318,
+      withdrawals: [{ id: "w-small", road: "stripe", word: "on_its_way", amount_cents: 49763 }] });
+    const stripe = { available: [{ amount: 117600, currency: "eur" }], pending: [], held: [{ amount: 117600, currency: "eur" }],
+      held_by: [{ id: "w-race", amount: 117600, currency: "eur" }] };
+    const server = balanceFigures(atRead, stripe, { rates: { EUR: 1.1 } });
+    assert.equal(server.processing_cents, 179081, "at the read: both withdrawals on their way, $1,790.81");
+    assert.equal(server.paid_out_cents, 0, "at the read: nothing paid out");
+    assert.deepEqual(server.stripe.held_by, [{ id: "w-race", cents: 129318 }], "the held part, per withdrawal, after the cap");
+    const later = tsc({ processing_cents: 179081, paid_out_cents: 0,
+      withdrawals: [{ id: "w-small", road: "stripe", word: "on_its_way", amount_cents: 49763 }, { id: "w-race", road: "stripe", word: "on_its_way", amount_cents: 129318 }] });
+    const merged = withStripePart(later, server);
+    assert.equal(merged.processing_cents, 179081, "merged: $1,790.81 on its way, not $3,083.99");
+    assert.equal(merged.paid_out_cents, 0, "merged: Paid out never below zero");
+    assert.equal(merged.available_cents, 0);
+    assert.equal(merged.estimated, false, "merged: no Stripe money counted, so no estimate");
+    assert.equal(merged.stripe.processing_cents, 0, "merged: the Stripe part dropped");
+    assert.equal(merged.total_cents, 179081, "merged: Total is the newer database's");
+    // Still open in the newer read: kept as the server had it.
+    const stillOpen = withStripePart(tsc({ processing_cents: 49763, paid_out_cents: 129318, withdrawals: atRead.withdrawals }), server);
+    assert.equal(stillOpen.processing_cents, 179081, "not yet recorded: the held part stays in Processing");
+    assert.equal(stillOpen.paid_out_cents, 0);
+    assert.equal(stillOpen.estimated, true, "and the figures stay estimates");
+    // An answer without held_by (an older server): Paid out still never below zero.
+    const old = { ...server, stripe: { ...server.stripe, held_by: undefined } };
+    const clamped = withStripePart(later, old);
+    assert.ok(clamped.paid_out_cents >= 0, "no per-withdrawal part: Paid out is still never below zero");
+    assert.equal(clamped.processing_cents, 179081, "and nothing counted twice");
+    assert.equal(clamped.total_cents, 179081);
+    // The server reads Stripe, the database and what is held from one moment.
+    const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    assert.equal(connect.split("consistentMoneyRead(db, existing.stripe_account_id, async () => {").length - 1, 2,
+      "the balance and the members' figures read Stripe and the database from one moment");
+    assert.equal(connect.split("held_by: heldByRows(heldById),").length - 1, 2, "both pass the held part per withdrawal");
+    assert.ok(connect.includes("if (before != null && before === after) break;"), "a withdrawal that changed during the read is read again");
+    const card = (await import("node:fs")).readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+    assert.ok(card.includes("const heldElsewhere = stripeCounted === 0 ? null :"), "no estimate line when the figures count no Stripe money");
   }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {
@@ -2094,6 +2139,11 @@ for (const [why, row] of [
     const held = await heldByOpenWithdrawals(w.db, "acct_f");
     assert.equal(held.usd, (1500 + 2500) + (4000 - 120), "mid-transfer: Stripe part + parts sent; fee taken: amount less the fee; refused and paid out ignored");
     assert.equal(held.eur, 910, "a non-US$ row: its sent parts at its own rate");
+    const byId = {};
+    await heldByOpenWithdrawals(w.db, "acct_f", null, { byId });
+    assert.ok(byId.mid && byId.eur && !byId.refused && !byId.paid, "each open row's own claim; refused and paid out ignored");
+    assert.deepEqual(byId.eur, { amount: 910, currency: "eur" }, "per withdrawal, in its currency");
+    assert.equal(Object.values(byId).filter((row) => row.currency === "usd").reduce((sum, row) => sum + row.amount, 0), held.usd, "and they add up to the per-currency total");
     assert.equal((await heldByOpenWithdrawals(w.db, "acct_f", "mid")).usd, 4000 - 120, "the withdrawal being made is not counted against itself");
     // 4a445bb2: with Stripe at hand, a sent part still clearing (its landed
     // balance transaction pending) is Stripe's pending, not held of available.
@@ -2112,7 +2162,7 @@ for (const [why, row] of [
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     const freeLine = "const free = Math.max(0, Number(entry.amount) - (heldElsewhere[entry.currency.toLowerCase()] ?? 0));";
     assert.equal(connect.split(freeLine).length - 1, 2, "the balance answer and the members' figures both leave out what other withdrawals hold");
-    assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe })").length - 1, 2,
+    assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId })").length - 1, 2,
       "both ask with Stripe at hand, so money still clearing is not counted as held (4a445bb2)");
     // The same rule, on the tester's numbers.
     const free = (entry, held) => Math.max(0, Number(entry.amount) - (held[entry.currency.toLowerCase()] ?? 0));
@@ -2184,8 +2234,10 @@ for (const [why, row] of [
   assert.ok(form.includes("onRefused?.();") && card.includes("onRefused={() => { fromBalance.load(); readReach(); onMethodsChanged?.(); }}"), "a refusal re-reads the balance and the methods");
   // Stripe: a double click asks once; the minimum is said before asking.
   assert.ok(card.includes("if (withdrawing.current || busy") && card.includes("withdrawing.current = false;"), "one Stripe withdrawal per click burst");
-  assert.ok(card.includes("disabled={busy || !(withdrawal.amount > 0) || Boolean(stripeMinimumProblem)}") && card.includes("minimumWithdrawalSentence(leastLocal, local)"),
-    "Stripe's minimum is checked in the dialog, in the server's sentence");
+  assert.ok(card.includes("disabled={busy || Boolean(error) || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max) || Boolean(stripeMinimumProblem)}") && card.includes("minimumWithdrawalSentence(leastLocal, local)"),
+    "Stripe's minimum is checked in the dialog, in the server's sentence; after a refusal, or over what is left, Withdraw is off (round 27)");
+  assert.equal(card.split("setError(null);").length - 1 >= 3 && card.includes("else { setError(null); setWithdrawal((was) => ({ ...was, destination: value })); }"), true,
+    "changing the amount or the method turns it back on, as PayPal's dialog does");
   const { stripeMinimumWithdrawal, minimumWithdrawalSentence } = await import("../src/shared/withdrawal-fees.mjs");
   const leastEur = stripeMinimumWithdrawal({ currency: "EUR", country: "PT", localPerUsd: 1 / 1.08 });
   assert.ok(leastEur > 100 && leastEur < 200, "a euro account's minimum is a little over €1");

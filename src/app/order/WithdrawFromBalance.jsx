@@ -85,7 +85,7 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     const [balance, rows, stripeRows] = await Promise.all([
       supabase.rpc("my_withdrawal_balance", { target_org: orgId }),
       supabase.from("factory_withdrawals")
-        .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, created_at, paid_at, updated_at")
+        .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, back_cents, created_at, paid_at, updated_at")
         .eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
       // Stripe's payout fee, paid once per withdrawal from the Stripe balance
       // (api/_stripe-withdrawals.js), in US$. A fee given back is not counted.
@@ -195,9 +195,8 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     return <NewOnly id={`${last.id}:declined`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-declined">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} declined: ${last.reason}`}</p></NewOnly>;
   }
   if (last?.status === "failed") {
-    // Said once the figures are read (`back` null until then), so it is never
-    // marked seen with a guess about what came back.
-    if (!(back instanceof Map)) return null;
+    // What came back is stored on the withdrawal itself (back_cents), so the
+    // line is said even when the page's figures did not load.
     const said = backSentence(last, back);
     return <NewOnly id={`${last.id}:failed`}><p className="live-stripe-error" role="alert" data-testid="withdrawal-failed">{`Withdrawal of ${formatMoney(last.amount_cents, last.currency)} did not go through.${said ? ` ${said}` : ""}`}</p></NewOnly>;
   }
@@ -210,9 +209,11 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
  * same words as its notice (withdrawal_back_sentence).
  */
 function backSentence(row, back) {
-  // Not kept (failed before it was recorded): nothing said, never a guess.
-  const cents = back instanceof Map && back.has(row.id) ? Number(back.get(row.id)) : null;
-  if (cents == null) return null;
+  // The figures' copy, else the withdrawal's own. Not kept (failed before it
+  // was recorded): nothing said, never a guess.
+  const stored = back instanceof Map && back.has(row.id) ? back.get(row.id) : row.back_cents;
+  const cents = stored == null ? null : Number(stored);
+  if (cents == null || !Number.isFinite(cents)) return null;
   if (cents >= Number(row.amount_cents)) return "The amount is back in your balance.";
   return cents > 0 ? `${formatMoney(cents, row.currency)} is back in your balance.` : NOTHING_BACK;
 }

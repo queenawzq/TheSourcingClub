@@ -579,7 +579,7 @@ update public.factory_payout_accounts set is_primary = false where bank_name = '
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 D ending 9999 was removed.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 D ending 9999 is no longer your default withdrawal method.%'),
   1,
   'clearing a default bank account is said, so a two-step swap cannot pass unnoticed'
 );

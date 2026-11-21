@@ -81,6 +81,8 @@ const spaced = (text) => String(text)
 
 /** "Chase ending 1234" → "Chase（尾号 1234）". */
 const bank = (named) => String(named).replace(/ ending (\d+)$/, "（尾号 $1）");
+/** The same, before 的: a space only after a bare name, never after "）". */
+const bankBefore = (named) => (/（尾号 \d+）$/.test(bank(named)) ? bank(named) : `${bank(named)} `);
 
 /** Stripe's "Bank account ending in 1234" / "Debit card ending in 4242". */
 const stripeMethod = (named) => {
@@ -391,15 +393,16 @@ const SENTENCES = [
   [/^TSC now pays your connected payout account\.$/, () => "TSC 现在向你已连接的收款账户付款。"],
   [/^Your connected payout account is now your default withdrawal method\.$/, () => "你已连接的收款账户现在是你的默认提现方式。"],
   [/^PayPal account (\S+) is now your default withdrawal method\.$/, (account) => `PayPal 账户 ${account} 现在是你的默认提现方式。`],
-  [/^Your bank account at (.+) is now your default withdrawal method\.$/, (named) => `你在 ${bank(named)}${/（尾号 \d+）$/.test(bank(named)) ? "" : " "}的银行账户现在是你的默认提现方式。`],
-  [/^TSC now pays your bank account at (.+), instead of Payoneer account (.+)\.$/, (named, old) => `TSC 现在向你在 ${bank(named)} 的银行账户付款，不再向 Payoneer 账户 ${old} 付款。`],
-  [/^TSC now pays your bank account at (.+)\.$/, (named) => `TSC 现在向你在 ${bank(named)} 的银行账户付款。`],
+  [/^Your bank account at (.+) is now your default withdrawal method\.$/, (named) => `你在 ${bankBefore(named)}的银行账户现在是你的默认提现方式。`],
+  [/^TSC now pays your bank account at (.+), instead of Payoneer account (.+)\.$/, (named, old) => `TSC 现在向你在 ${bankBefore(named)}的银行账户付款，不再向 Payoneer 账户 ${old} 付款。`],
+  [/^TSC now pays your bank account at (.+)\.$/, (named) => `TSC 现在向你在 ${bankBefore(named)}的银行账户付款。`],
   [/^TSC now pays (PayPal|Payoneer) account (.+)\.$/, (provider, account) => `TSC 现在向 ${provider} 账户 ${account} 付款。`],
-  [/^TSC no longer pays your bank account at (.+), and you have no default payout method\.$/, (named) => `TSC 不再向你在 ${bank(named)} 的银行账户付款，你目前没有默认收款方式。`],
+  [/^TSC no longer pays your bank account at (.+), and you have no default payout method\.$/, (named) => `TSC 不再向你在 ${bankBefore(named)}的银行账户付款，你目前没有默认收款方式。`],
   [/^TSC no longer pays Payoneer account (.+), and you have no default payout method\.$/, (account) => `TSC 不再向 Payoneer 账户 ${account} 付款，你目前没有默认收款方式。`],
-  [/^Your bank account at (.+) was saved\.$/, (named) => `你在 ${bank(named)} 的银行账户已保存。`],
-  [/^Your bank account at (.+) was removed\.$/, (named) => `你在 ${bank(named)}${/（尾号 \d+）$/.test(bank(named)) ? "" : " "}的银行账户已被移除。`],
-  [/^Your bank account at (.+) replaced a withdrawal method\.$/, (named) => `你在 ${bank(named)} 的银行账户替换了一种提现方式。`],
+  [/^Your bank account at (.+) was saved\.$/, (named) => `你在 ${bankBefore(named)}的银行账户已保存。`],
+  [/^Your bank account at (.+) was removed\.$/, (named) => `你在 ${bankBefore(named)}的银行账户已被移除。`],
+  [/^Your bank account at (.+) is no longer your default withdrawal method\.$/, (named) => `你在 ${bankBefore(named)}的银行账户不再是你的默认提现方式。`],
+  [/^Your bank account at (.+) replaced a withdrawal method\.$/, (named) => `你在 ${bankBefore(named)}的银行账户替换了一种提现方式。`],
   [/^Your saved bank account changed: it is now (.+), in the name of (.+)\.$/, (named, holder) => `你保存的银行账户已变更：现为 ${bank(named)}，户名 ${holder}。`],
   [/^The bank account TSC pays changed: it is now (.+), in the name of (.+)\.$/, (named, holder) => `TSC 付款的银行账户已变更：现为 ${bank(named)}，户名 ${holder}。`],
   [/^(PayPal|Payoneer) account (.+) was added\.$/, (provider, account) => `已添加 ${provider} 账户 ${account}。`],

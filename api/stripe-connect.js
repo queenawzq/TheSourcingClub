@@ -261,14 +261,26 @@ export default async function handler(request, response) {
         askStripe ? refreshPayoutsFor({ stripe, db, orgId }) : null,
       ]);
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
-      const [balance, allocation, methods, onTheirWay, displayFx, tscBalance, owedReach, poolLeft] = await Promise.all([
-        stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+      // Stripe's balance, the database's figures and what open withdrawals
+      // hold, from one moment (consistentMoneyRead).
+      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById }, allocation, methods, onTheirWay, displayFx, owedReach, poolLeft] = await Promise.all([
+        consistentMoneyRead(db, existing.stripe_account_id, async () => {
+          const [balanceRead, tscRead] = await Promise.all([
+            stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+            // As the owner: the database checks who is asking.
+            caller.rpc("factory_balance", { target_org: orgId }),
+          ]);
+          // What open withdrawals hold of the Stripe account (their own Stripe
+          // part, and owed money they transferred for a payout not yet made):
+          // on its way, not available, in the figures and in what Withdraw offers.
+          const byId = {};
+          const held = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId }).catch(() => ({}));
+          return { balance: balanceRead, tsc: tscRead, held, heldById: byId };
+        }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
         payoutsOnTheirWay(stripe, existing.stripe_account_id),
         payoutDisplayRates(),
-        // As the owner: the database checks who is asking.
-        caller.rpc("factory_balance", { target_org: orgId }),
         db.rpc("owed_reachable", { target_org: orgId }),
         db.rpc("factory_withdrawable", { target_org: orgId }),
       ]);
@@ -285,14 +297,11 @@ export default async function handler(request, response) {
         allocation.payouts.push(...historical.payouts);
         allocation.pending.push(...historical.pending);
       }
-      // What open withdrawals hold of the Stripe account (their own Stripe
-      // part, and owed money they transferred for a payout not yet made):
-      // on its way, not available, in the figures and in what Withdraw offers.
-      const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe }).catch(() => ({}));
       const figures = { ...balanceFigures(tscBalance.data, {
         available: [...balance.available, ...(recovery?.available ?? [])],
         pending: [...balance.pending, ...(recovery?.pending ?? [])],
         held: heldRows(balance.available, heldElsewhere),
+        held_by: heldByRows(heldById),
       }, displayFx), stripe_unavailable: false };
       // What Withdraw can offer by each road, in US$: Stripe reaches owed
       // steps paid by card and the money already in this Stripe account
@@ -442,10 +451,17 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
   try {
     // Funded payments Stripe gave a clearing date after they were recorded.
     await ensureFundsAvailableFor({ stripe, db, orgId });
-    const fresh = await caller.rpc("factory_balance", { target_org: orgId });
     const upgrade = await connectUpgrade(db, orgId);
-    const [balance, allocation, onTheirWay, displayFx] = await Promise.all([
-      stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+    const [{ balance, fresh, held: heldElsewhere, heldById }, allocation, onTheirWay, displayFx] = await Promise.all([
+      consistentMoneyRead(db, existing.stripe_account_id, async () => {
+        const [balanceRead, freshRead] = await Promise.all([
+          stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+          caller.rpc("factory_balance", { target_org: orgId }),
+        ]);
+        const byId = {};
+        const held = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId }).catch(() => ({}));
+        return { balance: balanceRead, fresh: freshRead, held, heldById: byId };
+      }),
       payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
       payoutsOnTheirWay(stripe, existing.stripe_account_id),
       payoutDisplayRates(),
@@ -457,11 +473,11 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
       allocation.payouts.push(...historical.payouts);
     }
-    const heldElsewhere = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe }).catch(() => ({}));
     const figures = { ...balanceFigures(fresh.error ? tsc.data : fresh.data, {
       available: [...balance.available, ...(recovery?.available ?? [])],
       pending: [...balance.pending, ...(recovery?.pending ?? [])],
       held: heldRows(balance.available, heldElsewhere),
+      held_by: heldByRows(heldById),
     }, displayFx), stripe_unavailable: false };
     let inStripeUsd = 0;
     let estimated = false;
@@ -483,6 +499,36 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: true },
     });
   }
+}
+
+/** Each open withdrawal's own claim, as { id, amount, currency } rows. */
+function heldByRows(byId) {
+  return Object.entries(byId ?? {}).map(([id, row]) => ({ id, amount: Number(row.amount) || 0, currency: row.currency }));
+}
+
+/** The open Stripe withdrawals on this account and their states, as one key. */
+async function openWithdrawalsKey(db, accountId) {
+  const { data, error } = await db.from("stripe_withdrawals").select("id, state, transfers_done_at")
+    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]).order("id");
+  if (error) throw new Error(error.message);
+  return JSON.stringify(data ?? []);
+}
+
+/**
+ * Stripe's balance, the database's figures and what open withdrawals hold,
+ * read again (at most twice more) when a Stripe withdrawal started, made its
+ * payout or was refused while they were being read: its money would otherwise
+ * be in Stripe's answer and in the database's at once, counted twice.
+ */
+async function consistentMoneyRead(db, accountId, read) {
+  let result;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await openWithdrawalsKey(db, accountId).catch(() => null);
+    result = await read();
+    const after = await openWithdrawalsKey(db, accountId).catch(() => null);
+    if (before != null && before === after) break;
+  }
+  return result;
 }
 
 /** What open withdrawals hold, per currency, as { amount, currency } rows, never more than is available. */

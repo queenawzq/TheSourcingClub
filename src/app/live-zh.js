@@ -244,6 +244,13 @@ const PATTERNS = [
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
   [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
+  // A failed withdrawal: what came back, on its row and on the card (the notice's words).
+  [/^The amount is back in your balance\. Check your withdrawal method, then withdraw again\.$/, () => "该金额已退回你的余额。请检查你的提现方式，然后重新提现。"],
+  [/^(\$[\d,.]+) is back in your balance\. Check your withdrawal method, then withdraw again\.$/, (m) => `${m[1]} 已回到你的余额。请检查你的提现方式，然后重新提现。`],
+  [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
+  [/^Withdrawal of (\S+) did not go through\. (\$[\d,.]+) is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。${m[2]} 已回到你的余额。`],
+  [/^Withdrawal of (\S+) did not go through\. This amount was returned to the brand\.$/, (m) => `提现 ${m[1]} 未成功。这笔金额已退回品牌。`],
+  [/^Withdrawal of (\S+) did not go through\.$/, (m) => `提现 ${m[1]} 未成功。`],
   // Withdrawal methods (src/app/order/StripePayoutCard.jsx): the chooser's
   // heading, a method's name with its last four digits, and removing one.
   // Emails, bank names and digits stay as written.

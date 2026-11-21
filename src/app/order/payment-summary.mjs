@@ -97,8 +97,35 @@ export function withStripePart(database, viaStripe) {
   // the server worked it out, so an owner (balance) and a member (figures)
   // read the same figures.
   const merged = { ...viaStripe, has_method: Boolean(database.has_method), next_cleared_at: database.next_cleared_at ?? null, tsc: database };
-  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
+  const part = {};
+  for (const key of FIGURE_KEYS) part[key] = Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
+  // A Stripe withdrawal the newer read has recorded (its payout made, or
+  // refused) is in the database's figures now: the Stripe money it held when
+  // the server read is not counted again.
+  const recorded = new Set((database.withdrawals ?? []).filter((w) => w?.road === "stripe").map((w) => w.id));
+  const heldBy = viaStripe.stripe?.held_by ?? [];
+  const gone = heldBy.filter((row) => recorded.has(row.id)).reduce((sum, row) => sum + (Number(row.cents) || 0), 0);
+  const drop = Math.min(gone, Math.max(0, part.processing_cents));
+  part.processing_cents -= drop;
+  part.paid_out_cents += drop;
+  // Never more in the Stripe account than the newer read counts as sent:
+  // Paid out never goes below zero (the same order as the server's).
+  let over = Math.max(0, -(Number(database.paid_out_cents ?? 0) + part.paid_out_cents));
+  for (const key of ["available_cents", "pending_cents", "processing_cents"]) {
+    const take = Math.min(over, Math.max(0, part[key]));
+    part[key] -= take;
+    part.paid_out_cents += take;
+    over -= take;
+  }
+  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + part[key];
   merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
+  if (viaStripe.stripe) {
+    merged.stripe = { ...viaStripe.stripe, available_cents: part.available_cents, pending_cents: part.pending_cents,
+      processing_cents: part.processing_cents, held_cents: part.processing_cents,
+      held_by: heldBy.filter((row) => !recorded.has(row.id)) };
+    // Converted only while some Stripe money is still counted.
+    merged.estimated = Boolean(viaStripe.estimated) && part.available_cents + part.pending_cents + part.processing_cents > 0;
+  }
   return merged;
 }
 
@@ -214,8 +241,20 @@ export function clearingNote(row, clearing) {
 /** "To bank account ending in 0154.": a Stripe destination label mid-sentence, lower case. */
 export const toDestination = (label) => `To ${String(label).replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`;
 
-/** The bell's words for a failed withdrawal, as a row's note. No trailing full stop, like the short asks. */
-export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
+/** The bell's words for a failed withdrawal that came back whole, as a row's note. */
+export const WITHDRAWAL_FAILED_NOTE = "The amount is back in your balance. Check your withdrawal method, then withdraw again.";
+/**
+ * A failed withdrawal's row note: what came back (its stored back_cents), in
+ * its notice's words (withdrawal_back_sentence). Nothing when it was not
+ * kept: never a guess.
+ */
+export function failedWithdrawalNote(back, amount, currency = "USD") {
+  if (back == null || !Number.isFinite(Number(back))) return null;
+  const cents = Number(back);
+  if (cents >= Number(amount)) return WITHDRAWAL_FAILED_NOTE;
+  if (!(cents > 0)) return "This amount was returned to the brand.";
+  return `${(cents / 100).toLocaleString("en-US", { style: "currency", currency })} is back in your balance. Check your withdrawal method, then withdraw again.`;
+}
 const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined" };
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
@@ -230,7 +269,7 @@ export function askedWithdrawalRows(withdrawals = []) {
     meta: w.paid_to,
     // A failed one took no fee: its amount is back in the balance (record_withdrawal).
     note: w.status === "declined" ? w.reason
-      : w.status === "failed" ? WITHDRAWAL_FAILED_NOTE
+      : w.status === "failed" ? failedWithdrawalNote(w.back_cents, w.amount_cents, w.currency)
       : w.fee_cents != null && w.receives_minor != null ? `Fee ${(Number(w.fee_cents) / 100).toLocaleString("en-US", { style: "currency", currency: w.currency })}, taken from it`
       : null,
     status: ASKED_STATUS[w.status] ?? w.status,
@@ -594,7 +633,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
         title: ASKED_TITLE[w.provider] ?? "Bank transfer",
         meta: w.to ?? own?.paid_to ?? null,
         note: own?.status === "declined" ? own.reason
-          : own?.status === "failed" ? WITHDRAWAL_FAILED_NOTE
+          : own?.status === "failed" ? failedWithdrawalNote(w.back_cents ?? own.back_cents, w.amount_cents)
           : paid && w.fee_cents != null ? `Fee ${money(fee)}, taken from it`
           : null,
         status: w.word === "waiting" ? "Processing" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"

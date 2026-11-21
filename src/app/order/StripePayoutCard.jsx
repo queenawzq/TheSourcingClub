@@ -427,6 +427,11 @@ export default function StripePayoutCard({
       onFlowClose?.();
     }
   }, [manualSaved, onFlowClose]);
+  // One status line under the balance: the latest. A save replaces an
+  // earlier "removed" or "now your default" line.
+  useEffect(() => {
+    if (manualSaved) setMethodNotice(null);
+  }, [manualSaved]);
 
   useEffect(() => {
     if (!methodMenu) return undefined;
@@ -983,7 +988,12 @@ export default function StripePayoutCard({
   // (owners with a Stripe account), else my_withdrawal_balance(), which
   // request_withdrawal() checks.
   // Money held now in the Stripe account in another currency: only then are the USD figures estimates.
-  const heldElsewhere = [...(balance?.available ?? []), ...(balance?.pending ?? [])]
+  // Not when the figures count none of it: a withdrawal the database has
+  // recorded since accounts for what Stripe still showed.
+  const stripeCounted = figures?.stripe
+    ? (Number(figures.stripe.available_cents) || 0) + (Number(figures.stripe.pending_cents) || 0) + (Number(figures.stripe.processing_cents) || 0)
+    : null;
+  const heldElsewhere = stripeCounted === 0 ? null : [...(balance?.available ?? []), ...(balance?.pending ?? [])]
     .find((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount) !== 0);
   const heldCurrency = heldElsewhere ? String(heldElsewhere.currency).toUpperCase() : null;
   // Someone who reads no Stripe balance (a member) is told the same by the
@@ -1115,7 +1125,7 @@ export default function StripePayoutCard({
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
+          {manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current) ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {/* "Your bank is processing the payout." is said on that withdrawal's own row (companyStripeRows). */}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
           {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
@@ -1169,7 +1179,7 @@ export default function StripePayoutCard({
       {modal === "withdraw" && withdrawal ? (
         <PayoutModal title="Withdraw" className="withdraw-form-modal" onClose={closeModal} actions={<>
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
-          <button className="primary-btn" type="button" data-testid="stripe-withdraw-confirm" disabled={busy || !(withdrawal.amount > 0) || Boolean(stripeMinimumProblem)} onClick={withdraw}>{busy ? "Withdrawing…" : withdrawal.amount > 0 ? `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}` : "Withdraw"}</button>
+          <button className="primary-btn" type="button" data-testid="stripe-withdraw-confirm" disabled={busy || Boolean(error) || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max) || Boolean(stripeMinimumProblem)} onClick={withdraw}>{busy ? "Withdrawing…" : withdrawal.amount > 0 ? `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}` : "Withdraw"}</button>
         </>}>
           {withdrawal.previous ? (
             <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your previous account’s bank account. Bank processing time depends on your bank and country.</p>
@@ -1183,7 +1193,7 @@ export default function StripePayoutCard({
                       const value = event.target.value;
                       // A saved method is withdrawn from TSC's balance, in its own dialog.
                       if (value.startsWith("balance:")) openBalanceWithdraw(value.slice(8));
-                      else setWithdrawal((was) => ({ ...was, destination: value }));
+                      else { setError(null); setWithdrawal((was) => ({ ...was, destination: value })); }
                     }}>
                     {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabelIn(method, uiLanguage)}</option>)}
                     {reach.balance != null ? balanceChoices.map((row) => <option key={row.id} value={`balance:${row.id}`}>{withdrawOptionLabel(row, uiLanguage)}</option>) : null}
@@ -1195,12 +1205,13 @@ export default function StripePayoutCard({
                 <div className="withdraw-amount-heading">
                   <label htmlFor="stripe-withdraw-amount">{withdrawal.estimated ? "Amount (estimated USD)" : `Amount (${withdrawal.currency.toUpperCase()})`}</label>
                   <button className="secondary-btn" type="button" disabled={busy}
-                    onClick={() => setWithdrawal((was) => ({ ...was, amount: was.max, amountText: (was.max / 100).toFixed(2) }))}>Withdraw full amount</button>
+                    onClick={() => { setError(null); setWithdrawal((was) => ({ ...was, amount: was.max, amountText: (was.max / 100).toFixed(2) })); }}>Withdraw full amount</button>
                 </div>
                 <input id="stripe-withdraw-amount" name="Amount" inputMode="decimal" value={withdrawal.amountText} disabled={busy} aria-describedby="stripe-withdraw-available"
                   onChange={(event) => {
                     // Read as typed, never changed under the person: more than available is said.
                     const text = event.target.value;
+                    setError(null);
                     const { cents, problem } = parseWithdrawAmount(text, withdrawal.max, (most) => formatMoney(most, withdrawal.currency));
                     setWithdrawal((was) => ({ ...was, amountText: text, amount: problem ? 0 : cents }));
                   }} />

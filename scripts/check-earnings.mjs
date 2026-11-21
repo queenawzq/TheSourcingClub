@@ -731,9 +731,9 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
 {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const form = read("../src/app/order/WithdrawFromBalance.jsx");
-  assert.ok(form.includes("did not go through.${said ? ` ${said}` : \"\"}") && form.includes("if (!(back instanceof Map)) return null;")
-    && form.includes("if (cents == null) return null;") && !form.includes("did not go through. The amount is back in your balance.`"),
-    "the failed line reads what came back, and says nothing before the figures are read (round 26)");
+  assert.ok(form.includes("did not go through.${said ? ` ${said}` : \"\"}") && form.includes("if (cents == null || !Number.isFinite(cents)) return null;")
+    && !form.includes("did not go through. The amount is back in your balance.`"),
+    "the failed line reads what came back, never a guess (round 26)");
   const staff = read("../src/app/admin/AdminWithdrawals.jsx");
   assert.ok(staff.includes('const holds = row.status === "requested" ? Number(row.amount_cents) - refunded : Number(row.amount_cents);'), "a row being sent keeps the amount in flight");
   const order = read("../src/app/order/LiveOrderDetail.jsx");
@@ -742,6 +742,38 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const card = read("../src/app/order/StripePayoutCard.jsx");
   assert.ok(card.includes("const promotable = otherManual.filter((row) => methodProviderOn(providers, row));") && card.includes("{promotable.map((row) => <option"),
     "removing the default never offers a switched-off method");
+}
+
+// Fix round 27: a failed withdrawal's row says what came back (stored
+// back_cents), in its notice's words; the card's line reads the withdrawal's
+// own figure when the page's figures are missing; staff's at-risk line is on
+// its own line; one status line under the balance.
+{
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const { failedWithdrawalNote, askedWithdrawalRows: asked, serverWithdrawalRows: server } = await import("../src/app/order/payment-summary.mjs");
+  assert.equal(failedWithdrawalNote(60000, 60000), "The amount is back in your balance. Check your withdrawal method, then withdraw again.");
+  assert.equal(failedWithdrawalNote(6500, 60000), "$65.00 is back in your balance. Check your withdrawal method, then withdraw again.", "the tester's $600 / $65");
+  assert.equal(failedWithdrawalNote(0, 60000), "This amount was returned to the brand.");
+  assert.equal(failedWithdrawalNote(null, 60000), null, "not kept: nothing said");
+  const [row] = server([{ id: "w", road: "pool", provider: "paypal", word: "returned", amount_cents: 60000, back_cents: 6500, created_at: "2026-11-21T00:00:00Z" }],
+    { pool: new Map([["w", { id: "w", status: "failed" }]]) });
+  assert.equal(row.note, "$65.00 is back in your balance. Check your withdrawal method, then withdraw again.", "the Transactions row says $65.00, not the $600");
+  const [fallback] = asked([{ id: "w", status: "failed", provider: "paypal", amount_cents: 60000, currency: "USD", back_cents: 6500 }]);
+  assert.equal(fallback.note, row.note, "the fallback row says the same");
+  const zh = read("../src/app/live-zh.js");
+  const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
+  for (const text of [row.note, failedWithdrawalNote(60000, 60000), "This amount was returned to the brand.",
+    "Withdrawal of $600.00 did not go through. $65.00 is back in your balance.", "Withdrawal of $600.00 did not go through. This amount was returned to the brand."]) {
+    assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
+  }
+  const form = read("../src/app/order/WithdrawFromBalance.jsx");
+  assert.ok(form.includes("back instanceof Map && back.has(row.id) ? back.get(row.id) : row.back_cents") && form.includes("reason, back_cents, created_at"),
+    "the card's failed line falls back to the withdrawal's own stored figure");
+  const staff = read("../src/app/admin/AdminWithdrawals.jsx");
+  assert.ok(staff.includes('<span className="admin-sub admin-error" data-testid="withdrawal-at-risk">'), "staff's at-risk line on its own line, in red");
+  const card = read("../src/app/order/StripePayoutCard.jsx");
+  assert.ok(card.includes("if (manualSaved) setMethodNotice(null);")
+    && card.includes("manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current)"), "only the latest status line under the balance");
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

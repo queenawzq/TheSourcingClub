@@ -44,12 +44,27 @@ function usdTotal(rows, displayFx) {
 
 const converted = (rows) => (rows ?? []).some((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount));
 
+/** Each withdrawal's share of `total` US cents, in proportion to its claim; the shares add up to `total`. */
+function heldShares(rows, total, displayFx) {
+  const claims = (rows ?? []).map((row) => ({ id: row.id, cents: Math.max(0, usdCents(row.amount, row.currency, displayFx) ?? 0) }))
+    .filter((row) => row.id && row.cents > 0);
+  const sum = claims.reduce((all, row) => all + row.cents, 0);
+  if (!(total > 0) || !sum) return [];
+  let left = total;
+  return claims.map((row, index) => {
+    const cents = index === claims.length - 1 ? left : Math.min(left, Math.round((row.cents * total) / sum));
+    left -= cents;
+    return { id: row.id, cents };
+  });
+}
+
 /**
  * @param tsc       factory_balance(org) as the database returned it
  * @param stripe    { available, pending, held? } from Stripe (the money in the
  *                  factory's own Stripe account now; `held`, rows of
  *                  { amount, currency }, is the part of `available` an open
- *                  withdrawal holds, counted in Processing), or null. Other keys
+ *                  withdrawal holds, counted in Processing; `held_by`, rows of
+ *                  { id, amount, currency }, is that per withdrawal), or null. Other keys
  *                  (onTheirWay, payouts) are ignored: the database counts
  *                  every payout, on its way or arrived, in the US dollars it
  *                  took from the balance.
@@ -107,6 +122,10 @@ export function balanceFigures(tsc, stripe, displayFx) {
     parts.processing_cents -= Math.min(over, parts.processing_cents);
     parts.held_cents = parts.processing_cents;
   }
+  // Which withdrawal holds how much of that Processing part, in US cents, so
+  // a newer database read that has recorded one (its payout made, or it was
+  // refused) drops its part instead of counting it twice (withStripePart).
+  if (known) parts.held_by = heldShares(stripe.held_by, parts.processing_cents, displayFx);
   const inStripe = known ? parts.available_cents + parts.pending_cents + parts.processing_cents : 0;
   const figures = known ? {
     ...base,

@@ -171,6 +171,11 @@ const ZH_SAMPLES = [
   { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of this payment, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of this payment, so you now owe TSC $40.00." },
+  // Round 27: a default bank cleared but kept; no space after "）" in any bank sentence.
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is no longer your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank is no longer your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 was saved. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 replaced a withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   // Round 26.
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of that, so you now owe TSC $535.00." },
   { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of that, so you now owe TSC $40.00." },
@@ -482,6 +487,7 @@ async function formatters() {
       const body = notificationBody(sample, options);
       if (!cjk.test(title)) failures.push(`zh title left in English: ${sample.title}`);
       if (sample.body && !sample.typed && !cjk.test(body)) failures.push(`zh body left in English: ${sample.body}`);
+      if (/）\s/.test(body)) failures.push(`zh body has a space after "）": ${body}`);
       if (sample.typed && !sample.data?.message_text && !body.startsWith(sample.body)) failures.push(`zh typed body changed: ${sample.body} → ${body}`);
       expect(`zh email title: ${sample.kind}`, email.notificationTitle(sample, options), title);
       expect(`zh email body: ${sample.kind}`, email.notificationBody(sample, options), body);
