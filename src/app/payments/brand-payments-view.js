@@ -2,11 +2,12 @@
  * The brand's Payments page, in the shape the designed `BillingScreen` draws.
  *
  * Pure. The brand funds each paid step through Stripe by card and TSC holds
- * the money until the brand approves the step, then pays the factory. Every
- * figure is what the brand pays, the fees included (chargedCents), the
- * same as each row and the Fund screen:
- *   Paid         paid out to the factory
- *   Held         held by TSC now, not yet paid out
+ * the money until the brand approves the step; it is then added to the
+ * factory's balance (a deposit or balance step, with nothing to approve, once
+ * funded). Every figure is what the brand pays, the fees included
+ * (chargedCents), the same as each row and the Fund screen:
+ *   Paid         the factory's: added to its balance, or paid out to it
+ *   Held         held by TSC now, waiting for the brand's approval
  *   Due now      due or failed on open orders, as the dashboard's figure
  *   Remaining    what is still to pay on open orders
  * The figures follow the vendor filter, as the factory's earnings figures
@@ -23,18 +24,20 @@ import { plainCardReason } from "../../shared/card-words.mjs";
 import { chargedCents } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
-import { refundPendingWord } from "../order/payment-summary.mjs";
+import { refundPendingWord, toBeSent } from "../order/payment-summary.mjs";
 
 /**
  * One word for where a payment stands, on the list and its details page. A
- * paid step the brand has approved reads Approved until it is paid; a deposit
- * or balance has nothing to approve, so it stays Funded.
+ * paid step the brand has approved reads Approved; a deposit or balance has
+ * nothing to approve and is the factory's once funded (added to its balance),
+ * so it reads Paid, as the order page's "Funded: added to the factory's
+ * balance" says.
  */
 export function paymentStatusWord(payment, order) {
   // Held money that went back when the order was cancelled.
   if (payment.state === "cancelled" && payment.refunded_at) return "Refunded";
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
-  if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
+  if (toBeSent(payment)) return payment.order_milestones?.kind === "payment_only" ? PAYMENT_STATUS.released : "Approved";
   return PAYMENT_STATUS[payment.state];
 }
 
@@ -118,8 +121,10 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
 
   return {
     metrics: [
-      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released"), chargedCents))],
-      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed"), chargedCents))],
+      // Approved (or funded with nothing to approve) is in the factory's
+      // balance: the factory's, not held for the brand (one balance).
+      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released" || toBeSent(payment)), chargedCents))],
+      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed" && !toBeSent(payment)), chargedCents))],
       ["Due now", formatMoney(sum(unpaid.filter((payment) => OWED.has(payment.state)), chargedCents)), "highlight"],
       ["Remaining", formatMoney(remaining)],
     ],

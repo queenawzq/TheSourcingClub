@@ -834,7 +834,7 @@ for (const [why, row] of [
   const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(form.includes('if (methodId && !choices.some((m) => m.id === methodId)) setMethodId("");'), "a method no longer offered clears the choice");
   assert.ok(!/setMethodId\(\(choices\.find\(\(m\) => m\.id === defaultId\)[^;]*\}, \[offered\]\)/s.test(form), "and never picks another method in its place");
-  assert.ok(form.includes('disabled={busy || asking || !method ||'), "Withdraw is off while nothing is chosen");
+  assert.ok(form.includes('disabled={busy || Boolean(error) || asking || !method ||'), "Withdraw is off while nothing is chosen");
   assert.ok(form.includes("{methodId ? null : <option value=\"\" />}"), "the dropdown shows nothing chosen");
 }
 
@@ -2030,6 +2030,37 @@ for (const [why, row] of [
       "PayPal / Wise: pool money + owed, never D1");
     assert.ok(!/pool_cents:[^\n]*inStripe/.test(connect), "D1 never reaches the pool road");
   }
+}
+
+// Round 16.
+{
+  const { readFileSync } = await import("node:fs");
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  // F2: a saved method whose provider is switched off is listed, disabled,
+  // with the sentence; never silently dropped. The card lets the dialog say so.
+  assert.ok(form.includes("const switchedOff = methods.filter((row) => usable(row) && !methodProviderOn(providers, row));")
+    && form.includes("{switchedOff.map((row) => <option key={row.id} value={row.id} disabled>{label(row)}</option>)}")
+    && form.includes("{label(row)}: {METHOD_OFF_CHOOSE}") && form.includes("{label(row)}: {METHOD_OFF}"), "a switched-off method is shown, disabled, and said");
+  assert.ok(card.includes("const balanceCan = (balanceChoices.length > 0 || balanceOff.length > 0) && reach.balance > 0;")
+    && card.includes("balanceOff.map((row) => <option key={row.id} value={`balance:${row.id}`} disabled>"), "the card opens the dialog that says it, and lists it in the Stripe dialog too");
+  // Double cancel: the losing tab says it was already cancelled, and re-reads.
+  assert.ok(form.includes('if (error?.hint === "withdrawal_not_waiting")') && form.includes('data.every((w) => w.status === "cancelled")) return ALREADY_CANCELLED;')
+    && form.includes("throw new Error(await cancelRefusal(error, ids));") && form.includes("throw new Error(await cancelRefusal(error, [id]));"),
+    "a withdrawal another tab cancelled is said as cancelled, not as being sent");
+  assert.ok(form.includes("onChanged?.();") && card.includes("onChanged={() => { fromBalance.load(); readReach(); }}"), "and the balance is read again");
+  // Race: one message, and Withdraw stays off until the person changes something.
+  assert.ok(form.includes("disabled={busy || Boolean(error) ||") && form.includes("{!error && choices.length > 0 && amountTouched"), "one line after a refusal, button off");
+  assert.ok(form.includes("onRefused?.();") && card.includes("onRefused={() => { fromBalance.load(); readReach(); onMethodsChanged?.(); }}"), "a refusal re-reads the balance and the methods");
+  // Stripe: a double click asks once; the minimum is said before asking.
+  assert.ok(card.includes("if (withdrawing.current || busy") && card.includes("withdrawing.current = false;"), "one Stripe withdrawal per click burst");
+  assert.ok(card.includes("disabled={busy || !(withdrawal.amount > 0) || Boolean(stripeMinimumProblem)}") && card.includes("minimumWithdrawalSentence(leastLocal, local)"),
+    "Stripe's minimum is checked in the dialog, in the server's sentence");
+  const { stripeMinimumWithdrawal, minimumWithdrawalSentence } = await import("../src/shared/withdrawal-fees.mjs");
+  const leastEur = stripeMinimumWithdrawal({ currency: "EUR", country: "PT", localPerUsd: 1 / 1.08 });
+  assert.ok(leastEur > 100 && leastEur < 200, "a euro account's minimum is a little over €1");
+  assert.equal(minimumWithdrawalSentence(leastEur, "EUR"), `The minimum withdrawal is €${(leastEur / 100).toFixed(2)}.`);
+  assert.ok(50 < Math.ceil(leastEur * 1.08), "so $0.50 is refused before asking");
 }
 
 console.log("withdrawals: short balance sends nothing; fee inside the amount; one key per attempt; a refusal is never replayed; the one balance withdraws exactly the amount asked, by one road");

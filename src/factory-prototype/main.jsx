@@ -1144,6 +1144,11 @@ export const factoryMainZhText = {
   "Nothing goes back to your balance: the brand's payment was refunded.": "没有款项回到你的余额：品牌的付款已退款。",
   // The reviewed withdrawal screens: balance card, Withdraw dialog, earnings tooltips.
   "Processing withdrawal": "处理中的提现",
+  "This withdrawal method isn't available right now.": "该提现方式暂不可用。",
+  "This withdrawal was already cancelled.": "该提现已取消。",
+  "This withdrawal is already being processed.": "该提现正在处理中。",
+  "Our payment partner securely verifies your company and bank details in this form. TSC never stores these bank details. The form may show TSC’s registered company name.": "我们的支付合作伙伴会在此表单中安全验证你的公司和银行信息。TSC 不会存储这些银行信息。表单中可能显示 TSC 的注册公司名称。",
+  "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval and withdrawals being processed.": "所选客户（或全部客户）已付款项中的收入，包括待审批的款项和处理中的提现。",
   "Withdraw full amount": "提取全部金额",
   "Cancelling…": "正在取消…",
   "Nothing to withdraw yet": "暂无可提现金额",

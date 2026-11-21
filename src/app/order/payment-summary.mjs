@@ -248,6 +248,10 @@ export function earningStatus(row, clearing = null, figures = null) {
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
   // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
   // Taken by one-balance withdrawals and sent: paid, whichever road took it.
+  const where = figures instanceof Map ? figures.get(row.id) : null;
+  // Part of it went in a Stripe withdrawal whose payout has not reached the
+  // bank yet: on its way until it lands, like that withdrawal's own row.
+  if (row.state === "released" && where?.has("on_its_way")) return ON_ITS_WAY;
   if (row.state === "released") return row.stripe_transfer_id && !withdrawnByTakes(row) ? ADDED_TO_BALANCE : "Paid";
   if (!toBeSent(row)) return "Awaiting approval";
   // The brand disputed its card charge: held until the dispute is settled,
@@ -256,7 +260,6 @@ export function earningStatus(row, clearing = null, figures = null) {
   // The brand's card payment is still clearing: the same word on the order
   // page and on Payments, from the payment's own date.
   if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
-  const where = figures instanceof Map ? figures.get(row.id) : null;
   if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
   // All of it in a withdrawal waiting or being sent (or a payout per step under way).
   if (where && where.size === 1 && where.has("processing")) return "Processing";
@@ -465,10 +468,11 @@ export function companyStripeRows(withdrawals = [], methodName = () => null, now
  *             Pending is clearing plus the disputed part of onHold.
  *   onHold    steps whose card charge is disputed, and parts of a waiting
  *             withdrawal whose step was refunded: "$Z on hold"
- *   waiting   PayPal / Wise withdrawals asked for and waiting for staff
- *             (shown by their own row, no line)
- *   onItsWay  the rest of Processing: withdrawals sent and on their way to
- *             the bank, and old step-by-step payouts being sent: "$Y on its way"
+ *   waiting   PayPal / Wise / bank withdrawals waiting for staff or being
+ *             sent (each shown by its own "Processing withdrawal" block, no line)
+ *   onItsWay  the rest of Processing: money that has left TSC, Stripe
+ *             withdrawals on their way to the bank and old step-by-step
+ *             payouts being sent: "$Y on its way"
  * `opens` are the open PayPal / Wise withdrawals (factory_withdrawals).
  * Null until the figures answer.
  */
@@ -487,7 +491,11 @@ export function pendingParts(figures, opens = []) {
   const partsOf = (w) => (Array.isArray(w?.parts) ? w.parts
     : w?.word === "on_hold" ? [{ word: "on_hold", amount_cents: w.amount_cents }]
     : n(w?.held_cents) > 0 ? [{ word: "on_hold", amount_cents: Math.min(n(w.amount_cents), n(w.held_cents)) }, { word: w.word, amount_cents: n(w.amount_cents) - Math.min(n(w.amount_cents), n(w.held_cents)) }]
-    : [{ word: w?.word, amount_cents: w?.amount_cents }]);
+    : [{ word: w?.word, amount_cents: w?.amount_cents }])
+    // A PayPal / Wise / bank withdrawal TSC is sending is still its own
+    // "Processing withdrawal" block on the card until it is paid, so it is
+    // counted with the waiting ones, never again in "on its way".
+    .map((part) => (w?.road === "pool" && part?.word === "on_its_way" ? { ...part, word: "waiting" } : part));
   const sumOf = (word) => (list ?? []).flatMap(partsOf).filter((part) => part?.word === word).reduce((sum, part) => sum + n(part.amount_cents), 0);
   // The server's list says which withdrawals wait for staff and which are held;
   // without it (an older server), the open requests and the refunded rows do.
@@ -500,7 +508,7 @@ export function pendingParts(figures, opens = []) {
   const onHold = disputed + heldInWithdrawals;
   const clearing = pending - disputed;
   const asked = list ? sumOf("waiting")
-    : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
+    : Math.max(0, (opens ?? []).filter((w) => w?.status === "requested" || w?.status === "paying").reduce((sum, w) => sum + n(w.amount_cents), 0) - refundedHeld);
   const waiting = Math.min(processing - heldInWithdrawals, asked);
   // The rest: withdrawals the server calls on their way, and old step-by-step payouts being sent.
   return { pending, processing, clearing, onHold, waiting, onItsWay: processing - heldInWithdrawals - waiting };

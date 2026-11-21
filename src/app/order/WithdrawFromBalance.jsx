@@ -38,6 +38,24 @@ const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301"
   ? "Your sign-in expired. Sign in again."
   : "That didn't go through. Reload the page and try again.");
 
+export const ALREADY_CANCELLED = "This withdrawal was already cancelled.";
+/** A saved method whose provider staff switched off: shown, never chosen. */
+export const METHOD_OFF = "This withdrawal method isn't available right now.";
+export const METHOD_OFF_CHOOSE = "This withdrawal method isn't available right now. Choose another one.";
+
+/**
+ * Why cancelling was refused. "Not waiting" is also what the database says
+ * when someone (another tab, a teammate) has just cancelled it: read the rows
+ * again and say that, not that TSC started sending it.
+ */
+export async function cancelRefusal(error, ids) {
+  if (error?.hint === "withdrawal_not_waiting") {
+    const { data } = await supabase.from("factory_withdrawals").select("id, status").in("id", ids);
+    if (data?.length && data.every((w) => w.status === "cancelled")) return ALREADY_CANCELLED;
+  }
+  return sentence(error);
+}
+
 const TIMING = {
   wise: "Sent by Wise after TSC approves it; usually 1–2 business days to arrive.",
   paypal: "Sent by PayPal after TSC approves it; usually reaches your PayPal balance within minutes.",
@@ -194,13 +212,13 @@ function NewOnly({ id, children }) {
 
 export async function cancelWithdrawal(id) {
   const { error } = await supabase.rpc("cancel_withdrawal", { target_withdrawal: id });
-  if (error) throw new Error(sentence(error));
+  if (error) throw new Error(await cancelRefusal(error, [id]));
 }
 
 /** All or none: if one has started sending, none is cancelled. */
 export async function cancelWithdrawals(ids) {
   const { error } = await supabase.rpc("cancel_withdrawals", { target_withdrawals: ids });
-  if (error) throw new Error(sentence(error));
+  if (error) throw new Error(await cancelRefusal(error, ids));
 }
 
 /**
@@ -209,7 +227,8 @@ export async function cancelWithdrawals(ids) {
  */
 export const NOTHING_BACK = "Nothing goes back to your balance: the brand's payment was refunded.";
 
-export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, returnable = null }) {
+// `onChanged`: read the balance again (a refusal means it moved meanwhile).
+export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, onChanged, returnable = null }) {
   const waiting = opens.filter((w) => w.status === "requested");
   const [chosen, setChosen] = useState(() => new Set(first ? [first] : []));
   const [busy, setBusy] = useState(false);
@@ -234,6 +253,7 @@ export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, re
       onDone();
     } catch (failure) {
       setError((await supabase.auth.getSession()).data?.session ? failure.message : SIGN_IN_ENDED);
+      onChanged?.();
     } finally {
       sending.current = false;
       setBusy(false);
@@ -298,9 +318,13 @@ function useExactQuote(orgId, accountId, amountCents, enabled) {
 // banks), listed in the same "Withdraw to" so there is one Withdraw. Choosing
 // one hands over to that balance's dialog (`onOther`), which shows what it can
 // reach.
-export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Modal, onClose, country = "", providers = null, others = [], onOther }) {
-  // A saved method whose provider staff switched off stays saved, but is not offered.
+// `onRefused`: read the balance and the methods again after a refusal (they
+// changed meanwhile, in another tab or by a teammate).
+export function WithdrawForm({ orgId, available, methods, defaultId, onDone, onRefused, Modal, onClose, country = "", providers = null, others = [], onOther }) {
+  // A saved method whose provider staff switched off stays saved: listed, not
+  // chosen, and said in words, never silently missing.
   const choices = methods.filter((row) => usable(row) && methodProviderOn(providers, row));
+  const switchedOff = methods.filter((row) => usable(row) && !methodProviderOn(providers, row));
   const [methodId, setMethodId] = useState((choices.find((m) => m.id === defaultId) ?? choices[0])?.id ?? "");
   const [amountText, setAmountText] = useState((available / 100).toFixed(2));
   // An amount is judged once the person works on it, never on opening: a
@@ -345,7 +369,11 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
     setBusy(false);
     // Signed out meanwhile (in another tab): say so, not "try again".
     if (refused && !(await supabase.auth.getSession()).data?.session) return setError(SIGN_IN_ENDED);
-    if (refused) return setError(sentence(refused));
+    if (refused) {
+      setError(sentence(refused));
+      onRefused?.();
+      return undefined;
+    }
     onDone();
   }
 
@@ -355,33 +383,40 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
   return (
     <Modal title="Withdraw" className="withdraw-form-modal" onClose={onClose} actions={<>
       <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
-      <button className="primary-btn" type="button" data-testid="withdraw-confirm" disabled={busy || asking || !method || Boolean(amountProblem) || !fee || Boolean(fee?.refused) || Boolean(exact?.refused)} onClick={confirm}>
+      <button className="primary-btn" type="button" data-testid="withdraw-confirm" disabled={busy || Boolean(error) || asking || !method || Boolean(amountProblem) || !fee || Boolean(fee?.refused) || Boolean(exact?.refused)} onClick={confirm}>
         {busy ? "Withdrawing…" : Number.isFinite(amountCents) && amountCents > 0 ? `Withdraw ${formatMoney(amountCents, "USD")}` : "Withdraw"}
       </button>
     </>}>
       {/* Every saved method switched off by staff: nothing to choose, nothing to fill in. */}
-      {!choices.length ? <p className="payout-modal-intro" data-testid="withdraw-no-method">Add another withdrawal method to withdraw.</p> : (
+      {!choices.length ? <>
+        {switchedOff.map((row) => <p className="payout-modal-intro" data-testid="withdraw-method-off" key={row.id}>{label(row)}: {METHOD_OFF}</p>)}
+        <p className="payout-modal-intro" data-testid="withdraw-no-method">Add another withdrawal method to withdraw.</p>
+      </> : (
       <div className="withdraw-form-fields">
         <label className="payout-country-field withdraw-method-field">
           <span>Withdraw to</span>
           <select name="Withdraw to" value={methodId} disabled={busy} onChange={(event) => {
             const value = event.target.value;
+            setError(null);
             if (value.startsWith("other:")) onOther?.(value.slice(6));
             else setMethodId(value);
           }}>
             {methodId ? null : <option value="" />}
             {choices.map((row) => <option key={row.id} value={row.id}>{label(row)}</option>)}
+            {switchedOff.map((row) => <option key={row.id} value={row.id} disabled>{label(row)}</option>)}
             {others.map((other) => <option key={other.id} value={`other:${other.id}`}>{other.label}</option>)}
           </select>
         </label>
+        {switchedOff.map((row) => <p className="withdraw-available" data-testid="withdraw-method-off" key={row.id}>{label(row)}: {METHOD_OFF_CHOOSE}</p>)}
         <div className="withdraw-amount-field payout-form-grid">
           <div className="withdraw-amount-heading">
             <label htmlFor="withdraw-amount">Amount (USD)</label>
-            <button className="secondary-btn" type="button" disabled={busy} onClick={() => { setAmountTouched(true); setAmountText((available / 100).toFixed(2)); }}>Withdraw full amount</button>
+            <button className="secondary-btn" type="button" disabled={busy} onClick={() => { setError(null); setAmountTouched(true); setAmountText((available / 100).toFixed(2)); }}>Withdraw full amount</button>
           </div>
           <input id="withdraw-amount" name="Amount (USD)" inputMode="decimal" value={amountText} disabled={busy}
             onChange={(event) => {
               const value = event.target.value;
+              setError(null);
               setAmountTouched(true);
               setAmountText(value);
             }} aria-describedby="withdraw-available" />
@@ -390,7 +425,8 @@ export function WithdrawForm({ orgId, available, methods, defaultId, onDone, Mod
         </div>
       </div>
       )}
-      {choices.length > 0 && amountTouched && amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+      {/* One message: the server's refusal, when there is one, is the truth. */}
+      {!error && choices.length > 0 && amountTouched && amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
       {fee?.refused || exact?.refused ? <p className="live-stripe-error" role="alert">{fee?.refused ?? exact.refused}</p> : null}
       {error ? <p className="live-stripe-error" role="alert">{error}</p> : null}
     </Modal>

@@ -279,6 +279,25 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const p75 = pendingParts(withParts, []);
   assert.deepEqual(p75, { pending: 0, processing: 191594, clearing: 0, onHold: 5000, waiting: 2500, onItsWay: 184094 }, "lines from parts: $25 waiting + $50 on hold");
   assert.equal(p75.onHold + p75.waiting + p75.onItsWay, withParts.processing_cents, "and they add up to Processing");
+  // Round 16 (F1): a PayPal withdrawal staff are sending ("paying", word
+  // on_its_way) is its own "Processing withdrawal" block until it is paid, so
+  // it is never also inside "$X on its way" (it was counted twice: $596.52 on
+  // its way = $496.52 Stripe + the $100 PayPal block). The card adds up to Total.
+  const sending = { available_cents: 113950, awaiting_cents: 13000, pending_cents: 6500, processing_cents: 10000 + 49652, paid_out_cents: 0,
+    parts: { owed_clearing_cents: 6500, disputed_cents: 0 }, withdrawals: [
+      { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 49652, parts: [{ word: "on_its_way", amount_cents: 49652 }] },
+      { id: "pp", road: "pool", provider: "paypal", word: "on_its_way", amount_cents: 10000, parts: [{ word: "on_its_way", amount_cents: 10000 }] },
+    ] };
+  const sendingLines = pendingParts(sending, [{ id: "pp", status: "paying", amount_cents: 10000 }]);
+  assert.deepEqual(sendingLines, { pending: 6500, processing: 59652, clearing: 6500, onHold: 0, waiting: 10000, onItsWay: 49652 },
+    "a PayPal withdrawal being sent is its block only; on its way is the Stripe payout alone");
+  const blocks = 10000; // the one "Processing withdrawal" block (factory_withdrawals paying)
+  assert.equal(sending.available_cents + sending.awaiting_cents + sendingLines.clearing + sendingLines.onHold + blocks + sendingLines.onItsWay + sending.paid_out_cents,
+    summaryFrom(sending).total, "Available + Awaiting + pending + on hold + blocks + on its way + Paid out = Total");
+  // Without parts (an older server): the word decides, the same way.
+  assert.equal(pendingParts({ ...sending, withdrawals: sending.withdrawals.map(({ parts, ...w }) => w) }, []).onItsWay, 49652, "also without parts");
+  // Without the server's list: the open requests, sending ones included, are the blocks.
+  assert.equal(pendingParts({ pending_cents: 0, processing_cents: 10000, parts: {} }, [{ status: "paying", amount_cents: 10000 }]).onItsWay, 0, "fallback: a paying request is not on its way");
   // Round 12: Stripe money an open withdrawal holds is on its way (Processing), not clearing.
   const held = pendingParts({ pending_cents: 0, processing_cents: 11467, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, stripe: { pending_cents: 0, processing_cents: 1467, held_cents: 1467 },
     withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, parts: [{ word: "waiting", amount_cents: 5000 }, { word: "on_hold", amount_cents: 5000 }] }] }, []);
@@ -329,7 +348,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const cardCode = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
   assert.ok(/setFreshReach\(null\);\s*fromBalance\.load\(\);\s*await load\(\)\.catch/.test(cardCode), "a refused withdrawal re-reads the balance, Stripe part included");
-  assert.ok(page.includes("const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));"), "the newer read wins");
+  assert.ok(page.includes("const figuresAsOf = (via, at) => (via && at >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));"), "the newer read wins");
+  // Round 16: an answer is dated by its own read. "Nothing read" from the card
+  // (no Stripe account; it re-ran after a method save) once dated the page-load
+  // figures action as new, and the card went back to them.
+  assert.ok(page.includes("if (value || fallback) setStripeAt(Date.now());") && !/setViaFigures\([^;]+\);\s*setStripeAt/.test(page)
+    && page.includes("figuresAsOf(viaFigures ?? null, viaAt)"), "the figures action and Stripe's read each keep their own time");
+  assert.ok(page.includes("if (methodsSeen.current === payouts.accounts) return;"), "any method save reads the figures again");
 }
 
 // A declined or failed withdrawal banner shows while new, not in every later visit.

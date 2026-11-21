@@ -1,6 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
-import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
+import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
@@ -355,6 +355,8 @@ export default function StripePayoutCard({
   onSaveWise,
   onSavePaypal,
   onDeleteManual,
+  // Read the saved methods again (one removed in another tab meanwhile).
+  onMethodsChanged,
   manualBusy,
   manualSaved,
   manualOwed = [],
@@ -415,6 +417,7 @@ export default function StripePayoutCard({
   // (a withdrawal, a cancel, an approval, a method change) and when Withdraw
   // is opened: the balance read's `reach` is only as new as that read.
   const [freshReach, setFreshReach] = useState(null);
+  const withdrawing = useRef(false);
   const handledInitialAction = useRef(false);
   const accountKnown = useRef(false);
 
@@ -548,7 +551,11 @@ export default function StripePayoutCard({
   }, [balance, modal]);
 
   async function withdraw() {
-    if (busy || !withdrawal || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max)) return;
+    // A second click before `busy` reaches the button would ask again with the
+    // same request id, and Stripe's "already being processed" answer was then
+    // left on the card under a withdrawal that went through.
+    if (withdrawing.current || busy || !withdrawal || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max) || stripeMinimumProblem) return;
+    withdrawing.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -574,6 +581,7 @@ export default function StripePayoutCard({
         await load().catch(() => null);
       }
     } finally {
+      withdrawing.current = false;
       setBusy(false);
     }
   }
@@ -929,8 +937,10 @@ export default function StripePayoutCard({
       setModal(renderCard ? "manage" : null);
       setMethodNotice(LIST_WORDS.removed);
     } catch (failure) {
-      // Said in the dialog, where the factory is looking.
+      // Said in the dialog, where the factory is looking; what is being sent
+      // to it is read again, so the dialog turns to its refusal (Back only).
       setRemoveError(failure);
+      onMethodsChanged?.();
     }
   }
 
@@ -1003,9 +1013,12 @@ export default function StripePayoutCard({
   // Withdraw opens on the default, and "Withdraw to" lists every method,
   // each dialog showing what its method can reach (withdrawReach).
   const balanceChoices = manualAccounts.filter((row) => usable(row) && methodProviderOn(providers, row));
+  // Saved, but its provider is switched off by staff: the Withdraw dialog
+  // lists it and says it is not available, never leaves it out silently.
+  const balanceOff = manualAccounts.filter((row) => usable(row) && !methodProviderOn(providers, row));
   const stripeReachable = Boolean(balance && account?.transfers_active && account.payouts_enabled && stripeWithdrawTargets.length);
   const stripeCan = stripeReachable && reach.stripe > 0;
-  const balanceCan = balanceChoices.length > 0 && reach.balance > 0;
+  const balanceCan = (balanceChoices.length > 0 || balanceOff.length > 0) && reach.balance > 0;
   const openStripeWithdraw = (destination = null, latest = reach) => {
     setError(null);
     const max = latest.stripe ?? 0;
@@ -1024,7 +1037,20 @@ export default function StripePayoutCard({
     ? parseWithdrawAmount(withdrawal.amountText, withdrawal.max, (most) => formatMoney(most, withdrawal.currency)).problem : null;
   const stripeFee = withdrawal && !withdrawal.previous && withdrawal.amount > 0 && !amountProblem
     ? withdrawalFee({ provider: "stripe", amountCents: withdrawal.amount, currency: "USD", country: String(account?.country ?? "").toUpperCase() }) : null;
-  const stripeFeeLine = stripeFee && !stripeFee.refused ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
+  // Stripe's smallest payout, checked as the amount is typed, in the server's
+  // own sentence (api/_stripe-withdrawals.js), so a withdrawal that would be
+  // refused is never asked for: the server would first move the money to the
+  // Stripe account and then take it back. Where the account's currency has no
+  // display rate, the server still decides.
+  const stripeMinimumProblem = (() => {
+    if (!withdrawal || withdrawal.previous || !(withdrawal.amount > 0) || amountProblem) return null;
+    const local = String(balance?.defaultCurrency ?? currency ?? "USD").toUpperCase();
+    const usdPer = local === "USD" ? 1 : Number(balance?.displayFx?.rates?.[local]);
+    if (!(usdPer > 0)) return null;
+    const leastLocal = stripeMinimumWithdrawal({ currency: local, country: String(account?.country ?? "").toUpperCase(), localPerUsd: 1 / usdPer });
+    return withdrawal.amount < Math.ceil(leastLocal * usdPer) ? minimumWithdrawalSentence(leastLocal, local) : null;
+  })();
+  const stripeFeeLine = stripeFee && !stripeFee.refused && !stripeMinimumProblem ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
   // Opens on the default; when the default's method can reach nothing and
   // another can, on that one, so it never opens at $0.
   const openWithdraw = async () => {
@@ -1044,7 +1070,7 @@ export default function StripePayoutCard({
   // Until the figures answer, a usable saved method decides, so the button
   // does not change once they do.
   // A method saved just now counts at once, before the figures are read again.
-  const showWithdraw = Boolean(account?.transfers_active) || Boolean(figures?.has_method) || balanceChoices.length > 0;
+  const showWithdraw = Boolean(account?.transfers_active) || Boolean(figures?.has_method) || balanceChoices.length > 0 || balanceOff.length > 0;
   const withdrawTitle = stripeCan || balanceCan ? undefined
     : paused ? "Withdrawals paused"
     : account?.transfers_active && !account.payouts_enabled && !figures?.has_method ? "Finish setup to withdraw"
@@ -1122,20 +1148,21 @@ export default function StripePayoutCard({
 
       {modal === "cancel-withdrawals" ? (
         <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} returnable={fromBalance.returnable} Modal={PayoutModal} onClose={closeModal}
-          onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
+          onDone={() => { closeModal(); fromBalance.load(); readReach(); }} onChanged={() => { fromBalance.load(); readReach(); }} />
       ) : null}
 
       {modal === "withdraw-balance" && reach.balance != null ? (
         <WithdrawForm orgId={org.id} available={reach.balance} methods={manualAccounts} defaultId={withdrawFromId ?? manualAccount?.id} country={country} providers={providers}
           others={stripeReachable ? stripeWithdrawTargets.map((method) => ({ id: method.id, label: listLabelIn(method, uiLanguage) })) : []}
           onOther={(id) => openStripeWithdraw(id)}
+          onRefused={() => { fromBalance.load(); readReach(); onMethodsChanged?.(); }}
           Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
       ) : null}
 
       {modal === "withdraw" && withdrawal ? (
         <PayoutModal title="Withdraw" className="withdraw-form-modal" onClose={closeModal} actions={<>
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
-          <button className="primary-btn" type="button" data-testid="stripe-withdraw-confirm" disabled={busy || !(withdrawal.amount > 0)} onClick={withdraw}>{busy ? "Withdrawing…" : withdrawal.amount > 0 ? `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}` : "Withdraw"}</button>
+          <button className="primary-btn" type="button" data-testid="stripe-withdraw-confirm" disabled={busy || !(withdrawal.amount > 0) || Boolean(stripeMinimumProblem)} onClick={withdraw}>{busy ? "Withdrawing…" : withdrawal.amount > 0 ? `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}` : "Withdraw"}</button>
         </>}>
           {withdrawal.previous ? (
             <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your previous account’s bank account. Bank processing time depends on your bank and country.</p>
@@ -1153,6 +1180,7 @@ export default function StripePayoutCard({
                     }}>
                     {stripeWithdrawTargets.map((method) => <option key={method.id} value={method.id}>{listLabelIn(method, uiLanguage)}</option>)}
                     {reach.balance != null ? balanceChoices.map((row) => <option key={row.id} value={`balance:${row.id}`}>{withdrawOptionLabel(row, uiLanguage)}</option>) : null}
+                    {reach.balance != null ? balanceOff.map((row) => <option key={row.id} value={`balance:${row.id}`} disabled>{withdrawOptionLabel(row, uiLanguage)}</option>) : null}
                   </select>
                 </label>
               ) : null}
@@ -1176,6 +1204,7 @@ export default function StripePayoutCard({
           )}
           {/* One message: the server's refusal, when there is one, is the truth. */}
           {!error && !withdrawal.previous && withdrawal.amountText && amountProblem ? <p className="live-stripe-error" role="alert">{amountProblem}</p> : null}
+          {!error && stripeMinimumProblem ? <p className="live-stripe-error" role="alert" data-testid="stripe-withdraw-minimum">{stripeMinimumProblem}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}
@@ -1242,7 +1271,7 @@ export default function StripePayoutCard({
                     <div className="payout-method-popover" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>
                       {!row.is_primary || payoutRoute !== "manual" ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
-                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); }}>{cardWords.remove}</button>
+                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); onMethodsChanged?.(); }}>{cardWords.remove}</button>
                     </div>
                   ) : null}
                 </div>
@@ -1283,7 +1312,8 @@ export default function StripePayoutCard({
             ? <button className="secondary-btn" type="button" onClick={backToList}>Back</button>
             : <><button className="secondary-btn" type="button" onClick={backToList}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={manualBusy} onClick={removeManualMethod}>{manualBusy ? "Removing…" : "Remove method"}</button></>}
         >
-          {removeError ? <ModalMessage>{removeError.message}</ModalMessage> : null}
+          {/* Once the refusal is known it is the dialog's one line. */}
+          {removeError && !manualRemovalRefusal ? <ModalMessage>{removeError.message}</ModalMessage> : null}
           {manualRemovalLine ? <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalLine}</p> : null}
           {!manualRemovalRefusal && otherManual.length > 1 && removingManual.is_primary ? (
             <label className="payout-country-field">

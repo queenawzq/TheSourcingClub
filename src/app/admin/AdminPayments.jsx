@@ -936,7 +936,10 @@ function AttentionSection({ attention, onChanged }) {
                   <td>{row.factory_name}<br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></td>
                   <td>{moneyIn(row.amount_cents, row.currency)}</td>
                   <td>
-                    The brand disputed this charge, so it waits in the factory's balance.
+                    {/* Part of it may already be in a withdrawal TSC is sending or has paid: said apart, it has left the balance. */}
+                    {Number(row.in_withdrawal_cents) > 0
+                      ? `The brand disputed this charge. ${moneyIn(Math.max(0, Number(row.amount_cents) - Number(row.in_withdrawal_cents)), row.currency)} waits in the factory's balance; ${moneyIn(Math.min(Number(row.amount_cents), Number(row.in_withdrawal_cents)), row.currency)} was already in a withdrawal being sent or paid to the factory.`
+                      : "The brand disputed this charge, so it waits in the factory's balance."}
                     {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it again.{" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>

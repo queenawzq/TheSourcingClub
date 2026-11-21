@@ -187,10 +187,14 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // after a withdrawal is never mixed back with an older database read.
   const [stripeAt, setStripeAt] = useState(0);
   const [databaseAt, setDatabaseAt] = useState(0);
+  // Only an answer is dated: the card saying "nothing read" (no Stripe
+  // account, or a re-read starting) must never make an older answer the newer
+  // one. That put the card back on figures from before a live change once a
+  // method was saved.
   const balanceChanged = useCallback((value, fallback = null) => {
     setStripeBalance(value);
     setStripeFallback(fallback);
-    setStripeAt(Date.now());
+    if (value || fallback) setStripeAt(Date.now());
   }, []);
   const [stripeStatus, setStripeStatus] = useState("loading");
   // Where nobody reads Stripe here (a member, or no Stripe account: the card
@@ -200,6 +204,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const clearingAskedAt = useRef(0);
   // The figures action's answer: undefined until it answers, null if it could not.
   const [viaFigures, setViaFigures] = useState(undefined);
+  // When the figures action last answered: its own time, not Stripe's.
+  const [viaAt, setViaAt] = useState(0);
   // Whether the payout card has its final shape (it knows how the factory is
   // paid, from our database). Figures below it wait for that, never for
   // Stripe, so the card settling can only move placeholders.
@@ -264,11 +270,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       clearingAskedAt.current = Date.now();
       try {
         setViaFigures((await connectAction(org.id, "figures")).figures ?? null);
-        setStripeAt(Date.now());
+        setViaAt(Date.now());
       } catch (failure) {
         // Stripe unreachable: the database's figures, as the server sent them.
         setViaFigures(failure?.details?.figures ?? null);
-        setStripeAt(Date.now());
+        setViaAt(Date.now());
       }
     }
     const [figures, toBank] = await Promise.all([
@@ -303,15 +309,16 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
   // A withdrawal method saved or removed changes has_method: read the
   // figures again at once, so Withdraw appears without a reload.
-  const methodsKey = (payouts.accounts ?? []).map((row) => `${row.id}:${row.is_primary ? 1 : 0}`).join(",");
+  // An edit that keeps the same methods is read again too: the card then
+  // shows the figures as they are now, never older ones.
   const methodsSeen = useRef(null);
   useEffect(() => {
     if (payouts.accounts == null) return;
-    if (methodsSeen.current === null) { methodsSeen.current = methodsKey; return; }
-    if (methodsSeen.current === methodsKey) return;
-    methodsSeen.current = methodsKey;
+    if (methodsSeen.current === null) { methodsSeen.current = payouts.accounts; return; }
+    if (methodsSeen.current === payouts.accounts) return;
+    methodsSeen.current = payouts.accounts;
     loadEarnings().catch(setEarningsError);
-  }, [methodsKey, payouts.accounts, loadEarnings]);
+  }, [payouts.accounts, loadEarnings]);
 
   // The card has said nobody reads Stripe here: read again, with the dates asked for first.
   useEffect(() => {
@@ -407,13 +414,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const stripeReading = !accountsError && (!cardSettled || stripeStatus === "loading" || stripeStatus === "slow");
   // The server's full answer when it is the newer read; else the newer
   // database read with that answer's Stripe part kept.
-  const figuresAsOf = (via) => (via && stripeAt >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));
+  const figuresAsOf = (via, at) => (via && at >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));
   const allFigures = earningsShown && !stripeReading
-    ? stripeStatus === "ready" ? figuresAsOf(stripeBalance?.figures)
-      : stripeStatus === "failed" ? figuresAsOf(stripeFallback)
+    ? stripeStatus === "ready" ? figuresAsOf(stripeBalance?.figures, stripeAt)
+      : stripeStatus === "failed" ? figuresAsOf(stripeFallback, stripeAt)
       // Waits for the figures action's first answer, so the figures never jump.
       : viaFigures === undefined && clearingPath.current ? null
-      : figuresAsOf(viaFigures ?? null)
+      : figuresAsOf(viaFigures ?? null, viaAt)
     : null;
   const shownFigures = client === "All clients" ? allFigures
     : allFigures && clientFigures?.client === client ? clientFigures.figures : null;
@@ -422,7 +429,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // Where each payment's money is, for its row's word: the same read.
   const placed = figuresByPayment(balanceFigures);
   const earningsSummary = [
-    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
+    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval and withdrawals being processed."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
     ["Pending", summary.pending, "Payments still processing and money on hold."],
     ["Paid out", summary.paid, "Money that has been paid out to you"],
@@ -582,6 +589,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onSavePaypal={payouts.savePaypal}
             problem={withdrawalProblem(earnings, payouts.primary)}
             onDeleteManual={payouts.remove}
+            onMethodsChanged={payouts.load}
             manualBusy={payouts.busy}
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
