@@ -1,5 +1,4 @@
 import { PayoutMethodRefusal, checkWithdrawalRequest, holdPayouts, withdrawBalance } from "./_stripe-payouts.js";
-import { usdCents } from "./_balance-figures.js";
 
 /**
  * A factory's withdrawal from its Stripe balance, with Stripe's payout fee
@@ -302,36 +301,26 @@ async function localPerUsd(stripe, accountId, currency) {
 }
 
 /**
- * What the money free in a Stripe account's available balance lets a
+ * What the money free in a Stripe account's available balance lets ONE
  * withdrawal take, in US cents, reckoned exactly as the withdrawal reckons it
- * (gatherOwed): per currency, the free part divided by the rate Stripe last
- * converted a transfer to this account at, rounded down. So "Withdraw full
- * amount" offers what the server allows. A currency no transfer gives a rate
- * for falls back to the indicative rate (`displayFx`), as before; one with
- * neither is left out. `estimated` is true while money in another currency
- * than US$ is counted. Returns { cents, estimated }.
+ * (gatherOwed): only the balance in the currency it pays out in (the
+ * account's default currency, `payoutCurrency`), less what other withdrawals
+ * hold, divided by the rate Stripe last converted a transfer to this account
+ * at, rounded down. So "Withdraw full amount" offers what the server allows.
+ * Money in another currency is not taken by a withdrawal and is left out; so
+ * is money in the payout currency that no transfer gives a rate for (the
+ * withdrawal leaves it in the account too). `estimated` is true while money
+ * in another currency than US$ is counted. Returns { cents, estimated }.
  */
-export async function stripeMoneyUsd(stripe, accountId, available, held = {}, displayFx = null) {
-  let cents = 0;
-  let estimated = false;
-  for (const entry of available ?? []) {
-    const currency = String(entry.currency ?? "").toLowerCase();
-    const free = Math.max(0, Number(entry.amount) - (held?.[currency] ?? 0));
-    if (currency === "usd") {
-      cents += free;
-      continue;
-    }
-    if (Number(entry.amount)) estimated = true;
-    if (!free) continue;
-    const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
-    if (rate > 0) {
-      cents += Math.floor(free / rate);
-      continue;
-    }
-    const indicative = usdCents(free, currency, displayFx);
-    if (indicative != null) cents += indicative;
-  }
-  return { cents, estimated };
+export async function stripeMoneyUsd(stripe, accountId, available, held = {}, payoutCurrency = "usd") {
+  const currency = String(payoutCurrency ?? "usd").toLowerCase();
+  const entry = (available ?? []).find((row) => String(row.currency ?? "").toLowerCase() === currency);
+  const free = Math.max(0, Number(entry?.amount ?? 0) - (held?.[currency] ?? 0));
+  if (currency === "usd") return { cents: free, estimated: false };
+  if (!free) return { cents: 0, estimated: false };
+  const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
+  if (!(rate > 0)) return { cents: 0, estimated: false };
+  return { cents: Math.floor(free / rate), estimated: true };
 }
 
 async function carryOut({ stripe, db, row, country, requestId, destination, transfersActive = false }) {
@@ -636,11 +625,17 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
         await refuse(db, row, minimumWithdrawalSentence(stripeMinimumWithdrawal({ currency, country, localPerUsd: 1 }), currency), { stripe });
       }
     }
-    const inStripe = await withdrawableNow(stripe, db, row, currency);
+    let inStripe = await withdrawableNow(stripe, db, row, currency);
     let rate = 1;
     if (currency !== "usd" && inStripe > 0) {
       rate = await localPerUsd(stripe, accountId, currency);
-      if (!rate) await refuse(db, row, CANNOT_PROCESS, { stripe });
+      // No transfer gives a rate yet: that money cannot be reckoned in US$,
+      // so this withdrawal leaves it in the account and takes owed money only
+      // (stripeMoneyUsd leaves it out of what Withdraw offers the same way).
+      if (!rate) {
+        inStripe = 0;
+        rate = 1;
+      }
     }
     const inStripeUsd = currency === "usd" ? inStripe : Math.floor(inStripe / rate);
     // Money refunded after the factory had withdrawn it is owed to TSC:

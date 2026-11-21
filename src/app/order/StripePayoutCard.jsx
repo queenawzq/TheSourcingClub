@@ -1046,9 +1046,12 @@ export default function StripePayoutCard({
   const stripeCounted = figures?.stripe
     ? (Number(figures.stripe.available_cents) || 0) + (Number(figures.stripe.pending_cents) || 0) + (Number(figures.stripe.processing_cents) || 0)
     : null;
-  const heldElsewhere = stripeCounted === 0 ? null : [...(balance?.available ?? []), ...(balance?.pending ?? [])]
-    .find((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount) !== 0);
-  const heldCurrency = heldElsewhere ? String(heldElsewhere.currency).toUpperCase() : null;
+  // Every such currency is named: one withdrawal pays out in one of them.
+  const heldElsewhere = stripeCounted === 0 ? [] : [...new Set([...(balance?.available ?? []), ...(balance?.pending ?? [])]
+    .filter((row) => String(row.currency ?? "").toUpperCase() !== "USD" && Number(row.amount) !== 0)
+    .map((row) => String(row.currency).toUpperCase()))];
+  const heldCurrency = heldElsewhere.length ? heldElsewhere.length === 1 ? heldElsewhere[0]
+    : `${heldElsewhere.slice(0, -1).join(", ")} and ${heldElsewhere[heldElsewhere.length - 1]}` : null;
   // Someone who reads no Stripe balance (a member) is told the same by the
   // server's figures: converted, and money sitting in the Stripe account now.
   const estimatedLabel = Boolean(heldCurrency) || (!balance && Boolean(figures?.estimated)

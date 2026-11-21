@@ -858,4 +858,25 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(card.includes("{!busy && !error && stripeMinimumProblem ?"), "nor the minimum line");
 }
 
+// Fix round 31b (2): EUR and GBP in the Stripe account. The card names both
+// in its existing line (it named only the first found), and the Chinese
+// reads it; one withdrawal pays out in one currency (stripeMoneyUsd).
+{
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const card = read("../src/app/order/StripePayoutCard.jsx");
+  const start = card.indexOf("const heldElsewhere = stripeCounted");
+  const heldOf = new Function("stripeCounted", "balance", card.slice(start, card.indexOf("// Someone who reads no Stripe balance", start)) + "return heldCurrency;");
+  const balance = { available: [{ currency: "eur", amount: 9000 }, { currency: "gbp", amount: 8000 }, { currency: "usd", amount: 100 }], pending: [{ currency: "eur", amount: 10 }] };
+  assert.equal(heldOf(1, balance), "EUR and GBP", "both currencies are named");
+  assert.equal(heldOf(1, { available: [{ currency: "eur", amount: 9000 }], pending: [] }), "EUR");
+  assert.equal(heldOf(1, { available: [{ currency: "eur", amount: 1 }, { currency: "gbp", amount: 1 }, { currency: "chf", amount: 1 }], pending: [] }), "EUR, GBP and CHF");
+  assert.equal(heldOf(0, balance), null, "none when the figures count no Stripe money");
+  const zh = read("../src/app/live-zh.js");
+  const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
+  for (const text of ["Part of your balance is held in EUR and GBP, so USD amounts are estimates.", "Part of your balance is held in EUR, GBP and CHF, so USD amounts are estimates."]) {
+    assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
+  }
+  assert.ok(zh.includes('m[1].split(/, | and /).join("、")'), "the currencies listed with 、");
+}
+
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

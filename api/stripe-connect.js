@@ -309,9 +309,10 @@ export default async function handler(request, response) {
       // (an estimate when that is in another currency), less what is held;
       // PayPal and Wise reach owed steps and pool money, never the Stripe
       // account's.
-      // At the rate the withdrawal itself uses (stripeMoneyUsd), so the
-      // dialog's full amount is what the server allows.
-      const { cents: inStripeUsd, estimated: reachEstimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx);
+      // As one withdrawal reckons it (stripeMoneyUsd): the payout currency's
+      // money only, at the rate the withdrawal uses, so the dialog's full
+      // amount is what the server allows.
+      const { cents: inStripeUsd, estimated: reachEstimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, account.default_currency);
       const reach = {
         // Net of what the company owes TSC (owed_reachable), never below zero.
         stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd),
@@ -447,7 +448,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
     // Funded payments Stripe gave a clearing date after they were recorded.
     await ensureFundsAvailableFor({ stripe, db, orgId });
     const upgrade = await connectUpgrade(db, orgId);
-    const [{ balance, fresh, held: heldElsewhere, heldById, consistent }, allocation, onTheirWay, displayFx] = await Promise.all([
+    const [{ balance, fresh, held: heldElsewhere, heldById, consistent }, allocation, onTheirWay, displayFx, account] = await Promise.all([
       consistentMoneyRead(db, existing.stripe_account_id, async () => {
         const [balanceRead, freshRead] = await Promise.all([
           stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
@@ -460,6 +461,8 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
       payoutsOnTheirWay(stripe, existing.stripe_account_id),
       payoutDisplayRates(),
+      // The currency a withdrawal pays out in (withdraw: payoutCurrency).
+      stripe.accounts.retrieve(existing.stripe_account_id),
     ]);
     let recovery = null;
     if (upgrade?.completed_at) {
@@ -475,7 +478,7 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
       held_by: heldByRows(heldById),
     }, displayFx), stripe_unavailable: false };
     checkedFigures(figures, consistent, orgId);
-    const { cents: inStripeUsd, estimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx);
+    const { cents: inStripeUsd, estimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, account.default_currency);
     return reply(response, 200, {
       figures,
       reach: { stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd), pool_cents: poolCents, estimated },

@@ -1204,7 +1204,7 @@ for (const [why, row] of [
     const withdrawalsSource = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
     assert.ok(withdrawalsSource.includes("if (before === after) return { ...result, consistent: true };"), "a withdrawal that changed during the read is read again");
     const card = (await import("node:fs")).readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-    assert.ok(card.includes("const heldElsewhere = stripeCounted === 0 ? null :"), "no estimate line when the figures count no Stripe money");
+    assert.ok(card.includes("const heldElsewhere = stripeCounted === 0 ? [] :"), "no estimate line when the figures count no Stripe money");
   }
   // Fix round 28 (money review r27). The page kept the last server answer's
   // Stripe part and merged it with a newer database read. That is only right
@@ -2474,8 +2474,8 @@ for (const [why, row] of [
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     // Since fix round 30 both reckon it in stripeMoneyUsd (api/_stripe-withdrawals.js), held part left out.
     const lib = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
-    assert.ok(lib.includes("const free = Math.max(0, Number(entry.amount) - (held?.[currency] ?? 0));"), "stripeMoneyUsd leaves out what other withdrawals hold");
-    assert.equal(connect.split("stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, displayFx)").length - 1, 2,
+    assert.ok(lib.includes("const free = Math.max(0, Number(entry?.amount ?? 0) - (held?.[currency] ?? 0));"), "stripeMoneyUsd leaves out what other withdrawals hold");
+    assert.equal(connect.split("stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, account.default_currency)").length - 1, 2,
       "the balance answer and the members' figures both leave out what other withdrawals hold");
     assert.equal(connect.split("heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId })").length - 1, 2,
       "both ask with Stripe at hand, so money still clearing is not counted as held (4a445bb2)");
@@ -2487,6 +2487,27 @@ for (const [why, row] of [
     const stripeCents = owedStripe + available.reduce((sum, entry) => sum + (entry.currency === "usd" ? free(entry, held) : 0), 0);
     assert.equal(stripeCents, 2500, "all $1,343.03 held elsewhere: Stripe reaches only the owed money");
     assert.equal(free(available[1], held), 0, "never below zero per currency");
+  }
+
+  // Fix round 31b: a EUR account no transfer has reached yet holds EUR 50.00
+  // of its own. No rate prices it, so the withdrawal leaves it in the account
+  // and takes the owed $100 (old: refused everything, CANNOT_PROCESS); and
+  // what Withdraw offers (stripeMoneyUsd + owed) is exactly what it takes.
+  {
+    const w = oneBalanceWorld({ currency: "eur", rate: 0.9, steps: [step("p1", 10000)] });
+    w.stripe.balance.eur = 5000;
+    const { stripeMoneyUsd } = await import("../api/_stripe-withdrawals.js");
+    const offered = (await stripeMoneyUsd(w.api, "acct_f", [{ amount: 5000, currency: "eur" }], {}, "eur")).cents + 10000;
+    assert.equal(offered, 10000, "the dialog offers the owed $100.00 only");
+    const payout = await withdraw(w, offered, { payoutCurrency: "eur", country: "DE" });
+    assert.ok(payout?.id, "the full amount offered goes through");
+    assert.equal(w.stripe.transfers.length, 1, "the owed step is transferred");
+    assert.equal(w.stripe.balance.eur, 5000, "the euros no rate priced stay in the account");
+    const more = oneBalanceWorld({ currency: "eur", rate: 0.9, steps: [step("p1", 10000)] });
+    more.stripe.balance.eur = 5000;
+    await assert.rejects(withdraw(more, offered + 1, { payoutCurrency: "eur", country: "DE" }), /You can withdraw up to \$100\.00\./,
+      "a cent more is refused with the same limit");
+    assert.equal(more.stripe.payouts.length, 0, "and nothing is paid out");
   }
 
   // Pressed twice at once: one claim, one set of transfers, one payout.

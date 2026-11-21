@@ -155,7 +155,7 @@ const PATTERNS = [
   // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
   [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待处理。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
   [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待处理。处理完成后即可提现。`],
-  [/^Part of your balance is held in ([A-Z]{3}), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1]} 持有，因此美元金额为估算值。`],
+  [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
   [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
