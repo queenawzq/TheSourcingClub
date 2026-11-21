@@ -219,7 +219,7 @@ export function legacyOnItsWayCents(earnings, figures) {
   return (earnings ?? []).filter((row) => {
     if (!toBeSent(row) || row.withdrawal_pool) return false;
     const where = figures instanceof Map ? figures.get(row.id) : null;
-    if (!where || where.size !== 1 || !where.has("pending")) return false;
+    if (!where || where.size !== 1 || !(where.has("processing") || where.has("pending"))) return false;
     const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
     return latest?.status === "processing" || latest?.status === "failed";
   }).reduce((sum, row) => sum + factoryAmount(row), 0);
@@ -233,8 +233,10 @@ export function legacyOnItsWayCents(earnings, figures) {
  * "Pending".
  *
  * On Payments, `figures` (figuresByPayment()) is where the server put it: an
- * approved step whose money is all in Pending (still clearing, or being sent
- * the old way, step by step) reads "Pending", as its figure does. `clearing`
+ * approved step whose money is all in Pending (still clearing) reads
+ * "Pending", and one all in a withdrawal waiting or being sent (or sent the
+ * old way, step by step, still under way) reads "Processing", as its figure
+ * does. `clearing`
  * (clearingFor()) does the same for a Stripe earning still clearing in the
  * factory's Stripe account. Without them (the order page), the payment alone
  * decides. How it was sent is on its withdrawal row.
@@ -256,6 +258,8 @@ export function earningStatus(row, clearing = null, figures = null) {
   if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
   const where = figures instanceof Map ? figures.get(row.id) : null;
   if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
+  // All of it in a withdrawal waiting or being sent (or a payout per step under way).
+  if (where && where.size === 1 && where.has("processing")) return "Processing";
   return ADDED_TO_BALANCE;
 }
 
@@ -487,7 +491,7 @@ export function pendingParts(figures, opens = []) {
   const sumOf = (word) => (list ?? []).flatMap(partsOf).filter((part) => part?.word === word).reduce((sum, part) => sum + n(part.amount_cents), 0);
   // The server's list says which withdrawals wait for staff and which are held;
   // without it (an older server), the open requests and the refunded rows do.
-  const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && row.figure === "pending")
+  const refundedHeld = list ? sumOf("on_hold") : (base.rows ?? []).filter((row) => row?.refunded && (row.figure === "processing" || row.figure === "pending"))
     .reduce((sum, row) => sum + n(row.amount_cents), 0);
   // Pending is what is clearing and the disputed steps; Processing holds the
   // withdrawals, held parts included.

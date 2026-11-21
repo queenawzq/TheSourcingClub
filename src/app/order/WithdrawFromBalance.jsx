@@ -161,8 +161,8 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
           {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
         {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
-          // Someone who can't cancel sees the owner's word: still waiting for TSC, or being sent.
-          : <span className="billing-status">{onHold(row) ? "On hold" : row.status === "requested" ? "Waiting" : "Processing"}</span>}
+          // Someone who can't cancel sees the row's word: Processing (waiting for TSC or being sent).
+          : <span className="billing-status">{onHold(row) ? "On hold" : "Processing"}</span>}
       </div>
     ));
   }

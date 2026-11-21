@@ -318,7 +318,7 @@ select is(pg_temp.reach(5, 'stripe_owed_cents'), (10000 + 8000)::bigint,
   'e5: Stripe reaches only owed cleared steps with a charge: never pool money, never a step with no charge');
 -- R1: the failed legacy attempt's step is Available again.
 select is(pg_temp.fig(5, pg_temp.pay(5, 5)), 'available', 'R1: a step whose legacy PayPal payout failed is Available again');
-select is(pg_temp.fig(5, pg_temp.pay(5, 4)), 'pending', 'a step whose legacy payout is still processing stays Pending');
+select is(pg_temp.fig(5, pg_temp.pay(5, 4)), 'processing', 'a step whose legacy payout is still processing stays Processing');
 select is(pg_temp.fig(5, pg_temp.pay(5, 2)), 'pending', 'an uncleared step is Pending');
 select ok(pg_temp.fig(5, pg_temp.pay(5, 7)) is distinct from 'available', 'a disputed step is not Available');
 select is(pg_temp.fig(5, pg_temp.pay(5, 3)), null, 'a refunded step is in no figure');
@@ -393,7 +393,7 @@ select is(pg_temp.bal(1, 'pending_cents'), 0::bigint, 'Pending $0: a withdrawal 
 select is(pg_temp.bal(1, 'processing_cents'), 15000::bigint, 'Processing $150: the withdrawal');
 select is(pg_temp.bal(1, 'total_cents'), 30000::bigint, 'total unchanged');
 select ok(pg_temp.figures_add_up(1), 'each dollar in exactly one figure');
-select is(pg_temp.fig(1, pg_temp.pay(1, 2)), 'available,pending', 'the half-taken step is half Pending, half Available');
+select is(pg_temp.fig(1, pg_temp.pay(1, 2)), 'available,processing', 'the half-taken step is half Processing, half Available');
 reset role;
 
 -- The second owner's later withdrawal uses the remainder before newer steps.

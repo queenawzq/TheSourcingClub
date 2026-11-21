@@ -6,6 +6,8 @@
 --    for or being sent (PayPal / Wise / bank requests, Stripe payouts on
 --    their way, an old step-by-step payout under way) move to a new
 --    processing_cents. total_cents adds it, so the total is unchanged.
+--    rows[] say the same: the parts of a step in such a withdrawal, or
+--    being sent per step, are figure 'processing' (was 'pending').
 --    20261120310000's body otherwise unchanged.
 -- 2. request_withdrawal(): the chosen account row is read `for share`, so a
 --    removal at the same instant waits and is then refused by its guard
@@ -94,7 +96,7 @@ begin
       out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.id, 'figure', 'paid_out', 'amount_cents', take_paid, 'stripe', false));
     end if;
     if take_open > 0 then
-      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.id, 'figure', 'pending', 'amount_cents', take_open, 'stripe', false));
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.id, 'figure', 'processing', 'amount_cents', take_open, 'stripe', false));
     end if;
     if amt - take_paid - take_open > 0 then
       out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.id, 'figure', 'available', 'amount_cents', amt - take_paid - take_open, 'stripe', false));
@@ -131,12 +133,12 @@ begin
     -- What withdrawals took.
     if r.held_stripe > 0 then
       taken_open := taken_open + r.held_stripe;
-      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'pending',
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'processing',
         'amount_cents', r.held_stripe, 'stripe', true, 'taken', true));
     end if;
     if r.held_pool > 0 then
       taken_open := taken_open + r.held_pool;
-      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'pending',
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'processing',
         'amount_cents', r.held_pool, 'stripe', false, 'taken', true));
     end if;
     if r.sent_stripe > 0 then
@@ -178,7 +180,7 @@ begin
       if (r.p).disputed_at is not null then
         disputed := disputed + rest;
       end if;
-      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'pending',
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', case when (r.p).disputed_at is not null then 'pending' else 'processing' end,
         'amount_cents', rest, 'stripe', false, 'held', (r.p).disputed_at is not null,
         'held_reason', case when (r.p).disputed_at is not null then 'disputed' end));
     elsif public.payment_cleared(r.p) then
@@ -194,7 +196,7 @@ begin
   end loop;
 
   -- A part a waiting withdrawal holds on a step refunded since: the request
-  -- still asks for it, so it stays in Pending (with the withdrawal's row)
+  -- still asks for it, so it stays in Processing (with the withdrawal's row)
   -- until the withdrawal is cancelled or declined.
   for r in
     select t.payment_id, t.amount_cents, t.road
@@ -208,7 +210,7 @@ begin
                          and p.refunded_at > coalesce(p.confirmed_at, '-infinity'::timestamptz)))
   loop
     taken_open := taken_open + r.amount_cents;
-    out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.payment_id, 'figure', 'pending',
+    out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.payment_id, 'figure', 'processing',
       'amount_cents', r.amount_cents, 'stripe', r.road = 'stripe', 'taken', true, 'refunded', true));
   end loop;
 

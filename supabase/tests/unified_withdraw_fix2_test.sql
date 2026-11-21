@@ -208,8 +208,8 @@ select throws_ok(format($$insert into public.payment_takes (payment_id, org_id, 
   '22023', null, 'F1: and on a failed step staff are paying again');
 select is(pg_temp.held(pg_temp.pay(1, 2)) + pg_temp.held(pg_temp.pay(1, 3)), 0::bigint, 'F1: nothing was taken from either');
 select pg_temp.act_as('01'); set local role authenticated;
-select is(pg_temp.fig(1, pg_temp.pay(1, 2)), 'pending', 'F1: a step being paid per step is Pending, not Available');
-select is(pg_temp.fig(1, pg_temp.pay(1, 3)), 'pending', 'F1: so is a failed step being paid again');
+select is(pg_temp.fig(1, pg_temp.pay(1, 2)), 'processing', 'F1: a step being paid per step is Processing, not Available');
+select is(pg_temp.fig(1, pg_temp.pay(1, 3)), 'processing', 'F1: so is a failed step being paid again');
 reset role;
 -- The claim itself (the race's other side, run here in order) leaves them alone.
 select throws_ok($$

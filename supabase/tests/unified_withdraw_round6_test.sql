@@ -157,9 +157,9 @@ select is((select title || ' | ' || body from public.notifications where org_id 
   'the factory is told its withdrawal is on hold, and what to do');
 select is((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal' and title like '%on hold'), 1, 'once');
 select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
-                   where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'pending' and (r ->> 'refunded')::boolean
+                   where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'processing' and (r ->> 'refunded')::boolean
                      and (r ->> 'amount_cents')::bigint = 4500),
-  'the held part stays in Pending, marked refunded, while its withdrawal waits');
+  'the held part stays in Processing, marked refunded, while its withdrawal waits');
 select is((pg_temp.bal_as('01', 1) ->> 'total_cents')::bigint, pg_temp.sum4(pg_temp.bal_as('01', 1)), 'Total is the sum of the four');
 select ok(not exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
                        where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'available'),
