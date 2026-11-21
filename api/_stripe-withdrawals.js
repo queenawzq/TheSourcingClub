@@ -949,12 +949,26 @@ export async function settleAbandoned({ stripe, db, accountId, except = null }) 
     if (claim.error) throw new Error(claim.error.message);
     const row = Array.isArray(claim.data) ? claim.data[0] : claim.data;
     if (!row?.id) continue;
+    // Settled: the lease is given up. Not settled (an error, or the row is
+    // still open after a failure settleOne caught): the lease is left to
+    // lapse, so the next try waits its 2 minutes. Releasing it let every
+    // balance read claim it again at once, and each claim and release is a
+    // change every open page hears (it asked again, and settled again).
+    let settled = false;
     try {
       await settleOne(stripe, db, row);
+      settled = !(await stillOpen(db, row.id));
     } finally {
-      await releaseLease(db, row);
+      if (settled) await releaseLease(db, row);
     }
   }
+}
+
+/** Whether a withdrawal is still half-way (claimed or fee taken); true when it can't be read. */
+async function stillOpen(db, id) {
+  const { data, error } = await db.from("stripe_withdrawals").select("state").eq("id", id).maybeSingle();
+  if (error || !data) return true;
+  return ["claimed", "fee_taken"].includes(data.state);
 }
 
 /**
@@ -1084,14 +1098,17 @@ export async function returnFeesOnFailedPayouts({ stripe, db, accountId, days = 
 }
 
 /**
- * The open Stripe withdrawals on this account, as one key: each one's state,
- * transfers and fee reversals (its `reversals` and `updated_at`, which every
- * step writes), and each of its takes' status. A take turning `sent` (its
- * transfer landed) or a fee reversal moves Stripe's balance while the
- * withdrawal's state stays the same, so those are in the key too.
+ * The open Stripe withdrawals on this account, as one key: each one's money
+ * fields (state, transfers, fee, fee reversals, payout, refusal) and each of
+ * its takes' status. A take turning `sent` (its transfer landed) or a fee
+ * reversal moves Stripe's balance while the withdrawal's state stays the
+ * same, so those are in the key too. Not `updated_at` or `lease_until`: a
+ * call claiming or giving up a lease moves no money, and keying on it made a
+ * read that overlapped another tab's claim read three times over.
  */
+export const OPEN_WITHDRAWAL_KEY_FIELDS = "id, state, transfers_done_at, fee_cents, usd_cents, payout_id, refusal_cause, reversals";
 export async function openWithdrawalsKey(db, accountId) {
-  const { data, error } = await db.from("stripe_withdrawals").select("id, state, transfers_done_at, updated_at, reversals")
+  const { data, error } = await db.from("stripe_withdrawals").select(OPEN_WITHDRAWAL_KEY_FIELDS)
     .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]).order("id");
   if (error) throw new Error(error.message);
   const rows = data ?? [];

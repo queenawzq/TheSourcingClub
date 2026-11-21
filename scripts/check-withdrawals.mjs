@@ -1262,12 +1262,12 @@ for (const [why, row] of [
 
     // The page: a stripe_withdrawals change, or a stale merge, asks the server again.
     const page = fs.readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
-    assert.ok(/table: "stripe_withdrawals", filter: `org_id=eq\.\$\{org\.id\}` \}, \(\) => \{\s*refresh\(\);\s*askStripeAgain\(\);/.test(page),
-      "F1: a Stripe withdrawal changing asks the server again, not only the database");
+    assert.ok(page.includes("if (moved && withdrawalAskCap.current.allow(payload?.new?.id ?? payload?.old?.id)) askStripeAgain();"),
+      "F1: a Stripe withdrawal changing asks the server again, not only the database (money fields only since round 29)");
     assert.ok(page.includes("const partStale = Boolean(allFigures?.stripe_part_stale);") && page.includes("if (staleAsks.current >= 2) return;"),
       "a stale merge asks again, at most twice in a row");
     assert.ok(page.includes("if (clearingPath.current) askFigures();") && page.includes("setRereadKey((key) => key + 1)"),
-      "members ask the figures action past its limit; the owner's card reads its balance again");
+      "members ask the figures action (within its limit since round 29); the owner's card reads its balance again");
     const cardSource = fs.readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
     assert.ok(cardSource.includes("if (!rereadKey || !isOwner || !account) return;"), "the card reads again when the page asks");
     assert.ok(/setWithdrawal\(\{ previous: true[^\n]*\n\s*setError\(null\);\s*\n\s*setModal\("withdraw"\)/.test(cardSource),
@@ -1333,6 +1333,186 @@ for (const [why, row] of [
     assert.equal(connectSource.split("checkedFigures(figures, consistent, orgId);").length - 1, 2, "F4: both reads say when they are not consistent");
     assert.ok(cardSource.includes("askUntilConsistent(() => connectAction(org.id, \"balance\"))") && page.includes("askUntilConsistent(() => connectAction(org.id, \"figures\"))"),
       "F4: the owner's balance and the members' figures are asked again when not consistent");
+  }
+  // Fix round 29 (money review r28).
+  {
+    const fs = await import("node:fs");
+    const { stripeWithdrawalMoved, realtimeAskCap, figuresAskDelay, answerOrder, figuresAfterFailedAsk } = await import("../src/app/order/payment-summary.mjs");
+    const { settleAbandoned, openWithdrawalsKey } = await import("../api/_stripe-withdrawals.js");
+    // N1: a withdrawal left half-way whose settle keeps failing (Stripe 500 on
+    // the payout list). A fake database that publishes every change as a
+    // realtime event, the real settleAbandoned, and the page's filter + cap.
+    const loop = () => {
+      const row = { id: "w-stuck", org_id: "o1", stripe_account_id: "acct", request_key: "k", state: "fee_taken", usd_cents: null, fee_cents: 300,
+        reversals: [], transfers_done_at: null, payout_id: null, payout_status: null, refusal_cause: null, lease_until: null, updated_at: "t0" };
+      const events = [];
+      let tick = 0;
+      const emit = () => events.push({ eventType: "UPDATE", new: { ...row }, old: { id: row.id } });
+      const db = {
+        claims: 0,
+        from() {
+          const filters = {};
+          let patch = null;
+          const chain = {
+            select() { return chain; }, in() { return chain; }, order() { return chain; },
+            eq(column, value) { filters[column] = value; return chain; },
+            update(fields) { patch = fields; return chain; },
+            maybeSingle: async () => ({ data: { ...row }, error: null }),
+            then(resolve, reject) {
+              if (patch) {
+                if (filters.lease_until !== undefined && filters.lease_until !== row.lease_until) return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+                Object.assign(row, patch, { updated_at: `t${++tick}` });
+                emit();
+                return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+              }
+              return Promise.resolve({ data: ["claimed", "fee_taken"].includes(row.state) ? [{ ...row }] : [], error: null }).then(resolve, reject);
+            },
+          };
+          return chain;
+        },
+        async rpc(name) {
+          assert.equal(name, "claim_abandoned_stripe_withdrawal");
+          if (row.lease_until && Date.parse(row.lease_until) > Date.now()) return { data: null, error: null };
+          db.claims += 1;
+          Object.assign(row, { lease_until: new Date(Date.now() + 120_000).toISOString(), updated_at: `t${++tick}` });
+          emit();
+          return { data: { ...row }, error: null };
+        },
+      };
+      const stripe = { payouts: { list: async () => { throw Object.assign(new Error("Stripe is down"), { statusCode: 500 }); } } };
+      return { row, events, db, stripe };
+    };
+    // Server: a failed settle leaves its lease to lapse, so ten balance reads
+    // in a row claim it once; the old code released it and claimed it ten times.
+    {
+      const { row, events, db, stripe } = loop();
+      for (let read = 0; read < 10; read += 1) await settleAbandoned({ stripe, db, accountId: "acct" }).catch(() => null);
+      assert.equal(db.claims, 1, "N1: a settle that keeps failing is tried once per lease, not on every read");
+      assert.ok(row.lease_until, "N1: its lease is left to lapse");
+      assert.equal(events.length, 1, "N1: one change heard, not two per read");
+    }
+    // Client: lease and updated_at changes ask nothing; money changes ask, capped.
+    {
+      const seen = new Map();
+      const cap = realtimeAskCap();
+      let asks = 0;
+      const hear = (payload, now) => { if (stripeWithdrawalMoved(seen, payload) && cap.allow(payload.new?.id ?? payload.old?.id, now)) asks += 1; };
+      const base = { id: "w1", state: "fee_taken", fee_cents: 300, reversals: [{ transfer: "tr", amount: 300 }], transfers_done_at: null, payout_id: null, payout_status: null, refusal_cause: null };
+      hear({ new: { ...base, lease_until: null, updated_at: "t0" } }, 0);
+      assert.equal(asks, 1, "N1: a withdrawal first heard of asks once");
+      for (let i = 1; i <= 50; i += 1) hear({ new: { ...base, lease_until: i % 2 ? `l${i}` : null, updated_at: `t${i}` } }, i * 1500);
+      assert.equal(asks, 1, "N1: fifty lease claims and releases ask nothing");
+      hear({ new: { ...base, state: "fee_returned", lease_until: null, updated_at: "t51" } }, 80_000);
+      assert.equal(asks, 2, "N1: the withdrawal settling asks again");
+      for (const [i, field] of ["payout_id", "payout_status", "refusal_cause", "transfers_done_at"].entries()) {
+        hear({ new: { ...base, state: "fee_returned", [field]: "x", lease_until: null } }, 81_000 + i);
+      }
+      assert.equal(asks, 3, "N1: money changes on one withdrawal ask at most twice a minute");
+      for (let i = 0; i < 10; i += 1) hear({ new: { ...base, id: `n${i}` } }, 82_000 + i);
+      assert.equal(asks, 5, "N1: and at most four times a minute in all (two on w1, two new ones)");
+      hear({ new: { ...base, id: "later" } }, 200_000);
+      assert.equal(asks, 6, "N1: the cap is per minute");
+      assert.equal(stripeWithdrawalMoved(seen, { new: {}, old: { id: "later" } }), true, "a delete is a change");
+      // The whole loop: the page asks, the server settles (and fails), the
+      // page hears what that changed. It stops on its own.
+      const { events, db, stripe } = loop();
+      const pageSeen = new Map();
+      const pageCap = realtimeAskCap();
+      let heard = 0;
+      let pending = 1;
+      let rounds = 0;
+      while (pending > 0 && rounds < 50) {
+        pending -= 1;
+        rounds += 1;
+        await settleAbandoned({ stripe, db, accountId: "acct" }).catch(() => null);
+        for (; heard < events.length; heard += 1) {
+          const event = events[heard];
+          if (stripeWithdrawalMoved(pageSeen, event) && pageCap.allow(event.new.id, rounds * 1500)) pending += 1;
+        }
+      }
+      assert.ok(rounds <= 2, `N1: the page and a stuck withdrawal no longer feed each other (${rounds} asks)`);
+    }
+    // The server's key: the lease and updated_at are not in it.
+    {
+      // Answers with the columns asked for, as PostgREST does.
+      const keyDb = (rows) => ({ from(table) { let columns = []; const c = { select(list) { columns = list.split(",").map((name) => name.trim()); return c; }, eq() { return c; }, in() { return c; }, order() { return c; },
+        then(ok) { return ok({ data: table === "stripe_withdrawals" ? rows.map((row) => Object.fromEntries(columns.map((name) => [name, row[name]]))) : [], error: null }); } }; return c; } });
+      const open = { id: "w1", state: "claimed", transfers_done_at: null, fee_cents: null, usd_cents: 5000, payout_id: null, refusal_cause: null, reversals: [] };
+      assert.equal(await openWithdrawalsKey(keyDb([{ ...open }]), "a"), await openWithdrawalsKey(keyDb([{ ...open, updated_at: "t9", lease_until: "l" }]), "a"),
+        "N1: a lease claimed during a read does not make it read again");
+      assert.notEqual(await openWithdrawalsKey(keyDb([{ ...open }]), "a"), await openWithdrawalsKey(keyDb([{ ...open, fee_cents: 300 }]), "a"), "a fee taken does");
+      const source = fs.readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
+      assert.ok(!/OPEN_WITHDRAWAL_KEY_FIELDS = "[^"]*(updated_at|lease_until)/.test(source), "N1: the key names neither");
+    }
+    // Members: once a minute, whatever asked (a realtime event, a stale merge).
+    {
+      assert.equal(figuresAskDelay({ now: 100_000, requestedAt: 100_000, lastAskAt: 0, limited: true }), 1500, "a member past the minute waits out the debounce only");
+      assert.equal(figuresAskDelay({ now: 101_500, requestedAt: 100_000, lastAskAt: 0, limited: true }), 0);
+      assert.equal(figuresAskDelay({ now: 20_000, requestedAt: 20_000, lastAskAt: 15_000, limited: true }), 55_000, "N1: a member asked 5 s ago waits for the minute");
+      assert.equal(figuresAskDelay({ now: 21_500, requestedAt: 20_000, lastAskAt: 20_500, limited: true }), null, "an ask made since answers it: no second ask");
+      assert.equal(figuresAskDelay({ now: 20_000, requestedAt: 20_000, lastAskAt: 19_000, limited: false }), 1500, "an owner's card only waits out the debounce");
+      // Simulated: 30 money events over 5 minutes on a member's page ask at most once a minute.
+      let lastAskAt = -60_000;
+      const askTimes = [];
+      let requestedAt = null;
+      for (let now = 0; now <= 300_000; now += 500) {
+        if (now % 10_000 === 0) requestedAt = now;
+        if (requestedAt == null) continue;
+        const delay = figuresAskDelay({ now, requestedAt, lastAskAt, limited: true });
+        if (delay === null) { requestedAt = null; continue; }
+        if (delay === 0) { askTimes.push(now); lastAskAt = now; requestedAt = null; }
+      }
+      assert.ok(askTimes.every((at, i) => i === 0 || at - askTimes[i - 1] >= 60_000), "N1: a member's page asks at most once a minute");
+      assert.ok(askTimes.length >= 4, "and still asks, a minute apart");
+      const page = fs.readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+      const listedSeen = new Map();
+      stripeWithdrawalMoved(listedSeen, { new: { id: "x", state: "claimed", lease_until: null, updated_at: "a", payout_arrives_on: null } }, { anyField: true });
+      assert.equal(stripeWithdrawalMoved(listedSeen, { new: { id: "x", state: "claimed", lease_until: "l", updated_at: "b", payout_arrives_on: null } }, { anyField: true }), false,
+        "N1: a lease alone does not even re-read the database");
+      assert.equal(stripeWithdrawalMoved(listedSeen, { new: { id: "x", state: "claimed", lease_until: "l", updated_at: "c", payout_arrives_on: "2026-11-25" } }, { anyField: true }), true,
+        "an arrival day does (the list shows it), without asking the server");
+      assert.ok(page.includes("const moved = stripeWithdrawalMoved(withdrawalsSeen.current, payload);") && page.includes("if (listed || moved) refresh();")
+        && page.includes("if (moved && withdrawalAskCap.current.allow(payload?.new?.id ?? payload?.old?.id)) askStripeAgain();")
+        && page.includes("const withdrawalAskCap = useRef(realtimeAskCap());")
+        && page.includes("now: Date.now(), requestedAt: askRequestedAt.current, lastAskAt: clearingAskedAt.current, limited: clearingPath.current,"),
+        "N1: the page filters, caps, and keeps the members' minute");
+    }
+    // N2: answers apply in the order asked.
+    {
+      const order = answerOrder();
+      const first = order.start();
+      const second = order.start();
+      assert.equal(order.accept(second), true);
+      assert.equal(order.accept(first), false, "N2: an older answer landing last is dropped");
+      const third = order.start();
+      order.skip();
+      assert.equal(order.accept(third), false, "a reset (a withdrawal just made) drops what was asked before it");
+      // Two overlapping asks, the older one slow: the newer answer stays.
+      const figuresOrder = answerOrder();
+      let shown = null;
+      const ask = async (value, ms) => {
+        const n = figuresOrder.start();
+        await new Promise((resolve) => { setTimeout(resolve, ms); });
+        if (figuresOrder.accept(n)) shown = value;
+      };
+      await Promise.all([ask("older", 30), ask("newer", 5)]);
+      assert.equal(shown, "newer", "N2: the newer answer wins whatever lands last");
+      const page = fs.readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+      const card = fs.readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+      assert.ok(page.includes("if (!figuresOrder.current.accept(asked)) return;"), "N2: the members' figures in order");
+      assert.ok(card.includes("if (!balanceOrder.current.accept(asked)) return nextBalance;") && card.includes("if (!balanceOrder.current.accept(asked)) continue;")
+        && card.includes("balanceOrder.current.skip();\n      setBalance(null);"), "N2: the card's read and re-read in order");
+    }
+    // N3: a member's failed re-ask keeps the last answer, and its time.
+    {
+      const good = { available_cents: 100 };
+      const fallback = { available_cents: 50, stripe_unavailable: true };
+      assert.deepEqual(figuresAfterFailedAsk(good, new Error("network")), { figures: good, dated: false }, "N3: a network error keeps the last answer");
+      assert.deepEqual(figuresAfterFailedAsk(good, Object.assign(new Error("502"), { details: { figures: fallback } })), { figures: good, dated: false }, "N3: so does a 502");
+      assert.deepEqual(figuresAfterFailedAsk(fallback, new Error("403")), { figures: fallback, dated: false }, "N3: the last answer's 'Stripe unavailable' mark stays");
+      assert.deepEqual(figuresAfterFailedAsk(undefined, Object.assign(new Error("502"), { details: { figures: fallback } })), { figures: fallback, dated: true }, "a first ask shows the server's fallback");
+      assert.deepEqual(figuresAfterFailedAsk(undefined, new Error("network")), { figures: null, dated: true }, "or nothing");
+    }
   }
   // Whatever the inputs, total is never computed separately.
   for (const db of [tsc(), tsc({ awaiting_cents: 7, available_cents: 11, pending_cents: 13, paid_out_cents: 17 })]) {

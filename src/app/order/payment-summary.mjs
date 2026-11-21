@@ -124,6 +124,102 @@ export async function askUntilConsistent(ask, { tries = 3, waitMs = 1500, wait =
 }
 
 /**
+ * The fields of a Stripe withdrawal that move money or change what it says.
+ * Not `lease_until` or `updated_at`: a call claiming or giving up its lease
+ * on a withdrawal changes only those, and asking the server again on that
+ * made a page and a withdrawal that would not settle feed each other.
+ */
+export const STRIPE_WITHDRAWAL_MONEY_FIELDS = ["state", "transfers_done_at", "payout_id", "payout_status", "fee_cents", "refusal_cause", "reversals"];
+
+/**
+ * Whether a `stripe_withdrawals` realtime event changed a money field, by the
+ * last row seen per id (`seen`, a Map this updates): the table has no full
+ * replica identity, so `payload.old` holds the id only. A row not seen before
+ * (inserted, or first heard of) and a delete count as changes.
+ */
+export function stripeWithdrawalMoved(seen, payload, { anyField = false } = {}) {
+  const row = payload?.new && Object.keys(payload.new).length ? payload.new : null;
+  const id = row?.id ?? payload?.old?.id ?? null;
+  if (!id) return false;
+  if (!row) { seen.delete(id); return true; }
+  // anyField: every column but the lease's two (what the list shows, too).
+  const pick = (value) => JSON.stringify(anyField
+    ? Object.keys(value).filter((field) => field !== "lease_until" && field !== "updated_at").sort().map((field) => [field, value[field]])
+    : STRIPE_WITHDRAWAL_MONEY_FIELDS.map((field) => value?.[field] ?? null));
+  const before = seen.get(id);
+  const now = pick(row);
+  seen.set(id, now);
+  return before !== now;
+}
+
+/**
+ * A cap on asks made because a withdrawal changed: at most `perId` per
+ * withdrawal and `total` in all within `windowMs`. `allow(id, now)` records
+ * the ask when it says yes.
+ */
+export function realtimeAskCap({ perId = 2, total = 4, windowMs = 60_000 } = {}) {
+  let asks = [];
+  return {
+    allow(id, now = Date.now()) {
+      asks = asks.filter((ask) => now - ask.at < windowMs);
+      if (asks.length >= total || asks.filter((ask) => ask.id === id).length >= perId) return false;
+      asks.push({ id, at: now });
+      return true;
+    },
+  };
+}
+
+/**
+ * When a pending ask of the figures action should run: null when an ask that
+ * started after it was requested already answers it; otherwise in how many
+ * ms. A member's page (nobody there reads Stripe) asks at most once every
+ * `minGapMs`, whatever asked; an owner's only waits out the debounce.
+ */
+export function figuresAskDelay({ now, requestedAt, lastAskAt = 0, limited = false, debounceMs = 1500, minGapMs = 60_000 }) {
+  if (limited && lastAskAt >= requestedAt) return null;
+  const debounce = Math.max(0, requestedAt + debounceMs - now);
+  return limited ? Math.max(debounce, lastAskAt + minGapMs - now, 0) : debounce;
+}
+
+/**
+ * Answers applied in the order they were asked: `start()` numbers an ask,
+ * `accept(n)` is true only when no later ask has been applied, so an older
+ * answer that lands last never wins. `skip()` numbers and applies a reset
+ * at once (what was asked before it is then older).
+ */
+export function answerOrder() {
+  let asked = 0;
+  let applied = 0;
+  return {
+    start: () => { asked += 1; return asked; },
+    accept: (n) => { if (n <= applied) return false; applied = n; return true; },
+    skip: () => { asked += 1; applied = asked; return asked; },
+  };
+}
+
+/**
+ * What a member's page keeps when asking the figures action fails. A first
+ * ask: the database's figures as the server sent them (marked Stripe
+ * unavailable), else nothing. A later ask: the last answer stays, its time
+ * too (`dated` false), as the owner's card keeps its last balance.
+ */
+export function figuresAfterFailedAsk(previous, failure) {
+  if (previous) return { figures: previous, dated: false };
+  return { figures: failure?.details?.figures ?? null, dated: true };
+}
+
+/**
+ * Pool withdrawals the server lists as gone back (`returned`) that the
+ * company's own rows (newest 200) do not hold: read by id, so a cancelled or
+ * declined one never reads "Failed".
+ */
+export function missingPoolIds(serverList, known) {
+  return [...new Set((serverList ?? [])
+    .filter((w) => w?.road === "pool" && w.word === "returned" && w.id && !known.has(w.id))
+    .map((w) => w.id))];
+}
+
+/**
  * The Stripe answer's figures kept up to date with the database's: the
  * database part (`viaStripe.tsc`) replaced by a newer factory_balance() read,
  * the factory's own Stripe money (the difference) kept. So a step a brand

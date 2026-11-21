@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -251,16 +251,26 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // shows as soon as it answers: one spinner held the whole page, and the
   // Stripe balance, for the slowest of the three.
   // The server's figures action (own Stripe money included), asked until its
-  // reads are of one moment (askUntilConsistent).
+  // reads are of one moment (askUntilConsistent). Answers apply in the order
+  // asked (answerOrder): an older one landing last is dropped.
+  const figuresOrder = useRef(answerOrder());
+  const viaFiguresNow = useRef(undefined);
+  viaFiguresNow.current = viaFigures;
   const askFigures = useCallback(async () => {
     clearingAskedAt.current = Date.now();
+    const asked = figuresOrder.current.start();
     try {
-      setViaFigures((await askUntilConsistent(() => connectAction(org.id, "figures"))).figures ?? null);
+      const figures = (await askUntilConsistent(() => connectAction(org.id, "figures"))).figures ?? null;
+      if (!figuresOrder.current.accept(asked)) return;
+      setViaFigures(figures);
       setViaAt(Date.now());
     } catch (failure) {
-      // Stripe unreachable: the database's figures, as the server sent them.
-      setViaFigures(failure?.details?.figures ?? null);
-      setViaAt(Date.now());
+      if (!figuresOrder.current.accept(asked)) return;
+      // A first ask: the database's figures, as the server sent them (Stripe
+      // unreachable). A later one keeps the last answer and its time.
+      const kept = figuresAfterFailedAsk(viaFiguresNow.current, failure);
+      setViaFigures(kept.figures);
+      if (kept.dated) setViaAt(Date.now());
     }
   }, [org.id]);
 
@@ -316,17 +326,33 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // changes (realtime), or a newer database read shows one the answer did not
   // know (`stripe_part_stale`), the server is asked again: the owner's card
   // reads its balance again (`rereadKey`), anyone else the figures action,
-  // past its once-a-minute limit. Calls close together become one.
+  // within its once-a-minute limit (an ask due sooner waits for it, and one
+  // made meanwhile answers it). Calls close together become one.
   const [rereadKey, setRereadKey] = useState(0);
   const rereadTimer = useRef(null);
+  const askRequestedAt = useRef(null);
   const askStripeAgain = useCallback(() => {
-    clearTimeout(rereadTimer.current);
-    rereadTimer.current = setTimeout(() => {
+    askRequestedAt.current = Date.now();
+    const run = () => {
+      clearTimeout(rereadTimer.current);
+      const delay = figuresAskDelay({
+        now: Date.now(), requestedAt: askRequestedAt.current, lastAskAt: clearingAskedAt.current, limited: clearingPath.current,
+      });
+      if (delay === null) { askRequestedAt.current = null; return; }
+      if (delay > 0) { rereadTimer.current = setTimeout(run, delay); return; }
+      askRequestedAt.current = null;
       if (clearingPath.current) askFigures();
       else setRereadKey((key) => key + 1);
-    }, 1500);
+    };
+    run();
   }, [askFigures]);
   useEffect(() => () => clearTimeout(rereadTimer.current), []);
+  // A Stripe withdrawal's realtime event asks again only when it changed a
+  // money field (a call taking or giving up its lease changes none), and at
+  // most twice per withdrawal and four times in all a minute.
+  const withdrawalsSeen = useRef(new Map());
+  const withdrawalsListed = useRef(new Map());
+  const withdrawalAskCap = useRef(realtimeAskCap());
 
   // A withdrawal method saved or removed changes has_method: read the
   // figures again at once, so Withdraw appears without a reload.
@@ -393,9 +419,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "provider_payouts" }, refresh)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "provider_payouts" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${org.id}` }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${org.id}` }, () => {
-        refresh();
-        askStripeAgain();
+      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${org.id}` }, (payload) => {
+        // The database is read again on any change but a lease's; the server
+        // is asked again only when money moved.
+        const listed = stripeWithdrawalMoved(withdrawalsListed.current, payload, { anyField: true });
+        const moved = stripeWithdrawalMoved(withdrawalsSeen.current, payload);
+        if (listed || moved) refresh();
+        if (moved && withdrawalAskCap.current.allow(payload?.new?.id ?? payload?.old?.id)) askStripeAgain();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -479,7 +509,25 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const recorded = new Set(stripeWithdrawals.map((w) => w.payout_id));
   // The server's list of withdrawals (all clients), with the company's own rows by id.
   const serverList = (allFigures?.tsc ?? allFigures)?.withdrawals ?? balanceFigures?.withdrawals ?? null;
-  const poolById = new Map((fromBalance.rows ?? []).map((w) => [w.id, w]));
+  // The company's rows are its newest 200: a pool withdrawal the server lists
+  // as gone back and older than that is read by id, so a cancelled or
+  // declined one never reads "Failed".
+  const [olderPool, setOlderPool] = useState(() => new Map());
+  const olderAsked = useRef(new Set());
+  const poolById = new Map([...olderPool, ...(fromBalance.rows ?? []).map((w) => [w.id, w])]);
+  const olderMissing = fromBalance.available != null && fromBalance.rows ? missingPoolIds(serverList, poolById).filter((id) => !olderAsked.current.has(id)) : [];
+  const olderMissingKey = olderMissing.join(",");
+  useEffect(() => {
+    if (!olderMissingKey) return;
+    const ids = olderMissingKey.split(",");
+    ids.forEach((id) => olderAsked.current.add(id));
+    readByIds(ids, (batch) => supabase.from("factory_withdrawals").select("id, status, reason, back_cents").eq("org_id", org.id).in("id", batch), "load your withdrawals")
+      .then((found) => {
+        if (found.length) setOlderPool((was) => new Map([...was, ...found.map((w) => [w.id, w])]));
+      })
+      // Unread, it says "Failed" as before; asked again on the next change.
+      .catch(() => ids.forEach((id) => olderAsked.current.delete(id)));
+  }, [olderMissingKey, org.id]);
   const stripeById = new Map(stripeWithdrawals.map((w) => [w.id, w]));
   // Where a Stripe payout went, as the server recorded it for everyone ("To
   // bank account ending in 0154."); older rows only an owner's Stripe read can name.

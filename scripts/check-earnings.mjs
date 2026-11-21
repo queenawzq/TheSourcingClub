@@ -334,6 +334,31 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     const zh = (await import("node:fs")).readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
     assert.ok(zh.includes('"Cancelled": "已取消"') && zh.includes('"Declined": "已拒绝"'), "both words already have their Chinese");
   }
+  // Round 29: the company's own rows are its newest 200. A cancelled or
+  // declined withdrawal older than that is read by id, so it never says "Failed".
+  {
+    const { missingPoolIds } = await import("../src/app/order/payment-summary.mjs");
+    const list = [
+      { id: "old-c", road: "pool", provider: "paypal", word: "returned", amount_cents: 2500, created_at: "2026-01-02T10:00:00Z" },
+      { id: "old-d", road: "pool", provider: "wise", word: "returned", amount_cents: 7000, created_at: "2026-01-01T10:00:00Z" },
+      { id: "new-c", road: "pool", provider: "paypal", word: "returned", amount_cents: 100, created_at: "2026-11-21T10:00:00Z" },
+      { id: "wait", road: "pool", provider: "paypal", word: "waiting", amount_cents: 100, created_at: "2026-11-21T10:00:00Z" },
+      { id: "s1", road: "stripe", word: "returned", amount_cents: 100, created_at: "2026-11-21T10:00:00Z" },
+    ];
+    const newest200 = new Map([["new-c", { id: "new-c", status: "cancelled" }], ["wait", { id: "wait", status: "requested" }]]);
+    assert.equal(serverWithdrawalRows(list.slice(0, 1), { pool: newest200 })[0].status, "Failed", "before: one older than the 200 read said Failed");
+    assert.deepEqual(missingPoolIds(list, newest200), ["old-c", "old-d"], "only pool rows gone back that the 200 do not hold are read by id");
+    assert.deepEqual(missingPoolIds(list, new Map([...newest200, ["old-c", {}], ["old-d", {}]])), [], "nothing once they are known");
+    const readById = [{ id: "old-c", status: "cancelled", reason: null, back_cents: null }, { id: "old-d", status: "declined", reason: "Wrong account.", back_cents: null }];
+    const pool = new Map([...readById.map((w) => [w.id, w]), ...newest200]);
+    assert.deepEqual(serverWithdrawalRows(list.slice(0, 2), { pool }).map((r) => [r.status, r.failed, r.note]),
+      [["Cancelled", true, null], ["Declined", true, "Wrong account."]], "read by id: Cancelled and Declined, with staff's reason");
+    const pageCode = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+    assert.ok(pageCode.includes('supabase.from("factory_withdrawals").select("id, status, reason, back_cents").eq("org_id", org.id).in("id", batch)')
+      && pageCode.includes("missingPoolIds(serverList, poolById)")
+      && pageCode.includes("const poolById = new Map([...olderPool, ...(fromBalance.rows ?? []).map((w) => [w.id, w])]);"),
+      "the page reads the missing ones and lists them with the rest");
+  }
   assert.equal(listedRows[0].meta, "To bank account ending in 0154.", "where it went, in the notices' words");
   assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
   assert.ok(cardCode.includes("{!error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
@@ -619,7 +644,7 @@ assert.ok(card.includes("failure?.details?.figures"), "a 502 with figures still 
   // action (the same answer as an owner's balance read; it records missing
   // clearing dates itself), at most once a minute, and wait for its first answer.
   assert.ok(page.includes('connectAction(org.id, "figures")') && /clearingAskedAt\.current > 60_000/.test(page)
-    && page.includes("setViaFigures(failure?.details?.figures ?? null)") && !page.includes("refreshClearingDates"), "the figures action on the non-Stripe path");
+    && page.includes("figuresAfterFailedAsk(viaFiguresNow.current, failure)") && !page.includes("refreshClearingDates"), "the figures action on the non-Stripe path");
   assert.ok(page.includes("if (w.destination_label) return [toDestination(w.destination_label), w.destination_bank]"), "a Stripe withdrawal row says where it went, for owner and member");
 }
 

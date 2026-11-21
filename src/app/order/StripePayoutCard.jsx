@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { askUntilConsistent, owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -459,6 +459,9 @@ export default function StripePayoutCard({
     if (isPaypal(row)) return "setup-paypal";
     return "setup-wise";
   };
+  // Balance answers apply in the order asked: a re-read and a full read can
+  // overlap, and the older answer must not land last and win.
+  const balanceOrder = useRef(answerOrder());
   const load = useCallback(async () => {
     const [saved, { data: profile }, preference] = await Promise.all([
       connectAccountFor(org.id),
@@ -473,14 +476,18 @@ export default function StripePayoutCard({
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
     if (saved && isOwner) {
       setBalanceStatus("loading");
+      const asked = balanceOrder.current.start();
       try {
         const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
+        // A later read already answered: this one is older.
+        if (!balanceOrder.current.accept(asked)) return nextBalance;
         setBalance(nextBalance);
         setFreshReach(null);
         setBalanceStatus("ready");
         onBalanceChange?.(nextBalance);
         return nextBalance;
       } catch (failure) {
+        if (!balanceOrder.current.accept(asked)) return null;
         // Reading a legacy balance is separate from saving a payout preference.
         // Stripe unreachable: the server still answers with the database's
         // figures (failure.details.figures), shown rather than a blank card.
@@ -490,6 +497,7 @@ export default function StripePayoutCard({
         return null;
       }
     }
+    balanceOrder.current.skip();
     setBalance(null);
     setBalanceStatus("none");
     onBalanceChange?.(null);
@@ -511,8 +519,11 @@ export default function StripePayoutCard({
         rereadAgain.current = false;
         // A full read already running answers it.
         if (statusNow.current === "loading" || statusNow.current === "slow") break;
+        const asked = balanceOrder.current.start();
         try {
           const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
+          // A full read started meanwhile and answered first: this one is older.
+          if (!balanceOrder.current.accept(asked)) continue;
           setBalance(nextBalance);
           setFreshReach(null);
           setBalanceStatus("ready");
@@ -607,7 +618,9 @@ export default function StripePayoutCard({
         { amount: sendAmount, currency: sendCurrency, requestId, ...(withdrawal.previous || !destination ? {} : { destination }) });
       setWithdrawal(null);
       setModal(null);
-      // Never leave an already-withdrawn amount available if refreshing fails.
+      // Never leave an already-withdrawn amount available if refreshing fails,
+      // nor let a read asked before the withdrawal land after it.
+      balanceOrder.current.skip();
       setBalance(null);
       onBalanceChange?.(undefined);
       await load();
