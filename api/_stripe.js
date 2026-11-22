@@ -579,7 +579,8 @@ export function disputeFeeCents(dispute) {
  * ends the hold). Returns true while it is on hold.
  */
 export async function applyDispute({ db, paymentId, dispute }) {
-  if (dispute?.status === "lost") {
+  const state = disputeState({ disputed: true }, dispute);
+  if (state === "lost") {
     await rpc(db, "record_payment_dispute_lost", {
       target_payment: paymentId, dispute_id: dispute.id,
       lost_cents: Number.isFinite(Number(dispute.amount)) ? Number(dispute.amount) : null,
@@ -587,9 +588,46 @@ export async function applyDispute({ db, paymentId, dispute }) {
     });
     return false;
   }
-  const disputed = !dispute || !["won", "warning_closed"].includes(dispute.status);
+  const disputed = state === "open";
   await rpc(db, "record_payment_disputed", { target_payment: paymentId, disputed });
   return disputed;
+}
+
+/**
+ * A charge's dispute, as every road reads it: "lost" (the brand's bank took
+ * the money back), "open" (on hold: anything but won or closed in TSC's
+ * favour, a dispute Stripe will not name included), or null (none, or one
+ * TSC won). Stripe keeps `disputed` true after a decision.
+ */
+export function disputeState(charge, dispute) {
+  if (!charge?.disputed) return null;
+  if (dispute?.status === "lost") return "lost";
+  return dispute && ["won", "warning_closed"].includes(dispute.status) ? null : "open";
+}
+
+/**
+ * Whether the brand's charge is still good, the one check every road makes
+ * before money leaves TSC (a Stripe or PayPal / Wise withdrawal, a per-step
+ * payout) and the balance read makes without waiting for webhooks: read from
+ * Stripe (or as given) and recorded as its webhooks would, a refund at its
+ * amount (applyChargeRefund) and its dispute open, won or lost
+ * (applyDispute). Both: a charge refunded in part can be disputed for the
+ * rest. Throws when Stripe or the database fails. Returns
+ * { charge, refunded, dispute } with `dispute` as disputeState says; what
+ * each road then asks the database (withdrawal_refunded_part,
+ * per_step_payout_check) decides what part is still the factory's.
+ */
+export async function checkCharge({ stripe, db, paymentId, charge }) {
+  const read = typeof charge === "object" && charge && "disputed" in charge ? charge : await stripe.charges.retrieve(typeof charge === "string" ? charge : charge?.id);
+  const refunded = Number(read.amount_refunded) > 0;
+  if (refunded) await applyChargeRefund({ stripe, db, charge: read });
+  let dispute = null;
+  if (read.disputed) {
+    const found = await disputeForCharge(stripe, read);
+    dispute = disputeState(read, found);
+    await applyDispute({ db, paymentId, dispute: found });
+  }
+  return { charge: read, refunded, dispute };
 }
 
 /**
@@ -764,10 +802,7 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
       .slice(0, limit);
     const read = await Promise.all(due.map(async (row) => {
       try {
-        const charge = await stripe.charges.retrieve(row.stripe_charge_id);
-        // Both: a charge refunded in part can be disputed for the rest.
-        if (Number(charge.amount_refunded) > 0) await applyChargeRefund({ stripe, db, charge });
-        if (charge.disputed) await recordChargeDispute({ stripe, db, paymentId: row.id, charge });
+        await checkCharge({ stripe, db, paymentId: row.id, charge: row.stripe_charge_id });
         return row.id;
       } catch (failure) {
         logStripeFailure("charge-check", failure, { paymentId: row.id });

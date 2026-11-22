@@ -6,6 +6,7 @@
  *
  * The leading underscore keeps Vercel from serving this file.
  */
+import { disputeState } from "./_stripe.js";
 
 /**
  * @param row     { id, state, funds_available_at, disputed_at, refunded_cents, dispute_lost_at } from order_payments
@@ -25,12 +26,13 @@ export function decideBackfill({ row, charge, dispute = null }) {
     const seconds = Number(charge?.balance_transaction?.available_on);
     decision.date = seconds ? new Date(seconds * 1000).toISOString() : null;
   }
-  // Stripe keeps `disputed` true after a win, and after a loss.
-  if (charge?.disputed && dispute?.status === "lost") {
+  // The same reading of a dispute as every road (disputeState): Stripe keeps
+  // `disputed` true after a win, and after a loss.
+  const state = disputeState(charge, dispute);
+  if (state === "lost") {
     if (!row.dispute_lost_at) decision.lost = true;
-  } else {
-    const disputed = Boolean(charge?.disputed) && (!dispute || !["won", "warning_closed"].includes(dispute.status));
-    if (disputed !== Boolean(row.disputed_at)) decision.disputed = disputed;
+  } else if ((state === "open") !== Boolean(row.disputed_at)) {
+    decision.disputed = state === "open";
   }
   if (Number(charge?.amount_refunded) > Number(row.refunded_cents ?? 0) && ["confirmed", "released"].includes(row.state)) {
     decision.refund = charge.refunded ? "full" : "partial";

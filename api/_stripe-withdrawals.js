@@ -677,16 +677,9 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
     // refund (or a lost dispute) is recorded at its amount; only a part this
     // withdrawal holds that is no longer the factory's stops it.
     let unsafe = false;
+    const { checkCharge } = await import("./_stripe.js");
     for (const take of held) {
-      const charge = await stripe.charges.retrieve(take.charge_id);
-      if (Number(charge.amount_refunded) > 0) {
-        const { applyChargeRefund } = await import("./_stripe.js");
-        await applyChargeRefund({ stripe, db, charge });
-      }
-      if (charge.disputed) {
-        const { recordChargeDispute } = await import("./_stripe.js");
-        if (await recordChargeDispute({ stripe, db, paymentId: take.payment_id, charge })) unsafe = true;
-      }
+      if ((await checkCharge({ stripe, db, paymentId: take.payment_id, charge: take.charge_id })).dispute === "open") unsafe = true;
     }
     if (!unsafe && Number(await call(db, "withdrawal_refunded_part", { target_withdrawal: row.id })) > 0) unsafe = true;
     if (unsafe) await refuse(db, row, CANNOT_PROCESS, { stripe });

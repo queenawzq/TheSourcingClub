@@ -298,6 +298,49 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     "won: the hold is lifted; open: on hold");
 }
 
+// One rule per check (simplify item 2): "is the brand's charge still good" is
+// checkCharge on every road, and a dispute is read one way (disputeState).
+{
+  const fs = await import("node:fs");
+  const { checkCharge, disputeState } = await import("../api/_stripe.js");
+  assert.equal(disputeState({ disputed: false }, null), null, "not disputed");
+  assert.equal(disputeState({ disputed: true }, null), "open", "a dispute Stripe will not name is on hold");
+  assert.equal(disputeState({ disputed: true }, { status: "needs_response" }), "open");
+  assert.equal(disputeState({ disputed: true }, { status: "won" }), null, "won: the money is the factory's");
+  assert.equal(disputeState({ disputed: true }, { status: "warning_closed" }), null);
+  assert.equal(disputeState({ disputed: true }, { status: "lost" }), "lost");
+  // A charge refunded in part and disputed for the rest: both recorded.
+  const seen = [];
+  const db = {
+    rpc: async (name, args) => { seen.push([name, args]); return { data: { id: "p1", state: "confirmed", refunded_cents: 0 }, error: null }; },
+    from() { const c = { select: () => c, eq: () => c, maybeSingle: async () => ({ data: { id: "p1", state: "confirmed", refunded_cents: 0, stripe_payment_intent_id: "pi_1" }, error: null }) }; return c; },
+  };
+  const stripe = {
+    charges: { retrieve: async () => ({ id: "ch_1", payment_intent: "pi_1", amount: 10000, amount_refunded: 2000, refunded: false, disputed: true }) },
+    disputes: { list: async () => ({ data: [{ id: "du_1", status: "needs_response", amount: 8000 }] }) },
+    refunds: { list: async () => ({ data: [{ id: "re_1", amount: 2000, metadata: {} }] }) },
+  };
+  const checked = await checkCharge({ stripe, db, paymentId: "p1", charge: "ch_1" });
+  assert.deepEqual([checked.refunded, checked.dispute], [true, "open"]);
+  assert.deepEqual(seen.map(([name]) => name), ["record_payment_refund_amount", "record_payment_disputed"], "the refund and the dispute, each recorded");
+  // A won dispute on a waiting PayPal / Wise withdrawal's step: recorded as
+  // won (the hold lifted), as every other road does; it used to stay held.
+  seen.length = 0;
+  const won = { ...stripe, charges: { retrieve: async () => ({ id: "ch_1", amount: 10000, amount_refunded: 0, disputed: true }) },
+    disputes: { list: async () => ({ data: [{ id: "du_1", status: "won" }] }) } };
+  const { refuseIfTakenChargesReturned } = await import("../api/_withdrawals.js");
+  const takesDb = { ...db, from() { const c = { select: () => c, eq: () => c, then: (ok) => ok({ data: [{ payment_id: "p1", order_payments: { stripe_charge_id: "ch_1" } }], error: null }) }; return c; } };
+  await refuseIfTakenChargesReturned({ db: takesDb, id: "w1", build: () => won });
+  assert.deepEqual(seen.map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false]], "won: the hold is lifted on the PayPal / Wise road too");
+  // Every road calls it.
+  const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.ok(read("../api/_stripe-withdrawals.js").includes("await checkCharge({ stripe, db, paymentId: take.payment_id, charge: take.charge_id })"), "Stripe withdrawal");
+  assert.ok(read("../api/_withdrawals.js").includes("checked = await checkCharge({ stripe, db, paymentId, charge: chargeId });"), "PayPal / Wise withdrawal");
+  assert.ok(read("../api/_provider-payouts.js").includes("checked = await checkCharge({ stripe, db, paymentId, charge: payment.stripe_charge_id });"), "per-step payout");
+  assert.ok(read("../api/_stripe.js").includes("await checkCharge({ stripe, db, paymentId: row.id, charge: row.stripe_charge_id });"), "the balance read");
+  assert.ok(read("../api/_backfill.js").includes("const state = disputeState(charge, dispute);"), "the backfill reads a dispute the same way");
+}
+
 // The clearing date (funds_available_at) is Stripe's available_on, read from
 // the charge's balance transaction. Right after a payment it can be missing
 // (Stripe has not made the balance transaction yet): nothing is recorded then,
