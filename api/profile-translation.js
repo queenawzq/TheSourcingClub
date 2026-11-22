@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { translateText } from "./_translate.js";
+import { aiBudget, aiCaller } from "./_ai-gate.js";
 
 export const config = { maxDuration: 60 };
 
@@ -10,18 +11,11 @@ export const config = { maxDuration: 60 };
 const DEADLINE_MS = 8000;
 // Browse sends its cards in one request, not one per card.
 const MAX_ORGS = 50;
+// Browse asks for 50 vendors a request, and cached text costs nothing: far
+// above a brand browsing, far below a script.
+const REQUESTS_PER_HOUR = 600;
 
 const loadRules = () => import("../src/shared/profile-translation.mjs");
-
-/** The user id a token names, unverified: the database verifies it when it is used (as api/screen-message.js). */
-export function tokenSubject(token) {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
-    return typeof payload?.sub === "string" && payload.sub ? payload.sub : null;
-  } catch {
-    return null;
-  }
-}
 
 const hashOf = (source) => createHash("sha256").update(`profile-en-v1:${source}`).digest("hex");
 // A company name is cached per company and per name as written: a rename is
@@ -78,17 +72,11 @@ export default async function handler(request, response) {
   if (request.method !== "POST") return response.status(405).json({ error: "Method not allowed" });
   const { supabaseUrl, anonKey, serviceKey } = supabaseServerEnv();
   if (!supabaseUrl || !anonKey || !serviceKey) return response.status(503).json({ error: "Translation unavailable" });
-  // Who is asking, asked of the database with the caller's own token, not
-  // auth.getUser(): the auth server refuses a token the database still
-  // accepts (CLAUDE.md, Conversations), which answered 401 right after a
-  // sign-in (Nov 9 retest, B1).
-  const token = String(request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-  const userId = tokenSubject(token);
-  if (!userId) return response.status(401).json({ error: "Sign in required" });
-  const caller = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
+  // Who is asking (api/_ai-gate.js): a member of a brand, read with their own
+  // token, not auth.getUser() (Nov 9 retest, B1).
+  const who = await aiCaller(request, { side: "brand" });
+  if (who.refused) return response.status(who.refused[0]).json({ error: who.refused[0] === 401 ? "Sign in required" : who.refused[0] === 403 ? "Brand access required" : "Translation unavailable" });
+  const { caller } = who;
   let body;
   try { body = typeof request.body === "string" ? JSON.parse(request.body) : request.body; }
   catch { return response.status(400).json({ error: "Invalid request" }); }
@@ -98,10 +86,9 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: "Invalid factory" });
   }
   const scope = single ? "page" : body?.scope === "names" ? "names" : "card";
-  const { data: memberships, error: membershipError } = await caller.from("org_members").select("orgs!inner(type)").eq("user_id", userId);
-  // The database refuses an expired or forged token.
-  if (membershipError) return response.status(/jwt|token/i.test(membershipError.message ?? "") || membershipError.code === "PGRST301" ? 401 : 503).json({ error: "Sign in required" });
-  if (!memberships?.some((row) => row.orgs?.type === "brand")) return response.status(403).json({ error: "Brand access required" });
+  if ((await aiBudget(who, "profile-translation", REQUESTS_PER_HOUR)) === "over") {
+    return response.status(429).json({ error: "Too many translation requests, try again later" });
+  }
   if (scope === "names") return vendorNames(response, { caller, orgIds, supabaseUrl, serviceKey });
 
   // Text is read from the authorized profiles, never supplied by the caller.
