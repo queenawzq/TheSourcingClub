@@ -247,6 +247,13 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
       // The fee is kept on the withdrawal before any money moves: the board,
       // the factory's page and its bell read this one figure.
       await record(db, id, "sent", { fee: quote.feeCents, receives: quote.receivesMinor, receives_in: quote.receivesCurrency });
+      // What leaves TSC's balance for it (Wise: the fee inside the amount): what
+      // the provider kept of a returned one is measured against it. Not kept: it
+      // is taken as the amount (record_withdrawal_returned).
+      if (Number.isFinite(quote.leavesCents) && quote.leavesCents > 0) {
+        const kept = await db.from("factory_withdrawals").update({ leaves_cents: Math.round(quote.leavesCents) }).eq("id", id);
+        if (kept?.error) log("withdrawal leaves_cents", kept.error, { id });
+      }
       const paid = await adapter.pay(client, ctx, quote);
       ref = paid.ref;
       await record(db, id, "sent", { ref, sentence: "Sent. Waiting for the provider to confirm." });
@@ -294,21 +301,28 @@ export const withdrawalFailure = (adapter, raw) =>
 
 /**
  * Ask the provider, and record only its own answer. `wasPaid`: recorded paid
- * already, so only a return (failed or cancelled since) is recorded.
- * `returnedCents`: what a signed refund event says came back (Wise's
- * transfers#refund), in the withdrawal's currency.
+ * already (or recorded as come back), so only a return (failed or cancelled
+ * since) is recorded. `returnedCents`: what a signed refund event says came
+ * back (Wise's transfers#refund), in the withdrawal's currency.
  */
 export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null }) {
   const status = await adapter.status(client, ref);
+  const ended = status.state === "failed" || status.state === "cancelled";
+  // A transfer the provider does not say failed is not a return, whatever a
+  // refund event says (a partial refund on a delivered transfer): left for staff.
+  if (wasPaid && !ended) {
+    if (Number.isFinite(returnedCents)) log("withdrawal refund on a transfer not returned", null, { id, state: status.raw });
+    return "paid";
+  }
   // What came back, when the provider says (in the withdrawal's currency):
   // Wise's transfers#refund (returnedCents), else the adapter's answer.
   const cameBack = Number.isFinite(returnedCents) ? returnedCents : status.returnedCents;
-  if (wasPaid || Number.isFinite(returnedCents)) {
-    if (wasPaid && status.state !== "failed" && status.state !== "cancelled" && !Number.isFinite(returnedCents)) return "paid";
+  if (ended) {
     const sentence = withdrawalFailure(adapter, status.raw);
-    // Only what came back goes back to the balance. Not said: the whole
-    // amount is taken as back (20261121385000). A figure stated after the
-    // return was recorded whole corrects it (record_withdrawal_returned).
+    // Only what came back goes back to the balance, paid or still being sent
+    // (PayPal returns an unclaimed payment after 30 days, less its fee). Not
+    // said: the whole amount is taken as back. A figure stated after the
+    // return was recorded corrects it (record_withdrawal_returned).
     if (Number.isFinite(cameBack)) {
       const { error } = await db.rpc("record_withdrawal_returned", { target_withdrawal: id, came_back: Math.round(cameBack), sentence });
       if (error) {
@@ -323,10 +337,6 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false, 
   if (status.state === "paid") {
     await record(db, id, "paid", { receives: status.arrivesMinor ?? null });
     return "paid";
-  }
-  if (status.state === "failed" || status.state === "cancelled") {
-    await record(db, id, "failed", { sentence: withdrawalFailure(adapter, status.raw) });
-    return "failed";
   }
   if (status.waiting) await record(db, id, "sent", { sentence: status.waiting });
   return "sent";
@@ -384,19 +394,21 @@ export const adapterFor = (provider) => ADAPTERS[provider] ?? null;
 export async function readBackWithdrawalRef({ provider, client, db, ref, refund = null }) {
   const adapter = adapterFor(provider);
   if (!adapter || !ref) return null;
-  const { data: row, error } = await db.from("factory_withdrawals").select("id, status, provider_ref, currency, returned_at")
+  const { data: row, error } = await db.from("factory_withdrawals").select("id, status, provider_ref, currency, returned_at, failed_at")
     .eq("provider", provider).eq("provider_ref", String(ref)).maybeSingle();
   if (error) throw new PayoutFailure("database", "factory_withdrawals could not be read", { detail: error.code });
   if (!row) return null;
   // Paid, then returned by the provider (Wise bounced_back, funds_refunded,
   // charged_back; PayPal RETURNED, REFUNDED, REVERSED): read back too, so the
   // return is recorded (record_withdrawal gives the parts back to the balance).
-  // A refund event states what came back: recorded for a paid row, or for one
-  // already recorded as come back whole (record_withdrawal_returned).
+  // A refund event states what came back: recorded for a row paid or being
+  // sent, or one already recorded as come back (record_withdrawal_returned),
+  // once the provider says the transfer failed (readBack).
   const returnedCents = typeof refund === "function" ? refund(row.currency) : null;
-  if (Number.isFinite(returnedCents) && (row.status === "paid" || (row.status === "failed" && row.returned_at))) {
+  const cameBack = row.status === "failed" && (row.returned_at || row.failed_at);
+  if (Number.isFinite(returnedCents) && cameBack) {
     return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: true, returnedCents });
   }
   if (row.status !== "paying" && row.status !== "paid") return row.status;
-  return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid" });
+  return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid", returnedCents });
 }

@@ -10,7 +10,10 @@
 --      gives back what came back. The whole amount unless the provider states
 --      less (Wise's refund_amount; a Swift bank may keep a part): the part it
 --      kept stays sent (it left TSC) and counts like a fee, so the factory
---      bears it (it pays withdrawal fees; TSC absorbs none).
+--      bears it (it pays withdrawal fees; TSC absorbs none). Also one
+--      returned while it was still being sent (round 39), and kept is
+--      measured against what left TSC (leaves_cents). A later figure applies
+--      in full, from the parts handed back (payment_takes.handed_back_cents).
 -- L-6  factory_withdrawals.read_back_at: when the board's sync last read a paid
 --      withdrawal back, so each sync reads the ones read longest ago.
 --
@@ -19,17 +22,35 @@
 
 alter table public.factory_withdrawals add column if not exists kept_cents bigint;
 alter table public.factory_withdrawals add column if not exists read_back_at timestamptz;
+-- What left TSC's balance at the provider for it (Wise: the quote's total, its
+-- fee inside the amount; null when it is the amount, as with PayPal). What the
+-- provider kept of a returned one is measured against it, so a full refund
+-- keeps nothing.
+alter table public.factory_withdrawals add column if not exists leaves_cents bigint;
+-- When it failed or came back, paid or not: a figure the provider states later
+-- corrects it only while nothing was claimed from the company's earnings since.
+alter table public.factory_withdrawals add column if not exists failed_at timestamptz;
 alter table public.factory_withdrawals drop constraint if exists factory_withdrawals_kept_check;
 alter table public.factory_withdrawals add constraint factory_withdrawals_kept_check
-  check (kept_cents is null or (kept_cents >= 0 and kept_cents <= amount_cents and returned_at is not null));
+  check (kept_cents is null or (kept_cents >= 0 and kept_cents <= amount_cents and status = 'failed'));
+alter table public.factory_withdrawals drop constraint if exists factory_withdrawals_leaves_check;
+alter table public.factory_withdrawals add constraint factory_withdrawals_leaves_check
+  check (leaves_cents is null or (leaves_cents > 0 and leaves_cents <= amount_cents));
+-- A part a returned withdrawal handed back while the provider kept the rest of
+-- it (the take stays sent at the kept amount): a figure stated later can take
+-- from it again.
+alter table public.payment_takes add column if not exists handed_back_cents bigint not null default 0;
+alter table public.payment_takes drop constraint if exists payment_takes_handed_back_check;
+alter table public.payment_takes add constraint payment_takes_handed_back_check check (handed_back_cents >= 0);
 
--- L-3. A PayPal / Wise withdrawal the provider returned after it was recorded
--- paid (20261121380000's branch of record_withdrawal), giving back what came
--- back. came_back: what the provider returned to TSC, in the withdrawal's
--- currency; null when it does not say, taken as the whole amount (Wise refunds
--- its fee; only a Swift bank keeps a part, and Wise then states it). What it
--- kept stays sent (on the newest parts first) and counts like a fee
--- (factory_balance).
+-- L-3. A PayPal / Wise withdrawal the provider returned, after it was recorded
+-- paid (20261121380000's branch of record_withdrawal) or while it was still
+-- being sent (PayPal returns an unclaimed payment after 30 days), giving back
+-- what came back. came_back: what the provider returned to TSC, in the
+-- withdrawal's currency; null when it does not say, taken as all of it. What
+-- it kept (what left TSC, leaves_cents, less what came back) stays sent (on
+-- the newest parts first) and counts like a fee (factory_balance): the factory
+-- pays withdrawal fees, paid or not.
 create or replace function public.record_withdrawal_returned(target_withdrawal uuid, came_back bigint default null, sentence text default null)
 returns public.factory_withdrawals
 language plpgsql
@@ -48,6 +69,10 @@ declare
   back_parts bigint[] := '{}';
   extra bigint;
   part bigint;
+  applied bigint;
+  came_at timestamptz;
+  was_paid boolean;
+  provider_name text;
 begin
   -- The company first, the lock every claim on its money takes.
   perform 1 from public.orgs where id = (select x.org_id from public.factory_withdrawals x where x.id = target_withdrawal)
@@ -56,53 +81,80 @@ begin
   if not found then
     raise exception 'withdrawal not found' using errcode = 'P0002';
   end if;
-  -- Already recorded as come back whole, then the provider states it gave
-  -- back less (Wise's transfers#refund arriving after its state change): what
-  -- it kept leaves the parts handed back, newest first, as it would have the
-  -- first time. Only while nothing has been claimed from the company's
-  -- earnings since (otherwise staff see the return in Needs checking).
-  if w.status = 'failed' and w.returned_at is not null and came_back is not null then
-    extra := (w.amount_cents - least(w.amount_cents, greatest(0, came_back))) - coalesce(w.kept_cents, 0);
-    if extra <= 0 or exists (select 1 from public.payment_takes x where x.org_id = w.org_id and x.created_at > w.returned_at) then
+  provider_name := case w.provider when 'paypal' then 'PayPal' when 'wise' then 'Wise' else 'The payout provider' end;
+  -- What the provider kept: what left TSC (Wise's fee inside the amount) less
+  -- what came back, so a full refund keeps nothing.
+  kept := case when came_back is null then 0
+               else least(w.amount_cents, greatest(0, coalesce(w.leaves_cents, w.amount_cents) - came_back)) end;
+  came_at := coalesce(w.returned_at, w.failed_at);
+  -- Already recorded as come back, then the provider states it kept more
+  -- (Wise's transfers#refund arriving after its state change): what it kept
+  -- leaves the parts handed back, newest first, as it would have the first
+  -- time. Only while nothing has been claimed from the company's earnings
+  -- since (otherwise staff see the return in Needs checking). Nothing to take
+  -- it from: nothing changes and nobody is told.
+  if w.status = 'failed' and came_at is not null and came_back is not null then
+    extra := kept - coalesce(w.kept_cents, 0);
+    if extra <= 0 or exists (select 1 from public.payment_takes x where x.org_id = w.org_id and x.created_at > came_at) then
       return w;
     end if;
     kept_left := extra;
     for t in select x.* from public.payment_takes x
-              where x.factory_withdrawal_id = w.id and x.status = 'returned'
+              where x.factory_withdrawal_id = w.id
+                and (x.status = 'returned' or (x.status = 'sent' and x.handed_back_cents > 0))
               order by x.created_at desc, x.id desc for update
     loop
       exit when kept_left <= 0;
-      part := least(kept_left, t.amount_cents);
-      update public.payment_takes set status = 'sent', amount_cents = part, updated_at = now() where id = t.id;
+      if t.status = 'returned' then
+        part := least(kept_left, t.amount_cents);
+        update public.payment_takes set status = 'sent', amount_cents = part, handed_back_cents = t.amount_cents - part, updated_at = now()
+         where id = t.id;
+      else
+        part := least(kept_left, t.handed_back_cents);
+        update public.payment_takes set amount_cents = t.amount_cents + part, handed_back_cents = t.handed_back_cents - part, updated_at = now()
+         where id = t.id;
+      end if;
       perform public.release_fully_taken(t.payment_id, null);
       kept_left := kept_left - part;
     end loop;
+    applied := extra - kept_left;
+    if applied <= 0 then
+      return w;
+    end if;
     update public.factory_withdrawals
-       set kept_cents = coalesce(kept_cents, 0) + extra - kept_left,
-           back_cents = greatest(0, coalesce(back_cents, 0) - (extra - kept_left)), updated_at = now()
+       set kept_cents = coalesce(kept_cents, 0) + applied,
+           back_cents = greatest(0, coalesce(back_cents, 0) - applied), updated_at = now()
      where id = w.id returning * into w;
+    -- All the provider kept of it, as it stated.
     perform public.withdrawal_notice(w,
       format('Withdrawal of %s did not go through', public.format_money(w.amount_cents, w.currency)),
-      format('%s kept %s of it.',
-             case w.provider when 'paypal' then 'PayPal' when 'wise' then 'Wise' else 'The payout provider' end,
-             public.format_money(extra - kept_left, w.currency)));
+      format('%s kept %s of it.', provider_name, public.format_money(w.kept_cents, w.currency)));
     return w;
   end if;
-  -- Only a paid one comes back; a repeat finds it failed and does nothing.
-  if w.status <> 'paid' then
+  -- A paid one comes back; one being sent fails. Being sent with nothing
+  -- kept: record_withdrawal's failure, as before. A repeat finds it failed
+  -- and does nothing.
+  if w.status = 'requested' or (w.status = 'paying' and kept = 0) then
+    return public.record_withdrawal(w.id, 'failed', sentence => sentence);
+  end if;
+  if w.status not in ('paid', 'paying') then
     return w;
   end if;
-  kept := w.amount_cents - least(w.amount_cents, greatest(0, coalesce(came_back, w.amount_cents)));
+  was_paid := w.status = 'paid';
   kept_left := kept;
-  -- What came back is not sent any more; what the provider kept is.
+  -- What came back is not sent (or held) any more; what the provider kept is sent.
   for t in select x.* from public.payment_takes x
-            where x.factory_withdrawal_id = w.id and x.status = 'sent'
+            where x.factory_withdrawal_id = w.id and x.status in ('sent', 'held')
             order by x.created_at desc, x.id desc for update
   loop
     if kept_left >= t.amount_cents then
+      if t.status = 'held' then
+        update public.payment_takes set status = 'sent', updated_at = now() where id = t.id;
+      end if;
       kept_left := kept_left - t.amount_cents;
     elsif kept_left > 0 then
-      update public.payment_takes set amount_cents = kept_left, updated_at = now() where id = t.id;
+      update public.payment_takes set status = 'sent', amount_cents = kept_left, handed_back_cents = t.amount_cents - kept_left, updated_at = now()
+       where id = t.id;
       back_ids := back_ids || t.payment_id;
       back_parts := back_parts || (t.amount_cents - kept_left);
       kept_left := 0;
@@ -112,13 +164,17 @@ begin
       back_parts := back_parts || t.amount_cents;
     end if;
   end loop;
-  -- A step released because withdrawals took all of it is owed again.
+  -- A step released because withdrawals took all of it is owed again; one
+  -- the kept part now takes in full is released.
   for k in select distinct x.payment_id from public.payment_takes x where x.factory_withdrawal_id = w.id loop
     perform public.reopen_untaken_step(k.payment_id);
+    perform public.release_fully_taken(k.payment_id, null);
   end loop;
   update public.factory_withdrawals
-     -- paid_at is for a paid row only (factory_withdrawals_check); returned_at says when it came back.
-     set status = 'failed', paid_at = null, lease_until = null, returned_at = now(), updated_at = now(), kept_cents = kept,
+     -- paid_at is for a paid row only (factory_withdrawals_check); returned_at
+     -- says when a paid one came back (Needs checking).
+     set status = 'failed', paid_at = null, lease_until = null, updated_at = now(), kept_cents = kept,
+         returned_at = case when was_paid then now() end, failed_at = now(),
          staff_sentence = coalesce(sentence, staff_sentence),
          reason = coalesce(sentence, 'This withdrawal did not go through.')
    where id = w.id returning * into w;
@@ -137,9 +193,7 @@ begin
             else 'This amount was returned to the brand.'
           end
           || case when kept > 0
-                  then format(' %s kept %s of it.',
-                              case w.provider when 'paypal' then 'PayPal' when 'wise' then 'Wise' else 'The payout provider' end,
-                              public.format_money(kept, w.currency))
+                  then format(' %s kept %s of it.', provider_name, public.format_money(kept, w.currency))
                   else '' end;
   update public.factory_withdrawals set back_cents = greatest(back_amount, 0)
    where id = w.id returning * into w;
@@ -234,6 +288,7 @@ begin
   elsif outcome = 'failed' then
     update public.factory_withdrawals
        set status = 'failed', lease_until = null, reason = coalesce(sentence, 'This withdrawal did not go through.'), updated_at = now(),
+           failed_at = now(),
            -- What came back, kept as it was at this moment (20261121300000).
            back_cents = greatest(back_amount, 0)
      where id = w.id returning * into w;
@@ -288,10 +343,10 @@ begin
     raise exception 'not a member of this company' using errcode = '42501';
   end if;
 
-  -- What a provider kept of a withdrawal it returned after it was paid counts
-  -- like a fee: the factory bears it (20261121385000).
+  -- What a provider kept of a withdrawal it returned (paid or still being
+  -- sent) counts like a fee: the factory bears it (20261121385000).
   select coalesce(sum(w.fee_cents) filter (where w.status = 'paid'), 0)
-         + coalesce(sum(w.kept_cents) filter (where w.status = 'failed' and w.returned_at is not null), 0)
+         + coalesce(sum(w.kept_cents) filter (where w.status = 'failed'), 0)
     into fees
     from public.factory_withdrawals w
    where w.org_id = target_org and w.currency = 'USD';
@@ -519,8 +574,8 @@ begin
         -- brand), for the card's line (20261121290000).
         -- As kept when it failed (20261121300000), never recomputed.
         'back_cents', case when fw.status = 'failed' then fw.back_cents end,
-        -- Returned after it was paid: what the provider kept (20261121385000).
-        'kept_cents', case when fw.returned_at is not null then fw.kept_cents end,
+        -- Returned or failed: what the provider kept (20261121385000).
+        'kept_cents', case when fw.status = 'failed' then fw.kept_cents end,
         -- What sent its refunded part back to the brand: 'reversed' when the
         -- brand's bank took part of it (a lost dispute), else 'refunded'
         -- (20261121260000). Null when nothing went back.
@@ -723,6 +778,9 @@ begin
         join public.orgs f on f.id = w.org_id
        where w.returned_at is not null and w.returned_at > now() - interval '14 days'
          and not exists (select 1 from public.factory_withdrawals later
+                          where later.org_id = w.org_id and later.created_at > w.returned_at)
+         -- A Stripe withdrawal is asking again too.
+         and not exists (select 1 from public.stripe_withdrawals later
                           where later.org_id = w.org_id and later.created_at > w.returned_at)), '[]'::jsonb),
     -- A full refund before approval that failed in Stripe after the brand
     -- had paid again: TSC holds two charges for one step. Staff refund the

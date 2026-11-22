@@ -68,12 +68,14 @@ function fakeDb(payouts, withdrawals = []) {
     if (name === "record_withdrawal") {
       const w = db.withdrawals.find((x) => x.id === args.target_withdrawal);
       if (args.outcome === "failed" && w.status === "paid") w.returned_at = "now";
+      if (args.outcome === "failed") w.failed_at = "now";
       if (args.outcome === "paid" || args.outcome === "failed") w.status = args.outcome;
       db.withdrawalsRecorded.push(args); return { data: w };
     }
     if (name === "record_withdrawal_returned") {
       const w = db.withdrawals.find((x) => x.id === args.target_withdrawal);
-      if (w.status === "paid") { w.status = "failed"; w.returned_at = "now"; }
+      if (w.status === "paid") { w.status = "failed"; w.returned_at = "now"; w.failed_at = "now"; }
+      if (w.status === "paying") { w.status = "failed"; w.failed_at = "now"; }
       db.withdrawalsRecorded.push({ ...args, outcome: "returned" }); return { data: w };
     }
     if (name === "record_provider_attempt") {
@@ -255,6 +257,31 @@ assert.equal(wiseRef({ event_type: "balances#update", data: { resource: { id: 1 
   await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r8" }, body, deps: { db, client: wise.client } });
   assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["failed", null], ["returned", 97000]],
     "the later figure is passed on (record_withdrawal_returned corrects what was kept)");
+
+  // Round 39 (L4): a refund event on a transfer Wise does not say failed (a
+  // partial refund on a delivered one) is not a return: left for staff.
+  db = fakeDb([], [{ id: "w10", provider: "wise", provider_ref: "5010", status: "paid", currency: "USD" }]);
+  body = refundBody(5010, 970);
+  out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r10" }, body, deps: { db, client: fakeWise({ 5010: "outgoing_payment_sent" }).client } });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.state, "paid");
+  assert.equal(db.withdrawalsRecorded.length, 0, "a refund on a transfer Wise still reads as sent records nothing");
+
+  // Round 39 (L2): refunded while it was still being sent: what Wise gave back, not all of it.
+  db = fakeDb([], [{ id: "w11", provider: "wise", provider_ref: "5011", status: "paying", currency: "USD" }]);
+  body = refundBody(5011, 970);
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r11" }, body, deps: { db, client: fakeWise({ 5011: "funds_refunded" }).client } });
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["returned", 97000]], "being sent: Wise's figure is recorded");
+
+  // ... and its state change first, then the refund: the figure still reaches the record.
+  db = fakeDb([], [{ id: "w12", provider: "wise", provider_ref: "5012", status: "paying", currency: "USD" }]);
+  const wise12 = fakeWise({ 5012: "funds_refunded" });
+  body = wiseEvent(5012, "funds_refunded");
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "s12" }, body, deps: { db, client: wise12.client } });
+  body = refundBody(5012, 970);
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r12" }, body, deps: { db, client: wise12.client } });
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["failed", null], ["returned", 97000]],
+    "a failure recorded whole is corrected by the later figure, paid or not");
 }
 
 // --- PayPal ---------------------------------------------------------------------
@@ -322,6 +349,13 @@ const PAYPAL_HEADERS = { "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url":
     const db = fakeDb([], [{ id: "w9", provider: "paypal", provider_ref: "B9", status: "paid" }]);
     await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B9", "f0000000-0000-4000-8000-000000000009"), deps: { db, client: fakePaypal({ item: "RETURNED", sent: "969.75" }).client } });
     assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back]), [["returned", 96975]], "what PayPal sent is what came back");
+  }
+  // Round 39 (L2): returned while still unclaimed (being sent; PayPal returns
+  // it after 30 days): what PayPal sent is what came back, as after Paid.
+  {
+    const db = fakeDb([], [{ id: "w10", provider: "paypal", provider_ref: "B10", status: "paying" }]);
+    await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B10", "f0000000-0000-4000-8000-000000000010"), deps: { db, client: fakePaypal({ item: "RETURNED", sent: "969.75" }).client } });
+    assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["returned", 96975]], "the factory bears PayPal's fee, paid or not");
   }
   const db = fakeDb([], [{ id: "w6", provider: "paypal", provider_ref: "B6", status: "paid" }]);
   await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B6", "f0000000-0000-4000-8000-000000000006"), deps: { db, client: fakePaypal().client } });
