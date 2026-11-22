@@ -5,7 +5,7 @@ import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
-import { parseWithdrawAmount, withdrawFeeLine } from "./payment-summary.mjs";
+import { NOTHING_BACK, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
 
 /**
  * A factory withdraws to Wise or PayPal from its one balance: cleared
@@ -79,20 +79,17 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
 
 /** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
 export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, pool: false, open: null, opens: [], last: null, rows: [], withdrawn: new Map(), returnable: new Map(), stripeFees: 0, error: null });
+  const [state, setState] = useState({ available: null, open: null, opens: [], last: null, rows: [], returnable: new Map(), error: null });
   const load = useCallback(async () => {
     if (!enabled || !orgId) return;
-    const [balance, rows, stripeRows] = await Promise.all([
+    const [balance, rows] = await Promise.all([
       supabase.rpc("my_withdrawal_balance", { target_org: orgId }),
       supabase.from("factory_withdrawals")
         .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, back_cents, created_at, paid_at, updated_at")
         .eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
-      // Stripe's payout fee, paid once per withdrawal from the Stripe balance
-      // (api/_stripe-withdrawals.js), in US$. A fee given back is not counted.
-      supabase.from("stripe_withdrawals").select("fee_cents").eq("org_id", orgId).eq("state", "paid_out"),
     ]);
-    if (balance.error || rows.error || stripeRows.error) {
-      setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error ?? stripeRows.error) }));
+    if (balance.error || rows.error) {
+      setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error) }));
       return;
     }
     const list = rows.data ?? [];
@@ -100,16 +97,13 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     const opens = list.filter((w) => ["requested", "paying"].includes(w.status));
     setState({
       available: Number(balance.data?.available_cents ?? 0),
-      pool: Boolean(balance.data?.pool) || list.length > 0,
       open: opens[0] ?? null,
       opens,
       last: list[0] ?? null,
       rows: list,
-      withdrawn: new Map(Object.entries(balance.data?.withdrawn ?? {}).map(([id, cents]) => [id, Number(cents)])),
       // What cancelling each open withdrawal gives back (less, or nothing, when
       // a step under it was refunded to the brand).
       returnable: new Map(Object.entries(balance.data?.returnable ?? {}).map(([id, cents]) => [id, Number(cents)])),
-      stripeFees: (stripeRows.data ?? []).reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0),
       error: null,
     });
   }, [orgId, enabled]);
@@ -119,7 +113,6 @@ export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = nu
     load();
     const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
       // A brand approving a step adds it to the balance (it becomes owed;
       // my_withdrawal_balance counts it once cleared) with no
       // factory_withdrawals row changing: the first such payment is what
@@ -179,9 +172,9 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
         <div className="payout-pending-details">
           <span className="payout-pending-label">Processing withdrawal</span>
           <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)}</span>
-          {/* The brand's bank took part of it back (refund_cause "reversed"): returned, not refunded. */}
+          {/* The brand's bank took part of it back (refund_cause "reversed"): the row's words for it. */}
           {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{reversed instanceof Set && reversed.has(row.id)
-            ? `${formatMoney(refundedOf(row), row.currency)} returned to the brand` : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
+            ? reversedByBankLine(formatMoney(refundedOf(row), row.currency)) : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
           <span className="payout-pending-destination">{destination(row)}</span>
           {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
@@ -250,7 +243,6 @@ export async function cancelWithdrawals(ids) {
  * The choice of which waiting withdrawals to cancel, in the payouts page's own
  * PayoutModal. `first` is ticked to start with (the row whose Cancel was pressed).
  */
-export const NOTHING_BACK = "This amount was returned to the brand.";
 
 // `onChanged`: read the balance again (a refusal means it moved meanwhile).
 export function CancelWithdrawalsForm({ opens, first, Modal, onClose, onDone, onChanged, returnable = null }) {

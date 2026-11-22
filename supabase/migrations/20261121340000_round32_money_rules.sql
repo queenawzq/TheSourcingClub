@@ -560,7 +560,7 @@ begin
   -- Part of it went back to the brand: the factory withdraws the rest from
   -- its balance (a per-step payout pays the whole step).
   if p.factory_refund_cents > 0 then
-    raise exception 'part of this payment went back to the brand' using errcode = '22023', hint = 'payout_refunded';
+    raise exception 'part of this payment was returned to the brand' using errcode = '22023', hint = 'payout_refunded';
   end if;
   if not public.payment_cleared(p) then
     raise exception 'the brand''s payment has not cleared yet' using errcode = '22023', hint = 'payout_not_cleared';

@@ -161,8 +161,9 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 // $6 stays Available, $4 is Pending until paid; once paid with a $0.10 fee,
 // Paid out $3.90 and Total $9.90.
 {
-  const step = pay("p1", 1000, "confirmed", { ...APPROVED, withdrawal_pool: true });
-  const asked = balanceFigures(tsc({ available_cents: 600, processing_cents: 400 }, { pool_available_cents: 600, pool_open_cents: 400 },
+  // (The old pool is takes since 20261121350000: the rest is owed money.)
+  const step = pay("p1", 1000, "confirmed", { ...APPROVED });
+  const asked = balanceFigures(tsc({ available_cents: 600, processing_cents: 400 }, { owed_cleared_cents: 600, taken_open_cents: 400 },
     [row("p1", "pending", 400), row("p1", "available", 600)]), null, null);
   const a = checkTotal(asked, "partial, asked");
   assert.equal(a.available, 600, "partial: the rest of the step stays Available");
@@ -170,7 +171,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(a.processing, 400, "partial: exactly the amount asked for is processing");
   assert.equal(withdrawReach(asked).balance, 600, "partial: the rest can be withdrawn by any method");
   assert.equal(earningStatus(step, null, figuresByPayment(asked)), "Added to your balance", "partial: the step is still in the balance, not Pending");
-  const paid = balanceFigures(tsc({ available_cents: 600, paid_out_cents: 390 }, { pool_available_cents: 600, pool_paid_cents: 400, withdrawal_fees_cents: 10 },
+  const paid = balanceFigures(tsc({ available_cents: 600, paid_out_cents: 390 }, { owed_cleared_cents: 600, taken_paid_cents: 400, withdrawal_fees_cents: 10 },
     [row("p1", "paid_out", 400), row("p1", "available", 600)]), null, null);
   const p = checkTotal(paid, "partial, paid");
   assert.equal(p.paid, 390, "partial: Paid out is what arrived");
@@ -493,7 +494,7 @@ const rows = withdrawalRows(money);
 const sentOut = rows.filter((row) => !row.failed).reduce((sum, row) => sum - row.amount, 0);
 assert.equal(sentOut, 300 + 700 + 900 + 1100 + 1300, "each payment sent is one withdrawal; Stripe's come from Stripe; failures never count");
 assert.equal(rows.filter((row) => row.failed).length, 2, "a failed attempt keeps its row");
-assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing");
+assert.equal(rows.find((row) => row.id === "provider-a").status, "On its way", "R32: a per-step payout under way is on its way, as the card says");
 assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
 assert.ok(rows.find((row) => row.id === "provider-b").amount < 0, "a failed row keeps its sign, struck through");
 assert.equal(rows.find((row) => row.id === "provider-d").note, "The payment did not go through. Check your payout details or contact TSC operations", "and one with no known reason says what to do");
@@ -550,7 +551,39 @@ assert.equal(staffBankNote({ ...bankPaid, state: "confirmed" }), null, "not paid
 
 const transferred = [pay("t", 5, "released", { stripe_transfer_id: "tr_1" })];
 assert.equal(earningStatus(transferred[0]), "Added to your balance", "the same word as the order page: in its Stripe balance, not its bank");
-assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8"), /case "released":\s*\/\/[^\n]*\n\s*return isFactory \? earningStatus\(payment\)/, "the order page uses that word for the factory");
+assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8"), /case "released":\s*\/\/[^\n]*\n\s*return isFactory \? factoryWord\(payment\)/, "the order page uses that word for the factory");
+
+// Round 32 (screens review #1): the order page and Payments give a step the
+// same word. Both read the same payment fields (EARNING_COLUMNS) and the
+// server's figures; the order page's words come from earningWordsFor().
+{
+  const { EARNING_COLUMNS, earningWordsFor, figuresByPayment: placedBy } = await import("../src/app/order/payment-summary.mjs");
+  const steps = [
+    // All of it in a waiting PayPal withdrawal.
+    pay("waiting-paypal", 500, "confirmed", { ...APPROVED, payment_takes: [{ status: "held", stripe_withdrawals: null }] }),
+    // Released by a Stripe withdrawal whose payout has not landed.
+    pay("stripe-on-way", 700, "released", { stripe_transfer_id: "tr_7", released_note: "Withdrawn", payment_takes: [{ status: "sent", stripe_withdrawals: { state: "paid_out", payout_status: "in_transit" } }] }),
+    // Part still clearing, part available.
+    pay("split", 900, "confirmed", { ...APPROVED }),
+    // A per-step payout under way.
+    pay("per-step", 300, "confirmed", { ...APPROVED, provider_payouts: [{ id: "x", provider: "wise", status: "processing", created_at: "2026-11-02T00:00:00Z" }] }),
+  ];
+  const figures = tsc({}, {}, [row("waiting-paypal", "processing", 500), { ...row("stripe-on-way", "on_its_way", 700), stripe: true },
+    row("split", "pending", 400), row("split", "available", 500), row("per-step", "processing", 300)]);
+  const onPayments = new Map(steps.map((step) => [step.id, earningStatus(step, null, placedBy(figures))]));
+  const onOrder = earningWordsFor(steps, figures);
+  assert.deepEqual([...onOrder], [...onPayments], "R32: the order page's words are Payments' words");
+  assert.deepEqual([...onOrder.values()], ["Processing", "On its way", "Added to your balance", "On its way"],
+    "R32: waiting withdrawal, Stripe payout on its way, a split step, a per-step payout under way");
+  // Without the figures (the old order page) the first two read differently: the reason for the change.
+  assert.notEqual(earningStatus(steps[0]), onOrder.get("waiting-paypal"), "R32: the payment alone said otherwise");
+  const order = readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8");
+  assert.ok(order.includes('.select(EARNING_COLUMNS).eq("order_id", orderId)') && order.includes('supabase.rpc("factory_balance", { target_org: org.id })')
+    && order.includes("earningWordsFor(earningRows.data, balance.data, row)"), "R32: the order page reads what Payments reads");
+  const payouts = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(payouts.includes(".select(EARNING_COLUMNS)"), "R32: Payments selects the same columns");
+  assert.ok(EARNING_COLUMNS.includes("payment_takes (status, stripe_withdrawals (state, payout_status))"), "R32: the columns the word needs");
+}
 
 // Stripe money still clearing, on the owner's page (Nov 18): its row says
 // "Pending · Available Nov 19" and it is counted in the Pending figure, from
@@ -607,7 +640,7 @@ for (const rule of [
     return match[1].split(",").map((column) => column.trim()).filter((column) => /^\w+$/.test(column));
   };
   const orderPage = columnsIn("lib/domain/milestone.js", /listMilestones[\s\S]*?order_payments \(([^)]*)\)/);
-  const payments = columnsIn("app/order/PayoutDetails.jsx", /\.select\("(id, order_id, amount_cents[^"]*?), order_milestones/);
+  const payments = columnsIn("app/order/payment-summary.mjs", /EARNING_COLUMNS = "(id, order_id, amount_cents[^"]*?), order_milestones/);
   const only = (row, columns) => ({ ...Object.fromEntries(columns.filter((column) => column in row).map((column) => [column, row[column]])), order: row.order });
   const rows = [
     ...earnings,
@@ -690,7 +723,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.equal(owedToTscLine(0, fmt), null, "no line without a debt");
   // Fix round 19: a lost dispute is said as one, never as a refund.
   assert.equal(owedToTscLine(50000, fmt, "dispute_lost"), "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.");
-  assert.equal(owedToTscLine(50000, fmt, "both"), "You owe TSC $500.00. Money went back to the brand after you withdrew it.");
+  assert.equal(owedToTscLine(50000, fmt, "both"), "You owe TSC $500.00. Money was returned to the brand after you withdrew it.", "R32: one phrase for money going back to the brand");
   const rowsOf = (...causes) => ({ rows: causes.map((cause, i) => ({ figure: "refunded", amount_cents: -100, payment_id: `p${i}`, cause, at: "2026-11-21T10:00:00Z" })) });
   assert.deepEqual([owedToTscCause(rowsOf("dispute_lost")), owedToTscCause(rowsOf("refund")), owedToTscCause(rowsOf("refund", "dispute_lost"))],
     ["dispute_lost", "refund", "both"], "the cause comes from the dated refund rows");
@@ -720,7 +753,8 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // The order page: a lost dispute is never "refunded" (fix round 19).
   const orderPage = readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8");
   const line = orderPage.slice(orderPage.indexOf("function paymentLine("), orderPage.indexOf("function paymentStateLine("));
-  assert.ok(line.includes("reversed by your bank`") && line.includes("back to the brand`"), "a partial lost dispute and a refund plus a dispute, each in its words");
+  assert.ok(line.includes("reversed by your bank`") && line.includes("returned to the brand`") && !line.includes("} back to the brand`"),
+    "a partial lost dispute and a refund plus a dispute, each in its words (R32: returned to the brand)");
   const block = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(block.includes("formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)") && block.includes("refunded`"),
     "a waiting withdrawal's block shows what it still holds, and its refunded part");
@@ -729,21 +763,25 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Chinese for the new screen words: the live patterns and the factory's dictionary.
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
-  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 back to the brand", "$50.00 reversed by your bank",
+  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 returned to the brand", "$50.00 reversed by your bank",
     "$50.00 returned to the brand", "$46.73 reversed by the brand's bank",
-    "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money went back to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
+    "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money was returned to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }
   const dictionary = readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
-  assert.ok(dictionary.includes('"Dispute lost": "争议败诉"'), "Chinese for Dispute lost (rows read before round 22)");
+  // R32: no rule for words nothing writes any more.
+  assert.ok(!dictionary.includes('"Dispute lost"') && !dictionary.includes("Nothing goes back to your balance"), "R32: dead Chinese rules removed");
+  assert.ok(!literals.some((re) => re.test("$45.00 back to the brand")), "R32: the old phrase has no rule left");
   assert.ok(dictionary.includes(`"Reversed by the brand's bank": "已被品牌的银行撤回"`) && dictionary.includes('"This amount was returned to the brand.": "这笔金额已退回品牌。"')
     && dictionary.includes('"Order payment": "订单付款"') && dictionary.includes('"Only a company owner can withdraw": "只有公司所有者可以提现"')
     && dictionary.includes('"Only an owner can set up or change payouts": "只有所有者可以设置或更改收款方式"'),
     "Chinese for the round 22 words");
-  // Round 22: a part the brand's bank took back reads "returned to the brand".
+  // Round 32: a part the brand's bank took back reads as its row and the order page do.
   const block22 = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
-  assert.ok(block22.includes("returned to the brand`"), "the withdrawal block in round 22's words");
+  assert.ok(block22.includes("? reversedByBankLine(formatMoney(refundedOf(row), row.currency))") && !block22.includes("returned to the brand`"),
+    "R32: the withdrawal block says reversed by the brand's bank");
+  assert.ok(!block22.includes('export const NOTHING_BACK') && block22.includes('import { NOTHING_BACK,'), "R32: NOTHING_BACK is defined once");
 }
 
 // Fix round 24: a withdrawal part of which went back to the brand shows what
@@ -802,7 +840,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
 {
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const { failedWithdrawalNote, askedWithdrawalRows: asked, serverWithdrawalRows: server } = await import("../src/app/order/payment-summary.mjs");
-  assert.equal(failedWithdrawalNote(60000, 60000), "The amount is back in your balance. Check your withdrawal method, then withdraw again.");
+  assert.equal(failedWithdrawalNote(60000, 60000), "Back in your balance. Check your withdrawal method, then withdraw again", "R32: main's words, true when all of it came back");
   assert.equal(failedWithdrawalNote(6500, 60000), "$65.00 is back in your balance. Check your withdrawal method, then withdraw again.", "the tester's $600 / $65");
   assert.equal(failedWithdrawalNote(0, 60000), "This amount was returned to the brand.");
   assert.equal(failedWithdrawalNote(null, 60000), null, "not kept: nothing said");
@@ -846,7 +884,8 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Still never listed as a second "Bank transfer" withdrawal.
   assert.deepEqual(summary.withdrawalRows([step({ state: "fee_returned", payout_status: "failed" })]), [], "no second withdrawal row");
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
-  assert.ok(page.includes("payment_takes (status, stripe_withdrawals (state, payout_status))"), "Payments reads each take's Stripe withdrawal");
+  assert.ok(page.includes(".select(EARNING_COLUMNS)") && summary.EARNING_COLUMNS.includes("payment_takes (status, stripe_withdrawals (state, payout_status))"),
+    "Payments reads each take's Stripe withdrawal");
 }
 
 // Fix round 30 (G8): no red "You can withdraw up to …" while a withdrawal is
@@ -877,6 +916,37 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }
   assert.ok(zh.includes('m[1].split(/, | and /).join("、")'), "the currencies listed with 、");
+}
+
+// Round 32 (screens review #2, #3, #14): one word for money on its way, one
+// spelling of Cancelled, a colour for every status a Payments row can show,
+// and the card's "pending" in main's Chinese.
+{
+  const summary = await import("../src/app/order/payment-summary.mjs");
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  const statusMap = page.slice(page.indexOf("const PAYOUT_STATUS = {"), page.indexOf("};", page.indexOf("const PAYOUT_STATUS = {")));
+  assert.ok(/pending: ON_ITS_WAY/.test(statusMap) && /in_transit: ON_ITS_WAY/.test(statusMap) && /canceled: "Cancelled"/.test(statusMap),
+    "R32: an older Stripe payout on its way reads On its way; cancelled is spelled Cancelled");
+  const cancelled = summary.serverWithdrawalRows([{ id: "s1", road: "stripe", word: "returned", amount_cents: 1000, created_at: "2026-11-02T00:00:00Z" }],
+    { stripe: new Map([["s1", { payout_status: "canceled", payout_id: "po_1" }]]) });
+  assert.equal(cancelled[0]?.status, "Cancelled", "R32: a Stripe payout cancelled reads Cancelled");
+  const css = readFileSync(new URL("../src/app/order/payout.css", import.meta.url), "utf8");
+  const words = ["Completed", "Paid", "Added to your balance", "Paid out to your bank", "Failed", "Cancelled", "Declined", "Refunded",
+    summary.DISPUTE_LOST, "Order cancelled", "Processing", summary.ON_ITS_WAY, "Pending", summary.ON_HOLD, "Waiting", "Awaiting approval"];
+  for (const word of words) {
+    const slug = word.toLowerCase().replaceAll(" ", "-").replaceAll("'", "\\'");
+    assert.ok(css.includes(`.payout-status-${slug}`), `R32: the "${word}" pill has a colour`);
+  }
+  assert.ok(!/#[0-9a-f]{6}/i.test(css.slice(css.indexOf("/* Every word a Payments row can show"), css.indexOf(".brand-transaction-view")).replace(/#fff0ed|#b93824|#eaf2ff/gi, "")),
+    "R32: no new colours, only the existing red and blue");
+  const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
+  assert.ok(zh.includes("(m) => `${m[1]} 待确认。处理完成后即可提现。`]") && zh.includes("(m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月"), "R32: pending is 待确认, as the tile says");
+  assert.ok(!zh.includes("待处理") && !zh.includes("已回到你的余额"), "R32: one Chinese for pending and for back in your balance");
+  const bell = readFileSync(new URL("../src/shared/notification-zh.mjs", import.meta.url), "utf8");
+  assert.ok(!bell.includes("已回到你的余额"), "R32: the bell says back in your balance as main does (已退回你的余额)");
+  const hook = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  const balanceHook = hook.slice(hook.indexOf("export function useWithdrawalBalance"), hook.indexOf("return { ...state, load };"));
+  assert.ok(!/withdrawn|stripeFees|pool:|stripe_withdrawals/.test(balanceHook), "R32: no unread state, query or listener in useWithdrawalBalance");
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

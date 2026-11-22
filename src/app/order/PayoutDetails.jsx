@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -90,9 +90,10 @@ function RowPlaceholders({ className, cells, label }) {
 const PAYOUT_STATUS = {
   // A withdrawal from the factory's Stripe balance that reached its bank.
   paid: "Paid out to your bank",
-  pending: "Pending",
-  in_transit: "Processing",
-  canceled: "Canceled",
+  // Left for the bank: one word with every withdrawal on its way (ON_ITS_WAY).
+  pending: ON_ITS_WAY,
+  in_transit: ON_ITS_WAY,
+  canceled: "Cancelled",
   failed: "Failed",
 };
 
@@ -306,7 +307,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         orders.map((order) => order.id),
         (batch) => supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))")
+          .select(EARNING_COLUMNS)
           .in("order_id", batch)
           .order("created_at", { ascending: false })
           .order("id", { ascending: false }),

@@ -804,7 +804,7 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   await assert.rejects(refusedWith("payout_owes_tsc", "$500.00"),
     (failure) => failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Nothing is paid until that is covered.", "R32: owes TSC");
   await assert.rejects(refusedWith("payout_disputed"), (failure) => failure.message === "The brand disputed this payment. It waits until the dispute is settled.");
-  await assert.rejects(refusedWith("payout_refunded"), (failure) => failure.message === "Part of this payment went back to the brand. The factory withdraws the rest from its balance.");
+  await assert.rejects(refusedWith("payout_refunded"), (failure) => failure.message === "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.");
   await assert.rejects(refusedWith("payout_not_cleared"), (failure) => failure.message === "The brand's payment hasn't cleared yet. Try again once it has.");
 }
 

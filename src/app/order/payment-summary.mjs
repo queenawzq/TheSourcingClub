@@ -28,6 +28,22 @@ export function currencyTotals(rows) {
  * cancellation is still owed.
  */
 export const awaitingApproval = (row) => row.state === "confirmed" && !row.release_requested_at && row.order?.status !== "cancelled";
+/**
+ * What earningStatus() reads of a payment: Payments and the factory's order
+ * page select exactly this, so a step reads the same word on both.
+ */
+export const EARNING_COLUMNS = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))";
+
+/**
+ * The factory's word for each payment on one order, worked out as Payments
+ * does: the same payment fields, the server's figures (factory_balance()),
+ * and the order. payment id → word.
+ */
+export function earningWordsFor(rows, figures, order = null) {
+  const placed = figuresByPayment(figures);
+  return new Map((rows ?? []).map((row) => [row.id, earningStatus({ ...row, order: row.order ?? order }, null, placed)]));
+}
+
 export const toBeSent = (row) => row.state === "confirmed" && Boolean(row.release_requested_at);
 /** Provider attempts, as the embed gives them: a list, or nothing for a brand. */
 const attempts = (row) => row.provider_payouts ?? [];
@@ -299,7 +315,7 @@ export const owedToTscLine = (cents, formatMoney, cause = "refund") => {
   if (!(cents > 0)) return null;
   const owed = `You owe TSC ${formatMoney(cents, "USD")}.`;
   if (cause === "dispute_lost") return `${owed} The brand's bank reversed a payment after you withdrew it.`;
-  if (cause === "both") return `${owed} Money went back to the brand after you withdrew it.`;
+  if (cause === "both") return `${owed} Money was returned to the brand after you withdrew it.`;
   return `${owed} A payment was refunded after you withdrew it.`;
 };
 /** What sent it back, from the dated refund rows: "refund", "dispute_lost" or "both". */
@@ -339,8 +355,8 @@ export function paymentRefund(payment) {
 /**
  * What each method can withdraw, in US$ cents (D5): the factory's Stripe
  * account reaches the cleared money TSC owes it and the money already in its
- * Stripe account; PayPal and Wise reach the same cleared money and what is
- * left in the balance kept for them, never the Stripe account's.
+ * Stripe account; PayPal and Wise reach the same cleared money, never the
+ * Stripe account's.
  *
  * The server's own answers come first: `server` is the balance action's
  * top-level `reach` ({ stripe_cents, pool_cents, estimated }), for an owner
@@ -351,14 +367,13 @@ export function paymentRefund(payment) {
 export function withdrawReach(figures, server = null, poolCents = null) {
   const parts = figures?.tsc?.parts ?? figures?.parts ?? null;
   const owed = Math.max(0, Number(parts?.owed_cleared_cents) || 0);
-  const pool = Math.max(0, Number(parts?.pool_available_cents) || 0);
   const ownStripe = figures?.stripe ? Math.max(0, Number(figures.stripe.available_cents) || 0) : 0;
   const known = (value) => value != null && Number.isFinite(Number(value));
   // Refunded after it was withdrawn: owed to TSC, taken off what can be withdrawn.
   const debt = Math.max(0, Number(owedToTscCents(figures)) || 0);
   return {
     stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? Math.max(0, owed + ownStripe - debt) : null,
-    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? Math.max(0, owed + pool - debt) : null,
+    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? Math.max(0, owed - debt) : null,
     // The Stripe amount was converted from the account's currency.
     estimated: Boolean(server?.estimated),
   };
@@ -383,8 +398,10 @@ export function clearingNote(row, clearing) {
 /** "To bank account ending in 0154.": a Stripe destination label mid-sentence, lower case. */
 export const toDestination = (label) => `To ${String(label).replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`;
 
-/** The bell's words for a failed withdrawal that came back whole, as a row's note. */
-export const WITHDRAWAL_FAILED_NOTE = "The amount is back in your balance. Check your withdrawal method, then withdraw again.";
+/** A failed withdrawal that came back whole, as a row's note (main's words). */
+export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
+/** Nothing of a withdrawal came back: all of it went to the brand while it was sent (withdrawal_back_sentence). */
+export const NOTHING_BACK = "This amount was returned to the brand.";
 /**
  * A failed withdrawal's row note: what came back (its stored back_cents), in
  * its notice's words (withdrawal_back_sentence). Nothing when it was not
@@ -394,7 +411,7 @@ export function failedWithdrawalNote(back, amount, currency = "USD") {
   if (back == null || !Number.isFinite(Number(back))) return null;
   const cents = Number(back);
   if (cents >= Number(amount)) return WITHDRAWAL_FAILED_NOTE;
-  if (!(cents > 0)) return "This amount was returned to the brand.";
+  if (!(cents > 0)) return NOTHING_BACK;
   return `${(cents / 100).toLocaleString("en-US", { style: "currency", currency })} is back in your balance. Check your withdrawal method, then withdraw again.`;
 }
 const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
@@ -460,9 +477,14 @@ export function legacyOnItsWayCents(earnings, figures) {
     if (!toBeSent(row) || row.withdrawal_pool) return false;
     const where = figures instanceof Map ? figures.get(row.id) : null;
     if (!where || where.size !== 1 || !(where.has("processing") || where.has("pending"))) return false;
-    const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-    return latest?.status === "processing" || latest?.status === "failed";
+    return legacyPayoutUnderWay(row);
   }).reduce((sum, row) => sum + factoryAmount(row), 0);
+}
+
+/** Its latest per-step payout is under way, or failed and waits for staff. */
+function legacyPayoutUnderWay(row) {
+  const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+  return latest?.status === "processing" || latest?.status === "failed";
 }
 
 /**
@@ -501,7 +523,10 @@ export function earningStatus(row, clearing = null, figures = null) {
   // page and on Payments, from the payment's own date.
   if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
   if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
-  // All of it in a withdrawal waiting or being sent (or a payout per step under way).
+  // A payout sent step by step, under way (or failed, waiting for staff): on
+  // its way, as the card counts it (legacyOnItsWayCents).
+  if (where && where.size === 1 && where.has("processing") && legacyPayoutUnderWay(row)) return ON_ITS_WAY;
+  // All of it in a withdrawal waiting or being sent.
   if (where && where.size === 1 && where.has("processing")) return "Processing";
   return ADDED_TO_BALANCE;
 }
@@ -513,7 +538,9 @@ export function stillClearing(row, now = new Date()) {
   return !Number.isNaN(when.getTime()) && when > now;
 }
 
-const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
+// A payout sent step by step that is under way: on its way, as the card says
+// (legacyOnItsWayCents).
+const WITHDRAWAL_STATUS = { processing: "On its way", paid: "Completed", failed: "Failed" };
 const FAILURE_NOTE = {
   details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal address" },
 };
@@ -673,7 +700,7 @@ export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD
 /** A Stripe payout that has left and not yet reached the bank (until its arrival day). */
 export const ON_ITS_WAY = "On its way";
 export const BANK_PROCESSING = "Your bank is processing the payout.";
-const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Canceled" };
+const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Cancelled" };
 
 /**
  * The company's withdrawals to its Stripe bank, from stripe_withdrawals (any

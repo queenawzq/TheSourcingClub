@@ -20,7 +20,7 @@
  * reading the summary.
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
-import { DISPUTE_LOST, earningStatus, paymentRefund, refundPendingWord, reversedByBankLine } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, earningStatus, earningWordsFor, paymentRefund, refundPendingWord, reversedByBankLine } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -155,9 +155,15 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   // All of the factory's part went back to the brand: the existing word.
   // (A lost dispute, not a refund: the bank-reversal word.)
   if (refund.factory >= Number(payment.amount_cents)) return refund.refunded > 0 ? "Refunded" : DISPUTE_LOST;
-  if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} back to the brand`;
+  if (refund.refunded > 0 && refund.lost > 0) return `${line} · ${money(refund.factory)} returned to the brand`;
   return refund.refunded > 0 ? `${line} · ${money(refund.factory)} refunded` : `${line} · ${reversedByBankLine(money(refund.factory))}`;
 }
+
+/**
+ * The factory's word for a payment: the one Payments shows (earningWordsFor,
+ * read with the order), else worked out from the payment alone.
+ */
+const factoryWord = (payment) => payment.word ?? earningStatus(payment);
 
 function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = null) {
   switch (payment?.state) {
@@ -179,13 +185,13 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
       if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
-      if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
+      if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
       if (!payment.release_requested_at) return "Funded: held by TSC";
       // One balance: approved money waits in the factory's balance until it withdraws.
       return kind === "payment_only" ? "Funded: added to the factory's balance" : "Approved: added to the factory's balance";
     case "released":
       // The factory's word, as on Payments: a Stripe transfer is in its balance.
-      return isFactory ? earningStatus(payment) : "Paid";
+      return isFactory ? factoryWord(payment) : "Paid";
     case "cancelled":
       // Held money that went back to the brand when the order was cancelled.
       return payment.refunded_at && !isFactory ? "Refunded" : "";
@@ -351,24 +357,34 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     try {
-      const [row, steps, posted, events, charged] = await Promise.all([
+      const [row, steps, posted, events, charged, earning] = await Promise.all([
         getOrder(orderId),
         listMilestones(orderId),
         listOrderUpdates(orderId),
         orderActivity(orderId),
         isFactory ? null : brandCharges(orderId).catch(() => null),
+        // The factory's word for each step's money, as Payments says it.
+        isFactory ? Promise.all([
+          supabase.from("order_payments").select(EARNING_COLUMNS).eq("order_id", orderId),
+          supabase.rpc("factory_balance", { target_org: org.id }),
+        ]).catch(() => null) : null,
       ]);
       if (version !== loadVersion.current) return;
       if (!row) throw new Error("This order isn't available to you.");
+      const [earningRows, balance] = earning ?? [];
+      // A failed read leaves each payment to decide alone, as before.
+      const words = earningRows && !earningRows.error && balance && !balance.error
+        ? earningWordsFor(earningRows.data, balance.data, row) : new Map();
       setCharges(charged);
       setOrder(row);
-      setMilestones(steps ?? []);
+      setMilestones((steps ?? []).map((milestone) => (milestone.payment && words.has(milestone.payment.id)
+        ? { ...milestone, payment: { ...milestone.payment, word: words.get(milestone.payment.id) } } : milestone)));
       setUpdates(posted ?? []);
       setActivity(events ?? []);
     } catch (failure) {
       if (version === loadVersion.current) setError(failure);
     }
-  }, [orderId, isFactory]);
+  }, [orderId, isFactory, org.id]);
 
   useEffect(() => {
     load();

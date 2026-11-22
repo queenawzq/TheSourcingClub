@@ -2742,18 +2742,18 @@ async function main() {
 
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
       await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
-      const { data: open } = await db.from("factory_withdrawals").select("id, amount_cents, pool_cents").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
+      const { data: open } = await db.from("factory_withdrawals").select("id, amount_cents").eq("org_id", kowloonOrg.id).eq("status", "requested").single();
       {
         // The PayPal request reaches staff, and what it takes is exactly what was asked:
-        // pool money first, then owed steps (payment_takes), never more.
+        // owed steps (payment_takes; the old pool became takes in 20261121350000), never more.
         const board = await staffClient.rpc("admin_withdrawals");
         const listed = (board.data?.withdrawals ?? []).find((w) => w.id === open.id);
         check(Boolean(listed) && listed.status === "requested" && /paypal/i.test(listed.provider ?? ""),
           "the PayPal withdrawal is on staff's Withdrawals board, waiting");
         const { data: itsTakes } = await db.from("payment_takes").select("amount_cents, status").eq("factory_withdrawal_id", open.id);
         const taken = (itsTakes ?? []).filter((t) => t.status === "held").reduce((sum, t) => sum + Number(t.amount_cents), 0);
-        check(Number(open.amount_cents) === Number(open.pool_cents ?? open.amount_cents) + taken,
-          `it is exactly its pool money plus its takes (${open.amount_cents} = ${open.pool_cents} + ${taken})`);
+        check(Number(open.amount_cents) === taken,
+          `it is exactly its takes (${open.amount_cents} = ${taken})`);
       }
       const reason = `E2E: confirm your PayPal address ${stamp}`;
       const declined = await staffClient.rpc("decline_withdrawal", { target_withdrawal: open.id, why: reason });

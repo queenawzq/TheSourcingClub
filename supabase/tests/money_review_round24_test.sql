@@ -207,7 +207,7 @@ select lives_ok($$select pg_temp.claim(current_setting('tsc.r24_w1')::uuid)$$, '
 select lives_ok($$select pg_temp.refund(11, 53500)$$, 'the brand''s whole charge is refunded while it is being sent');
 select is((select title || ' | ' || body from public.notifications where subject_id = current_setting('tsc.r24_w1')::uuid and kind = 'withdrawal'
             and title like 'Withdrawal of $500.00 %' and title not like '%requested'),
-  'Withdrawal of $500.00 being checked | $500.00 of it went back to the brand after it was sent. TSC is checking this withdrawal.',
+  'Withdrawal of $500.00 being checked | $500.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
   'the factory is told the truth: no cancel offered for a withdrawal being sent');
 select is((select x -> 'parts' from jsonb_array_elements(pg_temp.bal(1) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r24_w1')),
   '[{"word": "refunded", "amount_cents": 50000}]'::jsonb, 'its block: nothing still held, $500 gone back');

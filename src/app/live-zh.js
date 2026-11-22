@@ -153,15 +153,13 @@ const PATTERNS = [
   // Where a Stripe withdrawal went (stripe_withdrawals.destination_label), in the notices' words.
   [/^To (bank account|debit card) ending in (\d+)\.$/, (m) => `转至${m[1] === "bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）。`],
   // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
-  [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待处理。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
-  [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待处理。处理完成后即可提现。`],
+  [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
+  [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待确认。处理完成后即可提现。`],
   [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
   [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
   // A refund and a lost dispute on one step: the factory's part of both.
-  [/^(\$[\d,.]+) back to the brand$/, (m) => `${m[1]} 已退回品牌`],
-  // A waiting withdrawal's part the brand's bank took back, and a lost dispute's order-page line.
   [/^(\$[\d,.]+) returned to the brand$/, (m) => `${m[1]} 已退回品牌`],
   [/^(\$[\d,.]+) reversed by the brand's bank$/, (m) => `${m[1]} 已被品牌的银行撤回`],
   // The brand's line for part of a payment its bank took back.
@@ -169,7 +167,7 @@ const PATTERNS = [
   // Refunded after it was withdrawn: owed to TSC, inside Available.
   [/^You owe TSC (\$[\d,.]+)\. A payment was refunded after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有一笔付款被退款。`],
   [/^You owe TSC (\$[\d,.]+)\. The brand's bank reversed a payment after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，品牌的银行撤回了一笔付款。`],
-  [/^You owe TSC (\$[\d,.]+)\. Money went back to the brand after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有款项退回了品牌。`],
+  [/^You owe TSC (\$[\d,.]+)\. Money was returned to the brand after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有款项退回了品牌。`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],
@@ -245,10 +243,9 @@ const PATTERNS = [
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
   [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
   // A failed withdrawal: what came back, on its row and on the card (the notice's words).
-  [/^The amount is back in your balance\. Check your withdrawal method, then withdraw again\.$/, () => "该金额已退回你的余额。请检查你的提现方式，然后重新提现。"],
-  [/^(\$[\d,.]+) is back in your balance\. Check your withdrawal method, then withdraw again\.$/, (m) => `${m[1]} 已回到你的余额。请检查你的提现方式，然后重新提现。`],
+  [/^(\$[\d,.]+) is back in your balance\. Check your withdrawal method, then withdraw again\.$/, (m) => `${m[1]} 已退回你的余额。请检查你的提现方式，然后重新提现。`],
   [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
-  [/^Withdrawal of (\S+) did not go through\. (\$[\d,.]+) is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。${m[2]} 已回到你的余额。`],
+  [/^Withdrawal of (\S+) did not go through\. (\$[\d,.]+) is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。${m[2]} 已退回你的余额。`],
   [/^Withdrawal of (\S+) did not go through\. This amount was returned to the brand\.$/, (m) => `提现 ${m[1]} 未成功。这笔金额已退回品牌。`],
   [/^Withdrawal of (\S+) did not go through\.$/, (m) => `提现 ${m[1]} 未成功。`],
   // Withdrawal methods (src/app/order/StripePayoutCard.jsx): the chooser's

@@ -223,13 +223,13 @@ select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w2')::uuid)$$, '
 select lives_ok($$select pg_temp.refund(21, 10700)$$, 'e2: $107 refunded while sent');
 select lives_ok($$select pg_temp.refund(21, 21400)$$, 'e2: $107 more');
 select is(pg_temp.told_w(current_setting('tsc.r25_w2'), '% being checked'),
-  'Withdrawal of $500.00 being checked | $100.00 of it went back to the brand after it was sent. TSC is checking this withdrawal. || '
-  || 'Withdrawal of $500.00 being checked | $200.00 of it went back to the brand after it was sent. TSC is checking this withdrawal.',
+  'Withdrawal of $500.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal. || '
+  || 'Withdrawal of $500.00 being checked | $200.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
   'e2: told each new amount, with all that went back so far');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''paid'', ''PP-R25'', 0, 50000, ''USD'', null)', current_setting('tsc.r25_w2')))$$,
   'e2: the payout completes');
 select is(pg_temp.told_w(current_setting('tsc.r25_w2'), '% paid out to you'),
-  '$500.00 paid out to you | Sent to pgtap-r25-f2@example.com. Payout fee $0.00 is taken from this payment: you receive $500.00. You now owe TSC $200.00, the part that went back to the brand after it was sent.',
+  '$500.00 paid out to you | Sent to pgtap-r25-f2@example.com. Payout fee $0.00 is taken from this payment: you receive $500.00. You now owe TSC $200.00, the part returned to the brand after it was sent.',
   'e2: told it now owes TSC the part that went back');
 select is((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, 20000::bigint, 'e2: and it does');
 
@@ -241,7 +241,7 @@ values (pg_temp.org(3), 'withdrawal', 'withdrawal', current_setting('tsc.r25_w3'
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w3')::uuid)$$, 'e3: staff send it');
 select lives_ok($$select pg_temp.refund(31, 10700)$$, 'e3: $107 refunded while sent');
 select is(pg_temp.told_w(current_setting('tsc.r25_w3'), '% being checked'),
-  'Withdrawal of $500.00 being checked | $100.00 of it went back to the brand after it was sent. TSC is checking this withdrawal.',
+  'Withdrawal of $500.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
   'e3: told, though it was told "on hold" before');
 
 -- e4 ------------------------------------------------------------------------
@@ -251,7 +251,7 @@ select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w4')::uuid)$$, '
 select lives_ok($$select pg_temp.refund(41, 10700)$$, 'e4: $107 of the pool deposit refunded while sent');
 select is((pg_temp.staff_row(current_setting('tsc.r25_w4')::uuid) ->> 'refunded_cents')::bigint, 10000::bigint, 'e4: staff see the $100 at risk');
 select is(pg_temp.told_w(current_setting('tsc.r25_w4'), '% being checked'),
-  'Withdrawal of $300.00 being checked | $100.00 of it went back to the brand after it was sent. TSC is checking this withdrawal.', 'e4: the factory is told');
+  'Withdrawal of $300.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.', 'e4: the factory is told');
 select is((select x -> 'parts' from jsonb_array_elements(pg_temp.bal(4) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r25_w4')),
   '[{"word": "on_its_way", "amount_cents": 20000}, {"word": "refunded", "amount_cents": 10000}]'::jsonb, 'e4: its block');
 select ok((pg_temp.bal(4) ->> 'total_cents')::bigint = (pg_temp.bal(4) ->> 'awaiting_cents')::bigint + (pg_temp.bal(4) ->> 'available_cents')::bigint

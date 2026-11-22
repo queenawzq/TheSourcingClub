@@ -941,12 +941,12 @@ for (const [why, row] of [
 }
 
 // What each method can withdraw (D5): Stripe reaches owed money and the
-// factory's own Stripe money (D1); PayPal / Wise reach owed money and pool
-// money, never D1. The server's answers come first when the page has them.
+// factory's own Stripe money (D1); PayPal / Wise reach owed money, never D1
+// (the old pool is ordinary owed money since 20261121350000). The server's answers come first when the page has them.
 {
   const figures = { tsc: { parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }, stripe: { available_cents: 2500 } };
-  assert.deepEqual(withdrawReach(figures), { stripe: 12500, balance: 13000, estimated: false }, "Stripe: owed + D1; PayPal/Wise: owed + pool, never D1");
-  assert.deepEqual(withdrawReach({ parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }), { stripe: 10000, balance: 13000, estimated: false },
+  assert.deepEqual(withdrawReach(figures), { stripe: 12500, balance: 10000, estimated: false }, "Stripe: owed + D1; PayPal/Wise: owed, never D1; an old pool part is not read (R32)");
+  assert.deepEqual(withdrawReach({ parts: { owed_cleared_cents: 10000, pool_available_cents: 3000 } }), { stripe: 10000, balance: 10000, estimated: false },
     "no Stripe account: Stripe reaches only owed money");
   assert.deepEqual(withdrawReach(figures, { stripe_cents: 9000, pool_cents: 11000 }), { stripe: 9000, balance: 11000, estimated: false }, "the server's reach wins");
   assert.deepEqual(withdrawReach(figures, null, 10500), { stripe: 12500, balance: 10500, estimated: false },
