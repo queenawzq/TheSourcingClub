@@ -666,7 +666,7 @@ assert.ok(card.includes("Boolean(figures?.has_method) || balanceChoices.length >
   // Everyone reads the server's figures action (it records missing clearing
   // dates itself); the page waits for its first answer.
   const hook = readFileSync(new URL("../src/app/order/use-factory-balance.js", import.meta.url), "utf8");
-  assert.ok(hook.includes('connectAction(orgId, "figures")') && page.includes("const allFigures = earningsShown && answer ? answer.figures ?? null : null;")
+  assert.ok(hook.includes('connectAction(orgId, "figures"') && page.includes("const allFigures = earningsShown && answer ? answer.figures ?? null : null;")
     && !page.includes("refreshClearingDates"), "the figures action for every reader");
   assert.ok(page.includes("if (w.destination_label) return [w.destination_label, w.destination_bank]") && page.includes("return payoutDestination(w, stripeBalance);"), "a Stripe withdrawal row says where it went, for owner and member");
 }

@@ -107,13 +107,26 @@ export function stripeWithdrawalMoved(seen, payload) {
 /**
  * When a pending ask of the figures action should run: null when an ask that
  * started after it was requested already answers it; otherwise in how many
- * ms. Where the read asks Stripe for a member (`limited`), at most once every
- * `minGapMs`, whatever asked; otherwise it only waits out the debounce.
+ * ms. Where the read asks Stripe (`limited`), at most once every `minGapMs`
+ * (figuresAskGap), whatever asked; otherwise it only waits out the debounce.
  */
 export function figuresAskDelay({ now, requestedAt, lastAskAt = 0, limited = false, debounceMs = 1500, minGapMs = 60_000 }) {
   if (limited && lastAskAt >= requestedAt) return null;
   const debounce = Math.max(0, requestedAt + debounceMs - now);
   return limited ? Math.max(debounce, lastAskAt + minGapMs - now, 0) : debounce;
+}
+
+/**
+ * The least time between two asks of the figures action, in ms, where the
+ * read asks Stripe (`readsStripe`): a member's at most once a minute, an
+ * owner's (about six Stripe reads) at most every 12 s; 0 (the debounce only)
+ * where it does not.
+ */
+export const OWNER_ASK_GAP_MS = 12_000;
+export const MEMBER_ASK_GAP_MS = 60_000;
+export function figuresAskGap({ isOwner = false, readsStripe = false } = {}) {
+  if (!readsStripe) return 0;
+  return isOwner ? OWNER_ASK_GAP_MS : MEMBER_ASK_GAP_MS;
 }
 
 /**

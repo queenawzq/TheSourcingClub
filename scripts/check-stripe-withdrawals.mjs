@@ -533,7 +533,7 @@ for (const status of ["failed", "canceled"]) {
     // Won, found by charge: the hold is lifted, never set again.
     calls.length = 0;
     const won = { disputes: { list: async () => ({ data: [{ id: "du_w", status: "won" }] }) } };
-    assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), false, "R34: a won dispute is not a hold");
+    assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), null, "R34: a won dispute is not a hold");
     assert.deepEqual(calls, [["record_payment_disputed", { target_payment: "pay-d", disputed: false }]]);
     // The id, when Stripe does send it (it does today, outside the typings), is used as it is.
     const { disputeForCharge } = await import("../api/_stripe.js");

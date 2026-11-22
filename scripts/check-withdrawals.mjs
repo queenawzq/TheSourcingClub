@@ -345,6 +345,11 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(read("../api/_provider-payouts.js").includes("checked = await checkCharge({ stripe, db, paymentId, charge: payment.stripe_charge_id });"), "per-step payout");
   assert.ok(read("../api/_stripe.js").includes("await checkCharge({ stripe, db, paymentId: row.id, charge: row.stripe_charge_id });"), "the balance read");
   assert.ok(read("../api/_backfill.js").includes("const state = disputeState(charge, dispute);"), "the backfill reads a dispute the same way");
+  // L4: checkCharge's dispute half is recordChargeDispute, not a second copy.
+  const stripeSource = read("../api/_stripe.js");
+  const checkBody = stripeSource.slice(stripeSource.indexOf("export async function checkCharge("), stripeSource.indexOf("export async function applyDisputeEvent("));
+  assert.ok(checkBody.includes("await recordChargeDispute({ stripe, db, paymentId, charge: read })") && !checkBody.includes("disputeForCharge("),
+    "L4: checkCharge reads the dispute through recordChargeDispute");
 }
 
 // The clearing date (funds_available_at) is Stripe's available_on, read from
@@ -1276,7 +1281,22 @@ for (const [why, row] of [
     assert.ok(!/withStripePart|stripePartStale|askUntilConsistent|answerOrder|realtimeAskCap|useWithdrawalBalance|my_withdrawal_balance|factory_balance", \{ target_org: org\.id \}\)/.test(page + cardSource),
       "no merging, staleness, ordering or ask caps on the page, and no second balance read");
     assert.equal((hookSource.match(/supabase\s*\n?\s*\.channel\(/g) ?? []).length, 1, "one realtime channel");
-    assert.ok(hookSource.includes('connectAction(orgId, "figures")') && !/"balance"/.test(hookSource), "owner and member alike ask the figures action");
+    assert.ok(hookSource.includes('connectAction(orgId, "figures", load ? { load: true } : {})') && !/"balance"/.test(hookSource), "owner and member alike ask the figures action; only the load says so");
+    // Simplify review L1: an owner's read keeps automatic payouts off only on the load.
+    const connectFile = fs.readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+    const readBody = connectFile.slice(connectFile.indexOf("async function readBalance("));
+    assert.ok(readBody.includes("if (load) await holdPayouts(stripe, accountId);") && !/\n\s+await holdPayouts\(stripe, accountId\);/.test(readBody.slice(0, readBody.indexOf("\n}\n"))),
+      "L1: holdPayouts only when the page loads");
+    // L3: the early 502 says whether the read asks Stripe, and what each road reaches.
+    const early = readBody.slice(readBody.indexOf("if (owedReach.error || own.error || asked.error)"), readBody.indexOf("const shared ="));
+    assert.ok(early.includes("readsStripe: Boolean(accountId)") && early.includes("reach: owedReach.error ? null : { stripe_cents: 0, pool_cents: poolCents, estimated: false }"),
+      "L3: the early 502 carries readsStripe and reach");
+    // L2: the page's rows are read again when the answer to a change lands, not on the event.
+    assert.ok(hookSource.includes("landed: () => changed.current?.(),") && hookSource.includes("const heard = () => reader.request();"),
+      "L2: rows and words move together");
+    // Nit: an answer for a company left behind is never applied.
+    assert.ok(hookSource.includes("nextBalanceState(was.orgId === orgId ? was : null, event)") && hookSource.includes("kept.orgId === orgId ? kept :"),
+      "an org switch drops the previous company's answers");
     assert.ok(/setWithdrawal\(\{ previous: true[^\n]*\n\s*setError\(null\);\s*\n\s*setModal\("withdraw"\)/.test(cardSource),
       "nit: Withdraw previous balance clears an earlier error when it opens");
     // F3: the key changes when a take turns sent or a fee reversal is written,
@@ -1491,9 +1511,9 @@ for (const [why, row] of [
       {
         let clock = 0;
         const timers = [];
-        const make = (limited) => {
+        const make = (limited, { gapMs = limited ? 60_000 : 0, onLanded = () => {} } = {}) => {
           let fetches = 0;
-          const reader = balanceReader({ fetchAnswer: async () => { fetches += 1; return {}; }, apply: () => {}, limited: () => limited, now: () => clock,
+          const reader = balanceReader({ fetchAnswer: async () => { fetches += 1; return {}; }, apply: () => {}, gap: () => gapMs, landed: onLanded, now: () => clock,
             later: (run, ms) => { const t = { at: clock + ms, run }; timers.push(t); return t; }, cancelLater: (t) => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); } });
           return { reader, fetches: () => fetches };
         };
@@ -1515,6 +1535,46 @@ for (const [why, row] of [
         await advance(20_000);
         assert.equal(owner.fetches(), 2, "ten money changes within two seconds: one ask after the first read");
         timers.length = 0;
+        // Simplify review L1: an owner whose read asks Stripe, at most every 12 s.
+        {
+          const { figuresAskGap, OWNER_ASK_GAP_MS } = await import("../src/app/order/payment-summary.mjs");
+          assert.deepEqual([figuresAskGap({ isOwner: true, readsStripe: true }), figuresAskGap({ isOwner: false, readsStripe: true }),
+            figuresAskGap({ isOwner: true, readsStripe: false }), figuresAskGap({ isOwner: false, readsStripe: false })], [12_000, 60_000, 0, 0]);
+          clock = 0;
+          let landedCount = 0;
+          const stripeOwner = make(true, { gapMs: OWNER_ASK_GAP_MS, onLanded: () => { landedCount += 1; } });
+          await stripeOwner.reader.ask();
+          for (let at = 2_000; at <= 60_000; at += 2_000) { await advance(at); stripeOwner.reader.request(); }
+          await advance(90_000);
+          assert.ok(stripeOwner.fetches() <= 1 + Math.ceil(90_000 / OWNER_ASK_GAP_MS), "L1: an owner's Stripe read at most every 12 s");
+          assert.ok(stripeOwner.fetches() >= 4, "and still asked as money moves");
+          assert.ok(landedCount >= stripeOwner.fetches() - 1, "L2: every change heard is answered by an ask that landed");
+          timers.length = 0;
+        }
+        // L2: the page's rows wait for the answer to the change, never run ahead of it.
+        {
+          clock = 0;
+          const events = [];
+          let answerNext;
+          const reader = balanceReader({
+            fetchAnswer: () => new Promise((resolve) => { answerNext = resolve; }),
+            apply: (event) => events.push(`apply:${event.answer}`), landed: () => events.push("rows"),
+            now: () => clock, later: (run, ms) => { const t = { at: clock + ms, run }; timers.push(t); return t; },
+            cancelLater: (t) => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); },
+          });
+          const first = reader.ask();
+          await Promise.resolve();
+          answerNext("A");
+          await first;
+          clock = 5_000;
+          reader.request();
+          await advance(7_000);
+          assert.deepEqual(events, ["apply:A"], "L2: heard, asked, not yet answered: rows not read yet");
+          answerNext("B");
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+          assert.deepEqual(events, ["apply:A", "apply:B", "rows"], "L2: the rows are read once the answer has landed");
+          timers.length = 0;
+        }
         clock = 0;
         const member = make(true);
         await member.reader.ask();

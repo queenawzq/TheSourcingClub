@@ -9,14 +9,17 @@ import { figuresAskDelay } from "./payment-summary.mjs";
  *            order asked. Resolves to the answer that ask got, or null.
  *   reset    an ask started before it never lands; asks now
  *   request  asks soon, as a money change does: changes close together
- *            become one ask, and where `limited()` (the read asks Stripe for
- *            a member) at most once a minute (figuresAskDelay)
+ *            become one ask, and at most once every `gap()` ms where the
+ *            read asks Stripe (figuresAskGap, figuresAskDelay)
  *   cancel   forgets a request not yet asked
  *
  * `fetchAnswer()` is the server's read; `apply({ answer } | { failure } |
- * { reset })` is told what to show (nextBalanceState).
+ * { reset })` is told what to show (nextBalanceState); `landed()` runs once
+ * the ask that answers a request has landed, so what a page reads itself
+ * for a money change (its rows) is read with the figures, never ahead of
+ * them.
  */
-export function balanceReader({ fetchAnswer, apply, limited = () => false, now = () => Date.now(), later = (run, ms) => setTimeout(run, ms), cancelLater = (timer) => clearTimeout(timer) }) {
+export function balanceReader({ fetchAnswer, apply, gap = () => 0, landed = () => {}, now = () => Date.now(), later = (run, ms) => setTimeout(run, ms), cancelLater = (timer) => clearTimeout(timer) }) {
   let flight = null;
   let queued = null;
   let generation = 0;
@@ -55,11 +58,13 @@ export function balanceReader({ fetchAnswer, apply, limited = () => false, now =
   const run = () => {
     cancelLater(timer);
     if (requestedAt == null) return;
-    const delay = figuresAskDelay({ now: now(), requestedAt, lastAskAt, limited: limited() });
-    if (delay === null) { requestedAt = null; return; }
+    const minGapMs = gap();
+    const delay = figuresAskDelay({ now: now(), requestedAt, lastAskAt, limited: minGapMs > 0, minGapMs });
     if (delay > 0) { timer = later(run, delay); return; }
     requestedAt = null;
-    ask();
+    // An ask started since the change answers it (delay null): its landing is
+    // the request's.
+    (delay === null ? Promise.resolve(flight) : ask()).then(() => landed());
   };
   const request = () => {
     requestedAt = now();

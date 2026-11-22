@@ -99,7 +99,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country, amount, currency, requestId, destination, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId, destination, token, makeDefault, methodId, promoteId, replaceId, load } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -113,7 +113,7 @@ export default async function handler(request, response) {
   // same read, for owners only.
   if (action === "figures" || (action === "balance" && isOwner)) {
     if (!org || org.type === "brand") return reply(response, 403, { error: "that company is not available to you" });
-    return readBalance({ stripe, db, caller, orgId, owner: Boolean(isOwner), response });
+    return readBalance({ stripe, db, caller, orgId, owner: Boolean(isOwner), load: action === "balance" || Boolean(load), response });
   }
   if (!isOwner || !org || org.type === "brand") {
     return reply(response, 403, { error: "only an owner of a factory or trading company can set up its payouts" });
@@ -339,6 +339,9 @@ const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_t
  * An owner's answer also carries what only an owner manages: Stripe's
  * balance amounts, payouts, payout methods and a payout account upgrade; and
  * an owner's read first finishes a withdrawal left half-way (its call died).
+ * Only the page's load (`load`, and `balance`) also keeps Stripe's automatic
+ * payouts off (holdPayouts, a write to the account): every other owner
+ * action does it too, so a read made because money moved need not.
  *
  * Refunds, disputes and payouts whose webhooks never came (a failed
  * payout's fee given back) are read from Stripe first, at most once a
@@ -347,19 +350,19 @@ const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_t
  * figures (Stripe part marked unavailable) and everything that needs no
  * Stripe, never with nothing.
  */
-async function readBalance({ stripe, db, caller, orgId, owner, response }) {
+async function readBalance({ stripe, db, caller, orgId, owner, load = false, response }) {
   const first = await caller.rpc("factory_balance", { target_org: orgId });
   if (tokenRefused(first)) return reply(response, 401, { error: "sign in is required" });
   if (first.error) return reply(response, first.error.code === "42501" ? 403 : 502, { error: first.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
   const { data: existing } = await db.from("stripe_connect_accounts").select("*").eq("org_id", orgId).maybeSingle();
   const accountId = existing?.stripe_account_id ?? null;
   let tsc = first.data;
-  // Only an owner's read keeps automatic payouts off and settles what an
-  // owner's call left half-way.
+  // Only an owner's read settles what an owner's call left half-way; its
+  // load also keeps automatic payouts off.
   let ownerFailure = null;
   if (owner && accountId) {
     try {
-      await holdPayouts(stripe, accountId);
+      if (load) await holdPayouts(stripe, accountId);
       // A withdrawal left half-way (its call died) is finished or its fee given back first.
       await settleAbandoned({ stripe, db, accountId }).catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
     } catch (failure) {
@@ -376,11 +379,16 @@ async function readBalance({ stripe, db, caller, orgId, owner, response }) {
     caller.rpc("my_withdrawal_balance", { target_org: orgId }),
     caller.from("factory_withdrawals").select(WITHDRAWAL_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
   ]);
-  if (owedReach.error || own.error || asked.error) {
-    return reply(response, 502, { error: "That didn't go through, so nothing changed. Try again in a few minutes.",
-      figures: { ...balanceFigures(tsc, null, null), stripe_unavailable: Boolean(accountId) } });
-  }
   const poolCents = Math.max(0, Number(owedReach.data?.any_cents ?? 0));
+  if (owedReach.error || own.error || asked.error) {
+    // As the Stripe-down answer below: whether this read asks Stripe (a
+    // member's page keeps its once-a-minute limit) and what each road
+    // reaches, where that was read.
+    return reply(response, 502, { error: "That didn't go through, so nothing changed. Try again in a few minutes.",
+      figures: { ...balanceFigures(tsc, null, null), stripe_unavailable: Boolean(accountId) },
+      reach: owedReach.error ? null : { stripe_cents: 0, pool_cents: poolCents, estimated: false },
+      readsStripe: Boolean(accountId) });
+  }
   const shared = { withdrawals: asked.data ?? [], returnable: own.data?.returnable ?? {}, readsStripe: Boolean(accountId) };
   if (!accountId) {
     return reply(response, 200, {

@@ -619,12 +619,7 @@ export async function checkCharge({ stripe, db, paymentId, charge }) {
   const read = typeof charge === "object" && charge && "disputed" in charge ? charge : await stripe.charges.retrieve(typeof charge === "string" ? charge : charge?.id);
   const refunded = Number(read.amount_refunded) > 0;
   if (refunded) await applyChargeRefund({ stripe, db, charge: read });
-  let dispute = null;
-  if (read.disputed) {
-    const found = await disputeForCharge(stripe, read);
-    dispute = disputeState(read, found);
-    await applyDispute({ db, paymentId, dispute: found });
-  }
+  const dispute = await recordChargeDispute({ stripe, db, paymentId, charge: read });
   return { charge: read, refunded, dispute };
 }
 
@@ -663,17 +658,20 @@ export async function disputeForCharge(stripe, charge) {
 }
 
 /**
- * Whether a charge's dispute is open, won or lost (Stripe keeps `disputed`
- * true after a decision), recorded on its payment. Returns true while it is
- * on hold.
+ * A charge's dispute (checkCharge's dispute half, and the one place it is
+ * read): open, won or lost (Stripe keeps `disputed` true after a decision),
+ * recorded on its payment (applyDispute). The charge is read from Stripe
+ * unless given as read. Returns disputeState's word: "open" while it is on
+ * hold, "lost", or null (none, or won).
  */
 export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
   const chargeId = typeof charge === "string" ? charge : charge?.id;
-  if (!chargeId) return false;
+  if (!chargeId) return null;
   const fresh = typeof charge === "object" && "disputed" in charge ? charge : await stripe.charges.retrieve(chargeId);
-  if (!fresh.disputed) return false;
-  const dispute = await disputeForCharge(stripe, fresh);
-  return applyDispute({ db, paymentId, dispute });
+  if (!fresh.disputed) return null;
+  const found = await disputeForCharge(stripe, fresh);
+  await applyDispute({ db, paymentId, dispute: found });
+  return disputeState(fresh, found);
 }
 
 /**
