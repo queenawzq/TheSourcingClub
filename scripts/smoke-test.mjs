@@ -1280,20 +1280,11 @@ console.log("\nphase 3 — the order runs");
       // the one balance is never listed as a second withdrawal. Several FKs
       // point at order_payments; an ambiguous embed is refused, not guessed.
       {
-        const paymentsSelect = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status)), kept_by_tsc:payment_kept_by_tsc";
+        const paymentsSelect = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))";
         const { data: rows, error } = await factoryClient.from("order_payments").select(paymentsSelect).eq("id", deposit.id);
         !error && rows?.length === 1 && Array.isArray(rows[0].payment_takes)
           ? ok("the factory's Payments read embeds payment_takes (status) as a list")
           : fail("the factory's Payments select with payment_takes", error ?? { message: JSON.stringify(rows) });
-        // Released only because TSC kept it for a debt (20261121385000): a
-        // computed column both sides read, so neither screen says "Paid".
-        !error && rows?.[0]?.kept_by_tsc === false
-          ? ok("the factory reads kept_by_tsc (false on a step TSC did not keep)")
-          : fail("the factory's kept_by_tsc", error ?? { message: JSON.stringify(rows?.[0]?.kept_by_tsc) });
-        const brandRead = await brand.client.from("order_payments").select("id, kept_by_tsc:payment_kept_by_tsc").eq("id", deposit.id);
-        !brandRead.error && brandRead.data?.[0]?.kept_by_tsc === false
-          ? ok("the brand reads kept_by_tsc too")
-          : fail("the brand's kept_by_tsc", brandRead.error ?? { message: JSON.stringify(brandRead.data) });
       }
       const notStaff = await factoryClient.rpc("release_payment_by_payoneer", {
         target_payment: deposit.id, paid_to: "x@example.com", payoneer_payment_id: "PO-1", note: null,

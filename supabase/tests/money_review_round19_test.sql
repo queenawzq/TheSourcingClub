@@ -254,7 +254,7 @@ select is((select string_agg(title || ' | ' || body, ' || ') from public.notific
 select is((pg_temp.staff_row(current_setting('tsc.r19_w2')::uuid) ->> 'owes_tsc_cents')::bigint, 30000::bigint,
   'staff read what the factory owes beyond its earnings');
 select throws_ok($$select pg_temp.as_server(format('select public.claim_owed_steps(%L, 10000, ''stripe'', %L)', pg_temp.org(2),
-  'b1980000-0000-0000-0000-000000000002'))$$, '22023', 'the factory owes TSC $300.00',
+  'b1980000-0000-0000-0000-000000000002'))$$, '22023', 'the factory owes TSC $500.00',
   'a Stripe withdrawal of its other earnings is refused by the database');
 select is((select count(*)::int from public.payment_takes where stripe_withdrawal_id = 'b1980000-0000-0000-0000-000000000002'), 0, 'nothing was taken');
 select is((select owed_cents from public.stripe_withdrawals where id = 'b1980000-0000-0000-0000-000000000002'), null::bigint, 'and nothing claimed');

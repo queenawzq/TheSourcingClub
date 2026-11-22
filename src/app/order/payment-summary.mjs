@@ -32,7 +32,7 @@ export const awaitingApproval = (row) => row.state === "confirmed" && !row.relea
  * What earningStatus() reads of a payment: Payments and the factory's order
  * page select exactly this, so a step reads the same word on both.
  */
-export const EARNING_COLUMNS = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status)), kept_by_tsc:payment_kept_by_tsc";
+export const EARNING_COLUMNS = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))";
 
 /**
  * The factory's word for each payment on one order, worked out as Payments
@@ -310,32 +310,19 @@ export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed
 /**
  * The part of it the factory's earnings do not cover
  * (factory_balance().uncovered_debt_cents): the card's line says only this,
- * and none once they cover it (TSC keeps that much from them).
+ * and none once they cover it (Available is already net of it).
  */
 export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.uncovered_debt_cents ?? figures?.uncovered_debt_cents) || 0);
 /**
  * The card's line for it (Available already counts it), in the words of what
- * sent the money back: a refund, a dispute lost, or both; and of what had
- * happened to that money: withdrawn, or kept by TSC to cover an earlier debt
- * (`kept`: factory_balance().debt_kept, "kept" or "mixed"; 20261121385000).
+ * sent the money back: a refund, a dispute lost, or both.
  */
-export const owedToTscLine = (cents, formatMoney, cause = "refund", kept = null) => {
+export const owedToTscLine = (cents, formatMoney, cause = "refund") => {
   if (!(cents > 0)) return null;
   const owed = `You owe TSC ${formatMoney(cents, "USD")}.`;
-  if (kept === "mixed") return `${owed} Money was returned to the brand after you withdrew it or TSC kept it to cover an earlier amount you owed.`;
-  if (kept === "kept") {
-    if (cause === "dispute_lost") return `${owed} The brand's bank reversed a payment after TSC kept it to cover an earlier amount you owed.`;
-    if (cause === "both") return `${owed} Money was returned to the brand after TSC kept it to cover an earlier amount you owed.`;
-    return `${owed} A payment was refunded after TSC kept it to cover an earlier amount you owed.`;
-  }
   if (cause === "dispute_lost") return `${owed} The brand's bank reversed a payment after you withdrew it.`;
   if (cause === "both") return `${owed} Money was returned to the brand after you withdrew it.`;
   return `${owed} A payment was refunded after you withdrew it.`;
-};
-/** What had happened to the money owed: "kept" (TSC kept it for an earlier debt), "mixed", or null (withdrawn). */
-export const owedToTscKept = (figures) => {
-  const kept = figures?.tsc?.debt_kept ?? figures?.debt_kept ?? null;
-  return kept === "kept" || kept === "mixed" ? kept : null;
 };
 /** What sent it back, from the dated refund rows: "refund", "dispute_lost" or "both". */
 export function owedToTscCause(figures) {
@@ -536,10 +523,6 @@ export function earningStatus(row, clearing = null, figures = null) {
   // Part of it went in a Stripe withdrawal whose payout has not reached the
   // bank yet: on its way until it lands, like that withdrawal's own row.
   if (row.state === "released" && where?.has("on_its_way")) return ON_ITS_WAY;
-  // Released only because TSC kept all of it to cover what the factory owed
-  // (payment_kept_by_tsc, 20261121385000): nothing of it was paid out. It went
-  // into the balance, as an approved step does.
-  if (row.state === "released" && row.kept_by_tsc) return ADDED_TO_BALANCE;
   if (row.state === "released") return (row.stripe_transfer_id && !withdrawnByTakes(row)) || backInStripeBalance(row) ? ADDED_TO_BALANCE : "Paid";
   if (!toBeSent(row)) return "Awaiting approval";
   // The brand disputed its card charge: held until the dispute is settled,

@@ -295,17 +295,22 @@ export const withdrawalFailure = (adapter, raw) =>
 /**
  * Ask the provider, and record only its own answer. `wasPaid`: recorded paid
  * already, so only a return (failed or cancelled since) is recorded.
+ * `returnedCents`: what a signed refund event says came back (Wise's
+ * transfers#refund), in the withdrawal's currency.
  */
-export async function readBack({ adapter, client, db, id, ref, wasPaid = false }) {
+export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null }) {
   const status = await adapter.status(client, ref);
-  if (wasPaid) {
-    if (status.state !== "failed" && status.state !== "cancelled") return "paid";
+  // What came back, when the provider says (in the withdrawal's currency):
+  // Wise's transfers#refund (returnedCents), else the adapter's answer.
+  const cameBack = Number.isFinite(returnedCents) ? returnedCents : status.returnedCents;
+  if (wasPaid || Number.isFinite(returnedCents)) {
+    if (wasPaid && status.state !== "failed" && status.state !== "cancelled" && !Number.isFinite(returnedCents)) return "paid";
     const sentence = withdrawalFailure(adapter, status.raw);
-    // What came back, when the provider says (in the withdrawal's currency):
-    // only that goes back to the balance. Not said: the database takes the
-    // provider to have kept its fee, which the factory bears (20261121385000).
-    if (Number.isFinite(status.returnedCents)) {
-      const { error } = await db.rpc("record_withdrawal_returned", { target_withdrawal: id, came_back: Math.round(status.returnedCents), sentence });
+    // Only what came back goes back to the balance. Not said: the whole
+    // amount is taken as back (20261121385000). A figure stated after the
+    // return was recorded whole corrects it (record_withdrawal_returned).
+    if (Number.isFinite(cameBack)) {
+      const { error } = await db.rpc("record_withdrawal_returned", { target_withdrawal: id, came_back: Math.round(cameBack), sentence });
       if (error) {
         log("record_withdrawal_returned", error, { id });
         throw new PayoutFailure("record_failed", "The provider answered but we couldn't record it. Press Refresh.");
@@ -376,16 +381,22 @@ export const adapterFor = (provider) => ADAPTERS[provider] ?? null;
  * returned since: read it back, so the factory sees Paid (or the amount back
  * in its balance) without staff opening the board. Null when the reference is not a withdrawal of this database's.
  */
-export async function readBackWithdrawalRef({ provider, client, db, ref }) {
+export async function readBackWithdrawalRef({ provider, client, db, ref, refund = null }) {
   const adapter = adapterFor(provider);
   if (!adapter || !ref) return null;
-  const { data: row, error } = await db.from("factory_withdrawals").select("id, status, provider_ref")
+  const { data: row, error } = await db.from("factory_withdrawals").select("id, status, provider_ref, currency, returned_at")
     .eq("provider", provider).eq("provider_ref", String(ref)).maybeSingle();
   if (error) throw new PayoutFailure("database", "factory_withdrawals could not be read", { detail: error.code });
   if (!row) return null;
   // Paid, then returned by the provider (Wise bounced_back, funds_refunded,
   // charged_back; PayPal RETURNED, REFUNDED, REVERSED): read back too, so the
   // return is recorded (record_withdrawal gives the parts back to the balance).
+  // A refund event states what came back: recorded for a paid row, or for one
+  // already recorded as come back whole (record_withdrawal_returned).
+  const returnedCents = typeof refund === "function" ? refund(row.currency) : null;
+  if (Number.isFinite(returnedCents) && (row.status === "paid" || (row.status === "failed" && row.returned_at))) {
+    return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: true, returnedCents });
+  }
   if (row.status !== "paying" && row.status !== "paid") return row.status;
   return readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid" });
 }

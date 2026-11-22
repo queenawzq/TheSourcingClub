@@ -758,7 +758,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.deepEqual([parts.onHold, parts.waiting], [0, 20000], "the block holds $200; the refunded $50 is on no line");
   // The card and the block, in the page's code.
   const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(card.includes("owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures), owedToTscKept(figures))"), "the card says what is owed to TSC, and why");
+  assert.ok(card.includes("owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))"), "the card says what is owed to TSC, and why");
   // C1 (round 36): the line says only what earnings do not cover; once they
   // cover it, no line (Available already counts the whole debt).
   const { uncoveredDebtCents } = await import("../src/app/order/payment-summary.mjs");
@@ -970,38 +970,6 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const hook = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   const balanceHook = hook.slice(hook.indexOf("export function useWithdrawalBalance"), hook.indexOf("return { ...state, load };"));
   assert.ok(!/withdrawn|stripeFees|pool:|stripe_withdrawals/.test(balanceHook), "R32: no unread state, query or listener in useWithdrawalBalance");
-}
-
-// Round 37 (L-4, L-2): a step TSC kept to cover what the factory owed it is
-// released, but nothing of it was paid out: it reads as in the balance, on the
-// order page and on Payments, never "Paid". The card's line says the money
-// was kept, not withdrawn.
-{
-  const summary = await import("../src/app/order/payment-summary.mjs");
-  const keptStep = pay("kept", 500, "released", { ...APPROVED, released_note: "Withdrawn", kept_by_tsc: true, payment_takes: [{ status: "sent", stripe_withdrawals: null }] });
-  assert.equal(summary.earningStatus(keptStep), "Added to your balance", "R37: kept by TSC is not Paid (order page)");
-  assert.equal(summary.earningStatus(keptStep, null, new Map()), "Added to your balance", "R37: nor on Payments");
-  assert.equal(summary.earningStatus({ ...keptStep, kept_by_tsc: false }), "Paid", "R37: a step withdrawals sent is still Paid");
-  assert.ok(summary.EARNING_COLUMNS.includes("kept_by_tsc:payment_kept_by_tsc"), "R37: both screens read the computed column");
-  assert.equal(summary.withdrawalRows([keptStep]).length, 0, "R37: and no withdrawal row is made up for it");
-  const fmt = (cents) => `$${(cents / 100).toFixed(2)}`;
-  assert.equal(summary.owedToTscLine(50000, fmt, "refund", summary.owedToTscKept({ debt_kept: "kept" })),
-    "You owe TSC $500.00. A payment was refunded after TSC kept it to cover an earlier amount you owed.");
-  assert.equal(summary.owedToTscLine(50000, fmt, "dispute_lost", "kept"),
-    "You owe TSC $500.00. The brand's bank reversed a payment after TSC kept it to cover an earlier amount you owed.");
-  assert.equal(summary.owedToTscLine(50000, fmt, "both", "kept"),
-    "You owe TSC $500.00. Money was returned to the brand after TSC kept it to cover an earlier amount you owed.");
-  assert.equal(summary.owedToTscLine(50000, fmt, "refund", "mixed"),
-    "You owe TSC $500.00. Money was returned to the brand after you withdrew it or TSC kept it to cover an earlier amount you owed.");
-  assert.equal(summary.owedToTscLine(50000, fmt, "refund", summary.owedToTscKept({ debt_kept: null })),
-    "You owe TSC $500.00. A payment was refunded after you withdrew it.", "R37: withdrawn money keeps its words");
-  const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(card.includes("owedToTscCause(figures), owedToTscKept(figures))"), "R37: the card passes what happened to the money");
-  const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
-  for (const line of ["A payment was refunded after TSC kept it to cover an earlier amount you owed", "The brand's bank reversed a payment after TSC kept it to cover an earlier amount you owed",
-    "Money was returned to the brand after TSC kept it to cover an earlier amount you owed", "Money was returned to the brand after you withdrew it or TSC kept it to cover an earlier amount you owed"]) {
-    assert.ok(zh.includes(line.replaceAll(" ", " ")), `R37: Chinese for "${line}"`);
-  }
 }
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");

@@ -25,8 +25,8 @@ import { paypalFrom } from "./_paypal.js";
  *                                        raw, arrivesMinor, failure, returnedCents }
  *                                      returnedCents: what came back to TSC of one returned
  *                                      after it was paid, in the withdrawal's currency, when
- *                                      the provider says; null otherwise (its fee is then
- *                                      taken as kept: record_withdrawal_returned).
+ *                                      the provider says; null otherwise (the whole amount
+ *                                      is then taken as back: record_withdrawal_returned).
  *   factoryQuote(client, ctx)          optional: the same shape as quote(), or null when it can't
  *                                      give the exact figure, for the factory's own preview. Read-only: it may not create
  *                                      anything at the provider (no recipient, no transfer).
@@ -119,6 +119,7 @@ export const wiseAdapter = {
   async status(wise, ref) {
     const status = await wise.status(ref);
     // Wise's transfer does not say what a bounced one gave back: returnedCents null.
+    // Its transfers#refund event does (api/wise-webhook.js, wiseRefundCents).
     return { state: status.state === "awaiting_funding" ? "sent" : status.state ?? "sent", raw: status.raw, arrivesMinor: status.arrivesCents, failure: status.failure, returnedCents: null };
   },
 };
@@ -147,8 +148,12 @@ export const paypalAdapter = {
   },
   async status(paypal, ref) {
     const status = await paypal.status(ref);
-    // PayPal's payout item does not say what a returned one gave back: returnedCents null.
-    return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null, returnedCents: null };
+    // Returned, refunded or reversed after it was paid: PayPal gives back what
+    // was sent and keeps its Payouts fee, so that is what came back
+    // (record_withdrawal_returned; the factory bears the fee, as it does on a payout).
+    const returned = status.state === "failed" && ["RETURNED", "REFUNDED", "REVERSED"].includes(status.raw) && Number.isFinite(status.sentMinor);
+    return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null,
+      returnedCents: returned ? status.sentMinor : null };
   },
 };
 

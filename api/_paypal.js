@@ -1,4 +1,4 @@
-import { PayoutFailure, apiBase, decimal, timedCall } from "./_payout-provider.js";
+import { PayoutFailure, apiBase, cents, decimal, timedCall } from "./_payout-provider.js";
 
 /**
  * PayPal Payouts, for staff's Pay with PayPal. Server only.
@@ -144,6 +144,10 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
         waiting: raw === "UNCLAIMED" ? PAYPAL_UNCLAIMED : null,
         factoryFixes: raw === "UNCLAIMED",
         itemId: item.payout_item_id ?? null,
+        // What was sent to the factory, in minor units of the withdrawal's currency: on a
+        // returned item PayPal gives back this, and keeps its fee (the item
+        // still bears payout_item_fee once RETURNED; sandbox, 2026-11-22).
+        sentMinor: item.payout_item?.amount?.value != null ? cents(item.payout_item.amount.value) : null,
       };
     },
 
