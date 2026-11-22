@@ -538,8 +538,67 @@ for (const status of ["failed", "canceled"]) {
     assert.equal(await disputeForCharge(none, { id: "ch_d", disputed: true }), null, "R34: none found: null (the callers hold it)");
     const hook = (await import("node:fs")).readFileSync(new URL("../api/stripe-webhook.js", import.meta.url), "utf8");
     const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "refund.updated"'));
-    assert.match(disputeCase, /applyDispute\(/, "the dispute webhook records a loss as lost");
+    assert.match(disputeCase, /applyDisputeEvent\(/, "the dispute webhook records a loss as lost, through the charge's newest dispute");
     assert.doesNotMatch(disputeCase, /record_payment_disputed/, "never as 'still disputed'");
+  }
+  // Fix round 35 (R34-1): an inquiry, then a chargeback, then the inquiry's
+  // warning_closed arriving last: the chargeback's hold stays.
+  {
+    const { applyDisputeEvent } = await import("../api/_stripe.js");
+    assert.equal(typeof applyDisputeEvent, "function", "R34-1: the webhook's dispute handler");
+    const inquiryOpen = { id: "du_inq", charge: "ch_i", payment_intent: "pi_i", status: "warning_needs_response" };
+    const inquiryClosed = { ...inquiryOpen, status: "warning_closed" };
+    const chargeback = { id: "du_cb", charge: "ch_i", payment_intent: "pi_i", status: "needs_response" };
+    const run = async ({ charge, disputes, events }) => {
+      const calls = [];
+      const db = {
+        from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "pay-i" }, error: null }) }) }) }),
+        rpc: async (name, args) => { calls.push([name, args]); return { data: null, error: null }; },
+      };
+      const stripe = {
+        charges: { retrieve: async (id) => (id === "ch_i" ? charge : null) },
+        disputes: {
+          retrieve: async (id) => disputes.find((d) => d.id === id),
+          list: async ({ charge: c, limit }) => ({ data: c === "ch_i" && limit === 1 ? [disputes.at(-1)] : [] }),
+        },
+      };
+      const held = [];
+      for (const event of events) held.push(await applyDisputeEvent({ stripe, db, dispute: event }));
+      return { calls, held };
+    };
+    // The charge names the chargeback (as Stripe sends it today).
+    {
+      const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, chargeback],
+        events: [inquiryOpen, chargeback, inquiryClosed] });
+      assert.deepEqual(held, [true, true, true], "R34-1: the late warning_closed leaves the chargeback's hold");
+      assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: true }], "R34-1: recorded as still disputed");
+    }
+    // The charge carries no `dispute`: found by charge, newest first.
+    {
+      const { calls, held } = await run({ charge: { id: "ch_i", disputed: true }, disputes: [inquiryClosed, chargeback],
+        events: [inquiryOpen, chargeback, inquiryClosed] });
+      assert.deepEqual(held, [true, true, true], "R34-1: by charge too");
+      assert.equal(calls.at(-1)[1].disputed, true);
+    }
+    // The chargeback lost meanwhile: the late warning_closed records the loss, never a lifted hold.
+    {
+      const lostCb = { ...chargeback, status: "lost", amount: 5000, balance_transactions: [{ fee: 1500 }] };
+      const { calls } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, lostCb], events: [inquiryClosed] });
+      assert.equal(calls[0][0], "record_payment_dispute_lost", "R34-1: the chargeback's loss decides");
+      assert.equal(calls[0][1].dispute_id, "du_cb");
+    }
+    // An inquiry closed with no chargeback after it still lifts the hold.
+    {
+      const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_inq" }, disputes: [inquiryClosed], events: [inquiryOpen, inquiryClosed] });
+      assert.deepEqual(held, [true, false], "R34-1: a closed inquiry alone lifts the hold");
+      assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: false }]);
+    }
+    // The chargeback won: the hold is lifted.
+    {
+      const won = { ...chargeback, status: "won" };
+      const { held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, won], events: [won] });
+      assert.deepEqual(held, [false], "R34-1: the chargeback won lifts the hold");
+    }
   }
 }
 

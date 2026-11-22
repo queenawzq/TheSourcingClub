@@ -593,6 +593,24 @@ export async function applyDispute({ db, paymentId, dispute }) {
 }
 
 /**
+ * A dispute event, recorded on its payment. An event that lifts a hold (won,
+ * or an inquiry closed in TSC's favour) is checked against the charge's
+ * newest dispute first: an inquiry closing late must not lift the hold of
+ * the chargeback opened after it. Returns true while it is on hold; null when
+ * the charge is not an order payment.
+ */
+export async function applyDisputeEvent({ stripe, db, dispute }) {
+  const payment = await paymentForDispute({ stripe, db, dispute });
+  if (!payment) return null;
+  let current = dispute;
+  if (["won", "warning_closed"].includes(dispute?.status)) {
+    const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+    if (chargeId) current = (await disputeForCharge(stripe, await stripe.charges.retrieve(chargeId))) ?? dispute;
+  }
+  return applyDispute({ db, paymentId: payment.id, dispute: current });
+}
+
+/**
  * A disputed charge's dispute, or null. Stripe's Charge typings at the SDK's
  * API version list only `disputed`, not `dispute` (the API still returns the
  * id today), so a charge without it is looked up by charge: one dispute per

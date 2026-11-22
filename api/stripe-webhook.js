@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyChargeUpdated, applyDispute, applyPaymentIntent, paymentForDispute, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyChargeUpdated, applyDisputeEvent, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -145,11 +145,12 @@ export default async function handler(request, response) {
         // "created", and the dispute as it is now decides.
         const dispute = await stripe.disputes.retrieve(event.data.object.id);
         // Found by its charge, else its PaymentIntent; an order payment not
-        // recorded yet throws, so Stripe sends the event again.
-        const payment = await paymentForDispute({ stripe, db, dispute });
+        // recorded yet throws, so Stripe sends the event again. A won or
+        // closed inquiry lifts the hold only if it is the charge's newest
+        // dispute: a chargeback opened after an inquiry keeps its hold.
         // Lost: the disputed amount went back to the brand, as a refund
         // (record_payment_dispute_lost); the hold ends and everyone is told.
-        if (payment) await applyDispute({ db, paymentId: payment.id, dispute });
+        await applyDisputeEvent({ stripe, db, dispute });
         break;
       }
       case "refund.updated":

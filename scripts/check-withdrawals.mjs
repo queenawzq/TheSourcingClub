@@ -288,7 +288,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "charge.dispute.created"') + 1500);
   assert.match(disputeCase, /stripe\.disputes\.retrieve\(event\.data\.object\.id\)/, "the dispute is read back from Stripe");
   assert.doesNotMatch(disputeCase, /disputed\s*=\s*event\.type/, "the event's type never decides");
-  assert.match(disputeCase, /applyDispute\(\{ db, paymentId: payment\.id, dispute \}\)/, "only its current status does (applyDispute)");
+  assert.match(disputeCase, /applyDisputeEvent\(\{ stripe, db, dispute \}\)/, "only its current status does (applyDisputeEvent: the charge's newest dispute)");
   const { applyDispute } = await import("../api/_stripe.js");
   const seen = [];
   const db = { rpc: async (name, args) => { seen.push([name, args]); return { data: null, error: null }; } };
