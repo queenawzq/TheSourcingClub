@@ -39,8 +39,7 @@ export async function tellPayoutEvent(db, event) {
   const { payoutAmountWords, payoutFailureSentence } = await import("../src/shared/payout-failure-words.mjs");
   const amount = payoutAmountWords(payout.amount, payout.currency);
   // What the bell already said about this payout (each notice carries its
-  // id): a failure after "paid out" says it did not reach the bank after
-  // all, and a "paid out" that arrives after its failure is not said.
+  // id): a "paid out" that arrives after its failure is not said.
   const said = payout.id ? await saidAboutPayout(db, known.data.org_id, payout.id) : new Set();
   if (event.type === "payout.paid" && said.has("failed")) return false;
   const notice = event.type === "payout.paid"
@@ -48,7 +47,7 @@ export async function tellPayoutEvent(db, event) {
     : {
       kind: "payout_method_changed",
       title: "A withdrawal did not go through",
-      body: `Your withdrawal of ${amount} ${said.has("paid") ? "did not reach your bank after all" : "did not go through"}. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
+      body: `Your withdrawal of ${amount} did not go through. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
     };
   const outcome = event.type === "payout.paid" ? "paid" : "failed";
   // Once per payout and outcome (its key, 20261121410000).

@@ -115,7 +115,7 @@ assert.ok(liveFund.includes("I understand this step is added to ${factory}'s bal
 // Nov 13: a deposit or balance is released once funded, so the live Fund
 // subtitle and success text must not borrow the design's "after you approve"
 // words for it. Approval steps keep the design's; the prototype's text stays.
-assert.ok(liveFund.includes("The step amount, without fees, is added to ${factory}'s balance once funded."), "the payment-only Fund subtitle says it goes to the balance once funded");
+assert.ok(liveFund.includes("The step amount is added to ${factory}'s balance once funded."), "the payment-only Fund subtitle says it goes to the balance once funded");
 assert.match(liveFund, /fundingMilestone = \{[\s\S]*?\.\.\.\(paymentOnly \|\| [\s\S]*?\? \{ fundNote: paymentOnlyFundNote\(/, "the Fund screen passes the payment-only note");
 assert.ok(liveFund.includes("Your payment is funded. It is added to ${factory}'s balance."), "the payment-only success text says it goes to the balance");
 assert.ok(liveFund.includes("Once your payment clears, it is added to ${factory}'s balance."), "the payment-only processing text says it goes to the balance");
