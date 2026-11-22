@@ -925,8 +925,8 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const summary = await import("../src/app/order/payment-summary.mjs");
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
   const statusMap = page.slice(page.indexOf("const PAYOUT_STATUS = {"), page.indexOf("};", page.indexOf("const PAYOUT_STATUS = {")));
-  assert.ok(/pending: ON_ITS_WAY/.test(statusMap) && /in_transit: ON_ITS_WAY/.test(statusMap) && /canceled: "Cancelled"/.test(statusMap),
-    "R32: an older Stripe payout on its way reads On its way; cancelled is spelled Cancelled");
+  assert.ok(/pending: "Processing"/.test(statusMap) && /in_transit: "Processing"/.test(statusMap) && /canceled: "Cancelled"/.test(statusMap),
+    "an older Stripe payout on its way reads Processing; cancelled is spelled Cancelled");
   const cancelled = summary.serverWithdrawalRows([{ id: "s1", road: "stripe", word: "returned", amount_cents: 1000, created_at: "2026-11-02T00:00:00Z" }],
     { stripe: new Map([["s1", { payout_status: "canceled", payout_id: "po_1" }]]) });
   assert.equal(cancelled[0]?.status, "Cancelled", "R32: a Stripe payout cancelled reads Cancelled");

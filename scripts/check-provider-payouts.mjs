@@ -762,12 +762,12 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   await tellPayoutEvent(fake, event("payout.paid", { id: "po_stranger", status: "paid", metadata: { stripe_withdrawal_id: tables.stripe_withdrawals[1].id } }));
   assert.equal(tables.stripe_withdrawals[1].payout_status, null, "never another account's withdrawal");
 
-  // G4: "paid out", then failed: the failure says it did not arrive after all.
+  // G4: "paid out", then failed: the same words as any failed withdrawal.
   assert.equal(await tellPayoutEvent(fake, event("payout.failed", { ...early, status: "failed", failure_code: "no_account" })), true);
   const failed = tables.notifications.at(-1);
   assert.equal(failed.title, "A withdrawal did not go through");
-  assert.equal(failed.body, "Your withdrawal of EUR 58.59 did not reach your bank after all. Your bank has no account with these details. Check the account number, then withdraw again. The money is back in your balance.");
-  assert.equal(zhNotificationBodyR30(failed), "你的一笔 EUR 58.59 提现最终未到达你的银行。你的银行没有与这些信息相符的账户。请检查账号，然后重新提现。款项已退回你的余额。");
+  assert.equal(failed.body, "Your withdrawal of EUR 58.59 did not go through. Your bank has no account with these details. Check the account number, then withdraw again. The money is back in your balance.");
+  assert.equal(zhNotificationBodyR30(failed), "你的一笔 EUR 58.59 提现未成功。你的银行没有与这些信息相符的账户。请检查账号，然后重新提现。款项已退回你的余额。");
   // Failed first (Stripe sends both in the same second in test mode), then paid: "paid out" is never said.
   const quick = { id: "po_quick", status: "failed", failure_code: "no_account" };
   assert.equal(await tellPayoutEvent(fake, event("payout.failed", quick)), true);

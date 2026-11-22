@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useFactoryBalance } from "./use-factory-balance.js";
 import { withdrawalsFrom } from "./balance-reader.mjs";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
@@ -91,9 +91,9 @@ function RowPlaceholders({ className, cells, label }) {
 const PAYOUT_STATUS = {
   // A withdrawal from the factory's Stripe balance that reached its bank.
   paid: "Paid out to your bank",
-  // Left for the bank: one word with every withdrawal on its way (ON_ITS_WAY).
-  pending: ON_ITS_WAY,
-  in_transit: ON_ITS_WAY,
+  // Left for the bank: an older Stripe payout says Processing in both states.
+  pending: "Processing",
+  in_transit: "Processing",
   canceled: "Cancelled",
   failed: "Failed",
 };
@@ -467,7 +467,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       title: "Bank transfer",
       meta: [payoutDestination(row, stripeBalance), row.arrival_date ? stripeDateLabel(row.arrival_date) : null].filter(Boolean).join(" · "),
       // Paid by Stripe once it leaves; at the bank only from its arrival day.
-      status: row.status === "paid" && row.arrival_date && row.arrival_date * 1000 > Date.now() ? ON_ITS_WAY : PAYOUT_STATUS[row.status] || row.status,
+      status: row.status === "paid" && row.arrival_date && row.arrival_date * 1000 > Date.now() ? "Processing" : PAYOUT_STATUS[row.status] || row.status,
       // Why the bank did not take it; Stripe puts the money back in the balance.
       note: row.status === "failed" ? payoutFailureSentence("stripe", row.failure_code) : null,
       failed: row.status === "failed",

@@ -435,7 +435,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
  * scripts/check-payout-help.mjs.
  */
 function paymentOnlyFundNote(amount, title, factory) {
-  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is added to ${factory}'s balance once funded.`;
+  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount is added to ${factory}'s balance once funded.`;
 }
 
 /** A charge the brand's bank disputed is held, not added to the factory's balance. */
