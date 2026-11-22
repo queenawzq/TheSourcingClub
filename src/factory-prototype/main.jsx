@@ -1215,7 +1215,11 @@ export const factoryMainZhText = {
   "This is your only withdrawal method. Replace it instead.": "这是你唯一的提现方式，请改为更换。",
   "This is your only withdrawal method. Add another one first.": "这是你唯一的提现方式，请先添加其他方式。",
   "This is your only method in its currency. Replace it instead.": "这是该币种唯一的提现方式，请改为更换。",
+  "Stripe needs one bank account or debit card in this currency. Replace it instead.": "Stripe 要求该币种至少保留一个银行账户或借记卡，请改为更换。",
+  "Stripe needs one bank account or debit card on file. Replace it instead.": "Stripe 要求至少保留一个银行账户或借记卡，请改为更换。",
+  "Stripe needs one bank account or debit card on file.": "Stripe 要求至少保留一个银行账户或借记卡。",
   "This is your default method. Make another one the default first.": "这是你的默认提现方式，请先将其他方式设为默认。",
+  "This is your default Stripe method. Make another one the default first.": "这是你在 Stripe 的默认提现方式，请先将其他方式设为默认。",
   // Choosing which waiting withdrawals to cancel.
   "Cancel withdrawals": "取消提现",
   "Choose the withdrawals to cancel": "选择要取消的提现",

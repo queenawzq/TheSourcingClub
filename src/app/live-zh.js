@@ -155,6 +155,10 @@ const PATTERNS = [
   // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
   [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
   [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待确认。处理完成后即可提现。`],
+  // Owing TSC more than the cleared balance covers: the money clearing pays that first.
+  [/^(\$[\d,.]+) pending\. It goes toward what you owe TSC\.$/, (m) => `${m[1]} 待确认。将先用于抵扣你欠 TSC 的款项。`],
+  [new RegExp(`^(\\$[\\d,.]+) pending\\. (\\$[\\d,.]+) available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。其中 ${m[2]} ${MONTHS[m[3]]} 月 ${Number(m[4])} 日起可提现。`],
+  [/^(\$[\d,.]+) pending\. (\$[\d,.]+) can be withdrawn once processing finishes\.$/, (m) => `${m[1]} 待确认。其中 ${m[2]} 处理完成后即可提现。`],
   [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
