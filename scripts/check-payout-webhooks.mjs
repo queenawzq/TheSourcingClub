@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { createPublicKey, createSign, generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { WISE_PUBLIC_KEYS, paypalRef, wisePublicKey, wiseRef, wiseSignatureOk } from "../api/_payout-webhooks.js";
+import { WISE_PUBLIC_KEYS, paypalRef, wisePublicKey, wiseRef, wiseRefundCents, wiseSignatureOk } from "../api/_payout-webhooks.js";
 import { paypalFrom } from "../api/_paypal.js";
 import { wiseFrom } from "../api/_wise.js";
 import wiseWebhook from "../api/wise-webhook.js";
@@ -67,8 +67,16 @@ function fakeDb(payouts, withdrawals = []) {
     }
     if (name === "record_withdrawal") {
       const w = db.withdrawals.find((x) => x.id === args.target_withdrawal);
+      if (args.outcome === "failed" && w.status === "paid") w.returned_at = "now";
+      if (args.outcome === "failed") w.failed_at = "now";
       if (args.outcome === "paid" || args.outcome === "failed") w.status = args.outcome;
       db.withdrawalsRecorded.push(args); return { data: w };
+    }
+    if (name === "record_withdrawal_returned") {
+      const w = db.withdrawals.find((x) => x.id === args.target_withdrawal);
+      if (w.status === "paid") { w.status = "failed"; w.returned_at = "now"; w.failed_at = "now"; }
+      if (w.status === "paying") { w.status = "failed"; w.failed_at = "now"; }
+      db.withdrawalsRecorded.push({ ...args, outcome: "returned" }); return { data: w };
     }
     if (name === "record_provider_attempt") {
       const p = db.payouts.find((x) => x.id === args.target_payout);
@@ -179,6 +187,30 @@ const wiseEvent = (id, state = "outgoing_payment_sent") => JSON.stringify({
   assert.equal(settled.withdrawalsRecorded.length, 0, "a settled withdrawal is not recorded again");
 }
 {
+  // M2 (round 36): a withdrawal recorded Paid that Wise returns afterwards (the
+  // bank bounces it, Wise refunds it, it is charged back) is recorded as
+  // failed, in the failure's own words: the money is back with TSC.
+  for (const [state, words] of [["bounced_back", /The factory's bank returned this transfer/], ["funds_refunded", /Wise refunded this transfer/], ["charged_back", /charged back/]]) {
+    const db = fakeDb([], [{ id: "w3", provider: "wise", provider_ref: "5103", status: "paid" }]);
+    const body = wiseEvent(5103, state);
+    const out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": `dw3-${state}` }, body, deps: { db, client: fakeWise({ 5103: state }).client } });
+    assert.equal(out.status, 200);
+    assert.equal(out.body.state, "failed", `${state} after Paid is recorded`);
+    assert.equal(db.withdrawalsRecorded.length, 1);
+    assert.equal(db.withdrawalsRecorded[0].outcome, "failed");
+    assert.match(db.withdrawalsRecorded[0].sentence, words);
+    assert.match(db.withdrawalsRecorded[0].sentence, /The amount is back in the factory's balance/);
+  }
+  // Still paid at Wise, or still on its way: nothing recorded.
+  for (const state of ["outgoing_payment_sent", "processing"]) {
+    const db = fakeDb([], [{ id: "w4", provider: "wise", provider_ref: "5104", status: "paid" }]);
+    const body = wiseEvent(5104, state);
+    const out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": `dw4-${state}` }, body, deps: { db, client: fakeWise({ 5104: state }).client } });
+    assert.equal(out.body.state, "paid");
+    assert.equal(db.withdrawalsRecorded.length, 0, `a paid withdrawal Wise reads as ${state} is not recorded again`);
+  }
+}
+{
   // Another site's transfer on the same Wise account: 200, so Wise doesn't give up on the endpoint.
   const db = fakeDb([]);
   const wise = fakeWise({});
@@ -198,16 +230,69 @@ const wiseEvent = (id, state = "outgoing_payment_sent") => JSON.stringify({
   assert.equal(db.payouts[0].status, "processing");
 }
 assert.equal(wiseRef({ event_type: "balances#update", data: { resource: { id: 1 } } }), null, "only transfer state changes name a transfer");
+{
+  // Round 38 (L-3): Wise's transfers#refund states what came back to TSC
+  // ("Includes any applicable fees"). Read against the withdrawal's currency.
+  const refund = (amount, currency = "USD") => ({ event_type: "transfers#refund", data: { resource: { type: "transfer", id: 5009, refund_amount: amount, refund_currency: currency }, occurred_at: "2026-11-21T01:00:00Z" } });
+  assert.equal(wiseRef(refund(970)), "5009", "a refund names its transfer");
+  assert.equal(wiseRefundCents(refund(970), "USD"), 97000, "in minor units");
+  assert.equal(wiseRefundCents(refund(970.5), "usd"), 97050);
+  assert.equal(wiseRefundCents(refund(970, "EUR"), "USD"), null, "another currency: not this withdrawal's figure");
+  assert.equal(wiseRefundCents(JSON.parse(wiseEvent(5009)), "USD"), null, "a state change states no figure");
+  const refundBody = (id, amount) => JSON.stringify({ ...refund(amount), data: { ...refund(amount).data, resource: { ...refund(amount).data.resource, id } }, subscription_id: "s", schema_version: "4.0.0", sent_at: "2026-11-21T01:00:01Z" });
+
+  // The refund event first: the return is recorded with Wise's figure.
+  let db = fakeDb([], [{ id: "w7", provider: "wise", provider_ref: "5007", status: "paid", currency: "USD" }]);
+  let body = refundBody(5007, 970);
+  let out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r7" }, body, deps: { db, client: fakeWise({ 5007: "funds_refunded" }).client } });
+  assert.equal(out.status, 200);
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back]), [["returned", 97000]], "recorded with what Wise refunded");
+
+  // The state change first (whole amount taken as back), then the refund: the figure still reaches the record.
+  db = fakeDb([], [{ id: "w8", provider: "wise", provider_ref: "5008", status: "paid", currency: "USD" }]);
+  const wise = fakeWise({ 5008: "funds_refunded" });
+  body = wiseEvent(5008, "funds_refunded");
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "s8" }, body, deps: { db, client: wise.client } });
+  body = refundBody(5008, 970);
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r8" }, body, deps: { db, client: wise.client } });
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["failed", null], ["returned", 97000]],
+    "the later figure is passed on (record_withdrawal_returned corrects what was kept)");
+
+  // Round 39 (L4): a refund event on a transfer Wise does not say failed (a
+  // partial refund on a delivered one) is not a return: left for staff.
+  db = fakeDb([], [{ id: "w10", provider: "wise", provider_ref: "5010", status: "paid", currency: "USD" }]);
+  body = refundBody(5010, 970);
+  out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r10" }, body, deps: { db, client: fakeWise({ 5010: "outgoing_payment_sent" }).client } });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.state, "paid");
+  assert.equal(db.withdrawalsRecorded.length, 0, "a refund on a transfer Wise still reads as sent records nothing");
+
+  // Round 39 (L2): refunded while it was still being sent: what Wise gave back, not all of it.
+  db = fakeDb([], [{ id: "w11", provider: "wise", provider_ref: "5011", status: "paying", currency: "USD" }]);
+  body = refundBody(5011, 970);
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r11" }, body, deps: { db, client: fakeWise({ 5011: "funds_refunded" }).client } });
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["returned", 97000]], "being sent: Wise's figure is recorded");
+
+  // ... and its state change first, then the refund: the figure still reaches the record.
+  db = fakeDb([], [{ id: "w12", provider: "wise", provider_ref: "5012", status: "paying", currency: "USD" }]);
+  const wise12 = fakeWise({ 5012: "funds_refunded" });
+  body = wiseEvent(5012, "funds_refunded");
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "s12" }, body, deps: { db, client: wise12.client } });
+  body = refundBody(5012, 970);
+  await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": "r12" }, body, deps: { db, client: wise12.client } });
+  assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["failed", null], ["returned", 97000]],
+    "a failure recorded whole is corrected by the later figure, paid or not");
+}
 
 // --- PayPal ---------------------------------------------------------------------
 const PAYPAL_ENV = { PAYPAL_API_BASE: "https://api-m.sandbox.paypal.com", PAYPAL_CLIENT_ID: "id", PAYPAL_CLIENT_SECRET: "secret" };
-function fakePaypal({ verified = "SUCCESS", item = "SUCCESS" } = {}) {
+function fakePaypal({ verified = "SUCCESS", item = "SUCCESS", sent = null } = {}) {
   const seen = { verifyBodies: [], reads: [] };
   const fetchImpl = async (url, options) => {
     if (url.endsWith("/v1/oauth2/token")) return json(200, { access_token: "a" });
     if (url.endsWith("/verify-webhook-signature")) { seen.verifyBodies.push(options.body); return json(200, { verification_status: verified }); }
     const batch = url.match(/payouts\/([A-Z0-9]+)$/)?.[1];
-    if (batch) { seen.reads.push(batch); return json(200, { batch_header: { batch_status: "SUCCESS" }, items: [{ transaction_status: item, payout_item_id: "I1" }] }); }
+    if (batch) { seen.reads.push(batch); return json(200, { batch_header: { batch_status: "SUCCESS" }, items: [{ transaction_status: item, payout_item_id: "I1", ...(sent ? { payout_item: { amount: { value: sent, currency: "USD" } }, payout_item_fee: { value: "0.25", currency: "USD" } } : {}) }] }); }
     return json(404, {});
   };
   return { seen, client: paypalFrom(PAYPAL_ENV, fetchImpl) };
@@ -246,6 +331,86 @@ const PAYPAL_HEADERS = { "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url":
   assert.equal(out.status, 200);
   assert.equal(db.payouts[0].provider_ref, "B3", "the batch id is kept");
   assert.equal(out.body.state, "sent", "unclaimed stays open");
+}
+{
+  // M2 (round 36): PayPal returns a withdrawal after SUCCESS (unclaimed after
+  // 30 days, refunded, reversed): recorded as failed, in its own words.
+  for (const [item, words] of [["RETURNED", /PayPal returned this to TSC/], ["REFUNDED", /refunded to TSC/], ["REVERSED", /reversed/]]) {
+    const db = fakeDb([], [{ id: "w5", provider: "paypal", provider_ref: "B5", status: "paid" }]);
+    const paypal = fakePaypal({ item });
+    const out = await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B5", "f0000000-0000-4000-8000-000000000005"), deps: { db, client: paypal.client } });
+    assert.equal(out.status, 200);
+    assert.equal(db.withdrawalsRecorded[0]?.outcome, "failed", `${item} after SUCCESS is recorded`);
+    assert.match(db.withdrawalsRecorded[0].sentence, words);
+  }
+  // Round 38 (L-3): PayPal gives back what it sent and keeps its fee
+  // (sandbox, a cancelled unclaimed item: RETURNED, payout_item_fee kept).
+  {
+    const db = fakeDb([], [{ id: "w9", provider: "paypal", provider_ref: "B9", status: "paid" }]);
+    await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B9", "f0000000-0000-4000-8000-000000000009"), deps: { db, client: fakePaypal({ item: "RETURNED", sent: "969.75" }).client } });
+    assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back]), [["returned", 96975]], "what PayPal sent is what came back");
+  }
+  // Round 39 (L2): returned while still unclaimed (being sent; PayPal returns
+  // it after 30 days): what PayPal sent is what came back, as after Paid.
+  {
+    const db = fakeDb([], [{ id: "w10", provider: "paypal", provider_ref: "B10", status: "paying" }]);
+    await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B10", "f0000000-0000-4000-8000-000000000010"), deps: { db, client: fakePaypal({ item: "RETURNED", sent: "969.75" }).client } });
+    assert.deepEqual(db.withdrawalsRecorded.map((r) => [r.outcome, r.came_back ?? null]), [["returned", 96975]], "the factory bears PayPal's fee, paid or not");
+  }
+  const db = fakeDb([], [{ id: "w6", provider: "paypal", provider_ref: "B6", status: "paid" }]);
+  await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B6", "f0000000-0000-4000-8000-000000000006"), deps: { db, client: fakePaypal().client } });
+  assert.equal(db.withdrawalsRecorded.length, 0, "still SUCCESS: nothing recorded");
+}
+{
+  // The sync reads paid withdrawals back too, within the return window.
+  const { syncWithdrawals, adapterFor, RETURN_WINDOW_DAYS } = await import("../api/_withdrawals.js");
+  const { PAID_READS_PER_SYNC, READ_AGAIN_HOURS } = await import("../api/_withdrawals.js");
+  const asked = [];
+  const rows = {
+    paying: [{ id: "a", provider_ref: "1", status: "paying" }],
+    paid: [{ id: "b", provider_ref: "2", status: "paid" }, { id: "c", provider_ref: "3", status: "paid" }, { id: "d", provider_ref: "4", status: "paid" }],
+  };
+  const recorded = [];
+  const stamped = [];
+  const db = {
+    from: () => {
+      const f = { orders: [] };
+      const q = { select: () => q, eq: (c, v) => { f[c] = v; return q; }, not: () => q, gte: (c, v) => { f[c] = v; return q; },
+        or: (v) => { f.or = v; return q; }, order: (c, o) => { f.orders.push([c, o]); return q; },
+        limit: async (n) => { asked.push({ ...f, limit: n }); return { data: rows[f.status], error: null }; },
+        update: (patch) => ({ in: async (c, ids) => { stamped.push({ patch, ids }); return { error: null }; } }) };
+      return q;
+    },
+    rpc: async (name, args) => { recorded.push({ name, ...args }); return { data: {}, error: null }; },
+  };
+  // b: returned (Wise does not say how much); c: still paid; d: Wise could not be read.
+  const adapter = { ...adapterFor("wise"), status: async (_c, ref) => {
+    if (ref === "4") throw new Error("down");
+    return ref === "2" ? { state: "failed", raw: "bounced_back" } : { state: "paid" };
+  } };
+  const now = Date.parse("2026-11-21T00:00:00Z");
+  await syncWithdrawals({ adapter, client: {}, db, now });
+  assert.deepEqual(asked.map((a) => a.status).sort(), ["paid", "paying"]);
+  const paidAsk = asked.find((a) => a.status === "paid");
+  assert.equal(paidAsk.paid_at, new Date(now - RETURN_WINDOW_DAYS * 86_400_000).toISOString());
+  // L-6 (round 37): the whole window in turns, a bounded number of reads per sync.
+  assert.equal(paidAsk.or, `read_back_at.is.null,read_back_at.lt.${new Date(now - READ_AGAIN_HOURS * 3_600_000).toISOString()}`,
+    "none read in the last hours is read again");
+  assert.deepEqual(paidAsk.orders[0], ["read_back_at", { ascending: true, nullsFirst: true }], "the ones read longest ago (or never) first");
+  assert.equal(paidAsk.limit, PAID_READS_PER_SYNC, "at most this many provider reads a sync");
+  assert.deepEqual(stamped, [{ patch: { read_back_at: new Date(now).toISOString() }, ids: ["b", "c"] }],
+    "what was read waits its turn again; what could not be read stays first");
+  assert.deepEqual(recorded.map((r) => [r.target_withdrawal, r.outcome]).sort(), [["a", "paid"], ["b", "failed"]]);
+  assert.equal(recorded.find((r) => r.target_withdrawal === "b").name, "record_withdrawal", "not said what came back: the database's rule (all of it)");
+
+  // L-3 (round 37): the provider says what came back: only that is recorded back.
+  recorded.length = 0;
+  const { readBack } = await import("../api/_withdrawals.js");
+  const says = { ...adapterFor("wise"), status: async () => ({ state: "failed", raw: "bounced_back", returnedCents: 97000 }) };
+  assert.equal(await readBack({ adapter: says, client: {}, db, id: "e", ref: "5", wasPaid: true }), "failed");
+  assert.equal(recorded[0].name, "record_withdrawal_returned");
+  assert.equal(recorded[0].came_back, 97000);
+  assert.match(recorded[0].sentence, /The factory's bank returned this transfer/);
 }
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS", resource: { batch_header: { payout_batch_id: "B9", sender_batch_header: { sender_batch_id: KEY } } } }), { ref: "B9", key: KEY }, "a batch event names its batch");
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: {} }), { ref: null, key: null }, "other events name nothing");

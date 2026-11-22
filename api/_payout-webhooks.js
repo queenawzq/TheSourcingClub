@@ -1,5 +1,5 @@
 import { createVerify } from "node:crypto";
-import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
+import { PayoutFailure, cents, withoutSecrets } from "./_payout-provider.js";
 import { readBackRef } from "./_provider-payouts.js";
 import { readBackWithdrawalRef } from "./_withdrawals.js";
 import { rawBody, reply, serviceClient } from "./_stripe.js";
@@ -68,11 +68,25 @@ export function wiseSignatureOk(body, signature, publicKey) {
   }
 }
 
-/** Which transfer a Wise event is about. Only state changes name one we track. */
+/** Which transfer a Wise event is about: a state change, or a refund (transfers#refund). */
 export function wiseRef(event) {
-  if (event?.event_type !== "transfers#state-change") return null;
+  if (event?.event_type !== "transfers#state-change" && event?.event_type !== "transfers#refund") return null;
   const id = event?.data?.resource?.id;
   return id == null ? null : String(id);
+}
+
+/**
+ * What Wise refunded to TSC, from a signed transfers#refund event, in minor
+ * units of `currency` (Wise's own words: "The total amount that was refunded
+ * to the customer. Includes any applicable fees"). Null for any other event,
+ * another currency, or no figure: the whole amount is then taken as back.
+ */
+export function wiseRefundCents(event, currency) {
+  if (event?.event_type !== "transfers#refund") return null;
+  const r = event?.data?.resource ?? {};
+  if (!currency || String(r.refund_currency ?? "").toUpperCase() !== String(currency).toUpperCase()) return null;
+  const amount = Number(r.refund_amount);
+  return Number.isFinite(amount) && amount >= 0 ? cents(amount) : null;
 }
 
 /** Which batch (and our key) a PayPal event is about. Item events and batch events place them differently. */
@@ -124,7 +138,7 @@ export function webhookRoute({ provider, build, verify, identify }) {
     } catch {
       return reply(response, 400, { error: "not JSON" });
     }
-    const { id, type, ref, key, test } = identify({ request, event });
+    const { id, type, ref, key, test, refund } = identify({ request, event });
     // Wise checks a new subscription's address with a signed test event.
     if (test || (!ref && !key)) return reply(response, 200, { received: true, ignored: true });
     if (!id) return reply(response, 400, { error: "no delivery id" });
@@ -140,7 +154,7 @@ export function webhookRoute({ provider, build, verify, identify }) {
     try {
       // A per-step payout, else a withdrawal (both carry the provider's reference).
       const state = (await readBackRef({ client, db, ref, key }))
-        ?? (await readBackWithdrawalRef({ provider, client, db, ref }));
+        ?? (await readBackWithdrawalRef({ provider, client, db, ref, refund }));
       await db.from("provider_events").update({ processed_at: new Date().toISOString() }).eq("id", eventId);
       // Null: not a payout of this database's (another site on the same account). Answered 200,
       // since a retry can't change that and an endpoint that keeps failing gets switched off.

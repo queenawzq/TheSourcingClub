@@ -21,6 +21,7 @@
  * the webhook does, and this screen shows what was recorded.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabase.js";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   CardCvcElement,
@@ -241,7 +242,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     railStep: checkout.title,
     // The design's subtitle says funds wait for an approval. A deposit or
     // balance does not wait (Nov 13 tester, #2); a paid step keeps the design's.
-    ...(paymentOnly ? { fundNote: paymentOnlyFundNote(figures.total, checkout.title, factory) } : {}),
+    // An already-approved step (paying again after a refund) does not wait either.
+    ...(paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"
+      ? { fundNote: paymentOnlyFundNote(figures.total, checkout.title, factory) } : {}),
   };
   const heading = { eyebrow: "FUND" };
 
@@ -327,8 +330,10 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           // A brand with a saved card is asked to choose one, as the design
           // draws it; "Card details" promised a card form that was not there.
           title: addingCard ? "Card details" : "Select billing method",
-          agreements: [paymentOnly
-            ? `I understand TSC releases this step to ${factory} once it is funded, and it takes a few business days to arrive.`
+          // An already-approved step (paying again after a refund) goes straight
+          // to the factory's balance, as a payment-only step does.
+          agreements: [paymentOnly || Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete"
+            ? `I understand this step is added to ${factory}'s balance once it is funded.`
             : "I understand funds are only released after I approve the payment. TSC may hold funds until the payment is approved or disputed."],
           agreed,
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
@@ -430,13 +435,29 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
  * scripts/check-payout-help.mjs.
  */
 function paymentOnlyFundNote(amount, title, factory) {
-  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is released to ${factory} once funded.`;
+  return `Add ${amount} to project funds for ${title.toLowerCase()}. The step amount, without fees, is added to ${factory}'s balance once funded.`;
 }
 
-function paymentOnlySuccess(factory, funded) {
+/** A charge the brand's bank disputed is held, not added to the factory's balance. */
+export const DISPUTED_CHARGE = "This payment is disputed with your bank. It isn't paid to the factory until the dispute is resolved.";
+
+/**
+ * A step the brand approves: the design's sentence, said of this step rather
+ * than "the sample" (its success screen showed "Your sample payment is
+ * funded" for any step, a bulk run included).
+ */
+function approvalStepSuccess(funded, disputed = false) {
+  if (disputed) return DISPUTED_CHARGE;
   return funded
-    ? `Your payment is funded. TSC releases it to ${factory}; it takes a few business days to arrive.`
-    : `Once your payment clears, TSC releases it to ${factory}; it takes a few business days to arrive.`;
+    ? "Your payment is funded. The factory can start work, and funds are only released after you approve this step."
+    : "Once your payment clears, the factory can start work, and funds are only released after you approve this step.";
+}
+
+function paymentOnlySuccess(factory, funded, disputed = false) {
+  if (disputed) return DISPUTED_CHARGE;
+  return funded
+    ? `Your payment is funded. It is added to ${factory}'s balance.`
+    : `Once your payment clears, it is added to ${factory}'s balance.`;
 }
 
 /** The design's success screen, in the words of what actually happened. */
@@ -444,6 +465,22 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   // The card form is long, so paying leaves the page scrolled; the result
   // opens at its heading.
   useEffect(() => { window.scrollTo(0, 0); }, []);
+  // A dispute is recorded by Stripe's webhook, seconds after the charge: read
+  // it now and once more shortly after, so the page never promises the money
+  // to the factory's balance while the charge is disputed.
+  const [disputed, setDisputed] = useState(Boolean(payment.disputed_at));
+  useEffect(() => {
+    let live = true;
+    const read = () => supabase.from("order_payments").select("disputed_at").eq("id", payment.id).maybeSingle()
+      .then(({ data }) => { if (live && data) setDisputed(Boolean(data.disputed_at)); }, () => {});
+    read();
+    const again = setTimeout(read, 4000);
+    return () => { live = false; clearTimeout(again); };
+  }, [payment.id]);
+  // A step the brand already approved (paying again after a refund): the money
+  // goes straight to the factory's balance, so the design's "released after you
+  // approve" is not said; the payment-only words are.
+  const approvedAlready = Boolean(payment.release_requested_at) || payment.order_milestones?.state === "complete";
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   // Each fee as checkout or the database computed it: the total less the
@@ -478,11 +515,11 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, false) } : {}),
+        description: paymentOnly || approvedAlready ? paymentOnlySuccess(factory, false, disputed) : approvalStepSuccess(false, disputed),
       } : {
         eyebrow: "FUND",
         title: `${step} funded`,
-        ...(paymentOnly ? { description: paymentOnlySuccess(factory, true) } : {}),
+        description: paymentOnly || approvedAlready ? paymentOnlySuccess(factory, true, disputed) : approvalStepSuccess(true, disputed),
       }}
       onBack={onBack}
       onNext={onBack}

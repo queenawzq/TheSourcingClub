@@ -101,7 +101,9 @@ export function allocatePayouts(transactions, payments) {
       ...payout,
       allocations: parts.filter((part) => part.paymentId).map((part) => ({ paymentId: part.paymentId, amount: part.amount })),
       // A failure can arrive after a "paid" status. Never count returned funds.
-      paid: payout.status === "paid" && !returned,
+      // Reached the bank: paid, and its arrival day has come (until then it
+      // is on its way, payoutsOnTheirWay).
+      paid: payout.status === "paid" && !returned && !(Number(payout.arrival_date) * 1000 > Date.now()),
     })),
   };
 }
@@ -121,6 +123,16 @@ export async function payoutAllocationFor(stripe, db, orgId, accountId) {
       .eq("production_orders.factory_org_id", orgId).order("id").range(from, from + 999);
     if (error) throw new Error(error.message);
     payments.push(...data);
+    if (data.length < 1000) break;
+  }
+  // A step withdrawn through Stripe in parts has a transfer per part
+  // (payment_takes); each is that step's earning.
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("payment_takes")
+      .select("payment_id, stripe_transfer_id").eq("org_id", orgId).not("stripe_transfer_id", "is", null)
+      .order("id").range(from, from + 999);
+    if (error) throw new Error(error.message);
+    payments.push(...data.map((take) => ({ id: take.payment_id, stripe_transfer_id: take.stripe_transfer_id })));
     if (data.length < 1000) break;
   }
   return allocatePayouts(transactions, payments);

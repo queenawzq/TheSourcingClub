@@ -1,4 +1,4 @@
-import { payoutUsdMinor, payoutUsdTotal } from "../../lib/payout-display.mjs";
+import { payoutUsdMinor } from "../../lib/payout-display.mjs";
 /**
  * The factory Payments page, using the tabbed design from the factory app.
  *
@@ -13,7 +13,7 @@ import { payoutUsdMinor, payoutUsdTotal } from "../../lib/payout-display.mjs";
  * these details. No screen here names Stripe.
  */
 import PaymentHelp from "./PaymentHelp.jsx";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   CardCvcElement,
@@ -29,13 +29,13 @@ import { can } from "../../lib/domain/org.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
 import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
-import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { askedWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, earningsSummaryFor, factoryAmount, grossAmount, handPaidFigures, payoutFee, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -90,9 +90,10 @@ function RowPlaceholders({ className, cells, label }) {
 const PAYOUT_STATUS = {
   // A withdrawal from the factory's Stripe balance that reached its bank.
   paid: "Paid out to your bank",
-  pending: "Pending",
-  in_transit: "Processing",
-  canceled: "Canceled",
+  // Left for the bank: one word with every withdrawal on its way (ON_ITS_WAY).
+  pending: ON_ITS_WAY,
+  in_transit: ON_ITS_WAY,
+  canceled: "Cancelled",
   failed: "Failed",
 };
 
@@ -162,6 +163,14 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // null until each read answers. Each source has its own error, so one that
   // fails does not hide what the others found.
   const [earnings, setEarnings] = useState(null);
+  // The company's withdrawals to its Stripe bank (stripe_withdrawals): every
+  // member reads the same list, not only an owner who can ask Stripe.
+  const [stripeWithdrawals, setStripeWithdrawals] = useState([]);
+  // The one balance (factory_balance()), all clients, read with the earnings:
+  // the four figures, the card's balance and each row's word come from it.
+  const [balanceFigures, setBalanceFigures] = useState(null);
+  // The same for the client chosen in the filter; null until it answers.
+  const [clientFigures, setClientFigures] = useState(null);
   // Withdrawals from the balance (Wise, PayPal, bank): the same source as its figure.
   const fromBalance = useWithdrawalBalance(org.id, isFactory, payouts.primary?.id);
   const [earningsError, setEarningsError] = useState(null);
@@ -172,14 +181,37 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [error, setError] = useState(null);
   // undefined until the payout card has asked Stripe; null when it cannot.
   const [stripeBalance, setStripeBalance] = useState(undefined);
+  // What the balance answered when Stripe could not be read: the database's
+  // figures, its Stripe part left out (stripe-connect `balance`, 502).
+  const [stripeFallback, setStripeFallback] = useState(null);
+  // When each answer came: the newer one wins (figuresAsOf), so a balance read
+  // after a withdrawal is never mixed back with an older database read.
+  const [stripeAt, setStripeAt] = useState(0);
+  const [databaseAt, setDatabaseAt] = useState(0);
+  // Only an answer is dated: the card saying "nothing read" (no Stripe
+  // account, or a re-read starting) must never make an older answer the newer
+  // one. That put the card back on figures from before a live change once a
+  // method was saved.
+  const balanceChanged = useCallback((value, fallback = null) => {
+    setStripeBalance(value);
+    setStripeFallback(fallback);
+    if (value || fallback) setStripeAt(Date.now());
+  }, []);
   const [stripeStatus, setStripeStatus] = useState("loading");
+  // Where nobody reads Stripe here (a member, or no Stripe account: the card
+  // says "none"), the page asks the server to record its card payments'
+  // clearing dates before reading the balance; at most once a minute.
+  const clearingPath = useRef(false);
+  const clearingAskedAt = useRef(0);
+  // The figures action's answer: undefined until it answers, null if it could not.
+  const [viaFigures, setViaFigures] = useState(undefined);
+  // When the figures action last answered: its own time, not Stripe's.
+  const [viaAt, setViaAt] = useState(0);
   // Whether the payout card has its final shape (it knows how the factory is
   // paid, from our database). Figures below it wait for that, never for
   // Stripe, so the card settling can only move placeholders.
   const [cardSettled, setCardSettled] = useState(false);
-  const [stripeAccount, setStripeAccount] = useState(null);
-  const settleCard = useCallback((account) => {
-    setStripeAccount(account);
+  const settleCard = useCallback(() => {
     setCardSettled(true);
   }, []);
   // The card reads its account and Stripe again when Earnings is opened
@@ -187,6 +219,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const leaveEarnings = () => {
     setCardSettled(false);
     setStripeBalance(undefined);
+    setStripeFallback(null);
     setStripeStatus("loading");
   };
   const [billingSecret, setBillingSecret] = useState(null);
@@ -218,6 +251,30 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // Earnings, credits and payout accounts are read side by side, and each
   // shows as soon as it answers: one spinner held the whole page, and the
   // Stripe balance, for the slowest of the three.
+  // The server's figures action (own Stripe money included), asked until its
+  // reads are of one moment (askUntilConsistent). Answers apply in the order
+  // asked (answerOrder): an older one landing last is dropped.
+  const figuresOrder = useRef(answerOrder());
+  const viaFiguresNow = useRef(undefined);
+  viaFiguresNow.current = viaFigures;
+  const askFigures = useCallback(async () => {
+    clearingAskedAt.current = Date.now();
+    const asked = figuresOrder.current.start();
+    try {
+      const figures = (await askUntilConsistent(() => connectAction(org.id, "figures"))).figures ?? null;
+      if (!figuresOrder.current.accept(asked)) return;
+      setViaFigures(figures);
+      setViaAt(Date.now());
+    } catch (failure) {
+      if (!figuresOrder.current.accept(asked)) return;
+      // A first ask: the database's figures, as the server sent them (Stripe
+      // unreachable). A later one keeps the last answer and its time.
+      const kept = figuresAfterFailedAsk(viaFiguresNow.current, failure);
+      setViaFigures(kept.figures);
+      if (kept.dated) setViaAt(Date.now());
+    }
+  }, [org.id]);
+
   const loadEarnings = useCallback(async () => {
     const orders = await readEveryPage(
       () => supabase
@@ -229,6 +286,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       "load your payment orders",
     );
     const orderById = new Map(orders.map((order) => [order.id, order]));
+    // Where the card does not read Stripe (a member, or no Stripe account):
+    // the server's figures action, the same answer an owner's balance read
+    // gives, own Stripe money included; it also records missing clearing
+    // dates. At most once a minute; in between, the database is read and the
+    // last answer's Stripe part kept (withStripePart).
+    if (clearingPath.current && Date.now() - clearingAskedAt.current > 60_000) await askFigures();
+    const [figures, toBank] = await Promise.all([
+      supabase.rpc("factory_balance", { target_org: org.id }),
+      supabase.from("stripe_withdrawals")
+        .select("id, payout_id, payout_minor, currency, usd_cents, fee_cents, destination, destination_label, destination_bank, state, payout_status, payout_arrives_at, payout_arrives_on, created_at")
+        .eq("org_id", org.id).not("payout_id", "is", null).order("created_at", { ascending: false }).limit(200),
+    ]);
+    if (figures.error || toBank.error) throw new Error("Couldn't load your balance. Try again shortly.");
 
     // By id batches, a page at a time: past ~195 orders one `in` list was
     // longer than the address allows (read-pages.js).
@@ -237,7 +307,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         orders.map((order) => order.id),
         (batch) => supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
+          .select(EARNING_COLUMNS)
           .in("order_id", batch)
           .order("created_at", { ascending: false })
           .order("id", { ascending: false }),
@@ -246,8 +316,76 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     ).sort((a, b) => byCreated(b, a));
 
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
+    setBalanceFigures(figures.data);
+    setDatabaseAt(Date.now());
+    setStripeWithdrawals(toBank.data ?? []);
     setEarningsError(null);
-  }, [org.id]);
+  }, [org.id, askFigures]);
+
+  // The Stripe part of the last server answer can only be kept while nothing
+  // moved money in the factory's Stripe account. When a Stripe withdrawal
+  // changes (realtime), or a newer database read shows one the answer did not
+  // know (`stripe_part_stale`), the server is asked again: the owner's card
+  // reads its balance again (`rereadKey`), anyone else the figures action,
+  // within its once-a-minute limit (an ask due sooner waits for it, and one
+  // made meanwhile answers it). Calls close together become one.
+  const [rereadKey, setRereadKey] = useState(0);
+  const rereadTimer = useRef(null);
+  const askRequestedAt = useRef(null);
+  const askStripeAgain = useCallback(() => {
+    askRequestedAt.current = Date.now();
+    const run = () => {
+      clearTimeout(rereadTimer.current);
+      const delay = figuresAskDelay({
+        now: Date.now(), requestedAt: askRequestedAt.current, lastAskAt: clearingAskedAt.current, limited: clearingPath.current,
+      });
+      if (delay === null) { askRequestedAt.current = null; return; }
+      if (delay > 0) { rereadTimer.current = setTimeout(run, delay); return; }
+      askRequestedAt.current = null;
+      if (clearingPath.current) askFigures();
+      else setRereadKey((key) => key + 1);
+    };
+    run();
+  }, [askFigures]);
+  useEffect(() => () => clearTimeout(rereadTimer.current), []);
+  // A Stripe withdrawal's realtime event asks again only when it changed a
+  // money field (a call taking or giving up its lease changes none), and at
+  // most twice per withdrawal and four times in all a minute.
+  const withdrawalsSeen = useRef(new Map());
+  const withdrawalsListed = useRef(new Map());
+  const withdrawalAskCap = useRef(realtimeAskCap());
+
+  // A withdrawal method saved or removed changes has_method: read the
+  // figures again at once, so Withdraw appears without a reload.
+  // An edit that keeps the same methods is read again too: the card then
+  // shows the figures as they are now, never older ones.
+  const methodsSeen = useRef(null);
+  useEffect(() => {
+    if (payouts.accounts == null) return;
+    if (methodsSeen.current === null) { methodsSeen.current = payouts.accounts; return; }
+    if (methodsSeen.current === payouts.accounts) return;
+    methodsSeen.current = payouts.accounts;
+    loadEarnings().catch(setEarningsError);
+  }, [payouts.accounts, loadEarnings]);
+
+  // The card has said nobody reads Stripe here: read again, with the dates asked for first.
+  useEffect(() => {
+    if (stripeStatus !== "none" || clearingPath.current) return;
+    clearingPath.current = true;
+    loadEarnings().catch(setEarningsError);
+  }, [stripeStatus, loadEarnings]);
+
+  // One client's figures: the same function, narrowed to that brand's orders.
+  const loadClientFigures = useCallback(async () => {
+    if (client === "All clients") return;
+    const { data, error: failure } = await supabase.rpc("factory_balance", { target_org: org.id, target_client: client });
+    if (failure) throw new Error("Couldn't load your balance. Try again shortly.");
+    setClientFigures({ client, figures: data });
+  }, [org.id, client]);
+
+  useEffect(() => {
+    loadClientFigures().catch(setEarningsError);
+  }, [loadClientFigures]);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,14 +402,16 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     loadCards();
   }, [loadCards]);
 
-  // Paid by hand, the figures are the payments' states, which the brand and
-  // staff change: approved, or marked paid out while this page is open. RLS
-  // applies per subscriber. A Stripe-paid factory's figures also need Stripe
-  // read again, so it keeps its page as it was.
-  const handPaid = cardSettled && isHandPaid(stripeAccount, earnings);
+  // The figures are the payments' states, which the brand and staff change:
+  // approved, or paid out while this page is open. RLS applies per
+  // subscriber. The factory's own Stripe money is kept from the last Stripe
+  // read (withStripePart), so this never asks Stripe again.
   useEffect(() => {
-    if (!isFactory || !handPaid) return undefined;
-    const refresh = () => loadEarnings().catch(setEarningsError);
+    if (!isFactory) return undefined;
+    const refresh = () => {
+      loadEarnings().catch(setEarningsError);
+      loadClientFigures().catch(setEarningsError);
+    };
     const channel = supabase
       .channel(`factory-earnings:${org.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, refresh)
@@ -279,9 +419,18 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "production_orders" }, refresh)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "provider_payouts" }, refresh)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "provider_payouts" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${org.id}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stripe_withdrawals", filter: `org_id=eq.${org.id}` }, (payload) => {
+        // The database is read again on any change but a lease's; the server
+        // is asked again only when money moved.
+        const listed = stripeWithdrawalMoved(withdrawalsListed.current, payload, { anyField: true });
+        const moved = stripeWithdrawalMoved(withdrawalsSeen.current, payload);
+        if (listed || moved) refresh();
+        if (moved && withdrawalAskCap.current.allow(payload?.new?.id ?? payload?.old?.id)) askStripeAgain();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isFactory, handPaid, org.id, loadEarnings]);
+  }, [isFactory, org.id, loadEarnings, loadClientFigures, askStripeAgain]);
 
   // After a credit purchase: the balance and ledger, read again.
   // A purchase with a new card also saves that card, so Billing reloads too.
@@ -293,7 +442,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // A promise to pay is not an earning. The factory's ledger begins only
   // once the brand's money has cleared and TSC is holding or releasing it.
   // Until the earnings answer, these are empty and nothing below draws them.
-  const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state));
+  const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state) || refundedEarning(row));
   const clients = useMemo(
     () => [...new Map((earnings ?? []).filter((row) => row.order?.brand_org_id)
       .map((row) => [row.order.brand_org_id, { id: row.order.brand_org_id, name: row.order.orgs?.name || "Brand" }])).values()],
@@ -310,30 +459,96 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : stripeBalance === undefined ? (stripeStatus === "slow" ? "slow" : "loading")
     : !isOwner ? "owner" : "failed";
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
-  // Stripe earnings still clearing (owner only): Pending on their rows and in
-  // the Pending figure, from the same read, so the two always agree.
+  // Stripe earnings still clearing (owner only): Pending on their rows, as
+  // the figures count them.
   const clearing = clearingFor(stripeBalance);
-  // The figures wait with the rows for Stripe, so they never jump.
-  const withdrawalFees = fromBalance.rows.filter((w) => w.status === "paid").reduce((sum, w) => sum + Number(w.fee_cents ?? 0), 0) + fromBalance.stripeFees;
-  const summary = earningsSummaryFor(transactionsReady ? earningsShown : null, client, fromBalance.withdrawn, withdrawalFees, clearing);
-  // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
-  const allPending = earningsSummaryFor(transactionsReady ? earningsShown : null, "All clients", fromBalance.withdrawn, withdrawalFees, clearing).pending;
-  const pendingTotal = allPending ? payoutUsdTotal(allPending, stripeBalance?.displayFx) : null;
+  // The one balance for all clients: the database's, with the factory's own
+  // Stripe money added when an owner's card has read it (or, if Stripe could
+  // not be read, what the server answered without it). It waits for the card
+  // while that is reading Stripe, so the figures never jump.
+  const stripeReading = !accountsError && (!cardSettled || stripeStatus === "loading" || stripeStatus === "slow");
+  // The server's full answer when it is the newer read; else the newer
+  // database read with that answer's Stripe part kept.
+  const figuresAsOf = (via, at) => (via && at >= databaseAt ? via : withStripePart(balanceFigures, via ?? null));
+  const allFigures = earningsShown && !stripeReading
+    ? stripeStatus === "ready" ? figuresAsOf(stripeBalance?.figures, stripeAt)
+      : stripeStatus === "failed" ? figuresAsOf(stripeFallback, stripeAt)
+      // Waits for the figures action's first answer, so the figures never jump.
+      : viaFigures === undefined && clearingPath.current ? null
+      : figuresAsOf(viaFigures ?? null, viaAt)
+    : null;
+  // A merge that cannot be trusted: ask the server again, at most twice
+  // until a merge can be (the clamp in withStripePart is what shows then).
+  const partStale = Boolean(allFigures?.stripe_part_stale);
+  const staleAsks = useRef(0);
+  useEffect(() => {
+    if (!partStale) { staleAsks.current = 0; return; }
+    if (staleAsks.current >= 2) return;
+    staleAsks.current += 1;
+    askStripeAgain();
+  }, [partStale, databaseAt, askStripeAgain]);
+  const shownFigures = client === "All clients" ? allFigures
+    : allFigures && clientFigures?.client === client ? clientFigures.figures : null;
+  // The figures wait with the rows, so they never jump.
+  const summary = summaryFrom(transactionsReady ? shownFigures : null);
+  // Where each payment's money is, for its row's word: the same read.
+  const placed = figuresByPayment(balanceFigures);
+  // What the server still counts of each payment, and what went back to the brand.
+  const perPayment = paymentFigureCents(balanceFigures);
   const earningsSummary = [
-    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
+    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval and withdrawals being processed."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
-    ["Pending", summary.pending, "Pending payments become available to withdraw after processing."],
+    ["Pending", summary.pending, "Payments still processing and money on hold."],
     ["Paid out", summary.paid, "Money that has been paid out to you"],
   ];
+  // The card's "$X pending" reads the Pending figure for all clients, whatever the filter.
+  const pendingTotal = allFigures ? Number(allFigures.pending_cents) || 0 : null;
+  // Old step-by-step payouts still being sent (changeover): "$X on its way" on the card.
+  const onItsWayCents = allFigures ? legacyOnItsWayCents(earnings, placed) : 0;
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
-  const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
+  // Withdrawals to the Stripe bank, from the company's own records, for
+  // owner and member alike (companyStripeRows). Stripe's answer adds only
+  // payouts made before those records existed (owner only).
+  const recorded = new Set(stripeWithdrawals.map((w) => w.payout_id));
+  // The server's list of withdrawals (all clients), with the company's own rows by id.
+  const serverList = (allFigures?.tsc ?? allFigures)?.withdrawals ?? balanceFigures?.withdrawals ?? null;
+  // The company's rows are its newest 200: a pool withdrawal the server lists
+  // as gone back and older than that is read by id, so a cancelled or
+  // declined one never reads "Failed".
+  const [olderPool, setOlderPool] = useState(() => new Map());
+  const olderAsked = useRef(new Set());
+  const poolById = new Map([...olderPool, ...(fromBalance.rows ?? []).map((w) => [w.id, w])]);
+  const olderMissing = fromBalance.available != null && fromBalance.rows ? missingPoolIds(serverList, poolById).filter((id) => !olderAsked.current.has(id)) : [];
+  const olderMissingKey = olderMissing.join(",");
+  useEffect(() => {
+    if (!olderMissingKey) return;
+    const ids = olderMissingKey.split(",");
+    ids.forEach((id) => olderAsked.current.add(id));
+    readByIds(ids, (batch) => supabase.from("factory_withdrawals").select("id, status, reason, back_cents").eq("org_id", org.id).in("id", batch), "load your withdrawals")
+      .then((found) => {
+        if (found.length) setOlderPool((was) => new Map([...was, ...found.map((w) => [w.id, w])]));
+      })
+      // Unread, it says "Failed" as before; asked again on the next change.
+      .catch(() => ids.forEach((id) => olderAsked.current.delete(id)));
+  }, [olderMissingKey, org.id]);
+  const stripeById = new Map(stripeWithdrawals.map((w) => [w.id, w]));
+  // Where a Stripe payout went, as the server recorded it for everyone ("To
+  // bank account ending in 0154."); older rows only an owner's Stripe read can name.
+  const stripeMethodName = (w) => {
+    if (w.destination_label) return [toDestination(w.destination_label), w.destination_bank].filter(Boolean).join(" · ");
+    const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
+    return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
+  };
+  const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
     if (client === "All clients") return [row];
     const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
       .reduce((sum, part) => sum + part.amount, 0);
     return amount > 0 ? [{ ...row, amount }] : [];
   });
   const transactions = [
-    ...visibleEarnings.map((row) => ({
+    // A step refunded or reversed since it was funded: only what is left,
+    // and no row of its own once nothing is (stepRowCents).
+    ...visibleEarnings.filter((row) => stepRowCents(row, perPayment) !== null).map((row) => ({
       id: `earning-${row.id}`,
       type: "earning",
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
@@ -343,23 +558,46 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       note: [
         // "Available Nov 19": when Stripe lets it be withdrawn.
         clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
+        owedClearingNote(row, placed) ? `${owedClearingNote(row, placed)}.` : null,
         // With a payout fee the amount is what the factory received, so the step is said here.
         payoutFee(row) > 0
           ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`
           : row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
-      status: earningStatus(row, clearing),
-      amount: factoryAmount(row),
+      status: earningStatus(row, clearing, placed),
+      amount: stepRowCents(row, perPayment),
       currency: row.currency,
-      available: earningPaid(row, clearing),
+      available: earningPaid(row, clearing, placed),
+      // Refunded to the brand: listed, struck through, in no figure.
+      failed: refundedEarning(row),
     })),
-    // A withdrawal is across clients, so it is listed under All clients only.
-    ...(client === "All clients" ? askedWithdrawalRows(fromBalance.rows) : []).map((row) => ({
-      ...row,
-      type: "withdrawal",
-      available: !row.failed,
-    })),
+    // A refund (or a lost dispute) after it was funded: a dated row of its
+    // own, below zero, for the factory's part; the step's row is unchanged.
+    ...refundRows(balanceFigures).filter((part) => visibleEarnings.some((row) => row.id === part.paymentId)).map((part) => {
+      const row = paymentById.get(part.paymentId);
+      return {
+        id: `refund-${part.paymentId}-${part.cause}`,
+        type: "earning",
+        date: part.at || row?.released_at || row?.confirmed_at || row?.created_at,
+        title: row?.order_milestones?.title || row?.order?.order_number || "Order payment",
+        meta: `${row?.order?.orgs?.name || "Brand"} · ${row?.order?.order_number || "Production order"}`,
+        note: null,
+        status: part.cause === "dispute_lost" ? DISPUTE_LOST : REFUNDED,
+        amount: part.amount,
+        currency: row?.currency ?? "USD",
+        available: true,
+        failed: false,
+      };
+    }),
+    // Withdrawals span clients, so they are listed under All clients only:
+    // from the server's own list (the card's lines read the same one), or
+    // from the company's rows where the server sends none.
+    ...(client !== "All clients" ? [] : serverList
+      ? serverWithdrawalRows(serverList, { pool: poolById, stripe: stripeById, methodName: stripeMethodName })
+      : [...askedWithdrawalRows(fromBalance.rows).map((row) => ({ ...row, type: "withdrawal", available: !row.failed })),
+        ...companyStripeRows(stripeWithdrawals, stripeMethodName)])
+      .map((row) => (row.arrives ? { ...row, meta: [row.meta, dateLabel(row.arrives)].filter(Boolean).join(" · ") } : row)),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,
       type: "withdrawal",
@@ -371,7 +609,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       date: row.created ? new Date(row.created * 1000).toISOString() : null,
       title: "Bank transfer",
       meta: [payoutDestination(row, stripeBalance), row.arrival_date ? stripeDateLabel(row.arrival_date) : null].filter(Boolean).join(" · "),
-      status: PAYOUT_STATUS[row.status] || row.status,
+      // Paid by Stripe once it leaves; at the bank only from its arrival day.
+      status: row.status === "paid" && row.arrival_date && row.arrival_date * 1000 > Date.now() ? ON_ITS_WAY : PAYOUT_STATUS[row.status] || row.status,
       // Why the bank did not take it; Stripe puts the money back in the balance.
       note: row.status === "failed" ? payoutFailureSentence("stripe", row.failure_code) : null,
       failed: row.status === "failed",
@@ -439,11 +678,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             : <StripePayoutCard
             org={org}
             isOwner={isOwner}
-            onBalanceChange={setStripeBalance}
+            onBalanceChange={balanceChanged}
+            rereadKey={rereadKey}
             onBalanceStatus={setStripeStatus}
             onAccountKnown={settleCard}
-            handFigures={earningsError ? { balance: null, pending: null, failed: true } : handPaidFigures(earnings)}
-            earnings={earnings}
+            figures={earningsError ? null : allFigures}
+            figuresFailed={Boolean(earningsError)}
             manualAccount={payouts.primary}
             manualAccounts={payouts.accounts ?? []}
             manualEditingId={payouts.editingId}
@@ -455,10 +695,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onSavePaypal={payouts.savePaypal}
             problem={withdrawalProblem(earnings, payouts.primary)}
             onDeleteManual={payouts.remove}
+            onMethodsChanged={payouts.load}
             manualBusy={payouts.busy}
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
             pendingTotal={pendingTotal}
+            onItsWayCents={onItsWayCents}
           />}
           <label className="payments-client-filter">
             <span>Filter by client</span>
@@ -472,7 +714,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             {earningsSummary.map(([label, amounts, help], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
                 <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
-                  : <span className="payment-currency-value">{formatMoney(payoutUsdTotal(amounts, stripeBalance?.displayFx), "USD")}</span>}</strong>
+                  : <span className="payment-currency-value">{formatMoney(amounts, "USD")}</span>}</strong>
                 <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
             ))}

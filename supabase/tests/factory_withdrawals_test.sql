@@ -68,14 +68,16 @@ create function pg_temp.act_as(who int) returns void language sql as $f$
 $f$;
 grant execute on function pg_temp.act_as(int) to authenticated, anon, service_role;
 
+-- The old pool, turned into owed steps as the migration does (20261121350000).
+select is(public.convert_withdrawal_pool(), 3, 'the three pool steps are converted');
 
-select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 300000::bigint, 'balance is the approved pool earnings');
+select is((public.owed_reachable('16b00000-0000-0000-0000-0000000000f1') ->> 'any_cents')::bigint, 300000::bigint, 'balance is the approved earnings');
 
 -- Nobody writes the table directly.
 select pg_temp.act_as(1); set local role authenticated;
 select throws_ok($$insert into public.factory_withdrawals (org_id, provider, amount_cents, paid_to) values ('16b00000-0000-0000-0000-0000000000f1', 'wise', 1, 'x')$$,
   '42501', null, 'owner cannot insert a withdrawal directly');
-select throws_ok($$select public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1')$$, '42501', null, 'the internal balance is not callable');
+select throws_ok($$select public.owed_reachable('16b00000-0000-0000-0000-0000000000f1')$$, '42501', null, 'the internal balance is not callable');
 
 -- Strangers and members.
 reset role; select pg_temp.act_as(3); set local role authenticated;
@@ -162,14 +164,14 @@ select is((public.record_withdrawal((select id from public.factory_withdrawals w
 select pg_temp.act_as(5);
 select lives_ok($$select public.claim_withdrawal((select id from public.factory_withdrawals where org_id='16b00000-0000-0000-0000-0000000000f1' and status='requested'))$$, 'staff claim again');
 select is((public.record_withdrawal((select id from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1' and status = 'paying'), 'paid', 'BATCH1', 0, 120000, 'USD')).status, 'paid', 'the server records it paid');
-select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 180000::bigint, 'the remainder stays');
+select is((public.owed_reachable('16b00000-0000-0000-0000-0000000000f1') ->> 'any_cents')::bigint, 180000::bigint, 'the remainder stays');
 select is((select state::text from public.order_payments where id = '16f00000-0000-0000-0000-000000000001'), 'released', 'the oldest step covered in full is released');
 select is((select state::text from public.order_payments where id = '16f00000-0000-0000-0000-000000000002'), 'confirmed', 'a step covered in part is not');
-select is((public.my_withdrawal_balance('16b00000-0000-0000-0000-0000000000f1')->'withdrawn'->>'16f00000-0000-0000-0000-000000000002')::bigint, 20000::bigint, 'the page reads the part withdrawals took from it');
+select is((select sum(amount_cents) from public.payment_takes where payment_id = '16f00000-0000-0000-0000-000000000002' and status = 'sent')::bigint, 20000::bigint, 'the part withdrawals took from it is its sent take');
 
--- The old per-step paths are closed for pool payments.
-select throws_ok($$select public.release_payment_to_factory('16f00000-0000-0000-0000-000000000002', 'REF 12345')$$, '22023', null, 'mark paid by bank refuses a pool payment');
-select throws_ok($$select public.claim_provider_payout('16f00000-0000-0000-0000-000000000002', 'paypal', '2026-11-01 00:00:00+00', false)$$, '22023', null, 'Pay with PayPal per step refuses a pool payment');
+-- The old per-step paths are closed for a step a withdrawal took part of.
+select throws_ok($$select public.release_payment_to_factory('16f00000-0000-0000-0000-000000000002', 'REF 12345')$$, '22023', null, 'mark paid by bank refuses a withdrawn step');
+select throws_ok($$select public.claim_provider_payout('16f00000-0000-0000-0000-000000000002', 'paypal', '2026-11-01 00:00:00+00', false)$$, '22023', null, 'Pay with PayPal per step refuses a withdrawn step');
 
 -- Declined: reason read by the factory, balance back.
 select pg_temp.act_as(1); set local role authenticated;
@@ -185,12 +187,15 @@ reset role; select pg_temp.act_as(4); set local role authenticated;
 select is((select count(*)::int from public.factory_withdrawals where org_id = '16b00000-0000-0000-0000-0000000000f1'), 0, 'the brand reads none of these');
 select throws_ok($$select public.admin_withdrawals()$$, '42501', null, 'the board is staff only');
 
--- Joining the pool on approval.
+-- Approval no longer joins the pool (20261120100000): the step is owed, in the
+-- one balance (factory_balance), and the pool keeps only what was already in it.
 reset role;
 update public.order_payments set release_requested_at = now() where id = '16f00000-0000-0000-0000-000000000004';
-select ok((select withdrawal_pool from public.order_payments where id = '16f00000-0000-0000-0000-000000000004'), 'an approved step joins the balance');
-select is(public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1'), 280000::bigint, 'and adds to it');
-select throws_ok($$update public.order_payments set withdrawal_pool = false where id = '16f00000-0000-0000-0000-000000000004'$$, '22023', null, 'it stays in the balance');
+select ok(not (select withdrawal_pool from public.order_payments where id = '16f00000-0000-0000-0000-000000000004'), 'an approved step stays owed, outside the pool');
+select is((public.owed_reachable('16b00000-0000-0000-0000-0000000000f1') ->> 'any_cents')::bigint, 280000::bigint, 'and joins the balance');
+select pg_temp.act_as(1); set local role authenticated;
+select is((public.factory_balance('16b00000-0000-0000-0000-0000000000f1') ->> 'available_cents')::bigint, 280000::bigint, 'the one balance holds the pool money and the owed step');
+reset role;
 
 -- A bank account staff would pay by hand (no Wise form) is no longer a way to
 -- withdraw (20261117500000): refused, whatever the amount.
@@ -223,10 +228,10 @@ select is((select fee_cents from public.factory_withdrawals where org_id = '16b0
 -- Moving to Stripe no longer waits for the balance (20261119300000): the
 -- balance stays, still withdrawn the way it was earned.
 savepoint p116_route;
-create temp table p116_before on commit drop as select public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1') as cents;
+create temp table p116_before on commit drop as select (public.owed_reachable('16b00000-0000-0000-0000-0000000000f1') ->> 'any_cents')::bigint as cents;
 select lives_ok($$insert into public.factory_payout_preferences (org_id, route) values ('16b00000-0000-0000-0000-0000000000f1', 'stripe')
   on conflict (org_id) do update set route = excluded.route$$, 'a switch to Stripe with a balance left is allowed');
-select ok((select cents from p116_before) > 0 and public.factory_withdrawable('16b00000-0000-0000-0000-0000000000f1') = (select cents from p116_before),
+select ok((select cents from p116_before) > 0 and (public.owed_reachable('16b00000-0000-0000-0000-0000000000f1') ->> 'any_cents')::bigint = (select cents from p116_before),
   'and the balance is still there to withdraw');
 rollback to savepoint p116_route;
 

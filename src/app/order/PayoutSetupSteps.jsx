@@ -24,6 +24,7 @@ const BANK_WORDS = {
   again: "Re-enter account number",
   numberMismatch: "The two account numbers don't match.",
   numberFormat: "Letters and digits only, 5 to 34 characters.",
+  ibanInvalid: "This IBAN isn't valid. Check each character.",
   numberStored: (last4) => `Ending ${last4}`,
   back: "Back",
   save: "Save",
@@ -54,6 +55,21 @@ function startingValues(row) {
   };
 }
 
+/**
+ * An IBAN's own check (ISO 13616, mod 97): a mistyped character is caught
+ * here, before it is saved, instead of when staff pay. It cannot tell whether
+ * the bank exists; Wise still checks that.
+ */
+export function validIban(value) {
+  const iban = normalBankNumber(value);
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
+  const digits = (iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, (letter) => String(letter.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const digit of digits) rest = (rest * 10 + Number(digit)) % 97;
+  return rest === 1;
+}
+const isIbanField = (field) => /iban/i.test(`${field?.key ?? ""} ${field?.label ?? ""}`);
+
 const fieldLabel = (field) => [field.label, inEnglish(field) && field.kind !== "select" ? "(English)" : null].filter(Boolean).join(" ");
 
 const withoutChinese = (text) => (typeof text === "string" ? text.replace(/\s*[\u3400-\u9fff].*$/u, "") : text);
@@ -79,7 +95,9 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
       else if (!form) onUnavailable?.();
     }
   };
-  useEffect(() => { load(); /* once, for this row */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // An edit asks for the saved recipient's own form (a business is asked for
+  // "Name of the business / organisation", as when it was added).
+  useEffect(() => { load(row?.wise_details?.legalType ? { legalType: row.wise_details.legalType } : undefined); /* once, for this row */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasStoredNumber = Boolean(row?.number_changed_at);
   const typed = normalBankNumber(number);
@@ -92,7 +110,8 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
   const fieldError = (field) => wiseFieldError(field, values[field.key]);
   const numberError = !typed
     ? hasStoredNumber ? null : REQUIRED
-    : !validBankNumber(typed) ? words.numberFormat : null;
+    : !validBankNumber(typed) ? words.numberFormat
+    : isIbanField(numberField) && !validIban(typed) ? words.ibanInvalid : null;
   const againError = (typed || numberAgain) && typed !== normalBankNumber(numberAgain) ? words.numberMismatch : null;
   const bankError = bankList || bankName.trim() ? null : REQUIRED;
   const anyError = !form || bankError || numberError || againError || otherFields.some(fieldError);
@@ -137,19 +156,19 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
         <div className="payout-form-stack">
           {bankList ? null : <label>
             <span>{words.bankName} *</span>
-            <input data-field="payout_bank_name" value={bankName} onBlur={leave("bank")} onChange={(event) => setBankName(event.target.value)} />
+            <input data-field="payout_bank_name" aria-label={words.bankName} value={bankName} onBlur={leave("bank")} onChange={(event) => setBankName(event.target.value)} />
             {shown("bank", bankError) ? <small className="live-stripe-error" role="alert">{say(bankError)}</small> : null}
           </label>}
           {otherFields.map((field) => (
             <label key={field.key}>
               <span>{say(fieldLabel(field))} *</span>
               {field.kind === "select" ? (
-                <select data-field={`wise_${field.key}`} value={values[field.key] ?? ""} onBlur={leave(field.key)} onChange={change(field)}>
+                <select data-field={`wise_${field.key}`} aria-label={say(field.label)} value={values[field.key] ?? ""} onBlur={leave(field.key)} onChange={change(field)}>
                   <option value="" />
                   {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               ) : (
-                <input data-field={`wise_${field.key}`} value={values[field.key] ?? ""} maxLength={field.maxLength}
+                <input data-field={`wise_${field.key}`} aria-label={say(field.label)} value={values[field.key] ?? ""} maxLength={field.maxLength}
                        placeholder={field.example ?? ""}
                        onBlur={leave(field.key)} onChange={change(field)} />
               )}
@@ -158,14 +177,14 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
           ))}
           <label>
             <span>{numberField ? say(fieldLabel(numberField)) : ""} {hasStoredNumber ? "" : "*"}</span>
-            <input data-field="payout_account_number" autoComplete="off" spellCheck={false} value={number}
+            <input data-field="payout_account_number" aria-label={numberField ? say(numberField.label) : "Account number"} autoComplete="off" spellCheck={false} value={number}
                    placeholder={hasStoredNumber ? words.numberStored(row.account_number_last4) : numberField?.example ?? ""}
                    onBlur={leave("number")} onChange={(event) => setNumber(event.target.value)} />
             {shown("number", numberError) ? <small className="live-stripe-error" role="alert">{say(numberError)}</small> : null}
           </label>
           <label>
             <span>{numberField ? reEnter(say(numberField.label)) : words.again} {hasStoredNumber && !typed ? "" : "*"}</span>
-            <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={numberAgain}
+            <input data-field="payout_account_number_again" aria-label={numberField ? reEnter(say(numberField.label)) : words.again} autoComplete="off" spellCheck={false} value={numberAgain}
                    onBlur={leave("again")} onChange={(event) => setNumberAgain(event.target.value)} />
             {shown("again", againError) ? <small className="live-stripe-error" role="alert">{againError}</small> : null}
           </label>
@@ -214,12 +233,12 @@ export function PaypalStep({ row, country, form, busy, onField, savePaypal, onBa
       <div className="payout-form-stack">
         <label>
           <span>{words.email} *</span>
-          <input type="email" autoComplete="off" data-field="payout_paypal_email" value={form.paypal_email} onBlur={() => setLeft(true)} onChange={onField("paypal_email")} />
+          <input type="email" autoComplete="off" data-field="payout_paypal_email" aria-label={PAYPAL_WORDS.email} value={form.paypal_email} onBlur={() => setLeft(true)} onChange={onField("paypal_email")} />
           {(left || pressed) && invalid ? <small className="live-stripe-error" role="alert">{words.invalid}</small> : null}
         </label>
         <label>
           <span>{words.again} *</span>
-          <input type="email" autoComplete="off" data-field="payout_paypal_email_confirm" value={form.paypal_email_confirm} onChange={onField("paypal_email_confirm")} />
+          <input type="email" autoComplete="off" data-field="payout_paypal_email_confirm" aria-label={PAYPAL_WORDS.again} value={form.paypal_email_confirm} onChange={onField("paypal_email_confirm")} />
           {pressed && mismatch ? <small className="live-stripe-error" role="alert">{words.mismatch}</small> : null}
         </label>
       </div>

@@ -65,6 +65,8 @@ const ZH_SAMPLES = [
   { kind: "verification_reopened", title: "Your registration number changed: TSC will verify it again", body: "" },
   { kind: "order_completed", title: "TSC-1042 is complete", body: "Every step on this order is done." },
   { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; TSC holds it until the step is done.' },
+  { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card; the step amount is added to the factory\'s balance once funded.' },
+  { kind: "payment_due", title: "$1,284.00 is due on TSC-1042", body: '"Deposit". Fund it by card. Once you pay, $1,200.00 goes to the factory\'s balance.' },
   { kind: "schedule_agreed", title: "The factory agreed the production steps on TSC-1042", body: "Confirm them and the order starts." },
   { kind: "schedule_updated", title: "The brand changed the production steps on TSC-1042", body: "Nothing starts until the brand confirms them. If something does not work for you, message the brand." },
   { kind: "schedule_updated", title: "The brand updated milestones on TSC-1042", body: "Review the updated production steps, payment amounts, and due dates." },
@@ -73,6 +75,8 @@ const ZH_SAMPLES = [
   { kind: "message_rejected", title: "Your message to Maison Rue about TSC-1042 was not delivered", body: "It contained a phone number.", typed: true },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. TSC will send you $1,200.00. Their note: Great work" },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. TSC will send you $1,200.00 once you add a withdrawal method." },
+  { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. $1,200.00 added to your balance." },
+  { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step. $1,200.00 added to your balance. Add a withdrawal method to receive earnings. Their note: Great work" },
   { kind: "milestone_approved", title: '"Fit sample" was approved', body: "You can carry on to the next step." },
   { kind: "milestone_submitted", title: '"Fit sample" is ready for you', body: "The factory has sent this step for your approval." },
   { kind: "milestone_dispute", title: 'Dispute opened on "Fit sample"', body: "Wrong colour", typed: true },
@@ -104,9 +108,27 @@ const ZH_SAMPLES = [
   { kind: "payment_confirmed", title: "Payment confirmed on TSC-1042", body: '$1,200.00 has arrived for "Deposit". You can start this work.' },
   { kind: "payment_confirmed", title: "Your payment on TSC-1042 was confirmed", body: "$1,284.00 received. The factory has been told to begin." },
   { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "TSC received $1,200.00 on TSC-1042 and will send it to you once you add a withdrawal method." },
+  { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance." },
+  { kind: "payment_confirmed", title: "$1,200.00 added to your balance", body: "$1,200.00 added to your balance. Add a withdrawal method to receive earnings." },
+  { kind: "payment_disputed", title: 'Payment for "Deposit" on hold', body: "The brand disputed the charge. $1,200.00 is held until the dispute is settled." },
+  { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is back in your balance." },
+  { kind: "payment_disputed", title: 'Hold lifted on "Deposit"', body: "The dispute is settled. $1,200.00 is no longer on hold." },
+  { kind: "withdrawal", title: "Withdrawal of $10.00 requested", body: "To bank account ending in 6789." },
+  { kind: "withdrawal", title: "Withdrawal of $45.00 on hold", body: 'The brand\'s payment for "Fit sample" was refunded. Cancel this withdrawal and withdraw again.' },
+  { kind: "withdrawal", title: "Withdrawal of $45.00 cancelled", body: "$20.00 is back in your balance." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal pay@example.com was added as a withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "The details of Bank account ending in 0148 were changed. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "milestone_approved", title: '"Fit sample" was approved', body: "The brand approved this step." },
+  { kind: "payment_confirmed", title: 'Payment held for "Deposit"', body: "$1,200.00 added to your balance. Add a withdrawal method to receive earnings." },
   { kind: "payment_confirmed", title: 'Payment held for "Fit sample"', body: "TSC holds $1,200.00 for this step on TSC-1042. You can start this work; it is paid to you when the brand approves it." },
+  { kind: "payment_confirmed", title: 'Payment held for "Fit sample"', body: "TSC holds $1,200.00 for this step on TSC-1042. You can start this work; it is added to your balance when the brand approves it." },
   { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. TSC will pay the factory." },
   { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and pays the factory when you approve this step." },
+  { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. The step amount is added to the factory's balance." },
+  { kind: "payment_confirmed", title: 'Your payment for "Deposit" is funded', body: "$1,284.00 received on TSC-1042. We add $1,200.00 to the factory's balance." },
+  { kind: "payment_confirmed", title: 'Your payment for "Fit sample" is funded', body: "$1,284.00 received on TSC-1042. TSC holds it and adds it to the factory's balance when you approve this step." },
+  { kind: "payment_confirmed", title: "$1,200.00 added to your balance", body: '$1,200.00 added to your balance for "Deposit" on TSC-1042. Add a withdrawal method to receive earnings.' },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your connected payout account is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "payment_failed", title: 'Your payment for "Deposit" did not go through', body: "Your card was declined. Pay again from the step's payment page on TSC-1042." },
   { kind: "payment_failed", title: 'The payment for "Deposit" did not go through', body: "Nothing is held for this step on TSC-1042 yet. The brand has been asked to pay again." },
   { kind: "payment_processing", title: 'A payment for "Deposit" is on its way', body: "$1,200.00 on TSC-1042. It is still being confirmed. We will tell you when TSC holds it; please do not start this work yet." },
@@ -122,10 +144,59 @@ const ZH_SAMPLES = [
   { kind: "funds_released", title: "$1,200.00 paid out to your bank", body: "Withdrawn from your balance." },
   { kind: "payout_method_changed", title: "A payment to you did not go through", body: "Your payment of $250.00 did not go through. Your bank returned the payment. Check your bank details: TSC pays again once they are right." },
   { kind: "payout_method_changed", title: "A withdrawal did not go through", body: "Your withdrawal of EUR 99.10 did not go through. The account number is wrong. Check your bank details, then withdraw again. The money is back in your balance." },
+  { kind: "payout_method_changed", title: "A withdrawal did not go through", body: "Your withdrawal of EUR 58.59 did not reach your bank after all. The account number is wrong. Check your bank details, then withdraw again. The money is back in your balance." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by Payoneer against TSC-1042. Payoneer payment ID 88412." },
   { kind: "funds_released", title: "$1,200.00 released to you", body: "Sent by bank transfer against TSC-1042. TSC's note: Ref. 7781" },
   { kind: "funds_released", title: "$65.00 paid out to you", body: "Sent to Ningbo Test Bank ending 1234. Payout fee $9.54 is taken from this payment: you receive CNY 369.72." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 requested", body: "To a@b.com. TSC will send it after checking." },
+  // Refunds and lost disputes recorded at their amount (20261121200000).
+  { kind: "payment_refunded", title: "Your payment for \"Bulk deposit\" was refunded", body: "$50.00 was refunded to your card." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36." },
+  { kind: "payment_refunded", title: "Payment for \"Trims\" reversed", body: "TSC no longer holds money for this step on Spring jackets (TSC-000016). The brand has been asked to pay again; we will tell you when it is held." },
+  { kind: "payment_refunded", title: "Your bank reversed your payment for \"Bulk deposit\"", body: "$992.08 went back to your card. Pay again from the step's payment page on Spring jackets (TSC-000016)." },
+  { kind: "withdrawal", title: "Withdrawal of $250.00 on hold", body: "The brand's bank reversed the payment for \"Bulk deposit\". Cancel this withdrawal and withdraw again." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00. A payment was refunded after you withdrew it." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00. Money was returned to the brand after you withdrew it." },
+  { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "Your $30.00 refund didn't go through. That amount stays on this order." },
+  { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "The refund to the brand didn't go through. Your earnings from Spring jackets (TSC-000015) went back up by $28.04." },
+  { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "Your $107.00 refund didn't go through, so TSC still holds your payment for this step. You don't need to pay again." },
+  { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "Your $570.00 refund didn't go through. TSC will send it again." },
+  // Round 22 words.
+  { kind: "withdrawal", title: "Withdrawal of $45.00 cancelled", body: "This amount was returned to the brand." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for a payment the brand's bank reversed after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
+  { kind: "withdrawal", title: "Withdrawal of $100.00 on hold", body: "You owe TSC $500.00 for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of this payment, so you now owe TSC $535.00." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of this payment, so you now owe TSC $40.00." },
+  // Round 27: a default bank cleared but kept; no space after "）" in any bank sentence.
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is no longer your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank is no longer your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 was saved. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 replaced a withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  // Round 26.
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn $535.00 of that, so you now owe TSC $535.00." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn $40.00 of that, so you now owe TSC $40.00." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 was removed. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank was removed. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at R26 Bank is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  // Round 25.
+  { kind: "funds_released", title: "$588.23 paid out to you", body: "Sent to a@b.com. Payout fee $11.77 is taken from this payment: you receive $588.23. You now owe TSC $335.03, the part returned to the brand after it was sent." },
+  { kind: "withdrawal", title: "Withdrawal of $500.00 did not go through", body: "This amount was returned to the brand." },
+  { kind: "withdrawal", title: "Withdrawal of $500.00 did not go through", body: "$65.00 is back in your balance. Check your withdrawal method, then withdraw again." },
+  // Round 24.
+  { kind: "withdrawal", title: "Withdrawal of $600.00 being checked", body: "$535.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal." },
+  { kind: "payment_refunded", title: "Your payment for \"Fit sample\" was refunded", body: "The payment was refunded. Pay again from the step's payment page on TSC-1042." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  // Round 23.
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" reversed", body: "The brand's bank reversed the payment. Your earnings from Spring jackets (TSC-000015) went down by $900.00. You'd already withdrawn that money, so you now owe TSC $535.00." },
+  { kind: "payment_refunded", title: "Payment for \"Bulk deposit\" refunded", body: "The brand was refunded $50.00. Your earnings from Spring jackets (TSC-000015) went down by $45.36. You'd already withdrawn that money, so you now owe TSC $40.00." },
+  { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "Your $30.00 refund didn't go through. That amount stays on this order." },
+  { kind: "payment_refunded", title: "Refund for \"Bulk deposit\" didn't go through", body: "The refund to the brand didn't go through. Your earnings from Spring jackets (TSC-000015) went back up by $28.04." },
+  { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "Your $570.00 refund didn't go through, so TSC still holds your payment for this step. You don't need to pay again." },
+  { kind: "payment_refunded", title: "Refund for \"Fit sample\" didn't go through", body: "Your $107.00 refund didn't go through. TSC will send it again." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "PayPal account a@b.com is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
+  { kind: "payout_method_changed", title: "Your payout methods changed", body: "Your bank account at Bank of China ending 4821 is now your default withdrawal method. If nobody at your company made this change, email operations@contact.sourcing-club.com now." },
   { kind: "withdrawal", title: "Withdrawal of $40.00 cancelled", body: "The amount is back in your balance." },
   { kind: "withdrawal", title: "Withdrawal of $25.00 declined", body: "The amount is back in your balance. TSC's reason: Please confirm your PayPal address first." },
   { kind: "withdrawal", title: "Withdrawal of $25.00 did not go through", body: "The amount is back in your balance. Check your withdrawal method, then withdraw again." },
@@ -260,6 +331,21 @@ async function formatters() {
     const email = await load("/scripts/generate-notification-email.mjs");
     const { ZH_TITLE_KINDS } = await load("/src/shared/notification-zh.mjs");
 
+    // The activity line for a funded deposit (payment-only step): added to the
+    // balance, never "held by TSC"; a paid step stays held until approved.
+    {
+      const { activityLines } = await load("/src/app/order/order-view.js");
+      const order = { brand_org_id: "b", factory_org_id: "f", currency: "USD", brand: { name: "Brand" }, factory: { name: "Factory" } };
+      const rows = [{ kind: "payment_confirmed", milestone_title: "Bulk deposit", detail: "90000", at: new Date().toISOString() },
+        { kind: "payment_confirmed", milestone_title: "Fit sample", detail: "6500", at: new Date().toISOString() }];
+      const paymentOnlySteps = new Set(["Bulk deposit"]);
+      const brandLines = activityLines(rows, { order, viewerOrgId: "b", paymentOnlySteps }).map((line) => line.split(" · ")[0]);
+      const factoryLines = activityLines(rows, { order, viewerOrgId: "f", paymentOnlySteps }).map((line) => line.split(" · ")[0]);
+      expect("deposit funded, brand", brandLines[0], "$900.00 funded for Bulk deposit, added to the factory's balance");
+      expect("deposit funded, factory", factoryLines[0], "$900.00 funded for Bulk deposit, added to your balance");
+      expect("paid step funded", brandLines[1], "$65.00 funded for Fit sample, held by TSC");
+    }
+
     const calendar = dateFrom("2026-10-26");
     expect("dateFrom day", [calendar.getFullYear(), calendar.getMonth(), calendar.getDate()].join("-"), "2026-9-26");
     // An instant stays an instant: 03:00 UTC is still the 25th in New York.
@@ -281,6 +367,35 @@ async function formatters() {
       payments: [{ id: "p", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "Deposit", sort: 1, due_on: "2026-10-26" } }],
     });
     expect("brand payments: due row", payments.rows?.[0]?.date, "Oct 26, 2026");
+    // Round 36: main's words and split. TSC holds approved money (and a
+    // funded deposit) until the factory withdraws it, so it is Held; Paid is
+    // what was paid out. A funded deposit reads Funded.
+    const oneBalance = brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
+      payments: [
+        { id: "dep", order_id: "o", state: "confirmed", amount_cents: 100000, charged_cents: 110000, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-20T10:00:00Z", order_milestones: { title: "Bulk deposit", kind: "payment_only" } },
+        { id: "ok", order_id: "o", state: "confirmed", amount_cents: 6500, charged_cents: 7000, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", release_requested_at: "2026-11-20T11:00:00Z", order_milestones: { title: "Fit sample", kind: "approval_and_payment" } },
+        { id: "wait", order_id: "o", state: "confirmed", amount_cents: 5000, charged_cents: 5400, currency: "USD", confirmed_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Lab dip", kind: "approval_and_payment" } },
+        { id: "out", order_id: "o", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
+      ],
+    });
+    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Approved,out:Paid,wait:Funded");
+    expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
+    expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");
+    // Refunds (20261121200000): a partial one nets the figure; a full one
+    // after it was the factory's reads Refunded, a lost dispute Reversed by your bank.
+    const refunds = brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-9", factory: { name: "F" } }],
+      payments: [
+        { id: "part", order_id: "o", state: "confirmed", amount_cents: 10000, charged_cents: 10700, refunded_cents: 5350, dispute_lost_cents: 0, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", order_milestones: { title: "Fit", kind: "approval_and_payment" } },
+        { id: "full", order_id: "o", state: "confirmed", amount_cents: 20000, charged_cents: 21400, refunded_cents: 21400, dispute_lost_cents: 0, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", release_requested_at: "2026-11-19T10:00:00Z", order_milestones: { title: "Deposit", kind: "payment_only" } },
+        { id: "lost", order_id: "o", state: "released", amount_cents: 5000, charged_cents: 5350, refunded_cents: 0, dispute_lost_cents: 5350, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
+      ],
+    });
+    expect("brand payments: refunds", refunds.rows.map((row) => `${row.id}:${row.status}:${row.amount}`).sort().join(","),
+      "full:Refunded:$0.00,lost:Reversed by your bank:$0.00,part:Funded:$53.50");
+    expect("brand payments: Held, net", refunds.metrics.find(([name]) => name === "Held")?.[1], "$53.50");
+    expect("brand payments: Paid, net", refunds.metrics.find(([name]) => name === "Paid")?.[1], "$0.00");
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",
@@ -370,6 +485,7 @@ async function formatters() {
       const body = notificationBody(sample, options);
       if (!cjk.test(title)) failures.push(`zh title left in English: ${sample.title}`);
       if (sample.body && !sample.typed && !cjk.test(body)) failures.push(`zh body left in English: ${sample.body}`);
+      if (/）\s/.test(body)) failures.push(`zh body has a space after "）": ${body}`);
       if (sample.typed && !sample.data?.message_text && !body.startsWith(sample.body)) failures.push(`zh typed body changed: ${sample.body} → ${body}`);
       expect(`zh email title: ${sample.kind}`, email.notificationTitle(sample, options), title);
       expect(`zh email body: ${sample.kind}`, email.notificationBody(sample, options), body);

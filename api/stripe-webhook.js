@@ -1,4 +1,4 @@
-import { applyChargeRefund, applyPaymentIntent, applyRefundUpdate, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyChargeUpdated, applyDisputeEvent, applyPaymentIntent, applyRefundUpdate, ensureFundsAvailable, rawBody, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
 import { tellExternalAccountEvent } from "./_stripe-payouts.js";
@@ -41,6 +41,9 @@ import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-c
 // The database's "no such row" (P0002) and "not an id" (22P02, a payment_id
 // in metadata that is not a uuid): retrying cannot fix either.
 const ORPHANED = new Set(["P0002", "22P02"]);
+/** A withdrawal may make several Stripe calls in a row (claim, transfers, fee, payout): room for all of them. */
+export const config = { maxDuration: 60 };
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
 
@@ -97,28 +100,66 @@ export default async function handler(request, response) {
         try {
           const payment = await applyPaymentIntent({ stripe, db, intent });
           if (!payment) console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id);
+          // When the brand's money clears decides Available or Pending.
+          // applyPaymentIntent already waited a few seconds for Stripe's
+          // balance transaction; if there is still no date (or recording it
+          // failed), this delivery fails so Stripe sends it again. The
+          // payment itself is recorded either way.
+          else if (event.type === "payment_intent.succeeded") {
+            const at = await ensureFundsAvailable({ stripe, db, paymentId: payment.id });
+            if (!at && ["confirmed", "released"].includes(payment.state) && payment.stripe_charge_id) {
+              throw new Error("the charge has no clearing date from Stripe yet");
+            }
+          }
         } catch (failure) {
           if (!ORPHANED.has(failure.code)) throw failure;
           console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id, failure.code);
         }
         break;
       }
+      case "charge.updated": {
+        // Stripe adds the balance transaction a few seconds after the charge:
+        // its clearing date is recorded here if nothing recorded it yet.
+        await applyChargeUpdated({ stripe, db, charge: event.data.object });
+        break;
+      }
       case "charge.refunded": {
         // A refund made in Stripe (staff by hand, a dispute, or our own of a
         // stray intent). Another app's charge matches no payment and is left.
-        const payment = await applyChargeRefund({ stripe, db, charge: event.data.object });
+        // Read back from Stripe, never from the event: two refunds' events
+        // can arrive in either order, and the charge as it is now decides.
+        const charge = await stripe.charges.retrieve(event.data.object.id);
+        const payment = await applyChargeRefund({ stripe, db, charge });
         if (payment) break;
         // Not an order payment: a refunded credit pack takes its credits back.
-        const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
+        const purchase = await applyCreditPurchaseRefund({ db, charge });
         if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
+        break;
+      }
+      case "charge.dispute.created":
+      case "charge.dispute.closed": {
+        // A disputed charge's step is never withdrawn while the dispute is
+        // open; one TSC lost is recorded as a refund of the disputed amount
+        // (its money went back to the brand). Read back
+        // from Stripe, never from the event: "closed" can arrive before
+        // "created", and the dispute as it is now decides.
+        const dispute = await stripe.disputes.retrieve(event.data.object.id);
+        // Found by its charge, else its PaymentIntent; an order payment not
+        // recorded yet throws, so Stripe sends the event again. A won or
+        // closed inquiry lifts the hold only if it is the charge's newest
+        // dispute: a chargeback opened after an inquiry keeps its hold.
+        // Lost: the disputed amount went back to the brand, as a refund
+        // (record_payment_dispute_lost); the hold ends and everyone is told.
+        await applyDisputeEvent({ stripe, db, dispute });
         break;
       }
       case "refund.updated":
       case "refund.failed":
       case "charge.refund.updated": {
-        // Our refund of a cancelled order's held money, failed after Stripe
-        // accepted it: the money is held again and staff see why.
-        await applyRefundUpdate({ db, refund: event.data.object });
+        // A refund that failed after Stripe accepted it: our refund of a
+        // cancelled order's held money is held again and staff see why; any
+        // other is read back from its charge (the smaller total).
+        await applyRefundUpdate({ stripe, db, refund: event.data.object });
         break;
       }
       case "account.external_account.created":
@@ -171,7 +212,6 @@ export default async function handler(request, response) {
               await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
             }
           }
-          if (saved?.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
         }
         break;
       }

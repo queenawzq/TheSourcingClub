@@ -49,7 +49,7 @@ assert.deepEqual(withdrawalFee({ provider: "wise", amountCents: 10_000 }), { fee
 // The staff-paid bank wire ("Mark paid out by bank", the fallback for a Wise
 // bank account): a fixed US$50, the same figure as the database's.
 assert.deepEqual(withdrawalFee({ provider: "bank", amountCents: 10_000 }), { feeCents: 5000, receivesCents: 5_000, basis: "formula" });
-assert.match(withdrawalFee({ provider: "bank", amountCents: 5000 }).refused, /too small: the fee to send it is US\$50\.00/);
+assert.match(withdrawalFee({ provider: "bank", amountCents: 5000 }).refused, /too small to send\. The fee is US\$50\.00/);
 {
   const { readFileSync, readdirSync } = await import("node:fs");
   const file = readdirSync("supabase/migrations").filter((name) => readFileSync(`supabase/migrations/${name}`, "utf8").includes("function public.bank_payout_fee_cents()")).sort().at(-1);
@@ -86,8 +86,8 @@ assert.deepEqual(stripeWithdrawalFee({ amountMinor: 100_000, currency: "usd", co
 // £758.36 is US$1,000.00 (rounded up), so the fee is the DE/GB US$7.70, about £5.84.
 assert.deepEqual(stripeWithdrawalFee({ amountMinor: 75_836, currency: "gbp", country: "GB", localPerUsd: 0.758366 }), { feeCents: 770, usdCents: 100_000, feeLocalEstimate: 584 });
 // At or under the fee: refused with the module's sentence, in the balance's currency.
-assert.match(stripeWithdrawalFee({ amountMinor: 26, currency: "usd", country: "US" }).refused, /^This payment of US\$0\.26 is too small: the fee to send it is US\$0\.26, so nothing would arrive\. Nothing was sent\.$/);
+assert.match(stripeWithdrawalFee({ amountMinor: 26, currency: "usd", country: "US" }).refused, /^This payment of US\$0\.26 is too small to send\. The fee is US\$0\.26\.$/);
 assert.equal(stripeWithdrawalFee({ amountMinor: 27, currency: "usd", country: "US" }).feeCents, 26);
-assert.match(stripeWithdrawalFee({ amountMinor: 20, currency: "gbp", country: "GB", localPerUsd: 0.758366 }).refused, /^This payment of GBP 0\.20 is too small: the fee to send it is GBP 0\.20/);
+assert.match(stripeWithdrawalFee({ amountMinor: 20, currency: "gbp", country: "GB", localPerUsd: 0.758366 }).refused, /^This payment of GBP 0\.20 is too small to send\. The fee is GBP 0\.20/);
 assert.match(stripeWithdrawalFee({ amountMinor: 0, currency: "usd" }).refused, /more than zero/);
 console.log("withdrawal fees: all checks passed");

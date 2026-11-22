@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(166);
+select plan(170);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -242,7 +242,7 @@ set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select throws_ok(
   $$select public.approve_milestone(pg_temp.p18_step('order_a', 'Fit sample'), null)$$,
-  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  '22023', 'Fund "Fit sample" before you approve it. When you approve, the payment goes to the factory''s balance.',
   'the brand cannot approve a paid step before it is funded');
 reset role;
 
@@ -460,13 +460,30 @@ select is(
   (select count(*)::integer from public.admin_payment_board() b
     -- A payment in a factory's withdrawal balance is not owed by staff: the
     -- factory withdraws it (20261116200000), and the board leaves it out too.
+    -- Owed money in a factory's balance waits on the factory too (20261120100000):
+    -- only a payout under way or failed is staff's.
     where not exists (select 1 from public.order_payments p where p.id = b.payment_id and p.withdrawal_pool)
-      and ((b.state = 'confirmed' and b.release_requested_at is not null)
-       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null))),
-  'the overview counts every payment waiting on staff, payouts owed included');
+      and ((b.state = 'confirmed' and b.release_requested_at is not null
+            and (b.stripe_release_started or b.provider_status in ('processing', 'failed')))
+       or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)))
+  -- Also staff's (20261120210000): withdrawals waiting to be approved or paid,
+  -- and the Needs checking rows (disputed owed steps, stuck Stripe withdrawals,
+  -- and money to recover after a refund, 20261121200000).
+  -- Counted from the same sources, so the identity holds whatever else the
+  -- shared stack holds.
+  + (select count(*)::integer from public.factory_withdrawals w where w.status in ('requested', 'paying'))
+  + jsonb_array_length(public.admin_balance_attention() -> 'disputed') + jsonb_array_length(public.admin_balance_attention() -> 'stuck')
+  + jsonb_array_length(public.admin_balance_attention() -> 'recover'),
+  'the overview counts every payment waiting on staff, and not money owed in a balance');
+-- And for this file's fixtures alone: the owed Balance step adds nothing.
+select ok(not exists (select 1 from jsonb_array_elements(public.admin_balance_attention() -> 'disputed') d
+                       where (d ->> 'payment_id')::uuid = pg_temp.p18_pay('order_a', 'Balance')),
+  'money owed in a balance is not on Needs checking either');
 select ok(
-  (select payments_awaiting_confirmation from public.admin_overview_metrics()) >= 1,
-  'which here includes the payout owed');
+  exists (select 1 from public.admin_payment_board() b
+           where b.payment_id = pg_temp.p18_pay('order_a', 'Balance') and b.state = 'confirmed' and b.release_requested_at is not null
+             and not b.stripe_release_started and b.provider_status is null),
+  'the owed payout is still on the board for staff to read, but is not counted as theirs');
 reset role;
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active)
@@ -495,6 +512,13 @@ reset role;
 -- Order A's balance is held and owed to the factory (funding it asked for
 -- its payout), which is exactly what the server claims before a transfer.
 
+-- F1 (20261120110000): an owed step nobody started cannot be claimed for a
+-- Stripe transfer on its own; only a release an earlier version started is
+-- settled (round 36: the never-set tsc.withdrawal_claim no longer opens it).
+select is(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')), null::timestamptz, 'outside a withdrawal: an owed, unstarted step cannot be claimed for a Stripe transfer');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')), 'outside a withdrawal: and it stays unclaimed');
+-- What follows is a started release being settled.
+update public.order_payments set stripe_release_started = true where id = pg_temp.p18_pay('order_a', 'Balance');
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is not null,
   'the first caller claims the payout');
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is null,
@@ -570,12 +594,12 @@ select is((select trust_tier::text from public.factory_profiles where org_id = '
 
 select ok(not has_function_privilege('authenticated', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute'),
   'a signed-in user cannot record a PaymentIntent as paid');
-select ok(not has_function_privilege('anon', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+select ok(not has_function_privilege('anon', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'a signed-out visitor cannot record a refund');
-select ok(not has_function_privilege('authenticated', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+select ok(not has_function_privilege('authenticated', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'nor can a signed-in user');
 select ok(has_function_privilege('service_role', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute')
-      and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+      and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'server code with the service key can do both');
 
 -- Order D: the brand opens the Fund page at $551.29, then raises the step to
@@ -680,7 +704,9 @@ select lives_ok($$select public.approve_milestone(pg_temp.p18_step('order_d', 'F
   'and approves the step');
 reset role;
 
--- Stripe can no longer pay this factory, so a person does (20261108710000).
+-- Stripe can no longer pay this factory, so a person does (20261108710000),
+-- once the charge has cleared, as for a withdrawal (20261121340000).
+update public.order_payments set funds_available_at = now() - interval '1 day' where id = pg_temp.p18_pay('order_d', 'Fit sample');
 update public.stripe_connect_accounts set transfers_active = false
  where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
 
@@ -713,6 +739,16 @@ reset role;
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select public.confirm_payment_received(pg_temp.p18_pay('order_d', 'Balance'), null, null);
+-- ...but not while the factory owes TSC the refunded Fit sample it was paid
+-- (20261121340000: the withdrawal rules hold for per-step payouts too).
+select throws_ok(
+  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
+  '22023', 'the factory owes TSC $550.00', 'a bank-wire payment waits while the factory owes TSC');
+reset role;
+-- Once that is recovered (staff record it), the bank wire is paid out by staff.
+update public.order_payments set refunded_cents = 0, refunded_at = null where id = pg_temp.p18_pay('order_d', 'Fit sample');
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
 select lives_ok(
   $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
   'a bank-wire payment is still paid out by staff');
@@ -747,7 +783,7 @@ select is(
 select is(
   (select n.body from public.notifications n
     where n.kind = 'milestone_approved' and n.subject_id = pg_temp.p18_step('order_a', 'Fit sample')),
-  'The brand approved this step. TSC will send you $500.00 once you add a withdrawal method. Their note: Lovely fit.',
+  'The brand approved this step. $500.00 added to your balance. Add a withdrawal method to receive earnings. Their note: Lovely fit.',
   'an approval says the amount, what to do and the note');
 
 -- ===========================================================================

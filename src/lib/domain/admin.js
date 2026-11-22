@@ -5,6 +5,7 @@
  * which is security definer and already gated on is_platform_admin() — this
  * module only finds the queue and calls it.
  */
+import { countedQueue } from "../../shared/payments-board-sections.mjs";
 import { supabase, unwrap } from "../supabase.js";
 import { readByIds, readEveryPage } from "../read-pages.js";
 import { getColourSplits, getRfq } from "./rfq.js";
@@ -449,6 +450,7 @@ export async function overviewMetrics() {
     "load the marketplace overview",
   );
   const row = rows?.[0] ?? {};
+  const paymentsHref = await paymentsQueueHref();
 
   return {
     profilesAwaitingReview: row.profiles_awaiting_review ?? 0,
@@ -457,8 +459,39 @@ export async function overviewMetrics() {
     quotesSubmittedToday: row.quotes_submitted_today ?? 0,
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
     // The payments board is the app's, not the console's.
-    paymentsHref: "/app.html/admin/payments",
+    paymentsHref,
   };
+}
+
+/**
+ * paymentsQueueHref(): where "Payments owed" opens, the board's tab that holds
+ * what it counts, by the board's own rule (countedQueue,
+ * src/shared/payments-board-sections.mjs): Payout owed, else Failed, else
+ * Processing, else Withdrawals (waiting or being paid), else Needs checking.
+ * Never throws: the plain board is the fallback.
+ */
+export async function paymentsQueueHref() {
+  const board = "/app.html/admin/payments";
+  try {
+    const [rows, tried, asked, attention] = await Promise.all([
+      supabase.rpc("admin_payment_board"),
+      supabase.rpc("admin_provider_attempts"),
+      supabase.rpc("admin_withdrawals"),
+      supabase.rpc("admin_balance_attention"),
+    ]);
+    if (rows.error || tried.error || asked.error || attention.error) return board;
+    const attempts = new Map((tried.data ?? []).map((attempt) => [attempt.payment_id, attempt]));
+    const pool = new Set(asked.data?.pool_payment_ids ?? []);
+    const queue = countedQueue(rows.data ?? [], attempts, pool);
+    if (queue === "payout") return board;
+    if (queue === "failed") return `${board}?tab=failed`;
+    if (queue === "clearing") return `${board}?tab=processing`;
+    if ((asked.data?.withdrawals ?? []).some((w) => ["requested", "paying"].includes(w.status))) return `${board}?tab=withdrawals`;
+    if ((attention.data?.disputed?.length ?? 0) + (attention.data?.stuck?.length ?? 0) > 0) return `${board}?tab=needs_checking`;
+    return board;
+  } catch {
+    return board;
+  }
 }
 
 async function adminUserRequest(options = {}) {

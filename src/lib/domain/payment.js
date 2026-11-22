@@ -22,7 +22,7 @@ const PAYMENT_COLUMNS = `
   released_at, released_note, created_at,
   charged_cents, payment_method_type, payment_method_label, failure_reason,
   processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at,
-  service_fee_cents, processing_fee_cents, charge_cents
+  service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, dispute_lost_cents, factory_refund_cents
 `;
 
 export async function listPayments(orderId) {
@@ -189,10 +189,17 @@ const RELEASE_REFUSALS = {
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must pay it.",
   reveal_not_owed: "TSC doesn't owe this company a payout by hand, so its number stays hidden.",
   no_number: "No full account number is on file. Ask the factory to add it on its Payments page.",
+  // The rules every withdrawal follows (20261121340000).
+  payout_owes_tsc: (cause) => `The factory owes TSC ${cause?.details || "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
+  payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
+  payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
+  payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",
+  payout_not_cleared: "The brand's payment hasn't cleared yet. Try again once it has.",
 };
 
 function saidToStaff(failure) {
-  const sentence = RELEASE_REFUSALS[failure?.cause?.hint];
+  const words = RELEASE_REFUSALS[failure?.cause?.hint];
+  const sentence = typeof words === "function" ? words(failure.cause) : words;
   if (sentence) return new Error(sentence);
   // A refusal with no words of ours is never shown as the database's fragment.
   if (failure?.noAnswer || !failure?.cause) return failure;

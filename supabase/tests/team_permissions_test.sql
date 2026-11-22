@@ -329,7 +329,7 @@ set local role authenticated;
 
 select throws_ok(
   $$select public.approve_milestone(pg_temp.p24_step('Fit sample'), null)$$,
-  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  '22023', 'Fund "Fit sample" before you approve it. When you approve, the payment goes to the factory''s balance.',
   'with the permissions, an open step with no factory update is refused only for its funding');
 
 reset role;

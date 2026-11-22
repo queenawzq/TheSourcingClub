@@ -5,6 +5,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 
 select no_plan();
+-- Wise on everywhere: these steps make a Wise account the default (round 24
+-- refuses a default whose provider is off).
+update public.payout_provider_settings set enabled = true where provider = 'wise';
 
 set local session_replication_role = replica;
 
@@ -106,13 +109,13 @@ begin
   end if;
   update public.order_payments
      set state = 'confirmed', released_at = null, released_by = null, released_note = null,
-         release_claimed_at = null, stripe_release_started = false, stripe_payment_intent_id = 'pi_p97_1'
+         release_claimed_at = null, stripe_release_started = false, stripe_payment_intent_id = 'pi_p97_1',
+         -- cleared: a per-step payout waits for the charge like a withdrawal (20261121340000)
+         funds_available_at = now() - interval '1 day'
    where id = '97f00000-0000-0000-0000-000000000001';
   -- These checks are about the per-step paths, so the step stays out of the
   -- withdrawal balance (20261116200000) that the manual route would put it in.
-  alter table public.order_payments disable trigger order_payments_guard_withdrawal_pool;
   update public.order_payments set withdrawal_pool = false where id = '97f00000-0000-0000-0000-000000000001';
-  alter table public.order_payments enable trigger order_payments_guard_withdrawal_pool;
 end;
 $f$;
 
@@ -137,8 +140,10 @@ select lives_ok($$select public.choose_payout_method('97b00000-0000-0000-0000-00
   'a factory can move to Stripe while a payout is owed on its saved method');
 reset role;
 select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'stripe', 'and the route is Stripe');
-select ok((select withdrawal_pool from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'what was owed stays in the balance, for the saved method');
-select throws_ok($$select public.claim_payment_release('97f00000-0000-0000-0000-000000000001')$$, '22023', null, 'so Stripe still cannot claim it');
+select ok((select not withdrawal_pool and release_claimed_at is null and not stripe_release_started from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'choosing Stripe moves nothing: what was owed stays owed, unclaimed, outside the pool');
+select is((select count(*)::int from public.provider_payouts where payment_id = '97f00000-0000-0000-0000-000000000001' and status in ('processing', 'paid')), 0, 'and nothing pays it by another road');
+select is(public.claim_payment_release('97f00000-0000-0000-0000-000000000001'), null::timestamptz, 'now on Stripe, the owed step cannot be claimed for a transfer outside a withdrawal');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = '97f00000-0000-0000-0000-000000000001'), 'and stays unclaimed');
 rollback to savepoint m97_switch;
 
 update public.order_payments set state = 'released', released_at = now() where id = '97f00000-0000-0000-0000-000000000001';
@@ -203,7 +208,9 @@ select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$select public.release_payment_by_payoneer('97f00000-0000-0000-0000-000000000002', 'p97@example.com', 'PO-12345')$$, '22023', null,
   'nor recorded as paid by Payoneer');
 reset role;
-update public.order_payments set stripe_release_started = false where id = '97f00000-0000-0000-0000-000000000002';
+-- Cleared, as every per-step payout now asks (20261121370000).
+update public.order_payments set stripe_release_started = false, funds_available_at = now() - interval '1 day'
+ where id = '97f00000-0000-0000-0000-000000000002';
 select pg_temp.act_as(5); set local role authenticated;
 select lives_ok($$select public.release_payment_by_payoneer('97f00000-0000-0000-0000-000000000002', 'p97@example.com', 'PO-12345')$$,
   'once reconciled, Payoneer can record it');
@@ -248,7 +255,7 @@ set constraints all deferred;
 reset role;
 select is(pg_temp.notices('f1'), (select was + 1 from n97), 'Stripe to manual on the bank already primary tells the company');
 -- Every notice in this transaction has the same created_at, so "last" cannot pick one here.
-select ok(exists(select 1 from public.notifications n where n.org_id = '97b00000-0000-0000-0000-0000000000f1' and n.kind = 'payout_method_changed' and n.body like 'TSC now pays your bank account at P97 Bank ending 1234.%'), 'and says which');
+select ok(exists(select 1 from public.notifications n where n.org_id = '97b00000-0000-0000-0000-0000000000f1' and n.kind = 'payout_method_changed' and n.body like 'Your bank account at P97 Bank ending 1234 is now your default withdrawal method.%'), 'and says which');
 update n97 set was = pg_temp.notices('f1');
 
 select pg_temp.act_as(1); set local role authenticated;
@@ -306,10 +313,20 @@ select ok(public.uses_stripe_payout('97b00000-0000-0000-0000-0000000000f3'), 'so
 select ok(not public.factory_has_no_payout_method('97b00000-0000-0000-0000-0000000000f3'), 'and the factory is not left with nothing');
 
 select pg_temp.reset(true);
+-- Money on its way to the account: a waiting withdrawal to it
+-- (20261120330000: owed money in the balance alone goes nowhere until the
+-- factory withdraws).
+insert into public.factory_withdrawals (id, org_id, account_id, provider, status, amount_cents, currency, paid_to)
+values ('97700000-0000-0000-0000-000000000001', '97b00000-0000-0000-0000-0000000000f1', '97a10000-0000-0000-0000-000000000001', 'bank', 'requested', 100, 'USD', 'P97 Bank');
 select pg_temp.act_as(1); set local role authenticated;
-select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001', null, 'with money owed the account cannot go');
+-- The message is pinned (round 14, A2): a payout_primary refusal is also
+-- P0001 and would pass a null message.
+select throws_ok($$select public.remove_payout_account('97a10000-0000-0000-0000-000000000001', null)$$, 'P0001',
+  'TSC is about to pay this account, so it cannot be removed until that payment is sent',
+  'with money on its way to it the account cannot go');
 reset role;
 select is((select route from public.factory_payout_preferences where org_id = '97b00000-0000-0000-0000-0000000000f1'), 'manual', 'and the preference stays');
+delete from public.factory_withdrawals where id = '97700000-0000-0000-0000-000000000001';
 
 -- ---------------------------------------------------------------------------
 -- 7. What can join a message

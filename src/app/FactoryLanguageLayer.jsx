@@ -231,6 +231,11 @@ export default function FactoryLanguageLayer({ language }) {
         else if (record.type === "characterData") queue(record.target);
         else if (record.type === "attributes") queue(record.target, record.attributeName);
       }
+      // At once, before the browser paints: waiting for the next frame drew
+      // each keystroke's new text (a dialog's "Withdraw $65.01", "You can
+      // withdraw up to …") in English for a moment first. Observer callbacks
+      // already come one per change, after React has written it.
+      flush();
     });
 
     // Each note says what its own card shows, once the card has been walked.

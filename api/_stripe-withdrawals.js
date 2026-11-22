@@ -41,11 +41,30 @@ export const upToSentence = (available, currency) =>
   `You can withdraw up to ${new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(available / 100)}.`;
 
 /** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about what exists. */
-const refusedByStripe = (failure) => failure instanceof PayoutMethodRefusal || [400, 402, 403, 404].includes(failure?.statusCode);
+/**
+ * Stripe's answer to a key reused with other values: it says nothing about
+ * whether the first request made anything (the step's charge changed since,
+ * say), so it is never read as a refusal.
+ */
+const idempotencyClash = (failure) => failure?.type === "StripeIdempotencyError" || failure?.rawType === "idempotency_error"
+  || failure?.raw?.type === "idempotency_error";
+const refusedByStripe = (failure) => failure instanceof PayoutMethodRefusal
+  || (!idempotencyClash(failure) && [400, 402, 403, 404].includes(failure?.statusCode));
 
 /** The key a request is known by: the same as the payout key before fees, so a resent request finds its row. */
 export const withdrawalKey = (accountId, { requestId, amount, destination = null }) =>
   `withdraw-${accountId}-${requestId}-${amount}-${destination ?? "default"}`;
+
+/**
+ * Give up this call's lease on a withdrawal, only if it is still this call's:
+ * a call that outlived its 2 minutes must not clear the lease another call
+ * has taken since. Never throws; a lease left behind lapses on its own.
+ */
+async function releaseLease(db, row) {
+  if (!row?.id || !row.lease_until) return;
+  await db.from("stripe_withdrawals").update({ lease_until: null })
+    .eq("id", row.id).eq("lease_until", row.lease_until).then(() => null, () => null);
+}
 
 async function update(db, row, fields) {
   const { error } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
@@ -61,17 +80,29 @@ const payoutReply = (payout) => ({ id: payout.id, amount: payout.amount, currenc
  *   → the payout ({ id, amount, currency, status }): amount is X less the fee.
  * Throws PayoutMethodRefusal with the sentence to show when it refuses.
  */
-export async function withdrawWithFee({ stripe, db, orgId, accountId, country = "", amount, currency, requestId, destination = null, userId = null }) {
-  await checkWithdrawalRequest(stripe, accountId, { amount, currency, requestId, destination });
-  const key = withdrawalKey(accountId, { requestId, amount, destination });
+export async function withdrawWithFee({ stripe, db, orgId, accountId, country = "", amount, currency, requestId, destination = null, userId = null,
+  oneBalance = false, payoutCurrency = null, transfersActive = false }) {
+  // The one balance: `amount` is US cents, paid out in the balance's own
+  // currency. Otherwise `amount` is in `currency`, from the Stripe money only.
+  const paidIn = oneBalance ? String(payoutCurrency ?? "usd").toLowerCase() : currency;
+  if (oneBalance && currency !== "usd") throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
+  await checkWithdrawalRequest(stripe, accountId, { amount, currency: paidIn, requestId, destination });
+  // A previous account's Stripe money: the same "owes TSC" rule as the one
+  // balance (gatherOwed), so it cannot be emptied before the debt is covered.
+  if (!oneBalance) await refuseOverDebt({ stripe, db, orgId, accountId, amount, currency });
+  const key = withdrawalKey(accountId, { requestId, amount, destination }) + (oneBalance && paidIn !== "usd" ? "-usd" : "");
   // Older withdrawals left half-way first: what they took must be settled
   // before this one reads the balance.
   await settleAbandoned({ stripe, db, accountId, except: key });
   // And a fee kept on a payout that failed since: back in the balance first.
   await returnFeesOnFailedPayouts({ stripe, db, accountId });
 
+  // A non-US$ balance's gross is known once the owed money has landed; until
+  // then the row carries an estimate (Stripe's latest rate for this account).
+  const firstAmount = oneBalance && paidIn !== "usd"
+    ? Math.max(1, Math.round(amount * ((await localPerUsd(stripe, accountId, paidIn)) ?? 1))) : amount;
   const claim = () => db.rpc("claim_stripe_withdrawal", {
-    target_org: orgId, account: accountId, key, request: requestId, amount, in_currency: currency,
+    target_org: orgId, account: accountId, key, request: requestId, amount: firstAmount, in_currency: paidIn,
     to_destination: destination, by_user: userId,
   });
   let { data, error } = await claim();
@@ -89,6 +120,10 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   }
   const row = data?.row;
   if (!row) throw new Error("the withdrawal could not be claimed");
+  // Who asked, on every row, refused ones included.
+  if (!row.requested_by && userId && data.claimed) {
+    await update(db, row, { requested_by: userId }).catch(() => null);
+  }
   if (!data.claimed) {
     if (row.state === "paid_out") return { id: row.payout_id, amount: Number(row.payout_minor), currency: row.currency.toLowerCase(), status: "pending" };
     if (row.state === "refused" || row.state === "fee_returned") {
@@ -97,10 +132,13 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
     }
     throw new PayoutMethodRefusal(IN_PROGRESS);
   }
+  if (oneBalance && row.usd_cents == null && row.state === "claimed" && row.fee_cents == null) {
+    await update(db, row, { usd_cents: amount });
+  }
   try {
-    return await carryOut({ stripe, db, row, country, requestId, destination });
+    return await carryOut({ stripe, db, row, country, requestId, destination, transfersActive });
   } finally {
-    await db.from("stripe_withdrawals").update({ lease_until: null }).eq("id", row.id).then(() => null, () => null);
+    await releaseLease(db, row);
   }
 }
 
@@ -118,8 +156,17 @@ async function* reversibleTransfers(stripe, accountId) {
 }
 
 /** Refused: the row says why, so the same request is answered the same way until it is pressed again. */
-async function refuse(db, row, reason) {
-  await update(db, row, { state: "refused", reason });
+async function refuse(db, row, reason, { stripe = null, cause = null } = {}) {
+  if (stripe && row.usd_cents != null) await settleAttempted(stripe, db, row);
+  // Owed money already transferred for this withdrawal goes back to TSC and
+  // to the balance: refused means nothing left the balance.
+  if (stripe && row.usd_cents != null) {
+    const back = await reverseSentTakes(stripe, db, row);
+    if (back.failed) cause = "reversal_failed";
+  }
+  // Refused: the database hands back the parts not asked of Stripe
+  // (stripe_withdrawals_end_takes).
+  await update(db, row, { state: "refused", reason, ...(cause ? { refusal_cause: cause } : {}) });
   throw new PayoutMethodRefusal(reason);
 }
 
@@ -138,7 +185,7 @@ async function availableNow(stripe, accountId, currency) {
 async function withdrawableNow(stripe, db, row, currency) {
   const available = await availableNow(stripe, row.stripe_account_id, currency);
   const { data, error } = await db.from("stripe_withdrawals")
-    .select("id, currency, amount_minor, fee_local_minor, reversals, state, lease_until")
+    .select("id, currency, amount_minor, fee_local_minor, reversals, state, lease_until, usd_cents, d1_minor, transfers_done_at")
     .eq("stripe_account_id", row.stripe_account_id).in("state", ["claimed", "fee_taken"]);
   if (error) throw new Error(error.message);
   const now = Date.now();
@@ -146,11 +193,85 @@ async function withdrawableNow(stripe, db, row, currency) {
   for (const other of data ?? []) {
     if (other.id === row.id || other.currency?.toLowerCase() !== currency) continue;
     if (!other.lease_until || Date.parse(other.lease_until) <= now) continue;
+    // A one-balance withdrawal still claiming or transferring owed money
+    // takes from this balance only its own Stripe money and what it has
+    // landed so far; its gross (an estimate until then) is not yet here.
+    if (other.usd_cents != null && !other.transfers_done_at) {
+      const { data: parts } = await db.from("payment_takes").select("amount_cents")
+        .eq("stripe_withdrawal_id", other.id).eq("status", "sent");
+      const sentUsd = (parts ?? []).reduce((sum, part) => sum + Number(part.amount_cents), 0);
+      const rate = currency === "usd" ? 1 : Number(other.amount_minor) / Number(other.usd_cents) || 1;
+      claimed += Number(other.d1_minor ?? 0) + Math.round(sentUsd * rate);
+      continue;
+    }
     const taken = other.state === "fee_taken" ? Number(other.fee_local_minor ?? 0)
       : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
     claimed += Math.max(0, Number(other.amount_minor) - taken);
   }
   return Math.max(0, available - claimed);
+}
+
+/**
+ * What open withdrawals on this Stripe account (claimed or fee taken, still
+ * to be paid out) hold of its balance, per currency (lower case), in that
+ * currency's minor units: the same claim withdrawableNow() subtracts, for
+ * every open row, live lease or not, except `except`. A one-balance row still
+ * claiming or transferring holds its own Stripe part and what it has landed
+ * so far; any other holds its amount less the fee already taken back.
+ * `byId`, when given, is filled with each row's own claim ({ id → { amount,
+ * currency } }): the figures drop a row's part once the database records it.
+ */
+export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null, byId = null } = {}) {
+  const { data, error } = await db.from("stripe_withdrawals")
+    .select("id, currency, amount_minor, fee_local_minor, reversals, state, usd_cents, d1_minor, transfers_done_at")
+    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]);
+  if (error) throw new Error(error.message);
+  const held = {};
+  for (const other of data ?? []) {
+    if (other.id === except) continue;
+    const currency = String(other.currency ?? "").toLowerCase();
+    let claim;
+    if (other.usd_cents != null && !other.transfers_done_at) {
+      const { data: parts } = await db.from("payment_takes").select("amount_cents")
+        .eq("stripe_withdrawal_id", other.id).eq("status", "sent");
+      const sentUsd = (parts ?? []).reduce((sum, part) => sum + Number(part.amount_cents), 0);
+      const rate = currency === "usd" ? 1 : Number(other.amount_minor) / Number(other.usd_cents) || 1;
+      claim = Number(other.d1_minor ?? 0) + Math.round(sentUsd * rate);
+    } else {
+      const taken = other.state === "fee_taken" ? Number(other.fee_local_minor ?? 0)
+        : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
+      claim = Math.max(0, Number(other.amount_minor) - taken);
+    }
+    // With Stripe at hand, only the part of the claim in Stripe's AVAILABLE
+    // balance: owed money it transferred that is still clearing sits in
+    // Stripe's pending, already counted there.
+    if (stripe && other.usd_cents != null) {
+      claim = Math.max(0, claim - await stillClearing(stripe, db, accountId, other.id, currency));
+    }
+    held[currency] = (held[currency] ?? 0) + claim;
+    if (byId) byId[other.id] = { amount: claim, currency };
+  }
+  return held;
+}
+
+/** What a withdrawal's transferred parts landed as that Stripe still has as pending, in the balance's currency. Never throws. */
+async function stillClearing(stripe, db, accountId, withdrawalId, currency) {
+  try {
+    const { data: parts } = await db.from("payment_takes").select("stripe_transfer_id")
+      .eq("stripe_withdrawal_id", withdrawalId).eq("status", "sent").not("stripe_transfer_id", "is", null);
+    let pending = 0;
+    for (const part of parts ?? []) {
+      const transfer = await stripe.transfers.retrieve(part.stripe_transfer_id);
+      const id = typeof transfer.destination_payment === "string" ? transfer.destination_payment : transfer.destination_payment?.id;
+      if (!id) continue;
+      const payment = await stripe.charges.retrieve(id, { expand: ["balance_transaction"] }, { stripeAccount: accountId });
+      const tx = payment.balance_transaction;
+      if (tx && typeof tx === "object" && tx.status === "pending" && tx.currency === currency) pending += Number(tx.amount);
+    }
+    return pending;
+  } catch {
+    return 0;
+  }
 }
 
 /** The currency and rate a transfer landed at in the factory's balance. */
@@ -160,20 +281,61 @@ async function landed(stripe, accountId, transfer) {
   const payment = await stripe.charges.retrieve(id, { expand: ["balance_transaction"] }, { stripeAccount: accountId });
   const tx = payment.balance_transaction;
   if (!tx || typeof tx !== "object") return null;
-  return { currency: tx.currency, rate: Number(tx.exchange_rate) || 1 };
+  return { currency: tx.currency, rate: Number(tx.exchange_rate) || 1, amount: Number(tx.amount) };
 }
 
-async function carryOut({ stripe, db, row, country, requestId, destination }) {
+/** Units of the balance's currency per US$, as Stripe last converted a transfer to this account; null if none. */
+async function localPerUsd(stripe, accountId, currency) {
+  if (currency === "usd") return 1;
+  let seen = 0;
+  for await (const transfer of stripe.transfers.list({ destination: accountId, limit: 20 })) {
+    if (++seen > 20) break;
+    if (transfer.currency !== "usd") continue;
+    const where = await landed(stripe, accountId, transfer).catch(() => null);
+    if (where?.currency === currency) return where.rate;
+  }
+  return null;
+}
+
+/**
+ * What the money free in a Stripe account's available balance lets ONE
+ * withdrawal take, in US cents, reckoned exactly as the withdrawal reckons it
+ * (gatherOwed): only the balance in the currency it pays out in (the
+ * account's default currency, `payoutCurrency`), less what other withdrawals
+ * hold, divided by the rate Stripe last converted a transfer to this account
+ * at, rounded down. So "Withdraw full amount" offers what the server allows.
+ * Money in another currency is not taken by a withdrawal and is left out; so
+ * is money in the payout currency that no transfer gives a rate for (the
+ * withdrawal leaves it in the account too). `estimated` is true while money
+ * in another currency than US$ is counted. Returns { cents, estimated }.
+ */
+export async function stripeMoneyUsd(stripe, accountId, available, held = {}, payoutCurrency = "usd") {
+  const currency = String(payoutCurrency ?? "usd").toLowerCase();
+  const entry = (available ?? []).find((row) => String(row.currency ?? "").toLowerCase() === currency);
+  const free = Math.max(0, Number(entry?.amount ?? 0) - (held?.[currency] ?? 0));
+  if (currency === "usd") return { cents: free, estimated: false };
+  if (!free) return { cents: 0, estimated: false };
+  const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
+  if (!(rate > 0)) return { cents: 0, estimated: false };
+  return { cents: Math.floor(free / rate), estimated: true };
+}
+
+async function carryOut({ stripe, db, row, country, requestId, destination, transfersActive = false }) {
   const accountId = row.stripe_account_id;
   const currency = row.currency.toLowerCase();
-  const amount = Number(row.amount_minor);
   await holdPayouts(stripe, accountId);
+  // The one balance: owed money is claimed and transferred to this account
+  // first, so the payout below pays out exactly what was asked.
+  if (row.usd_cents != null && row.state === "claimed" && row.fee_cents == null && !row.transfers_done_at) {
+    await gatherOwed({ stripe, db, row, country, transfersActive });
+  }
+  const amount = Number(row.amount_minor);
 
   if (row.state === "claimed" && row.fee_cents == null) {
     // More than is available is refused before any fee is taken (the dialog
     // caps the amount; this is a teammate's withdrawal in between).
     const available = await withdrawableNow(stripe, db, row, currency);
-    if (amount > available) await refuse(db, row, upToSentence(available, currency));
+    if (amount > available) await refuse(db, row, row.usd_cents != null ? CANNOT_PROCESS : upToSentence(available, currency), { stripe });
     const { stripeWithdrawalFee, stripeMinimumPayout, stripeMinimumWithdrawal, minimumWithdrawalSentence } = await feeModule();
     // The fee, and whether what is left is a payout Stripe will make, before
     // anything moves. localPerUsd is the newest transfer's rate (1 for US$).
@@ -188,7 +350,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
     };
     if (currency === "usd") {
       const refusal = decide(1);
-      if (refusal) await refuse(db, row, refusal);
+      if (refusal) await refuse(db, row, refusal, { stripe });
     }
     // Newest first, and only as far back as the fee needs: one read per
     // transfer used, not per transfer the factory has ever had. Only
@@ -200,7 +362,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       if (!where || where.currency !== currency) continue;
       if (needed == null) {
         const refusal = decide(where.rate);
-        if (refusal) await refuse(db, row, refusal);
+        if (refusal) await refuse(db, row, refusal, { stripe });
         needed = fee.feeCents;
       }
       const take = Math.min(left, needed);
@@ -208,7 +370,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       needed -= take;
       if (needed <= 0) break;
     }
-    if (needed == null || needed > 0) await refuse(db, row, CANNOT_PROCESS);
+    if (needed == null || needed > 0) await refuse(db, row, CANNOT_PROCESS, { stripe });
     await update(db, row, { fee_cents: fee.feeCents, reversals: plan });
   }
 
@@ -226,8 +388,10 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       if (!refusedByStripe(failure)) throw failure;
       // Stripe would not take (all of) the fee: give back any part it took.
       // Most often the balance went in the meantime (another tab's withdrawal).
-      await giveBack(stripe, db, row, plan.filter((item) => item.reversal).reduce((sum, item) => sum + item.amount, 0), CANNOT_PROCESS);
-      const reason = await balanceShortSentence(stripe, db, row, currency, amount) ?? CANNOT_PROCESS;
+      await giveBack(stripe, db, row, plan.filter((item) => item.reversal).reduce((sum, item) => sum + item.amount, 0), CANNOT_PROCESS, { takeBack: true });
+      // The one balance: its owed money is back in the balance, so the
+      // Stripe account's "up to" would mislead.
+      const reason = row.usd_cents != null ? CANNOT_PROCESS : await balanceShortSentence(stripe, db, row, currency, amount) ?? CANNOT_PROCESS;
       await update(db, row, { reason });
       throw new PayoutMethodRefusal(reason);
     }
@@ -241,7 +405,7 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       // The fee as Stripe converted it left less than its estimate: the same answer as before any reversal.
       const reason = payoutAmount <= 0 ? CANNOT_PROCESS
         : minimumWithdrawalSentence(Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: Number(row.fee_local_minor) / Number(row.fee_cents) || 1 })), currency);
-      await giveBack(stripe, db, row, Number(row.fee_cents), reason);
+      await giveBack(stripe, db, row, Number(row.fee_cents), reason, { takeBack: true });
       throw new PayoutMethodRefusal(reason);
     }
     let payout = await findPayout(stripe, row);
@@ -254,9 +418,9 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       } catch (failure) {
         if (!refusedByStripe(failure)) throw failure;
         // Refused: nothing left the balance, so neither does the fee.
-        await giveBack(stripe, db, row, Number(row.fee_cents), failure instanceof PayoutMethodRefusal ? failure.message : null);
+        await giveBack(stripe, db, row, Number(row.fee_cents), failure instanceof PayoutMethodRefusal ? failure.message : null, { takeBack: true });
         // The balance went in the meantime (another tab's withdrawal): said in the dialog's words.
-        const short = await balanceShortSentence(stripe, db, row, currency, amount);
+        const short = row.usd_cents != null ? CANNOT_PROCESS : await balanceShortSentence(stripe, db, row, currency, amount);
         if (short) {
           await update(db, row, { reason: short });
           throw new PayoutMethodRefusal(short);
@@ -265,10 +429,445 @@ async function carryOut({ stripe, db, row, country, requestId, destination }) {
       }
     }
     await update(db, row, { state: "paid_out", payout_id: payout.id, payout_minor: payout.amount });
+    await recordPayoutMade(db, row, payout);
+    await tellWithdrawalAsked(stripe, db, row, payout);
     return payoutReply(payout);
   }
   if (row.state === "paid_out") return { id: row.payout_id, amount: Number(row.payout_minor), currency, status: "pending" };
   throw new Error(`withdrawal in state ${row.state}`);
+}
+
+/** Said when owed money is needed but the account cannot take transfers yet (the existing sentence of /api/stripe-connect). */
+export const NOT_VERIFIED = "Finish payout verification before withdrawing.";
+
+/** The held takes of a withdrawal with the charge each is paid from. */
+async function readTakes(db, row) {
+  const { data, error } = await db.from("payment_takes")
+    .select("id, payment_id, amount_cents, status, stripe_transfer_id, attempted_at, order_payments (stripe_charge_id, order_id, state, disputed_at, production_orders (order_number))")
+    .eq("stripe_withdrawal_id", row.id).order("created_at");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((take) => ({
+    ...take,
+    charge_id: take.order_payments?.stripe_charge_id ?? null,
+    order_id: take.order_payments?.order_id ?? null,
+    order_number: take.order_payments?.production_orders?.order_number ?? "",
+  }));
+}
+
+/** A transfer an earlier call made for this take (it reached Stripe, not our database), else null. */
+async function findTakeTransfer(stripe, take, row) {
+  if (!take.order_id) return null;
+  for await (const transfer of stripe.transfers.list({ transfer_group: take.order_id, limit: 100 })) {
+    if (transfer.metadata?.take_id === take.id && transfer.metadata?.take_withdrawal_id === row.id) return transfer;
+  }
+  return null;
+}
+
+/** The transfer for a part, the same every time it is asked for (Stripe refuses a key reused with other values). */
+const takeTransfer = (take, row) => [{
+  amount: Number(take.amount_cents),
+  currency: "usd",
+  destination: row.stripe_account_id,
+  source_transaction: take.charge_id,
+  transfer_group: take.order_id,
+  description: `${take.order_number}: payout`,
+  metadata: { payment_id: take.payment_id, order_id: take.order_id, take_id: take.id, take_withdrawal_id: row.id },
+}, { idempotencyKey: `release-${take.payment_id}-${row.id}` }];
+
+/** Stripe keeps an idempotency key's answer 24 hours: after 23, asking again could make a second transfer. */
+const KEY_WINDOW_MS = 23 * 3600 * 1000;
+
+/**
+ * Parts this withdrawal asked Stripe to transfer and has not recorded:
+ * settled before anything goes back to the balance. Found by listing, or
+ * asked again with the same key, which answers with the first transfer (or
+ * makes it, which is the factory's money arriving, never a second one). A
+ * refusal under that key means none exists: the part goes back. Unsure, a
+ * key past Stripe's window, a key reused with other values, or a step now
+ * disputed: the part stays held, and the staff board lists it.
+ *
+ * `staff` (staff pressed "Check again"): a part not found by listing once the
+ * key window has passed has no transfer, and goes back; so does a part whose
+ * step was refunded when Stripe refuses the same transfer again. A part on a
+ * disputed step still in the window stays held: asking again could move
+ * disputed money.
+ *
+ * Returns { sent, returned, unsure } in US cents.
+ */
+async function settleAttempted(stripe, db, row, { staff = false } = {}) {
+  const held = (await readTakes(db, row)).filter((take) => take.status === "held" && take.attempted_at);
+  const result = { sent: 0, returned: 0, unsure: 0 };
+  for (const take of held) {
+    const amount = Number(take.amount_cents);
+    try {
+      const found = await findTakeTransfer(stripe, take, row);
+      if (found) {
+        await call(db, "record_take_sent", { target_take: take.id, transfer: found.id });
+        result.sent += amount;
+        continue;
+      }
+      if (Date.parse(take.attempted_at) < Date.now() - KEY_WINDOW_MS) {
+        if (staff) {
+          await call(db, "return_take_leased", { target_take: take.id, lease: row.lease_until ?? null });
+          result.returned += amount;
+        } else result.unsure += amount;
+        continue;
+      }
+      const refunded = take.order_payments?.state !== "confirmed";
+      if (take.order_payments?.disputed_at || (refunded && !staff)) {
+        result.unsure += amount;
+        continue;
+      }
+      let transfer = null;
+      try {
+        transfer = await stripe.transfers.create(...takeTransfer(take, row));
+      } catch (failure) {
+        if (refusedByStripe(failure)) {
+          await call(db, "return_take_leased", { target_take: take.id, lease: row.lease_until ?? null });
+          result.returned += amount;
+          continue;
+        }
+        throw failure;
+      }
+      await call(db, "record_take_sent", { target_take: take.id, transfer: transfer.id });
+      result.sent += amount;
+    } catch (failure) {
+      result.unsure += amount;
+      console.error("stripe-withdrawals settle part", take.id, failure?.message);
+    }
+  }
+  return result;
+}
+
+/** What staff read after "Check again" while another call holds the withdrawal (staff only). */
+export const BEING_PROCESSED = "This withdrawal is being processed. Try again in a few minutes.";
+
+/** What staff read after "Check again" (new sentences, staff only). */
+export function checkedSentence({ sent, returned, unsure }) {
+  const usd = (cents) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+  const parts = [];
+  if (sent) parts.push(`${usd(sent)} was sent to the factory's Stripe account`);
+  if (returned) parts.push(`${usd(returned)} is back in the factory's balance`);
+  if (unsure) parts.push(`${usd(unsure)} is still not settled. Check it in Stripe, or check again tomorrow`);
+  return parts.length ? `${parts.join(". ")}.` : "Nothing is waiting on this withdrawal.";
+}
+
+/**
+ * Staff's "Check again" on a Stripe withdrawal from the "Needs checking"
+ * tab: a withdrawal stopped half-way is carried on or settled
+ * (settleAbandoned), then its parts Stripe was asked for are settled as
+ * staff may (settleAttempted). Never makes a second transfer.
+ */
+export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
+  const { data: row, error } = await db.from("stripe_withdrawals").select("*").eq("id", withdrawalId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return { done: false, sentence: "That withdrawal isn't on the board any more. Reload the page." };
+  // The withdrawal's lease first: while another call is carrying it on, its
+  // parts are that call's to settle, and nothing here touches them.
+  const leased = await db.rpc("lease_stripe_withdrawal", { target: withdrawalId });
+  if (leased.error) throw new Error(leased.error.message);
+  const mine = Array.isArray(leased.data) ? leased.data[0] : leased.data;
+  if (!mine?.id) {
+    // Another call is on it now (a lease lasts 2 minutes): not "still not
+    // settled", which sent staff to Stripe for a row about to move.
+    const unsure = (await readTakes(db, row)).filter((take) => take.status === "held")
+      .reduce((sum, take) => sum + Number(take.amount_cents), 0);
+    return { done: false, sent: 0, returned: 0, unsure, sentence: BEING_PROCESSED };
+  }
+  try {
+    if (["claimed", "fee_taken"].includes(mine.state)) await settleOne(stripe, db, mine);
+    // A reversal Stripe made whose part was not returned (the call stopped,
+    // or another held the lease): returned now. No new reversal is made.
+    if (mine.refusal_cause === "reversal_failed" && mine.usd_cents != null) {
+      const back = await reverseSentTakes(stripe, db, mine, { createNew: false });
+      // A part still sent with no reversal is money in the factory's Stripe
+      // account (counted there): nothing more for staff to do.
+      if (!back.failed) await update(db, mine, { refusal_cause: null }).catch(() => null);
+    }
+    const result = await settleAttempted(stripe, db, mine, { staff: true });
+    return { done: true, ...result, sentence: checkedSentence(result) };
+  } finally {
+    await releaseLease(db, mine);
+  }
+}
+
+/**
+ * Money refunded after the factory had withdrawn it is owed to TSC. Its
+ * earnings TSC still holds (owed_reachable, Stripe road, net of the debt)
+ * cover it first; what they do not cover must stay in Stripe, where TSC can
+ * reverse it. So a payout of an account's own Stripe money leaves that much
+ * behind (converted at the account's latest transfer rate; with no rate,
+ * nothing leaves). Not read: refused, never skipped.
+ */
+async function refuseOverDebt({ stripe, db, orgId, accountId, amount, currency }) {
+  const reach = await call(db, "owed_reachable", { target_org: orgId }).catch(() => null);
+  if (!reach) throw new PayoutMethodRefusal(CANNOT_PROCESS);
+  if (!(Number(reach.debt_cents) > 0)) return;
+  const shortUsd = Math.max(0, -Number(reach.stripe_cents ?? 0));
+  if (!shortUsd) return;
+  const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
+  const available = await availableNow(stripe, accountId, currency);
+  const allowed = rate > 0 ? Math.max(0, available - Math.ceil(shortUsd * rate)) : 0;
+  if (amount > allowed) throw new PayoutMethodRefusal(upToSentence(allowed, currency));
+}
+
+async function call(db, name, args) {
+  const { data, error } = await db.rpc(name, args);
+  if (error) throw Object.assign(new Error(`${name}: ${error.message}`), { code: error.code, hint: error.hint });
+  return data;
+}
+
+/**
+ * The one balance, Stripe road: money already in the factory's Stripe
+ * account is used first; the rest is claimed from its owed steps (oldest
+ * cleared first, in part if needed: claim_owed_steps), each step's charge is
+ * checked (refunded or disputed: nothing is sent), TSC's platform balance must
+ * cover the transfers, then each part is transferred from its charge. The
+ * withdrawal's gross becomes what is now in the balance for it: the Stripe
+ * money used plus what the transfers landed as (in the balance's currency).
+ * Every step is recorded on the row, so a call that dies is resumed.
+ */
+async function gatherOwed({ stripe, db, row, country, transfersActive }) {
+  const accountId = row.stripe_account_id;
+  const currency = row.currency.toLowerCase();
+  const usd = Number(row.usd_cents);
+
+  if (row.owed_cents == null) {
+    // A US$ withdrawal too small to pay out is refused before anything moves.
+    if (currency === "usd") {
+      const { stripeWithdrawalFee, stripeMinimumPayout, stripeMinimumWithdrawal, minimumWithdrawalSentence } = await feeModule();
+      const fee = stripeWithdrawalFee({ amountMinor: usd, currency, country, localPerUsd: 1 });
+      if (fee.refused) await refuse(db, row, fee.refused, { stripe });
+      if (usd - fee.feeLocalEstimate < stripeMinimumPayout(currency)) {
+        await refuse(db, row, minimumWithdrawalSentence(stripeMinimumWithdrawal({ currency, country, localPerUsd: 1 }), currency), { stripe });
+      }
+    }
+    let inStripe = await withdrawableNow(stripe, db, row, currency);
+    let rate = 1;
+    if (currency !== "usd" && inStripe > 0) {
+      rate = await localPerUsd(stripe, accountId, currency);
+      // No transfer gives a rate yet: that money cannot be reckoned in US$,
+      // so this withdrawal leaves it in the account and takes owed money only
+      // (stripeMoneyUsd leaves it out of what Withdraw offers the same way).
+      if (!rate) {
+        inStripe = 0;
+        rate = 1;
+      }
+    }
+    const inStripeUsd = currency === "usd" ? inStripe : Math.floor(inStripe / rate);
+    // Money refunded after the factory had withdrawn it is owed to TSC:
+    // nothing more leaves, its own Stripe money included, until its
+    // earnings cover that (owed_reachable is net of it).
+    // Not read: refused, never skipped (the database refuses the claim too).
+    const reach = await call(db, "owed_reachable", { target_org: row.org_id }).catch(() => null);
+    if (!reach) await refuse(db, row, CANNOT_PROCESS, { stripe });
+    if (Number(reach?.debt_cents) > 0 && usd > inStripeUsd + Number(reach.stripe_cents ?? 0)) {
+      await refuse(db, row, upToSentence(Math.max(0, inStripeUsd + Number(reach.stripe_cents ?? 0)), "usd"), { stripe });
+    }
+    const owed = Math.max(0, usd - inStripeUsd);
+    const fromStripe = owed > 0 ? inStripe : (currency === "usd" ? usd : Math.min(inStripe, Math.round(usd * rate)));
+    await update(db, row, { d1_minor: fromStripe });
+    if (owed > 0) {
+      if (!transfersActive) await refuse(db, row, NOT_VERIFIED, { stripe });
+      try {
+        const claimed = await call(db, "claim_owed_steps", { target_org: row.org_id, amount: owed, road: "stripe", withdrawal: row.id });
+        row.owed_cents = Number(claimed?.claimed_cents ?? owed);
+      } catch (failure) {
+        if (failure.hint === "withdrawal_over_balance" || failure.hint === "withdrawal_owes_tsc") {
+          const reach = await call(db, "owed_reachable", { target_org: row.org_id }).catch(() => null);
+          await refuse(db, row, upToSentence(inStripeUsd + Number(reach?.stripe_cents ?? 0), "usd"), { stripe });
+        }
+        if (failure.hint === "payout_upgrading" || failure.hint === "withdrawal_not_waiting") await refuse(db, row, CANNOT_PROCESS, { stripe });
+        throw failure;
+      }
+    } else {
+      await update(db, row, { owed_cents: 0 });
+    }
+  }
+
+  const takes = await readTakes(db, row);
+  let held = takes.filter((take) => take.status === "held");
+  if (held.length) {
+    // Transferred by a call that died before recording it: recorded now.
+    for (const take of held) {
+      const found = await findTakeTransfer(stripe, take, row);
+      if (!found) continue;
+      await call(db, "record_take_sent", { target_take: take.id, transfer: found.id });
+      Object.assign(take, { status: "sent", stripe_transfer_id: found.id });
+    }
+    held = held.filter((take) => take.status === "held");
+  }
+  if (held.length) {
+    // Every charge before any transfer: Stripe does not refuse a transfer
+    // from a disputed charge, and a refunded one may no longer cover it. A
+    // refund (or a lost dispute) is recorded at its amount; only a part this
+    // withdrawal holds that is no longer the factory's stops it.
+    let unsafe = false;
+    for (const take of held) {
+      const charge = await stripe.charges.retrieve(take.charge_id);
+      if (Number(charge.amount_refunded) > 0) {
+        const { applyChargeRefund } = await import("./_stripe.js");
+        await applyChargeRefund({ stripe, db, charge });
+      }
+      if (charge.disputed) {
+        const { recordChargeDispute } = await import("./_stripe.js");
+        if (await recordChargeDispute({ stripe, db, paymentId: take.payment_id, charge })) unsafe = true;
+      }
+    }
+    if (!unsafe && Number(await call(db, "withdrawal_refunded_part", { target_withdrawal: row.id })) > 0) unsafe = true;
+    if (unsafe) await refuse(db, row, CANNOT_PROCESS, { stripe });
+    // A cleared charge's money is in TSC's available balance, or nowhere.
+    const platform = await stripe.balance.retrieve();
+    const platformUsd = platform.available?.find((entry) => entry.currency === "usd")?.amount ?? 0;
+    const needed = held.reduce((sum, take) => sum + Number(take.amount_cents), 0);
+    if (platformUsd < needed) await refuse(db, row, CANNOT_PROCESS, { stripe, cause: "platform_short" });
+    for (const take of held) {
+      let transfer;
+      // Marked first: a part Stripe may have is never handed back unchecked.
+      await call(db, "mark_take_attempted", { target_take: take.id });
+      take.attempted_at = take.attempted_at ?? new Date().toISOString();
+      try {
+        transfer = await stripe.transfers.create(...takeTransfer(take, row));
+      } catch (failure) {
+        // Refused: this part and the rest go back to the balance; what went
+        // before is in the factory's Stripe account, still its money.
+        if (refusedByStripe(failure)) {
+          const short = failure?.code === "balance_insufficient";
+          await refuse(db, row, CANNOT_PROCESS, { stripe, cause: short ? "platform_short" : null });
+        }
+        throw failure;
+      }
+      await call(db, "record_take_sent", { target_take: take.id, transfer: transfer.id });
+      Object.assign(take, { status: "sent", stripe_transfer_id: transfer.id });
+    }
+  }
+
+  // What the owed money landed as, in this balance's currency.
+  let landedMinor = 0;
+  for (const take of takes.filter((item) => item.status === "sent")) {
+    if (currency === "usd") {
+      landedMinor += Number(take.amount_cents);
+      continue;
+    }
+    const transfer = await stripe.transfers.retrieve(take.stripe_transfer_id);
+    const where = await landed(stripe, accountId, transfer);
+    if (!where || where.currency !== currency) throw new Error("a transfer landed in another currency than the balance");
+    landedMinor += where.amount;
+  }
+  const gross = Number(row.d1_minor ?? 0) + landedMinor;
+  if (gross <= 0) await refuse(db, row, CANNOT_PROCESS, { stripe });
+  await update(db, row, { landed_minor: landedMinor, amount_minor: gross, transfers_done_at: new Date().toISOString() });
+}
+
+/**
+ * Before a factory's balance is read, without waiting for webhooks: its Stripe
+ * payouts the database still has on their way (no arrival day yet, or that
+ * day has come) are read back from Stripe, a few per read. A new status or
+ * day is recorded; a payout that failed or was cancelled gives its fee back
+ * (returnFeeOnFailedPayout, as the webhook does). Never throws; bounded by
+ * `budgetMs`. Returns how many were read in time.
+ */
+export async function refreshPayoutsFor({ stripe, db, orgId, limit = 5, budgetMs = 3000 }) {
+  const work = (async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: recent, error } = await db.from("stripe_withdrawals")
+      .select("id, stripe_account_id, payout_id, payout_status, payout_arrives_on, created_at")
+      .eq("org_id", orgId).eq("state", "paid_out").not("payout_id", "is", null)
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return 0;
+    const data = (recent ?? [])
+      .filter((row) => [null, "pending", "in_transit"].includes(row.payout_status ?? null)
+        && (!row.payout_arrives_on || row.payout_arrives_on <= today))
+      .reverse().slice(0, limit);
+    if (!data.length) return 0;
+    const read = await Promise.all(data.map(async (row) => {
+      try {
+        const payout = await stripe.payouts.retrieve(row.payout_id, {}, { stripeAccount: row.stripe_account_id });
+        const fields = payoutFields(payout);
+        // Never backwards (an older answer read after payout.paid was recorded):
+        // the database refuses it too.
+        const rank = { pending: 1, in_transit: 2, paid: 3, failed: 4, canceled: 4 };
+        if ((rank[fields.payout_status] ?? 0) < (rank[row.payout_status] ?? 0)) return true;
+        if (fields.payout_status !== row.payout_status || fields.payout_arrives_on !== row.payout_arrives_on) {
+          const { error: saveError } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
+          if (saveError) throw new Error(saveError.message);
+        }
+        if (["failed", "canceled"].includes(payout.status)) await returnFeeOnFailedPayout({ stripe, db, payout });
+        return true;
+      } catch (failure) {
+        console.error("stripe-withdrawals payout read", row.id, failure?.message);
+        return false;
+      }
+    }));
+    return read.filter(Boolean).length;
+  })().catch(() => 0);
+  let timer;
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** What the company's list reads about a payout: where it is, and when it arrives. */
+export const payoutFields = (payout) => ({
+  payout_status: payout?.status ?? null,
+  payout_arrives_at: payout?.arrival_date ? new Date(Number(payout.arrival_date) * 1000).toISOString() : null,
+  // Stripe's arrival_date is a day (midnight UTC): kept as one, so no reader
+  // west of UTC sees the day before.
+  payout_arrives_on: payout?.arrival_date ? new Date(Number(payout.arrival_date) * 1000).toISOString().slice(0, 10) : null,
+});
+
+/** The payout as made: its status only if no webhook has said a newer one meanwhile. */
+async function recordPayoutMade(db, row, payout) {
+  const { payout_status: status, ...rest } = payoutFields(payout);
+  await update(db, row, rest);
+  try {
+    await db.from("stripe_withdrawals").update({ payout_status: status }).eq("id", row.id).is("payout_status", null);
+  } catch {
+    // Best effort: the webhook records the status too.
+  }
+}
+
+/**
+ * The whole company hears of a Stripe withdrawal, as of a PayPal or Wise one,
+ * in the same words ("Withdrawal of $X requested" / "To …"). Once per
+ * withdrawal; never fails the withdrawal.
+ */
+async function tellWithdrawalAsked(stripe, db, row, payout) {
+  try {
+    let to = row.destination_label ?? null;
+    // Where it went, kept on the row for every member's list (they cannot
+    // read the Stripe account's methods), in the list's own words.
+    if (!to) {
+      const destination = typeof payout?.destination === "string" ? payout.destination : payout?.destination?.id;
+      const method = destination
+        ? await stripe.accounts.retrieveExternalAccount(row.stripe_account_id, destination).catch(() => null) : null;
+      if (method?.last4) {
+        to = `${method.object === "card" ? "Debit card" : "Bank account"} ending in ${method.last4}`;
+        await update(db, row, { destination_label: to, destination_bank: method.bank_name ?? method.brand ?? null })
+          .catch((failure) => console.error("stripe-withdrawals destination", row.id, failure?.message));
+      }
+    }
+    const { data: already } = await db.from("notifications").select("id")
+      .eq("kind", "withdrawal").eq("subject_type", "withdrawal").eq("subject_id", row.id).limit(1);
+    if (already?.length) return;
+    const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
+    const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
+    to = to ?? "your bank account";
+    await db.from("notifications").insert({
+      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
+      // When it was asked for: listed before its payout's own notices, which
+      // Stripe can send before this call gets here (at once, in test mode).
+      ...(row.created_at ? { created_at: row.created_at } : {}),
+      title: `Withdrawal of ${asked} requested`, body: `To ${to.replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`,
+      data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
+        receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },
+    });
+  } catch (failure) {
+    console.error("stripe-withdrawals notice", row.id, failure?.message);
+  }
 }
 
 /** "You can withdraw up to …" when the balance is now under the amount, else null. Never throws: it only chooses words. */
@@ -311,8 +910,21 @@ async function findPayout(stripe, row) {
 }
 
 /** Give the fee back to the factory's balance: a transfer of what was reversed, once. */
-async function giveBack(stripe, db, row, usdAmount, reason) {
+async function giveBack(stripe, db, row, usdAmount, reason, { takeBack = false } = {}) {
   let transferId = null;
+  let cause = null;
+  // The one balance, refused before any payout existed, by the call holding
+  // the lease (takeBack): the owed parts this withdrawal transferred go back
+  // to TSC whole, the fee they paid included (it was reversed from them), so
+  // only a fee taken from money already in the account is given back. A
+  // payout that failed after it was made (returnFeeOnFailedPayout) gives the
+  // fee back only: its money is back in the factory's Stripe account, may
+  // already be withdrawn again, and stays Stripe money.
+  if (takeBack && row.usd_cents != null) {
+    const back = await reverseSentTakes(stripe, db, row);
+    usdAmount = Math.max(0, usdAmount - back.feeFromTakes);
+    if (back.failed) cause = "reversal_failed";
+  }
   if (usdAmount > 0) {
     let already = null;
     for await (const transfer of stripe.transfers.list({ destination: row.stripe_account_id, limit: 100 })) {
@@ -327,7 +939,51 @@ async function giveBack(stripe, db, row, usdAmount, reason) {
     }, { idempotencyKey: `swg-${row.id}` });
     transferId = transfer.id;
   }
-  await update(db, row, { state: usdAmount > 0 ? "fee_returned" : "refused", fee_return_transfer_id: transferId, reason });
+  // Ended: the database hands back the parts not asked of Stripe
+  // (stripe_withdrawals_end_takes).
+  await update(db, row, { state: usdAmount > 0 ? "fee_returned" : "refused", fee_return_transfer_id: transferId, reason,
+    ...(cause ? { refusal_cause: cause } : {}) });
+}
+
+/**
+ * Take back what this withdrawal transferred from owed steps (each part's
+ * transfer, less what its fee reversal already took back), and return the
+ * parts to the balance. A part Stripe will not reverse stays sent and the
+ * row is listed for staff. Returns { feeFromTakes, failed } in US cents:
+ * the fee that came out of these transfers.
+ */
+async function reverseSentTakes(stripe, db, row, { createNew = true } = {}) {
+  const sent = (await readTakes(db, row)).filter((take) => take.status === "sent" && take.stripe_transfer_id);
+  let feeFromTakes = 0;
+  let failed = false;
+  for (const take of sent) {
+    try {
+      let feeHere = 0;
+      let mine = null;
+      for await (const reversal of stripe.transfers.listReversals(take.stripe_transfer_id, { limit: 100 })) {
+        if (reversal.metadata?.stripe_withdrawal_id === row.id) feeHere += Number(reversal.amount);
+        if (reversal.metadata?.take_reversal === take.id) mine = reversal;
+      }
+      const want = Number(take.amount_cents) - feeHere;
+      // Only finishing what was done (staff's "Check again"): a part with no
+      // reversal yet stays sent; its money is in the factory's account.
+      // (A part whose whole transfer its fee reversal took has nothing left to
+      // reverse: it is returned either way.)
+      if (!mine && want > 0 && !createNew) continue;
+      if (!mine && want > 0) {
+        mine = await stripe.transfers.createReversal(take.stripe_transfer_id, {
+          amount: want, metadata: { take_reversal: take.id, take_withdrawal_id: row.id },
+        }, { idempotencyKey: `swx-${take.id}` });
+      }
+      await call(db, "return_sent_take", { target_take: take.id, lease: row.lease_until ?? null, reversal: mine?.id ?? `fee-${row.id}` });
+      feeFromTakes += feeHere;
+    } catch (failure) {
+      failed = true;
+      console.error("stripe-withdrawals take back", take.id, failure?.message);
+    }
+  }
+  if (failed) await update(db, row, { refusal_cause: "reversal_failed" }).catch(() => null);
+  return { feeFromTakes, failed };
 }
 
 /**
@@ -347,29 +1003,82 @@ export async function settleAbandoned({ stripe, db, accountId, except = null }) 
     if (claim.error) throw new Error(claim.error.message);
     const row = Array.isArray(claim.data) ? claim.data[0] : claim.data;
     if (!row?.id) continue;
+    // Settled: the lease is given up. Not settled (an error, or the row is
+    // still open after a failure settleOne caught): the lease is left to
+    // lapse, so the next try waits its 2 minutes. Releasing it let every
+    // balance read claim it again at once, and each claim and release is a
+    // change every open page hears (it asked again, and settled again).
+    let settled = false;
     try {
-      const payout = await findPayout(stripe, row);
-      if (payout && !["failed", "canceled"].includes(payout.status)) {
-        const plan = row.reversals ?? [];
-        await update(db, row, {
-          state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
-          fee_local_minor: row.fee_local_minor ?? Number(row.amount_minor) - Number(payout.amount),
-          reversals: plan,
-        });
-        continue;
-      }
-      // Reversals Stripe made, recorded or not.
-      let taken = 0;
-      for (const item of row.reversals ?? []) {
-        for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
-          if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
-        }
-      }
-      await giveBack(stripe, db, row, taken, null);
+      await settleOne(stripe, db, row);
+      settled = !(await stillOpen(db, row.id));
     } finally {
-      await db.from("stripe_withdrawals").update({ lease_until: null }).eq("id", row.id).then(() => null, () => null);
+      if (settled) await releaseLease(db, row);
     }
   }
+}
+
+/** Whether a withdrawal is still half-way (claimed or fee taken); true when it can't be read. */
+async function stillOpen(db, id) {
+  const { data, error } = await db.from("stripe_withdrawals").select("state").eq("id", id).maybeSingle();
+  if (error || !data) return true;
+  return ["claimed", "fee_taken"].includes(data.state);
+}
+
+/**
+ * One withdrawal this call holds the lease on, left half-way: the one
+ * balance's claim or transfers are carried on; otherwise a payout that went
+ * is recorded, else whatever fee was taken goes back.
+ */
+async function settleOne(stripe, db, row) {
+  // The one balance, stopped while claiming or transferring owed money:
+  // carried on, since the owner asked for it (a refusal is recorded on
+  // the row and its claims go back to the balance).
+  if (row.usd_cents != null && row.state === "claimed" && row.fee_cents == null) {
+    const { data: account } = await db.from("stripe_connect_accounts")
+      .select("country, transfers_active").eq("org_id", row.org_id).maybeSingle();
+    try {
+      await carryOut({ stripe, db, row, country: account?.country ?? "", requestId: row.request_id,
+        destination: row.destination ?? null, transfersActive: Boolean(account?.transfers_active) });
+    } catch (failure) {
+      // Stripe or the database did not answer: tried again on the next
+      // read or withdrawal once this lease lapses. Never blocks this one.
+      if (!(failure instanceof PayoutMethodRefusal)) console.error("stripe-withdrawals resume", row.id, failure?.message);
+    }
+    return;
+  }
+  // Reversals Stripe made for the fee, recorded or not.
+  const feeTaken = async () => {
+    let taken = 0;
+    for (const item of row.reversals ?? []) {
+      for await (const reversal of stripe.transfers.listReversals(item.transfer, { limit: 100 })) {
+        if (reversal.metadata?.stripe_withdrawal_id === row.id) taken += Number(reversal.amount);
+      }
+    }
+    return taken;
+  };
+  const payout = await findPayout(stripe, row);
+  if (payout) {
+    // A payout was made: recorded, whatever became of it.
+    const plan = row.reversals ?? [];
+    await update(db, row, {
+      state: "paid_out", payout_id: payout.id, payout_minor: payout.amount,
+      fee_local_minor: row.fee_local_minor ?? Number(row.amount_minor) - Number(payout.amount),
+      reversals: plan,
+    });
+    await recordPayoutMade(db, row, payout);
+    if (!["failed", "canceled"].includes(payout.status)) {
+      await tellWithdrawalAsked(stripe, db, row, payout);
+      return;
+    }
+    // It failed or was cancelled after it was made: its money is back in the
+    // factory's Stripe account and stays Stripe money. The fee only goes back.
+    await giveBack(stripe, db, row, await feeTaken(), null);
+    return;
+  }
+  // No payout exists at all, and this call holds the lease: refused before
+  // any payout, so the owed parts go back too.
+  await giveBack(stripe, db, row, await feeTaken(), null, { takeBack: true });
 }
 
 /**
@@ -440,4 +1149,51 @@ export async function returnFeesOnFailedPayouts({ stripe, db, accountId, days = 
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The open Stripe withdrawals on this account, as one key: each one's money
+ * fields (state, transfers, fee, fee reversals, payout, refusal) and each of
+ * its takes' status. A take turning `sent` (its transfer landed) or a fee
+ * reversal moves Stripe's balance while the withdrawal's state stays the
+ * same, so those are in the key too. Not `updated_at` or `lease_until`: a
+ * call claiming or giving up a lease moves no money, and keying on it made a
+ * read that overlapped another tab's claim read three times over.
+ */
+export const OPEN_WITHDRAWAL_KEY_FIELDS = "id, state, transfers_done_at, fee_cents, usd_cents, payout_id, refusal_cause, reversals";
+export async function openWithdrawalsKey(db, accountId) {
+  const { data, error } = await db.from("stripe_withdrawals").select(OPEN_WITHDRAWAL_KEY_FIELDS)
+    .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]).order("id");
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  let takes = [];
+  if (rows.length) {
+    const read = await db.from("payment_takes").select("id, stripe_withdrawal_id, status")
+      .in("stripe_withdrawal_id", rows.map((row) => row.id)).order("id");
+    if (read.error) throw new Error(read.error.message);
+    takes = read.data ?? [];
+  }
+  return JSON.stringify([rows, takes]);
+}
+
+/**
+ * Stripe's balance, the database's figures and what open withdrawals hold,
+ * read again (at most twice more) when a Stripe withdrawal started, moved
+ * money (a transfer landed, a fee was reversed), made its payout or was
+ * refused while they were being read: its money would otherwise be in
+ * Stripe's answer and in the database's at once, counted twice. Returns the
+ * last read and whether it was checked (`consistent`): false when the reads
+ * kept changing, or when the key could not be read (then read once only),
+ * and the page asks again shortly.
+ */
+export async function consistentMoneyRead(db, accountId, read) {
+  let result;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await openWithdrawalsKey(db, accountId).catch(() => null);
+    result = await read();
+    if (before == null) return { ...result, consistent: false };
+    const after = await openWithdrawalsKey(db, accountId).catch(() => null);
+    if (before === after) return { ...result, consistent: true };
+  }
+  return { ...result, consistent: false };
 }

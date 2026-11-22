@@ -3,10 +3,11 @@
  *
  * Pure. The brand funds each paid step through Stripe by card and TSC holds
  * the money until the brand approves the step, then pays the factory. Every
- * figure is what the brand pays, the fees included (chargedCents), the
- * same as each row and the Fund screen:
+ * figure is what the brand pays, the fees included (chargedCents), less
+ * anything that went back to it, the same as each row and the Fund screen:
  *   Paid         paid out to the factory
- *   Held         held by TSC now, not yet paid out
+ *   Held         held by TSC now, not yet paid out (approved money stays
+ *                with TSC until the factory withdraws it)
  *   Due now      due or failed on open orders, as the dashboard's figure
  *   Remaining    what is still to pay on open orders
  * The figures follow the vendor filter, as the factory's earnings figures
@@ -23,7 +24,7 @@ import { plainCardReason } from "../../shared/card-words.mjs";
 import { chargedCents } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
-import { refundPendingWord } from "../order/payment-summary.mjs";
+import { paymentRefund, refundPendingWord } from "../order/payment-summary.mjs";
 
 /**
  * One word for where a payment stands, on the list and its details page. A
@@ -33,6 +34,11 @@ import { refundPendingWord } from "../order/payment-summary.mjs";
 export function paymentStatusWord(payment, order) {
   // Held money that went back when the order was cancelled.
   if (payment.state === "cancelled" && payment.refunded_at) return "Refunded";
+  // All of it went back after it was the factory's (refunded by TSC, or the
+  // brand's bank reversed it): the step stays done, nothing to pay again.
+  if (["confirmed", "released"].includes(payment.state) && paymentRefund(payment).full) {
+    return paymentRefund(payment).refunded > 0 ? "Refunded" : "Reversed by your bank";
+  }
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
@@ -60,6 +66,8 @@ const OWED = new Set(["due", "failed"]);
 // the payment moved (an instant).
 const day = (value) => dateFrom(value)?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) ?? "";
 const sum = (items, pick) => items.reduce((total, item) => total + Number(pick(item) ?? 0), 0);
+/** What the brand paid for a funded step, less what went back to it (a refund, a lost dispute). */
+const netCharged = (payment) => Math.max(0, chargedCents(payment) - (["confirmed", "released"].includes(payment.state) ? paymentRefund(payment).brand : 0));
 const dueOn = (payment) => String(payment.order_milestones?.due_on ?? "9999");
 
 /** When the payment last moved, which is the date its row shows. */
@@ -96,7 +104,7 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
         meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,
         status: paymentStatusWord(payment, order),
         state: payment.state,
-        amount: formatMoney(chargedCents(payment), payment.currency),
+        amount: formatMoney(netCharged(payment), payment.currency),
       };
     });
   const vendors = [...new Set(rows.map((row) => row.client))];
@@ -118,8 +126,8 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
 
   return {
     metrics: [
-      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released"), chargedCents))],
-      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed"), chargedCents))],
+      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released"), netCharged))],
+      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed"), netCharged))],
       ["Due now", formatMoney(sum(unpaid.filter((payment) => OWED.has(payment.state)), chargedCents)), "highlight"],
       ["Remaining", formatMoney(remaining)],
     ],

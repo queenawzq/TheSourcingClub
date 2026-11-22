@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, checkChargesFor, claimStripeRead, ensureFundsAvailable, ensureFundsAvailableFor, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -25,7 +25,17 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { paymentId } = jsonBody(request);
+  const { paymentId, orgId } = jsonBody(request);
+  // A factory's page before it reads its balance (any member): funded
+  // payments still without a clearing date get one from Stripe. Read only.
+  if (orgId && !paymentId) {
+    const member = await caller.rpc("is_org_member", { target_org: orgId });
+    if (tokenRefused(member)) return reply(response, 401, { error: "sign in is required" });
+    if (member.error || member.data !== true) return reply(response, 403, { error: "that company is not available to you" });
+    const askStripe = await claimStripeRead(db, orgId);
+    const [recorded] = await Promise.all([ensureFundsAvailableFor({ stripe, db, orgId }), askStripe ? checkChargesFor({ stripe, db, orgId }) : null]);
+    return reply(response, 200, { recorded });
+  }
   const read = await caller.from("order_payments").select("id, stripe_payment_intent_id").eq("id", paymentId).maybeSingle();
   if (tokenRefused(read)) return reply(response, 401, { error: "sign in is required" });
   const { data: visible } = read;
@@ -38,8 +48,12 @@ export default async function handler(request, response) {
       });
       await applyPaymentIntent({ stripe, db, intent });
     }
-    // A payout the database asked for and that did not go yet.
-    await releasePayment({ stripe, db, paymentId }).catch(() => null);
+    // A release an earlier version started on approval is settled; nothing
+    // new is sent; approved money waits in the factory's balance.
+    await settleRelease({ stripe, db, paymentId }).catch(() => null);
+    // When the brand's money clears, if recording it failed before.
+    await ensureFundsAvailable({ stripe, db, paymentId })
+      .catch((failure) => logStripeFailure("stripe-sync funds-available", failure, { paymentId }));
 
     const { data: payment } = await db
       .from("order_payments")

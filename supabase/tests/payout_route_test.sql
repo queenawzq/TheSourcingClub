@@ -3,6 +3,9 @@ begin;
 create extension if not exists pgtap with schema extensions;
 
 select no_plan();
+-- Wise on everywhere: these steps make a Wise account the default (round 24
+-- refuses a default whose provider is off).
+update public.payout_provider_settings set enabled = true where provider = 'wise';
 
 set local session_replication_role = replica;
 
@@ -70,6 +73,9 @@ create function pg_temp.lapse() returns void language sql as $f$
 $f$;
 
 
+-- These checks are about which road may claim, inside a withdrawal's claim
+-- (20261120110000); outside one, p96_b below checks nothing can claim.
+select set_config('tsc.withdrawal_claim', 'on', true);
 select ok(public.uses_stripe_payout('96b00000-0000-0000-0000-0000000000f1'), 'existing accounts retain Stripe by default');
 set local role anon;
 select throws_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'42501',null,'signed out cannot switch');
@@ -107,8 +113,12 @@ select pg_temp.act_as(1); set local role authenticated;
 reset role; savepoint p96_b; select pg_temp.act_as(1); set local role authenticated;
 select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'default can move to Stripe while a manual payout is owed');
 reset role;
-select ok((select withdrawal_pool from public.order_payments where id='96f00000-0000-0000-0000-000000000002'),'what was owed on the saved method stays in the balance');
-select throws_ok($$select public.claim_payment_release('96f00000-0000-0000-0000-000000000002')$$,'22023',null,'so Stripe never pays it a second time');
+select ok((select not withdrawal_pool and release_claimed_at is null and not stripe_release_started from public.order_payments where id='96f00000-0000-0000-0000-000000000002'),'choosing Stripe moves nothing: what was owed stays owed, unclaimed, outside the pool');
+select is((select count(*)::int from public.provider_payouts where payment_id='96f00000-0000-0000-0000-000000000002' and status in ('processing','paid')),0,'and nothing pays it by another road');
+select set_config('tsc.withdrawal_claim', 'off', true);
+select is(public.claim_payment_release('96f00000-0000-0000-0000-000000000002'),null::timestamptz,'now on Stripe, the owed step still cannot be claimed for a transfer outside a withdrawal');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id='96f00000-0000-0000-0000-000000000002'),'and stays unclaimed');
+select set_config('tsc.withdrawal_claim', 'on', true);
 rollback to savepoint p96_b;
 create temp table p96_owed on commit drop as select id, release_requested_at from public.order_payments where order_id='96d00000-0000-0000-0000-000000000001' and release_requested_at is not null;
 update public.order_payments set release_requested_at=null where id in (select id from p96_owed);
@@ -116,6 +126,9 @@ select pg_temp.act_as(1); set local role authenticated;
 select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'can switch back to Stripe after attempt ends and nothing is owed');
 reset role;
 update public.order_payments p set release_requested_at=o.release_requested_at from p96_owed o where p.id=o.id;
+-- Round 36: only a release an earlier version started is claimed (the never-set
+-- tsc.withdrawal_claim no longer opens one).
+update public.order_payments set stripe_release_started = true where id='96f00000-0000-0000-0000-000000000002';
 select ok(public.claim_payment_release('96f00000-0000-0000-0000-000000000002') is not null,'Stripe can claim after switching back');
 select pg_temp.act_as(1); set local role authenticated;
 reset role; savepoint p96_c; select pg_temp.act_as(1); set local role authenticated;

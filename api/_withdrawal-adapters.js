@@ -22,7 +22,11 @@ import { paypalFrom } from "./_paypal.js";
  *   pay(client, ctx, quote)            { ref } once the provider has it. Same ctx.key, same
  *                                      payment: a press after a timeout finds the first one.
  *   status(client, ref)                { state: "sent" | "paid" | "failed" | "cancelled",
- *                                        raw, arrivesMinor, failure }
+ *                                        raw, arrivesMinor, failure, returnedCents }
+ *                                      returnedCents: what came back to TSC of one returned
+ *                                      (paid or still being sent), in the withdrawal's currency,
+ *                                      when the provider says; null otherwise (the whole amount
+ *                                      is then taken as back: record_withdrawal_returned).
  *   factoryQuote(client, ctx)          optional: the same shape as quote(), or null when it can't
  *                                      give the exact figure, for the factory's own preview. Read-only: it may not create
  *                                      anything at the provider (no recipient, no transfer).
@@ -114,7 +118,9 @@ export const wiseAdapter = {
   },
   async status(wise, ref) {
     const status = await wise.status(ref);
-    return { state: status.state === "awaiting_funding" ? "sent" : status.state ?? "sent", raw: status.raw, arrivesMinor: status.arrivesCents, failure: status.failure };
+    // Wise's transfer does not say what a bounced one gave back: returnedCents null.
+    // Its transfers#refund event does (api/wise-webhook.js, wiseRefundCents).
+    return { state: status.state === "awaiting_funding" ? "sent" : status.state ?? "sent", raw: status.raw, arrivesMinor: status.arrivesCents, failure: status.failure, returnedCents: null };
   },
 };
 
@@ -142,11 +148,17 @@ export const paypalAdapter = {
   },
   async status(paypal, ref) {
     const status = await paypal.status(ref);
-    return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null };
+    // Returned, refunded or reversed, after it was paid or while it was still
+    // unclaimed (returned after 30 days): PayPal gives back what was sent and
+    // keeps its Payouts fee, so that is what came back
+    // (record_withdrawal_returned; the factory bears the fee, as it does on a payout).
+    const returned = status.state === "failed" && ["RETURNED", "REFUNDED", "REVERSED"].includes(status.raw) && Number.isFinite(status.sentMinor);
+    return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null,
+      returnedCents: returned ? status.sentMinor : null };
   },
 };
 
-// No "bank" adapter: TSC no longer pays a bank by hand (20261117500000). A bank
-// withdrawal asked for before that is marked paid by staff (mark_withdrawal_paid_by_bank).
+// No "bank" adapter: TSC no longer pays a bank by hand (20261117500000); a bank
+// withdrawal asked for before that is declined (production has none).
 export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter };
 export const registerAdapter = (adapter) => { ADAPTERS[adapter.provider] = adapter; };

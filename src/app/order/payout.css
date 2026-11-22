@@ -75,8 +75,12 @@
 .payout-amount-negative { color: var(--text); }
 .payout-amount-pending { color: var(--text); }
 .payout-status-completed, .payout-status-paid, .payout-status-funded, .payout-status-paid-by-bank-transfer, .payout-status-added-to-your-balance, .payout-status-paid-out-to-your-bank { background: #edf7f1; color: #167847 !important; }
-.payout-status-failed, .payout-status-canceled { background: #fff0ed; color: #b93824 !important; }
-.payout-status-processing, .payout-status-payment-processing, .payout-status-sent, .payout-status-to-be-sent { background: #eaf2ff; color: var(--blue) !important; }
+/* Every word a Payments row can show has its colour: done green, ended or gone back red, moving or waiting blue. */
+.payout-status-failed, .payout-status-canceled, .payout-status-cancelled, .payout-status-declined, .payout-status-refunded,
+.payout-status-reversed-by-the-brand\'s-bank, .payout-status-order-cancelled { background: #fff0ed; color: #b93824 !important; }
+.payout-status-processing, .payout-status-payment-processing, .payout-status-sent, .payout-status-to-be-sent,
+.payout-status-on-its-way, .payout-status-pending, .payout-status-on-hold, .payout-status-waiting,
+.payout-status-awaiting-approval { background: #eaf2ff; color: var(--blue) !important; }
 .brand-transaction-view { display: flex; align-items: center; justify-self: end; gap: 12px; color: var(--text); text-decoration: none; }
 .brand-transaction-view strong { font-size: 15px; }
 .brand-transaction-view > span { color: var(--text-muted); font-size: 24px; font-weight: 400; line-height: 1; }
@@ -392,13 +396,16 @@
 .payout-withdrawal-status-row .payout-pending-withdrawal { margin-top: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 16px 0 0; }
 .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: auto minmax(0, 1fr); gap: 4px 20px; align-items: center; }
 .payout-withdrawal-status-row .payout-pending-label { grid-column: 1; }
-.payout-withdrawal-status-row .payout-pending-amount { grid-column: 1; grid-row: 2; }
+.payout-withdrawal-status-row .payout-pending-amount { grid-column: 1; grid-row: 2; color: var(--text-muted); font-size: 12px; line-height: 18px; font-weight: 400; }
 .payout-withdrawal-status-row .payout-pending-destination { grid-column: 2; grid-row: 1 / span 2; }
+/* The part refunded since it was asked: a row of its own under the amount. */
+.payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-refunded"] { grid-column: 1; grid-row: 3; }
 /* Several pending rows: the same space above and below each divider. */
 .payout-withdrawal-status-row .payout-pending-withdrawal + .payout-pending-withdrawal { margin-top: 16px; }
 @media (max-width: 600px) {
   .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: minmax(0, 1fr); }
   .payout-withdrawal-status-row .payout-pending-destination { grid-column: 1; grid-row: 3; }
+  .payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-refunded"] { grid-row: 4; }
 }
 
 /* Choosing which waiting withdrawals to cancel (CancelWithdrawalsForm). */

@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(10);
 set local session_replication_role = replica;
 
 insert into auth.users (id, email) values
@@ -31,6 +31,13 @@ insert into public.order_payments (id, order_id, milestone_id, amount_cents, cur
 set local session_replication_role = origin;
 
 insert into public.stripe_connect_accounts(org_id,stripe_account_id,country,transfers_active) values ('33b00000-0000-0000-0000-0000000000f2','acct_recovery_old','PT',true);
+-- F1 (20261120110000): an owed step nobody started cannot be claimed for a
+-- Stripe transfer on its own; only a release an earlier version started is
+-- settled (round 36: the never-set tsc.withdrawal_claim no longer opens it).
+select is(public.claim_payment_release('33800000-0000-0000-0000-000000000001'), null::timestamptz, 'outside a withdrawal: an owed, unstarted step cannot be claimed for a Stripe transfer');
+select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = '33800000-0000-0000-0000-000000000001'), 'outside a withdrawal: and it stays unclaimed');
+-- The upgrade rules below are about a started release being settled.
+update public.order_payments set stripe_release_started = true where id = '33800000-0000-0000-0000-000000000001';
 select public.begin_connect_upgrade('33b00000-0000-0000-0000-0000000000f2','acct_recovery_old');
 select ok(public.claim_payment_release('33800000-0000-0000-0000-000000000001') is not null,'creation in progress does not freeze releases');
 update public.order_payments set release_claimed_at=null where id='33800000-0000-0000-0000-000000000001';

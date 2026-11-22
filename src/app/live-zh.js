@@ -105,6 +105,9 @@ const PATTERNS = [
   [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],
   // The Withdraw dialog's refusal when the fee would take everything (withdrawalFee, src/shared/withdrawal-fees.mjs).
   [/^This payment of (\S+) is too small: the fee to send it is (\S+), so nothing would arrive\. Nothing was sent\.$/, (m) => `该笔款项 ${m[1]} 金额过低：转账手续费为 ${m[2]}，到账金额为零。未发送任何款项。`],
+  [/^This payment of (\S+) is too small to send\. The fee is (\S+)\.$/, (m) => `该笔款项 ${m[1]} 金额过低，无法发送。手续费为 ${m[2]}。`],
+  // Stripe's smallest payout (minimumWithdrawalSentence): the dialog's check and the server's refusal.
+  [/^The minimum withdrawal is (\S+)\.$/, (m) => `最低提现金额为 ${m[1]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
@@ -147,6 +150,31 @@ const PATTERNS = [
   [/^due (.+)$/, (m, inner) => `截止 ${inner(m[1])}`],
   [/^Updated (.+)$/, (m, inner) => `更新于 ${inner(m[1])}`],
   [new RegExp(`^Available to withdraw on ${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现`],
+  // Where a Stripe withdrawal went (stripe_withdrawals.destination_label), in the notices' words.
+  [/^To (bank account|debit card) ending in (\d+)\.$/, (m) => `转至${m[1] === "bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）。`],
+  // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
+  [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
+  [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待确认。处理完成后即可提现。`],
+  // Owing TSC more than the cleared balance covers: the money clearing pays that first.
+  [/^(\$[\d,.]+) pending\. It goes toward what you owe TSC\.$/, (m) => `${m[1]} 待确认。将先用于抵扣你欠 TSC 的款项。`],
+  [new RegExp(`^(\\$[\\d,.]+) pending\\. (\\$[\\d,.]+) available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。其中 ${m[2]} ${MONTHS[m[3]]} 月 ${Number(m[4])} 日起可提现。`],
+  [/^(\$[\d,.]+) pending\. (\$[\d,.]+) can be withdrawn once processing finishes\.$/, (m) => `${m[1]} 待确认。其中 ${m[2]} 处理完成后即可提现。`],
+  [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
+  [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
+  // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
+  [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
+  // A refund and a lost dispute on one step: the factory's part of both.
+  [/^(\$[\d,.]+) returned to the brand$/, (m) => `${m[1]} 已退回品牌`],
+  [/^(\$[\d,.]+) reversed by the brand's bank$/, (m) => `${m[1]} 已被品牌的银行撤回`],
+  // The brand's line for part of a payment its bank took back.
+  [/^(\$[\d,.]+) reversed by your bank$/, (m) => `${m[1]} 已被你的银行撤回`],
+  // Refunded after it was withdrawn: owed to TSC, inside Available.
+  [/^You owe TSC (\$[\d,.]+)\. A payment was refunded after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有一笔付款被退款。`],
+  [/^You owe TSC (\$[\d,.]+)\. The brand's bank reversed a payment after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，品牌的银行撤回了一笔付款。`],
+  [/^You owe TSC (\$[\d,.]+)\. Money was returned to the brand after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有款项退回了品牌。`],
+  // A step still clearing, on its Payments row: "Available Nov 22.", alone or
+  // before the row's other sentences, which are translated on their own.
+  [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],
   // Counts on cards and tabs.
   [/^(\d+) awaiting brand review$/, (m) => `${m[1]} 个待品牌审核`],
   [/^(\d+) need updates?$/, (m) => `${m[1]} 个需要更新`],
@@ -172,6 +200,8 @@ const PATTERNS = [
   [/^(.+) confirmed the production steps$/, (m) => `${m[1]} 已确认生产步骤`],
   [/^(\$[\d,.]+) is due for (.+)$/, (m, inner) => `${inner(m[2])} 应付 ${m[1]}`],
   [/^(\$[\d,.]+) funded for (.+), held by TSC$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，由 TSC 托管`],
+  [/^(\$[\d,.]+) funded for (.+), added to your balance$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，已计入你的余额`],
+  [/^(\$[\d,.]+) funded for (.+), added to the factory's balance$/, (m, inner) => `${inner(m[2])} 已付 ${m[1]}，已计入工厂的余额`],
   [/^(.+) is complete$/, (m, inner) => `${inner(m[1])} 已完成`],
   [/^You posted on (.+)$/, (m, inner) => `你在「${inner(m[1])}」发布了更新`],
   [/^(.+) posted on (.+)$/, (m, inner) => `${m[1]} 在「${inner(m[2])}」发布了更新`],
@@ -216,6 +246,12 @@ const PATTERNS = [
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
   [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
+  // A failed withdrawal: what came back, on its row and on the card (the notice's words).
+  [/^(\$[\d,.]+) is back in your balance\. Check your withdrawal method, then withdraw again\.$/, (m) => `${m[1]} 已退回你的余额。请检查你的提现方式，然后重新提现。`],
+  [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
+  [/^Withdrawal of (\S+) did not go through\. (\$[\d,.]+) is back in your balance\.$/, (m) => `提现 ${m[1]} 未成功。${m[2]} 已退回你的余额。`],
+  [/^Withdrawal of (\S+) did not go through\. This amount was returned to the brand\.$/, (m) => `提现 ${m[1]} 未成功。这笔金额已退回品牌。`],
+  [/^Withdrawal of (\S+) did not go through\.$/, (m) => `提现 ${m[1]} 未成功。`],
   // Withdrawal methods (src/app/order/StripePayoutCard.jsx): the chooser's
   // heading, a method's name with its last four digits, and removing one.
   // Emails, bank names and digits stay as written.
