@@ -19,7 +19,7 @@ const REFUSALS = {
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
 };
 /** Staff's words when a withdrawal waits on money the factory owes TSC (api/_withdrawals.js says the same). */
-export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). Decline this withdrawal.`;
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.`;
 const said = (error) => new Error(error?.hint === "withdrawal_owes_tsc" ? owesTscSentence(error.details)
   : REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
 
@@ -58,7 +58,7 @@ async function call(body) {
 export async function adminBalanceAttention() {
   const { data, error } = await supabase.rpc("admin_balance_attention");
   if (error) throw new Error("The board couldn't read the payments that need checking. Reload the page.");
-  return { disputed: data?.disputed ?? [], stuck: data?.stuck ?? [], recover: data?.recover ?? [], refund_failed: data?.refund_failed ?? [] };
+  return { disputed: data?.disputed ?? [], stuck: data?.stuck ?? [], recover: data?.recover ?? [], refund_failed: data?.refund_failed ?? [], returned: data?.returned ?? [] };
 }
 
 export async function adminWithdrawals() {

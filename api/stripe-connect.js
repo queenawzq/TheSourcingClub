@@ -217,14 +217,14 @@ export default async function handler(request, response) {
 
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
-      // In US$: the one balance (Stripe money first, then owed steps), paid
-      // out in the account's own currency. In the account's other currency:
-      // its Stripe money only, as before.
-      const oneBalance = String(currency ?? "").toLowerCase() === "usd";
-      const account = oneBalance ? await stripe.accounts.retrieve(existing.stripe_account_id) : null;
+      // The one balance, in US$ (Stripe money first, then owed steps), paid
+      // out in the account's own currency. Nothing else: an amount in another
+      // currency would skip the "owes TSC" rule (gatherOwed).
+      if (String(currency ?? "").toLowerCase() !== "usd") return reply(response, 422, { error: "Choose a valid available balance to withdraw." });
+      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const payout = await withdrawWithFee({ stripe, db, orgId, accountId: existing.stripe_account_id, country: existing.country ?? "",
-        amount, currency, requestId, destination: destination ?? null, userId: auth?.user?.id ?? tokenSubject(request),
-        oneBalance, payoutCurrency: account?.default_currency ?? "usd", transfersActive: Boolean(existing.transfers_active) });
+        amount, currency: "usd", requestId, destination: destination ?? null, userId: auth?.user?.id ?? tokenSubject(request),
+        oneBalance: true, payoutCurrency: account?.default_currency ?? "usd", transfersActive: Boolean(existing.transfers_active) });
       return reply(response, 200, { payout });
     }
 

@@ -131,7 +131,7 @@ select is(pg_temp.holds(), 'The brand disputed the charge. $500.00 is held until
 -- Settled in TSC's favour, then disputed again: a new dispute is told again.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b30f0011-0000-0000-0000-000000000000'', false)')$$, 'won');
 set local session_replication_role = replica;
--- (Told for a dispute a minute earlier: its time and its key, 20261121390000;
+-- (Told for a dispute a minute earlier: its time and its key, 20261121410000;
 -- within this transaction now() would otherwise make both disputes one.)
 update public.notifications set created_at = created_at - interval '1 minute',
        dedupe_key = format('payment_hold:%s:%s:%s', subject_id,

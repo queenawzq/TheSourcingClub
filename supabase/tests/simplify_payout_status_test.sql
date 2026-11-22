@@ -1,4 +1,4 @@
--- An older read of a payout changes nothing (20261121400000): the database
+-- An older read of a payout changes nothing (20261121420000): the database
 -- keeps a Stripe payout's status and arrival day from going back, so the
 -- server's payout read (refreshPayouts) keeps no copy of the ranks.
 

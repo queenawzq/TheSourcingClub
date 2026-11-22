@@ -20,6 +20,10 @@
 --    different received amount, where they now say what the balance holds).
 --    The generated column factory_refund_cents keeps its own copy of the
 --    base as its cap: a generated column cannot call a function on its row.
+-- On top of round 36 (20261121380000): claim_withdrawal and claim_owed_steps
+-- keep its cover_factory_debt() call under the company lock, and the one
+-- "owes TSC" refusal (check_withdrawal_can_go) names the uncovered amount,
+-- as round 36's claim_withdrawal did, so the guard trigger now says the same.
 -- Latest full bodies; grants unchanged on replaced functions; the two new
 -- ones are internal. Safe with the live site while applied: only function
 -- bodies change, with the same results.
@@ -59,8 +63,9 @@ declare
 begin
   if why = 'withdrawal_owes_tsc' then
     -- The amount travels in detail, for staff's sentence.
-    raise exception 'the factory owes TSC %', public.format_money(public.factory_debt_cents(w.org_id), 'USD')
-      using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(public.factory_debt_cents(w.org_id), 'USD');
+    -- What its earnings do not cover: the To recover row's amount (20261121380000).
+    raise exception 'the factory owes TSC %', public.format_money(public.factory_debt_uncovered_cents(w.org_id), 'USD')
+      using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(public.factory_debt_uncovered_cents(w.org_id), 'USD');
   elsif why = 'withdrawal_over_balance' then
     raise exception 'the factory''s balance no longer covers this' using errcode = '22023', hint = 'withdrawal_over_balance';
   end if;
@@ -118,6 +123,8 @@ begin
   end if;
   perform public.payout_staff_check(w.org_id);
   perform 1 from public.orgs where id = w.org_id for no key update;
+  -- What the company owes TSC is kept from its earnings first (20261121380000).
+  perform public.cover_factory_debt(w.org_id);
   select * into w from public.factory_withdrawals where id = target_withdrawal for update;
   if w.status = 'paying' then
     if w.lease_until is not null and w.lease_until > now() then
@@ -129,7 +136,8 @@ begin
   end if;
   -- Money refunded after the factory withdrew it, more than its other
   -- earnings cover: TSC recovers it before paying anything more
-  -- (20261121210000). The amount travels in detail, for staff's sentence.
+  -- (20261121210000). The uncovered amount travels in detail, for staff's
+  -- sentence (20261121380000).
   if not resumed then
     perform public.check_withdrawal_can_go(w);
   end if;
@@ -180,6 +188,9 @@ begin
     raise exception 'Enter an amount to withdraw.' using errcode = '22023', hint = 'withdrawal_amount';
   end if;
   perform 1 from public.orgs where id = target_org for no key update;
+  -- What the company owes TSC is kept from its earnings first, so nothing is
+  -- left stranded on a step (20261121380000).
+  perform public.cover_factory_debt(target_org);
 
   if road = 'stripe' then
     select * into sw from public.stripe_withdrawals where id = withdrawal for update;

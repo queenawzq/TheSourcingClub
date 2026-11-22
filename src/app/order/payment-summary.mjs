@@ -148,6 +148,12 @@ export function figuresByPayment(figures) {
  */
 export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed_to_tsc_cents ?? figures?.owed_to_tsc_cents) || 0);
 /**
+ * The part of it the factory's earnings do not cover
+ * (factory_balance().uncovered_debt_cents): the card's line says only this,
+ * and none once they cover it (TSC keeps that much from them).
+ */
+export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.uncovered_debt_cents ?? figures?.uncovered_debt_cents) || 0);
+/**
  * The card's line for it (Available already counts it), in the words of what
  * sent the money back: a refund, a dispute lost, or both.
  */
@@ -342,9 +348,9 @@ export function stillClearing(row, now = new Date()) {
   return !Number.isNaN(when.getTime()) && when > now;
 }
 
-// A payout sent step by step that is under way: on its way, as the card says
-// (legacyOnItsWayCents).
-const WITHDRAWAL_STATUS = { processing: "On its way", paid: "Completed", failed: "Failed" };
+// A payout sent step by step that is under way: main's word, still true (the
+// card's line counts it on its way: legacyOnItsWayCents).
+const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
 const FAILURE_NOTE = {
   details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal address" },
 };
@@ -512,14 +518,15 @@ const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", ca
  * progress), adding up to the two exactly:
  *   clearing  card payments not yet cleared (TSC's, and the factory's own
  *             Stripe pending balance): "$X pending. Available to withdraw on …"
- *             Pending is clearing plus the disputed part of onHold.
- *   onHold    steps whose card charge is disputed, and parts of a waiting
- *             withdrawal whose step was refunded: "$Z on hold"
- *   waiting   PayPal / Wise / bank withdrawals waiting for staff or being
- *             sent (each shown by its own "Processing withdrawal" block, no line)
- *   onItsWay  the rest of Processing: money that has left TSC, Stripe
- *             withdrawals on their way to the bank and old step-by-step
- *             payouts being sent: "$Y on its way"
+ *             Pending is clearing plus onHold.
+ *   onHold    earnings whose card charge is disputed and that no withdrawal
+ *             holds (factory_balance().parts.disputed_cents): "$Z on hold"
+ *   waiting   PayPal / Wise withdrawals waiting for staff, on hold, or being
+ *             sent, each as a whole (its server word): its own "Processing
+ *             withdrawal" block says it, so no line. A part that went back to
+ *             the brand since is in no figure.
+ *   onItsWay  the rest of Processing: Stripe withdrawals on their way to the
+ *             bank and old step-by-step payouts being sent: "$Y on its way"
  * Null until the figures answer.
  */
 export function pendingParts(figures) {
@@ -529,24 +536,14 @@ export function pendingParts(figures) {
   const parts = base.parts ?? {};
   const pending = n(figures.pending_cents);
   const processing = n(figures.processing_cents);
-  // Each withdrawal's parts (factory_balance().withdrawals[].parts): a waiting
-  // request with a step under it refunded or disputed since is split into its
-  // waiting rest and its on-hold part. A PayPal / Wise / bank withdrawal TSC
-  // is sending is still its own "Processing withdrawal" block on the card
-  // until it is paid, so it is counted with the waiting ones, never again in
-  // "on its way".
-  const sumOf = (word) => (base.withdrawals ?? []).flatMap((w) => (w?.parts ?? [])
-    .map((part) => (w.road === "pool" && part?.word === "on_its_way" ? { ...part, word: "waiting" } : part)))
-    .filter((part) => part?.word === word).reduce((sum, part) => sum + n(part.amount_cents), 0);
-  // Pending is what is clearing and the disputed steps; Processing holds the
-  // withdrawals, held parts included.
-  const disputed = Math.min(pending, n(parts.disputed_cents));
-  const heldInWithdrawals = Math.min(processing, sumOf("on_hold"));
-  const onHold = disputed + heldInWithdrawals;
-  const clearing = pending - disputed;
-  const waiting = Math.min(processing - heldInWithdrawals, sumOf("waiting"));
-  // The rest: withdrawals the server calls on their way, and old step-by-step payouts being sent.
-  return { pending, processing, clearing, onHold, waiting, onItsWay: processing - heldInWithdrawals - waiting };
+  const list = base.withdrawals ?? figures.withdrawals ?? [];
+  const asked = list
+    .filter((w) => w?.road === "pool" && ["waiting", "on_hold", "on_its_way"].includes(w.word))
+    .reduce((sum, w) => sum + Math.max(0, n(w.amount_cents)
+      - (w.parts ?? []).filter((part) => part?.word === "refunded").reduce((total, part) => total + n(part.amount_cents), 0)), 0);
+  const onHold = Math.min(pending, n(parts.disputed_cents));
+  const waiting = Math.min(processing, asked);
+  return { pending, processing, clearing: pending - onHold, onHold, waiting, onItsWay: processing - waiting };
 }
 
 /**
@@ -571,8 +568,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       const paid = w.word === "paid";
       return [{
         ...base,
-        // A partly held withdrawal can come as two entries: one row each.
-        id: `asked-${w.id}${w.word === "on_hold" ? "-held" : ""}`,
+        id: `asked-${w.id}`,
         title: ASKED_TITLE[w.provider] ?? "Bank transfer",
         meta: w.to ?? own?.paid_to ?? null,
         note: own?.status === "declined" ? own.reason

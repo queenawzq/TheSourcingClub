@@ -4515,18 +4515,17 @@ async function main() {
     const { data: everyBrandPayment } = await db.from("order_payments")
       .select("state, release_requested_at, amount_cents, fee_bps, charged_cents, charge_cents, refunded_cents, dispute_lost_cents")
       .in("order_id", everyBrandOrder.map((order) => order.id));
-    // The page's split (brand-payments-view.js): approved, or a funded deposit
-    // (release_requested_at set), is the factory's and reads Paid; only money
-    // TSC holds before approval is Held. Each at what the brand paid, less
-    // what went back to it.
-    const toFactory = (payment) => payment.state === "released" || (payment.state === "confirmed" && Boolean(payment.release_requested_at));
+    // The page's split (brand-payments-view.js, main's): paid out is Paid;
+    // everything TSC holds, approved or not, is Held. Each at what the brand
+    // paid, less what went back to it.
+    const toFactory = (payment) => payment.state === "released";
     const netOf = (payment) => Math.max(0, chargedOf(payment) - Number(payment.refunded_cents ?? 0) - Number(payment.dispute_lost_cents ?? 0));
     const figure = (which) => moneyWords(everyBrandPayment
       .filter((payment) => (which === "paid" ? toFactory(payment) : payment.state === "confirmed" && !toFactory(payment)))
       .reduce((total, payment) => total + netOf(payment), 0));
     const paymentFigures = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".billing-payment-strip .metric")]
       .map((metric) => [metric.querySelector("span")?.innerText.trim().toLowerCase(), metric.querySelector("strong")?.innerText.trim()])));
-    check(paymentFigures.paid === figure("paid"), `Paid is what has reached the factory's balance, fee included (${paymentFigures.paid}, expected ${figure("paid")})`);
+    check(paymentFigures.paid === figure("paid"), `Paid is what was paid out to the factory, fee included (${paymentFigures.paid}, expected ${figure("paid")})`);
     check(paymentFigures.held === figure("held"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("held")})`);
     check("due now" in paymentFigures && "remaining" in paymentFigures, "with Due now and Remaining beside them");
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");

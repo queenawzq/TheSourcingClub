@@ -84,7 +84,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const w = world();
   w.caller = { rpc: async () => ({ data: null, error: { code: "22023", hint: "withdrawal_owes_tsc", message: "the factory owes TSC $500.00", details: "$500.00" } }) };
   await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure
-    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Decline this withdrawal.");
+    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.");
   assert.equal(w.paid.length, 0, "nothing paid while the factory owes TSC");
   const { owesTscSentence } = await import("../api/_withdrawals.js");
   const { owesTscSentence: boardSentence } = await import("../src/lib/domain/withdrawals.js").catch(() => ({}));
@@ -288,7 +288,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "charge.dispute.created"') + 1500);
   assert.match(disputeCase, /stripe\.disputes\.retrieve\(event\.data\.object\.id\)/, "the dispute is read back from Stripe");
   assert.doesNotMatch(disputeCase, /disputed\s*=\s*event\.type/, "the event's type never decides");
-  assert.match(disputeCase, /applyDispute\(\{ db, paymentId: payment\.id, dispute \}\)/, "only its current status does (applyDispute)");
+  assert.match(disputeCase, /applyDisputeEvent\(\{ stripe, db, dispute \}\)/, "only its current status does (applyDisputeEvent: the charge's newest dispute)");
   const { applyDispute } = await import("../api/_stripe.js");
   const seen = [];
   const db = { rpc: async (name, args) => { seen.push([name, args]); return { data: null, error: null }; } };
@@ -386,7 +386,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
         maybeSingle: async () => ({ data: rows.find((row) => filters.every((f) => f(row))) ?? null, error: null }),
         eq: (other, wanted) => (filters.push((row) => row[other] === wanted), q),
         // payment_events: a lost dispute recorded on that payment, by its
-        // cause (round 32) and its Stripe id (stripe_ref, 20261121390000):
+        // cause (round 32) and its Stripe id (stripe_ref, 20261121410000):
         // never by the note's words.
         limit: async () => ({ data: table === "payment_events" ? events.filter((event) => filters.every((f) => f(event))) : [], error: null }),
       };
@@ -1901,7 +1901,7 @@ for (const [why, row] of [
     assert.equal(told[0].org_id, "org");
     await withdraw(w, 5000, { requestId });
     assert.equal(w.db.notices.filter((n) => n.kind === "withdrawal").length, 1, "pressed again: not told twice");
-    assert.equal(told[0].dedupe_key, `withdrawal_asked:${w.db.rows[0].id}`, "once by its key (20261121390000), not by looking for any notice about it");
+    assert.equal(told[0].dedupe_key, `withdrawal_asked:${w.db.rows[0].id}`, "once by its key (20261121410000), not by looking for any notice about it");
   }
 
   // D1 first: $30 already in the factory's Stripe account, $50 asked: only $20 is claimed and transferred.

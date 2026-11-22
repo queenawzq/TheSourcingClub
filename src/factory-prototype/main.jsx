@@ -1293,6 +1293,7 @@ export const factoryMainZhText = {
   "On hold": "暂扣中",
   "On its way": "正在途中",
   "Your bank is processing the payout.": "你的银行正在处理这笔提现。",
+  "Withdrawal requested. Your bank is processing the payout.": "已申请提现。你的银行正在处理这笔提现。",
   "Withdrawals paused": "提现已暂停",
   "Finish setup to withdraw": "完成设置后即可提现",
   "Canceled": "已取消",

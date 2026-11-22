@@ -513,11 +513,12 @@ reset role;
 -- its payout), which is exactly what the server claims before a transfer.
 
 -- F1 (20261120110000): an owed step nobody started cannot be claimed for a
--- Stripe transfer on its own; only a withdrawal's claim (tsc.withdrawal_claim) can.
+-- Stripe transfer on its own; only a release an earlier version started is
+-- settled (round 36: the never-set tsc.withdrawal_claim no longer opens it).
 select is(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')), null::timestamptz, 'outside a withdrawal: an owed, unstarted step cannot be claimed for a Stripe transfer');
 select ok((select release_claimed_at is null and not stripe_release_started from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')), 'outside a withdrawal: and it stays unclaimed');
-select set_config('tsc.withdrawal_claim', 'on', true);
--- What follows is a withdrawal's claim.
+-- What follows is a started release being settled.
+update public.order_payments set stripe_release_started = true where id = pg_temp.p18_pay('order_a', 'Balance');
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is not null,
   'the first caller claims the payout');
 select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is null,

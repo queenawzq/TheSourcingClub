@@ -1,4 +1,4 @@
--- One rule per check (20261121380000).
+-- One rule per check (20261121400000).
 --
 -- Whether a waiting PayPal / Wise withdrawal can go is withdrawal_blocker():
 -- withdrawal_covered (the page's word), claim_withdrawal (staff approve) and

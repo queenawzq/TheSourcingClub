@@ -51,7 +51,7 @@ export async function tellPayoutEvent(db, event) {
       body: `Your withdrawal of ${amount} ${said.has("paid") ? "did not reach your bank after all" : "did not go through"}. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
     };
   const outcome = event.type === "payout.paid" ? "paid" : "failed";
-  // Once per payout and outcome (its key, 20261121390000).
+  // Once per payout and outcome (its key, 20261121410000).
   const { error } = await db.from("notifications").upsert({
     org_id: known.data.org_id, ...notice,
     ...(payout.id ? { data: { payout_id: payout.id, payout: outcome }, dedupe_key: `payout:${payout.id}:${outcome}` } : {}),

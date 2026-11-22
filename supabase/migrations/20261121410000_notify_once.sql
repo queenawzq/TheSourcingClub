@@ -32,7 +32,7 @@
 
 alter table public.notifications add column if not exists dedupe_key text;
 comment on column public.notifications.dedupe_key is
-  'What a once-only notice is about, as a key (20261121390000): unique per company; null for every other notice.';
+  'What a once-only notice is about, as a key (20261121410000): unique per company; null for every other notice.';
 
 with keyed as (
   select n.id, k.key,
@@ -84,7 +84,7 @@ $$;
 
 alter table public.payment_events add column if not exists stripe_ref text;
 comment on column public.payment_events.stripe_ref is
-  'The Stripe PaymentIntent or dispute this event is about (20261121390000): how a recorder asks whether it recorded it already.';
+  'The Stripe PaymentIntent or dispute this event is about (20261121410000): how a recorder asks whether it recorded it already.';
 update public.payment_events
    set stripe_ref = substring(note from '\(Stripe ([^()[:space:]]+)\)$')
  where stripe_ref is null and note ~ '\(Stripe [^()[:space:]]+\)$';
@@ -147,7 +147,7 @@ begin
   select * into o from public.production_orders where id = p.order_id;
   -- Once per dispute and amount: the withdraw call and the webhook may both
   -- get here, and a withdrawal's part coming back makes more of it held.
-  -- By its key, never its words (20261121390000).
+  -- By its key, never its words (20261121410000).
   if held and exists (
     select 1 from public.notifications n
      where n.org_id = o.factory_org_id and starts_with(n.dedupe_key, key || ':')
@@ -217,7 +217,7 @@ begin
                        and public.factory_debt_uncovered_cents(o.factory_org_id) > 0))
               -- Waiting: told once that it is on hold. Being sent: told again
               -- for each new amount that goes back (below).
-              -- By its key, never its words (20261121390000).
+              -- By its key, never its words (20261121410000).
               and (f.status = 'paying'
                    or not exists (select 1 from public.notifications n
                                    where n.org_id = f.org_id

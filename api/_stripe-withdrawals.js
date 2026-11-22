@@ -87,6 +87,9 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   const paidIn = oneBalance ? String(payoutCurrency ?? "usd").toLowerCase() : currency;
   if (oneBalance && currency !== "usd") throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
   await checkWithdrawalRequest(stripe, accountId, { amount, currency: paidIn, requestId, destination });
+  // A previous account's Stripe money: the same "owes TSC" rule as the one
+  // balance (gatherOwed), so it cannot be emptied before the debt is covered.
+  if (!oneBalance) await refuseOverDebt({ stripe, db, orgId, accountId, amount, currency });
   const key = withdrawalKey(accountId, { requestId, amount, destination }) + (oneBalance && paidIn !== "usd" ? "-usd" : "");
   // Older withdrawals left half-way first: what they took must be settled
   // before this one reads the balance.
@@ -564,6 +567,26 @@ export async function checkStripeWithdrawal({ stripe, db, withdrawalId }) {
   }
 }
 
+/**
+ * Money refunded after the factory had withdrawn it is owed to TSC. Its
+ * earnings TSC still holds (owed_reachable, Stripe road, net of the debt)
+ * cover it first; what they do not cover must stay in Stripe, where TSC can
+ * reverse it. So a payout of an account's own Stripe money leaves that much
+ * behind (converted at the account's latest transfer rate; with no rate,
+ * nothing leaves). Not read: refused, never skipped.
+ */
+async function refuseOverDebt({ stripe, db, orgId, accountId, amount, currency }) {
+  const reach = await call(db, "owed_reachable", { target_org: orgId }).catch(() => null);
+  if (!reach) throw new PayoutMethodRefusal(CANNOT_PROCESS);
+  if (!(Number(reach.debt_cents) > 0)) return;
+  const shortUsd = Math.max(0, -Number(reach.stripe_cents ?? 0));
+  if (!shortUsd) return;
+  const rate = await localPerUsd(stripe, accountId, currency).catch(() => null);
+  const available = await availableNow(stripe, accountId, currency);
+  const allowed = rate > 0 ? Math.max(0, available - Math.ceil(shortUsd * rate)) : 0;
+  if (amount > allowed) throw new PayoutMethodRefusal(upToSentence(allowed, currency));
+}
+
 async function call(db, name, args) {
   const { data, error } = await db.rpc(name, args);
   if (error) throw Object.assign(new Error(`${name}: ${error.message}`), { code: error.code, hint: error.hint });
@@ -803,7 +826,7 @@ async function tellWithdrawalAsked(stripe, db, row, payout) {
     const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
     const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
     to = to ?? "your bank account";
-    // Once (its key, 20261121390000): the withdraw call and a later read may both get here.
+    // Once (its key, 20261121410000): the withdraw call and a later read may both get here.
     await db.from("notifications").upsert({
       org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id, dedupe_key: `withdrawal_asked:${row.id}`,
       // When it was asked for: listed before its payout's own notices, which
