@@ -396,6 +396,20 @@ async function formatters() {
       "full:Refunded:$0.00,lost:Reversed by your bank:$0.00,part:Funded:$53.50");
     expect("brand payments: Held, net", refunds.metrics.find(([name]) => name === "Held")?.[1], "$53.50");
     expect("brand payments: Paid, net", refunds.metrics.find(([name]) => name === "Paid")?.[1], "$0.00");
+    // Round 37 (L-4): a step released only because TSC kept it to cover what
+    // the factory owed TSC was never paid to the factory: it stays Approved
+    // (Funded for a deposit) and Held, never Paid.
+    const kept = brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-8", factory: { name: "F" } }],
+      payments: [
+        { id: "kept", order_id: "o", state: "released", kept_by_tsc: true, amount_cents: 6500, charged_cents: 7000, currency: "USD", confirmed_at: "2026-11-19T10:00:00Z", release_requested_at: "2026-11-20T11:00:00Z", released_at: "2026-11-21T10:00:00Z", order_milestones: { title: "Fit sample", kind: "approval_and_payment" } },
+        { id: "keptdep", order_id: "o", state: "released", kept_by_tsc: true, amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
+        { id: "paid", order_id: "o", state: "released", kept_by_tsc: false, amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Label", kind: "payment_only" } },
+      ],
+    });
+    expect("brand payments: kept by TSC", kept.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "kept:Approved,keptdep:Funded,paid:Paid");
+    expect("brand payments: kept is Held", kept.metrics.find(([name]) => name === "Held")?.[1], "$81.00");
+    expect("brand payments: only paid is Paid", kept.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",

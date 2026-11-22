@@ -962,10 +962,16 @@ function AttentionSection({ attention, onChanged }) {
                   <td>{row.factory_name}{row.order_number ? <><br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></> : null}</td>
                   <td>{moneyIn(row.amount_cents, row.currency)}</td>
                   <td>
-                    {row.cause === "dispute_lost"
+                    {/* A step TSC kept to cover an earlier debt was never withdrawn (20261121385000). */}
+                    {Number(row.kept_cents) > 0 && !(Number(row.withdrawn_cents) > 0)
+                      ? (row.cause === "dispute_lost"
+                        ? `Dispute lost after TSC kept it to cover an earlier debt: recover ${moneyIn(row.amount_cents, row.currency)}.`
+                        : `Refunded after TSC kept it to cover an earlier debt: recover ${moneyIn(row.amount_cents, row.currency)}.`)
+                      : row.cause === "dispute_lost"
                       ? `Dispute lost after it was withdrawn: recover ${moneyIn(row.amount_cents, row.currency)}.`
                       : `Refunded after it was withdrawn: recover ${moneyIn(row.amount_cents, row.currency)}.`}
                     {Number(row.withdrawn_cents) > 0 ? ` Already withdrawn ${moneyIn(row.withdrawn_cents, row.currency)} (${withdrawnByWords(row.withdrawn_by)}).` : ""}
+                    {Number(row.kept_cents) > 0 && Number(row.withdrawn_cents) > 0 ? ` TSC kept ${moneyIn(row.kept_cents, row.currency)} of it to cover an earlier debt.` : ""}
                     {row.balance_cents != null ? ` Factory's balance now: ${moneyIn(row.balance_cents, "USD")}.` : ""}
                     {Number(row.dispute_fee_cents) > 0 ? ` Stripe's dispute fee: ${moneyIn(row.dispute_fee_cents, row.currency)}, borne by TSC.` : ""}
                     {" "}

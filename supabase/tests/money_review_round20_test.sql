@@ -226,8 +226,9 @@ select set_config('tsc.r20_w2', pg_temp.req(2, 10000)::text, true);
 select lives_ok($$select pg_temp.refund(21, 42800)$$, '$428 of the deposit is refunded after it was withdrawn: F2 owes $400, covered by its other earnings');
 select is((select count(*)::int from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'), 0, 'not on hold yet');
 select lives_ok($$select pg_temp.lost(23, 32100)$$, 'then the lab dip (never withdrawn) is lost in a dispute after approval');
+-- Round 37: the amount is what its earnings do not cover, as the card says it.
 select is((select body from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'),
-  'You owe TSC $400.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.', 'the waiting withdrawal is told the debt''s cause: a refund, not the dispute');
+  'You owe TSC $200.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.', 'the waiting withdrawal is told the debt''s cause: a refund, not the dispute');
 
 -- ===========================================================================
 -- Pre-existing: a full refund before approval that fails later.

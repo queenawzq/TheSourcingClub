@@ -5,7 +5,8 @@
  * the money until the brand approves the step, then pays the factory. Every
  * figure is what the brand pays, the fees included (chargedCents), less
  * anything that went back to it, the same as each row and the Fund screen:
- *   Paid         paid out to the factory
+ *   Paid         paid out to the factory (not a step TSC kept to cover what
+ *                the factory owed it: that money stays with TSC, so Held)
  *   Held         held by TSC now, not yet paid out (approved money stays
  *                with TSC until the factory withdraws it)
  *   Due now      due or failed on open orders, as the dashboard's figure
@@ -40,9 +41,17 @@ export function paymentStatusWord(payment, order) {
     return paymentRefund(payment).refunded > 0 ? "Refunded" : "Reversed by your bank";
   }
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
-  if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
-  return PAYMENT_STATUS[payment.state];
+  const state = shownState(payment);
+  if (state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
+  return PAYMENT_STATUS[state];
 }
+
+/**
+ * Released only because TSC kept it to cover what the factory owed TSC
+ * (payment_kept_by_tsc, 20261121385000): nothing was paid to the factory, so
+ * it reads as the approved, held step it was.
+ */
+const shownState = (payment) => (payment.state === "released" && payment.kept_by_tsc ? "confirmed" : payment.state);
 
 /** The design's status word for each payment state that is listed. */
 export const PAYMENT_STATUS = {
@@ -126,8 +135,8 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
 
   return {
     metrics: [
-      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released"), netCharged))],
-      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed"), netCharged))],
+      ["Paid", formatMoney(sum(scoped.filter((payment) => shownState(payment) === "released"), netCharged))],
+      ["Held", formatMoney(sum(scoped.filter((payment) => shownState(payment) === "confirmed"), netCharged))],
       ["Due now", formatMoney(sum(unpaid.filter((payment) => OWED.has(payment.state)), chargedCents)), "highlight"],
       ["Remaining", formatMoney(remaining)],
     ],

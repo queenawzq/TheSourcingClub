@@ -168,6 +168,11 @@ const PATTERNS = [
   [/^You owe TSC (\$[\d,.]+)\. A payment was refunded after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有一笔付款被退款。`],
   [/^You owe TSC (\$[\d,.]+)\. The brand's bank reversed a payment after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，品牌的银行撤回了一笔付款。`],
   [/^You owe TSC (\$[\d,.]+)\. Money was returned to the brand after you withdrew it\.$/, (m) => `你欠 TSC ${m[1]}。你提现后，有款项退回了品牌。`],
+  // The same, for money TSC had kept to cover an earlier debt (20261121385000).
+  [/^You owe TSC (\$[\d,.]+)\. A payment was refunded after TSC kept it to cover an earlier amount you owed\.$/, (m) => `你欠 TSC ${m[1]}。TSC 将一笔付款用于抵扣你之前欠的款项后，这笔付款被退款。`],
+  [/^You owe TSC (\$[\d,.]+)\. The brand's bank reversed a payment after TSC kept it to cover an earlier amount you owed\.$/, (m) => `你欠 TSC ${m[1]}。TSC 将一笔付款用于抵扣你之前欠的款项后，品牌的银行撤回了这笔付款。`],
+  [/^You owe TSC (\$[\d,.]+)\. Money was returned to the brand after TSC kept it to cover an earlier amount you owed\.$/, (m) => `你欠 TSC ${m[1]}。TSC 将款项用于抵扣你之前欠的款项后，这笔款项退回了品牌。`],
+  [/^You owe TSC (\$[\d,.]+)\. Money was returned to the brand after you withdrew it or TSC kept it to cover an earlier amount you owed\.$/, (m) => `你欠 TSC ${m[1]}。在你提现或 TSC 将其用于抵扣你之前欠的款项后，有款项退回了品牌。`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],

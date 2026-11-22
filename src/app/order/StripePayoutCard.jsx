@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscKept, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1178,7 +1178,7 @@ export default function StripePayoutCard({
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
           {/* Only what its earnings do not cover: covered, TSC keeps it from them and there is no line. */}
-          {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
+          {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures), owedToTscKept(figures))}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">

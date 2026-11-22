@@ -289,24 +289,53 @@ const PAYPAL_HEADERS = { "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url":
 {
   // The sync reads paid withdrawals back too, within the return window.
   const { syncWithdrawals, adapterFor, RETURN_WINDOW_DAYS } = await import("../api/_withdrawals.js");
+  const { PAID_READS_PER_SYNC, READ_AGAIN_HOURS } = await import("../api/_withdrawals.js");
   const asked = [];
-  const rows = { paying: [{ id: "a", provider_ref: "1", status: "paying" }], paid: [{ id: "b", provider_ref: "2", status: "paid" }] };
+  const rows = {
+    paying: [{ id: "a", provider_ref: "1", status: "paying" }],
+    paid: [{ id: "b", provider_ref: "2", status: "paid" }, { id: "c", provider_ref: "3", status: "paid" }, { id: "d", provider_ref: "4", status: "paid" }],
+  };
   const recorded = [];
+  const stamped = [];
   const db = {
     from: () => {
-      const f = {};
-      const q = { select: () => q, eq: (c, v) => { f[c] = v; return q; }, not: () => q, gte: (c, v) => { f[c] = v; return q; }, order: () => q,
-        limit: async () => { asked.push({ ...f }); return { data: rows[f.status], error: null }; } };
+      const f = { orders: [] };
+      const q = { select: () => q, eq: (c, v) => { f[c] = v; return q; }, not: () => q, gte: (c, v) => { f[c] = v; return q; },
+        or: (v) => { f.or = v; return q; }, order: (c, o) => { f.orders.push([c, o]); return q; },
+        limit: async (n) => { asked.push({ ...f, limit: n }); return { data: rows[f.status], error: null }; },
+        update: (patch) => ({ in: async (c, ids) => { stamped.push({ patch, ids }); return { error: null }; } }) };
       return q;
     },
-    rpc: async (name, args) => { recorded.push(args); return { data: {}, error: null }; },
+    rpc: async (name, args) => { recorded.push({ name, ...args }); return { data: {}, error: null }; },
   };
-  const adapter = { ...adapterFor("wise"), status: async (_c, ref) => (ref === "2" ? { state: "failed", raw: "bounced_back" } : { state: "paid" }) };
+  // b: returned (Wise does not say how much); c: still paid; d: Wise could not be read.
+  const adapter = { ...adapterFor("wise"), status: async (_c, ref) => {
+    if (ref === "4") throw new Error("down");
+    return ref === "2" ? { state: "failed", raw: "bounced_back" } : { state: "paid" };
+  } };
   const now = Date.parse("2026-11-21T00:00:00Z");
   await syncWithdrawals({ adapter, client: {}, db, now });
   assert.deepEqual(asked.map((a) => a.status).sort(), ["paid", "paying"]);
-  assert.equal(asked.find((a) => a.status === "paid").paid_at, new Date(now - RETURN_WINDOW_DAYS * 86_400_000).toISOString());
+  const paidAsk = asked.find((a) => a.status === "paid");
+  assert.equal(paidAsk.paid_at, new Date(now - RETURN_WINDOW_DAYS * 86_400_000).toISOString());
+  // L-6 (round 37): the whole window in turns, a bounded number of reads per sync.
+  assert.equal(paidAsk.or, `read_back_at.is.null,read_back_at.lt.${new Date(now - READ_AGAIN_HOURS * 3_600_000).toISOString()}`,
+    "none read in the last hours is read again");
+  assert.deepEqual(paidAsk.orders[0], ["read_back_at", { ascending: true, nullsFirst: true }], "the ones read longest ago (or never) first");
+  assert.equal(paidAsk.limit, PAID_READS_PER_SYNC, "at most this many provider reads a sync");
+  assert.deepEqual(stamped, [{ patch: { read_back_at: new Date(now).toISOString() }, ids: ["b", "c"] }],
+    "what was read waits its turn again; what could not be read stays first");
   assert.deepEqual(recorded.map((r) => [r.target_withdrawal, r.outcome]).sort(), [["a", "paid"], ["b", "failed"]]);
+  assert.equal(recorded.find((r) => r.target_withdrawal === "b").name, "record_withdrawal", "not said what came back: the database's rule");
+
+  // L-3 (round 37): the provider says what came back: only that is recorded back.
+  recorded.length = 0;
+  const { readBack } = await import("../api/_withdrawals.js");
+  const says = { ...adapterFor("wise"), status: async () => ({ state: "failed", raw: "bounced_back", returnedCents: 97000 }) };
+  assert.equal(await readBack({ adapter: says, client: {}, db, id: "e", ref: "5", wasPaid: true }), "failed");
+  assert.equal(recorded[0].name, "record_withdrawal_returned");
+  assert.equal(recorded[0].came_back, 97000);
+  assert.match(recorded[0].sentence, /The factory's bank returned this transfer/);
 }
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS", resource: { batch_header: { payout_batch_id: "B9", sender_batch_header: { sender_batch_id: KEY } } } }), { ref: "B9", key: KEY }, "a batch event names its batch");
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: {} }), { ref: null, key: null }, "other events name nothing");

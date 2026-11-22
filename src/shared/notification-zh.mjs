@@ -271,6 +271,13 @@ const SENTENCES = [
   [amountRe("^You owe TSC AMT for a payment refunded after you withdrew it\\.$"), (amount) => `你欠 TSC ${amount}，因为你提现后有一笔付款被退款。`],
   [amountRe("^You owe TSC AMT for a payment the brand's bank reversed after you withdrew it\\.$"), (amount) => `你欠 TSC ${amount}，因为你提现后品牌的银行撤回了一笔付款。`],
   [amountRe("^You owe TSC AMT for money returned to the brand after you withdrew it\\.$"), (amount) => `你欠 TSC ${amount}，因为你提现后有款项退回了品牌。`],
+  // Money TSC had kept to cover an earlier debt, returned to the brand since (20261121385000).
+  [amountRe("^You owe TSC AMT for a payment refunded after TSC kept it to cover an earlier amount you owed\\.$"), (amount) => `你欠 TSC ${amount}，因为 TSC 将一笔付款用于抵扣你之前欠的款项后，这笔付款被退款。`],
+  [amountRe("^You owe TSC AMT for a payment the brand's bank reversed after TSC kept it to cover an earlier amount you owed\\.$"), (amount) => `你欠 TSC ${amount}，因为 TSC 将一笔付款用于抵扣你之前欠的款项后，品牌的银行撤回了这笔付款。`],
+  [amountRe("^You owe TSC AMT for money returned to the brand after TSC kept it to cover an earlier amount you owed\\.$"), (amount) => `你欠 TSC ${amount}，因为 TSC 将款项用于抵扣你之前欠的款项后，这笔款项退回了品牌。`],
+  [amountRe("^You owe TSC AMT for money returned to the brand after you withdrew it or TSC kept it to cover an earlier amount you owed\\.$"), (amount) => `你欠 TSC ${amount}，因为在你提现或 TSC 将其用于抵扣你之前欠的款项后，有款项退回了品牌。`],
+  // A withdrawal returned after it was paid: what the provider kept of it (20261121385000).
+  [amountRe("^(PayPal|Wise|The payout provider) kept AMT of it\\.$"), (who, amount) => `${who === "The payout provider" ? "收款服务商" : who} 扣留了其中的 ${amount}。`],
   [/^This withdrawal is on hold until your earnings cover that amount\.$/, () => "在你的收入足以抵扣这笔金额之前，此提现将被暂扣。"],
   [/^PayPal (\S+) was added as a withdrawal method\.$/, (email) => `已添加 PayPal ${email} 作为提现方式。`],
   [/^PayPal (\S+) was removed from your withdrawal methods\.$/, (email) => `PayPal ${email} 已从你的提现方式中移除。`],

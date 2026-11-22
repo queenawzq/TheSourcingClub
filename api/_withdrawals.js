@@ -16,7 +16,9 @@ import { applyChargeRefund, applyDispute, disputeForCharge, stripeFrom } from ".
  *             resumes the same key, so it cannot pay twice.
  *   preview   the same checks and quote, sending nothing: what staff confirm.
  *   sync      read back every withdrawal being paid, and those paid in the
- *             last RETURN_WINDOW_DAYS (a provider may return one later).
+ *             last RETURN_WINDOW_DAYS (a provider may return one later): the
+ *             ones read longest ago first, at most PAID_READS_PER_SYNC a
+ *             sync, none read in the last READ_AGAIN_HOURS.
  *
  * Declining is a plain RPC (decline_withdrawal): no provider is involved.
  */
@@ -298,7 +300,19 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false }
   const status = await adapter.status(client, ref);
   if (wasPaid) {
     if (status.state !== "failed" && status.state !== "cancelled") return "paid";
-    await record(db, id, "failed", { sentence: withdrawalFailure(adapter, status.raw) });
+    const sentence = withdrawalFailure(adapter, status.raw);
+    // What came back, when the provider says (in the withdrawal's currency):
+    // only that goes back to the balance. Not said: the database takes the
+    // provider to have kept its fee, which the factory bears (20261121385000).
+    if (Number.isFinite(status.returnedCents)) {
+      const { error } = await db.rpc("record_withdrawal_returned", { target_withdrawal: id, came_back: Math.round(status.returnedCents), sentence });
+      if (error) {
+        log("record_withdrawal_returned", error, { id });
+        throw new PayoutFailure("record_failed", "The provider answered but we couldn't record it. Press Refresh.");
+      }
+    } else {
+      await record(db, id, "failed", { sentence });
+    }
     return "failed";
   }
   if (status.state === "paid") {
@@ -319,21 +333,39 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false }
  * bounces a Wise transfer days after it was sent).
  */
 export const RETURN_WINDOW_DAYS = 35;
+/**
+ * Paid withdrawals are read back in turns, so every one in the window is read
+ * whatever their number, and a sync never makes more than this many provider
+ * calls for them: the ones read longest ago (or never) first, and none read in
+ * the last READ_AGAIN_HOURS (factory_withdrawals.read_back_at). The provider's
+ * webhook reads one back at once as well.
+ */
+export const PAID_READS_PER_SYNC = 50;
+export const READ_AGAIN_HOURS = 6;
 
 export async function syncWithdrawals({ adapter, client, db, now = Date.now() }) {
   const since = new Date(now - RETURN_WINDOW_DAYS * 86_400_000).toISOString();
+  const readBefore = new Date(now - READ_AGAIN_HOURS * 3_600_000).toISOString();
   const [paying, paid] = await Promise.all([
     db.from("factory_withdrawals").select("id, provider_ref, status")
       .eq("provider", adapter.provider).eq("status", "paying").not("provider_ref", "is", null).limit(50),
     // Paid, and possibly returned since: the provider's answer is recorded (record_withdrawal).
     db.from("factory_withdrawals").select("id, provider_ref, status")
       .eq("provider", adapter.provider).eq("status", "paid").not("provider_ref", "is", null).gte("paid_at", since)
-      .order("paid_at", { ascending: false }).limit(50),
+      .or(`read_back_at.is.null,read_back_at.lt.${readBefore}`)
+      .order("read_back_at", { ascending: true, nullsFirst: true }).order("paid_at", { ascending: true })
+      .limit(PAID_READS_PER_SYNC),
   ]);
   if (paying.error || paid.error) throw new PayoutFailure("database", "The board couldn't read its withdrawals. Reload the page.");
   const rows = [...(paying.data ?? []), ...(paid.data ?? [])];
   const answers = await Promise.allSettled(rows.map((row) => readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid" })));
   for (const a of answers.filter((x) => x.status === "rejected")) log("withdrawal sync", a.reason, { provider: adapter.provider });
+  // Read: its turn comes again after the others (a failed read stays first).
+  const read = rows.filter((row, i) => row.status === "paid" && answers[i].status === "fulfilled").map((row) => row.id);
+  if (read.length > 0) {
+    const stamped = await db.from("factory_withdrawals").update({ read_back_at: new Date(now).toISOString() }).in("id", read);
+    if (stamped?.error) log("withdrawal sync", stamped.error, { provider: adapter.provider, step: "read_back_at" });
+  }
   return { read: answers.filter((x) => x.status === "fulfilled").length };
 }
 
