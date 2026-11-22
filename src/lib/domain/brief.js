@@ -6,6 +6,7 @@
  * is a secret and one is a UI decision, and conflating them would put the
  * secret in the bundle.
  */
+import { fetchApi } from "../supabase.js";
 
 export const briefGenerationEnabled = import.meta.env.VITE_AI_BRIEF_ENABLED === "true";
 
@@ -17,16 +18,14 @@ export async function generateBrief({ freeText, terms }) {
   const slugs = (kind) => (terms?.[kind] ?? []).map((term) => term.slug);
 
   try {
-    const response = await fetch("/api/generate-brief", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        freeText,
-        categories: slugs("product_category"),
-        certifications: slugs("certification"),
-        regions: slugs("region"),
-        sourcing: slugs("sourcing_responsibility"),
-      }),
+    // With the person's token: the server answers only a brand's members,
+    // and counts each person's briefs.
+    const response = await fetchApi("/api/generate-brief", {
+      freeText,
+      categories: slugs("product_category"),
+      certifications: slugs("certification"),
+      regions: slugs("region"),
+      sourcing: slugs("sourcing_responsibility"),
     });
     return await response.json();
   } catch (error) {
