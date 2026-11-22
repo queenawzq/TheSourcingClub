@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, refundRows, toDestination, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useFactoryBalance } from "./use-factory-balance.js";
 import { withdrawalsFrom } from "./balance-reader.mjs";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
@@ -392,12 +392,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       .catch(() => ids.forEach((id) => olderAsked.current.delete(id)));
   }, [olderMissingKey, org.id]);
   const stripeById = new Map(stripeWithdrawals.map((w) => [w.id, w]));
-  // Where a Stripe payout went, as the server recorded it for everyone ("To
-  // bank account ending in 0154."); older rows only an owner's Stripe read can name.
+  // Where a Stripe payout went, as the server recorded it for everyone ("Bank
+  // account ending in 0154"); older rows only an owner's Stripe read can name.
   const stripeMethodName = (w) => {
-    if (w.destination_label) return [toDestination(w.destination_label), w.destination_bank].filter(Boolean).join(" · ");
-    const method = stripeBalance?.methods?.find((item) => item.id === w.destination);
-    return method?.last4 ? `${method.type === "card" ? "Debit card" : "Bank account"} ····${method.last4}` : null;
+    if (w.destination_label) return [w.destination_label, w.destination_bank].filter(Boolean).join(" · ");
+    return payoutDestination(w, stripeBalance);
   };
   const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
     if (client === "All clients") return [row];

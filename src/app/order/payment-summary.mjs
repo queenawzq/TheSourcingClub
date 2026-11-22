@@ -225,8 +225,6 @@ export function clearingNote(row, clearing) {
   return day ? `Available ${new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : null;
 }
 
-/** "To bank account ending in 0154.": a Stripe destination label mid-sentence, lower case. */
-export const toDestination = (label) => `To ${String(label).replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`;
 
 /** A failed withdrawal that came back whole, as a row's note (main's words). */
 export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
@@ -597,7 +595,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       ...base,
       id: `stripe-${w.id}`,
       title: "Bank transfer",
-      meta: w.to ? [toDestination(w.to), own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
+      meta: w.to ? [w.to, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
       arrives: w.word === "returned" ? null : arrives,
       note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
       status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",

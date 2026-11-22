@@ -243,7 +243,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(summaryFrom(shot).total, 231300, "but stays in Total earnings");
   // With the server's list (factory_balance().withdrawals): its words decide the lines, and the rows.
   const listed = { pending_cents: 5000, processing_cents: 284094, parts: { owed_clearing_cents: 5000, disputed_cents: 0 }, withdrawals: [
-    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, fee_cents: 1406, to: "bank account ending in 0154", arrives_on: "2026-11-23", created_at: "2026-11-20T15:29:58Z" },
+    { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, fee_cents: 1406, to: "Bank account ending in 0154", arrives_on: "2026-11-23", created_at: "2026-11-20T15:29:58Z" },
     { id: "s2", road: "stripe", word: "returned", amount_cents: 185500, created_at: "2026-11-20T15:29:58Z" },
     { id: "p1", road: "pool", provider: "paypal", word: "returned", amount_cents: 4500, to: "a@b.c", created_at: "2026-11-20T15:23:57Z", parts: [{ word: "returned", amount_cents: 4500 }] },
     { id: "p2", road: "pool", provider: "paypal", word: "waiting", amount_cents: 100000, to: "a@b.c", created_at: "2026-11-20T15:32:07Z", parts: [{ word: "waiting", amount_cents: 100000 }] },
@@ -337,7 +337,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
       && pageCode.includes("const fromBalance = withdrawalsFrom(answer, balanceRead.failure);"),
       "the page reads the missing ones and lists them with the rest");
   }
-  assert.equal(listedRows[0].meta, "To bank account ending in 0154.", "where it went, in the notices' words");
+  assert.equal(listedRows[0].meta, "Bank account ending in 0154", "where it went, named as everywhere: ending in, no stray full stop");
+  {
+    // live-zh translates a meta line part by part (" · "): this part has its rule.
+    const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
+    assert.ok(zh.includes("[/^(Bank account|Debit card) ending in (\\d+)$/, (m) => `${m[1] === \"Bank account\" ? \"银行账户\" : \"借记卡\"}（尾号 ${m[2]}）`]"), "and in Chinese: 银行账户（尾号 0154）");
+    assert.match("Bank account ending in 0154", /^(Bank account|Debit card) ending in (\d+)$/);
+  }
   assert.equal(listedRows[0].arrives.getDate(), 23, "arrival from arrives_on, read as a day");
   assert.ok(cardCode.includes("{!busy && !error && !withdrawal.previous && withdrawal.amountText && amountProblem"), "one refusal message at a time");
   assert.ok(cardCode.includes("withdrawal.amount > 0 && !amountProblem"), "the fee line follows the dialog's Available");
@@ -655,7 +661,7 @@ assert.ok(card.includes("Boolean(figures?.has_method) || balanceChoices.length >
   const hook = readFileSync(new URL("../src/app/order/use-factory-balance.js", import.meta.url), "utf8");
   assert.ok(hook.includes('connectAction(orgId, "figures")') && page.includes("const allFigures = earningsShown && answer ? answer.figures ?? null : null;")
     && !page.includes("refreshClearingDates"), "the figures action for every reader");
-  assert.ok(page.includes("if (w.destination_label) return [toDestination(w.destination_label), w.destination_bank]"), "a Stripe withdrawal row says where it went, for owner and member");
+  assert.ok(page.includes("if (w.destination_label) return [w.destination_label, w.destination_bank]") && page.includes("return payoutDestination(w, stripeBalance);"), "a Stripe withdrawal row says where it went, for owner and member");
 }
 
 // Queena: a factory or a brand never reads Stripe, "by hand" or an upgrade it did not ask for.
