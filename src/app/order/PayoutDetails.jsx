@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, payoutFee, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, ON_ITS_WAY, askedWithdrawalRows, refundRows, toDestination, companyStripeRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, withStripePart, askUntilConsistent, answerOrder, figuresAfterFailedAsk, figuresAskDelay, missingPoolIds, realtimeAskCap, stripeWithdrawalMoved, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useWithdrawalBalance } from "./WithdrawFromBalance.jsx";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
 import "./order.css";
@@ -493,6 +493,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const summary = summaryFrom(transactionsReady ? shownFigures : null);
   // Where each payment's money is, for its row's word: the same read.
   const placed = figuresByPayment(balanceFigures);
+  // What the server still counts of each payment, and what went back to the brand.
+  const perPayment = paymentFigureCents(balanceFigures);
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval and withdrawals being processed."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
@@ -544,7 +546,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     return amount > 0 ? [{ ...row, amount }] : [];
   });
   const transactions = [
-    ...visibleEarnings.map((row) => ({
+    // A step refunded or reversed since it was funded: only what is left,
+    // and no row of its own once nothing is (stepRowCents).
+    ...visibleEarnings.filter((row) => stepRowCents(row, perPayment) !== null).map((row) => ({
       id: `earning-${row.id}`,
       type: "earning",
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
@@ -562,7 +566,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row, clearing, placed),
-      amount: factoryAmount(row),
+      amount: stepRowCents(row, perPayment),
       currency: row.currency,
       available: earningPaid(row, clearing, placed),
       // Refunded to the brand: listed, struck through, in no figure.

@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { answerOrder, askUntilConsistent, clearingAfterDebt, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,6 +7,7 @@ import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { countryNameZh, wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
+import { availableOnWords, pendingSentence, stripeRemovalRefusal } from "./stripe-card-words.mjs";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import { chooserMethod, paidByWise, payoutMethodLines, payoutMethodFeeUrl } from "../../shared/payout-method-info.mjs";
@@ -76,7 +77,6 @@ function availableFrom(balance) {
 }
 
 /** Why money already earned cannot be withdrawn yet: Stripe's date for it. */
-export const availableOnWords = (day) => `Available to withdraw on ${day}`;
 
 const endingIn = (name, last4) => `${name}${last4 ? ` ····${last4}` : ""}`;
 
@@ -111,30 +111,6 @@ function defaultRefusal(failure) {
   return new Error(/pending payout/i.test(refused.message ?? "") ? "You can change your default once the current payout finishes." : refused.message);
 }
 
-const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-
-/**
- * Why a payout account cannot be removed now, in the factory's words, or null.
- * The provider refuses to remove a currency's default account, so where TSC
- * manages the account another one becomes the default first, and only the last
- * one in its currency stays (the dialog offers Replace).
- */
-function stripeRemovalRefusal(method, methods, payoutsOnTheirWay, managed) {
-  const sameCurrency = methods.filter((other) => other.id !== method.id && other.currency === method.currency && other.standard !== false);
-  if (methods.length <= 1) {
-    return managed ? "This is your only withdrawal method. Replace it instead." : "This is your only withdrawal method. Add another one first.";
-  }
-  if ((method.default || method.payoutsFor) && (!managed || !sameCurrency.length)) {
-    return managed
-      ? "This is your only method in its currency. Replace it instead."
-      : "This is your default method. Make another one the default first.";
-  }
-  const onItsWay = payoutsOnTheirWay.find((payout) => payout.destination === method.id);
-  if (onItsWay) {
-    return `${formatMoney(onItsWay.amount, onItsWay.currency.toUpperCase())} is on its way to this account${onItsWay.arrival_date ? ` (${stripeDay(onItsWay.arrival_date)})` : ""}. Remove it after that.`;
-  }
-  return null;
-}
 
 /** What closing Stripe's form did, after an Add or a Remove. */
 function handoverResult({ intent, target, before }, after) {
@@ -807,7 +783,7 @@ export default function StripePayoutCard({
   // The account as Stripe lists it now (Settings passes only its id).
   const removingMethod = removing ? connectedMethods.find((method) => method.id === removing.id) ?? null : null;
   const removalRefusal = removingMethod
-    ? stripeRemovalRefusal(removingMethod, connectedMethods, balance?.payoutsOnTheirWay ?? [], managed)
+    ? stripeRemovalRefusal(removingMethod, connectedMethods, balance?.payoutsOnTheirWay ?? [], managed, manualAccounts.length)
     : balance ? "This method is no longer listed." : null;
 
   // The accounts that could take over as the default from the one removed.
@@ -1073,7 +1049,10 @@ export default function StripePayoutCard({
     ? clearsOn.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : availableFrom(balance);
   // "$X pending": only card payments still clearing, with the day they can be withdrawn.
-  const pendingWords = (cents) => (cents > 0 ? <>{`${formatMoney(cents, "USD")} pending. ${arrivesOn ? `${availableOnWords(arrivesOn)}.` : "You can withdraw once processing finishes."}`} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
+  // Owing TSC more than Available covers, the money clearing pays that first
+  // (Available is net of it): no day when none of it will be withdrawable,
+  // only the part that will be otherwise (clearingAfterDebt).
+  const pendingWords = (cents) => (cents > 0 ? <>{pendingSentence(cents, uncoveredDebtCents(figures), arrivesOn)} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
   // The Pending and Processing figures in their lines: money clearing ("$X
   // pending. Available to withdraw on …"), withdrawals and old payouts on
   // their way ("$Y on its way"), disputed steps ("$Z on hold"). A withdrawal
@@ -1149,7 +1128,7 @@ export default function StripePayoutCard({
   const withdrawTitle = stripeCan || balanceCan ? undefined
     : paused ? "Withdrawals paused"
     : account?.transfers_active && !account.payouts_enabled && !figures?.has_method ? "Finish setup to withdraw"
-    : arrivesOn && Number(figures?.pending_cents) > 0 ? availableOnWords(arrivesOn)
+    : arrivesOn && clearingAfterDebt(pendingLines.clearing, uncoveredDebtCents(figures)) > 0 ? availableOnWords(arrivesOn)
     : "Nothing to withdraw yet";
 
   return (

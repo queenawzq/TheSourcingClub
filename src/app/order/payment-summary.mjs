@@ -302,6 +302,39 @@ export function figuresByPayment(figures) {
 }
 
 /**
+ * Per payment, from factory_balance()'s `rows`: what the server still counts
+ * of it (its rows above zero) and what went back to the brand (its "refunded"
+ * rows), in US$ cents.
+ */
+export function paymentFigureCents(figures) {
+  const map = new Map();
+  for (const row of figures?.tsc?.rows ?? figures?.rows ?? []) {
+    if (!row?.payment_id) continue;
+    const cents = Number(row.amount_cents) || 0;
+    const entry = map.get(row.payment_id) ?? { left: 0, back: 0 };
+    if (row.figure === "refunded" && cents < 0) entry.back -= cents;
+    else if (cents > 0) entry.left += cents;
+    map.set(row.payment_id, entry);
+  }
+  return map;
+}
+
+/**
+ * The amount on a step's own Transactions row, from the server's figures
+ * (paymentFigureCents()). A funded step refunded in part, or reversed by the
+ * brand's bank, since lists only what the factory still earns from it, beside
+ * the dated row that says what went back; with nothing left it has no row of
+ * its own (null), since that dated row says it. A released step keeps what
+ * was sent: a later refund of it is owed to TSC.
+ */
+export function stepRowCents(row, perPayment) {
+  const own = factoryAmount(row);
+  const entry = perPayment instanceof Map ? perPayment.get(row?.id) : null;
+  if (row?.state !== "confirmed" || !entry || !(entry.back > 0)) return own;
+  return entry.left > 0 ? Math.min(own, entry.left) : null;
+}
+
+/**
  * Money refunded to the brand (or a dispute lost) after the factory had
  * withdrawn it, in US$ cents: owed to TSC, already taken off Available
  * (factory_balance().owed_to_tsc_cents). 0 when none or not known.
@@ -313,6 +346,12 @@ export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed
  * and none once they cover it (Available is already net of it).
  */
 export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.uncovered_debt_cents ?? figures?.uncovered_debt_cents) || 0);
+/**
+ * What of the money clearing (`clearing`, US$ cents) will be withdrawable once
+ * it clears: a debt its cleared earnings do not cover (`debt`,
+ * uncoveredDebtCents()) is paid from it first, as Available is net of it.
+ */
+export const clearingAfterDebt = (clearing, debt) => Math.max(0, (Number(clearing) || 0) - Math.max(0, Number(debt) || 0));
 /**
  * The card's line for it (Available already counts it), in the words of what
  * sent the money back: a refund, a dispute lost, or both.

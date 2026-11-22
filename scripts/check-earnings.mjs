@@ -972,4 +972,72 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(!/withdrawn|stripeFees|pool:|stripe_withdrawals/.test(balanceHook), "R32: no unread state, query or listener in useWithdrawalBalance");
 }
 
+// Fix round 40 (final tester): the tester's own figures (factory_balance()
+// rows as the database returned them on the stack).
+{
+  const summary = await import("../src/app/order/payment-summary.mjs");
+  const words = await import("../src/app/order/stripe-card-words.mjs");
+  const clears = "2099-11-25T00:00:00Z";
+  const step = (id, amount) => pay(id, amount, "confirmed", { ...APPROVED, confirmed_at: "2026-11-21T00:00:00Z", funds_available_at: clears });
+  const fullRefund = step("e1fd", 6500);   // TSC-000010: refunded in full after approval, still clearing
+  const lostDispute = step("0df1", 5000);  // TSC-000005: dispute lost after approval, still clearing
+  const partRefund = step("3acd", 6500);   // TSC-000006: $20 of $71.94 refunded, $46.93 left
+  const figures = tsc({ pending_cents: 4693 }, {}, [
+    { payment_id: "e1fd", figure: "refunded", amount_cents: -6500, stripe: false, cause: "refund" },
+    { payment_id: "3acd", figure: "refunded", amount_cents: -1807, stripe: false, cause: "refund" },
+    { payment_id: "3acd", figure: "pending", amount_cents: 4693, stripe: false, clears_at: clears },
+    { payment_id: "0df1", figure: "refunded", amount_cents: -5000, stripe: false, cause: "dispute_lost" },
+  ]);
+  const perPayment = summary.paymentFigureCents(figures);
+  // F1: no "Pending · Available <day>" row for money that went back to the brand.
+  assert.equal(summary.stepRowCents(fullRefund, perPayment), null, "F1: refunded in full: no step row; the Refunded row says it");
+  assert.equal(summary.stepRowCents(lostDispute, perPayment), null, "F1: dispute lost: no step row; the Reversed row says it");
+  assert.equal(summary.stepRowCents(partRefund, perPayment), 4693, "F1: refunded in part: Pending only for what is left");
+  assert.equal(earningStatus(partRefund, null, figuresByPayment(figures)), "Pending", "F1: what is left is still clearing");
+  assert.equal(summary.refundRows(figures).length, 3, "F1: each refund keeps its own dated row");
+  // What a page draws is the sum of the server's rows for those three steps.
+  const drawn = [fullRefund, lostDispute, partRefund].map((row) => summary.stepRowCents(row, perPayment)).filter((cents) => cents !== null)
+    .reduce((sum, cents) => sum + cents, 0);
+  assert.equal(drawn, Number(figures.pending_cents), "F1: the rows' Pending equals the Pending figure");
+  // Unchanged elsewhere: no refund, a released step (refund owed to TSC), no figures.
+  assert.equal(summary.stepRowCents(step("plain", 6500), perPayment), 6500);
+  assert.equal(summary.stepRowCents(pay("e1fd", 6500, "released", { stripe_transfer_id: "tr_1" }), perPayment), 6500, "a step already paid out keeps what was sent");
+  assert.equal(summary.stepRowCents(fullRefund, new Map()), 6500, "figures not read: as before");
+  const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(page.includes(".filter((row) => stepRowCents(row, perPayment) !== null)") && page.includes("amount: stepRowCents(row, perPayment),"),
+    "F1: Transactions draws the step rows from the server's figures");
+
+  // F3: owing TSC, money clearing pays that first: no day promised for what will not be withdrawable.
+  assert.equal(words.pendingSentence(4693, 0, "Nov 24"), "$46.93 pending. Available to withdraw on Nov 24.", "no debt: main's sentence");
+  assert.equal(words.pendingSentence(4693, 6500, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: debt of $65 over $46.93: no date");
+  assert.equal(words.pendingSentence(4693, 180500, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: debt of $1,805");
+  assert.equal(words.pendingSentence(4693, 4693, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: exactly covered: nothing left");
+  assert.equal(words.pendingSentence(10000, 6500, "Nov 24"), "$100.00 pending. $35.00 available to withdraw on Nov 24.", "F3: in part: the true amount");
+  assert.equal(words.pendingSentence(10000, 6500, null), "$100.00 pending. $35.00 can be withdrawn once processing finishes.");
+  assert.equal(words.pendingSentence(10000, 0, null), "$100.00 pending. You can withdraw once processing finishes.", "main's sentence");
+  const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
+  assert.ok(card.includes("arrivesOn && clearingAfterDebt(pendingLines.clearing, uncoveredDebtCents(figures)) > 0 ? availableOnWords(arrivesOn)")
+    && card.includes("pendingSentence(cents, uncoveredDebtCents(figures), arrivesOn)"), "F3: the disabled Withdraw's tooltip and the line follow the debt");
+  const zhSource = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
+  assert.ok(zhSource.includes("pending\\. It goes toward what you owe TSC\\.$/, (m) => `${m[1]} 待确认。将先用于抵扣你欠 TSC 的款项。`]")
+    && zhSource.includes("available to withdraw on ${MON}") && zhSource.includes("can be withdrawn once processing finishes\\.$/"), "F3: the new lines in Chinese");
+
+  // F2: a Stripe bank with PayPal saved is not "your only withdrawal method".
+  const bank = { id: "ba_1", currency: "eur", default: true, standard: true, last4: "0154" };
+  assert.equal(words.stripeRemovalRefusal(bank, [bank], [], true, 1), "Stripe needs one bank account or debit card on file. Replace it instead.", "F2: PayPal saved too");
+  assert.equal(words.stripeRemovalRefusal(bank, [bank], [], true, 0), "This is your only withdrawal method. Replace it instead.", "F2: truly the only one: main's sentence");
+  assert.equal(words.stripeRemovalRefusal(bank, [bank], [], false, 1), "Stripe needs one bank account or debit card on file.");
+  const usd = { id: "ba_2", currency: "usd", default: true, standard: true };
+  assert.equal(words.stripeRemovalRefusal(bank, [bank, usd], [], true, 1), "Stripe needs one bank account or debit card in this currency. Replace it instead.");
+  assert.equal(words.stripeRemovalRefusal(bank, [bank, usd], [], true, 0), "This is your only method in its currency. Replace it instead.", "main's sentence");
+  assert.equal(words.stripeRemovalRefusal(bank, [bank, usd], [], false, 1), "This is your default Stripe method. Make another one the default first.");
+  assert.equal(words.stripeRemovalRefusal({ ...bank, default: false }, [bank, { ...bank, id: "ba_3", default: false }], [], true, 1), null, "a second bank in its currency can go");
+  assert.ok(card.includes("managed, manualAccounts.length)"), "F2: the dialog counts the company's other methods");
+  const proto = readFileSync(new URL("../src/factory-prototype/main.jsx", import.meta.url), "utf8");
+  for (const sentence of ["Stripe needs one bank account or debit card on file. Replace it instead.", "Stripe needs one bank account or debit card on file.",
+    "Stripe needs one bank account or debit card in this currency. Replace it instead.", "This is your default Stripe method. Make another one the default first."]) {
+    assert.ok(proto.includes(`"${sentence}": "`), `F2: Chinese for "${sentence}"`);
+  }
+}
+
 console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");
