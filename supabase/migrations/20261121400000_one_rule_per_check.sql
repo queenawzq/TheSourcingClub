@@ -20,9 +20,14 @@
 --    different received amount, where they now say what the balance holds).
 --    The generated column factory_refund_cents keeps its own copy of the
 --    base as its cap: a generated column cannot call a function on its row.
---    The one "owes TSC" refusal (check_withdrawal_can_go) names the debt the
---    factory's other earnings do not cover (factory_debt_uncovered_cents),
---    as rounds 36 and 37 had staff approve and the guard trigger say it.
+--    Every "owes TSC" refusal names the debt the factory's other earnings
+--    do not cover (factory_debt_uncovered_cents), as the card, To recover
+--    and the Withdrawals row do: check_withdrawal_can_go (staff approve and
+--    the guard trigger, as rounds 36 and 37 had them) and now the Stripe
+--    road in claim_owed_steps, which named the whole debt. When there is no
+--    uncovered debt and the Stripe road still asks for more than the debt
+--    leaves, it is refused as over the balance (the server says "You can
+--    withdraw up to X." for either).
 -- On top of rounds 36-39 (20261121380000 ... 20261121387000): a debt is
 -- netted from Available, never covered by takes.
 -- Latest full bodies; grants unchanged on replaced functions; the two new
@@ -176,6 +181,7 @@ declare
   t public.payment_takes;
   out_takes jsonb := '[]'::jsonb;
   reach jsonb;
+  uncovered bigint;
 begin
   if not (coalesce(auth.role(), '') = 'service_role' or public.is_org_owner(target_org)) then
     raise exception 'Only a company owner can withdraw.' using errcode = '42501', hint = 'withdraw_owner_only';
@@ -213,11 +219,16 @@ begin
     -- steps leaves while it owes TSC more than its other earnings, or more
     -- than what is left after the debt (20261121230000; under the lock).
     -- (One read: a debt not covered means stripe_cents is below zero, so the
-    -- second test alone says it.)
+    -- second test alone says it.) The amount named is what the other
+    -- earnings do not cover, as everywhere else.
     reach := public.owed_reachable(target_org);
     if (reach ->> 'debt_cents')::bigint > 0 and amount > (reach ->> 'stripe_cents')::bigint then
-      raise exception 'the factory owes TSC %', public.format_money(public.factory_debt_cents(target_org), 'USD')
-        using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(public.factory_debt_cents(target_org), 'USD');
+      uncovered := public.factory_debt_uncovered_cents(target_org);
+      if uncovered > 0 then
+        raise exception 'the factory owes TSC %', public.format_money(uncovered, 'USD')
+          using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(uncovered, 'USD');
+      end if;
+      raise exception 'That is more than your balance.' using errcode = '22023', hint = 'withdrawal_over_balance';
     end if;
   else
     select * into fw from public.factory_withdrawals where id = withdrawal for update;

@@ -142,5 +142,29 @@ select ok(not has_function_privilege('authenticated', 'public.withdrawal_blocker
 select ok(not has_function_privilege('authenticated', 'public.check_withdrawal_can_go(public.factory_withdrawals)', 'execute'), 'check_withdrawal_can_go: not for clients');
 select ok(not has_function_privilege('anon', 'public.check_withdrawal_can_go(public.factory_withdrawals)', 'execute'), 'nor for anon');
 
+-- Simplify review L5: the Stripe road's "owes TSC" (claim_owed_steps) names
+-- what the other earnings do not cover, as every other refusal does; with
+-- the debt covered, asking for more than it leaves is over the balance.
+set local session_replication_role = replica;
+update public.order_payments set disputed_at = null where id = 'c38f0022-0000-0000-0000-000000000000';
+delete from public.payment_takes where factory_withdrawal_id = 'c3870000-0000-0000-0000-0000000000b1';
+insert into public.stripe_withdrawals (id, org_id, stripe_account_id, request_key, request_id, amount_minor, currency, usd_cents, state)
+values ('c3860000-0000-0000-0000-0000000000b2', 'c38b0000-0000-0000-0000-0000000000f2', 'acct_pgtap_s1_fb', 'pgtap-s1-sw-b2',
+        gen_random_uuid(), 10000, 'USD', 10000, 'claimed');
+set local session_replication_role = origin;
+select is(public.factory_debt_uncovered_cents('c38b0000-0000-0000-0000-0000000000f2'), 20000::bigint, 'fb owes $500, $300 of it covered: $200 uncovered');
+select set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+select throws_ok($$select public.claim_owed_steps('c38b0000-0000-0000-0000-0000000000f2', 10000, 'stripe', 'c3860000-0000-0000-0000-0000000000b2')$$,
+  '22023', 'the factory owes TSC $200.00', 'L5: the Stripe road names the uncovered $200, not the whole $500');
+-- b2 grows to $2,300: the debt is covered, the Stripe road reaches $1,800.
+set local session_replication_role = replica;
+update public.order_payments set amount_cents = 230000, charged_cents = 246100, amount_received_cents = 246100
+ where id = 'c38f0022-0000-0000-0000-000000000000';
+set local session_replication_role = origin;
+select is(public.factory_debt_uncovered_cents('c38b0000-0000-0000-0000-0000000000f2'), 0::bigint, 'fb: the debt is covered now');
+select is(pg_temp.hint($$select public.claim_owed_steps('c38b0000-0000-0000-0000-0000000000f2', 200000, 'stripe', 'c3860000-0000-0000-0000-0000000000b2')$$, false),
+  'withdrawal_over_balance', 'L5: $2,000 of $1,800 reachable is over the balance, never "owes TSC $0.00"');
+select is((select count(*)::int from public.payment_takes where stripe_withdrawal_id = 'c3860000-0000-0000-0000-0000000000b2'), 0, 'nothing was taken');
+
 select * from finish();
 rollback;
