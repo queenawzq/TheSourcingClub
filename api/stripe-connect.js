@@ -9,7 +9,7 @@ import {
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, stripeMoneyUsd, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayouts, settleAbandoned, stripeMoneyUsd, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -28,9 +28,8 @@ import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFe
  *              moves nothing: owed money waits in the balance until the
  *              factory withdraws
  *   dashboard  a one-time link to the factory's Express dashboard
- *   balance    the factory's live balances and recent bank payouts, and
- *              `figures`: the one balance (factory_balance()) with the money
- *              already in its Stripe account added (api/_balance-figures.js)
+ *   figures    the factory's balance, for any member (readBalance); `balance`
+ *              is the same read, for owners only
  *   withdraw, withdraw_previous
  *              a payout to the bank, Stripe's payout fee taken first
  *              (api/_stripe-withdrawals.js)
@@ -38,7 +37,7 @@ import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFe
  *              the factory's payout accounts, changed by TSC on an account
  *              TSC manages (see managedByTsc); each tells the company
  *
- * Owners only: where a company's money goes is the highest-value thing in
+ * Owners only, but `figures`: where a company's money goes is the highest-value thing in
  * this system (the same rule as factory_payout_accounts).
  */
 /**
@@ -100,7 +99,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country, amount, currency, requestId, destination, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId, destination, token, makeDefault, methodId, promoteId, replaceId, load } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -109,11 +108,12 @@ export default async function handler(request, response) {
   if (tokenRefused(owner) || tokenRefused(orgRead)) return reply(response, 401, { error: "sign in is required" });
   const { data: isOwner } = owner;
   const { data: org } = orgRead;
-  // Any member of a factory reads the same figures the owner's card shows
-  // (Stripe's balance amounts included); nothing that can change the account.
-  if (action === "figures") {
+  // The balance: one read for every member of a factory (readBalance); an
+  // owner's answer also carries what only an owner manages. `balance` is the
+  // same read, for owners only.
+  if (action === "figures" || (action === "balance" && isOwner)) {
     if (!org || org.type === "brand") return reply(response, 403, { error: "that company is not available to you" });
-    return memberFigures({ stripe, db, caller, orgId, response });
+    return readBalance({ stripe, db, caller, orgId, owner: Boolean(isOwner), load: action === "balance" || Boolean(load), response });
   }
   if (!isOwner || !org || org.type === "brand") {
     return reply(response, 403, { error: "only an owner of a factory or trading company can set up its payouts" });
@@ -246,94 +246,6 @@ export default async function handler(request, response) {
       return reply(response, 200, { account: saved, released: [] });
     }
 
-    if (action === "balance") {
-      // A withdrawal left half-way (its call died) is finished or its fee given back first.
-      await settleAbandoned({ stripe, db, accountId: existing.stripe_account_id })
-        .catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
-      // A payout that failed or was cancelled gives its fee back even if its webhook never came.
-      await returnFeesOnFailedPayouts({ stripe, db, accountId: existing.stripe_account_id });
-      // Funded payments Stripe gave a clearing date after they were recorded;
-      // refunds, disputes and payouts whose webhooks never came.
-      const askStripe = await claimStripeRead(db, orgId);
-      await Promise.all([
-        ensureFundsAvailableFor({ stripe, db, orgId }),
-        askStripe ? checkChargesFor({ stripe, db, orgId }) : null,
-        askStripe ? refreshPayoutsFor({ stripe, db, orgId }) : null,
-      ]);
-      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
-      // Stripe's balance, the database's figures and what open withdrawals
-      // hold, from one moment (consistentMoneyRead).
-      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById, consistent }, allocation, methods, onTheirWay, displayFx, owedReach] = await Promise.all([
-        consistentMoneyRead(db, existing.stripe_account_id, async () => {
-          const [balanceRead, tscRead] = await Promise.all([
-            stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
-            // As the owner: the database checks who is asking.
-            caller.rpc("factory_balance", { target_org: orgId }),
-          ]);
-          // What open withdrawals hold of the Stripe account (their own Stripe
-          // part, and owed money they transferred for a payout not yet made):
-          // on its way, not available, in the figures and in what Withdraw offers.
-          const byId = {};
-          const held = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId }).catch(() => ({}));
-          return { balance: balanceRead, tsc: tscRead, held, heldById: byId };
-        }),
-        payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
-        listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
-        payoutsOnTheirWay(stripe, existing.stripe_account_id),
-        payoutDisplayRates(),
-        db.rpc("owed_reachable", { target_org: orgId }),
-      ]);
-      if (tscBalance.error) throw new Error(tscBalance.error.message);
-      if (owedReach.error) throw new Error(owedReach.error.message);
-      const migration = await upgradeReadiness(stripe, upgrade);
-      let recovery = null;
-      if (upgrade?.completed_at) {
-        const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
-        const funds = await stripe.balance.retrieve({}, { stripeAccount: upgrade.old_account_id });
-        recovery = { available: funds.available, pending: funds.pending, defaultCurrency: previous.default_currency, payoutsEnabled: previous.payouts_enabled };
-        const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
-        allocation.payouts.push(...historical.payouts);
-        allocation.pending.push(...historical.pending);
-      }
-      const figures = { ...balanceFigures(tscBalance.data, {
-        available: [...balance.available, ...(recovery?.available ?? [])],
-        pending: [...balance.pending, ...(recovery?.pending ?? [])],
-        held: heldRows(balance.available, heldElsewhere),
-        held_by: heldByRows(heldById),
-      }, displayFx), stripe_unavailable: false };
-      checkedFigures(figures, consistent, orgId);
-      // What Withdraw can offer by each road, in US$: Stripe reaches owed
-      // steps paid by card and the money already in this Stripe account
-      // (an estimate when that is in another currency), less what is held;
-      // PayPal and Wise reach owed steps and pool money, never the Stripe
-      // account's.
-      // As one withdrawal reckons it (stripeMoneyUsd): the payout currency's
-      // money only, at the rate the withdrawal uses, so the dialog's full
-      // amount is what the server allows.
-      const { cents: inStripeUsd, estimated: reachEstimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, account.default_currency);
-      const reach = {
-        // Net of what the company owes TSC (owed_reachable), never below zero.
-        stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd),
-        pool_cents: Math.max(0, Number(owedReach.data?.any_cents ?? 0)),
-        estimated: reachEstimated,
-      };
-      return reply(response, 200, {
-        displayFx, recovery, figures, reach,
-        upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
-        defaultCurrency: account.default_currency,
-        available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
-        pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
-        payouts: allocation.payouts,
-        pendingEarnings: allocation.pending,
-        // Withdrawals not yet at the bank, and which account each is going to:
-        // that account cannot be removed until its money arrives.
-        payoutsOnTheirWay: onTheirWay,
-        methods,
-        // TSC adds and removes payout accounts itself only where Stripe lets it.
-        managedByTsc: managedByTsc(account),
-      });
-    }
-
     if (action === "add_method" || action === "default_method" || action === "remove_method") {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       if (!managedByTsc(account)) {
@@ -397,113 +309,187 @@ export default async function handler(request, response) {
   } catch (failure) {
     if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
     logStripeFailure("stripe-connect", failure, { action });
-    // Stripe unreachable: the balance still answers with what TSC holds for
-    // the factory (factory_balance()), its Stripe part marked unavailable,
-    // never with nothing.
-    const figures = action === "balance" ? await databaseFigures(caller, orgId) : undefined;
     return reply(response, 502, {
       error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes."),
-      ...(figures ? { figures } : {}),
     });
   }
 }
 
+/** A company's PayPal / Wise withdrawals, as the Payments page lists them (newest 200). */
+const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, back_cents, created_at, paid_at, updated_at";
+
 /**
- * The `figures` (and `reach`) of the `balance` action, for any member of the
- * factory: read only. No withdrawal is settled, no fee returned, no account,
- * method or session touched. The database decides membership
- * (factory_balance() refuses a non-member, read with the caller's token).
+ * The factory's balance, read one way by every member (the Payments page's
+ * one read, src/app/order/use-factory-balance.js):
+ *
+ *   figures      the one balance (factory_balance(), read with the caller's
+ *                token, so the database decides membership) with the money
+ *                already in the company's Stripe account added
+ *                (api/_balance-figures.js)
+ *   reach        what each road can withdraw, in US$ cents: Stripe reaches
+ *                owed steps paid by card and the money in the Stripe account
+ *                (an estimate when that is in another currency), less what
+ *                open withdrawals hold; PayPal and Wise reach owed steps,
+ *                never the Stripe account's. Net of what the company owes TSC
+ *                (owed_reachable), never below zero.
+ *   withdrawals  its PayPal / Wise withdrawals, and `returnable`: what
+ *                cancelling each open one gives back
+ *   readsStripe  whether the company has a Stripe account (this read asks Stripe)
+ *
+ * An owner's answer also carries what only an owner manages: Stripe's
+ * balance amounts, payouts, payout methods and a payout account upgrade; and
+ * an owner's read first finishes a withdrawal left half-way (its call died).
+ * Only the page's load (`load`, and `balance`) also keeps Stripe's automatic
+ * payouts off (holdPayouts, a write to the account): every other owner
+ * action does it too, so a read made because money moved need not.
+ *
+ * Refunds, disputes and payouts whose webhooks never came (a failed
+ * payout's fee given back) are read from Stripe first, at most once a
+ * minute per company (claimStripeRead); only
+ * Stripe's facts are recorded. Stripe unreachable: 502, with the database's
+ * figures (Stripe part marked unavailable) and everything that needs no
+ * Stripe, never with nothing.
  */
-async function memberFigures({ stripe, db, caller, orgId, response }) {
-  const tsc = await caller.rpc("factory_balance", { target_org: orgId });
-  if (!tsc.error) {
-    // A member of this company (the database said so): refunds, disputes and
-    // payouts whose webhooks never came are read from Stripe first, so the
-    // figures below are Stripe's. Only Stripe's facts are recorded.
-    if (await claimStripeRead(db, orgId)) {
-      await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayoutsFor({ stripe, db, orgId })]);
+async function readBalance({ stripe, db, caller, orgId, owner, load = false, response }) {
+  const first = await caller.rpc("factory_balance", { target_org: orgId });
+  if (tokenRefused(first)) return reply(response, 401, { error: "sign in is required" });
+  if (first.error) return reply(response, first.error.code === "42501" ? 403 : 502, { error: first.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
+  const { data: existing } = await db.from("stripe_connect_accounts").select("*").eq("org_id", orgId).maybeSingle();
+  const accountId = existing?.stripe_account_id ?? null;
+  let tsc = first.data;
+  // Only an owner's read settles what an owner's call left half-way; its
+  // load also keeps automatic payouts off.
+  let ownerFailure = null;
+  if (owner && accountId) {
+    try {
+      if (load) await holdPayouts(stripe, accountId);
+      // A withdrawal left half-way (its call died) is finished or its fee given back first.
+      await settleAbandoned({ stripe, db, accountId }).catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
+    } catch (failure) {
+      ownerFailure = failure;
     }
-    const again = await caller.rpc("factory_balance", { target_org: orgId });
-    if (!again.error) tsc.data = again.data;
   }
-  if (tokenRefused(tsc)) return reply(response, 401, { error: "sign in is required" });
-  if (tsc.error) return reply(response, tsc.error.code === "42501" ? 403 : 502, { error: tsc.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
-  const [owedReach, existingRead] = await Promise.all([
+  if (await claimStripeRead(db, orgId)) {
+    await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayouts({ stripe, db, orgId })]);
+    const again = await caller.rpc("factory_balance", { target_org: orgId });
+    if (!again.error) tsc = again.data;
+  }
+  const [owedReach, own, asked] = await Promise.all([
     db.rpc("owed_reachable", { target_org: orgId }),
-    db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).maybeSingle(),
+    caller.rpc("my_withdrawal_balance", { target_org: orgId }),
+    caller.from("factory_withdrawals").select(WITHDRAWAL_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
   ]);
-  // Net of what the company owes TSC (owed_reachable), never below zero.
   const poolCents = Math.max(0, Number(owedReach.data?.any_cents ?? 0));
-  const existing = existingRead.data;
-  if (!existing) {
+  if (owedReach.error || own.error || asked.error) {
+    // As the Stripe-down answer below: whether this read asks Stripe (a
+    // member's page keeps its once-a-minute limit) and what each road
+    // reaches, where that was read.
+    return reply(response, 502, { error: "That didn't go through, so nothing changed. Try again in a few minutes.",
+      figures: { ...balanceFigures(tsc, null, null), stripe_unavailable: Boolean(accountId) },
+      reach: owedReach.error ? null : { stripe_cents: 0, pool_cents: poolCents, estimated: false },
+      readsStripe: Boolean(accountId) });
+  }
+  const shared = { withdrawals: asked.data ?? [], returnable: own.data?.returnable ?? {}, readsStripe: Boolean(accountId) };
+  if (!accountId) {
     return reply(response, 200, {
-      figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: false },
+      figures: { ...balanceFigures(tsc, null, null), stripe_unavailable: false },
       reach: { stripe_cents: 0, pool_cents: poolCents, estimated: false },
+      ...shared,
     });
   }
   try {
+    if (ownerFailure) throw ownerFailure;
     // Funded payments Stripe gave a clearing date after they were recorded.
     await ensureFundsAvailableFor({ stripe, db, orgId });
     const upgrade = await connectUpgrade(db, orgId);
-    const [{ balance, fresh, held: heldElsewhere, heldById, consistent }, allocation, onTheirWay, displayFx, account] = await Promise.all([
-      consistentMoneyRead(db, existing.stripe_account_id, async () => {
+    // The currency a withdrawal pays out in (withdraw: payoutCurrency).
+    const account = await stripe.accounts.retrieve(accountId);
+    // Stripe's balance, the database's figures and what open withdrawals
+    // hold, from one moment (consistentMoneyRead).
+    const [{ balance, fresh, held: heldElsewhere, consistent }, displayFx, ownerReads] = await Promise.all([
+      consistentMoneyRead(db, accountId, async () => {
         const [balanceRead, freshRead] = await Promise.all([
-          stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+          stripe.balance.retrieve({}, { stripeAccount: accountId }),
           caller.rpc("factory_balance", { target_org: orgId }),
         ]);
-        const byId = {};
-        const held = await heldByOpenWithdrawals(db, existing.stripe_account_id, null, { stripe, byId }).catch(() => ({}));
-        return { balance: balanceRead, fresh: freshRead, held, heldById: byId };
+        // What open withdrawals hold of the Stripe account (their own Stripe
+        // part, and owed money they transferred for a payout not yet made):
+        // on its way, not available, in the figures and in what Withdraw offers.
+        const held = await heldByOpenWithdrawals(db, accountId, null, { stripe }).catch(() => ({}));
+        return { balance: balanceRead, fresh: freshRead, held };
       }),
-      payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
-      payoutsOnTheirWay(stripe, existing.stripe_account_id),
       payoutDisplayRates(),
-      // The currency a withdrawal pays out in (withdraw: payoutCurrency).
-      stripe.accounts.retrieve(existing.stripe_account_id),
+      owner ? Promise.all([
+        payoutAllocationFor(stripe, db, orgId, accountId),
+        listPayoutMethods(stripe, accountId, account.default_currency),
+        payoutsOnTheirWay(stripe, accountId),
+      ]) : null,
     ]);
     let recovery = null;
     if (upgrade?.completed_at) {
       const funds = await stripe.balance.retrieve({}, { stripeAccount: upgrade.old_account_id });
       recovery = { available: funds.available, pending: funds.pending };
-      const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
-      allocation.payouts.push(...historical.payouts);
+      if (owner) {
+        const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
+        recovery = { ...recovery, defaultCurrency: previous.default_currency, payoutsEnabled: previous.payouts_enabled };
+        const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
+        ownerReads[0].payouts.push(...historical.payouts);
+        ownerReads[0].pending.push(...historical.pending);
+      }
     }
-    const figures = { ...balanceFigures(fresh.error ? tsc.data : fresh.data, {
+    const figures = checkedFigures({ ...balanceFigures(fresh.error ? tsc : fresh.data, {
       available: [...balance.available, ...(recovery?.available ?? [])],
       pending: [...balance.pending, ...(recovery?.pending ?? [])],
       held: heldRows(balance.available, heldElsewhere),
-      held_by: heldByRows(heldById),
-    }, displayFx), stripe_unavailable: false };
-    checkedFigures(figures, consistent, orgId);
-    const { cents: inStripeUsd, estimated } = await stripeMoneyUsd(stripe, existing.stripe_account_id, balance.available, heldElsewhere, account.default_currency);
-    return reply(response, 200, {
+    }, displayFx), stripe_unavailable: false }, consistent, orgId);
+    // As one withdrawal reckons it (stripeMoneyUsd): the payout currency's
+    // money only, at the rate the withdrawal uses, so the dialog's full
+    // amount is what the server allows.
+    const { cents: inStripeUsd, estimated } = await stripeMoneyUsd(stripe, accountId, balance.available, heldElsewhere, account.default_currency);
+    const answer = {
       figures,
       reach: { stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd), pool_cents: poolCents, estimated },
+      ...shared,
+    };
+    if (!owner) return reply(response, 200, answer);
+    const [allocation, methods, onTheirWay] = ownerReads;
+    const migration = await upgradeReadiness(stripe, upgrade);
+    return reply(response, 200, {
+      ...answer,
+      displayFx, recovery,
+      upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
+      defaultCurrency: account.default_currency,
+      available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
+      pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
+      payouts: allocation.payouts,
+      pendingEarnings: allocation.pending,
+      // Withdrawals not yet at the bank, and which account each is going to:
+      // that account cannot be removed until its money arrives.
+      payoutsOnTheirWay: onTheirWay,
+      methods,
+      // TSC adds and removes payout accounts itself only where Stripe lets it.
+      managedByTsc: managedByTsc(account),
     });
   } catch (failure) {
     logStripeFailure("stripe-connect figures", failure, { orgId });
     return reply(response, 502, {
       error: sentenceFor(failure, "That didn't go through, so nothing changed. Try again in a few minutes."),
-      figures: { ...balanceFigures(tsc.data, null, null), stripe_unavailable: true },
+      figures: { ...balanceFigures(tsc, null, null), stripe_unavailable: true },
+      reach: { stripe_cents: 0, pool_cents: poolCents, estimated: false },
+      ...shared,
     });
   }
 }
 
-/** Each open withdrawal's own claim, as { id, amount, currency } rows. */
-function heldByRows(byId) {
-  return Object.entries(byId ?? {}).map(([id, row]) => ({ id, amount: Number(row.amount) || 0, currency: row.currency }));
-}
-
 /**
- * Says on the figures when they may not be one moment's (`consistent:
- * false`): the reads kept changing, or Stripe held more than the database
- * counts as sent and the figures had to be clamped. The page then asks
- * again; the clamp is only what shows until then. Logged, so a clamp that
- * keeps firing is seen rather than flattened.
+ * Logs figures that may not be one moment's: the reads kept changing, or
+ * Stripe held more than the database counts as sent and the figures had to
+ * be clamped. The clamp is only what shows until the next read (a moving
+ * withdrawal is heard by the page, which reads again); logged, so a clamp
+ * that keeps firing is seen rather than flattened.
  */
 function checkedFigures(figures, consistent, orgId) {
-  if (figures.consistent === false) console.warn("stripe-connect figures clamped", { orgId, total: figures.total_cents });
-  if (!consistent) figures.consistent = false;
+  if (figures.consistent === false || !consistent) console.warn("stripe-connect figures clamped", { orgId, total: figures.total_cents, consistent });
   return figures;
 }
 
@@ -512,15 +498,4 @@ function heldRows(available, held) {
   return (available ?? []).map(({ amount, currency }) => ({
     amount: Math.min(Number(amount) || 0, held[String(currency).toLowerCase()] ?? 0), currency,
   })).filter((row) => row.amount > 0);
-}
-
-/** The one balance from the database alone, for when Stripe cannot be read; null if that fails too. */
-async function databaseFigures(caller, orgId) {
-  try {
-    const { data, error } = await caller.rpc("factory_balance", { target_org: orgId });
-    if (error || !data) return null;
-    return { ...balanceFigures(data, null, null), stripe_unavailable: true };
-  } catch {
-    return null;
-  }
 }

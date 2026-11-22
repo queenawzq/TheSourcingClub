@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
@@ -6,15 +6,14 @@ import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
 import { NOTHING_BACK, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
+import { RELOAD_AND_TRY_AGAIN, SIGN_IN_AGAIN } from "./balance-reader.mjs";
 
 /**
  * A factory withdraws to Wise or PayPal from its one balance: cleared
- * approved earnings and the older pool money, less what it has asked for or
- * been paid (my_withdrawal_balance().available_cents, the balance read's
- * `reach.pool_cents`). The balance is
- * the database's (my_withdrawal_balance, one source with the staff board); the
- * request and its cancelling are RPCs that check the owner, the amount and the
- * one open request again. The fee shown is the one fee rule
+ * approved earnings, less what it has asked for or been paid (the balance
+ * read's `reach.pool_cents`, balance-reader.mjs withdrawalsFrom). The request and its
+ * cancelling are RPCs that check the owner, the amount and the one open
+ * request again. The fee shown is the one fee rule
  * (src/shared/withdrawal-fees.mjs); staff's approval uses the same rule with
  * the provider's own quote where it gives one.
  */
@@ -35,8 +34,8 @@ const REFUSALS = {
   withdrawal_provider_off: "This withdrawal method isn't available right now. Choose another one.",
 };
 const sentence = (error) => REFUSALS[error?.hint] ?? (error?.code === "PGRST301" || /JWT/i.test(error?.message ?? "")
-  ? "Your sign-in expired. Sign in again."
-  : "That didn't go through. Reload the page and try again.");
+  ? SIGN_IN_AGAIN
+  : RELOAD_AND_TRY_AGAIN);
 
 export const ALREADY_CANCELLED = "This withdrawal was already cancelled.";
 /** A saved method whose provider staff switched off: shown, never chosen. */
@@ -75,59 +74,6 @@ export function feeRate(provider, { country = "", feeCents, amountCents }) {
   }
   if (!(amountCents > 0) || feeCents == null) return null;
   return `${Math.round((feeCents / amountCents) * 1000) / 10}%`;
-}
-
-/** The balance and the latest withdrawal, re-read when staff, a teammate or a brand approving a step change them. */
-export function useWithdrawalBalance(orgId, enabled = true, defaultMethodId = null) {
-  const [state, setState] = useState({ available: null, open: null, opens: [], last: null, rows: [], returnable: new Map(), error: null });
-  const load = useCallback(async () => {
-    if (!enabled || !orgId) return;
-    const [balance, rows] = await Promise.all([
-      supabase.rpc("my_withdrawal_balance", { target_org: orgId }),
-      supabase.from("factory_withdrawals")
-        .select("id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, back_cents, created_at, paid_at, updated_at")
-        .eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
-    ]);
-    if (balance.error || rows.error) {
-      setState((was) => ({ ...was, error: sentence(balance.error ?? rows.error) }));
-      return;
-    }
-    const list = rows.data ?? [];
-    // Several can be open at once; each already took its amount from the balance.
-    const opens = list.filter((w) => ["requested", "paying"].includes(w.status));
-    setState({
-      available: Number(balance.data?.available_cents ?? 0),
-      open: opens[0] ?? null,
-      opens,
-      last: list[0] ?? null,
-      rows: list,
-      // What cancelling each open withdrawal gives back (less, or nothing, when
-      // a step under it was refunded to the brand).
-      returnable: new Map(Object.entries(balance.data?.returnable ?? {}).map(([id, cents]) => [id, Number(cents)])),
-      error: null,
-    });
-  }, [orgId, enabled]);
-
-  useEffect(() => {
-    if (!enabled || !orgId) return undefined;
-    load();
-    const channel = supabase.channel(`factory-withdrawals:${orgId}:${Math.random().toString(36).slice(2)}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "factory_withdrawals", filter: `org_id=eq.${orgId}` }, () => load())
-      // A brand approving a step adds it to the balance (it becomes owed;
-      // my_withdrawal_balance counts it once cleared) with no
-      // factory_withdrawals row changing: the first such payment is what
-      // reveals Withdraw. order_payments has no org
-      // column to filter on; Realtime applies order_payments_read per
-      // subscriber, so only this company's orders are heard.
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, () => load())
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  // Saving the first default method moves nothing (owed money stays owed),
-  // but it is what makes the balance withdrawable. Re-read after that save.
-  }, [orgId, enabled, load, defaultMethodId]);
-
-  return { ...state, load };
 }
 
 // The day it was asked for, in the reader's zone: two requests of the same
