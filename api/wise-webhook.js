@@ -1,7 +1,7 @@
-import { webhookRoute, wisePublicKey, wiseRef, wiseSignatureOk } from "./_payout-webhooks.js";
+import { webhookRoute, wisePublicKey, wiseRef, wiseRefundCents, wiseSignatureOk } from "./_payout-webhooks.js";
 import { wiseFrom } from "./_wise.js";
 
-/** Wise's transfers#state-change: see api/_payout-webhooks.js. */
+/** Wise's transfers#state-change and transfers#refund: see api/_payout-webhooks.js. */
 export default webhookRoute({
   provider: "wise",
   build: () => wiseFrom(),
@@ -12,5 +12,7 @@ export default webhookRoute({
     type: event?.event_type,
     ref: wiseRef(event),
     test: String(request.headers["x-test-notification"] ?? "") === "true",
+    // What a refund gave back, read against the withdrawal's currency.
+    refund: (currency) => wiseRefundCents(event, currency),
   }),
 });

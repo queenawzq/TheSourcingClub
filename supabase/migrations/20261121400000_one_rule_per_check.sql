@@ -20,10 +20,11 @@
 --    different received amount, where they now say what the balance holds).
 --    The generated column factory_refund_cents keeps its own copy of the
 --    base as its cap: a generated column cannot call a function on its row.
--- On top of round 36 (20261121380000): claim_withdrawal and claim_owed_steps
--- keep its cover_factory_debt() call under the company lock, and the one
--- "owes TSC" refusal (check_withdrawal_can_go) names the uncovered amount,
--- as round 36's claim_withdrawal did, so the guard trigger now says the same.
+--    The one "owes TSC" refusal (check_withdrawal_can_go) names the debt the
+--    factory's other earnings do not cover (factory_debt_uncovered_cents),
+--    as rounds 36 and 37 had staff approve and the guard trigger say it.
+-- On top of rounds 36-39 (20261121380000 ... 20261121387000): a debt is
+-- netted from Available, never covered by takes.
 -- Latest full bodies; grants unchanged on replaced functions; the two new
 -- ones are internal. Safe with the live site while applied: only function
 -- bodies change, with the same results.
@@ -123,8 +124,6 @@ begin
   end if;
   perform public.payout_staff_check(w.org_id);
   perform 1 from public.orgs where id = w.org_id for no key update;
-  -- What the company owes TSC is kept from its earnings first (20261121380000).
-  perform public.cover_factory_debt(w.org_id);
   select * into w from public.factory_withdrawals where id = target_withdrawal for update;
   if w.status = 'paying' then
     if w.lease_until is not null and w.lease_until > now() then
@@ -188,9 +187,6 @@ begin
     raise exception 'Enter an amount to withdraw.' using errcode = '22023', hint = 'withdrawal_amount';
   end if;
   perform 1 from public.orgs where id = target_org for no key update;
-  -- What the company owes TSC is kept from its earnings first, so nothing is
-  -- left stranded on a step (20261121380000).
-  perform public.cover_factory_debt(target_org);
 
   if road = 'stripe' then
     select * into sw from public.stripe_withdrawals where id = withdrawal for update;

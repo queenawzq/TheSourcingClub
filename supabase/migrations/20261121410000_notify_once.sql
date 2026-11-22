@@ -24,8 +24,9 @@
 -- 3. tell_earnings_down(): the one writer of "Your earnings from X went down
 --    by Y. You'd already withdrawn Z of that, so you now owe TSC Z.", for a
 --    refund and for a lost dispute. Same words as before.
--- Latest full bodies; grants unchanged on replaced functions; the new one is
--- internal. Safe with the live site while applied: two nullable columns, an
+-- Latest full bodies (tell_withdrawal_refunded from round 37, 20261121385000:
+-- the on-hold notice names the uncovered debt); grants unchanged on replaced
+-- functions; the new one is internal. Safe with the live site while applied: two nullable columns, an
 -- index, and functions that write and read them; the live server's own
 -- notices carry no key and are written as before.
 -- ============================================================================
@@ -182,6 +183,7 @@ declare
   debt_refund boolean;
   debt_lost boolean;
   gone bigint;
+  owed text;
 begin
   -- Converting the old pool changes no figure: nothing to tell (20261121350000).
   if current_setting('tsc.pool_convert', true) = 'on' then
@@ -249,6 +251,9 @@ begin
     owes := not exists (select 1 from public.payment_takes t
                          where t.factory_withdrawal_id = w.id and t.payment_id = new.id and t.status = 'held'
                            and (new.state <> 'confirmed' or public.take_refunded_cents(t) > 0));
+    -- What its earnings do not cover: the card's line, To recover and the
+    -- Withdrawals row say the same amount (20261121385000).
+    owed := public.format_money(public.factory_debt_uncovered_cents(w.org_id), 'USD');
     insert into public.notifications (org_id, kind, subject_type, subject_id, title, body, data, dedupe_key)
     values (w.org_id, 'withdrawal', 'withdrawal', w.id,
             format('Withdrawal of %s on hold', public.format_money(w.amount_cents, w.currency)),
@@ -256,13 +261,13 @@ begin
             -- refund, a lost dispute, or both (20261121240000).
             case when owes and not debt_refund
                  then format('You owe TSC %s for a payment the brand''s bank reversed after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
-                             public.format_money(public.factory_debt_cents(w.org_id), 'USD'))
+                             owed)
                  when owes and not debt_lost
                  then format('You owe TSC %s for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
-                             public.format_money(public.factory_debt_cents(w.org_id), 'USD'))
+                             owed)
                  when owes
                  then format('You owe TSC %s for money returned to the brand after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
-                             public.format_money(public.factory_debt_cents(w.org_id), 'USD'))
+                             owed)
                  when lost
                  then format('The brand''s bank reversed the payment for "%s". Cancel this withdrawal and withdraw again.',
                              coalesce(m.title, o.order_number))

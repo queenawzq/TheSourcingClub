@@ -1103,7 +1103,7 @@ export default function StripePayoutCard({
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
-          {/* Only what its earnings do not cover: covered, TSC keeps it from them and there is no line. */}
+          {/* Only what its earnings do not cover: covered, Available is already net of it and there is no line. */}
           {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}

@@ -150,7 +150,7 @@ export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed
 /**
  * The part of it the factory's earnings do not cover
  * (factory_balance().uncovered_debt_cents): the card's line says only this,
- * and none once they cover it (TSC keeps that much from them).
+ * and none once they cover it (Available is already net of it).
  */
 export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.uncovered_debt_cents ?? figures?.uncovered_debt_cents) || 0);
 /**

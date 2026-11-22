@@ -10,17 +10,10 @@
 --     existing words. Paid out drops by it (its takes and fee are no longer
 --     paid). Staff see it under Needs checking ('returned', returned_at) for
 --     14 days, or until the factory asks for another withdrawal.
--- C1  A debt to TSC that the factory's earnings cover is covered, not netted
---     forever: cover_factory_debt() keeps that much of its claimable earnings
---     (road 'tsc' takes, status 'sent', covers_payment_id = the step that
---     carries the debt), oldest first, Stripe-charged steps first, so a step
---     taken in full is released and nothing is stranded on the newest step.
---     It runs under the company lock wherever money is claimed
---     (claim_owed_steps, claim_withdrawal) and when a withdrawal comes back,
---     and first hands back any cover the debt no longer needs (a refund that
---     failed, a withdrawal returned). The card's "You owe TSC" line, staff's
+-- C1  A debt to TSC stays netted against the factory's earnings (Available =
+--     cleared earnings less the debt). The card's "You owe TSC" line, staff's
 --     To recover row and the overview count show only what earnings do not
---     cover (factory_debt_uncovered_cents).
+--     cover (factory_debt_uncovered_cents); covered, there is nothing to show.
 -- C2  claim_withdrawal's "owes TSC" detail is the uncovered amount, as the
 --     To recover row and the board row say it.
 -- Edited default bank: the details of the default bank changing say so on
@@ -30,36 +23,24 @@
 --     in factory_balance() (no_saved_method) for the card and the order page.
 -- Dead: claim_payment_release no longer reads tsc.withdrawal_claim (never set).
 --
--- Additive: new columns, a wider check, new functions; CREATE OR REPLACE
+-- Additive: a new column and function; CREATE OR REPLACE
 -- keeps every grant; latest full bodies; no overloads.
 
 alter table public.factory_withdrawals add column if not exists returned_at timestamptz;
 
--- No foreign key on purpose: a second path from order_payments to
--- payment_takes would make the client's order_payments -> payment_takes
--- embed ambiguous, and PostgREST refuses those (like rfqs.reorder_of_order_id).
-alter table public.payment_takes add column if not exists covers_payment_id uuid;
-alter table public.payment_takes drop constraint if exists payment_takes_road_check;
-alter table public.payment_takes add constraint payment_takes_road_check check (road in ('stripe', 'pool', 'tsc'));
-alter table public.payment_takes add constraint payment_takes_tsc_covers check ((road = 'tsc') = (covers_payment_id is not null));
--- Kept by TSC: never held, never paid by a provider.
-alter table public.payment_takes add constraint payment_takes_tsc_kept check (road <> 'tsc' or status in ('sent', 'returned'));
-create index if not exists payment_takes_covers_idx on public.payment_takes (covers_payment_id) where covers_payment_id is not null and status = 'sent';
-
--- ---------------------------------------------------------------------------
--- The debt, net of what TSC already kept for it.
--- ---------------------------------------------------------------------------
-create or replace function public.payment_debt_raw_cents(p public.order_payments)
-returns bigint
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
+-- M2 ------------------------------------------------------------------------
+-- 20261121350000's body; a step withdrawals released whose parts all came
+-- back (a returned withdrawal) sent nothing.
+CREATE OR REPLACE FUNCTION public.payment_debt_cents(p order_payments)
+ RETURNS bigint
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
   -- What withdrawals sent from a step beyond what it now holds for the
   -- factory. A step that holds no money (an old pool step refunded in full
   -- after it was withdrawn, reset to be paid again: 20261121350000): all of
-  -- it, until the brand pays it again. (20261121350000's payment_debt_cents.)
+  -- it, until the brand pays it again.
   select greatest(0, s.sent - case when p.state in ('confirmed', 'released') then public.payment_factory_cents(p) else 0 end)::bigint
     from (select case
                    -- Released the old way (a transfer or a payout per step). Not a
@@ -74,61 +55,9 @@ as $$
                                    where t.payment_id = p.id and t.status = 'sent'), 0)
                  end as sent) s
    where p.currency = 'USD';
-$$;
-revoke all on function public.payment_debt_raw_cents(public.order_payments) from public, anon, authenticated;
-
-create or replace function public.payment_covered_cents(target_payment uuid)
-returns bigint
-language sql
-stable
-security definer
-set search_path = public, pg_temp
-as $$
-  select coalesce(sum(c.amount_cents), 0)::bigint from public.payment_takes c
-   where c.covers_payment_id = target_payment and c.status = 'sent';
-$$;
-revoke all on function public.payment_covered_cents(uuid) from public, anon, authenticated;
-
-CREATE OR REPLACE FUNCTION public.payment_debt_cents(p order_payments)
- RETURNS bigint
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-  -- Still owed on this step: what withdrawals sent beyond what it holds
-  -- (payment_debt_raw_cents), less what TSC kept from other earnings for it
-  -- (cover_factory_debt, 20261121380000).
-  select greatest(0, public.payment_debt_raw_cents(p) - public.payment_covered_cents(p.id))::bigint
-   where p.currency = 'USD';
 $function$;
 
-CREATE OR REPLACE FUNCTION public.factory_debt_cents(target_org uuid, target_client uuid DEFAULT NULL::uuid)
- RETURNS bigint
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-  -- Below zero when TSC kept more than a step still needs (its refund failed,
-  -- or the withdrawal that took it came back): that much is the factory's
-  -- again, in Available, and cover_factory_debt() hands it back at the next
-  -- claim (20261121380000).
-  select coalesce((
-    select sum(public.payment_debt_cents(p)
-               - greatest(0, public.payment_covered_cents(p.id) - public.payment_debt_raw_cents(p)))
-      from public.order_payments p
-      join public.production_orders o on o.id = p.order_id
-     where o.factory_org_id = target_org and p.currency = 'USD'
-       -- Refunded since, or sent beyond what the step holds (an old pool step
-       -- refunded in full after it was withdrawn, or a withdrawal beyond every
-       -- pool step: 20261121350000), or covered (20261121380000).
-       and (p.factory_refund_cents > 0
-            or exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent')
-            or exists (select 1 from public.payment_takes c where c.covers_payment_id = p.id and c.status = 'sent'))
-       and (target_client is null or o.brand_org_id = target_client)
-  ), 0)::bigint;
-$function$;
-
--- A step released because withdrawals (or TSC's cover) had taken all of it,
+-- A step released because withdrawals had taken all of it,
 -- and that no longer is: owed again.
 create or replace function public.reopen_untaken_step(target_payment uuid)
 returns void
@@ -151,87 +80,6 @@ begin
 end;
 $$;
 revoke all on function public.reopen_untaken_step(uuid) from public, anon, authenticated;
-
--- What a company owes TSC, covered from its claimable earnings. The caller
--- holds the company lock (orgs FOR NO KEY UPDATE). First what TSC kept beyond
--- what a step still needs goes back (newest first); then each step's debt,
--- oldest first, is covered from claimable steps, Stripe-charged first (so the
--- Stripe road's reach is unchanged), in the order withdrawals claim them. A
--- step taken in full is released. Returns what it kept now.
-create or replace function public.cover_factory_debt(target_org uuid)
-returns bigint
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  d record;
-  cov record;
-  r record;
-  excess bigint;
-  need bigint;
-  left_cents bigint;
-  still boolean;
-  part bigint;
-  kept bigint := 0;
-begin
-  for d in
-    select p.id from public.order_payments p
-     where exists (select 1 from public.payment_takes k where k.covers_payment_id = p.id and k.status = 'sent'
-                     and k.org_id = target_org)
-  loop
-    select greatest(0, public.payment_covered_cents(p.id) - public.payment_debt_raw_cents(p)) into excess
-      from public.order_payments p where p.id = d.id;
-    for cov in select t.* from public.payment_takes t where t.covers_payment_id = d.id and t.status = 'sent'
-              order by t.created_at desc, t.id desc for update
-    loop
-      exit when coalesce(excess, 0) <= 0;
-      if cov.amount_cents <= excess then
-        update public.payment_takes set status = 'returned', updated_at = now() where id = cov.id;
-        excess := excess - cov.amount_cents;
-      else
-        update public.payment_takes set amount_cents = cov.amount_cents - excess, updated_at = now() where id = cov.id;
-        excess := 0;
-      end if;
-      perform public.reopen_untaken_step(cov.payment_id);
-    end loop;
-  end loop;
-
-  for d in
-    select p.id, public.payment_debt_cents(p) as owed
-      from public.order_payments p
-      join public.production_orders o on o.id = p.order_id
-     where o.factory_org_id = target_org and p.currency = 'USD'
-       and (p.factory_refund_cents > 0
-            or exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent'))
-       and public.payment_debt_cents(p) > 0
-     order by coalesce(greatest(p.refund_amount_at, p.dispute_lost_at), p.refunded_at, p.created_at), p.id
-  loop
-    need := d.owed;
-    for r in
-      select p.id from public.order_payments p
-        join public.production_orders o on o.id = p.order_id
-       where o.factory_org_id = target_org and public.payment_claimable(p)
-       order by (p.stripe_charge_id is null), p.release_requested_at, p.id
-    loop
-      exit when need <= 0;
-      select public.payment_claimable(p), public.payment_factory_cents(p) - public.payment_taken_cents(p.id)
-        into still, left_cents
-        from public.order_payments p where p.id = r.id for update;
-      continue when not coalesce(still, false) or left_cents <= 0;
-      part := least(left_cents, need);
-      insert into public.payment_takes (payment_id, org_id, road, covers_payment_id, amount_cents, status)
-      values (r.id, target_org, 'tsc', d.id, part, 'sent');
-      perform public.release_fully_taken(r.id, null);
-      need := need - part;
-      kept := kept + part;
-    end loop;
-  end loop;
-  return kept;
-end;
-$$;
-revoke all on function public.cover_factory_debt(uuid) from public, anon, authenticated;
-
 
 -- M2 ------------------------------------------------------------------------
 -- 20261121360000's body; a paid withdrawal the provider returns is recorded.
@@ -274,8 +122,6 @@ begin
            staff_sentence = coalesce(sentence, staff_sentence),
            reason = coalesce(sentence, 'This withdrawal did not go through.')
      where id = w.id returning * into w;
-    -- What TSC kept for a debt that this return settles goes back too.
-    perform public.cover_factory_debt(w.org_id);
     back := public.withdrawal_back_sentence(w);
     back_amount := public.withdrawal_back_cents(w);
     update public.factory_withdrawals set back_cents = greatest(back_amount, 0)
@@ -349,119 +195,8 @@ end;
 $function$;
 
 
--- C1 ------------------------------------------------------------------------
--- 20261121230000's body; the debt is covered first.
-CREATE OR REPLACE FUNCTION public.claim_owed_steps(target_org uuid, amount bigint, road text, withdrawal uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-declare
-  sw public.stripe_withdrawals;
-  fw public.factory_withdrawals;
-  need bigint;
-  got bigint := 0;
-  take_amount bigint;
-  left_cents bigint;
-  still boolean;
-  r record;
-  t public.payment_takes;
-  out_takes jsonb := '[]'::jsonb;
-begin
-  if not (coalesce(auth.role(), '') = 'service_role' or public.is_org_owner(target_org)) then
-    raise exception 'Only a company owner can withdraw.' using errcode = '42501', hint = 'withdraw_owner_only';
-  end if;
-  if road is null or road not in ('stripe', 'pool') then
-    raise exception 'unknown withdrawal road' using errcode = '22023', hint = 'withdrawal_not_waiting';
-  end if;
-  if amount is null or amount <= 0 then
-    raise exception 'Enter an amount to withdraw.' using errcode = '22023', hint = 'withdrawal_amount';
-  end if;
-  perform 1 from public.orgs where id = target_org for no key update;
-  -- What the company owes TSC is kept from its earnings first, so nothing is
-  -- left stranded on a step (20261121380000).
-  perform public.cover_factory_debt(target_org);
-
-  if road = 'stripe' then
-    select * into sw from public.stripe_withdrawals where id = withdrawal for update;
-    if not found or sw.org_id <> target_org or sw.state <> 'claimed' then
-      raise exception 'this withdrawal is not waiting' using errcode = '22023', hint = 'withdrawal_not_waiting';
-    end if;
-    -- Claimed already (a retry of the same withdrawal): what it holds.
-    if sw.owed_cents is not null then
-      return jsonb_build_object('claimed_cents', sw.owed_cents, 'takes', coalesce((
-        select jsonb_agg(jsonb_build_object('take_id', k.id, 'payment_id', k.payment_id, 'amount_cents', k.amount_cents,
-                 'charge_id', p.stripe_charge_id, 'order_id', p.order_id, 'order_number', o.order_number,
-                 'status', k.status, 'stripe_transfer_id', k.stripe_transfer_id) order by k.created_at)
-          from public.payment_takes k
-          join public.order_payments p on p.id = k.payment_id
-          join public.production_orders o on o.id = p.order_id
-         where k.stripe_withdrawal_id = sw.id), '[]'::jsonb), 'resumed', true);
-    end if;
-    -- A Stripe account being replaced: nothing goes to either until it is done.
-    if exists (select 1 from public.stripe_connect_upgrades u where u.org_id = target_org
-                and u.completed_at is null and u.new_account_id is not null) then
-      raise exception 'the payout account is being updated' using errcode = '22023', hint = 'payout_upgrading';
-    end if;
-    -- Money refunded after the factory withdrew it: nothing more of its owed
-    -- steps leaves while it owes TSC more than its other earnings, or more
-    -- than what is left after the debt (20261121230000; under the lock).
-    if public.factory_debt_uncovered_cents(target_org) > 0
-       or ((public.owed_reachable(target_org) ->> 'debt_cents')::bigint > 0
-           and amount > (public.owed_reachable(target_org) ->> 'stripe_cents')::bigint) then
-      raise exception 'the factory owes TSC %', public.format_money(public.factory_debt_cents(target_org), 'USD')
-        using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(public.factory_debt_cents(target_org), 'USD');
-    end if;
-  else
-    select * into fw from public.factory_withdrawals where id = withdrawal for update;
-    if not found or fw.org_id <> target_org or fw.status <> 'requested'
-       or exists (select 1 from public.payment_takes k where k.factory_withdrawal_id = fw.id) then
-      raise exception 'this withdrawal is not waiting' using errcode = '22023', hint = 'withdrawal_not_waiting';
-    end if;
-  end if;
-
-  need := amount;
-  for r in
-    select p.id, p.order_id, p.stripe_charge_id, o.order_number
-      from public.order_payments p
-      join public.production_orders o on o.id = p.order_id
-     where o.factory_org_id = target_org and public.payment_claimable(p)
-       and (road = 'pool' or p.stripe_charge_id is not null)
-     order by p.release_requested_at, p.id
-  loop
-    exit when need <= 0;
-    -- Locked, then read again: a staff payout started on it since is seen.
-    select public.payment_claimable(p), public.payment_factory_cents(p) - public.payment_taken_cents(p.id)
-      into still, left_cents
-      from public.order_payments p where p.id = r.id for update;
-    continue when not coalesce(still, false) or left_cents <= 0;
-    take_amount := least(left_cents, need);
-    insert into public.payment_takes (payment_id, org_id, road, stripe_withdrawal_id, factory_withdrawal_id, amount_cents)
-    values (r.id, target_org, road,
-            case when road = 'stripe' then withdrawal end,
-            case when road = 'pool' then withdrawal end,
-            take_amount)
-    returning * into t;
-    need := need - take_amount;
-    got := got + take_amount;
-    out_takes := out_takes || jsonb_build_array(jsonb_build_object(
-      'take_id', t.id, 'payment_id', r.id, 'amount_cents', take_amount, 'charge_id', r.stripe_charge_id,
-      'order_id', r.order_id, 'order_number', r.order_number, 'status', 'held', 'stripe_transfer_id', null));
-  end loop;
-  if need > 0 then
-    raise exception 'That is more than your balance.' using errcode = '22023', hint = 'withdrawal_over_balance';
-  end if;
-  if road = 'stripe' then
-    update public.stripe_withdrawals set owed_cents = got, updated_at = now() where id = sw.id;
-  end if;
-  return jsonb_build_object('claimed_cents', got, 'takes', out_takes, 'resumed', false);
-end;
-$function$;
-
-
--- 20261121350000's body; the debt is covered first, and the amount staff
--- read is what is not covered.
+-- C2 ------------------------------------------------------------------------
+-- 20261121350000's body; the amount staff read is what is not covered.
 CREATE OR REPLACE FUNCTION public.claim_withdrawal(target_withdrawal uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -482,7 +217,6 @@ begin
   end if;
   perform public.payout_staff_check(w.org_id);
   perform 1 from public.orgs where id = w.org_id for no key update;
-  perform public.cover_factory_debt(w.org_id);
   select * into w from public.factory_withdrawals where id = target_withdrawal for update;
   if w.status = 'paying' then
     if w.lease_until is not null and w.lease_until > now() then
@@ -519,8 +253,8 @@ end;
 $function$;
 
 
--- 20261121350000's body; TSC's cover is in no figure, and the uncovered debt
--- is its own key.
+-- 20261121350000's body; the uncovered debt is its own key, and a step whose
+-- withdrawn parts all came back was not paid out.
 CREATE OR REPLACE FUNCTION public.factory_balance(target_org uuid, target_client uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -593,11 +327,7 @@ begin
                         and (s.payout_arrives_on > (now() at time zone 'utc')::date
                              or (s.payout_arrives_on is null and coalesce(s.payout_status, 'pending') in ('pending', 'in_transit')))), 0)::bigint as sent_stripe_on_way,
            coalesce((select sum(t.amount_cents) from public.payment_takes t
-                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'pool'), 0)::bigint as sent_pool,
-           -- Kept by TSC for what the factory owes it (20261121380000): in no
-           -- figure, as the debt it covers is no longer in Available.
-           coalesce((select sum(t.amount_cents) from public.payment_takes t
-                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'tsc'), 0)::bigint as sent_tsc
+                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'pool'), 0)::bigint as sent_pool
       from public.order_payments p
       join public.production_orders o on o.id = p.order_id
      where o.factory_org_id = target_org and p.currency = 'USD'
@@ -652,13 +382,13 @@ begin
       out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'paid_out',
         'amount_cents', r.sent_pool, 'stripe', false, 'taken', true));
     end if;
-    rest := r.factory_cents - r.held_stripe - r.held_pool - r.sent_stripe - r.sent_pool - r.sent_tsc;
+    rest := r.factory_cents - r.held_stripe - r.held_pool - r.sent_stripe - r.sent_pool;
 
     if (r.p).state = 'released' then
       -- Released by withdrawals: their takes said it all. Released the old
       -- way (a transfer or a payout per step): the whole step.
       -- (A step withdrawals released whose parts all came back sent nothing.)
-      if r.held_stripe + r.held_pool + r.sent_stripe + r.sent_pool + r.sent_tsc = 0
+      if r.held_stripe + r.held_pool + r.sent_stripe + r.sent_pool = 0
          and not ((r.p).released_note = 'Withdrawn'
                   and exists (select 1 from public.payment_takes t where t.payment_id = (r.p).id and t.status = 'returned')) then
         -- What was sent then: Paid out never falls when it is refunded later
@@ -709,7 +439,7 @@ begin
       from public.payment_takes t
       join public.order_payments p on p.id = t.payment_id
       join public.production_orders o on o.id = p.order_id
-     where o.factory_org_id = target_org and p.currency = 'USD' and t.status = 'sent' and t.road <> 'tsc'
+     where o.factory_org_id = target_org and p.currency = 'USD' and t.status = 'sent'
        and p.state not in ('confirmed', 'released')
        and (target_client is null or o.brand_org_id = target_client)
      group by p.id, p.refunded_at
@@ -851,11 +581,11 @@ begin
     'pending_cents', pending,
     'processing_cents', processing,
     'paid_out_cents', paid_out,
-    'owed_to_tsc_cents', greatest(debt, 0),
+    'owed_to_tsc_cents', debt,
     -- What its earnings do not cover: the card's "You owe TSC" line; gone
     -- once they do (20261121380000).
     'uncovered_debt_cents', case when target_client is null then public.factory_debt_uncovered_cents(target_org)
-                                 else least(greatest(debt, 0), public.factory_debt_uncovered_cents(target_org)) end,
+                                 else least(debt, public.factory_debt_uncovered_cents(target_org)) end,
     'refunded_cents', refunded_total,
     'total_cents', awaiting + available + pending + processing + paid_out,
     'has_method', public.factory_can_withdraw(target_org),
@@ -876,7 +606,7 @@ begin
       'stripe_on_way_cents', stripe_on_way,
       'stripe_released_cents', stripe_released,
       'other_released_cents', other_released,
-      'owed_to_tsc_cents', greatest(debt, 0)),
+      'owed_to_tsc_cents', debt),
     'rows', out_rows,
     'withdrawals', out_withdrawals
   );
@@ -884,8 +614,8 @@ end;
 $function$;
 
 
--- 20261121350000's body; To recover only while earnings do not cover it,
--- TSC's cover is not a withdrawal, and returned withdrawals.
+-- 20261121350000's body; To recover only while earnings do not cover it, and
+-- returned withdrawals.
 CREATE OR REPLACE FUNCTION public.admin_balance_attention()
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -909,7 +639,7 @@ begin
         'in_withdrawal_cents', coalesce((
           select sum(t.amount_cents) from public.payment_takes t
             left join public.factory_withdrawals w on w.id = t.factory_withdrawal_id
-           where t.payment_id = p.id and t.road <> 'tsc'
+           where t.payment_id = p.id
              and (t.status = 'sent' or (t.status = 'held' and (t.road = 'stripe' or w.status in ('paying', 'paid'))))), 0)
         ) order by p.disputed_at)
         from public.order_payments p
@@ -933,14 +663,14 @@ begin
                         when p.dispute_lost_cents > 0 and p.dispute_lost_at > p.refund_amount_at then 'dispute_lost'
                         else 'refund' end,
           'at', coalesce(greatest(p.refund_amount_at, p.dispute_lost_at), p.refunded_at),
-          'withdrawn_cents', case when exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent' and t.road <> 'tsc')
-                                  then (select sum(t.amount_cents) from public.payment_takes t where t.payment_id = p.id and t.status = 'sent' and t.road <> 'tsc')
+          'withdrawn_cents', case when exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent')
+                                  then (select sum(t.amount_cents) from public.payment_takes t where t.payment_id = p.id and t.status = 'sent')
                                   else public.payment_factory_base_cents(p) end,
           'withdrawn_by', coalesce((
             select jsonb_agg(distinct case when t.road = 'stripe' then 'stripe' else coalesce(w.provider, 'bank') end)
               from public.payment_takes t
               left join public.factory_withdrawals w on w.id = t.factory_withdrawal_id
-             where t.payment_id = p.id and t.status = 'sent' and t.road <> 'tsc'),
+             where t.payment_id = p.id and t.status = 'sent'),
             jsonb_build_array(case when p.stripe_transfer_id is not null then 'stripe'
                                    -- an old per-step PayPal / Wise payout (20261121230000)
                                    else coalesce((select pp.provider from public.provider_payouts pp
@@ -959,8 +689,8 @@ begin
            and (p.factory_refund_cents > 0
                 or exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent'))
            and public.payment_debt_cents(p) > 0
-           -- Only while its earnings do not cover it: covered, TSC keeps it
-           -- from them (cover_factory_debt) and there is nothing to recover.
+           -- Only while its earnings do not cover it: covered, it is netted
+           -- from Available and there is nothing to recover.
            and public.factory_debt_uncovered_cents(o.factory_org_id) > 0
       ) x), '[]'::jsonb),
     -- A PayPal / Wise withdrawal the provider returned after it was recorded

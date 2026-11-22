@@ -40,8 +40,11 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const recorded = [];
   const paid = [];
   let claim = { withdrawal_id: "w1", key: "key-1", resumed: false, provider: "paypal", provider_ref: null, amount_cents: 6500, currency: "USD", account_id: "a1", paypal_email: "f@example.com" };
+  const leaves = [];
   const db = {
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "CN" }, error: null }) }) }) }),
+    from: (table) => (table === "factory_withdrawals"
+      ? { update: (patch) => ({ eq: async (_c, id) => (leaves.push({ id, ...patch, beforePay: paid.length === 0 }), { error: null }) }) }
+      : { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "CN" }, error: null }) }) }) }),
     rpc: async (name, args) => {
       assert.equal(name, "record_withdrawal");
       recorded.push(args);
@@ -64,7 +67,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   };
   // No Stripe here: approveWithdrawal's charge check (F2) is given its own
   // fake where a case needs one, never a client built from the environment.
-  return { db, caller, adapter, recorded, paid, client: {}, stripeBuild: () => null };
+  return { db, caller, adapter, recorded, paid, leaves, client: {}, stripeBuild: () => null };
 }
 
 // Short of money: nothing is sent, the request waits again with a sentence.
@@ -103,6 +106,9 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.equal(w.recorded[0].fee, 80, "the fee is recorded before the provider is asked");
   assert.equal(w.recorded[0].ref, undefined);
   assert.equal(w.recorded.at(-1).outcome, "paid");
+  // Round 39 (L3): what left TSC's balance is kept, before the provider is
+  // asked: what a provider keeps of a returned one is measured against it.
+  assert.deepEqual(w.leaves, [{ id: "w1", leaves_cents: 6500, beforePay: true }]);
 }
 
 // A provider that would add its fee on top: refused, nothing sent.

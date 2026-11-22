@@ -4,10 +4,10 @@
 --   is recorded: its parts go back to the balance, the step it released is
 --   owed again, Paid out drops, the factory is told in the failure's words,
 --   and staff see it under Needs checking ("returned").
--- C1 (f2, f3, f4): a debt to TSC that earnings cover is covered (road 'tsc'
---   takes), so the step holding it is released and nothing is stranded; the
---   card's line, To recover and the board say only what is not covered; a
---   cover the debt no longer needs goes back.
+-- C1 (f2, f3, f4): a debt to TSC is netted against earnings (Available is
+--   cleared earnings less the debt); the card's line, To recover and the board
+--   say only what earnings do not cover. Total is always the five figures
+--   added up, and equals what the factory earned less withdrawal fees.
 -- C2 (f3): claim_withdrawal's "owes TSC" detail is the uncovered amount.
 -- Edited default bank (f5): "Your saved bank account changed: …" on every route.
 -- No method (f1, f5): factory_balance().no_saved_method is the notices' rule.
@@ -118,6 +118,24 @@ begin
     'owed_to_tsc', j -> 'owed_to_tsc_cents', 'uncovered', j -> 'uncovered_debt_cents');
 end;
 $f$;
+-- Total = Awaiting + Available + Pending + Processing + Paid out, and it is
+-- what the factory earned (its steps, net of refunds) less withdrawal fees.
+create function pg_temp.total_holds(n int) returns boolean language plpgsql as $f$
+declare j jsonb; earned bigint; fees bigint;
+begin
+  perform pg_temp.as_staff();
+  j := public.factory_balance(('c36b0000-0000-0000-0000-0000000000f' || n)::uuid);
+  perform set_config('request.jwt.claims', '', true);
+  select coalesce(sum(public.payment_factory_cents(p)), 0) into earned
+    from public.order_payments p join public.production_orders o on o.id = p.order_id
+   where o.factory_org_id = ('c36b0000-0000-0000-0000-0000000000f' || n)::uuid and p.state in ('confirmed', 'released');
+  select coalesce(sum(w.fee_cents) filter (where w.status = 'paid'), 0) + coalesce(sum(w.kept_cents) filter (where w.returned_at is not null), 0)
+    into fees from public.factory_withdrawals w where w.org_id = ('c36b0000-0000-0000-0000-0000000000f' || n)::uuid;
+  return (j ->> 'total_cents')::bigint = (j ->> 'awaiting_cents')::bigint + (j ->> 'available_cents')::bigint + (j ->> 'pending_cents')::bigint
+                                        + (j ->> 'processing_cents')::bigint + (j ->> 'paid_out_cents')::bigint
+     and (j ->> 'total_cents')::bigint = earned - fees;
+end;
+$f$;
 create function pg_temp.attention(list text) returns jsonb language plpgsql as $f$
 declare j jsonb;
 begin
@@ -180,7 +198,8 @@ select is((select state::text from public.order_payments where id = pg_temp.pay(
 select ok(exists (select 1 from public.payment_events where payment_id = pg_temp.pay(11) and from_state = 'released' and to_state = 'confirmed'),
           'and its history says so');
 select is(pg_temp.figures(1), '{"available":80000,"processing":0,"paid_out":0,"owed_to_tsc":0,"uncovered":0}'::jsonb,
-          'Paid out drops by it; the $500 is available again');
+          'Paid out drops by it (it never arrived); the $500 is available again');
+select ok(pg_temp.total_holds(1), 'f1: Total adds up');
 select is((select body from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal' and title = 'Withdrawal of $500.00 did not go through'),
           'The amount is back in your balance. Check your withdrawal method, then withdraw again.', 'the factory is told, in the failure''s words');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.attention('returned')) x where x ->> 'withdrawal_id' = pg_temp.wd(11)::text), 1,
@@ -194,22 +213,22 @@ select is((select count(*)::int from public.notifications where org_id = pg_temp
 select ok(pg_get_functiondef('public.admin_overview_metrics()'::regprocedure) like '%attention -> ''returned''%', 'the overview counts it');
 
 -- ===========================================================================
--- C1. f2 owes $500 and earns $800: covered, not netted forever.
+-- C1. f2 owes $500 and earns $800: netted, nothing uncovered.
 -- ===========================================================================
 select is(pg_temp.figures(2), '{"available":30000,"processing":0,"paid_out":100000,"owed_to_tsc":50000,"uncovered":0}'::jsonb,
           'f2: Available is net of the debt; its earnings cover it, so nothing is uncovered (no line on the card)');
+select ok(pg_temp.total_holds(2), 'f2: Total adds up');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.attention('recover')) x where x ->> 'org_id' = pg_temp.org(2)::text), 0,
           'and nothing To recover');
 select pg_temp.server(format('select public.claim_owed_steps(%L, 30000, %L, %L)', pg_temp.org(2), 'pool', pg_temp.wd(21)));
-select is((select amount_cents from public.payment_takes where payment_id = pg_temp.pay(22) and road = 'tsc' and status = 'sent'
-            and covers_payment_id = pg_temp.pay(21)), 50000::bigint, 'withdrawing: TSC keeps the $500 from the $800 step first');
-select is(public.payment_debt_cents((select p from public.order_payments p where id = pg_temp.pay(21))), 0::bigint, 'the debt is covered');
-select is(pg_temp.figures(2), '{"available":0,"processing":30000,"paid_out":100000,"owed_to_tsc":0,"uncovered":0}'::jsonb,
-          'the same Available, nothing owed any more');
+select is((select count(*)::int from public.payment_takes where org_id = pg_temp.org(2)), 1, 'withdrawing $300 takes $300 of the $800 step, nothing else');
+select is(pg_temp.figures(2), '{"available":0,"processing":30000,"paid_out":100000,"owed_to_tsc":50000,"uncovered":0}'::jsonb,
+          'the debt is still netted from Available');
 select pg_temp.server(format('select public.record_withdrawal(%L, %L)', pg_temp.wd(21), 'paid'));
-select is((select state::text from public.order_payments where id = pg_temp.pay(22)), 'released',
-          'paid: the step is taken in full and released (nothing stranded on it)');
-select is(pg_temp.figures(2), '{"available":0,"processing":0,"paid_out":130000,"owed_to_tsc":0,"uncovered":0}'::jsonb, 'Paid out: what reached the factory');
+select is((select state::text from public.order_payments where id = pg_temp.pay(22)), 'confirmed',
+          'paid: the $500 TSC holds for the debt stays on the step (approved, in the balance)');
+select is(pg_temp.figures(2), '{"available":0,"processing":0,"paid_out":130000,"owed_to_tsc":50000,"uncovered":0}'::jsonb, 'Paid out: what reached the factory');
+select ok(pg_temp.total_holds(2), 'f2: Total still adds up');
 
 -- ===========================================================================
 -- C1, C2. f3 owes $500; $100 of other earnings, $100 held by a waiting withdrawal.
@@ -222,20 +241,19 @@ select is(pg_temp.staff_refusal(format('select public.claim_withdrawal(%L)', pg_
           'staff cannot pay the waiting withdrawal; the amount is the uncovered one');
 select is((select (x ->> 'owes_tsc_cents')::bigint from jsonb_array_elements((select public.admin_withdrawals() from (select pg_temp.as_staff()) s) -> 'withdrawals') x
             where x ->> 'id' = pg_temp.wd(31)::text), 40000::bigint, 'and its board row says the same amount');
-select is((select count(*)::int from public.payment_takes where org_id = pg_temp.org(3) and road = 'tsc'), 0, 'a refused claim keeps nothing');
+select ok(pg_temp.total_holds(3), 'f3: Total adds up, below zero Available included');
 
 -- ===========================================================================
--- C1 + M2. f4's debt is covered, then the withdrawal behind it comes back.
+-- C1 + M2. f4 owes $500, then the withdrawal behind it comes back.
 -- ===========================================================================
-select is(public.cover_factory_debt(pg_temp.org(4)), 50000::bigint, 'f4: its $500 debt is covered from the $800 step');
-select is(pg_temp.figures(4), '{"available":30000,"processing":0,"paid_out":50000,"owed_to_tsc":0,"uncovered":0}'::jsonb, 'nothing owed; $300 left');
+select is(pg_temp.figures(4), '{"available":30000,"processing":0,"paid_out":50000,"owed_to_tsc":50000,"uncovered":0}'::jsonb,
+          'f4: $500 owed, netted from the $800 step; nothing uncovered');
 select pg_temp.server(format('select public.record_withdrawal(%L, %L, sentence => %L)', pg_temp.wd(41), 'failed', 'PayPal returned this to TSC.'));
-select is((select status from public.payment_takes where org_id = pg_temp.org(4) and road = 'tsc'), 'returned',
-          'the withdrawal came back, so the debt is gone: what TSC kept for it goes back too');
 select is(pg_temp.figures(4), '{"available":80000,"processing":0,"paid_out":0,"owed_to_tsc":0,"uncovered":0}'::jsonb,
-          'the $800 step is the factory''s again; the refunded step was the brand''s');
+          'the withdrawal came back, so the debt is gone; the $800 step is the factory''s, the refunded step was the brand''s');
+select ok(pg_temp.total_holds(4), 'f4: Total adds up');
 select is((select body from public.notifications where org_id = pg_temp.org(4) and kind = 'withdrawal' and title like '% did not go through'),
-          'This amount was returned to the brand.', 'told that none of it came back to the balance');
+          'This amount was returned to the brand.', 'told truly that none of it came back to the balance (the brand had it back already)');
 
 -- ===========================================================================
 -- Edited default bank; no method.
@@ -256,14 +274,17 @@ select ok((select not (public.factory_balance(pg_temp.org(1)) ->> 'no_saved_meth
 
 -- Grants and shape.
 select ok(not has_function_privilege('authenticated', p, 'execute'), p || ': not for clients')
-  from unnest(array['public.cover_factory_debt(uuid)', 'public.reopen_untaken_step(uuid)',
-                    'public.payment_debt_raw_cents(public.order_payments)', 'public.payment_covered_cents(uuid)',
+  from unnest(array['public.reopen_untaken_step(uuid)',
                     'public.record_withdrawal(uuid, text, text, bigint, bigint, character, text)', 'public.claim_owed_steps(uuid, bigint, text, uuid)']) p;
 select ok(has_function_privilege('authenticated', 'public.admin_balance_attention()', 'execute'), 'admin_balance_attention: staff''s check inside');
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = f), 1, f || ': one function, no overloads')
   from unnest(array['record_withdrawal', 'claim_owed_steps', 'claim_withdrawal', 'factory_balance', 'admin_balance_attention',
-                    'admin_overview_metrics', 'admin_withdrawals', 'payment_debt_cents', 'factory_debt_cents', 'cover_factory_debt',
+                    'admin_overview_metrics', 'admin_withdrawals', 'payment_debt_cents', 'factory_debt_cents',
                     'notify_default_bank_change', 'claim_payment_release']) f;
+select ok(not exists (select 1 from pg_proc where proname in ('cover_factory_debt', 'payment_debt_raw_cents', 'payment_covered_cents')),
+          'no debt cover: the debt is netted');
+select ok(not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'payment_takes' and column_name = 'covers_payment_id'),
+          'and no take is TSC''s');
 select ok(not exists (select 1 from pg_proc where proname = 'claim_payment_release' and prosrc like '%withdrawal_claim%'),
           'claim_payment_release no longer reads tsc.withdrawal_claim');
 
