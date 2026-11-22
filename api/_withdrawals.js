@@ -1,6 +1,6 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
 import { ADAPTERS } from "./_withdrawal-adapters.js";
-import { applyChargeRefund, applyDispute, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyDispute, disputeForCharge, stripeFrom } from "./_stripe.js";
 
 /**
  * The withdrawal core: staff approve a factory's request, and its adapter pays
@@ -189,8 +189,7 @@ export async function refuseIfTakenChargesReturned({ db, id, build = stripeFrom 
     try {
       charge = await stripe.charges.retrieve(chargeId);
       if (charge.disputed) {
-        const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-        dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : { status: "needs_response" };
+        dispute = (await disputeForCharge(stripe, charge)) ?? { status: "needs_response" };
       }
     } catch (failure) {
       log("charge check", failure, { id, paymentId });

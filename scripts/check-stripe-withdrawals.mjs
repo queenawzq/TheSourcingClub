@@ -517,9 +517,25 @@ for (const status of ["failed", "canceled"]) {
     assert.equal(await applyDispute({ db, paymentId: "pay-d", dispute: lost }), false, "a lost dispute is no longer on hold");
     assert.deepEqual(calls, [["record_payment_dispute_lost", { target_payment: "pay-d", dispute_id: "du_l", lost_cents: 99208, fee_cents: 1500 }]]);
     calls.length = 0;
-    const stripe = { disputes: { retrieve: async () => lost } };
-    await recordChargeDispute({ stripe, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true, dispute: "du_l" } });
+    // Fix round 34: the charge carries no `dispute` (Stripe's typings at the
+    // SDK's API version): found by charge.
+    const stripe = { disputes: { retrieve: async () => { throw new Error("no id to retrieve by"); },
+      list: async ({ charge, limit }) => ({ data: charge === "ch_d" && limit === 1 ? [lost] : [] }) } };
+    await recordChargeDispute({ stripe, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } });
     assert.equal(calls[0][0], "record_payment_dispute_lost", "a charge read later (no webhook) records the loss too");
+    assert.equal(calls[0][1].lost_cents, 99208, "R34: at the amount lost");
+    // Won, found by charge: the hold is lifted, never set again.
+    calls.length = 0;
+    const won = { disputes: { list: async () => ({ data: [{ id: "du_w", status: "won" }] }) } };
+    assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), false, "R34: a won dispute is not a hold");
+    assert.deepEqual(calls, [["record_payment_disputed", { target_payment: "pay-d", disputed: false }]]);
+    // The id, when Stripe does send it (it does today, outside the typings), is used as it is.
+    const { disputeForCharge } = await import("../api/_stripe.js");
+    const byId = { disputes: { retrieve: async (id) => ({ id, status: "won" }), list: async () => { throw new Error("not needed"); } } };
+    assert.equal((await disputeForCharge(byId, { id: "ch_d", disputed: true, dispute: "du_x" }))?.id, "du_x", "R34: an id on the charge is retrieved");
+    assert.equal(await disputeForCharge(byId, { id: "ch_d", disputed: false }), null, "R34: not disputed: nothing read");
+    const none = { disputes: { list: async () => ({ data: [] }) } };
+    assert.equal(await disputeForCharge(none, { id: "ch_d", disputed: true }), null, "R34: none found: null (the callers hold it)");
     const hook = (await import("node:fs")).readFileSync(new URL("../api/stripe-webhook.js", import.meta.url), "utf8");
     const disputeCase = hook.slice(hook.indexOf('case "charge.dispute.created"'), hook.indexOf('case "refund.updated"'));
     assert.match(disputeCase, /applyDispute\(/, "the dispute webhook records a loss as lost");
@@ -576,8 +592,9 @@ for (const status of ["failed", "canceled"]) {
     // $500 lost in a dispute) and what Stripe still counts are passed on.
     const stripe = { refunds: { retrieve: async (id) => ({ id, status: "failed", amount: 57000, metadata: {} }), list: async () => ({ data: [] }) },
       charges: { retrieve: async (id) => ({ id, payment_intent: "pi_f", amount: 107000, amount_captured: 107000, amount_refunded: 0, refunded: false,
-        disputed: true, dispute: "du_f" }) },
-      disputes: { retrieve: async (id) => ({ id, status: "lost", amount: 50000, balance_transactions: [{ fee: 1500 }] }) },
+        disputed: true }) },
+      disputes: { retrieve: async () => { throw new Error("no dispute id on the charge"); },
+        list: async ({ charge }) => ({ data: charge === "ch_f" ? [{ id: "du_f", status: "lost", amount: 50000, balance_transactions: [{ fee: 1500 }] }] : [] }) },
       paymentIntents: { retrieve: async (id) => ({ id, metadata: { payment_id: "pay-f" } }) } };
     await applyRefundUpdate({ stripe, db, refund: { id: "re_f", status: "failed", charge: "ch_f", metadata: {} } });
     assert.deepEqual(calls, [["record_full_refund_failed", { target_payment: "pay-f", payment_intent: "pi_f", charge: "ch_f", charged: 107000,

@@ -392,8 +392,7 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
       // funded again (each side was told when it happened).
       let lost = null;
       if (charge.disputed) {
-        const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-        const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+        const dispute = await disputeForCharge(stripe, charge);
         if (dispute?.status === "lost") lost = { cents: Number(dispute.amount) || 0, fee: disputeFeeCents(dispute) };
       }
       return rpc(db, "record_full_refund_failed", {
@@ -594,6 +593,22 @@ export async function applyDispute({ db, paymentId, dispute }) {
 }
 
 /**
+ * A disputed charge's dispute, or null. Stripe's Charge typings at the SDK's
+ * API version list only `disputed`, not `dispute` (the API still returns the
+ * id today), so a charge without it is looked up by charge: one dispute per
+ * charge, newest first. Every read of a charge's dispute goes through here.
+ */
+export async function disputeForCharge(stripe, charge) {
+  if (!charge?.disputed) return null;
+  const ref = charge.dispute;
+  if (ref && typeof ref === "object" && ref.status) return ref;
+  const disputeId = typeof ref === "string" ? ref : ref?.id;
+  if (disputeId) return stripe.disputes.retrieve(disputeId);
+  const found = await stripe.disputes.list({ charge: charge.id, limit: 1 });
+  return found?.data?.[0] ?? null;
+}
+
+/**
  * Whether a charge's dispute is open, won or lost (Stripe keeps `disputed`
  * true after a decision), recorded on its payment. Returns true while it is
  * on hold.
@@ -603,8 +618,7 @@ export async function recordChargeDispute({ stripe, db, paymentId, charge }) {
   if (!chargeId) return false;
   const fresh = typeof charge === "object" && "disputed" in charge ? charge : await stripe.charges.retrieve(chargeId);
   if (!fresh.disputed) return false;
-  const disputeId = typeof fresh.dispute === "string" ? fresh.dispute : fresh.dispute?.id;
-  const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+  const dispute = await disputeForCharge(stripe, fresh);
   return applyDispute({ db, paymentId, dispute });
 }
 

@@ -786,9 +786,12 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
     }) }) }),
     rpc: async (name, args) => { written.push([name, args]); return { data: null, error: null }; },
   });
+  // Fix round 34: as Stripe's Charge typings have it, `disputed` and no
+  // `dispute`; the dispute is found by charge.
   const stripeWith = (dispute) => () => ({
-    charges: { retrieve: async (id) => ({ id, amount_refunded: 0, disputed: true, dispute: "du_1" }) },
-    disputes: { retrieve: async (id) => ({ id, status: dispute }) },
+    charges: { retrieve: async (id) => ({ id, amount_refunded: 0, disputed: true }) },
+    disputes: { retrieve: async () => { throw new Error("no dispute id on the charge"); },
+      list: async ({ charge }) => ({ data: charge === "ch_1" ? [{ id: "du_1", charge, status: dispute }] : [] }) },
   });
   // Won: Stripe still says `disputed`; the payout goes ahead and the hold is cleared.
   const won = [];

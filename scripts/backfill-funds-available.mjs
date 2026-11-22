@@ -28,6 +28,7 @@ import { execFileSync } from "node:child_process";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { applyBackfill, decideBackfill } from "../api/_backfill.js";
+import { disputeForCharge } from "../api/_stripe.js";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 const args = new Set(process.argv.slice(2));
@@ -96,8 +97,7 @@ const done = { dates: 0, noDate: 0, disputed: 0, undisputed: 0, lost: 0, refunde
 for (const row of rows) {
   try {
     const charge = await stripe.charges.retrieve(row.stripe_charge_id, { expand: ["balance_transaction"] });
-    const disputeId = charge.disputed ? (typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id) : null;
-    const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+    const dispute = await disputeForCharge(stripe, charge);
     const decision = decideBackfill({ row, charge, dispute });
     for (const line of await applyBackfill({ stripe, db, row, charge, dispute, decision, write })) console.log(`  ${row.id}: ${line}`);
     if ("date" in decision) done[decision.date ? "dates" : "noDate"] += 1;

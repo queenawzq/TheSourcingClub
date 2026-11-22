@@ -1,7 +1,7 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
-import { applyChargeRefund, applyDispute, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyChargeRefund, applyDispute, callerClient, disputeForCharge, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
 const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
@@ -420,8 +420,7 @@ export async function refuseIfChargeReturned({ db, paymentId, build = stripeFrom
     let held;
     let lost = false;
     try {
-      const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
-      const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+      const dispute = await disputeForCharge(stripe, charge);
       lost = dispute?.status === "lost";
       held = await applyDispute({ db, paymentId, dispute });
     } catch (failure) {

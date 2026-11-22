@@ -17,6 +17,18 @@ import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
 import { WITHDRAWAL_FAILED_NOTE, askedWithdrawalRows, figuresByPayment, staffBankNote, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
 
+// Fix round 34: a charge as Stripe's typings describe it at the SDK's API
+// version: `disputed`, never `dispute`. Fixtures name their dispute
+// `disputeId`; the code finds it with disputes.list({ charge }).
+const asStripeCharge = (fixture) => {
+  const { disputeId, dispute, ...charge } = fixture ?? {};
+  return charge;
+};
+const listDisputes = (fixture, statuses = {}, extra = {}) => {
+  const id = fixture?.disputeId;
+  return { data: id ? [{ id, status: statuses[id] ?? "needs_response", ...(extra[id] ?? {}) }] : [] };
+};
+
 // Hermetic: nothing here may reach a real service or change its path because
 // of the environment the build runs in (Vercel sets Stripe, PayPal, Wise and
 // Supabase variables). Every service is a fake passed in explicitly.
@@ -148,9 +160,14 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
         return { data: null, error: null };
       },
     };
+    // As Stripe's Charge typings have it: `disputed`, no `dispute`; the
+    // dispute is found by charge (fix round 34).
     const stripe = {
-      charges: { retrieve: async (id) => ({ id, payment_intent: `pi_${id}`, ...charges[id] }) },
-      disputes: { retrieve: async (id) => ({ id, status: disputes[id] ?? "needs_response" }) },
+      charges: { retrieve: async (id) => asStripeCharge({ id, payment_intent: `pi_${id}`, ...charges[id] }) },
+      disputes: {
+        retrieve: async (id) => ({ id, status: disputes[id] ?? "needs_response" }),
+        list: async ({ charge }) => listDisputes(charges[charge], disputes),
+      },
       refunds: { list: async () => ({ data: [{ metadata: {} }] }), create: async () => { throw new Error("no refund here"); } },
     };
     return { db, rpcs, build: () => stripe };
@@ -160,7 +177,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // Disputed: nothing sent, the dispute recorded.
   {
     const w = world();
-    const x = withTakes(w, [{ payment: "s1", charge: "ch_ok" }, { payment: "s2", charge: "ch_d" }], { ch_ok: clean, ch_d: { amount_refunded: 0, disputed: true, dispute: "du_1" } });
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_ok" }, { payment: "s2", charge: "ch_d" }], { ch_ok: clean, ch_d: { amount_refunded: 0, disputed: true, disputeId: "du_1" } });
     await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /disputed/i.test(failure.message));
     assert.equal(w.paid.length, 0, "F2: a disputed charge behind the withdrawal: the provider is never asked");
     assert.deepEqual(x.rpcs.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "s2", disputed: true }, "and the dispute is recorded");
@@ -169,7 +186,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // A dispute TSC won does not stop it.
   {
     const w = world();
-    const x = withTakes(w, [{ payment: "s1", charge: "ch_w" }], { ch_w: { amount_refunded: 0, disputed: true, dispute: "du_w" } }, { du_w: "won" });
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_w" }], { ch_w: { amount_refunded: 0, disputed: true, disputeId: "du_w" } }, { du_w: "won" });
     assert.equal((await approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build })).done, "paid", "a won dispute: paid");
   }
   // Refunded: nothing sent, the refund recorded.
@@ -216,7 +233,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // A lost dispute: recorded as lost (the hold ends), then the same test.
   {
     const w = world();
-    const x = withTakes(w, [{ payment: "s1", charge: "ch_l" }], { ch_l: { amount_refunded: 0, disputed: true, dispute: "du_l" } }, { du_l: "lost" });
+    const x = withTakes(w, [{ payment: "s1", charge: "ch_l" }], { ch_l: { amount_refunded: 0, disputed: true, disputeId: "du_l" } }, { du_l: "lost" });
     const rpc = x.db.rpc;
     x.db.rpc = async (name, args) => (name === "withdrawal_refunded_part" ? { data: 6500, error: null } : rpc(name, args));
     await assert.rejects(approveWithdrawal({ ...w, db: x.db, id: "w1", stripeBuild: x.build }), (failure) => failure instanceof PayoutFailure && /refunded/i.test(failure.message));
@@ -228,7 +245,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // (the database refused or was unreachable): nothing is sent, ever.
   for (const [label, charges, disputes, failing] of [
     ["a refund", { ch_f: { amount_refunded: 5000, refunded: false, disputed: false } }, {}, "record_payment_refund_amount"],
-    ["a lost dispute", { ch_f: { amount_refunded: 0, disputed: true, dispute: "du_f" } }, { du_f: "lost" }, "record_payment_dispute_lost"],
+    ["a lost dispute", { ch_f: { amount_refunded: 0, disputed: true, disputeId: "du_f" } }, { du_f: "lost" }, "record_payment_dispute_lost"],
   ]) {
     const w = world();
     const x = withTakes(w, [{ payment: "s1", charge: "ch_f" }], charges, disputes);
@@ -373,14 +390,14 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
   };
   const stripe = {
-    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
-    charges: { retrieve: async (id) => ({ id, disputed: true, dispute: "du_1", balance_transaction: { available_on: 1795478400 } }) },
+    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }), list: async () => ({ data: [{ id: "du_1", status: "needs_response" }] }) },
+    charges: { retrieve: async (id) => ({ id, disputed: true, balance_transaction: { available_on: 1795478400 } }) },
     balanceTransactions: { retrieve: async () => ({ available_on: 1795478400 }) },
     paymentIntents: { retrieve: async () => { throw new Error("already expanded"); } },
   };
   const intent = { id: "pi_d", status: "succeeded", amount: 5000, amount_received: 5000, metadata: { payment_id: "pay-d" },
     payment_method: { type: "card", card: { brand: "visa", last4: "0259" } },
-    latest_charge: { id: "ch_d", disputed: true, dispute: "du_1", amount_refunded: 0, balance_transaction: { available_on: 1795478400 } } };
+    latest_charge: { id: "ch_d", disputed: true, amount_refunded: 0, balance_transaction: { available_on: 1795478400 } } };
   await applyPaymentIntent({ stripe, db, intent });
   const names = calls.map(([name]) => name);
   assert.ok(names.includes("record_payment_disputed"), "R9: the dispute is recorded");
@@ -389,7 +406,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     "R9: before the payment is recorded, so the funded notice says on hold");
   // A dispute already won does not hold it.
   calls.length = 0;
-  await applyPaymentIntent({ stripe: { ...stripe, disputes: { retrieve: async (id) => ({ id, status: "won" }) } }, db, intent });
+  await applyPaymentIntent({ stripe: { ...stripe, disputes: { retrieve: async (id) => ({ id, status: "won" }), list: async () => ({ data: [{ id: "du_1", status: "won" }] }) } }, db, intent });
   assert.deepEqual(calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-d", disputed: false }, "a won dispute is not a hold");
 }
 
@@ -410,9 +427,9 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     rpc: async (name, args) => (calls.push([name, args]), { data: null, error: null }),
   };
   const stripe = {
-    charges: { retrieve: async (id) => ({ id, disputed: true, dispute: "du_n", balance_transaction: { available_on: 1795478400 } }) },
+    charges: { retrieve: async (id) => ({ id, disputed: true, balance_transaction: { available_on: 1795478400 } }) },
     balanceTransactions: { retrieve: async () => ({ available_on: 1795478400 }) },
-    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
+    disputes: { retrieve: async (id) => ({ id, status: "needs_response" }), list: async () => ({ data: [{ id: "du_n", status: "needs_response" }] }) },
   };
   await ensureFundsAvailableFor({ stripe, db, orgId: "org-1" });
   assert.ok(calls.some(([name, args]) => name === "record_payment_funds_available" && args.target_payment === "pay-new"), "R10: the clearing date is recorded");
@@ -446,7 +463,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
 
   // Disputed in Stripe (open), not recorded: record it, on hold.
   {
-    const d = decideBackfill({ row: row(), charge: charge({ disputed: true, dispute: "du_1" }), dispute: { id: "du_1", status: "needs_response" } });
+    const d = decideBackfill({ row: row(), charge: charge({ disputed: true }), dispute: { id: "du_1", status: "needs_response" } });
     assert.deepEqual(d, { disputed: true }, "disputed and not recorded: disputed true");
     const w = world();
     await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge({ disputed: true }), decision: d, write: true });
@@ -548,8 +565,8 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       },
     };
     const stripe = {
-      charges: { retrieve: async (id) => (reads.push(id), { id, payment_intent: `pi_${id}`, amount: 1000, amount_refunded: 0, refunded: false, disputed: false, ...charges[id] }) },
-      disputes: { retrieve: async (id) => ({ id, status: "needs_response" }) },
+      charges: { retrieve: async (id) => (reads.push(id), asStripeCharge({ id, payment_intent: `pi_${id}`, amount: 1000, amount_refunded: 0, refunded: false, disputed: false, ...charges[id] })) },
+      disputes: { retrieve: async (id) => ({ id, status: "needs_response" }), list: async ({ charge }) => listDisputes(charges[charge]) },
       refunds: { list: async () => ({ data: [{ metadata: {} }] }), create: async () => { throw new Error("no new refund"); } },
     };
     return { db, stripe, calls, reads };
@@ -559,7 +576,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const checks = owed.map((r, i) => ({ payment_id: r.id, checked_at: new Date(Date.now() - (10 + 7 - i) * 60_000).toISOString() })).slice(1);
   const x = make({ owed, checks, charges: {
     ch_0: { amount_refunded: 1000, refunded: true },
-    ch_1: { disputed: true, dispute: "du_1" },
+    ch_1: { disputed: true, disputeId: "du_1" },
   } });
   await checkChargesFor({ stripe: x.stripe, db: x.db, orgId: "org" });
   assert.deepEqual(x.reads, ["ch_0", "ch_1", "ch_2", "ch_3", "ch_4"], "R11: least recently checked first (never checked first), at most 5");
@@ -575,7 +592,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // Round 32 (DB review #1): a charge refunded in part AND disputed records
   // both; the refund never hides the dispute.
   {
-    const both = make({ owed: owed.slice(0, 1), checks: [], charges: { ch_0: { amount_refunded: 5000, refunded: false, amount: 100000, disputed: true, dispute: "du_0" } } });
+    const both = make({ owed: owed.slice(0, 1), checks: [], charges: { ch_0: { amount_refunded: 5000, refunded: false, amount: 100000, disputed: true, disputeId: "du_0" } } });
     await checkChargesFor({ stripe: both.stripe, db: both.db, orgId: "org" });
     assert.ok(both.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-0" && args.refunded_cents === 5000),
       "R32: the partial refund is recorded");
@@ -1805,10 +1822,11 @@ for (const [why, row] of [
           }
           const isRefunded = refunded.includes(id);
           return { id, payment_intent: `pi_${id.slice(3)}`, amount_refunded: isRefunded ? 1 : 0, refunded: isRefunded,
-            disputed: disputed.includes(id), dispute: disputed.includes(id) ? `du_${id}` : null };
+            disputed: disputed.includes(id) };
         },
       },
-      disputes: { retrieve: async () => ({ status: "needs_response" }) },
+      disputes: { retrieve: async () => ({ status: "needs_response" }),
+        list: async ({ charge }) => ({ data: disputed.includes(charge) ? [{ id: `du_${charge}`, status: "needs_response" }] : [] }) },
       refunds: {
         list: async () => ({ data: [{ id: "re_1", metadata: {} }] }),
         create: async () => { throw new Error("no refund is made here: the charge is already refunded"); },
