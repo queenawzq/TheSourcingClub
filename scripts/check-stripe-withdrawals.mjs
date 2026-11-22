@@ -709,8 +709,8 @@ for (const status of ["failed", "canceled"]) {
   const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
   assert.match(source, /const inStripeUsd = currency === "usd" \? inStripe : Math\.floor\(inStripe \/ rate\);/, "gatherOwed: floor(inStripe / localPerUsd)");
   const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
-  assert.equal((connect.match(/await stripeMoneyUsd\(stripe, existing\.stripe_account_id, balance\.available, heldElsewhere, account\.default_currency\)/g) ?? []).length, 2,
-    "the owner's balance read and the members' figures both reckon the Stripe part that way, in the currency a withdrawal pays out in");
+  assert.equal((connect.match(/await stripeMoneyUsd\(stripe, accountId, balance\.available, heldElsewhere, account\.default_currency\)/g) ?? []).length, 1,
+    "one balance read (owner and member alike) reckons the Stripe part that way, in the currency a withdrawal pays out in");
   assert.match(connect, /oneBalance, payoutCurrency: account\?\.default_currency \?\? "usd"/, "the withdrawal pays out in that same currency");
   assert(!/displayFx/.test(source.slice(source.indexOf("export async function stripeMoneyUsd"), source.indexOf("async function carryOut("))), "never the indicative rate for what Withdraw can reach");
 }

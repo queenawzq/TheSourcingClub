@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -16,7 +16,9 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
-import { CancelWithdrawalsForm, METHOD_OFF, WithdrawForm, WithdrawalStatus, usable, useWithdrawalBalance, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
+import { CancelWithdrawalsForm, METHOD_OFF, WithdrawForm, WithdrawalStatus, usable, withdrawOptionLabel } from "./WithdrawFromBalance.jsx";
+import { useFactoryBalance } from "./use-factory-balance.js";
+import { withdrawalsFrom } from "./balance-reader.mjs";
 import { methodProviderOn, providerOnFor, usePayoutProviders } from "./payout-providers.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -338,12 +340,10 @@ export function PayoutCardPlaceholder({ isOwner = false }) {
 export default function StripePayoutCard({
   org,
   isOwner,
-  onBalanceChange,
+  // The page's balance read (use-factory-balance.js); without one (Settings,
+  // which mounts this for its dialogs) the card reads its own, once.
+  balanceRead = null,
   onBalanceStatus,
-  // Bumped by the page when its last balance answer's Stripe part can no
-  // longer be kept (a Stripe withdrawal changed): read the balance again,
-  // without the card going back to loading.
-  rereadKey = 0,
   onAccountKnown,
   // The one balance (the page's figures, all clients): null while they load,
   // undefined where the card is mounted for its dialogs only (Settings).
@@ -365,8 +365,6 @@ export default function StripePayoutCard({
   manualSaved,
   manualOwed = [],
   problem = null,
-  // The page's Pending figure (all clients, US$ cents): the card's "$X pending" is read from it.
-  pendingTotal = null,
   // Old step-by-step payouts still being sent (legacyOnItsWayCents): said on their own line.
   onItsWayCents = 0,
   renderCard = true,
@@ -377,13 +375,19 @@ export default function StripePayoutCard({
   const [account, setAccount] = useState(undefined);
   // The saved method a Withdraw opened on, when chosen in the other dialog.
   const [withdrawFromId, setWithdrawFromId] = useState(null);
-  const [balance, setBalance] = useState(null);
   const uiLanguage = useUiLanguage();
-  // Where reading Stripe's balance stands: "loading", "slow" (still loading
-  // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
-  // (not an owner, no active Stripe account). The card said "We could not
-  // show your balance" for the two seconds a normal read takes.
-  const [balanceStatus, setBalanceStatus] = useState("loading");
+  const ownRead = useFactoryBalance(org.id, { enabled: !balanceRead && isOwner, live: false, isOwner });
+  const read = balanceRead ?? ownRead;
+  // Stripe's side of the balance read, which only an owner's answer carries
+  // (methods, payouts, Stripe's own amounts); null when not read or it failed.
+  const answer = read.answer;
+  const stripeAnswer = isOwner && answer && !answer.error && answer.readsStripe ? answer : null;
+  // The methods as the last change left them, until the next read lists them.
+  const [methodsNow, setMethodsNow] = useState({ for: null, methods: null });
+  const balance = stripeAnswer && methodsNow.for === stripeAnswer ? { ...stripeAnswer, methods: methodsNow.methods } : stripeAnswer;
+  // The account or a read back from Stripe's form could not be read.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [country, setCountry] = useState("");
   const [payoutRoute, setPayoutRoute] = useState("stripe");
   const [busy, setBusy] = useState(false);
@@ -394,7 +398,7 @@ export default function StripePayoutCard({
   const shownInDialogOnly = useRef(null);
   const [withdrawal, setWithdrawal] = useState(null);
   // Paid by Wise, PayPal or bank transfer: the balance the factory withdraws from.
-  const fromBalance = useWithdrawalBalance(org.id, figures !== undefined && renderCard, manualAccount?.id);
+  const fromBalance = withdrawalsFrom(answer, read.failure);
   // PayPal and Wise as staff have switched them for this company's region.
   const providers = usePayoutProviders(org.id, isOwner);
   const [withdrawalError, setWithdrawalError] = useState(null);
@@ -417,10 +421,6 @@ export default function StripePayoutCard({
   // which one is being removed, and what the form or the list last refused.
   const [removingManual, setRemovingManual] = useState(null);
   const [manualError, setManualError] = useState(null);
-  // What each method can reach, read again after anything that moves money
-  // (a withdrawal, a cancel, an approval, a method change) and when Withdraw
-  // is opened: the balance read's `reach` is only as new as that read.
-  const [freshReach, setFreshReach] = useState(null);
   const withdrawing = useRef(false);
   const handledInitialAction = useRef(false);
   const accountKnown = useRef(false);
@@ -459,10 +459,8 @@ export default function StripePayoutCard({
     if (isPaypal(row)) return "setup-paypal";
     return "setup-wise";
   };
-  // Balance answers apply in the order asked: a re-read and a full read can
-  // overlap, and the older answer must not land last and win.
-  const balanceOrder = useRef(answerOrder());
-  const load = useCallback(async () => {
+  // How the factory is paid, from our database.
+  const loadAccount = useCallback(async () => {
     const [saved, { data: profile }, preference] = await Promise.all([
       connectAccountFor(org.id),
       supabase.from("factory_profiles").select("country_code").eq("org_id", org.id).maybeSingle(),
@@ -472,74 +470,17 @@ export default function StripePayoutCard({
     // The database's rule (uses_stripe_payout): an account that can't take transfers pays nobody.
     setPayoutRoute(saved?.transfers_active && preference.data?.route !== "manual" ? "stripe" : "manual");
     setAccount(saved);
+    setLoadFailed(false);
     accountKnown.current = true;
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
-    if (saved && isOwner) {
-      setBalanceStatus("loading");
-      const asked = balanceOrder.current.start();
-      try {
-        const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
-        // A later read already answered: this one is older.
-        if (!balanceOrder.current.accept(asked)) return nextBalance;
-        setBalance(nextBalance);
-        setFreshReach(null);
-        setBalanceStatus("ready");
-        onBalanceChange?.(nextBalance);
-        return nextBalance;
-      } catch (failure) {
-        if (!balanceOrder.current.accept(asked)) return null;
-        // Reading a legacy balance is separate from saving a payout preference.
-        // Stripe unreachable: the server still answers with the database's
-        // figures (failure.details.figures), shown rather than a blank card.
-        setBalance(null);
-        setBalanceStatus("failed");
-        onBalanceChange?.(null, failure?.details?.figures ?? null);
-        return null;
-      }
-    }
-    balanceOrder.current.skip();
-    setBalance(null);
-    setBalanceStatus("none");
-    onBalanceChange?.(null);
-    return null;
-  }, [org.id, isOwner, onBalanceChange, manualCountry]);
-
-  // The page's ask to read the balance again: the figures stay as they are
-  // until the answer comes, and a failure keeps the last answer. One at a
-  // time; an ask made meanwhile reads once more after it.
-  const rereading = useRef(false);
-  const rereadAgain = useRef(false);
-  const statusNow = useRef(balanceStatus);
-  statusNow.current = balanceStatus;
-  const reread = useCallback(async () => {
-    if (rereading.current) { rereadAgain.current = true; return; }
-    rereading.current = true;
-    try {
-      do {
-        rereadAgain.current = false;
-        // A full read already running answers it.
-        if (statusNow.current === "loading" || statusNow.current === "slow") break;
-        const asked = balanceOrder.current.start();
-        try {
-          const nextBalance = await askUntilConsistent(() => connectAction(org.id, "balance"));
-          // A full read started meanwhile and answered first: this one is older.
-          if (!balanceOrder.current.accept(asked)) continue;
-          setBalance(nextBalance);
-          setFreshReach(null);
-          setBalanceStatus("ready");
-          onBalanceChange?.(nextBalance);
-        } catch {
-          // The last answer stays, its Stripe part bridged by the page (withStripePart).
-        }
-      } while (rereadAgain.current);
-    } finally {
-      rereading.current = false;
-    }
-  }, [org.id, onBalanceChange]);
-  useEffect(() => {
-    if (!rereadKey || !isOwner || !account) return;
-    reread();
-  }, [rereadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    return saved;
+  }, [org.id, manualCountry]);
+  // The account and the balance, read again after something changed them;
+  // the balance's answer (or null where only an owner reads Stripe).
+  const load = useCallback(async () => {
+    const saved = await loadAccount();
+    return saved && isOwner ? read.reload() : null;
+  }, [loadAccount, isOwner, read.reload]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -560,7 +501,8 @@ export default function StripePayoutCard({
         if (back === "refresh") resume = true;
         else await connectAction(org.id, "refresh");
       }
-      await load();
+      // Back from Stripe's form: the balance is read again after the account.
+      await (back && !resume ? load() : loadAccount());
       if (resume) setModal("resume");
       if (payoutAction && isOwner) {
         clean();
@@ -586,10 +528,9 @@ export default function StripePayoutCard({
       if (!accountKnown.current) setError(failure);
       setAccount((current) => (current === undefined ? null : current));
       // The balance could not be read: say so, rather than "checking" forever.
-      setBalanceStatus("failed");
-      onBalanceChange?.(null);
+      setLoadFailed(true);
     });
-  }, [org.id, isOwner, load, manualAccount]);
+  }, [org.id, isOwner, load, loadAccount, manualAccount]);
 
   const supported = PAYOUT_COUNTRIES.has(country);
   const currency = balanceCurrency(balance);
@@ -620,10 +561,9 @@ export default function StripePayoutCard({
       setModal(null);
       // Never leave an already-withdrawn amount available if refreshing fails,
       // nor let a read asked before the withdrawal land after it.
-      balanceOrder.current.skip();
-      setBalance(null);
-      onBalanceChange?.(undefined);
-      await load();
+      const reading = read.reset();
+      await loadAccount();
+      await reading;
     } catch (failure) {
       // Signed out meanwhile (in another tab): say so, not "try again".
       const signedOut = failure?.status === 401 || !(await supabase.auth.getSession()).data?.session;
@@ -631,11 +571,7 @@ export default function StripePayoutCard({
       // Refused ("You can withdraw up to $X."), perhaps because another owner
       // withdrew first: read the balance again at once, Stripe part included,
       // so the card and this dialog's Available show what is left now.
-      if (!signedOut) {
-        setFreshReach(null);
-        fromBalance.load();
-        await load().catch(() => null);
-      }
+      if (!signedOut) await load().catch(() => null);
     } finally {
       withdrawing.current = false;
       setBusy(false);
@@ -670,10 +606,27 @@ export default function StripePayoutCard({
       setHandover(null);
     } catch (failure) {
       setError(failure);
-      setBalanceStatus("failed");
+      setLoadFailed(true);
     }
   }
 
+  // A read that is merely slow is not a failure: after a while, say so.
+  const reading = answer === undefined;
+  useEffect(() => {
+    setSlow(false);
+    if (!reading) return undefined;
+    const timer = setTimeout(() => setSlow(true), SLOW_BALANCE_MS);
+    return () => clearTimeout(timer);
+  }, [reading]);
+  // Where reading Stripe's balance stands: "loading", "slow" (still loading
+  // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
+  // (not an owner, no Stripe account). The card said "We could not show your
+  // balance" for the two seconds a normal read takes.
+  const balanceStatus = loadFailed ? "failed"
+    : account === undefined ? "loading"
+    : !(account && isOwner) ? "none"
+    : reading ? (slow ? "slow" : "loading")
+    : stripeAnswer ? "ready" : "failed";
   // The Payments page says the same under the figures that need Stripe.
   useEffect(() => {
     onBalanceStatus?.(balanceStatus);
@@ -685,12 +638,6 @@ export default function StripePayoutCard({
     if (account !== undefined) onAccountKnown?.(account);
   }, [account, onAccountKnown]);
 
-  // A read that is merely slow is not a failure: after a while, say so.
-  useEffect(() => {
-    if (balanceStatus !== "loading") return undefined;
-    const timer = setTimeout(() => setBalanceStatus((current) => (current === "loading" ? "slow" : current)), SLOW_BALANCE_MS);
-    return () => clearTimeout(timer);
-  }, [balanceStatus]);
 
   useEffect(() => {
     if (account === undefined || !initialAction || handledInitialAction.current) return;
@@ -723,27 +670,8 @@ export default function StripePayoutCard({
 
   // The card's shape while the account is read, so it does not appear late
   // and push the page down.
-  const readReach = useCallback(async () => {
-    if (!isOwner || !account?.transfers_active) return null;
-    try {
-      const { reach: next } = await connectAction(org.id, "figures");
-      if (next) setFreshReach(next);
-      return next ?? null;
-    } catch (failure) {
-      if (failure?.details?.reach) setFreshReach(failure.details.reach);
-      return failure?.details?.reach ?? null;
-    }
-  }, [org.id, isOwner, account?.transfers_active]);
-  const movedKey = `${fromBalance.available}|${fromBalance.rows?.length}|${(fromBalance.opens ?? []).length}|${figures?.available_cents}|${figures?.pending_cents}|${figures?.processing_cents}|${figures?.paid_out_cents}|${manualAccounts.length}`;
-  const movedSeen = useRef(null);
-  useEffect(() => {
-    if (movedSeen.current === null) { movedSeen.current = movedKey; return; }
-    if (movedSeen.current === movedKey) return;
-    movedSeen.current = movedKey;
-    readReach();
-  }, [movedKey, readReach]);
   // An open Stripe dialog follows: its Available is never older than the card.
-  const liveStripeMax = (freshReach ?? balance?.reach)?.stripe_cents;
+  const liveStripeMax = answer?.reach?.stripe_cents;
   useEffect(() => {
     // Not while it is being withdrawn: a read made mid-request already counts
     // the money as gone, and the amount would read as over the balance.
@@ -815,7 +743,7 @@ export default function StripePayoutCard({
 
   // The route answers every change with the list as Stripe now holds it.
   const applyMethods = ({ methods, notice }) => {
-    setBalance((current) => (current ? { ...current, methods } : current));
+    setMethodsNow({ for: stripeAnswer, methods });
     if (notice) setMethodNotice(notice);
   };
 
@@ -1037,9 +965,7 @@ export default function StripePayoutCard({
   // The one balance (D3): the big number is the server's Available, for
   // every factory, however it withdraws. The page's four figures are the
   // same read, so the two never disagree.
-  // What each method can reach, from the server: the balance read's `reach`
-  // (owners with a Stripe account), else my_withdrawal_balance(), which
-  // request_withdrawal() checks.
+  // What each method can reach, from the server: the balance read's `reach`.
   // Money held now in the Stripe account in another currency: only then are the USD figures estimates.
   // Not when the figures count none of it: a withdrawal the database has
   // recorded since accounts for what Stripe still showed.
@@ -1056,7 +982,7 @@ export default function StripePayoutCard({
   // server's figures: converted, and money sitting in the Stripe account now.
   const estimatedLabel = Boolean(heldCurrency) || (!balance && Boolean(figures?.estimated)
     && (Number(figures?.stripe?.available_cents) || 0) + (Number(figures?.stripe?.pending_cents) || 0) + (Number(figures?.stripe?.processing_cents) || 0) > 0);
-  const reach = withdrawReach(figures, freshReach ?? balance?.reach ?? null, fromBalance.available);
+  const reach = withdrawReach(answer?.reach);
   // The earliest day money still clearing can be withdrawn: a card payment
   // TSC holds (the database's), or Stripe's for money in the factory's own
   // Stripe account, whichever comes first.
@@ -1072,7 +998,7 @@ export default function StripePayoutCard({
   // their way ("$Y on its way"), disputed steps ("$Z on hold"). A withdrawal
   // waiting for staff is said by its own row only.
   // A withdrawal on its way is never called available to withdraw.
-  const pendingLines = pendingParts(figures, fromBalance.opens) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
+  const pendingLines = pendingParts(figures) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
   const cardPending = pendingLines.clearing;
   const onHoldCents = pendingLines.onHold;
   const onItsWayLine = pendingLines.onItsWay;
@@ -1124,9 +1050,9 @@ export default function StripePayoutCard({
   const openWithdraw = async () => {
     // What each method reaches now, not at the last balance read.
     setBusy(true);
-    const [server] = await Promise.all([readReach(), fromBalance.load()]).catch(() => [null]);
+    const server = await read.reload().catch(() => null);
     setBusy(false);
-    const latest = server ? withdrawReach(figures, server, fromBalance.available) : reach;
+    const latest = server?.reach ? withdrawReach(server.reach) : reach;
     const preferBalance = payoutRoute === "manual" || !stripeReachable;
     const canStripe = stripeReachable && latest.stripe > 0;
     if (balanceCan && (preferBalance || !canStripe)) openBalanceWithdraw(manualAccount && balanceChoices.some((row) => row.id === manualAccount.id) ? manualAccount.id : null);
@@ -1183,7 +1109,7 @@ export default function StripePayoutCard({
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
           {manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current) ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
-          {/* "Your bank is processing the payout." is said on that withdrawal's own row (companyStripeRows). */}
+          {/* "Your bank is processing the payout." is said on that withdrawal's own row (serverWithdrawalRows). */}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
           {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -1222,15 +1148,15 @@ export default function StripePayoutCard({
 
       {modal === "cancel-withdrawals" ? (
         <CancelWithdrawalsForm opens={fromBalance.opens} first={cancelFirst} returnable={fromBalance.returnable} Modal={PayoutModal} onClose={closeModal}
-          onDone={() => { closeModal(); fromBalance.load(); readReach(); }} onChanged={() => { fromBalance.load(); readReach(); }} />
+          onDone={() => { closeModal(); read.reload(); }} onChanged={() => { read.reload(); }} />
       ) : null}
 
       {modal === "withdraw-balance" && reach.balance != null ? (
         <WithdrawForm orgId={org.id} available={reach.balance} methods={manualAccounts} defaultId={withdrawFromId ?? manualAccount?.id} country={country} providers={providers}
           others={stripeReachable ? stripeWithdrawTargets.map((method) => ({ id: method.id, label: listLabelIn(method, uiLanguage) })) : []}
           onOther={(id) => openStripeWithdraw(id)}
-          onRefused={() => { fromBalance.load(); readReach(); onMethodsChanged?.(); }}
-          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); fromBalance.load(); readReach(); }} />
+          onRefused={() => { read.reload(); onMethodsChanged?.(); }}
+          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); read.reload(); }} />
       ) : null}
 
       {modal === "withdraw" && withdrawal ? (

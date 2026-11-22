@@ -215,10 +215,8 @@ async function withdrawableNow(stripe, db, row, currency) {
  * every open row, live lease or not, except `except`. A one-balance row still
  * claiming or transferring holds its own Stripe part and what it has landed
  * so far; any other holds its amount less the fee already taken back.
- * `byId`, when given, is filled with each row's own claim ({ id → { amount,
- * currency } }): the figures drop a row's part once the database records it.
  */
-export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null, byId = null } = {}) {
+export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null } = {}) {
   const { data, error } = await db.from("stripe_withdrawals")
     .select("id, currency, amount_minor, fee_local_minor, reversals, state, usd_cents, d1_minor, transfers_done_at")
     .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]);
@@ -246,7 +244,6 @@ export async function heldByOpenWithdrawals(db, accountId, except = null, { stri
       claim = Math.max(0, claim - await stillClearing(stripe, db, accountId, other.id, currency));
     }
     held[currency] = (held[currency] ?? 0) + claim;
-    if (byId) byId[other.id] = { amount: claim, currency };
   }
   return held;
 }

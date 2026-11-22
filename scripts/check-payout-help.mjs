@@ -23,15 +23,8 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 const sentence = "Earnings stay in your balance until you withdraw them.";
 assert.ok(card.split(sentence).length - 1 >= 1, "the sentence is on the card, whatever the method");
 assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 1, "the card says what is pending, with the one helper");
-assert.ok(page.includes("pendingTotal={pendingTotal}"), "the card reads the page's Pending figure");
-{
-  const { cardPendingCents } = await import("../src/app/order/payment-summary.mjs");
-  assert.equal(cardPendingCents(null, 100), null, "nothing until the page's figure is known");
-  assert.equal(cardPendingCents(360, 0), 360, "Pending $3.60 with nothing shown elsewhere: the card says $3.60 pending");
-  assert.equal(cardPendingCents(360, 360), 0, "a withdrawal the card lists on its own row is not called pending again");
-  assert.equal(cardPendingCents(500, 360), 140, "only the part not shown elsewhere");
-  assert.equal(cardPendingCents(100, 360), 0, "never below zero");
-}
+// "$X pending" is the card's own line from the figures (pendingParts), not a figure the page passes.
+assert.ok(card.includes("const pendingLines = pendingParts(figures)") && !page.includes("pendingTotal"), "the card's pending line comes from the figures it is given");
 // One balance, one Withdraw, whatever the method (Nov 19): the button is
 // "Withdraw" everywhere, and each Withdraw dialog lists the other balance's
 // methods in the same "Withdraw to".
