@@ -231,7 +231,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   // The card's lines: clearing ("$X pending. Available to withdraw on …") and
   // disputed on hold add up to Pending; waiting (its own row), on its way and
   // the held part of a withdrawal add up to Processing.
-  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures, fromBalance.opens)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws its lines from pendingParts");
+  assert.ok(cardCode.includes("const pendingLines = pendingParts(figures)") && cardCode.includes("const cardPending = pendingLines.clearing;"), "the card draws its lines from pendingParts");
   const disputedOf = (figures) => Math.min(figures.pending_cents, figures.parts?.disputed_cents ?? 0);
   const cases = [
     { pending_cents: 11500, processing_cents: 175579, parts: { owed_clearing_cents: 11500, disputed_cents: 0 }, stripe: { pending_cents: 0 } },
@@ -240,19 +240,19 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     { pending_cents: 500, processing_cents: 0, parts: { owed_clearing_cents: 0, disputed_cents: 5000 } },
   ];
   for (const figures of cases) {
-    const p = pendingParts(figures, [{ status: "requested", amount_cents: 1000 }, { status: "paying", amount_cents: 300 }]);
+    const p = pendingParts(figures);
     assert.equal(p.clearing + disputedOf(figures), figures.pending_cents, `clearing and disputed add up to Pending (${figures.pending_cents})`);
     assert.equal(p.waiting + p.onItsWay + (p.onHold - disputedOf(figures)), figures.processing_cents, `withdrawal lines add up to Processing (${figures.processing_cents})`);
     assert.ok(p.clearing >= 0 && p.onItsWay >= 0 && p.onHold >= 0 && p.waiting >= 0, "no line below zero");
   }
   assert.deepEqual(pendingParts(cases[0]), { pending: 11500, processing: 175579, clearing: 11500, onHold: 0, waiting: 0, onItsWay: 175579 }, "withdrawals on their way are not 'available to withdraw'");
-  // A PayPal/Wise withdrawal waiting for staff is "waiting" (its own row), not "on its way";
-  // the part of one whose step was refunded is "on hold"; only what was sent is "on its way".
+  // A PayPal/Wise withdrawal waiting for staff, or on hold, is "waiting" as a
+  // whole (its own block); "on hold" is only disputed earnings no withdrawal
+  // holds; only what was sent is "on its way".
   const round8 = { pending_cents: 5000, processing_cents: 4500 + 100000, parts: { owed_clearing_cents: 0, disputed_cents: 5000 },
-    rows: [{ payment_id: "p447", figure: "pending", amount_cents: 4500, refunded: true }] };
-  const opens = [{ status: "requested", amount_cents: 4500 }, { status: "requested", amount_cents: 100000 }];
-  assert.deepEqual(pendingParts(round8, opens), { pending: 5000, processing: 104500, clearing: 0, onHold: 9500, waiting: 100000, onItsWay: 0 },
-    "dispute + refunded-under-withdrawal on hold, the rest waiting for staff, nothing called on its way");
+    withdrawals: [{ id: "h", road: "pool", word: "on_hold", amount_cents: 4500 }, { id: "w", road: "pool", word: "waiting", amount_cents: 100000 }] };
+  assert.deepEqual(pendingParts(round8), { pending: 5000, processing: 104500, clearing: 0, onHold: 5000, waiting: 104500, onItsWay: 0 },
+    "the dispute on hold, both withdrawals in their blocks, nothing called on its way");
   assert.ok(!cardCode.includes("waiting`}</p>") && !cardCode.includes("payout-waiting"), "no waiting line: the withdrawal's own row says it");
   // The Pending card is the header's pending amount: a waiting withdrawal is in neither.
   const shot = { pending_cents: 131300, processing_cents: 100000, parts: { owed_clearing_cents: 131300, disputed_cents: 0 },
@@ -269,22 +269,27 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     { id: "p3", road: "pool", provider: "wise", word: "on_hold", amount_cents: 4500, to: "Bank ending 0148", created_at: "2026-11-20T15:33:07Z" },
   ] };
   listed.processing_cents += 4500;
-  assert.deepEqual(pendingParts(listed, []), { pending: 5000, processing: 288594, clearing: 5000, onHold: 4500, waiting: 100000, onItsWay: 184094 },
-    "on its way is only what the server calls on its way; waiting and on hold from its words");
-  // A waiting withdrawal partly held because a step under it was refunded: the
-  // held part on hold, the rest waiting, as two entries or one with held_cents.
-  const split = { pending_cents: 0, processing_cents: 10000, parts: { owed_clearing_cents: 0, disputed_cents: 0 } };
-  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "on_hold", amount_cents: 4500 }, { id: "w", road: "pool", word: "waiting", amount_cents: 5500 }] }, []),
-    { pending: 0, processing: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "split into two entries");
-  assert.deepEqual(pendingParts({ ...split, withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, held_cents: 4500 }] }, []),
-    { pending: 0, processing: 10000, clearing: 0, onHold: 4500, waiting: 5500, onItsWay: 0 }, "one entry with its held part");
+  assert.deepEqual(pendingParts(listed), { pending: 5000, processing: 288594, clearing: 5000, onHold: 0, waiting: 104500, onItsWay: 184094 },
+    "on its way is only what the server calls on its way; a withdrawal on hold is its block, never also an on-hold line");
+  // Round 36 (#2): a $250 PayPal withdrawal, $100 of it on a step the brand
+  // disputed since. The server says the whole withdrawal is on hold: its block
+  // says it ($250, On hold) and Transactions agrees; the card has no "$100 on
+  // hold" line, which would say the same money twice.
+  const disputedUnder = { pending_cents: 0, processing_cents: 25000, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, withdrawals: [
+    { id: "w250", road: "pool", provider: "paypal", word: "on_hold", amount_cents: 25000, to: "a@b.c", created_at: "2026-11-21T10:00:00Z",
+      parts: [{ word: "waiting", amount_cents: 15000 }, { word: "on_hold", amount_cents: 10000 }] },
+  ] };
+  assert.deepEqual(pendingParts(disputedUnder), { pending: 0, processing: 25000, clearing: 0, onHold: 0, waiting: 25000, onItsWay: 0 }, "the withdrawal as a whole; no on-hold line");
+  assert.deepEqual(serverWithdrawalRows(disputedUnder.withdrawals).map((r) => [r.id, r.status, r.amount]), [["asked-w250", "On hold", -25000]], "Transactions: one row, On hold, $250");
+  // Disputed earnings no withdrawal holds are the line, beside it.
+  assert.equal(pendingParts({ ...disputedUnder, pending_cents: 4000, parts: { owed_clearing_cents: 0, disputed_cents: 4000 } }).onHold, 4000);
   // The server's parts (round 11): $75 asked, $50 of it on a step refunded since.
   const withParts = { pending_cents: 0, processing_cents: 7500 + 184094, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, withdrawals: [
-    { id: "w75", road: "pool", word: "waiting", amount_cents: 7500, parts: [{ word: "waiting", amount_cents: 2500 }, { word: "on_hold", amount_cents: 5000 }] },
+    { id: "w75", road: "pool", word: "on_hold", amount_cents: 7500, parts: [{ word: "waiting", amount_cents: 2500 }, { word: "on_hold", amount_cents: 5000 }] },
     { id: "s1", road: "stripe", word: "on_its_way", amount_cents: 184094, parts: [{ word: "on_its_way", amount_cents: 184094 }] },
   ] };
-  const p75 = pendingParts(withParts, []);
-  assert.deepEqual(p75, { pending: 0, processing: 191594, clearing: 0, onHold: 5000, waiting: 2500, onItsWay: 184094 }, "lines from parts: $25 waiting + $50 on hold");
+  const p75 = pendingParts(withParts);
+  assert.deepEqual(p75, { pending: 0, processing: 191594, clearing: 0, onHold: 0, waiting: 7500, onItsWay: 184094 }, "the $75 withdrawal as a whole");
   assert.equal(p75.onHold + p75.waiting + p75.onItsWay, withParts.processing_cents, "and they add up to Processing");
   // Round 16 (F1): a PayPal withdrawal staff are sending ("paying", word
   // on_its_way) is its own "Processing withdrawal" block until it is paid, so
@@ -301,20 +306,18 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const blocks = 10000; // the one "Processing withdrawal" block (factory_withdrawals paying)
   assert.equal(sending.available_cents + sending.awaiting_cents + sendingLines.clearing + sendingLines.onHold + blocks + sendingLines.onItsWay + sending.paid_out_cents,
     summaryFrom(sending).total, "Available + Awaiting + pending + on hold + blocks + on its way + Paid out = Total");
-  // Without parts (an older server): the word decides, the same way.
-  assert.equal(pendingParts({ ...sending, withdrawals: sending.withdrawals.map(({ parts, ...w }) => w) }, []).onItsWay, 49652, "also without parts");
-  // Without the server's list: the open requests, sending ones included, are the blocks.
-  assert.equal(pendingParts({ pending_cents: 0, processing_cents: 10000, parts: {} }, [{ status: "paying", amount_cents: 10000 }]).onItsWay, 0, "fallback: a paying request is not on its way");
+  // The word decides, parts or not.
+  assert.equal(pendingParts({ ...sending, withdrawals: sending.withdrawals.map(({ parts, ...w }) => w) }).onItsWay, 49652, "also without parts");
   // Round 12: Stripe money an open withdrawal holds is on its way (Processing), not clearing.
   const held = pendingParts({ pending_cents: 0, processing_cents: 11467, parts: { owed_clearing_cents: 0, disputed_cents: 0 }, stripe: { pending_cents: 0, processing_cents: 1467, held_cents: 1467 },
-    withdrawals: [{ id: "w", road: "pool", word: "waiting", amount_cents: 10000, parts: [{ word: "waiting", amount_cents: 5000 }, { word: "on_hold", amount_cents: 5000 }] }] }, []);
-  assert.deepEqual(held, { pending: 0, processing: 11467, clearing: 0, onHold: 5000, waiting: 5000, onItsWay: 1467 }, "held Stripe money reads on its way, never 'withdraw once processing finishes'");
+    withdrawals: [{ id: "w", road: "pool", word: "on_hold", amount_cents: 10000, parts: [{ word: "waiting", amount_cents: 5000 }, { word: "on_hold", amount_cents: 5000 }] }] });
+  assert.deepEqual(held, { pending: 0, processing: 11467, clearing: 0, onHold: 0, waiting: 10000, onItsWay: 1467 }, "held Stripe money reads on its way, never 'withdraw once processing finishes'");
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "On its way", -184094],
     ["asked-p1", "Cancelled", -4500],
     ["asked-p2", "Processing", -100000],
-    ["asked-p3-held", "On hold", -4500],
+    ["asked-p3", "On hold", -4500],
   ], "rows from the server's list: a cancelled request stays listed (round 28); a Stripe withdrawal refused before any payout is not");
   // Round 28: a cancelled or declined withdrawal stays a row: its word, its
   // amount muted (payout-amount-failed), declined with staff's reason as the
@@ -500,7 +503,7 @@ const rows = withdrawalRows(money);
 const sentOut = rows.filter((row) => !row.failed).reduce((sum, row) => sum - row.amount, 0);
 assert.equal(sentOut, 300 + 700 + 900 + 1100 + 1300, "each payment sent is one withdrawal; Stripe's come from Stripe; failures never count");
 assert.equal(rows.filter((row) => row.failed).length, 2, "a failed attempt keeps its row");
-assert.equal(rows.find((row) => row.id === "provider-a").status, "On its way", "R32: a per-step payout under way is on its way, as the card says");
+assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing", "R36: a per-step payout under way keeps main's word, Processing (still true)");
 assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
 assert.ok(rows.find((row) => row.id === "provider-b").amount < 0, "a failed row keeps its sign, struck through");
 assert.equal(rows.find((row) => row.id === "provider-d").note, "The payment did not go through. Check your payout details or contact TSC operations", "and one with no known reason says what to do");
@@ -755,9 +758,23 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.deepEqual([parts.onHold, parts.waiting], [0, 20000], "the block holds $200; the refunded $50 is on no line");
   // The card and the block, in the page's code.
   const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(card.includes("owedToTscLine(owedToTscCents(figures), formatMoney, owedToTscCause(figures))"), "the card says what is owed to TSC, and why");
+  assert.ok(card.includes("owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))"), "the card says what is owed to TSC, and why");
+  // C1 (round 36): the line says only what earnings do not cover; once they
+  // cover it, no line (Available already counts the whole debt).
+  const { uncoveredDebtCents } = await import("../src/app/order/payment-summary.mjs");
+  assert.equal(uncoveredDebtCents({ ...tsc, uncovered_debt_cents: 25000 }), 25000);
+  assert.equal(uncoveredDebtCents({ tsc: { ...tsc, uncovered_debt_cents: 0 } }), 0, "covered: no line");
+  assert.equal(uncoveredDebtCents(balanceFigures({ ...tsc, uncovered_debt_cents: 25000 }, null, null)), 25000, "kept by the server's balance answer");
+  assert.ok(!card.includes("owedToTscLine(owedToTscCents("), "never the whole debt on the card's line");
   // The order page: a lost dispute is never "refunded" (fix round 19).
   const orderPage = readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8");
+  // Round 36 (#3): one rule for "no withdrawal method", the server's
+  // (factory_balance().no_saved_method = the notices' factory_has_no_saved_method),
+  // never the page counting payout rows itself; the card's line reads it too.
+  assert.ok(orderPage.includes("setNoMethod(balance.data.no_saved_method === true)"), "the order page reads no_saved_method");
+  assert.ok(card.includes("figures?.no_saved_method === true") || readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8").includes("figures?.no_saved_method === true"), "and so does the card");
+  assert.equal(balanceFigures({ no_saved_method: true }, null, null).no_saved_method, true, "kept by the server's balance answer");
+  assert.ok(!/factory_payout_accounts"\)\.select\("id", \{ count/.test(orderPage), "and no longer counts payout rows");
   const line = orderPage.slice(orderPage.indexOf("function paymentLine("), orderPage.indexOf("function paymentStateLine("));
   assert.ok(line.includes("reversed by your bank`") && line.includes("returned to the brand`") && !line.includes("} back to the brand`"),
     "a partial lost dispute and a refund plus a dispute, each in its words (R32: returned to the brand)");

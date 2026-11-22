@@ -555,15 +555,15 @@ update public.factory_payout_accounts set account_number_last4 = '9999' where ba
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your bank account at P31 D ending 9999 is now your default withdrawal method.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'Your saved bank account changed: it is now P31 D ending 9999, in the name of %'),
   1,
-  'editing the default bank account in place is the same swap, and is said'
+  'editing the default bank account in place is said as what changed (round 36), never as a new default'
 );
 update public.factory_payout_accounts set swift = 'P31XUS33' where bank_name = 'P31 D';
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
 set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'Your bank account at P31 D ending 9999 is now your default withdrawal method.%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'Your saved bank account changed: it is now P31 D ending 9999, in the name of %'),
   2,
   'so is changing only its SWIFT code, which is where the money goes too'
 );

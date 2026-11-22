@@ -784,7 +784,7 @@ export default function AdminPayments() {
     try {
       const [board, tried, asked, checking] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals(),
         // Its own failure is said in its tab; the rest of the board stands without it.
-        adminBalanceAttention().catch((failure) => ({ disputed: [], stuck: [], recover: [], refund_failed: [], error: failure }))]);
+        adminBalanceAttention().catch((failure) => ({ disputed: [], stuck: [], recover: [], refund_failed: [], returned: [], error: failure }))]);
       setWithdrawals(asked);
       setAttention(checking);
       setRows(board);
@@ -904,8 +904,8 @@ const withdrawnByWords = (roads) => [...new Set((roads ?? []).map((road) => WITH
 
 /**
  * Owed money only staff can see is stuck: a step whose brand charge is
- * disputed (it waits in the factory's Pending until the dispute is decided in
- * Stripe), and a Stripe withdrawal from the balance that stopped half-way or
+ * disputed (on hold in the factory's Pending until the dispute is decided in
+ * Stripe), a PayPal / Wise withdrawal returned after it was paid, and a Stripe withdrawal from the balance that stopped half-way or
  * was refused because TSC's Stripe balance was short; and money refunded to
  * the brand (or a dispute lost) after the factory had withdrawn it, which TSC
  * has to recover. Nobody else is told.
@@ -913,7 +913,8 @@ const withdrawnByWords = (roads) => [...new Set((roads ?? []).map((road) => WITH
 function AttentionSection({ attention, onChanged }) {
   const recover = attention.recover ?? [];
   const refundFailed = attention.refund_failed ?? [];
-  const count = attention.disputed.length + attention.stuck.length + recover.length + refundFailed.length;
+  const returned = attention.returned ?? [];
+  const count = attention.disputed.length + attention.stuck.length + recover.length + refundFailed.length + returned.length;
   const [checking, setChecking] = useState(null);
   const [said, setSaid] = useState({});
   async function checkAgain(row) {
@@ -946,8 +947,8 @@ function AttentionSection({ attention, onChanged }) {
                   <td>
                     {/* Part of it may already be in a withdrawal TSC is sending or has paid: said apart, it has left the balance. */}
                     {Number(row.in_withdrawal_cents) > 0
-                      ? `The brand disputed this charge. ${moneyIn(Math.max(0, Number(row.amount_cents) - Number(row.in_withdrawal_cents)), row.currency)} waits in the factory's balance; ${moneyIn(Math.min(Number(row.amount_cents), Number(row.in_withdrawal_cents)), row.currency)} was already in a withdrawal being sent or paid to the factory.`
-                      : "The brand disputed this charge, so it waits in the factory's balance."}
+                      ? `The brand disputed this charge. ${moneyIn(Math.max(0, Number(row.amount_cents) - Number(row.in_withdrawal_cents)), row.currency)} is on hold until the dispute is settled; ${moneyIn(Math.min(Number(row.amount_cents), Number(row.in_withdrawal_cents)), row.currency)} was already in a withdrawal being sent or paid to the factory.`
+                      : "The brand disputed this charge. It is on hold until the dispute is settled."}
                     {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it.{" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
                   </td>
@@ -969,6 +970,19 @@ function AttentionSection({ attention, onChanged }) {
                     {Number(row.dispute_fee_cents) > 0 ? ` Stripe's dispute fee: ${moneyIn(row.dispute_fee_cents, row.currency)}, borne by TSC.` : ""}
                     {" "}
                     {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
+                  </td>
+                  <td><PaymentDate value={row.at} /></td>
+                </tr>
+              ))}
+              {returned.map((row) => (
+                // A PayPal / Wise withdrawal returned after it was recorded paid:
+                // the money is back with TSC and in the factory's balance.
+                <tr key={`w-${row.withdrawal_id}`} data-testid="attention-returned">
+                  <td>{row.factory_name}{row.paid_to ? <><br /><span className="admin-sub">{row.paid_to}</span></> : null}</td>
+                  <td>{moneyIn(row.amount_cents, row.currency)}</td>
+                  <td>
+                    {`Withdrawal returned after it was paid. ${row.reason ?? ""}`.trim()}
+                    {row.provider_ref ? <><br /><span className="admin-sub">{WITHDRAWN_BY[row.provider] ?? row.provider} reference: {row.provider_ref}</span></> : null}
                   </td>
                   <td><PaymentDate value={row.at} /></td>
                 </tr>
@@ -1054,7 +1068,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
   if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
-  if (attention) sections.attention = [...attention.disputed, ...attention.stuck, ...(attention.recover ?? []), ...(attention.refund_failed ?? [])];
+  if (attention) sections.attention = [...attention.disputed, ...attention.stuck, ...(attention.recover ?? []), ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
   const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")

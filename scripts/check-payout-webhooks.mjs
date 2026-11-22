@@ -179,6 +179,30 @@ const wiseEvent = (id, state = "outgoing_payment_sent") => JSON.stringify({
   assert.equal(settled.withdrawalsRecorded.length, 0, "a settled withdrawal is not recorded again");
 }
 {
+  // M2 (round 36): a withdrawal recorded Paid that Wise returns afterwards (the
+  // bank bounces it, Wise refunds it, it is charged back) is recorded as
+  // failed, in the failure's own words: the money is back with TSC.
+  for (const [state, words] of [["bounced_back", /The factory's bank returned this transfer/], ["funds_refunded", /Wise refunded this transfer/], ["charged_back", /charged back/]]) {
+    const db = fakeDb([], [{ id: "w3", provider: "wise", provider_ref: "5103", status: "paid" }]);
+    const body = wiseEvent(5103, state);
+    const out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": `dw3-${state}` }, body, deps: { db, client: fakeWise({ 5103: state }).client } });
+    assert.equal(out.status, 200);
+    assert.equal(out.body.state, "failed", `${state} after Paid is recorded`);
+    assert.equal(db.withdrawalsRecorded.length, 1);
+    assert.equal(db.withdrawalsRecorded[0].outcome, "failed");
+    assert.match(db.withdrawalsRecorded[0].sentence, words);
+    assert.match(db.withdrawalsRecorded[0].sentence, /The amount is back in the factory's balance/);
+  }
+  // Still paid at Wise, or still on its way: nothing recorded.
+  for (const state of ["outgoing_payment_sent", "processing"]) {
+    const db = fakeDb([], [{ id: "w4", provider: "wise", provider_ref: "5104", status: "paid" }]);
+    const body = wiseEvent(5104, state);
+    const out = await call(wiseWebhook, { headers: { "x-signature-sha256": sign(body), "x-delivery-id": `dw4-${state}` }, body, deps: { db, client: fakeWise({ 5104: state }).client } });
+    assert.equal(out.body.state, "paid");
+    assert.equal(db.withdrawalsRecorded.length, 0, `a paid withdrawal Wise reads as ${state} is not recorded again`);
+  }
+}
+{
   // Another site's transfer on the same Wise account: 200, so Wise doesn't give up on the endpoint.
   const db = fakeDb([]);
   const wise = fakeWise({});
@@ -246,6 +270,43 @@ const PAYPAL_HEADERS = { "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url":
   assert.equal(out.status, 200);
   assert.equal(db.payouts[0].provider_ref, "B3", "the batch id is kept");
   assert.equal(out.body.state, "sent", "unclaimed stays open");
+}
+{
+  // M2 (round 36): PayPal returns a withdrawal after SUCCESS (unclaimed after
+  // 30 days, refunded, reversed): recorded as failed, in its own words.
+  for (const [item, words] of [["RETURNED", /PayPal returned this to TSC/], ["REFUNDED", /refunded to TSC/], ["REVERSED", /reversed/]]) {
+    const db = fakeDb([], [{ id: "w5", provider: "paypal", provider_ref: "B5", status: "paid" }]);
+    const paypal = fakePaypal({ item });
+    const out = await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B5", "f0000000-0000-4000-8000-000000000005"), deps: { db, client: paypal.client } });
+    assert.equal(out.status, 200);
+    assert.equal(db.withdrawalsRecorded[0]?.outcome, "failed", `${item} after SUCCESS is recorded`);
+    assert.match(db.withdrawalsRecorded[0].sentence, words);
+  }
+  const db = fakeDb([], [{ id: "w6", provider: "paypal", provider_ref: "B6", status: "paid" }]);
+  await call(paypalWebhook, { headers: PAYPAL_HEADERS, body: paypalEvent("B6", "f0000000-0000-4000-8000-000000000006"), deps: { db, client: fakePaypal().client } });
+  assert.equal(db.withdrawalsRecorded.length, 0, "still SUCCESS: nothing recorded");
+}
+{
+  // The sync reads paid withdrawals back too, within the return window.
+  const { syncWithdrawals, adapterFor, RETURN_WINDOW_DAYS } = await import("../api/_withdrawals.js");
+  const asked = [];
+  const rows = { paying: [{ id: "a", provider_ref: "1", status: "paying" }], paid: [{ id: "b", provider_ref: "2", status: "paid" }] };
+  const recorded = [];
+  const db = {
+    from: () => {
+      const f = {};
+      const q = { select: () => q, eq: (c, v) => { f[c] = v; return q; }, not: () => q, gte: (c, v) => { f[c] = v; return q; }, order: () => q,
+        limit: async () => { asked.push({ ...f }); return { data: rows[f.status], error: null }; } };
+      return q;
+    },
+    rpc: async (name, args) => { recorded.push(args); return { data: {}, error: null }; },
+  };
+  const adapter = { ...adapterFor("wise"), status: async (_c, ref) => (ref === "2" ? { state: "failed", raw: "bounced_back" } : { state: "paid" }) };
+  const now = Date.parse("2026-11-21T00:00:00Z");
+  await syncWithdrawals({ adapter, client: {}, db, now });
+  assert.deepEqual(asked.map((a) => a.status).sort(), ["paid", "paying"]);
+  assert.equal(asked.find((a) => a.status === "paid").paid_at, new Date(now - RETURN_WINDOW_DAYS * 86_400_000).toISOString());
+  assert.deepEqual(recorded.map((r) => [r.target_withdrawal, r.outcome]).sort(), [["a", "paid"], ["b", "failed"]]);
 }
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS", resource: { batch_header: { payout_batch_id: "B9", sender_batch_header: { sender_batch_id: KEY } } } }), { ref: "B9", key: KEY }, "a batch event names its batch");
 assert.deepEqual(paypalRef({ event_type: "PAYMENT.CAPTURE.COMPLETED", resource: {} }), { ref: null, key: null }, "other events name nothing");

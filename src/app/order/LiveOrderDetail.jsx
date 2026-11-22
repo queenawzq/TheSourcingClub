@@ -36,7 +36,6 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
-import { connectAccountFor } from "../../lib/domain/stripe.js";
 import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
 import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
@@ -325,20 +324,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [charges, setCharges] = useState(null);
-  // A factory TSC has no way to pay: no withdrawal method and no Stripe account
-  // that takes transfers. A failed read says nothing rather than something wrong.
+  // A factory with no withdrawal method (factory_balance().no_saved_method:
+  // the server's one rule, as the notices and the card). A failed read says
+  // nothing rather than something wrong.
   const [noMethod, setNoMethod] = useState(false);
-  useEffect(() => {
-    if (!isFactory) return undefined;
-    let cancelled = false;
-    Promise.all([
-      supabase.from("factory_payout_accounts").select("id", { count: "exact", head: true }).eq("org_id", org.id),
-      connectAccountFor(org.id),
-    ]).then(([methods, stripeAccount]) => {
-      if (!cancelled && !methods.error) setNoMethod(methods.count === 0 && !stripeAccount?.transfers_active);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [isFactory, org.id]);
   const [requestFiles, setRequestFiles] = useState([]);
   const [photoUrls, setPhotoUrls] = useState({});
   const [location, setLocation] = useState("");
@@ -375,6 +364,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       // A failed read leaves each payment to decide alone, as before.
       const words = earningRows && !earningRows.error && balance && !balance.error
         ? earningWordsFor(earningRows.data, balance.data, row) : new Map();
+      if (balance && !balance.error && balance.data) setNoMethod(balance.data.no_saved_method === true);
       setCharges(charged);
       setOrder(row);
       setMilestones((steps ?? []).map((milestone) => (milestone.payment && words.has(milestone.payment.id)

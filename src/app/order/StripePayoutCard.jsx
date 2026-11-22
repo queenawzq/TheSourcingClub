@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscCents, owedToTscLine, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { answerOrder, askUntilConsistent, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -387,6 +387,8 @@ export default function StripePayoutCard({
   const [country, setCountry] = useState("");
   const [payoutRoute, setPayoutRoute] = useState("stripe");
   const [busy, setBusy] = useState(false);
+  // A Stripe withdrawal just made: main's confirmation under the balance.
+  const [withdrawn, setWithdrawn] = useState(false);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [methodMenu, setMethodMenu] = useState(null);
@@ -618,6 +620,7 @@ export default function StripePayoutCard({
         { amount: sendAmount, currency: sendCurrency, requestId, ...(withdrawal.previous || !destination ? {} : { destination }) });
       setWithdrawal(null);
       setModal(null);
+      setWithdrawn(true);
       // Never leave an already-withdrawn amount available if refreshing fails,
       // nor let a read asked before the withdrawal land after it.
       balanceOrder.current.skip();
@@ -1022,6 +1025,10 @@ export default function StripePayoutCard({
     // loading, and only a real failure says it failed. When the balance
     // came back without Stripe, its figures are shown and say nothing more.
     ? isOwner && !(figures && balanceStatus === "failed") ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : ""
+    // No method the factory can withdraw to, by the server's one rule
+    // (no_saved_method, as the notices and the order page): asked to add one.
+    : figures?.no_saved_method === true
+      ? isOwner ? cardWords.toReceive : "No withdrawal method yet."
     // A saved method needs no line: the withdrawals below say where money went.
     : savedMethod
       ? ""
@@ -1072,7 +1079,7 @@ export default function StripePayoutCard({
   // their way ("$Y on its way"), disputed steps ("$Z on hold"). A withdrawal
   // waiting for staff is said by its own row only.
   // A withdrawal on its way is never called available to withdraw.
-  const pendingLines = pendingParts(figures, fromBalance.opens) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
+  const pendingLines = pendingParts(figures) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
   const cardPending = pendingLines.clearing;
   const onHoldCents = pendingLines.onHold;
   const onItsWayLine = pendingLines.onItsWay;
@@ -1170,7 +1177,8 @@ export default function StripePayoutCard({
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
-          {figures && owedToTscCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(owedToTscCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
+          {/* Only what its earnings do not cover: covered, TSC keeps it from them and there is no line. */}
+          {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -1183,7 +1191,7 @@ export default function StripePayoutCard({
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
           {manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current) ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
-          {/* "Your bank is processing the payout." is said on that withdrawal's own row (companyStripeRows). */}
+          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
           {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -1211,7 +1219,7 @@ export default function StripePayoutCard({
           refunded={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0)]))}
           back={figures ? new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.back_cents != null).map((w) => [w.id, Number(w.back_cents)])) : null}
           reversed={new Set(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.refund_cause === "reversed").map((w) => w.id))}
-          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold" || Number(w.held_cents) > 0 || (w.parts ?? []).some((part) => part.word === "on_hold")).map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
+          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold").map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
               setWithdrawalError(null);
               // Cancelling is asked first, like any step that can't be undone:
               // the dialog that chooses among several, with this one ticked.

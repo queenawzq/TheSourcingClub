@@ -84,7 +84,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const w = world();
   w.caller = { rpc: async () => ({ data: null, error: { code: "22023", hint: "withdrawal_owes_tsc", message: "the factory owes TSC $500.00", details: "$500.00" } }) };
   await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure
-    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Decline this withdrawal.");
+    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.");
   assert.equal(w.paid.length, 0, "nothing paid while the factory owes TSC");
   const { owesTscSentence } = await import("../api/_withdrawals.js");
   const { owesTscSentence: boardSentence } = await import("../src/lib/domain/withdrawals.js").catch(() => ({}));

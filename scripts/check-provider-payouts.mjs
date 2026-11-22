@@ -16,7 +16,7 @@ import { paypalFrom, PAYPAL_UNCLAIMED } from "../api/_paypal.js";
 import { cancelAttempt, checkWords, FUND_IN_WISE, setFundSettleMs, tellFactoryDetails, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
 import { PayoutFailure, withoutSecrets } from "../api/_payout-provider.js";
 import { detailsAtFault, wiseFrom, WISE_STATES } from "../api/_wise.js";
-import { releasePayment } from "../api/_stripe.js";
+import { settleRelease } from "../api/_stripe.js";
 import { ensureWiseRecipient, recipientBody } from "../api/_wise-recipient.js";
 
 const NUMBER = "0000000000001234";
@@ -445,7 +445,7 @@ for (const [message, fault] of [
     for (let i = 0; i < 100; i += 1) yield { id: `other${i}`, metadata: { payment_id: "x" } };
     yield { id: "past_the_first_page", metadata: { payment_id: "pay" } };
   } } };
-  assert.deepEqual(await releasePayment({ stripe, db, paymentId: "pay" }), { released: true, reason: "past_the_first_page" });
+  assert.deepEqual(await settleRelease({ stripe, db, paymentId: "pay" }), { released: true, reason: "past_the_first_page" });
   assert.deepEqual(rpcs, [["record_payment_released", { target_payment: "pay", transfer: "past_the_first_page" }]]);
 }
 assert.equal(WISE_STATES.outgoing_payment_sent, "paid");

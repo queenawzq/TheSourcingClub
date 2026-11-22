@@ -86,7 +86,10 @@ export function balanceFigures(tsc, stripe, displayFx) {
     paid_out_cents: n(tsc?.paid_out_cents),
     // Refunded after it was withdrawn: inside Available (already taken off it).
     owed_to_tsc_cents: n(tsc?.owed_to_tsc_cents),
+    // The part its earnings do not cover: the card's "You owe TSC" line.
+    uncovered_debt_cents: n(tsc?.uncovered_debt_cents),
     has_method: Boolean(tsc?.has_method),
+    no_saved_method: tsc?.no_saved_method === true,
     next_cleared_at: tsc?.next_cleared_at ?? null,
     withdrawals: tsc?.withdrawals ?? [],
   };

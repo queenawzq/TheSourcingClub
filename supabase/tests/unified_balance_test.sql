@@ -550,13 +550,11 @@ set local role service_role;
 select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz, 'F1: not even with the server key');
 reset role;
 select ok(pg_temp.owed_untouched(pg_temp.pay(1, 1)), 'F1: still owed and untouched');
-savepoint ub_claim;
+-- Round 36: tsc.withdrawal_claim (never set by anything) no longer opens it.
 select set_config('tsc.withdrawal_claim', 'on', true);
-select ok(public.claim_payment_release(pg_temp.pay(1, 1)) is not null, 'F1: a withdrawal''s claim (tsc.withdrawal_claim) can claim it');
-select ok((select release_claimed_at is not null from public.order_payments where id = pg_temp.pay(1, 1)), 'F1: and the claim is recorded');
-rollback to savepoint ub_claim;
+select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz, 'F1: the old tsc.withdrawal_claim setting no longer claims it');
+select ok((select release_claimed_at is null from public.order_payments where id = pg_temp.pay(1, 1)), 'F1: and nothing is claimed');
 select set_config('tsc.withdrawal_claim', '', true);
-select is(public.claim_payment_release(pg_temp.pay(1, 1)), null::timestamptz, 'F1: the setting is the transaction''s own: off again, refused again');
 
 -- F2: legacy per-step attempts stay staff's after the factory changes its details
 -- or its default. A failed Wise payout (f3) and a processing PayPal payout (f2).

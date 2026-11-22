@@ -1,7 +1,6 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
-import { holdPayouts } from "./_stripe-payouts.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { cardReason } from "./_card-words.js";
 
@@ -23,8 +22,7 @@ import { cardReason } from "./_card-words.js";
  *   the brand approves      -> the money is owed (release_requested_at): it
  *                              stays with TSC, in the factory's balance
  *                              (factory_balance()), until the factory
- *                              withdraws. Nothing is transferred on approval;
- *                              releasePayment() is for the withdrawal
+ *                              withdraws. Nothing is transferred on approval
  *
  * Only this code, holding the service key, can move a payment through those
  * states; the database refuses everyone else. The browser never decides a
@@ -843,153 +841,6 @@ export async function settleRelease({ stripe, db, paymentId }) {
 }
 
 /**
- * Pay a held payment out to its factory, if the database has asked for it
- * and the factory can be paid through Stripe. Safe to call any number of
- * times, from any number of places at once: the payment is claimed in the
- * database before anything is sent, so only one caller pays it, and a
- * released payment is left alone.
- *
- * Returns { released, reason }.
- */
-export async function releasePayment({ stripe, db, paymentId }) {
-  const { data: payment, error } = await db
-    .from("order_payments")
-    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, release_claimed_at, stripe_release_started, production_orders (factory_org_id, order_number)")
-    .eq("id", paymentId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!payment) return { released: false, reason: "no such payment" };
-  if (payment.state === "released") return { released: true, reason: "already paid out" };
-  // Owed means the brand asked for it: it approved the step (or funded a
-  // payment-only one) while the order was active. That stays owed if the
-  // order is cancelled afterwards, since the work it paid for was done;
-  // money merely held on a cancelled order has no release_requested_at and
-  // is refunded by staff instead.
-  if (payment.state !== "confirmed" || !payment.release_requested_at) {
-    return { released: false, reason: "not owed to the factory yet" };
-  }
-  if (!payment.stripe_charge_id) {
-    return { released: false, reason: "not paid through Stripe: staff pay this out by bank" };
-  }
-
-  // Refunded in Stripe since it was held (staff by hand, or a dispute):
-  // there is nothing to pay the factory from, and Stripe would refuse the
-  // transfer on every retry. Record it instead, which asks the brand to pay
-  // again (or closes it on a cancelled order).
-  const charge = await stripe.charges.retrieve(payment.stripe_charge_id);
-  if (Number(charge.amount_refunded) > 0) {
-    await applyChargeRefund({ stripe, db, charge });
-    return { released: false, reason: "the brand's payment was refunded in Stripe, so there is nothing to pay out" };
-  }
-
-  // Disputed: the card network may take this money back, so it waits, as the
-  // Wise and PayPal paths do. A payout already started is settled first, so
-  // the dispute cannot leave the factory's route pinned.
-  if (charge.disputed) {
-    const settled = await settleStartedRelease({ stripe, db, payment });
-    if (settled) return settled;
-    return { released: false, reason: "the brand disputed this payment, so the payout waits until that is settled" };
-  }
-
-  let { data: account } = await db
-    .from("stripe_connect_accounts")
-    .select("stripe_account_id, transfers_active, country")
-    .eq("org_id", payment.production_orders.factory_org_id)
-    .maybeSingle();
-  if (!account?.transfers_active) {
-    const settled = await settleStartedRelease({ stripe, db, payment });
-    if (settled) return settled;
-    return { released: false, reason: "the factory cannot be paid through Stripe yet" };
-  }
-
-  const selectedStripe = await db.rpc("uses_stripe_payout", { target_org: payment.production_orders.factory_org_id });
-  if (selectedStripe.error) throw new Error(selectedStripe.error.message);
-  if (!selectedStripe.data) {
-    const settled = await settleStartedRelease({ stripe, db, payment });
-    if (settled) return settled;
-    // The default changed while this was on its way: it stays owed in the
-    // factory's balance for the method it now withdraws to (no call needed:
-    // an approved step is in the balance until a withdrawal takes it).
-    return { released: false, reason: "the factory selected another payout method" };
-  }
-
-  // The whole step goes to the factory's Stripe balance, however small:
-  // Stripe bills nothing per transfer. Its payout fee is taken once, when the
-  // factory withdraws (api/_stripe-withdrawals.js).
-
-  // A transfer credits earnings, never an automatic withdrawal to the bank.
-  // Configure existing accounts before any money can reach them.
-  await holdPayouts(stripe, account.stripe_account_id);
-
-  // Never pay twice. The webhook, the brand's page, the factory's refresh and
-  // staff's Retry can all get here at the same moment; the database lets one
-  // of them claim the payment and tells the rest it is taken. A claim left by
-  // a call that died mid-way lapses after 10 minutes.
-  const claimedAt = await rpc(db, "claim_payment_release", { target_payment: payment.id });
-  if (!claimedAt) {
-    const { data: upgrading } = await db.from("stripe_connect_upgrades").select("org_id")
-      .eq("org_id", payment.production_orders.factory_org_id).is("completed_at", null).not("new_account_id", "is", null).limit(1);
-    return { released: false, reason: upgrading?.length ? "the factory is still updating its payout account: this is paid once that finishes" : "already being paid" };
-  }
-
-  // Only once Stripe has listed no transfer can a refusal mean none exists.
-  let foundNoTransfer = false;
-  try {
-    // A caller may have read the old account just before an upgrade completed.
-    // The claim serialises against cutover; re-read its destination afterwards.
-    const fresh = await db.from("stripe_connect_accounts").select("stripe_account_id, transfers_active, country")
-      .eq("org_id", payment.production_orders.factory_org_id).single();
-    if (fresh.error) throw new Error(fresh.error.message);
-    account = fresh.data;
-    if (!account.transfers_active) throw Object.assign(new Error("Payout verification is incomplete."), { payoutNotReady: true });
-    // A transfer for this payment that reached Stripe but not our database
-    // (a crash in between, or a claim that lapsed) is found here and
-    // recorded instead.
-    const already = await paymentTransfer(stripe, payment);
-    if (already) {
-      await recordTransferFee(db, payment, already);
-      await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
-      return { released: true, reason: already.id };
-    }
-    foundNoTransfer = true;
-
-    // One key per claim: Stripe's own retries inside this call reuse it, and
-    // the next claim gets a new one, because Stripe replays a key's first
-    // answer for 24 hours and a refusal from before the factory's account
-    // could take transfers must not outlive it.
-    const transfer = await stripe.transfers.create(
-      {
-        amount: Number(payment.amount_cents),
-        currency: payment.currency.toLowerCase(),
-        destination: account.stripe_account_id,
-        // Tied to the brand's charge: the transfer waits for that money to be
-        // available rather than drawing on anything else in TSC's balance.
-        source_transaction: payment.stripe_charge_id,
-        transfer_group: payment.order_id,
-        description: `${payment.production_orders.order_number}: payout`,
-        metadata: { payment_id: payment.id, order_id: payment.order_id },
-      },
-      { idempotencyKey: `release-${payment.id}-${Date.parse(claimedAt)}` },
-    );
-
-    await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: transfer.id });
-    return { released: true, reason: transfer.id };
-  } catch (failure) {
-    // Hand the claim back so the next try (a webhook retry, staff's Retry)
-    // need not wait for it to lapse. The exact time string goes back, so a
-    // newer claim is never cleared by mistake. When Stripe refused outright
-    // the payment is no longer pinned to it either.
-    try {
-      await db.rpc(foundNoTransfer && stripeMadeNoTransfer(failure) ? "record_stripe_release_not_sent" : "release_payment_claim",
-        { target_payment: payment.id, claimed: claimedAt });
-    } catch {
-      // the claim lapses on its own after 10 minutes
-    }
-    throw failure;
-  }
-}
-
-/**
  * The transfer that paid this payment, found by its metadata, or null.
  * Withdrawal fees are taken by reversing the factory's transfers
  * (api/_stripe-withdrawals.js, metadata stripe_withdrawal_id), so a small
@@ -1018,11 +869,6 @@ async function paymentTransfer(stripe, payment) {
 async function recordTransferFee(db, payment, transfer) {
   const fee = Number(payment.amount_cents) - Number(transfer.amount);
   if (fee > 0) await rpc(db, "record_payout_fee", { target_payment: payment.id, fee });
-}
-
-/** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about whether a transfer exists. */
-function stripeMadeNoTransfer(failure) {
-  return [400, 402, 403, 404].includes(failure?.statusCode);
 }
 
 /**

@@ -367,9 +367,9 @@ async function formatters() {
       payments: [{ id: "p", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "Deposit", sort: 1, due_on: "2026-10-26" } }],
     });
     expect("brand payments: due row", payments.rows?.[0]?.date, "Oct 26, 2026");
-    // Round 16 (one balance): a funded deposit (nothing to approve) and an
-    // approved step are the factory's, in its balance: the brand reads them
-    // in Paid, never Held; only money waiting for its approval is Held.
+    // Round 36: main's words and split. TSC holds approved money (and a
+    // funded deposit) until the factory withdraws it, so it is Held; Paid is
+    // what was paid out. A funded deposit reads Funded.
     const oneBalance = brandPaymentsView({
       orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
       payments: [
@@ -379,9 +379,9 @@ async function formatters() {
         { id: "out", order_id: "o", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
       ],
     });
-    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Paid,ok:Approved,out:Paid,wait:Funded");
-    expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$1,181.00");
-    expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$54.00");
+    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Approved,out:Paid,wait:Funded");
+    expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
+    expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");
     // Refunds (20261121200000): a partial one nets the figure; a full one
     // after it was the factory's reads Refunded, a lost dispute Reversed by your bank.
     const refunds = brandPaymentsView({

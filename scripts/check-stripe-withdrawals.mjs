@@ -12,7 +12,7 @@ const REQUEST = "b1f9fd8c-76bd-43a7-ad48-502ebed382b3";
 const OTHER = "c2f9fd8c-76bd-43a7-ad48-502ebed382b4";
 
 /** The stripe_withdrawals table and its two claim functions, in memory. */
-function fakeDb() {
+function fakeDb({ reach = { any_cents: 0, stripe_cents: 0, debt_cents: 0 } } = {}) {
   const rows = [];
   const leased = (row) => row.lease_until && Date.parse(row.lease_until) > Date.now();
   const lease = () => new Date(Date.now() + 120_000).toISOString();
@@ -57,6 +57,7 @@ function fakeDb() {
         row.lease_until = lease();
         return { data: structuredClone(row), error: null };
       }
+      if (name === "owed_reachable") return reach === null ? { data: null, error: { message: "down" } } : { data: reach, error: null };
       throw new Error(`unexpected rpc ${name}`);
     },
   };
@@ -770,8 +771,48 @@ for (const status of ["failed", "canceled"]) {
   const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
   assert.equal((connect.match(/await stripeMoneyUsd\(stripe, existing\.stripe_account_id, balance\.available, heldElsewhere, account\.default_currency\)/g) ?? []).length, 2,
     "the owner's balance read and the members' figures both reckon the Stripe part that way, in the currency a withdrawal pays out in");
-  assert.match(connect, /oneBalance, payoutCurrency: account\?\.default_currency \?\? "usd"/, "the withdrawal pays out in that same currency");
+  assert.match(connect, /oneBalance: true, payoutCurrency: account\?\.default_currency \?\? "usd"/, "the withdrawal pays out in that same currency");
   assert(!/displayFx/.test(source.slice(source.indexOf("export async function stripeMoneyUsd"), source.indexOf("async function carryOut("))), "never the indicative rate for what Withdraw can reach");
+}
+
+// M1. The "owes TSC" rule on every Stripe road. The current account withdraws
+// only the one balance in US$ (a non-US$ amount there is refused before
+// anything is read); a previous account's own Stripe money leaves only what
+// the debt does not need.
+{
+  const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
+  const withdraw = connect.slice(connect.indexOf('if (action === "withdraw")'), connect.indexOf("// Also applies to accounts created before"));
+  assert.match(withdraw, /if \(String\(currency \?\? ""\)\.toLowerCase\(\) !== "usd"\) return reply\(response, 422/, "withdraw: a non-US$ currency is refused");
+  assert.match(withdraw, /oneBalance: true/, "withdraw: always the one balance (gatherOwed checks the debt)");
+  // Debt $300, owed earnings on Stripe steps $100: $200 uncovered must stay. $1,000 in the old account: up to $800.
+  const owes = { any_cents: -20_000, stripe_cents: -20_000, debt_cents: 30_000 };
+  {
+    const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+    const db = fakeDb({ reach: owes });
+    await assert.rejects(withdrawWithFee(args(s, db, { accountId: "acct_old" })), /^Error: You can withdraw up to \$800\.00\.$/);
+    assert.deepEqual([s.reversals.length, s.payouts.length, db.rows.length], [0, 0, 0], "nothing claimed or moved");
+    const payout = await withdrawWithFee(args(s, db, { accountId: "acct_old", amount: 80_000, requestId: OTHER }));
+    assert.equal(s.payouts.length, 1, "what the debt leaves still goes");
+    assert.ok(payout.amount < 80_000);
+  }
+  {
+    // In GBP at 0.8: $200 uncovered is £160; £500 held: up to £340.
+    const s = fakeStripe({ currency: "gbp", rate: 0.8, transfers: [transfer("tr_gb", 100_000)], available: 50_000 });
+    await assert.rejects(withdrawWithFee(args(s, fakeDb({ reach: owes }), { accountId: "acct_old", country: "GB", amount: 50_000, currency: "gbp" })),
+      /^Error: You can withdraw up to £340\.00\.$/);
+  }
+  {
+    // The debt covered by earnings TSC still holds: the old account is free.
+    const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+    await withdrawWithFee(args(s, fakeDb({ reach: { any_cents: 5_000, stripe_cents: 5_000, debt_cents: 30_000 } }), { accountId: "acct_old" }));
+    assert.equal(s.payouts.length, 1);
+  }
+  {
+    // The rule cannot be read: refused, never skipped.
+    const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
+    await assert.rejects(withdrawWithFee(args(s, fakeDb({ reach: null }), { accountId: "acct_old" })), new RegExp(CANNOT_PROCESS.replace(/[.]/g, "\\.")));
+    assert.equal(s.payouts.length, 0);
+  }
 }
 
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small; refunds recorded, never added to");

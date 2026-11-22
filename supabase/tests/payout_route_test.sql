@@ -126,6 +126,9 @@ select pg_temp.act_as(1); set local role authenticated;
 select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'can switch back to Stripe after attempt ends and nothing is owed');
 reset role;
 update public.order_payments p set release_requested_at=o.release_requested_at from p96_owed o where p.id=o.id;
+-- Round 36: only a release an earlier version started is claimed (the never-set
+-- tsc.withdrawal_claim no longer opens one).
+update public.order_payments set stripe_release_started = true where id='96f00000-0000-0000-0000-000000000002';
 select ok(public.claim_payment_release('96f00000-0000-0000-0000-000000000002') is not null,'Stripe can claim after switching back');
 select pg_temp.act_as(1); set local role authenticated;
 reset role; savepoint p96_c; select pg_temp.act_as(1); set local role authenticated;
