@@ -65,17 +65,6 @@ export const refundPendingWord = (payment, order) => (heldOnCancelledOrder({ ...
 export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.state === "released" && row.stripe_transfer_id));
 
 /**
- * The card's "$X pending" amount, in US$ cents: the Pending figure (all
- * clients) less what the card already lists on its own rows (withdrawals
- * waiting or being sent), so no amount is said twice on the card. Null until
- * the figure is known; never below 0.
- */
-export function cardPendingCents(pendingTotal, shownElsewhere = 0) {
-  if (pendingTotal == null) return null;
-  return Math.max(0, Number(pendingTotal) - Math.max(0, Number(shownElsewhere) || 0));
-}
-
-/**
  * The one balance (D3), from the server only: factory_balance() for every
  * factory, or the `figures` of /api/stripe-connect `balance` for an owner
  * with a Stripe account (its own Stripe money added). The page never sums
@@ -97,99 +86,29 @@ export function summaryFrom(figures) {
   return { total: approval + available + pending + processing + paid, approval, available, pending, processing, paid };
 }
 
-const FIGURE_KEYS = ["awaiting_cents", "available_cents", "pending_cents", "processing_cents", "paid_out_cents"];
-
 /**
- * Whether a newer factory_balance() read knows of a Stripe withdrawal the
- * server's answer (`viaStripe.tsc`) did not know in that state: a new one, or
- * one since closed, refused, given its fee back or whose payout failed. Each
- * moves money in or out of the factory's Stripe account, which only the
- * server can read, so the Stripe part of that answer can no longer be patched
- * (withStripePart): the page asks the server again. A payout that was on its
- * way and has arrived moves nothing in Stripe.
+ * Whether a `stripe_withdrawals` realtime event changed more than its lease
+ * (`lease_until`, `updated_at`), by the last row seen per id (`seen`, a Map
+ * this updates): the table has no full replica identity, so `payload.old`
+ * holds the id only. A row not seen before (inserted, or first heard of) and
+ * a delete count as changes.
  */
-export function stripePartStale(database, viaStripe) {
-  if (!viaStripe?.tsc || !database) return false;
-  const known = new Map((viaStripe.tsc.withdrawals ?? []).filter((w) => w?.road === "stripe").map((w) => [w.id, w.word]));
-  return (database.withdrawals ?? []).some((w) => {
-    if (w?.road !== "stripe") return false;
-    if (!known.has(w.id)) return true;
-    const before = known.get(w.id);
-    return before !== w.word && !(before === "on_its_way" && w.word === "paid");
-  });
-}
-
-/**
- * The server's balance answer, asked again (at most `tries` times in all,
- * `waitMs` apart) while it says its reads were not of one moment
- * (`figures.consistent === false`: a withdrawal moved money while it read).
- * The last answer is returned either way; a later ask that fails keeps the
- * one before it.
- */
-export async function askUntilConsistent(ask, { tries = 3, waitMs = 1500, wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) } = {}) {
-  let answer = await ask();
-  for (let attempt = 1; attempt < tries && answer?.figures?.consistent === false; attempt += 1) {
-    await wait(waitMs);
-    try {
-      answer = await ask();
-    } catch {
-      break;
-    }
-  }
-  return answer;
-}
-
-/**
- * The fields of a Stripe withdrawal that move money or change what it says.
- * Not `lease_until` or `updated_at`: a call claiming or giving up its lease
- * on a withdrawal changes only those, and asking the server again on that
- * made a page and a withdrawal that would not settle feed each other.
- */
-export const STRIPE_WITHDRAWAL_MONEY_FIELDS = ["state", "transfers_done_at", "payout_id", "payout_status", "fee_cents", "refusal_cause", "reversals"];
-
-/**
- * Whether a `stripe_withdrawals` realtime event changed a money field, by the
- * last row seen per id (`seen`, a Map this updates): the table has no full
- * replica identity, so `payload.old` holds the id only. A row not seen before
- * (inserted, or first heard of) and a delete count as changes.
- */
-export function stripeWithdrawalMoved(seen, payload, { anyField = false } = {}) {
+export function stripeWithdrawalMoved(seen, payload) {
   const row = payload?.new && Object.keys(payload.new).length ? payload.new : null;
   const id = row?.id ?? payload?.old?.id ?? null;
   if (!id) return false;
   if (!row) { seen.delete(id); return true; }
-  // anyField: every column but the lease's two (what the list shows, too).
-  const pick = (value) => JSON.stringify(anyField
-    ? Object.keys(value).filter((field) => field !== "lease_until" && field !== "updated_at").sort().map((field) => [field, value[field]])
-    : STRIPE_WITHDRAWAL_MONEY_FIELDS.map((field) => value?.[field] ?? null));
+  const now = JSON.stringify(Object.keys(row).filter((field) => field !== "lease_until" && field !== "updated_at").sort().map((field) => [field, row[field]]));
   const before = seen.get(id);
-  const now = pick(row);
   seen.set(id, now);
   return before !== now;
 }
 
 /**
- * A cap on asks made because a withdrawal changed: at most `perId` per
- * withdrawal and `total` in all within `windowMs`. `allow(id, now)` records
- * the ask when it says yes.
- */
-export function realtimeAskCap({ perId = 2, total = 4, windowMs = 60_000 } = {}) {
-  let asks = [];
-  return {
-    allow(id, now = Date.now()) {
-      asks = asks.filter((ask) => now - ask.at < windowMs);
-      if (asks.length >= total || asks.filter((ask) => ask.id === id).length >= perId) return false;
-      asks.push({ id, at: now });
-      return true;
-    },
-  };
-}
-
-/**
  * When a pending ask of the figures action should run: null when an ask that
  * started after it was requested already answers it; otherwise in how many
- * ms. A member's page (nobody there reads Stripe) asks at most once every
- * `minGapMs`, whatever asked; an owner's only waits out the debounce.
+ * ms. Where the read asks Stripe (`limited`), at most once every `minGapMs`
+ * (figuresAskGap), whatever asked; otherwise it only waits out the debounce.
  */
 export function figuresAskDelay({ now, requestedAt, lastAskAt = 0, limited = false, debounceMs = 1500, minGapMs = 60_000 }) {
   if (limited && lastAskAt >= requestedAt) return null;
@@ -198,30 +117,16 @@ export function figuresAskDelay({ now, requestedAt, lastAskAt = 0, limited = fal
 }
 
 /**
- * Answers applied in the order they were asked: `start()` numbers an ask,
- * `accept(n)` is true only when no later ask has been applied, so an older
- * answer that lands last never wins. `skip()` numbers and applies a reset
- * at once (what was asked before it is then older).
+ * The least time between two asks of the figures action, in ms, where the
+ * read asks Stripe (`readsStripe`): a member's at most once a minute, an
+ * owner's (about six Stripe reads) at most every 12 s; 0 (the debounce only)
+ * where it does not.
  */
-export function answerOrder() {
-  let asked = 0;
-  let applied = 0;
-  return {
-    start: () => { asked += 1; return asked; },
-    accept: (n) => { if (n <= applied) return false; applied = n; return true; },
-    skip: () => { asked += 1; applied = asked; return asked; },
-  };
-}
-
-/**
- * What a member's page keeps when asking the figures action fails. A first
- * ask: the database's figures as the server sent them (marked Stripe
- * unavailable), else nothing. A later ask: the last answer stays, its time
- * too (`dated` false), as the owner's card keeps its last balance.
- */
-export function figuresAfterFailedAsk(previous, failure) {
-  if (previous) return { figures: previous, dated: false };
-  return { figures: failure?.details?.figures ?? null, dated: true };
+export const OWNER_ASK_GAP_MS = 12_000;
+export const MEMBER_ASK_GAP_MS = 60_000;
+export function figuresAskGap({ isOwner = false, readsStripe = false } = {}) {
+  if (!readsStripe) return 0;
+  return isOwner ? OWNER_ASK_GAP_MS : MEMBER_ASK_GAP_MS;
 }
 
 /**
@@ -233,58 +138,6 @@ export function missingPoolIds(serverList, known) {
   return [...new Set((serverList ?? [])
     .filter((w) => w?.road === "pool" && w.word === "returned" && w.id && !known.has(w.id))
     .map((w) => w.id))];
-}
-
-/**
- * The Stripe answer's figures kept up to date with the database's: the
- * database part (`viaStripe.tsc`) replaced by a newer factory_balance() read,
- * the factory's own Stripe money (the difference) kept. So a step a brand
- * approves while the page is open moves the figures without asking Stripe
- * again. Either alone is used as it is.
- */
-export function withStripePart(database, viaStripe) {
-  if (!viaStripe?.tsc || !database) return viaStripe ?? database ?? null;
-  // The server's own answer (api/_balance-figures.js), with its database part
-  // swapped for a newer read: what the Stripe account adds is kept exactly as
-  // the server worked it out, so an owner (balance) and a member (figures)
-  // read the same figures.
-  const merged = { ...viaStripe, has_method: Boolean(database.has_method), no_saved_method: database.no_saved_method === true, next_cleared_at: database.next_cleared_at ?? null, tsc: database };
-  const part = {};
-  for (const key of FIGURE_KEYS) part[key] = Number(viaStripe[key] ?? 0) - Number(viaStripe.tsc[key] ?? 0);
-  // A Stripe withdrawal the newer read has recorded (its payout made, or
-  // refused) is in the database's figures now: the Stripe money it held when
-  // the server read is not counted again.
-  const recorded = new Set((database.withdrawals ?? []).filter((w) => w?.road === "stripe").map((w) => w.id));
-  const heldBy = viaStripe.stripe?.held_by ?? [];
-  const gone = heldBy.filter((row) => recorded.has(row.id)).reduce((sum, row) => sum + (Number(row.cents) || 0), 0);
-  const drop = Math.min(gone, Math.max(0, part.processing_cents));
-  part.processing_cents -= drop;
-  part.paid_out_cents += drop;
-  // Never more in the Stripe account than the newer read counts as sent:
-  // Paid out never goes below zero (the same order as the server's). Which
-  // Stripe figure the excess came from cannot be known without reading
-  // Stripe, so this is only what shows until the server is asked again
-  // (`stripe_part_stale`), never the answer.
-  let over = Math.max(0, -(Number(database.paid_out_cents ?? 0) + part.paid_out_cents));
-  const clamped = over > 0;
-  for (const key of ["available_cents", "pending_cents", "processing_cents"]) {
-    const take = Math.min(over, Math.max(0, part[key]));
-    part[key] -= take;
-    part.paid_out_cents += take;
-    over -= take;
-  }
-  for (const key of FIGURE_KEYS) merged[key] = Number(database[key] ?? 0) + part[key];
-  merged.total_cents = FIGURE_KEYS.reduce((sum, key) => sum + merged[key], 0);
-  // The Stripe part is a bridge here, not known: the page asks the server again.
-  if (clamped || stripePartStale(database, viaStripe)) merged.stripe_part_stale = true;
-  if (viaStripe.stripe) {
-    merged.stripe = { ...viaStripe.stripe, available_cents: part.available_cents, pending_cents: part.pending_cents,
-      processing_cents: part.processing_cents, held_cents: part.processing_cents,
-      held_by: heldBy.filter((row) => !recorded.has(row.id)) };
-    // Converted only while some Stripe money is still counted.
-    merged.estimated = Boolean(viaStripe.estimated) && part.available_cents + part.pending_cents + part.processing_cents > 0;
-  }
-  return merged;
 }
 
 /**
@@ -398,29 +251,19 @@ export function paymentRefund(payment) {
 }
 
 /**
- * What each method can withdraw, in US$ cents (D5): the factory's Stripe
- * account reaches the cleared money TSC owes it and the money already in its
- * Stripe account; PayPal and Wise reach the same cleared money, never the
- * Stripe account's.
- *
- * The server's own answers come first: `server` is the balance action's
- * top-level `reach` ({ stripe_cents, pool_cents, estimated }), for an owner
- * with a Stripe account; `poolCents` is my_withdrawal_balance()'s
- * available_cents, the same number as reach.pool_cents, for everyone else.
- * Without them it is worked out from the figures' parts. Null until known.
+ * What each method can withdraw, in US$ cents (D5), as the server worked it
+ * out (the balance read's `reach`): the factory's Stripe account reaches the
+ * cleared money TSC owes it and the money already in its Stripe account;
+ * PayPal and Wise reach the same cleared money, never the Stripe account's.
+ * Null until known.
  */
-export function withdrawReach(figures, server = null, poolCents = null) {
-  const parts = figures?.tsc?.parts ?? figures?.parts ?? null;
-  const owed = Math.max(0, Number(parts?.owed_cleared_cents) || 0);
-  const ownStripe = figures?.stripe ? Math.max(0, Number(figures.stripe.available_cents) || 0) : 0;
+export function withdrawReach(reach) {
   const known = (value) => value != null && Number.isFinite(Number(value));
-  // Refunded after it was withdrawn: owed to TSC, taken off what can be withdrawn.
-  const debt = Math.max(0, Number(owedToTscCents(figures)) || 0);
   return {
-    stripe: known(server?.stripe_cents) ? Number(server.stripe_cents) : figures ? Math.max(0, owed + ownStripe - debt) : null,
-    balance: known(server?.pool_cents) ? Number(server.pool_cents) : known(poolCents) ? Number(poolCents) : figures ? Math.max(0, owed - debt) : null,
+    stripe: known(reach?.stripe_cents) ? Number(reach.stripe_cents) : null,
+    balance: known(reach?.pool_cents) ? Number(reach.pool_cents) : null,
     // The Stripe amount was converted from the account's currency.
-    estimated: Boolean(server?.estimated),
+    estimated: Boolean(reach?.estimated),
   };
 }
 
@@ -440,8 +283,6 @@ export function clearingNote(row, clearing) {
   return day ? `Available ${new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : null;
 }
 
-/** "To bank account ending in 0154.": a Stripe destination label mid-sentence, lower case. */
-export const toDestination = (label) => `To ${String(label).replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`;
 
 /** A failed withdrawal that came back whole, as a row's note (main's words). */
 export const WITHDRAWAL_FAILED_NOTE = "Back in your balance. Check your withdrawal method, then withdraw again";
@@ -460,34 +301,7 @@ export function failedWithdrawalNote(back, amount, currency = "USD") {
   return `${(cents / 100).toLocaleString("en-US", { style: "currency", currency })} is back in your balance. Check your withdrawal method, then withdraw again.`;
 }
 const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
-/**
- * A withdrawal that ended without the money leaving the balance (failed,
- * declined by staff, or cancelled by the factory): listed, its amount muted
- * and struck through, in no figure.
- */
-const ENDED_UNSENT = ["failed", "declined", "cancelled"];
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
-
-/** A withdrawal the factory asked for, as a Transactions row; a cancelled or declined one stays listed. */
-export function askedWithdrawalRows(withdrawals = []) {
-  return withdrawals.map((w) => ({
-    brandOrgId: null,
-    currency: w.currency,
-    id: `asked-${w.id}`,
-    date: w.paid_at || w.created_at,
-    title: ASKED_TITLE[w.provider] ?? "Bank transfer",
-    meta: w.paid_to,
-    // A failed one took no fee: its amount is back in the balance (record_withdrawal).
-    note: w.status === "declined" ? w.reason
-      : w.status === "failed" ? failedWithdrawalNote(w.back_cents, w.amount_cents, w.currency)
-      : w.fee_cents != null && w.receives_minor != null ? `Fee ${(Number(w.fee_cents) / 100).toLocaleString("en-US", { style: "currency", currency: w.currency })}, taken from it`
-      : null,
-    status: ASKED_STATUS[w.status] ?? w.status,
-    failed: ENDED_UNSENT.includes(w.status),
-    // What reached the factory, like the provider rows: the amount less its fee once paid.
-    amount: -(Number(w.amount_cents) - (w.status === "paid" ? Number(w.fee_cents ?? 0) : 0)),
-  }));
-}
 
 export const ADDED_TO_BALANCE = "Added to your balance";
 export const ON_HOLD = "On hold";
@@ -751,45 +565,6 @@ export const BANK_PROCESSING = "Your bank is processing the payout.";
 const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Cancelled" };
 
 /**
- * The company's withdrawals to its Stripe bank, from stripe_withdrawals (any
- * member reads them), as Transactions rows: what reached the bank, the
- * withdrawal less Stripe's fee, in US$. "On its way" until its arrival day,
- * then "Paid out to your bank". `methodName(w)` names the bank where the
- * reader knows it (an owner's Stripe read), else nothing.
- */
-export function companyStripeRows(withdrawals = [], methodName = () => null, now = new Date()) {
-  return (withdrawals ?? []).filter((w) => w?.payout_id && w.usd_cents != null).map((w) => {
-    const status = String(w.payout_status ?? "").toLowerCase();
-    // Stripe's arrival is a day (payout_arrives_on), read as that day where
-    // the reader is; older rows kept the instant, midnight UTC of that day.
-    const arrives = w.payout_arrives_on ? dateFrom(w.payout_arrives_on)
-      : w.payout_arrives_at ? dateFrom(String(w.payout_arrives_at).slice(0, 10)) : null;
-    // A payout that failed or was cancelled, or a withdrawal that ended without one, didn't go.
-    const failed = status === "failed" || status === "canceled" || ["refused", "fee_returned"].includes(w.state);
-    // On its way until its arrival day, even once Stripe calls it paid.
-    const arrived = status === "paid" && !(arrives && arrives > now);
-    const fee = Math.max(0, Number(w.fee_cents) || 0);
-    return {
-      id: `stripe-${w.id}`,
-      brandOrgId: null,
-      currency: "USD",
-      date: w.created_at,
-      arrives: failed ? null : arrives,
-      title: "Bank transfer",
-      meta: methodName(w),
-      status: failed ? STRIPE_PAYOUT_WORD[status] ?? "Failed" : arrived ? STRIPE_PAYOUT_WORD.paid : ON_ITS_WAY,
-      note: failed ? null
-        : arrived ? (fee ? `Fee ${(fee / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}, taken from it` : null)
-        : BANK_PROCESSING,
-      failed,
-      amount: -(Number(w.usd_cents) - fee),
-      type: "withdrawal",
-      available: !failed,
-    };
-  });
-}
-
-/**
  * The card's lines under the balance, in US$ cents, from the Pending figure
  * (earnings not yet available) and the Processing one (withdrawals in
  * progress), adding up to the two exactly:
@@ -868,7 +643,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       ...base,
       id: `stripe-${w.id}`,
       title: "Bank transfer",
-      meta: w.to ? [toDestination(w.to), own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
+      meta: w.to ? [w.to, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
       arrives: w.word === "returned" ? null : arrives,
       note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
       status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",

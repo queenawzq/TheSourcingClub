@@ -5,7 +5,7 @@
 // With a fake Stripe and a fake database. Run: node scripts/check-stripe-withdrawals.mjs
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, returnFeesOnFailedPayouts, withdrawWithFee } from "../api/_stripe-withdrawals.js";
+import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, refreshPayouts, withdrawWithFee } from "../api/_stripe-withdrawals.js";
 import { STRIPE_MINIMUM_PAYOUT, stripeWithdrawalFee, withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 
 const REQUEST = "b1f9fd8c-76bd-43a7-ad48-502ebed382b3";
@@ -26,6 +26,7 @@ function fakeDb({ reach = { any_cents: 0, stripe_cents: 0, debt_cents: 0 } } = {
       eq(column, value) { filters.push((row) => row[column] === value); if (patch) for (const row of matches()) Object.assign(row, structuredClone(patch)); return q; },
       in(column, values) { filters.push((row) => values.includes(row[column])); return q; },
       gte(column, value) { filters.push((row) => row[column] >= value); return q; },
+      not(column, op, value) { assert.equal(op, "is"); filters.push((row) => (row[column] ?? null) !== value); return q; },
       order() { return q; },
       limit() { return q; },
       async maybeSingle() { return { data: structuredClone(matches()[0] ?? null), error: null }; },
@@ -383,19 +384,22 @@ for (const status of ["failed", "canceled"]) {
     const s = fakeStripe({ transfers: [transfer("tr_a", 100_000)], available: 100_000 });
     const db = fakeDb();
     const payout = await withdrawWithFee(args(s, db));
-    assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "a payout on its way keeps the fee");
+    await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" });
+    assert.equal(s.returned.length, 0, "a payout on its way keeps the fee");
     assert.equal(s.returned.length, 0);
     s.payouts[0].status = status;
     s.balance += s.payouts[0].amount;
     const event = { ...payout, id: s.payouts[0].id, status };
     if (first === "sweep") {
-      assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 1, `${status}: the balance read gives the fee back`);
+      await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" });
+      assert.equal(s.returned.length, 1, `${status}: the payout read gives the fee back`);
       assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), false, `${status}: the late webhook gives nothing twice`);
     } else {
       assert.equal(await returnFeeOnFailedPayout({ stripe: s.api, db, payout: event }), true);
-      assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, `${status}: the read after the webhook gives nothing twice`);
+      await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" });
+      assert.equal(s.returned.length, 1, `${status}: the read after the webhook gives nothing twice`);
     }
-    assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "and again: nothing");
+    await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" });
     assert.deepEqual([s.returned.length, s.platform, s.balance, db.rows[0].state], [1, 0, 100_000, "fee_returned"], `${status} (${first} first): whole again, once`);
   }
 }
@@ -406,7 +410,7 @@ for (const status of ["failed", "canceled"]) {
   const payout = await withdrawWithFee(args(s, db));
   s.payouts[0].status = "failed";
   await Promise.all([
-    returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }),
+    refreshPayouts({ stripe: s.api, db, accountId: "acct_us" }),
     returnFeeOnFailedPayout({ stripe: s.api, db, payout: { ...payout, id: s.payouts[0].id, status: "failed" } }),
   ]);
   assert.deepEqual([s.returned.length, s.platform], [1, 0], "a webhook and a read together: one transfer back");
@@ -419,18 +423,19 @@ for (const status of ["failed", "canceled"]) {
   s.payouts[0].status = "failed";
   s.slowPayouts = true;
   const started = Date.now();
-  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us", budgetMs: 50 }), 0);
+  assert.equal(await refreshPayouts({ stripe: s.api, db, accountId: "acct_us", budgetMs: 50 }), 0, "nothing read in time");
   assert.ok(Date.now() - started < 1000, "the page is not held up");
   assert.equal(db.rows[0].state, "paid_out", "tried again next time");
   // Stripe erroring: the same, no throw.
   s.slowPayouts = false;
   s.api.payouts.retrieve = async () => { throw new Error("Stripe is down"); };
-  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0);
+  assert.equal(await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "Stripe erroring: nothing read, no throw");
   // Older than 14 days: not looked up.
   s.api.payouts.retrieve = async (id) => structuredClone(s.payouts.find((p) => p.id === id));
   db.rows[0].created_at = new Date(Date.now() - 15 * 86_400_000).toISOString();
+  Object.assign(db.rows[0], { payout_status: "paid", payout_arrives_on: new Date(Date.now() - 13 * 86_400_000).toISOString().slice(0, 10) });
   s.payoutReads = 0;
-  assert.equal(await returnFeesOnFailedPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0);
+  assert.equal(await refreshPayouts({ stripe: s.api, db, accountId: "acct_us" }), 0, "older than 14 days and arrived: not read");
   assert.equal(db.rows[0].state, "paid_out");
 }
 
@@ -528,7 +533,7 @@ for (const status of ["failed", "canceled"]) {
     // Won, found by charge: the hold is lifted, never set again.
     calls.length = 0;
     const won = { disputes: { list: async () => ({ data: [{ id: "du_w", status: "won" }] }) } };
-    assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), false, "R34: a won dispute is not a hold");
+    assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), null, "R34: a won dispute is not a hold");
     assert.deepEqual(calls, [["record_payment_disputed", { target_payment: "pay-d", disputed: false }]]);
     // The id, when Stripe does send it (it does today, outside the typings), is used as it is.
     const { disputeForCharge } = await import("../api/_stripe.js");
@@ -769,8 +774,8 @@ for (const status of ["failed", "canceled"]) {
   const source = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
   assert.match(source, /const inStripeUsd = currency === "usd" \? inStripe : Math\.floor\(inStripe \/ rate\);/, "gatherOwed: floor(inStripe / localPerUsd)");
   const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
-  assert.equal((connect.match(/await stripeMoneyUsd\(stripe, existing\.stripe_account_id, balance\.available, heldElsewhere, account\.default_currency\)/g) ?? []).length, 2,
-    "the owner's balance read and the members' figures both reckon the Stripe part that way, in the currency a withdrawal pays out in");
+  assert.equal((connect.match(/await stripeMoneyUsd\(stripe, accountId, balance\.available, heldElsewhere, account\.default_currency\)/g) ?? []).length, 1,
+    "one balance read (owner and member alike) reckons the Stripe part that way, in the currency a withdrawal pays out in");
   assert.match(connect, /oneBalance: true, payoutCurrency: account\?\.default_currency \?\? "usd"/, "the withdrawal pays out in that same currency");
   assert(!/displayFx/.test(source.slice(source.indexOf("export async function stripeMoneyUsd"), source.indexOf("async function carryOut("))), "never the indicative rate for what Withdraw can reach");
 }

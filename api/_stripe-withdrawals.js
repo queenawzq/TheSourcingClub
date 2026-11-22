@@ -95,7 +95,7 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   // before this one reads the balance.
   await settleAbandoned({ stripe, db, accountId, except: key });
   // And a fee kept on a payout that failed since: back in the balance first.
-  await returnFeesOnFailedPayouts({ stripe, db, accountId });
+  await refreshPayouts({ stripe, db, accountId });
 
   // A non-US$ balance's gross is known once the owed money has landed; until
   // then the row carries an estimate (Stripe's latest rate for this account).
@@ -184,51 +184,28 @@ async function availableNow(stripe, accountId, currency) {
  */
 async function withdrawableNow(stripe, db, row, currency) {
   const available = await availableNow(stripe, row.stripe_account_id, currency);
-  const { data, error } = await db.from("stripe_withdrawals")
-    .select("id, currency, amount_minor, fee_local_minor, reversals, state, lease_until, usd_cents, d1_minor, transfers_done_at")
-    .eq("stripe_account_id", row.stripe_account_id).in("state", ["claimed", "fee_taken"]);
-  if (error) throw new Error(error.message);
-  const now = Date.now();
-  let claimed = 0;
-  for (const other of data ?? []) {
-    if (other.id === row.id || other.currency?.toLowerCase() !== currency) continue;
-    if (!other.lease_until || Date.parse(other.lease_until) <= now) continue;
-    // A one-balance withdrawal still claiming or transferring owed money
-    // takes from this balance only its own Stripe money and what it has
-    // landed so far; its gross (an estimate until then) is not yet here.
-    if (other.usd_cents != null && !other.transfers_done_at) {
-      const { data: parts } = await db.from("payment_takes").select("amount_cents")
-        .eq("stripe_withdrawal_id", other.id).eq("status", "sent");
-      const sentUsd = (parts ?? []).reduce((sum, part) => sum + Number(part.amount_cents), 0);
-      const rate = currency === "usd" ? 1 : Number(other.amount_minor) / Number(other.usd_cents) || 1;
-      claimed += Number(other.d1_minor ?? 0) + Math.round(sentUsd * rate);
-      continue;
-    }
-    const taken = other.state === "fee_taken" ? Number(other.fee_local_minor ?? 0)
-      : (other.reversals ?? []).reduce((sum, item) => sum + Number(item.local ?? 0), 0);
-    claimed += Math.max(0, Number(other.amount_minor) - taken);
-  }
-  return Math.max(0, available - claimed);
+  const held = await heldByOpenWithdrawals(db, row.stripe_account_id, row.id, { liveOnly: true });
+  return Math.max(0, available - (held[currency] ?? 0));
 }
 
 /**
  * What open withdrawals on this Stripe account (claimed or fee taken, still
  * to be paid out) hold of its balance, per currency (lower case), in that
- * currency's minor units: the same claim withdrawableNow() subtracts, for
- * every open row, live lease or not, except `except`. A one-balance row still
- * claiming or transferring holds its own Stripe part and what it has landed
- * so far; any other holds its amount less the fee already taken back.
- * `byId`, when given, is filled with each row's own claim ({ id → { amount,
- * currency } }): the figures drop a row's part once the database records it.
+ * currency's minor units, for every open row except `except`; `liveOnly`:
+ * only rows a live call is still making (withdrawableNow). A one-balance row
+ * still claiming or transferring holds its own Stripe part and what it has
+ * landed so far; any other holds its amount less the fee already taken back.
  */
-export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null, byId = null } = {}) {
+export async function heldByOpenWithdrawals(db, accountId, except = null, { stripe = null, liveOnly = false } = {}) {
   const { data, error } = await db.from("stripe_withdrawals")
-    .select("id, currency, amount_minor, fee_local_minor, reversals, state, usd_cents, d1_minor, transfers_done_at")
+    .select("id, currency, amount_minor, fee_local_minor, reversals, state, lease_until, usd_cents, d1_minor, transfers_done_at")
     .eq("stripe_account_id", accountId).in("state", ["claimed", "fee_taken"]);
   if (error) throw new Error(error.message);
   const held = {};
+  const now = Date.now();
   for (const other of data ?? []) {
     if (other.id === except) continue;
+    if (liveOnly && !(other.lease_until && Date.parse(other.lease_until) > now)) continue;
     const currency = String(other.currency ?? "").toLowerCase();
     let claim;
     if (other.usd_cents != null && !other.transfers_done_at) {
@@ -249,7 +226,6 @@ export async function heldByOpenWithdrawals(db, accountId, except = null, { stri
       claim = Math.max(0, claim - await stillClearing(stripe, db, accountId, other.id, currency));
     }
     held[currency] = (held[currency] ?? 0) + claim;
-    if (byId) byId[other.id] = { amount: claim, currency };
   }
   return held;
 }
@@ -703,16 +679,9 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
     // refund (or a lost dispute) is recorded at its amount; only a part this
     // withdrawal holds that is no longer the factory's stops it.
     let unsafe = false;
+    const { checkCharge } = await import("./_stripe.js");
     for (const take of held) {
-      const charge = await stripe.charges.retrieve(take.charge_id);
-      if (Number(charge.amount_refunded) > 0) {
-        const { applyChargeRefund } = await import("./_stripe.js");
-        await applyChargeRefund({ stripe, db, charge });
-      }
-      if (charge.disputed) {
-        const { recordChargeDispute } = await import("./_stripe.js");
-        if (await recordChargeDispute({ stripe, db, paymentId: take.payment_id, charge })) unsafe = true;
-      }
+      if ((await checkCharge({ stripe, db, paymentId: take.payment_id, charge: take.charge_id })).dispute === "open") unsafe = true;
     }
     if (!unsafe && Number(await call(db, "withdrawal_refunded_part", { target_withdrawal: row.id })) > 0) unsafe = true;
     if (unsafe) await refuse(db, row, CANNOT_PROCESS, { stripe });
@@ -760,34 +729,38 @@ async function gatherOwed({ stripe, db, row, country, transfersActive }) {
 }
 
 /**
- * Before a factory's balance is read, without waiting for webhooks: its Stripe
- * payouts the database still has on their way (no arrival day yet, or that
- * day has come) are read back from Stripe, a few per read. A new status or
- * day is recorded; a payout that failed or was cancelled gives its fee back
- * (returnFeeOnFailedPayout, as the webhook does). Never throws; bounded by
- * `budgetMs`. Returns how many were read in time.
+ * A factory's Stripe payouts read back without waiting for webhooks: the ones
+ * the database still has on their way once their day has come (oldest
+ * first), then every other one of the last `days` (newest first: a payout
+ * can fail after it was paid), `limit` in all. A new status or arrival day
+ * is recorded (the database keeps a status from going back,
+ * keep_payout_status_forward); a payout that failed or was cancelled gives
+ * its fee back, once whichever comes first (returnFeeOnFailedPayout, as the
+ * webhook does). By company (the balance read, under its once-a-minute
+ * claim) or by Stripe account (before a withdrawal reads the balance).
+ * Never throws; bounded by `budgetMs`. Returns how many were read in time.
  */
-export async function refreshPayoutsFor({ stripe, db, orgId, limit = 5, budgetMs = 3000 }) {
+export async function refreshPayouts({ stripe, db, orgId = null, accountId = null, days = 14, limit = 10, budgetMs = 3000 }) {
   const work = (async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const { data: recent, error } = await db.from("stripe_withdrawals")
-      .select("id, stripe_account_id, payout_id, payout_status, payout_arrives_on, created_at")
-      .eq("org_id", orgId).eq("state", "paid_out").not("payout_id", "is", null)
+    const since = Date.now() - days * 86_400_000;
+    let query = db.from("stripe_withdrawals")
+      .select("id, stripe_account_id, payout_id, payout_status, payout_arrives_on, created_at");
+    query = accountId ? query.eq("stripe_account_id", accountId) : query.eq("org_id", orgId);
+    const { data: recent, error } = await query.eq("state", "paid_out").not("payout_id", "is", null)
       .order("created_at", { ascending: false }).limit(100);
     if (error) return 0;
-    const data = (recent ?? [])
+    const due = (recent ?? [])
       .filter((row) => [null, "pending", "in_transit"].includes(row.payout_status ?? null)
         && (!row.payout_arrives_on || row.payout_arrives_on <= today))
-      .reverse().slice(0, limit);
+      .reverse();
+    const rest = (recent ?? []).filter((row) => !due.includes(row) && Date.parse(row.created_at) >= since);
+    const data = [...due, ...rest].slice(0, limit);
     if (!data.length) return 0;
     const read = await Promise.all(data.map(async (row) => {
       try {
         const payout = await stripe.payouts.retrieve(row.payout_id, {}, { stripeAccount: row.stripe_account_id });
         const fields = payoutFields(payout);
-        // Never backwards (an older answer read after payout.paid was recorded):
-        // the database refuses it too.
-        const rank = { pending: 1, in_transit: 2, paid: 3, failed: 4, canceled: 4 };
-        if ((rank[fields.payout_status] ?? 0) < (rank[row.payout_status] ?? 0)) return true;
         if (fields.payout_status !== row.payout_status || fields.payout_arrives_on !== row.payout_arrives_on) {
           const { error: saveError } = await db.from("stripe_withdrawals").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", row.id);
           if (saveError) throw new Error(saveError.message);
@@ -850,21 +823,19 @@ async function tellWithdrawalAsked(stripe, db, row, payout) {
           .catch((failure) => console.error("stripe-withdrawals destination", row.id, failure?.message));
       }
     }
-    const { data: already } = await db.from("notifications").select("id")
-      .eq("kind", "withdrawal").eq("subject_type", "withdrawal").eq("subject_id", row.id).limit(1);
-    if (already?.length) return;
     const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
     const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
     to = to ?? "your bank account";
-    await db.from("notifications").insert({
-      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
+    // Once (its key, 20261121410000): the withdraw call and a later read may both get here.
+    await db.from("notifications").upsert({
+      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id, dedupe_key: `withdrawal_asked:${row.id}`,
       // When it was asked for: listed before its payout's own notices, which
       // Stripe can send before this call gets here (at once, in test mode).
       ...(row.created_at ? { created_at: row.created_at } : {}),
       title: `Withdrawal of ${asked} requested`, body: `To ${to.replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`,
       data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
         receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },
-    });
+    }, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true });
   } catch (failure) {
     console.error("stripe-withdrawals notice", row.id, failure?.message);
   }
@@ -1114,41 +1085,6 @@ export async function returnFeeOnFailedPayout({ stripe, db, payout }) {
   if (row.state !== "paid_out") return false;
   await giveBack(stripe, db, row, Number(row.fee_cents ?? 0), null);
   return true;
-}
-
-/**
- * The same, without the webhook: this account's paid-out withdrawals of the
- * last `days` are looked up by payout id, and a payout that failed or was
- * cancelled gives its fee back (returnFeeOnFailedPayout, so once, whichever
- * arrives first). A missed or unsubscribed payout.failed would otherwise keep
- * the fee for good. Never holds the caller up for more than `budgetMs`, and
- * never throws: a lookup that is slow or fails is tried again on the next
- * balance read or withdrawal. Returns how many fees went back in time.
- */
-export async function returnFeesOnFailedPayouts({ stripe, db, accountId, days = 14, limit = 10, budgetMs = 2000 }) {
-  const work = (async () => {
-    const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    const { data, error } = await db.from("stripe_withdrawals").select("payout_id")
-      .eq("stripe_account_id", accountId).eq("state", "paid_out").gte("created_at", since)
-      .order("created_at", { ascending: false }).limit(limit);
-    if (error) return 0;
-    const returned = await Promise.all((data ?? []).filter((row) => row.payout_id).map(async ({ payout_id: id }) => {
-      try {
-        const payout = await stripe.payouts.retrieve(id, {}, { stripeAccount: accountId });
-        return await returnFeeOnFailedPayout({ stripe, db, payout });
-      } catch {
-        return false;
-      }
-    }));
-    return returned.filter(Boolean).length;
-  })().catch(() => 0);
-  let timer;
-  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(0), budgetMs); });
-  try {
-    return await Promise.race([work, late]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
