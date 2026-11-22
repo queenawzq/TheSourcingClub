@@ -9,7 +9,8 @@
 --     used (released first, then by approval), each payment at what it was
 --     worth to the pool (amount less the factory's part of any refund): those
 --     takes are 'sent'. Open withdrawals (being sent first, then waiting,
---     oldest first) take what is left: 'held'. A withdrawal the pool did not
+--     oldest first) take what is left, the cleared and undisputed payments
+--     first: 'held'. A withdrawal the pool did not
 --     cover (refunded since) takes the refunded room of a payment, so the
 --     takes model reads that part as owed to TSC (paid) or as refunded
 --     (waiting), as the pool did. What no withdrawal took stays on its payment
@@ -31,8 +32,12 @@
 --     out, owed to TSC, and Available and Pending together. Not the split
 --     between those two: the pool called every step Available, the balance
 --     calls a step still clearing or disputed Pending (funds_available_at and
---     disputed_at are new here). The migration stops only if one of those
---     differs, which no state of the pool can cause.
+--     disputed_at are new here). In one client's view, Processing is
+--     compared together with those two: a withdrawal not paid yet holds the
+--     cleared, undisputed steps first (so staff are never asked to pay one
+--     held on money still clearing), which may be another client's. The
+--     migration stops only if one of those differs, which no state of the
+--     pool can cause.
 --
 -- Then the pool branches leave the latest bodies (factory_balance, the
 -- withdrawal rules, the staff lists, the notices), with the dead code the
@@ -109,6 +114,8 @@ declare
   ids uuid[];
   net bigint[];
   room bigint[];
+  clean boolean[];
+  waiting boolean;
   gone uuid[];
   gone_room bigint[];
   converted uuid[] := '{}';
@@ -132,9 +139,11 @@ begin
     perform 1 from public.orgs where id = f.org_id for no key update;
     select coalesce(array_agg(x.id order by x.released desc, x.release_requested_at, x.id), '{}'),
            coalesce(array_agg(x.net order by x.released desc, x.release_requested_at, x.id), '{}'),
-           coalesce(array_agg(x.room order by x.released desc, x.release_requested_at, x.id), '{}')
-      into ids, net, room
+           coalesce(array_agg(x.room order by x.released desc, x.release_requested_at, x.id), '{}'),
+           coalesce(array_agg(x.clean order by x.released desc, x.release_requested_at, x.id), '{}')
+      into ids, net, room, clean
       from (select p.id, p.state = 'released' as released, p.release_requested_at,
+                   p.state = 'released' or (p.disputed_at is null and public.payment_cleared(p)) as clean,
                    greatest(p.amount_cents - p.factory_refund_cents, 0) as net,
                    greatest(public.payment_factory_base_cents(p) - greatest(p.amount_cents - p.factory_refund_cents, 0), 0) as room
               from public.order_payments p join public.production_orders o on o.id = p.order_id
@@ -158,6 +167,7 @@ begin
     i_room := 1;
     i_gone := 1;
     last_at := '-infinity';
+    waiting := false;
     for w in
       select x.id, x.status, coalesce(x.pool_cents, x.amount_cents) as part, x.created_at
         from public.factory_withdrawals x
@@ -166,6 +176,22 @@ begin
        -- Paid first, then being sent, then waiting: the order the pool used.
        order by case x.status when 'paid' then 0 when 'paying' then 1 else 2 end, x.created_at, x.id
     loop
+      -- Withdrawals not paid yet (being sent, then waiting) hold the steps
+      -- whose money has cleared and is not disputed first, in the pool's
+      -- order: one held on a step still clearing could be paid before its
+      -- money is there. Paid ones keep the pool's order exactly. Only which
+      -- step holds a waiting part changes: the company's figures do not.
+      if not waiting and w.status <> 'paid' then
+        waiting := true;
+        if n > 0 then
+          select array_agg(ids[u.i] order by not clean[u.i], u.i), array_agg(net[u.i] order by not clean[u.i], u.i),
+                 array_agg(room[u.i] order by not clean[u.i], u.i), array_agg(clean[u.i] order by not clean[u.i], u.i)
+            into ids, net, room, clean
+            from generate_subscripts(ids, 1) as u(i);
+          i_net := 1;
+          i_room := 1;
+        end if;
+      end if;
       need := w.part;
       -- In that order too, for take_refunded_cents (newest held part first).
       at := greatest(w.created_at, last_at + interval '1 microsecond');
@@ -1556,20 +1582,28 @@ select public.convert_withdrawal_pool();
 -- ---------------------------------------------------------------------------
 -- 5. Figures after, read by the new functions: the same, or nothing changes.
 -- ---------------------------------------------------------------------------
-create function pg_temp.r32_kept(j jsonb) returns jsonb
+create function pg_temp.r32_kept(j jsonb, client boolean) returns jsonb
 language sql immutable as $$
   -- What must not change. Available and Pending together: a pool step still
-  -- clearing or disputed moves from one to the other (20261121350000).
-  select (j - 'available' - 'pending')
-         || jsonb_build_object('available_and_pending', coalesce((j ->> 'available')::bigint, 0) + coalesce((j ->> 'pending')::bigint, 0));
+  -- clearing or disputed moves from one to the other (20261121350000). In
+  -- one client's view, Processing with them: a withdrawal not paid yet now
+  -- holds a cleared step first, which may be another client's (the pool
+  -- held the company's steps, not a client's). The company's Processing is
+  -- compared as it is.
+  select case when client
+    then (j - 'available' - 'pending' - 'processing')
+         || jsonb_build_object('available_pending_and_processing', coalesce((j ->> 'available')::bigint, 0)
+              + coalesce((j ->> 'pending')::bigint, 0) + coalesce((j ->> 'processing')::bigint, 0))
+    else (j - 'available' - 'pending')
+         || jsonb_build_object('available_and_pending', coalesce((j ->> 'available')::bigint, 0) + coalesce((j ->> 'pending')::bigint, 0)) end;
 $$;
 do $$
 declare
   r record;
   pool_debt boolean;
 begin
-  for r in select b.org_id, b.client, pg_temp.r32_kept(b.figures) as before,
-                  pg_temp.r32_kept(pg_temp.r32_figures(b.org_id, b.client)) as after
+  for r in select b.org_id, b.client, pg_temp.r32_kept(b.figures, b.client is not null) as before,
+                  pg_temp.r32_kept(pg_temp.r32_figures(b.org_id, b.client), b.client is not null) as after
              from r32_before b loop
     -- A client's view never counted the old pool's debt (it was the
     -- company's); per payment, it is now that client's. Checked only where
@@ -1583,7 +1617,7 @@ begin
   end loop;
 end;
 $$;
-drop function pg_temp.r32_kept(jsonb);
+drop function pg_temp.r32_kept(jsonb, boolean);
 drop function pg_temp.r32_figures(uuid, uuid);
 
 -- ---------------------------------------------------------------------------
