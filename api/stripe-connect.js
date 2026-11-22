@@ -263,7 +263,7 @@ export default async function handler(request, response) {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       // Stripe's balance, the database's figures and what open withdrawals
       // hold, from one moment (consistentMoneyRead).
-      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById, consistent }, allocation, methods, onTheirWay, displayFx, owedReach, poolLeft] = await Promise.all([
+      const [{ balance, tsc: tscBalance, held: heldElsewhere, heldById, consistent }, allocation, methods, onTheirWay, displayFx, owedReach] = await Promise.all([
         consistentMoneyRead(db, existing.stripe_account_id, async () => {
           const [balanceRead, tscRead] = await Promise.all([
             stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
@@ -282,11 +282,9 @@ export default async function handler(request, response) {
         payoutsOnTheirWay(stripe, existing.stripe_account_id),
         payoutDisplayRates(),
         db.rpc("owed_reachable", { target_org: orgId }),
-        db.rpc("factory_withdrawable", { target_org: orgId }),
       ]);
       if (tscBalance.error) throw new Error(tscBalance.error.message);
       if (owedReach.error) throw new Error(owedReach.error.message);
-      if (poolLeft.error) throw new Error(poolLeft.error.message);
       const migration = await upgradeReadiness(stripe, upgrade);
       let recovery = null;
       if (upgrade?.completed_at) {
@@ -316,7 +314,7 @@ export default async function handler(request, response) {
       const reach = {
         // Net of what the company owes TSC (owed_reachable), never below zero.
         stripe_cents: Math.max(0, Number(owedReach.data?.stripe_cents ?? 0) + inStripeUsd),
-        pool_cents: Math.max(0, Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0)),
+        pool_cents: Math.max(0, Number(owedReach.data?.any_cents ?? 0)),
         estimated: reachEstimated,
       };
       return reply(response, 200, {
@@ -430,13 +428,12 @@ async function memberFigures({ stripe, db, caller, orgId, response }) {
   }
   if (tokenRefused(tsc)) return reply(response, 401, { error: "sign in is required" });
   if (tsc.error) return reply(response, tsc.error.code === "42501" ? 403 : 502, { error: tsc.error.code === "42501" ? "that company is not available to you" : "That didn't go through, so nothing changed. Try again in a few minutes." });
-  const [owedReach, poolLeft, existingRead] = await Promise.all([
+  const [owedReach, existingRead] = await Promise.all([
     db.rpc("owed_reachable", { target_org: orgId }),
-    db.rpc("factory_withdrawable", { target_org: orgId }),
     db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).maybeSingle(),
   ]);
   // Net of what the company owes TSC (owed_reachable), never below zero.
-  const poolCents = Math.max(0, Math.max(0, Number(poolLeft.data ?? 0)) + Number(owedReach.data?.any_cents ?? 0));
+  const poolCents = Math.max(0, Number(owedReach.data?.any_cents ?? 0));
   const existing = existingRead.data;
   if (!existing) {
     return reply(response, 200, {

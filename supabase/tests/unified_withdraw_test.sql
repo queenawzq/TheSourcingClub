@@ -100,15 +100,15 @@ select ('ca2f000' || s || '-0000-0000-0000-00000000000' || n)::uuid, ('ca2d0000-
 -- e5's steps no road may take, and the ones only some may:
 --   s1 $100   owed, cleared                              -> both roads
 --   s2 $10    owed, still clearing                       -> neither
---   s3 $20    refunded after approval                    -> neither
+--   s3 $20    refunded in full after approval           -> neither
 --   s4 $40    a legacy PayPal payout still processing    -> neither
 --   s5 $80    a legacy PayPal payout that failed (R1)    -> both roads
---   s6 $160   existing pool money (P3)                   -> pool only, never a take
+--   s6 $160   old pool money, turned into an owed step   -> both roads (20261121350000)
 --   s7 $320   the brand's charge is disputed             -> neither
 --   s8 $640   no Stripe charge (confirmed by staff)      -> pool only
 update public.order_payments set funds_available_at = now() + interval '2 days'
  where id = 'ca2f0002-0000-0000-0000-000000000005';
-update public.order_payments set refunded_at = now() - interval '1 day'
+update public.order_payments set refunded_cents = 2000, refund_amount_at = now() - interval '1 day'
  where id = 'ca2f0003-0000-0000-0000-000000000005';
 update public.order_payments set withdrawal_pool = true
  where id = 'ca2f0006-0000-0000-0000-000000000005';
@@ -118,6 +118,8 @@ update public.order_payments set stripe_charge_id = null, stripe_payment_intent_
 -- exercised in section 5).
 update public.order_payments set disputed_at = now() - interval '1 day'
  where id = 'ca2f0007-0000-0000-0000-000000000005';
+-- The old pool, turned into an owed step as the migration does (20261121350000).
+select public.convert_withdrawal_pool();
 
 -- Methods: a PayPal account for every factory; a Stripe account for e2..e5, e7.
 insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, details_changed_at)
@@ -232,7 +234,7 @@ create function pg_temp.figures_add_up(n int) returns boolean language sql as $f
      and not exists (
        select 1 from public.order_payments p join public.production_orders o on o.id = p.order_id
         where o.factory_org_id = pg_temp.org(n) and p.state in ('confirmed', 'released') and not p.withdrawal_pool
-          and p.refunded_at is null and p.disputed_at is null
+          and p.refunded_at is null and p.factory_refund_cents = 0 and p.disputed_at is null
           and p.amount_cents - coalesce(p.payout_fee_cents, 0) is distinct from (
             select sum((r ->> 'amount_cents')::bigint) from jsonb_array_elements(j -> 'rows') r
              where (r ->> 'payment_id')::uuid = p.id))
@@ -275,10 +277,8 @@ select ok(not has_function_privilege('authenticated', 'public.owed_reachable(uui
       and not has_function_privilege('anon', 'public.owed_reachable(uuid)', 'execute'), 'owed_reachable is internal');
 select ok(not has_function_privilege('authenticated', 'public.record_take_sent(uuid, text)', 'execute')
       and not has_function_privilege('anon', 'public.record_take_sent(uuid, text)', 'execute'), 'record_take_sent is the server''s');
-select ok(not has_function_privilege('authenticated', 'public.return_stripe_takes(uuid)', 'execute')
-      and not has_function_privilege('anon', 'public.return_stripe_takes(uuid)', 'execute'), 'return_stripe_takes is the server''s');
-select ok(not has_function_privilege('authenticated', 'public.return_take(uuid)', 'execute')
-      and not has_function_privilege('anon', 'public.return_take(uuid)', 'execute'), 'return_take is the server''s');
+select ok(not has_function_privilege('authenticated', 'public.return_take_leased(uuid, timestamptz)', 'execute')
+      and not has_function_privilege('anon', 'public.return_take_leased(uuid, timestamptz)', 'execute'), 'return_take_leased is the server''s');
 select ok(not has_function_privilege('authenticated', 'public.record_payment_disputed(uuid, boolean)', 'execute')
       and not has_function_privilege('anon', 'public.record_payment_disputed(uuid, boolean)', 'execute'), 'record_payment_disputed is the server''s');
 select ok(has_function_privilege('authenticated', 'public.request_withdrawal(uuid, bigint, uuid)', 'execute')
@@ -311,17 +311,16 @@ select ok(not exists (select 1 from unnest(array['public.claim_owed_steps(uuid, 
 -- What each road can reach, before anything is withdrawn.
 select pg_temp.act_as('07'); set local role authenticated;
 select is(pg_temp.reach(5, 'available_cents'), (16000 + 10000 + 8000 + 64000)::bigint,
-  'e5: PayPal reaches pool money + owed cleared steps (not clearing, refunded, processing or disputed ones)');
-select is(pg_temp.reach(5, 'pool_cents'), 16000::bigint, 'e5: of which existing pool money');
-select is(pg_temp.reach(5, 'owed_cents'), (10000 + 8000 + 64000)::bigint, 'e5: and owed cleared money');
-select is(pg_temp.reach(5, 'stripe_owed_cents'), (10000 + 8000)::bigint,
-  'e5: Stripe reaches only owed cleared steps with a charge: never pool money, never a step with no charge');
+  'e5: PayPal reaches owed cleared steps, old pool money included (not clearing, refunded, processing or disputed ones)');
+select is(pg_temp.reach(5, 'owed_cents'), (16000 + 10000 + 8000 + 64000)::bigint, 'e5: all of it owed cleared money');
+select is(pg_temp.reach(5, 'stripe_owed_cents'), (16000 + 10000 + 8000)::bigint,
+  'e5: Stripe reaches only owed cleared steps with a charge: never a step with no charge');
 -- R1: the failed legacy attempt's step is Available again.
 select is(pg_temp.fig(5, pg_temp.pay(5, 5)), 'available', 'R1: a step whose legacy PayPal payout failed is Available again');
 select is(pg_temp.fig(5, pg_temp.pay(5, 4)), 'processing', 'a step whose legacy payout is still processing stays Processing');
 select is(pg_temp.fig(5, pg_temp.pay(5, 2)), 'pending', 'an uncleared step is Pending');
 select ok(pg_temp.fig(5, pg_temp.pay(5, 7)) is distinct from 'available', 'a disputed step is not Available');
-select is(pg_temp.fig(5, pg_temp.pay(5, 3)), null, 'a refunded step is in no figure');
+select is(pg_temp.fig(5, pg_temp.pay(5, 3)), 'refunded', 'a refunded step is in no figure: its only row reads Refunded');
 reset role;
 select pg_temp.act_as('0b'); set local role authenticated;
 select ok(exists (select 1 from public.admin_payment_board() b where b.payment_id = pg_temp.pay(5, 5) and b.provider_status = 'failed'),
@@ -381,9 +380,9 @@ select is((select road from public.payment_takes where factory_withdrawal_id = c
   'the takes are the pool road''s');
 select is((select status from public.payment_takes where factory_withdrawal_id = current_setting('tsc.uw_a')::uuid group by status), 'held',
   'held while the withdrawal waits');
-select ok((select amount_cents = coalesce(pool_cents, 0) + 15000 and pool_cents = 0
+select ok((select amount_cents = 15000 and coalesce(pool_cents, 0) = 0
              from public.factory_withdrawals where id = current_setting('tsc.uw_a')::uuid),
-  'the withdrawal is the takes plus pool money (none here)');
+  'the withdrawal is its takes, nothing else');
 select ok((select not withdrawal_pool from public.order_payments where id = pg_temp.pay(1, 2)),
   'a claimed step does not join the old pool');
 select pg_temp.act_as('01'); set local role authenticated;
@@ -556,8 +555,8 @@ select throws_ok($$select pg_temp.stripe_claim(2, 10001, pg_temp.sw(2, 2))$$, '2
 -- A Stripe withdrawal that ends with nothing sent gives its takes back.
 select lives_ok($$select pg_temp.stripe_claim(2, 4000, pg_temp.sw(2, 3))$$, 'Stripe claims $40 of the newest step');
 select is(pg_temp.taken(pg_temp.pay(2, 3)), 4000::bigint, 'held');
-select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.return_stripe_takes(%L)', pg_temp.sw(2, 3))),
-  'the transfer never went: the server returns the takes');
+select lives_ok(format($$select pg_temp.as_server(%L)$$, format('update public.stripe_withdrawals set state = %L, reason = %L where id = %L', 'refused', 'x', pg_temp.sw(2, 3))),
+  'the transfer never went: the row is refused and its takes return');
 select is(pg_temp.taken(pg_temp.pay(2, 3)), 0::bigint, 'the step is whole again');
 select is(pg_temp.takes_on(pg_temp.pay(2, 3), 'returned'), 4000::bigint, 'the take is kept, as returned');
 select pg_temp.act_as('04'); set local role authenticated;
@@ -599,22 +598,21 @@ select pg_temp.act_as('07'); set local role authenticated;
 select is(pg_temp.fig(5, pg_temp.pay(5, 7)), 'pending', 'a disputed owed step is Pending');
 reset role;
 
-select throws_ok($$select pg_temp.stripe_claim(5, 18001, pg_temp.sw(5, 1))$$, '22023', null,
-  'Stripe cannot reach pool money, uncleared, refunded, processing, disputed or charge-less steps');
-select lives_ok($$select pg_temp.stripe_claim(5, 18000, pg_temp.sw(5, 1))$$, 'Stripe takes exactly what it can reach');
+select throws_ok($$select pg_temp.stripe_claim(5, 34001, pg_temp.sw(5, 1))$$, '22023', null,
+  'Stripe cannot reach uncleared, refunded, processing, disputed or charge-less steps');
+select lives_ok($$select pg_temp.stripe_claim(5, 34000, pg_temp.sw(5, 1))$$, 'Stripe takes exactly what it can reach');
 select is(pg_temp.taken(pg_temp.pay(5, 1)), 10000::bigint, 'the clean step');
 select is(pg_temp.taken(pg_temp.pay(5, 5)), 8000::bigint, 'R1: and the step whose legacy payout failed');
+select is(pg_temp.taken(pg_temp.pay(5, 6)), 16000::bigint, 'and the old pool money, now an owed step with its charge');
 select ok(coalesce(current_setting('tsc.withdrawal_claim', true), '') <> 'on', 'the claim setting is off again');
 
-select throws_ok($$select pg_temp.ask('07', 5, 80001)$$, '22023', 'That is more than your balance.',
+select throws_ok($$select pg_temp.ask('07', 5, 64001)$$, '22023', 'That is more than your balance.',
   'PayPal cannot reach uncleared, refunded, processing or disputed steps');
-select set_config('tsc.uw_p5', pg_temp.ask('07', 5, 80000)::text, true);
-select ok((select pool_cents = 16000 from public.factory_withdrawals where id = current_setting('tsc.uw_p5')::uuid),
-  'PayPal takes existing pool money first');
-select is(pg_temp.take_of(pg_temp.pay(5, 8), current_setting('tsc.uw_p5')::uuid), 64000::bigint, 'then the step with no Stripe charge');
+select set_config('tsc.uw_p5', pg_temp.ask('07', 5, 64000)::text, true);
+select is(pg_temp.take_of(pg_temp.pay(5, 8), current_setting('tsc.uw_p5')::uuid), 64000::bigint, 'PayPal takes the step with no Stripe charge');
 select is((select count(*)::int from public.payment_takes
-            where payment_id in (pg_temp.pay(5, 2), pg_temp.pay(5, 3), pg_temp.pay(5, 4), pg_temp.pay(5, 6), pg_temp.pay(5, 7))), 0,
-  'nothing was ever taken from an uncleared, refunded, processing, pool or disputed step');
+            where payment_id in (pg_temp.pay(5, 2), pg_temp.pay(5, 3), pg_temp.pay(5, 4), pg_temp.pay(5, 7))), 0,
+  'nothing was ever taken from an uncleared, refunded, processing or disputed step');
 
 -- The legacy per-step paths refuse a step a withdrawal claimed.
 select throws_ok($$
@@ -642,7 +640,7 @@ select ok((select state = 'confirmed' and released_at is null from public.order_
 
 -- A pool withdrawal whose claimed step was refunded since cannot be approved.
 set local session_replication_role = replica;
-update public.order_payments set refunded_at = now() where id = pg_temp.pay(5, 8);
+update public.order_payments set refunded_cents = 64000, refund_amount_at = now() where id = pg_temp.pay(5, 8);
 set local session_replication_role = origin;
 select throws_ok($$
   select pg_temp.act_as('0b'); set local role authenticated;
@@ -745,10 +743,9 @@ select is((select count(*)::int from public.payment_takes t
   'every take belongs to exactly one withdrawal of its road');
 select is((select count(*)::int from public.factory_withdrawals w
             where w.org_id::text like 'ca2b%' and w.status in ('requested', 'paying', 'paid')
-              and w.amount_cents <> coalesce(w.pool_cents, w.amount_cents)
-                 + coalesce((select sum(t.amount_cents) from public.payment_takes t
-                              where t.factory_withdrawal_id = w.id and t.status in ('held', 'sent')), 0)), 0,
-  'every open or paid PayPal withdrawal is exactly its pool money plus its takes');
+              and w.amount_cents <> coalesce((select sum(t.amount_cents) from public.payment_takes t
+                                               where t.factory_withdrawal_id = w.id and t.status in ('held', 'sent')), 0)), 0,
+  'every open or paid PayPal withdrawal is exactly its takes');
 select pg_temp.act_as('0b'); set local role authenticated;
 select is((select count(*)::int from generate_series(1, 7) n where pg_temp.bal(n, 'available_cents') < 0 or pg_temp.reach(n, 'available_cents') < 0), 0,
   'no balance below zero');

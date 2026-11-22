@@ -74,7 +74,8 @@ set constraints all immediate;
 set constraints all deferred;
 select is(pg_temp.holds(), 'The brand disputed the charge. $300.00 is held until the dispute is settled.',
   'the factory is told the part left is held');
-select lives_ok($$select pg_temp.as_server('select public.return_stripe_takes(''b3180000-0000-0000-0000-000000000001'')')$$,
+-- (the stripe_withdrawals_end_takes trigger returns its unattempted parts)
+select lives_ok($$update public.stripe_withdrawals set state = 'refused', reason = 'refused' where id = 'b3180000-0000-0000-0000-000000000001'$$,
   'the refused withdrawal hands its $200 back');
 set constraints all immediate;
 set constraints all deferred;

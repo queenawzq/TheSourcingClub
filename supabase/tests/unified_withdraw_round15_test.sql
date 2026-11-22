@@ -88,6 +88,8 @@ values
    6500, 'USD', 'pgtap-r15-legacy@example.com', 'PP-R15-OLD', 130, 6370, 'USD',
    'd15a0000-0000-0000-0000-000000000001', 'd15a0000-0000-0000-0000-000000000002', now() - interval '15 days', now() - interval '15 days', now() - interval '16 days');
 set local session_replication_role = origin;
+-- The old pool, turned into takes as the migration does (20261121350000).
+select is(public.convert_withdrawal_pool(), 1, 'factory 1''s pool step is converted');
 
 create function pg_temp.act_as(who text) returns void language sql as $f$
   select set_config('request.jwt.claims',
@@ -137,8 +139,8 @@ $f$;
 -- ===========================================================================
 -- 1. Paid before one balance, from the pool: the next withdrawal is waiting.
 -- ===========================================================================
-select is(public.factory_withdrawable('d15b0000-0000-0000-0000-0000000000e1'), 0::bigint,
-  'the old withdrawal is counted against the pool money it was paid from: nothing short');
+select is((select sum(amount_cents) from public.payment_takes where factory_withdrawal_id = 'd1580000-0000-0000-0000-000000000001' and status = 'sent')::bigint, 6500::bigint,
+  'the old withdrawal is a sent take on the pool step it was paid from: nothing short');
 select is(pg_temp.line(pg_temp.bal('d15b0000-0000-0000-0000-0000000000e1', '01')),
   'awaiting 0, available 13000, pending 0, processing 0, paid out 6370, total 19370',
   'before asking: the $130 step available, the old $65 paid out less its fee');
@@ -149,7 +151,7 @@ select lives_ok($$select set_config('tsc.r15_w1',
   'the owner asks to withdraw the $130 by PayPal');
 reset role;
 
-select is((select pool_cents from public.factory_withdrawals where id = current_setting('tsc.r15_w1')::uuid), 0::bigint,
+select is((select coalesce(pool_cents, 0) from public.factory_withdrawals where id = current_setting('tsc.r15_w1')::uuid), 0::bigint,
   'none of it comes from the pool');
 select is((select sum(amount_cents) from public.payment_takes where factory_withdrawal_id = current_setting('tsc.r15_w1')::uuid and status = 'held'),
   13000::numeric, 'it takes the $130 step');
@@ -185,7 +187,7 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
   'PayPal paid it');
 select is((select status from public.payment_takes where factory_withdrawal_id = current_setting('tsc.r15_w2')::uuid), 'sent',
   'the step it took is sent');
-select is(public.factory_withdrawable('d15b0000-0000-0000-0000-0000000000e2'), 0::bigint, 'nothing counted against the pool');
+select is((public.owed_reachable('d15b0000-0000-0000-0000-0000000000e2') ->> 'any_cents')::bigint, 13000::bigint, 'nothing short: the $130 step is still there to withdraw');
 
 select pg_temp.act_as('04'); set local role authenticated;
 select lives_ok($$select set_config('tsc.r15_w3',

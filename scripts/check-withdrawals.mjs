@@ -320,12 +320,18 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
 {
   const { paymentForDispute, applyPaymentIntent } = await import("../api/_stripe.js");
   const dbWith = (rows, events = []) => ({
-    from: (table) => ({ select: () => ({ eq: (column, value) => ({
-      maybeSingle: async () => ({ data: rows.find((row) => row[column] === value) ?? null, error: null }),
-      // payment_events: a lost dispute recorded on that payment, by its note.
-      like: (_, pattern) => ({ limit: async () => ({ data: table === "payment_events"
-        ? events.filter((event) => event.payment_id === value && event.note.endsWith(pattern.split("%").at(-1))) : [], error: null }) }),
-    }) }) }),
+    from: (table) => ({ select: () => ({ eq: (column, value) => {
+      const filters = [(row) => row[column] === value];
+      const q = {
+        maybeSingle: async () => ({ data: rows.find((row) => filters.every((f) => f(row))) ?? null, error: null }),
+        eq: (other, wanted) => (filters.push((row) => row[other] === wanted), q),
+        // payment_events: a lost dispute recorded on that payment, by its
+        // cause (round 32: never by the note's words) and its Stripe id.
+        like: (_, pattern) => ({ limit: async () => ({ data: table === "payment_events"
+          ? events.filter((event) => filters.every((f) => f(event)) && event.note.endsWith(pattern.split("%").at(-1))) : [], error: null }) }),
+      };
+      return q;
+    } }) }),
   });
   const stripeWith = (metadata) => ({ paymentIntents: { retrieve: async (id) => ({ id, metadata }) } });
   const rows = [{ id: "pay-charge", stripe_charge_id: "ch_1", stripe_payment_intent_id: "pi_1" },
@@ -339,10 +345,17 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // Fix round 19 (L7): lost before approval already, so the payment no
   // longer names the charge: a late event about it is done, not retried.
   assert.equal(await paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", note: "Dispute lost: $107.00 went back to the brand. Stripe's dispute fee $15.00 is TSC's. (Stripe du_late)" }]),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Dispute lost: $107.00 went back to the brand. Stripe's dispute fee $15.00 is TSC's. (Stripe du_late)" }]),
     dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "a late dispute event after a loss: nothing to do, no retry");
+  // Round 32 (DB review #5): the loss is known by its cause, whatever the note says.
+  assert.equal(await paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Reworded later, any words. (Stripe du_late)" }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "R32: a reworded note still counts: the cause decides");
   await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", note: "Dispute lost: … (Stripe du_other)" }]),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: null, note: "Dispute lost: $107.00 went back to the brand. (Stripe du_late)" }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "R32: words alone never count");
+  await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Dispute lost: … (Stripe du_other)" }]),
     dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "another dispute's note does not count");
   assert.equal(await paymentForDispute({ stripe: stripeWith({ kind: "credits" }), db: dbWith(rows), dispute: { charge: "ch_y", payment_intent: "pi_y" } }),
     null, "another app's charge or a credit pack: nothing");
@@ -559,6 +572,16 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     "R11: the charges with neither change are not written");
   assert.deepEqual(x.calls.find(([name]) => name === "record_charges_checked")?.[1].targets.sort(), ["pay-0", "pay-1", "pay-2", "pay-3", "pay-4"],
     "R11: the five read are recorded as checked");
+  // Round 32 (DB review #1): a charge refunded in part AND disputed records
+  // both; the refund never hides the dispute.
+  {
+    const both = make({ owed: owed.slice(0, 1), checks: [], charges: { ch_0: { amount_refunded: 5000, refunded: false, amount: 100000, disputed: true, dispute: "du_0" } } });
+    await checkChargesFor({ stripe: both.stripe, db: both.db, orgId: "org" });
+    assert.ok(both.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-0" && args.refunded_cents === 5000),
+      "R32: the partial refund is recorded");
+    assert.deepEqual(both.calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-0", disputed: true },
+      "R32: and so is the dispute on the rest");
+  }
   // A charge Stripe can't read is not recorded as checked; nothing throws.
   const y = make({ owed: owed.slice(0, 2), charges: {} });
   y.stripe.charges.retrieve = async (id) => { if (id === "ch_0") throw new Error("down"); return { id, amount_refunded: 0, disputed: false }; };
@@ -1548,7 +1571,7 @@ for (const [why, row] of [
     const lease = () => new Date(Date.now() + 120_000).toISOString();
     const left = (step) => step.amount - takes.filter((t) => t.payment_id === step.id && t.status !== "returned").reduce((a, t) => a + t.amount_cents, 0);
     const stripeReach = () => steps.filter((step) => step.charge && step.cleared !== false).reduce((a, step) => a + left(step), 0);
-    function table(rowsOf) {
+    function table(rowsOf, afterPatch = () => {}) {
       return () => {
         const filters = [];
         let patch = null;
@@ -1556,7 +1579,11 @@ for (const [why, row] of [
         const q = {
           select() { return q; },
           update(fields) { patch = fields; return q; },
-          eq(column, value) { filters.push((row) => row[column] === value); if (patch) for (const row of matches()) Object.assign(row, structuredClone(patch)); return q; },
+          eq(column, value) {
+            filters.push((row) => row[column] === value);
+            if (patch) for (const row of matches()) { Object.assign(row, structuredClone(patch)); afterPatch(row, patch); }
+            return q;
+          },
           in(column, values) { filters.push((row) => values.includes(row[column])); return q; },
           gte() { return q; },
           not() { return q; },
@@ -1569,7 +1596,12 @@ for (const [why, row] of [
         return q;
       };
     }
-    const withdrawalsTable = table(() => rows);
+    // The database's stripe_withdrawals_end_takes trigger: an ended withdrawal
+    // hands back the parts never asked of Stripe (20261121350000).
+    const withdrawalsTable = table(() => rows, (row, patch) => {
+      if (!["refused", "fee_returned"].includes(patch.state)) return;
+      for (const take of takes) if (take.stripe_withdrawal_id === row.id && take.status === "held" && !take.attempted_at) take.status = "returned";
+    });
     const takesTable = table(() => takes.map((take) => {
       const step = steps.find((s) => s.id === take.payment_id);
       return { ...take, order_payments: { stripe_charge_id: step.charge, order_id: step.order, state: step.refundRecorded ? "failed" : "confirmed",
@@ -1649,17 +1681,12 @@ for (const [why, row] of [
           Object.assign(take, { status: "sent", stripe_transfer_id: args.transfer });
           return { data: null, error: null };
         }
-        if (name === "return_stripe_takes") {
-          // Parts already asked of Stripe are the server's to settle (return_take), never returned here.
-          for (const take of takes) if (take.stripe_withdrawal_id === args.target_withdrawal && take.status === "held" && !take.attempted_at) take.status = "returned";
-          return { data: null, error: null };
-        }
         if (name === "mark_take_attempted") {
           const take = takes.find((t) => t.id === args.target_take);
           take.attempted_at ??= new Date().toISOString();
           return { data: take.attempted_at, error: null };
         }
-        if (name === "return_take" || name === "return_take_leased") {
+        if (name === "return_take_leased") {
           // Only the call holding the withdrawal's live lease may hand a part back (20261120230000).
           const take = takes.find((t) => t.id === args.target_take);
           const row = rows.find((r) => r.id === take.stripe_withdrawal_id);
@@ -2126,7 +2153,7 @@ for (const [why, row] of [
     {
       const x = stuck();
       x.row.lease_until = new Date(Date.now() + 90_000).toISOString();
-      const refusedReturn = await x.w.db.rpc("return_take", { target_take: x.take.id });
+      const refusedReturn = await x.w.db.rpc("return_take_leased", { target_take: x.take.id, lease: null });
       assert.equal(refusedReturn.error?.hint, "withdrawal_busy", "the fake database models the lease rule");
     }
     // Nothing held: said so.
@@ -2537,13 +2564,14 @@ for (const [why, row] of [
 
   // What Withdraw offers per road (the balance action): Stripe reaches owed
   // steps with a charge plus the Stripe account's money (D1); PayPal and Wise
-  // reach owed steps plus pool money, never D1.
+  // reach owed steps, never D1.
   {
     const connect = (await import("node:fs")).readFileSync(new URL("../api/stripe-connect.js", import.meta.url), "utf8");
     // Net of what the company owes TSC (owed_reachable can be below zero), never below zero (20261121200000).
     assert.match(connect, /stripe_cents:\s*Math\.max\(0, Number\(owedReach\.data\?\.stripe_cents \?\? 0\)\s*\+\s*inStripeUsd\)/, "Stripe: owed with a charge + D1");
-    assert.match(connect, /pool_cents:\s*Math\.max\(0, Math\.max\(0, Number\(poolLeft\.data \?\? 0\)\)\s*\+\s*Number\(owedReach\.data\?\.any_cents \?\? 0\)\)/,
-      "PayPal / Wise: pool money + owed, never D1");
+    assert.match(connect, /pool_cents:\s*Math\.max\(0, Number\(owedReach\.data\?\.any_cents \?\? 0\)\)/,
+      "PayPal / Wise: owed steps only (the old pool is takes since 20261121350000), never D1");
+    assert.ok(!connect.includes("factory_withdrawable"), "R32: no old-pool read");
     assert.ok(!/pool_cents:[^\n]*inStripe/.test(connect), "D1 never reaches the pool road");
   }
 }

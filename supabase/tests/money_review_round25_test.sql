@@ -96,6 +96,8 @@ values ('b2590000-0000-0000-0000-0000000000a4', 'b25b0000-0000-0000-0000-0000000
 insert into public.factory_payout_preferences (org_id, route)
 select ('b25b0000-0000-0000-0000-0000000000e' || n)::uuid, 'manual' from generate_series(1, 7) n;
 set local session_replication_role = origin;
+-- The old pool, turned into takes as the migration does (20261121350000).
+select public.convert_withdrawal_pool();
 
 create function pg_temp.act_as(who text) returns void language sql as $f$
   select set_config('request.jwt.claims',
@@ -244,7 +246,7 @@ select is(pg_temp.told_w(current_setting('tsc.r25_w3'), '% being checked'),
 
 -- e4 ------------------------------------------------------------------------
 select set_config('tsc.r25_w4', pg_temp.req(4, 30000)::text, true);
-select is((select pool_cents from public.factory_withdrawals where id = current_setting('tsc.r25_w4')::uuid), 30000::bigint, 'e4: $300 of old-pool money');
+select is((select sum(amount_cents) from public.payment_takes where factory_withdrawal_id = current_setting('tsc.r25_w4')::uuid and payment_id = pg_temp.pay(41))::bigint, 30000::bigint, 'e4: $300 of the old-pool deposit, held by its take');
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w4')::uuid)$$, 'e4: staff send it');
 select lives_ok($$select pg_temp.refund(41, 10700)$$, 'e4: $107 of the pool deposit refunded while sent');
 select is((pg_temp.staff_row(current_setting('tsc.r25_w4')::uuid) ->> 'refunded_cents')::bigint, 10000::bigint, 'e4: staff see the $100 at risk');
@@ -264,7 +266,7 @@ reset role;
 select is((select is_primary from public.factory_payout_accounts where id = 'b2590000-0000-0000-0000-0000000000a5'), false, 'e5: the Wise account is not the default');
 select ok(not has_function_privilege('anon', 'public.payout_account_usable(uuid)', 'execute'), 'payout_account_usable is not anon''s');
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = f), 1, f || ': one function, no overloads')
-  from unnest(array['withdrawal_pool_refunded_cents', 'factory_balance', 'tell_withdrawal_refunded', 'record_withdrawal', 'remove_payout_account',
+  from unnest(array['withdrawal_refunded_cents', 'factory_balance', 'tell_withdrawal_refunded', 'record_withdrawal', 'remove_payout_account',
                     'payout_account_usable']) f;
 
 select * from finish();

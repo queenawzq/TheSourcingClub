@@ -161,16 +161,10 @@ async function refuse(db, row, reason, { stripe = null, cause = null } = {}) {
     const back = await reverseSentTakes(stripe, db, row);
     if (back.failed) cause = "reversal_failed";
   }
-  await returnHeldTakes(db, row);
+  // Refused: the database hands back the parts not asked of Stripe
+  // (stripe_withdrawals_end_takes).
   await update(db, row, { state: "refused", reason, ...(cause ? { refusal_cause: cause } : {}) });
   throw new PayoutMethodRefusal(reason);
-}
-
-/** Owed money this withdrawal claimed and did not send goes back to the balance. */
-async function returnHeldTakes(db, row) {
-  if (row.usd_cents == null) return;
-  const { error } = await db.rpc("return_stripe_takes", { target_withdrawal: row.id });
-  if (error) throw new Error(error.message);
 }
 
 /** The balance's available amount now, in its own currency. */
@@ -922,7 +916,8 @@ async function giveBack(stripe, db, row, usdAmount, reason, { takeBack = false }
     }, { idempotencyKey: `swg-${row.id}` });
     transferId = transfer.id;
   }
-  await returnHeldTakes(db, row);
+  // Ended: the database hands back the parts not asked of Stripe
+  // (stripe_withdrawals_end_takes).
   await update(db, row, { state: usdAmount > 0 ? "fee_returned" : "refused", fee_return_transfer_id: transferId, reason,
     ...(cause ? { refusal_cause: cause } : {}) });
 }

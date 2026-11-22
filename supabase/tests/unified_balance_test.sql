@@ -322,7 +322,8 @@ select ('ba1f00' || lpad(s::text, 2, '0') || '-0000-0000-0000-000000000077')::uu
 -- s=9  $512  refunded after approval                  -> none
 -- s=10 $1024 cancelled before it was paid            -> none
 update public.order_payments set state = 'released', released_at = now() where id = 'ba1f0008-0000-0000-0000-000000000077';
-update public.order_payments set refunded_at = now() where id = 'ba1f0009-0000-0000-0000-000000000077';
+-- (refunded in full: no writer leaves a confirmed row with only refunded_at, 20261121350000)
+update public.order_payments set refunded_cents = 51200, refund_amount_at = now() where id = 'ba1f0009-0000-0000-0000-000000000077';
 update public.order_payments set state = 'cancelled', release_requested_at = null where id = 'ba1f0010-0000-0000-0000-000000000077';
 insert into public.factory_payout_accounts (id, org_id, method, paypal_email, is_primary, details_changed_at)
 values ('ba190000-0000-0000-0000-000000000007', pg_temp.org(7), 'paypal', 'pgtap-ub-figures@example.com', true, '2026-11-01');
@@ -333,6 +334,9 @@ values (pg_temp.org(7), 'ba190000-0000-0000-0000-000000000007', 'paypal', 'reque
 update public.order_payments set state = 'not_due', confirmed_at = null, funds_available_at = null
  where id in (pg_temp.pay(7, 1), pg_temp.pay(7, 2));
 set local session_replication_role = origin;
+-- The old pool, turned into takes as the migration does (20261121350000):
+-- the figures stay as they were.
+select is(public.convert_withdrawal_pool(), 3, 'the three pool steps are converted');
 
 select pg_temp.act_as('c'); set local role authenticated;
 select is(pg_temp.bal(7, 'awaiting_cents'), 800::bigint, 'Awaiting approval: only the funded step not yet approved');
@@ -477,13 +481,12 @@ select ok(not exists (
      and p.prosrc ~* 'set[^;]*funds_available_at\s*='),
   'no definer function a signed-in account can call writes the cleared date');
 
--- The pool guards (20261116200000) still refuse, even for staff-level writes.
-select throws_ok($$update public.order_payments set withdrawal_pool = false where id = 'ba1f0006-0000-0000-0000-000000000077'$$,
-  '22023', null, 'a pool payment cannot be taken out of the pool');
+-- A step a withdrawal holds part of is guarded by its take (the old pool's
+-- guards went with the pool, 20261121350000).
 select throws_ok($$update public.order_payments set release_claimed_at = now() where id = 'ba1f0006-0000-0000-0000-000000000077'$$,
-  '22023', null, 'a pool payment cannot be claimed for a Stripe transfer');
+  '22023', null, 'a withdrawn step cannot be claimed for a Stripe transfer');
 select throws_ok($$update public.order_payments set state = 'released', released_at = now() where id = 'ba1f0006-0000-0000-0000-000000000077'$$,
-  '22023', null, 'a pool payment cannot be released outside a withdrawal');
+  '22023', null, 'a withdrawn step cannot be released outside a withdrawal');
 
 -- ===========================================================================
 -- 8. The staff board: balance money is not waiting on staff.

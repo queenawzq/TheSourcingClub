@@ -776,4 +776,36 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   assert.match(asked, /\.\.\.\(row\.created_at \? \{ created_at: row\.created_at \} : \{\}\)/, "the requested notice keeps the request's time");
 }
 
+// Round 32 (DB review #2): per-step payouts follow the withdrawal rules.
+{
+  const { refuseIfChargeReturned } = await import("../api/_provider-payouts.js");
+  const dbFor = (written) => ({
+    from: (table) => ({ select: () => ({ eq: () => ({
+      eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+      maybeSingle: async () => ({ data: table === "order_payments" ? { stripe_charge_id: "ch_1" } : null, error: null }),
+    }) }) }),
+    rpc: async (name, args) => { written.push([name, args]); return { data: null, error: null }; },
+  });
+  const stripeWith = (dispute) => () => ({
+    charges: { retrieve: async (id) => ({ id, amount_refunded: 0, disputed: true, dispute: "du_1" }) },
+    disputes: { retrieve: async (id) => ({ id, status: dispute }) },
+  });
+  // Won: Stripe still says `disputed`; the payout goes ahead and the hold is cleared.
+  const won = [];
+  await refuseIfChargeReturned({ db: dbFor(won), paymentId: "p1", build: stripeWith("won") });
+  assert.deepEqual(won, [["record_payment_disputed", { target_payment: "p1", disputed: false }]], "R32: a dispute TSC won pays, and the hold is cleared");
+  // Open: refused, and the hold recorded.
+  const open = [];
+  await assert.rejects(refuseIfChargeReturned({ db: dbFor(open), paymentId: "p1", build: stripeWith("needs_response") }),
+    (failure) => failure.kind === "charge_disputed", "R32: an open dispute is refused");
+  assert.deepEqual(open, [["record_payment_disputed", { target_payment: "p1", disputed: true }]], "R32: and recorded, as a withdrawal would");
+  // The database's refusals are said to staff in words, the amount owed named.
+  const refusedWith = (hint, details = null) => paypalPay({ paypal: {}, caller: { rpc: async () => ({ data: null, error: { hint, details } }) }, db: {}, paymentId: "p1", changedAt: "t" });
+  await assert.rejects(refusedWith("payout_owes_tsc", "$500.00"),
+    (failure) => failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Nothing is paid until that is covered.", "R32: owes TSC");
+  await assert.rejects(refusedWith("payout_disputed"), (failure) => failure.message === "The brand disputed this payment. It waits until the dispute is settled.");
+  await assert.rejects(refusedWith("payout_refunded"), (failure) => failure.message === "Part of this payment went back to the brand. The factory withdraws the rest from its balance.");
+  await assert.rejects(refusedWith("payout_not_cleared"), (failure) => failure.message === "The brand's payment hasn't cleared yet. Try again once it has.");
+}
+
 console.log("check:provider-payouts ok");

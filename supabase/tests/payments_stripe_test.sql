@@ -25,7 +25,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(169);
+select plan(170);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -593,12 +593,12 @@ select is((select trust_tier::text from public.factory_profiles where org_id = '
 
 select ok(not has_function_privilege('authenticated', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute'),
   'a signed-in user cannot record a PaymentIntent as paid');
-select ok(not has_function_privilege('anon', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+select ok(not has_function_privilege('anon', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'a signed-out visitor cannot record a refund');
-select ok(not has_function_privilege('authenticated', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+select ok(not has_function_privilege('authenticated', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'nor can a signed-in user');
 select ok(has_function_privilege('service_role', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute')
-      and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+      and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text, text)', 'execute'),
   'server code with the service key can do both');
 
 -- Order D: the brand opens the Fund page at $551.29, then raises the step to
@@ -703,7 +703,9 @@ select lives_ok($$select public.approve_milestone(pg_temp.p18_step('order_d', 'F
   'and approves the step');
 reset role;
 
--- Stripe can no longer pay this factory, so a person does (20261108710000).
+-- Stripe can no longer pay this factory, so a person does (20261108710000),
+-- once the charge has cleared, as for a withdrawal (20261121340000).
+update public.order_payments set funds_available_at = now() - interval '1 day' where id = pg_temp.p18_pay('order_d', 'Fit sample');
 update public.stripe_connect_accounts set transfers_active = false
  where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
 
@@ -736,6 +738,16 @@ reset role;
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select public.confirm_payment_received(pg_temp.p18_pay('order_d', 'Balance'), null, null);
+-- ...but not while the factory owes TSC the refunded Fit sample it was paid
+-- (20261121340000: the withdrawal rules hold for per-step payouts too).
+select throws_ok(
+  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
+  '22023', 'the factory owes TSC $550.00', 'a bank-wire payment waits while the factory owes TSC');
+reset role;
+-- Once that is recovered (staff record it), the bank wire is paid out by staff.
+update public.order_payments set refunded_cents = 0, refunded_at = null where id = pg_temp.p18_pay('order_d', 'Fit sample');
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
 select lives_ok(
   $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
   'a bank-wire payment is still paid out by staff');

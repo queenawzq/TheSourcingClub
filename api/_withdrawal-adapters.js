@@ -146,7 +146,7 @@ export const paypalAdapter = {
   },
 };
 
-// No "bank" adapter: TSC no longer pays a bank by hand (20261117500000). A bank
-// withdrawal asked for before that is marked paid by staff (mark_withdrawal_paid_by_bank).
+// No "bank" adapter: TSC no longer pays a bank by hand (20261117500000); a bank
+// withdrawal asked for before that is declined (production has none).
 export const ADAPTERS = { wise: wiseAdapter, paypal: paypalAdapter };
 export const registerAdapter = (adapter) => { ADAPTERS[adapter.provider] = adapter; };

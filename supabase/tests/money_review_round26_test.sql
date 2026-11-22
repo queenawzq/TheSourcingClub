@@ -94,6 +94,8 @@ select ('b26b0000-0000-0000-0000-0000000000e' || n)::uuid, 'manual' from generat
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, transfers_active, payouts_enabled, details_submitted)
 values ('b26b0000-0000-0000-0000-0000000000e5', 'acct_pgtap_r26_5', 'US', true, true, true);
 set local session_replication_role = origin;
+-- The old pool, turned into an owed step as the migration does (20261121350000).
+select public.convert_withdrawal_pool();
 
 create function pg_temp.act_as(who text) returns void language sql as $f$
   select set_config('request.jwt.claims',
@@ -212,6 +214,8 @@ select is(row(public.uses_stripe_payout(pg_temp.org(5)), public.factory_has_no_p
 select set_config('tsc.r26_p1', pg_temp.req(4, 15000)::text, true);
 set local session_replication_role = replica;
 update public.factory_withdrawals set created_at = now() - interval '1 hour' where id = current_setting('tsc.r26_p1')::uuid;
+-- and its part of the deposit with it (in one transaction both are "now").
+update public.payment_takes set created_at = now() - interval '1 hour' where factory_withdrawal_id = current_setting('tsc.r26_p1')::uuid;
 set local session_replication_role = origin;
 select set_config('tsc.r26_p2', pg_temp.req(4, 15000)::text, true);
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r26_p1')::uuid)$$, 'the older $150 is sent');

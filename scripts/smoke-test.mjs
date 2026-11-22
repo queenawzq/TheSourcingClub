@@ -1493,8 +1493,8 @@ console.log("\nphase 3 — the order runs");
           ["claim_owed_steps", { target_org: factoryOrg, amount: 1, road: "pool", withdrawal: null }],
           ["owed_reachable", { target_org: factoryOrg }],
           ["record_take_sent", { target_take: deposit.id, transfer: "tr_smoke" }],
-          ["return_stripe_takes", { target_withdrawal: deposit.id }],
-          ["return_take", { target_take: deposit.id }],
+          ["return_take_leased", { target_take: deposit.id, lease: null }],
+          ["convert_withdrawal_pool", {}],
           ["record_payment_disputed", { target_payment: deposit.id, disputed: true }],
         ];
         for (const [fn, args] of serverOnly) {
@@ -1520,9 +1520,10 @@ console.log("\nphase 3 — the order runs");
         if (reach.error) fail("the factory reads what it can withdraw", reach.error);
         else {
           const r = reach.data;
-          ["available_cents", "pool_cents", "owed_cents", "stripe_owed_cents", "taken", "withdrawn"].every((k) => k in r)
-            && Number(r.available_cents) >= Number(r.owed_cents) && Number(r.available_cents) === Number(r.pool_cents) + Number(r.owed_cents)
-            ? ok("my_withdrawal_balance: PayPal/Wise reach pool + owed cleared; Stripe's part is listed")
+          ["available_cents", "owed_cents", "stripe_owed_cents", "taken", "returnable"].every((k) => k in r)
+            && !["pool_cents", "pool", "withdrawn"].some((k) => k in r)
+            && Number(r.available_cents) === Number(r.owed_cents)
+            ? ok("my_withdrawal_balance: PayPal/Wise reach the owed money cleared; Stripe's part is listed; no pool keys (20261121350000)")
             : fail("my_withdrawal_balance keys or sums are wrong", { message: JSON.stringify(r) });
         }
         const brandReach = await brand.client.rpc("my_withdrawal_balance", { target_org: factoryOrg });
@@ -1620,16 +1621,8 @@ console.log("\nphase 3 — the order runs");
 
       // This factory saved a bank account, so its approved step is in its withdrawal
       // balance (20261116200000): it is paid by a withdrawal, recorded as the server would.
-      const { data: pooled } = await admin.from("order_payments").select("withdrawal_pool, amount_cents").eq("id", deposit.id).single();
-      let released;
-      if (pooled?.withdrawal_pool) {
-        const asked = await admin.from("factory_withdrawals").insert({
-          org_id: winner.factory_org_id, provider: "bank", amount_cents: pooled.amount_cents, paid_to: "smoke bank",
-        }).select("id").single();
-        released = asked.error ? asked : await admin.rpc("record_withdrawal", { target_withdrawal: asked.data.id, outcome: "paid", ref: "SMOKE-1", fee: 5000, receives: pooled.amount_cents - 5000, receives_in: "USD" });
-      } else {
-        released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
-      }
+      // (The old withdrawal pool was turned into takes, 20261121350000.)
+      const released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
       released.error ? fail("the payout is recorded", released.error)
                      : ok("the payout to the factory is recorded");
 

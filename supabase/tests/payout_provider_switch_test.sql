@@ -74,6 +74,8 @@ insert into public.factory_payout_accounts
 values ('5a100000-0000-0000-0000-0000000000c2', '5b000000-0000-0000-0000-0000000000c1', 'bank', 'SW Bank', 'SW CHINA LTD', '1234', 'BOSHCNSH', 'CN', false,
         'chinese_local_business', 'CNY', 'accountNumber', '{"accountHolderName":"SW CHINA LTD"}', now(), now());
 set local session_replication_role = origin;
+-- The old pool, turned into owed steps as the migration does (20261121350000).
+select public.convert_withdrawal_pool();
 
 create function pg_temp.act_as(who int) returns void language sql as $f$
   select set_config('request.jwt.claims',

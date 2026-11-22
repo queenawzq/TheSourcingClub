@@ -374,7 +374,7 @@ select ok(not has_function_privilege('authenticated', f, 'execute') and not has_
   from unnest(array['public.record_payment_refund_amount(uuid, text, bigint)', 'public.record_payment_dispute_lost(uuid, text, bigint, bigint)',
                     'public.withdrawal_refunded_part(uuid)', 'public.take_refunded_cents(public.payment_takes)',
                     'public.payment_debt_cents(public.order_payments)', 'public.factory_debt_cents(uuid, uuid)',
-                    'public.payment_factory_base_cents(public.order_payments)', 'public.record_payment_refunded(uuid, text, text)',
+                    'public.payment_factory_base_cents(public.order_payments)', 'public.record_payment_refunded(uuid, text, text, text)',
                     'public.record_payment_disputed(uuid, boolean)', 'public.owed_reachable(uuid)']) f;
 select ok(has_function_privilege('service_role', 'public.record_payment_refund_amount(uuid, text, bigint)', 'execute')
       and has_function_privilege('service_role', 'public.record_payment_dispute_lost(uuid, text, bigint, bigint)', 'execute')

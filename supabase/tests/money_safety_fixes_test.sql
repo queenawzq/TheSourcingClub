@@ -109,13 +109,13 @@ begin
   end if;
   update public.order_payments
      set state = 'confirmed', released_at = null, released_by = null, released_note = null,
-         release_claimed_at = null, stripe_release_started = false, stripe_payment_intent_id = 'pi_p97_1'
+         release_claimed_at = null, stripe_release_started = false, stripe_payment_intent_id = 'pi_p97_1',
+         -- cleared: a per-step payout waits for the charge like a withdrawal (20261121340000)
+         funds_available_at = now() - interval '1 day'
    where id = '97f00000-0000-0000-0000-000000000001';
   -- These checks are about the per-step paths, so the step stays out of the
   -- withdrawal balance (20261116200000) that the manual route would put it in.
-  alter table public.order_payments disable trigger order_payments_guard_withdrawal_pool;
   update public.order_payments set withdrawal_pool = false where id = '97f00000-0000-0000-0000-000000000001';
-  alter table public.order_payments enable trigger order_payments_guard_withdrawal_pool;
 end;
 $f$;
 

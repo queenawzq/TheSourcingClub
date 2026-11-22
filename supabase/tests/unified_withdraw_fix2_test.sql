@@ -295,12 +295,9 @@ select lives_ok($$select pg_temp.as_server(format('update public.stripe_withdraw
   'an old server marks the row refused');
 select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5)), 'held',
   'F5: an attempted part stays held: it may have been transferred');
-select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.return_stripe_takes(%L)', pg_temp.sw(5))),
-  'return_stripe_takes on it');
-select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5)), 'held', 'F5: still held');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
-  (select format('select public.return_take(%L)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5))),
-  'the server confirmed no transfer exists: return_take');
+  (select format('select public.return_take_leased(%L, null)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5))),
+  'the server confirmed no transfer exists: return_take_leased');
 select is((select status from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(5)), 'returned', 'F5: now it is back in the balance');
 -- R3-1: only the call holding the withdrawal's live lease hands a part back.
 select lives_ok($$select pg_temp.stripe_claim(2, 300, pg_temp.sw(7))$$, 'a seventh claims $3');
@@ -311,8 +308,8 @@ set local session_replication_role = replica;
 update public.stripe_withdrawals set lease_until = '2999-01-01 00:00:00+00' where id = pg_temp.sw(7);
 set local session_replication_role = origin;
 select throws_ok(format($$select pg_temp.as_server(%L)$$,
-  (select format('select public.return_take(%L)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
-  '22023', null, 'R3-1: return_take is refused while another call holds the withdrawal');
+  (select format('select public.return_take_leased(%L, null)', id) from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
+  '22023', null, 'R3-1: a call holding no lease is refused while another call holds the withdrawal');
 select throws_ok(format($$select pg_temp.as_server(%L)$$,
   (select format('select public.return_take_leased(%L, %L)', id, '2000-01-01 00:00:00+00') from public.payment_takes where stripe_withdrawal_id = pg_temp.sw(7))),
   '22023', null, 'R3-1: and return_take_leased with someone else''s lease');

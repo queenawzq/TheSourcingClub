@@ -264,6 +264,9 @@ select is((select owed_cents from public.stripe_withdrawals where id = 'b1980000
 insert into public.factory_withdrawals (org_id, account_id, provider, amount_cents, pool_cents, currency, paid_to, paid_to_changed_at)
 values (pg_temp.org(3), 'b1990000-0000-0000-0000-000000000003', 'bank', 50000, 50000, 'USD', 'R19 Bank ending 4417', '2026-11-01');
 select set_config('tsc.r19_w3', (select id::text from public.factory_withdrawals where org_id = pg_temp.org(3)), true);
+-- The old pool, turned into takes as the migration does (20261121350000):
+-- this waiting withdrawal holds the deposit.
+select is(public.convert_withdrawal_pool(), 3, 'the old-pool deposits are converted');
 select lives_ok($$select pg_temp.refund(31, 53500)$$, 'the pool deposit is refunded in full while staff send the wire');
 select pg_temp.act_as('02'); set local role authenticated;
 select lives_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('tsc.r19_w3')::uuid, 'WIRE-R19')$$,
@@ -277,11 +280,13 @@ select is((select count(*)::int from pg_proc where proname = 'guard_withdrawal_t
 select is(current_setting('tsc.bank_sent', true), 'off', 'and only inside it');
 
 -- ===========================================================================
--- L2. The pool rule: each withdrawal's own pool part decides.
+-- L2. Each withdrawal's own part decides (the old pool's rule, now its takes').
 -- ===========================================================================
 select set_config('tsc.r19_p1', pg_temp.req(4, 10000)::text, true);
 set local session_replication_role = replica;
 update public.factory_withdrawals set created_at = now() - interval '1 hour' where id = current_setting('tsc.r19_p1')::uuid;
+-- and its part of the deposit with it (in one transaction both are "now").
+update public.payment_takes set created_at = now() - interval '1 hour' where factory_withdrawal_id = current_setting('tsc.r19_p1')::uuid;
 set local session_replication_role = origin;
 select set_config('tsc.r19_p2', pg_temp.req(4, 15000)::text, true);
 select lives_ok($$select pg_temp.refund(41, 10700)$$, '$107 of the pool deposit is refunded: the newer request is $50 short');

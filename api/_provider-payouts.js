@@ -1,7 +1,7 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
-import { applyChargeRefund, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyChargeRefund, callerClient, jsonBody, recordChargeDispute, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
 const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
@@ -74,9 +74,17 @@ const DB_WORDS = {
   paypal_not_set_up: "This factory has no PayPal address. Ask it to add one on its Payments page.",
   cny_statement: "Confirm the contract and invoice statement first.",
   payout_not_processing: "Nothing is under way for this payment. Reload the board.",
+  // The rules every withdrawal follows (20261121340000).
+  payout_owes_tsc: (error) => `The factory owes TSC ${error.details ?? error.detail ?? "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
+  payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
+  payout_refunded: "Part of this payment went back to the brand. The factory withdraws the rest from its balance.",
+  payout_not_cleared: "The brand's payment hasn't cleared yet. Try again once it has.",
 };
 
-const refusalFrom = (error) => new PayoutFailure("database", DB_WORDS[error.hint] ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
+const refusalFrom = (error) => {
+  const words = DB_WORDS[error.hint];
+  return new PayoutFailure("database", (typeof words === "function" ? words(error) : words) ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });
+};
 
 const log = (where, failure, context = {}) => console.error(`${where}:`, withoutSecrets(failure?.message), {
   kind: failure?.kind ?? null, status: failure?.status ?? null, detail: withoutSecrets(failure?.detail ?? ""), ...context,
@@ -398,11 +406,22 @@ export async function refuseIfChargeReturned({ db, paymentId, build = stripeFrom
     log("charge check", failure, { paymentId });
     throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
   }
-  if (charge.disputed) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
   if (Number(charge.amount_refunded) > 0) {
     // Recorded as the webhook would have, so the board moves on from it.
     await applyChargeRefund({ stripe, db, charge }).catch((failure) => log("charge refund", failure, { paymentId }));
     throw new PayoutFailure("charge_refunded", "The brand's payment was refunded, so there is nothing to pay out. Reload the board.");
+  }
+  // Stripe keeps `disputed` true after a decision: a dispute TSC won pays as
+  // usual. Recorded either way, as every withdrawal road does.
+  if (charge.disputed) {
+    let held;
+    try {
+      held = await recordChargeDispute({ stripe, db, paymentId, charge });
+    } catch (failure) {
+      log("charge dispute", failure, { paymentId });
+      throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
+    }
+    if (held !== false) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
   }
 }
 

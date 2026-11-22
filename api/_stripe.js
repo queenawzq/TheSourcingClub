@@ -164,8 +164,9 @@ const REFUND_REASONS = {
   // Held money on an order both sides cancelled (refundCancelledPayment).
   cancelled_order: "The order was cancelled. You were refunded.",
 };
+/** The brand's words for a refund made in Stripe; the server keys on the cause 'stripe_refund', never on these words. */
 const REFUNDED = "The payment was refunded.";
-/** TSC's own refund for a reason not listed above: never REFUNDED, which means a refund made in Stripe. */
+/** TSC's own refund for a reason not listed above (cause 'not_needed'). */
 const NOT_NEEDED = "This payment was not needed any more. You were refunded.";
 
 /**
@@ -211,7 +212,7 @@ async function refundIntent({ stripe, db, intent, charge, result }) {
     }
   }
   console.warn("stripe: refunded a PaymentIntent its payment did not want", intent.id, paymentId, problem);
-  return rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: intent.id, reason });
+  return rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: intent.id, reason, cause: REFUND_REASONS[problem] ? problem : "not_needed" });
 }
 
 /**
@@ -265,17 +266,18 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
   const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem);
   if (ours && charge.refunded) {
-    // Never REFUNDED: that note means a refund made in Stripe, which
-    // record_full_refund_failed may fund again if it fails (20261121260000).
-    const reason = REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? NOT_NEEDED;
-    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
+    // Never 'stripe_refund': that cause means a refund made in Stripe, which
+    // record_full_refund_failed may fund again if it fails (20261121340000).
+    const problem = refunds.data[0].metadata.tsc_problem;
+    const reason = REFUND_REASONS[problem] ?? NOT_NEEDED;
+    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason, cause: REFUND_REASONS[problem] ? problem : "not_needed" });
   }
   // Not funded here yet: refunded in full, the brand pays again; in part,
   // nothing yet. applyPaymentIntent records it at its amount once the
   // payment is funded, and everyone is told then.
   if (!["confirmed", "released"].includes(payment.state)) {
     if (!charge.refunded) return payment;
-    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason: REFUNDED });
+    return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason: REFUNDED, cause: "stripe_refund" });
   }
   // Only ever raises the total: an older copy of the charge never lowers it.
   return rpc(db, "record_payment_refund_amount", {
@@ -351,7 +353,7 @@ export async function refundCancelledPayment({ stripe, db, paymentId }) {
     await rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
     return "failed";
   }
-  await rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: claim.intent, reason: CANCELLED_REFUND });
+  await rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: claim.intent, reason: CANCELLED_REFUND, cause: "cancelled_order" });
   return "refunded";
 }
 
@@ -555,7 +557,7 @@ export async function paymentForDispute({ stripe, db, dispute }) {
       // Lost before approval already: the payment went back to Due and no
       // longer names this charge. A late event about it changes nothing.
       const { data: events, error: eventsError } = await db.from("payment_events").select("id")
-        .eq("payment_id", ownId).like("note", `Dispute lost%(Stripe ${dispute.id})`).limit(1);
+        .eq("payment_id", ownId).eq("cause", "dispute_lost").like("note", `%(Stripe ${dispute.id})`).limit(1);
       if (eventsError) throw new Error(eventsError.message);
       if (events?.length) return null;
       throw new Error("the disputed charge's payment is not recorded yet");
@@ -721,7 +723,7 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
     const { data: owed, error } = await db.from("order_payments")
       .select("id, stripe_charge_id, production_orders!inner(factory_org_id)")
       .eq("production_orders.factory_org_id", orgId).eq("state", "confirmed")
-      .not("release_requested_at", "is", null).not("stripe_charge_id", "is", null).eq("withdrawal_pool", false)
+      .not("release_requested_at", "is", null).not("stripe_charge_id", "is", null)
       .limit(500);
     if (error || !owed?.length) return 0;
     const { data: checks } = await db.from("payment_charge_checks").select("payment_id, checked_at")
@@ -749,8 +751,9 @@ export async function checkChargesFor({ stripe, db, orgId, limit = 5, budgetMs =
     const read = await Promise.all(due.map(async (row) => {
       try {
         const charge = await stripe.charges.retrieve(row.stripe_charge_id);
+        // Both: a charge refunded in part can be disputed for the rest.
         if (Number(charge.amount_refunded) > 0) await applyChargeRefund({ stripe, db, charge });
-        else if (charge.disputed) await recordChargeDispute({ stripe, db, paymentId: row.id, charge });
+        if (charge.disputed) await recordChargeDispute({ stripe, db, paymentId: row.id, charge });
         return row.id;
       } catch (failure) {
         logStripeFailure("charge-check", failure, { paymentId: row.id });

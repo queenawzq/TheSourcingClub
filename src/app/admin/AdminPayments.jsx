@@ -1098,7 +1098,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
       {active === "attention" && attention ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
-      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} BankDetails={BankDetails} /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} /> : null}
 
     </main>
     </SentContext.Provider>

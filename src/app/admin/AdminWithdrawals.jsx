@@ -1,22 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { formatMoney } from "../../lib/money.js";
-import { approveWithdrawal, declineWithdrawal, markWithdrawalPaidByBank, owesTscSentence, previewWithdrawal, withdrawalBankAccount } from "../../lib/domain/withdrawals.js";
+import { approveWithdrawal, declineWithdrawal, owesTscSentence, previewWithdrawal } from "../../lib/domain/withdrawals.js";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
  * The board's Withdrawals tab: what factories asked for. Hand-built like the
  * rest of AdminPayments (no design draws a payments board). Approve reviews
  * first (the provider's quote and TSC's balance there), then pays; Decline
- * needs a reason the company reads; a bank transfer is sent by staff and
- * marked paid with the bank's reference.
+ * needs a reason the company reads. A bank withdrawal (refused since
+ * 20261117500000) is only declined: TSC no longer pays a bank by hand.
  */
 
 const NAME = { wise: "Wise", paypal: "PayPal", bank: "Bank transfer", tazapay: "Tazapay" };
 const STATUS = { requested: "Waiting", paying: "Sending", paid: "Paid", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
 const moneyIn = (minor, currency) => (minor == null ? "—" : formatMoney(Number(minor), currency ?? "USD"));
 
-function WithdrawalActions({ row, onChanged, BankDetails }) {
-  const [step, setStep] = useState(null); // null | "review" | "decline" | "bank"
+function WithdrawalActions({ row, onChanged }) {
+  const [step, setStep] = useState(null); // null | "review" | "decline"
   const [preview, setPreview] = useState(null);
   const [text, setText] = useState("");
   const [statement, setStatement] = useState(false);
@@ -24,17 +24,6 @@ function WithdrawalActions({ row, onChanged, BankDetails }) {
   const [problem, setProblem] = useState(null);
   const [heard, setHeard] = useState(null);
   const cny = row.provider === "wise" && row.wise_currency === "CNY";
-  // The account this withdrawal pays, read when staff open "Paid by bank…".
-  const [account, setAccount] = useState(null);
-  useEffect(() => {
-    if (step !== "bank") return undefined;
-    let current = true;
-    setAccount(null);
-    withdrawalBankAccount(row.id)
-      .then((found) => { if (current) setAccount(found); })
-      .catch((failure) => { if (current) setProblem(failure.message); });
-    return () => { current = false; };
-  }, [step, row.id]);
 
   async function run(work) {
     setWorking(true);
@@ -78,22 +67,19 @@ function WithdrawalActions({ row, onChanged, BankDetails }) {
   if (row.status === "paying") {
     return <div className="admin-actions">{said}{row.provider_ref ? null : <button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button>}</div>;
   }
-  if (step === "decline" || step === "bank") {
-    const decline = step === "decline";
+  if (step === "decline") {
     return (
       <div className="admin-actions">
         {said}
-        {!decline && account && BankDetails ? <BankDetails row={account} withContact={false} /> : null}
-        <label className="admin-sub">{decline ? "Reason (the factory reads this)" : "Bank's reference"}
-          <input value={text} onChange={(event) => setText(event.target.value)} maxLength={decline ? 300 : 200} />
+        <label className="admin-sub">Reason (the factory reads this)
+          <input value={text} onChange={(event) => setText(event.target.value)} maxLength={300} />
         </label>
-        <button type="button" className={decline ? "admin-reject" : "admin-approve"} disabled={working || text.trim().length < 3}
-          data-testid={decline ? "withdrawal-decline-confirm" : "withdrawal-bank-confirm"}
+        <button type="button" className="admin-reject" disabled={working || text.trim().length < 3}
+          data-testid="withdrawal-decline-confirm"
           onClick={() => run(async () => {
-            if (decline) await declineWithdrawal(row.id, text.trim());
-            else await markWithdrawalPaidByBank(row.id, text.trim());
+            await declineWithdrawal(row.id, text.trim());
             setStep(null);
-          })}>{decline ? "Decline" : "Mark paid by bank"}</button>
+          })}>Decline</button>
         <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setText(""); }}>Back</button>
       </div>
     );
@@ -130,14 +116,14 @@ function WithdrawalActions({ row, onChanged, BankDetails }) {
         </label>
       ) : null}
       {row.provider === "bank"
-        ? <button type="button" className="admin-approve" disabled={working} data-testid="withdrawal-bank" onClick={() => setStep("bank")}>Paid by bank…</button>
+        ? null
         : <button type="button" className="admin-approve" disabled={working || (cny && !statement)} data-testid="withdrawal-review" onClick={review}>Approve…</button>}
       <button type="button" className="admin-reject" disabled={working} data-testid="withdrawal-decline" onClick={() => setStep("decline")}>Decline…</button>
     </div>
   );
 }
 
-export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null, BankDetails = null }) {
+export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null }) {
   const open = withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const recent = withdrawals.filter((row) => !["requested", "paying"].includes(row.status)).slice(0, 20);
   const rows = [...open, ...recent];
@@ -180,7 +166,7 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                       {refunded > 0 && row.status === "requested" ? <span className="admin-sub" data-testid="withdrawal-refunded-part">{`${moneyIn(refunded, row.currency)} went back to the brand.`}</span> : null}
                       {/* Already sent: if the payout completes, that part is owed to TSC (To recover). */}
                       {refunded > 0 && row.status === "paying" ? <span className="admin-sub admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC ${moneyIn(refunded, row.currency)}.`}</span> : null}</td>
-                    <td><WithdrawalActions row={row} onChanged={onChanged} BankDetails={BankDetails} /></td>
+                    <td><WithdrawalActions row={row} onChanged={onChanged} /></td>
                   </tr>
                 );
               })}

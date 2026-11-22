@@ -224,13 +224,17 @@ reset role;
 -- ===========================================================================
 -- 2. Old-pool money refunded while pool withdrawals wait.
 -- ===========================================================================
+-- The old pool, turned into an owed step as the migration does (20261121350000).
+select is(public.convert_withdrawal_pool(), 1, 'F3''s pool deposit is converted');
 select set_config('tsc.r17b_p1', pg_temp.req(3, 10000)::text, true);
 -- Asked an hour before the next (one transaction gives both the same now()).
 set local session_replication_role = replica;
 update public.factory_withdrawals set created_at = now() - interval '1 hour' where id = current_setting('tsc.r17b_p1')::uuid;
+update public.payment_takes set created_at = now() - interval '1 hour' where factory_withdrawal_id = current_setting('tsc.r17b_p1')::uuid;
 set local session_replication_role = origin;
 select set_config('tsc.r17b_p2', pg_temp.req(3, 15000)::text, true);
-select is((select array_agg(pool_cents order by created_at, id) from public.factory_withdrawals where org_id = pg_temp.org(3)),
+select is((select array_agg((select sum(t.amount_cents) from public.payment_takes t where t.factory_withdrawal_id = w.id)::bigint order by w.created_at, w.id)
+             from public.factory_withdrawals w where w.org_id = pg_temp.org(3)),
   array[10000, 15000]::bigint[], 'F3 asked for $100 then $150 of its $300 old-pool money');
 select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 5000, pending 0, processing 25000, paid out 0, total 30000', 'F3 before');
 select lives_ok($$select pg_temp.refund(3, 10700)$$, '$107 of the pool deposit''s charge is refunded');
@@ -257,9 +261,9 @@ select is(pg_temp.wd(3, current_setting('tsc.r17b_p1')::uuid) ->> 'word', 'waiti
 -- 3. Grants and shape.
 -- ===========================================================================
 select ok(not has_function_privilege('authenticated', f, 'execute') and not has_function_privilege('anon', f, 'execute'), f || ' is the server''s')
-  from unnest(array['public.factory_debt_uncovered_cents(uuid)', 'public.withdrawal_pool_refunded_cents(public.factory_withdrawals)']) f;
+  from unnest(array['public.factory_debt_uncovered_cents(uuid)', 'public.withdrawal_refunded_cents(public.factory_withdrawals)']) f;
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = f), 1, f || ': one function, no overloads')
-  from unnest(array['factory_debt_uncovered_cents', 'withdrawal_pool_refunded_cents', 'claim_withdrawal', 'admin_withdrawals',
+  from unnest(array['factory_debt_uncovered_cents', 'withdrawal_refunded_cents', 'claim_withdrawal', 'admin_withdrawals',
                     'withdrawal_covered', 'tell_withdrawal_refunded', 'factory_balance']) f;
 
 select * from finish();

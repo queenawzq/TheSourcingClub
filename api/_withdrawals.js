@@ -17,8 +17,7 @@ import { applyChargeRefund, applyDispute, stripeFrom } from "./_stripe.js";
  *   preview   the same checks and quote, sending nothing: what staff confirm.
  *   sync      read back every withdrawal being paid.
  *
- * Declining and "mark paid by bank" are plain RPCs (decline_withdrawal,
- * mark_withdrawal_paid_by_bank): no provider is involved.
+ * Declining is a plain RPC (decline_withdrawal): no provider is involved.
  */
 
 const DB_WORDS = {

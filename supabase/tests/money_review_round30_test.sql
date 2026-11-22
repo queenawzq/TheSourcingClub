@@ -114,7 +114,8 @@ set constraints all immediate;
 set constraints all deferred;
 select is(pg_temp.holds(), '', 'nothing is on hold yet: the withdrawal still holds the step');
 -- Refused: its part goes back to the balance.
-select lives_ok($$select pg_temp.as_server('select public.return_stripe_takes(''b3080000-0000-0000-0000-000000000001'')')$$,
+-- (the stripe_withdrawals_end_takes trigger returns its unattempted parts)
+select lives_ok($$update public.stripe_withdrawals set state = 'refused', reason = 'refused' where id = 'b3080000-0000-0000-0000-000000000001'$$,
   'the refused withdrawal hands the step back');
 set constraints all immediate;
 set constraints all deferred;
