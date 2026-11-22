@@ -32,7 +32,7 @@ export const awaitingApproval = (row) => row.state === "confirmed" && !row.relea
  * What earningStatus() reads of a payment: Payments and the factory's order
  * page select exactly this, so a step reads the same word on both.
  */
-export const EARNING_COLUMNS = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, withdrawal_pool, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))";
+export const EARNING_COLUMNS = "id, order_id, amount_cents, amount_received_cents, charged_cents, payout_fee_cents, stripe_transfer_id, release_requested_at, funds_available_at, disputed_at, refunded_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, failure_detail, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at), payment_takes (status, stripe_withdrawals (state, payout_status))";
 
 /**
  * The factory's word for each payment on one order, worked out as Payments
@@ -467,24 +467,27 @@ export function owedClearingNote(row, figures) {
 
 /**
  * N4: an approved step paid the old way, one step at a time, whose payout is
- * still under way (an attempt processing, or one that failed and waits for
- * staff), and which the server counts in Pending. That money is being sent,
+ * still under way (an attempt processing), and which the server counts in
+ * Pending. That money is being sent,
  * not processed for withdrawal: the card says "$X on its way", as before, and
  * leaves it out of "$X pending". US$ cents.
  */
 export function legacyOnItsWayCents(earnings, figures) {
   return (earnings ?? []).filter((row) => {
-    if (!toBeSent(row) || row.withdrawal_pool) return false;
+    if (!toBeSent(row)) return false;
     const where = figures instanceof Map ? figures.get(row.id) : null;
     if (!where || where.size !== 1 || !(where.has("processing") || where.has("pending"))) return false;
     return legacyPayoutUnderWay(row);
   }).reduce((sum, row) => sum + factoryAmount(row), 0);
 }
 
-/** Its latest per-step payout is under way, or failed and waits for staff. */
+/**
+ * Its latest per-step payout is under way. One that failed is not: its money
+ * reads where the server puts it, as its attempt's own row says "Failed".
+ */
 function legacyPayoutUnderWay(row) {
   const latest = [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-  return latest?.status === "processing" || latest?.status === "failed";
+  return latest?.status === "processing";
 }
 
 /**
@@ -521,10 +524,10 @@ export function earningStatus(row, clearing = null, figures = null) {
   if (row.disputed_at) return ON_HOLD;
   // The brand's card payment is still clearing: the same word on the order
   // page and on Payments, from the payment's own date.
-  if (!row.withdrawal_pool && stillClearing(row)) return "Pending";
-  if (where && !row.withdrawal_pool && where.size === 1 && where.has("pending")) return "Pending";
-  // A payout sent step by step, under way (or failed, waiting for staff): on
-  // its way, as the card counts it (legacyOnItsWayCents).
+  if (stillClearing(row)) return "Pending";
+  if (where && where.size === 1 && where.has("pending")) return "Pending";
+  // A payout sent step by step, under way: on its way, as the card counts it
+  // (legacyOnItsWayCents).
   if (where && where.size === 1 && where.has("processing") && legacyPayoutUnderWay(row)) return ON_ITS_WAY;
   // All of it in a withdrawal waiting or being sent.
   if (where && where.size === 1 && where.has("processing")) return "Processing";
@@ -615,10 +618,10 @@ export function withdrawalRows(earnings, method = null) {
       // What left for the factory: the attempt less the payout fee taken from it.
       amount: -(Number(attempt.amount_cents) - payoutFee(row)),
     }));
-    // A balance step is paid by the withdrawal it was in, listed on its own:
-    // the old pool, or one-balance withdrawals that took it (payment_takes
-    // `sent`, by PayPal, Wise or both roads). Never a second "Bank transfer".
-    if (row.state !== "released" || row.withdrawal_pool || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")
+    // A balance step is paid by the withdrawals that took it, listed on their
+    // own (payment_takes `sent`, by PayPal, Wise or both roads; the old pool
+    // became takes, 20261121350000). Never a second "Bank transfer".
+    if (row.state !== "released" || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")
       || withdrawnByTakes(row)) return tried;
     const bank = row.bank_payouts;
     const payoneer = row.payoneer_payouts;

@@ -287,8 +287,13 @@ select is((select count(*)::int from pg_proc where pronamespace = 'public'::regn
   from unnest(array['withdrawal_pool_refunded_cents', 'factory_withdrawable', 'release_withdrawn_payments', 'withdrawn_by_payment',
                     'return_take', 'return_stripe_takes', 'join_withdrawal_pool', 'guard_withdrawal_pool', 'guard_provider_payout_pool']) f;
 select pg_temp.act_as('01'); set local role authenticated;
-select ok(not (public.my_withdrawal_balance('b32b0000-0000-0000-0000-0000000000e1') ?| array['withdrawn', 'pool', 'pool_cents']),
-  'my_withdrawal_balance has no withdrawn, pool or pool_cents');
+select ok(not (public.my_withdrawal_balance('b32b0000-0000-0000-0000-0000000000e1') ? 'pool_cents'),
+  'my_withdrawal_balance has no pool_cents');
+-- R33 (L4): kept one deploy, deprecated, for the live site's Withdraw button.
+select is(public.my_withdrawal_balance('b32b0000-0000-0000-0000-0000000000e1') -> 'withdrawn', '{}'::jsonb,
+  'my_withdrawal_balance: withdrawn is empty (deprecated)');
+select is(public.my_withdrawal_balance('b32b0000-0000-0000-0000-0000000000e1') -> 'pool', 'true'::jsonb,
+  'my_withdrawal_balance: pool is true while the company withdraws from TSC (deprecated)');
 reset role;
 select is((select proacl::text from pg_proc where oid = f::regprocedure), '{postgres=X/postgres,service_role=X/postgres}',
   f || ': postgres and the server only')

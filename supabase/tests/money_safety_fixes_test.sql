@@ -208,7 +208,9 @@ select pg_temp.act_as(5); set local role authenticated;
 select throws_ok($$select public.release_payment_by_payoneer('97f00000-0000-0000-0000-000000000002', 'p97@example.com', 'PO-12345')$$, '22023', null,
   'nor recorded as paid by Payoneer');
 reset role;
-update public.order_payments set stripe_release_started = false where id = '97f00000-0000-0000-0000-000000000002';
+-- Cleared, as every per-step payout now asks (20261121370000).
+update public.order_payments set stripe_release_started = false, funds_available_at = now() - interval '1 day'
+ where id = '97f00000-0000-0000-0000-000000000002';
 select pg_temp.act_as(5); set local role authenticated;
 select lives_ok($$select public.release_payment_by_payoneer('97f00000-0000-0000-0000-000000000002', 'p97@example.com', 'PO-12345')$$,
   'once reconciled, Payoneer can record it');

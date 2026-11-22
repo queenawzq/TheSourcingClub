@@ -14,17 +14,31 @@
 --     takes model reads that part as owed to TSC (paid) or as refunded
 --     (waiting), as the pool did. What no withdrawal took stays on its payment
 --     as ordinary owed money in the balance.
+--   * A pool step the brand was refunded in full (or lost a dispute on)
+--     after a withdrawal took it was reset to be paid again (failed, or
+--     cancelled with its order). The pool counted it as nothing, so what was
+--     withdrawn from it is owed to TSC: those takes go on that step, and
+--     payment_debt_cents() reads every 'sent' take on a step that holds no
+--     money as owed, until the brand pays the step again and it covers them,
+--     as the pool did. Anything beyond every step goes on the last one, so the
+--     debt stays what the pool said.
 --   * A payment fully withdrawn is released (release_fully_taken).
 --   * withdrawal_pool becomes false and factory_withdrawals.pool_cents 0 on
 --     every row. Both columns stay (the live site selects withdrawal_pool
 --     while this deploys) and are deprecated: nothing reads them any more.
 --   * Every company's figures are read before and after, by the functions
---     of each moment; the migration stops if any figure differs.
+--     of each moment. Compared: Total, Awaiting approval, Processing, Paid
+--     out, owed to TSC, and Available and Pending together. Not the split
+--     between those two: the pool called every step Available, the balance
+--     calls a step still clearing or disputed Pending (funds_available_at and
+--     disputed_at are new here). The migration stops only if one of those
+--     differs, which no state of the pool can cause.
 --
 -- Then the pool branches leave the latest bodies (factory_balance, the
 -- withdrawal rules, the staff lists, the notices), with the dead code the
--- review named: withdrawn_by_payment() and my_withdrawal_balance().withdrawn
--- and .pool / .pool_cents, return_take() (no caller), return_stripe_takes()
+-- review named: withdrawn_by_payment() and my_withdrawal_balance().pool_cents
+-- (.pool and .withdrawn stay one deploy, deprecated, for the live site's
+-- Withdraw button), return_take() (no caller), return_stripe_takes()
 -- (the stripe_withdrawals_end_takes trigger does the same on the update that
 -- always follows), the always-zero pool term, and the refunded_at >
 -- confirmed_at tests (no writer leaves such a row confirmed). Dropped:
@@ -95,10 +109,15 @@ declare
   ids uuid[];
   net bigint[];
   room bigint[];
+  gone uuid[];
+  gone_room bigint[];
   converted uuid[] := '{}';
   n int;
+  g int;
   i_net int;
   i_room int;
+  i_gone int;
+  last_step uuid;
   need bigint;
   take bigint;
   last_at timestamptz;
@@ -123,8 +142,21 @@ begin
                and p.state in ('confirmed', 'released')) x;
     n := coalesce(array_length(ids, 1), 0);
     converted := converted || ids;
+    -- Pool steps that hold no money now (refunded in full or a dispute lost,
+    -- then reset to be paid again, or cancelled with the order): the pool
+    -- counted them as nothing, so a withdrawal beyond the steps above was
+    -- owed to TSC. Room: the step's amount, what paying it again covers.
+    select coalesce(array_agg(p.id order by p.release_requested_at nulls last, p.id), '{}'),
+           coalesce(array_agg(greatest(p.amount_cents, 0) order by p.release_requested_at nulls last, p.id), '{}')
+      into gone, gone_room
+      from public.order_payments p join public.production_orders o on o.id = p.order_id
+     where o.factory_org_id = f.org_id and p.withdrawal_pool and p.currency = 'USD'
+       and p.state not in ('confirmed', 'released');
+    g := coalesce(array_length(gone, 1), 0);
+    last_step := coalesce(gone[g], ids[n]);
     i_net := 1;
     i_room := 1;
+    i_gone := 1;
     last_at := '-infinity';
     for w in
       select x.id, x.status, coalesce(x.pool_cents, x.amount_cents) as part, x.created_at
@@ -168,8 +200,33 @@ begin
           i_room := i_room + 1;
         end if;
       end loop;
+      while need > 0 and i_gone <= g loop
+        take := least(need, gone_room[i_gone]);
+        if take > 0 then
+          insert into public.payment_takes as k (payment_id, org_id, road, factory_withdrawal_id, amount_cents, status, created_at, updated_at)
+          values (gone[i_gone], f.org_id, 'pool', w.id, take, case when w.status = 'paid' then 'sent' else 'held' end, at, now())
+          on conflict (payment_id, factory_withdrawal_id) where factory_withdrawal_id is not null
+          do update set amount_cents = k.amount_cents + excluded.amount_cents;
+          gone_room[i_gone] := gone_room[i_gone] - take;
+          need := need - take;
+        end if;
+        if gone_room[i_gone] = 0 then
+          i_gone := i_gone + 1;
+        end if;
+      end loop;
+      -- More than every step was ever worth (a step's amount lowered since,
+      -- say): the rest on the last step, beyond its worth, so it reads as
+      -- owed to TSC (paid) or refunded (waiting), as the pool read it.
       if need > 0 then
-        raise exception 'withdrawal % (%) is % more than the pool ever held', w.id, w.status, need;
+        if last_step is null then
+          raise exception 'round 32: withdrawal % of company % draws % on the old withdrawal pool, but the company has no US dollar pool step to draw it from', w.id, f.org_id, need
+            using hint = 'Nothing was changed. Check order_payments where withdrawal_pool for that company (currency and state) against its factory_withdrawals (status paid, paying or requested; pool_cents).';
+        end if;
+        insert into public.payment_takes as k (payment_id, org_id, road, factory_withdrawal_id, amount_cents, status, created_at, updated_at)
+        values (last_step, f.org_id, 'pool', w.id, need, case when w.status = 'paid' then 'sent' else 'held' end, at, now())
+        on conflict (payment_id, factory_withdrawal_id) where factory_withdrawal_id is not null
+        do update set amount_cents = k.amount_cents + excluded.amount_cents;
+        need := 0;
       end if;
     end loop;
     update public.factory_withdrawals set pool_cents = 0 where org_id = f.org_id and pool_cents is distinct from 0;
@@ -230,7 +287,11 @@ CREATE OR REPLACE FUNCTION public.payment_debt_cents(p order_payments)
  STABLE SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
-  select greatest(0, s.sent - public.payment_factory_cents(p))::bigint
+  -- What withdrawals sent from a step beyond what it now holds for the
+  -- factory. A step that holds no money (an old pool step refunded in full
+  -- after it was withdrawn, reset to be paid again: 20261121350000): all of
+  -- it, until the brand pays it again.
+  select greatest(0, s.sent - case when p.state in ('confirmed', 'released') then public.payment_factory_cents(p) else 0 end)::bigint
     from (select case
                    when p.state = 'released'
                         and not exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status in ('held', 'sent'))
@@ -238,7 +299,7 @@ AS $function$
                    else coalesce((select sum(t.amount_cents) from public.payment_takes t
                                    where t.payment_id = p.id and t.status = 'sent'), 0)
                  end as sent) s
-   where p.state in ('confirmed', 'released') and p.currency = 'USD';
+   where p.currency = 'USD';
 $function$;
 
 CREATE OR REPLACE FUNCTION public.factory_debt_cents(target_org uuid, target_client uuid DEFAULT NULL::uuid)
@@ -252,7 +313,11 @@ AS $function$
       from public.order_payments p
       join public.production_orders o on o.id = p.order_id
      where o.factory_org_id = target_org and p.currency = 'USD'
-       and p.state in ('confirmed', 'released') and p.factory_refund_cents > 0
+       -- Refunded since, or sent beyond what the step holds (an old pool step
+       -- refunded in full after it was withdrawn, or a withdrawal beyond every
+       -- pool step: 20261121350000).
+       and (p.factory_refund_cents > 0
+            or exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent'))
        and (target_client is null or o.brand_org_id = target_client)
   ), 0)::bigint;
 $function$;
@@ -695,7 +760,15 @@ begin
                                       coalesce(sum(t.amount_cents) filter (where t.status = 'sent'), 0) as sent
                                  from public.payment_takes t
                                 where t.org_id = target_org and t.status in ('held', 'sent')
-                                group by t.payment_id) x), '{}'::jsonb)
+                                group by t.payment_id) x), '{}'::jsonb),
+    -- Deprecated (20261121350000), for one deploy: the live site's Withdraw
+    -- shows its button while 'pool' is true and reads 'withdrawn'. True for a
+    -- company that withdraws from TSC (not Stripe) and has money or
+    -- withdrawals there, as the pool said; nothing on this site reads them.
+    'pool', not public.uses_stripe_payout(target_org)
+            and ((reach ->> 'any_cents')::bigint > 0
+                 or exists (select 1 from public.payment_takes t where t.org_id = target_org and t.road = 'pool')),
+    'withdrawn', '{}'::jsonb
   );
 end;
 $function$;
@@ -941,14 +1014,14 @@ begin
     -- balance is now (Available, net of what it owes).
     'recover', coalesce((
       select jsonb_agg(x.row order by x.at nulls last) from (
-        select greatest(p.refund_amount_at, p.dispute_lost_at) as at, jsonb_build_object(
+        select coalesce(greatest(p.refund_amount_at, p.dispute_lost_at), p.refunded_at) as at, jsonb_build_object(
           'payment_id', p.id, 'org_id', o.factory_org_id, 'order_id', o.id, 'order_number', o.order_number,
           'factory_name', f.name, 'brand_name', b.name, 'milestone_title', m.title,
           'amount_cents', public.payment_debt_cents(p), 'currency', p.currency,
           'cause', case when p.dispute_lost_cents > 0 and p.refund_amount_at is null then 'dispute_lost'
                         when p.dispute_lost_cents > 0 and p.dispute_lost_at > p.refund_amount_at then 'dispute_lost'
                         else 'refund' end,
-          'at', greatest(p.refund_amount_at, p.dispute_lost_at),
+          'at', coalesce(greatest(p.refund_amount_at, p.dispute_lost_at), p.refunded_at),
           'withdrawn_cents', case when exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent')
                                   then (select sum(t.amount_cents) from public.payment_takes t where t.payment_id = p.id and t.status = 'sent')
                                   else public.payment_factory_base_cents(p) end,
@@ -970,8 +1043,11 @@ begin
           join public.orgs f on f.id = o.factory_org_id
           join public.orgs b on b.id = o.brand_org_id
           left join public.order_milestones m on m.id = p.milestone_id
-         where p.state in ('confirmed', 'released') and p.currency = 'USD'
-           and p.factory_refund_cents > 0 and public.payment_debt_cents(p) > 0
+         where p.currency = 'USD'
+           -- and an old pool step refunded in full after it was withdrawn (20261121350000)
+           and (p.factory_refund_cents > 0
+                or exists (select 1 from public.payment_takes t where t.payment_id = p.id and t.status = 'sent'))
+           and public.payment_debt_cents(p) > 0
       ) x), '[]'::jsonb),
     -- A full refund before approval that failed in Stripe after the brand
     -- had paid again: TSC holds two charges for one step. Staff refund the
@@ -1297,6 +1373,27 @@ begin
     end if;
   end loop;
 
+  -- An old pool step refunded in full after a withdrawal took it, reset to be
+  -- paid again (20261121350000): what was sent stays Paid out, and is owed to
+  -- TSC (factory_debt_cents, below) until the brand pays the step again.
+  for r in
+    select p.id, p.refunded_at, sum(t.amount_cents)::bigint as sent
+      from public.payment_takes t
+      join public.order_payments p on p.id = t.payment_id
+      join public.production_orders o on o.id = p.order_id
+     where o.factory_org_id = target_org and p.currency = 'USD' and t.status = 'sent'
+       and p.state not in ('confirmed', 'released')
+       and (target_client is null or o.brand_org_id = target_client)
+     group by p.id, p.refunded_at
+  loop
+    taken_paid := taken_paid + r.sent;
+    refunded_total := refunded_total + r.sent;
+    out_rows := out_rows || jsonb_build_array(
+      jsonb_build_object('payment_id', r.id, 'figure', 'paid_out', 'amount_cents', r.sent, 'stripe', false, 'taken', true),
+      jsonb_build_object('payment_id', r.id, 'figure', 'refunded', 'amount_cents', -r.sent, 'stripe', false,
+                         'cause', 'refund', 'at', r.refunded_at));
+  end loop;
+
   -- A part a waiting withdrawal holds on a step refunded since (in full the
   -- old way, or in part: take_refunded_cents): that money went back to the
   -- brand, so it is in no figure (not earnings, never "on hold"); its row
@@ -1459,23 +1556,34 @@ select public.convert_withdrawal_pool();
 -- ---------------------------------------------------------------------------
 -- 5. Figures after, read by the new functions: the same, or nothing changes.
 -- ---------------------------------------------------------------------------
+create function pg_temp.r32_kept(j jsonb) returns jsonb
+language sql immutable as $$
+  -- What must not change. Available and Pending together: a pool step still
+  -- clearing or disputed moves from one to the other (20261121350000).
+  select (j - 'available' - 'pending')
+         || jsonb_build_object('available_and_pending', coalesce((j ->> 'available')::bigint, 0) + coalesce((j ->> 'pending')::bigint, 0));
+$$;
 do $$
 declare
   r record;
   pool_debt boolean;
 begin
-  for r in select b.org_id, b.client, b.figures as before, pg_temp.r32_figures(b.org_id, b.client) as after from r32_before b loop
+  for r in select b.org_id, b.client, pg_temp.r32_kept(b.figures) as before,
+                  pg_temp.r32_kept(pg_temp.r32_figures(b.org_id, b.client)) as after
+             from r32_before b loop
     -- A client's view never counted the old pool's debt (it was the
     -- company's); per payment, it is now that client's. Checked only where
     -- the company owed nothing.
     pool_debt := coalesce(((select x.figures from r32_before x where x.org_id = r.org_id and x.client is null) ->> 'owed_to_tsc')::bigint, 0) > 0;
     continue when r.client is not null and pool_debt;
     if r.before is distinct from r.after then
-      raise exception 'round 32: the balance of % (client %) would change from % to %', r.org_id, r.client, r.before, r.after;
+      raise exception 'round 32: converting the withdrawal pool would change the balance of company % (client %) from % to %', r.org_id, r.client, r.before, r.after
+        using hint = 'Nothing was changed. Compare that company''s order_payments where withdrawal_pool (state, amount, refunds) and its factory_withdrawals (paid, paying, requested; pool_cents) with factory_balance() before this migration.';
     end if;
   end loop;
 end;
 $$;
+drop function pg_temp.r32_kept(jsonb);
 drop function pg_temp.r32_figures(uuid, uuid);
 
 -- ---------------------------------------------------------------------------

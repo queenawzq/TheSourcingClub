@@ -193,6 +193,7 @@ const RELEASE_REFUSALS = {
   payout_owes_tsc: (cause) => `The factory owes TSC ${cause?.details || "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
+  payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",
   payout_not_cleared: "The brand's payment hasn't cleared yet. Try again once it has.",
 };
 

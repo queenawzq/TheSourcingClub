@@ -11,7 +11,7 @@ function fixture(routeResult) {
   const db = {
     from(table) { return { select() { return this; }, eq() { return this; },
       async maybeSingle() { return { data: table === 'order_payments' ? payment : { stripe_account_id: 'acct_route_fake', transfers_active: true } }; } }; },
-    async rpc(name, args) { calls.push(name); assert.ok(['uses_stripe_payout', 'join_owed_to_pool'].includes(name), name);
+    async rpc(name, args) { calls.push(name); assert.ok(['uses_stripe_payout'].includes(name), name);
       assert.equal(args.target_org, payment.production_orders.factory_org_id); return name === 'uses_stripe_payout' ? routeResult : { data: null, error: null }; },
   };
   const stripe = { charges: { async retrieve() { return { amount_refunded: 0 }; } },
@@ -22,8 +22,9 @@ function fixture(routeResult) {
 const manual = fixture({ data: false, error: null });
 assert.deepEqual(await releasePayment({ ...manual, paymentId: payment.id }),
   { released: false, reason: 'the factory selected another payout method' });
-// The default changed: the payment waits in the factory's balance for its new method.
-assert.deepEqual(manual.calls, ['uses_stripe_payout', 'join_owed_to_pool']);
+// The default changed: the payment stays owed in the factory's balance for its
+// new method; the old pool's join_owed_to_pool is no longer called (R33).
+assert.deepEqual(manual.calls, ['uses_stripe_payout']);
 const unknown = fixture({ data: null, error: { message: 'preference lookup unavailable' } });
 await assert.rejects(releasePayment({ ...unknown, paymentId: payment.id }), /preference lookup unavailable/);
 

@@ -187,11 +187,11 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(earningStatus(clearingStep, null, new Map([["c1", new Set(["pending"])]])), "Pending", "Payments: the same word");
   const cleared = { ...clearingStep, funds_available_at: "2020-01-01T00:00:00Z" };
   assert.equal(earningStatus(cleared), "Added to your balance", "once cleared, in the balance on both");
-  assert.equal(earningStatus({ ...clearingStep, withdrawal_pool: true }), "Added to your balance", "old pool money is never clearing");
 }
 
 // N4: an old step-by-step payout still being sent is "on its way", not
-// "pending … once processing finishes"; one failed and waiting for staff too.
+// "pending … once processing finishes". One that failed is not (R33 L2): its
+// money reads where the server put it, as its attempt's row says "Failed".
 {
   const attemptOf = (status) => ({ id: `a-${status}`, provider: "wise", status, amount_cents: 300, created_at: "2026-11-02T00:00:00Z", money_left_at: "2026-11-02T00:00:00Z" });
   const rows = [
@@ -201,7 +201,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     pay("free", 900, "confirmed", { ...APPROVED, provider_payouts: [attemptOf("failed")] }),
   ];
   const placed = new Map([["sending", new Set(["pending"])], ["bounced", new Set(["pending"])], ["clearing", new Set(["pending"])], ["free", new Set(["available"])]]);
-  assert.equal(legacyOnItsWayCents(rows, placed), 800, "processing and failed-for-staff steps the server holds in Pending");
+  assert.equal(legacyOnItsWayCents(rows, placed), 300, "R33: only a payout under way is on its way, never a failed one");
+  const bounced = rows[1];
+  for (const where of ["processing", "pending", "available"]) {
+    assert.notEqual(earningStatus(bounced, null, new Map([["bounced", new Set([where])]])), ON_ITS_WAY, `R33: a failed per-step payout never reads On its way (${where})`);
+  }
+  assert.equal(earningStatus(bounced, null, new Map([["bounced", new Set(["available"])]])), "Added to your balance", "R33: in the balance, as the server says");
+  assert.equal(earningStatus(rows[0], null, new Map([["sending", new Set(["processing"])]])), ON_ITS_WAY, "one under way still is");
   assert.equal(legacyOnItsWayCents(rows, new Map()), 0, "nothing without the server's figures");
 }
 

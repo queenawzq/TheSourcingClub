@@ -799,12 +799,20 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   await assert.rejects(refuseIfChargeReturned({ db: dbFor(open), paymentId: "p1", build: stripeWith("needs_response") }),
     (failure) => failure.kind === "charge_disputed", "R32: an open dispute is refused");
   assert.deepEqual(open, [["record_payment_disputed", { target_payment: "p1", disputed: true }]], "R32: and recorded, as a withdrawal would");
+  // R33 (M1): lost: recorded as a loss, and refused, so a resumed attempt never
+  // sends the whole step after the brand's bank took money back.
+  const lost = [];
+  await assert.rejects(refuseIfChargeReturned({ db: dbFor(lost), paymentId: "p1", build: stripeWith("lost") }),
+    (failure) => failure.kind === "charge_disputed", "R33: a lost dispute is refused");
+  assert.equal(lost[0]?.[0], "record_payment_dispute_lost", "R33: and recorded as lost");
   // The database's refusals are said to staff in words, the amount owed named.
   const refusedWith = (hint, details = null) => paypalPay({ paypal: {}, caller: { rpc: async () => ({ data: null, error: { hint, details } }) }, db: {}, paymentId: "p1", changedAt: "t" });
   await assert.rejects(refusedWith("payout_owes_tsc", "$500.00"),
     (failure) => failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Nothing is paid until that is covered.", "R32: owes TSC");
   await assert.rejects(refusedWith("payout_disputed"), (failure) => failure.message === "The brand disputed this payment. It waits until the dispute is settled.");
   await assert.rejects(refusedWith("payout_refunded"), (failure) => failure.message === "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.");
+  // R33 (M2): no method to withdraw to: said as it is.
+  await assert.rejects(refusedWith("payout_refunded_no_method"), (failure) => failure.message === "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.");
   await assert.rejects(refusedWith("payout_not_cleared"), (failure) => failure.message === "The brand's payment hasn't cleared yet. Try again once it has.");
 }
 

@@ -1,7 +1,7 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
-import { applyChargeRefund, callerClient, jsonBody, recordChargeDispute, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyChargeRefund, applyDispute, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /** The one source of the payout fee. A .mjs, so loaded with import(): a static one stops the function starting on Vercel. */
 const feeFor = async (args) => (await import("../src/shared/withdrawal-fees.mjs")).withdrawalFee(args);
@@ -78,6 +78,7 @@ const DB_WORDS = {
   payout_owes_tsc: (error) => `The factory owes TSC ${error.details ?? error.detail ?? "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
+  payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",
   payout_not_cleared: "The brand's payment hasn't cleared yet. Try again once it has.",
 };
 
@@ -412,16 +413,22 @@ export async function refuseIfChargeReturned({ db, paymentId, build = stripeFrom
     throw new PayoutFailure("charge_refunded", "The brand's payment was refunded, so there is nothing to pay out. Reload the board.");
   }
   // Stripe keeps `disputed` true after a decision: a dispute TSC won pays as
-  // usual. Recorded either way, as every withdrawal road does.
+  // usual. Recorded either way, as every withdrawal road does. A lost one is
+  // refused like a refund: the brand's bank took money back, and a resumed
+  // attempt would still send the whole step.
   if (charge.disputed) {
     let held;
+    let lost = false;
     try {
-      held = await recordChargeDispute({ stripe, db, paymentId, charge });
+      const disputeId = typeof charge.dispute === "string" ? charge.dispute : charge.dispute?.id;
+      const dispute = disputeId ? await stripe.disputes.retrieve(disputeId) : null;
+      lost = dispute?.status === "lost";
+      held = await applyDispute({ db, paymentId, dispute });
     } catch (failure) {
       log("charge dispute", failure, { paymentId });
       throw new PayoutFailure("charge_unchecked", CHARGE_UNCHECKED);
     }
-    if (held !== false) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
+    if (held !== false || lost) throw new PayoutFailure("charge_disputed", "The brand disputed this charge, so nothing was sent.");
   }
 }
 
