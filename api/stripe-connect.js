@@ -9,7 +9,7 @@ import {
   managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod,
 } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
-import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayoutsFor, returnFeesOnFailedPayouts, settleAbandoned, stripeMoneyUsd, withdrawWithFee } from "./_stripe-withdrawals.js";
+import { consistentMoneyRead, heldByOpenWithdrawals, refreshPayouts, settleAbandoned, stripeMoneyUsd, withdrawWithFee } from "./_stripe-withdrawals.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded and
@@ -338,11 +338,11 @@ const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_t
  *
  * An owner's answer also carries what only an owner manages: Stripe's
  * balance amounts, payouts, payout methods and a payout account upgrade; and
- * an owner's read first finishes a withdrawal left half-way (its call died)
- * and gives back the fee of a payout that failed.
+ * an owner's read first finishes a withdrawal left half-way (its call died).
  *
- * Refunds, disputes and payouts whose webhooks never came are read from
- * Stripe first, at most once a minute per company (claimStripeRead); only
+ * Refunds, disputes and payouts whose webhooks never came (a failed
+ * payout's fee given back) are read from Stripe first, at most once a
+ * minute per company (claimStripeRead); only
  * Stripe's facts are recorded. Stripe unreachable: 502, with the database's
  * figures (Stripe part marked unavailable) and everything that needs no
  * Stripe, never with nothing.
@@ -362,14 +362,12 @@ async function readBalance({ stripe, db, caller, orgId, owner, response }) {
       await holdPayouts(stripe, accountId);
       // A withdrawal left half-way (its call died) is finished or its fee given back first.
       await settleAbandoned({ stripe, db, accountId }).catch((failure) => logStripeFailure("stripe-connect settle", failure, { orgId }));
-      // A payout that failed or was cancelled gives its fee back even if its webhook never came.
-      await returnFeesOnFailedPayouts({ stripe, db, accountId });
     } catch (failure) {
       ownerFailure = failure;
     }
   }
   if (await claimStripeRead(db, orgId)) {
-    await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayoutsFor({ stripe, db, orgId })]);
+    await Promise.all([checkChargesFor({ stripe, db, orgId }), refreshPayouts({ stripe, db, orgId })]);
     const again = await caller.rpc("factory_balance", { target_org: orgId });
     if (!again.error) tsc = again.data;
   }

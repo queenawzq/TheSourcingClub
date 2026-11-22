@@ -702,7 +702,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     for (const route of ["stripe-connect.js", "stripe-sync.js"]) {
       const code = fs.readFileSync(new URL(`../api/${route}`, import.meta.url), "utf8");
       const lines = code.split("\n");
-      const calls = lines.filter((line) => /(checkChargesFor|refreshPayoutsFor)\(\{/.test(line));
+      const calls = lines.filter((line) => /(checkChargesFor|refreshPayouts)\(\{/.test(line));
       assert.ok(calls.length > 0, `${route} reads charges or payouts`);
       for (const line of calls) {
         const guarded = /askStripe \?/.test(line) || lines.slice(Math.max(0, lines.indexOf(line) - 2), lines.indexOf(line) + 1).some((l) => /claimStripeRead\(db, orgId\)/.test(l));
@@ -1560,7 +1560,7 @@ for (const [why, row] of [
 // what the transfers landed as (non-US$ accounts); and nothing claimed is left
 // held when the withdrawal is refused.
 {
-  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, refreshPayoutsFor, heldByOpenWithdrawals, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
+  const { withdrawWithFee, checkStripeWithdrawal, returnFeeOnFailedPayout, settleAbandoned, refreshPayouts, heldByOpenWithdrawals, CANNOT_PROCESS: CANNOT } = await import("../api/_stripe-withdrawals.js");
   const { PayoutMethodRefusal } = await import("../api/_stripe-payouts.js");
   const { stripeWithdrawalFee } = await import("../src/shared/withdrawal-fees.mjs");
   const { randomUUID } = await import("node:crypto");
@@ -2416,7 +2416,7 @@ for (const [why, row] of [
     const row = w.db.rows[0];
     Object.assign(row, { payout_status: "pending", payout_arrives_on: day(-1) });
     Object.assign(w.stripe.payouts[0], { status: "paid", arrival_date: Math.floor(Date.now() / 1000) - 86400 });
-    assert.equal(await refreshPayoutsFor({ stripe: w.api, db: w.db, orgId: "org" }), 1);
+    assert.equal(await refreshPayouts({ stripe: w.api, db: w.db, orgId: "org" }), 1);
     assert.equal(row.payout_status, "paid", "R11: a payout Stripe paid is recorded paid");
     assert.equal(row.payout_arrives_on, day(-1));
     // Failed in Stripe: the fee goes back once, however often it is read.
@@ -2424,8 +2424,8 @@ for (const [why, row] of [
     await withdraw(f, 5000);
     Object.assign(f.db.rows[0], { payout_status: "in_transit", payout_arrives_on: day(-1) });
     Object.assign(f.stripe.payouts[0], { status: "failed", metadata: { stripe_withdrawal_id: f.db.rows[0].id } });
-    await refreshPayoutsFor({ stripe: f.api, db: f.db, orgId: "org" });
-    await refreshPayoutsFor({ stripe: f.api, db: f.db, orgId: "org" });
+    await refreshPayouts({ stripe: f.api, db: f.db, orgId: "org" });
+    await refreshPayouts({ stripe: f.api, db: f.db, orgId: "org" });
     assert.equal(f.stripe.transfers.filter((t) => t.metadata?.stripe_withdrawal_fee_return === f.db.rows[0].id).length, 1,
       "R11: a failed payout gives its fee back once (returnFeeOnFailedPayout)");
     assert.equal(f.db.rows[0].state, "fee_returned");
@@ -2437,10 +2437,15 @@ for (const [why, row] of [
       payout_status: "pending", payout_arrives_on: arrives, created_at: new Date(Date.now() - ageMinutes * 60_000).toISOString(), currency: "USD" });
     add("tomorrow", day(1), 100);
     for (let k = 1; k <= 7; k += 1) add(k, k % 2 ? day(-1) : null, 10 * k);
-    await refreshPayoutsFor({ stripe: t.api, db: t.db, orgId: "org" });
-    assert.ok(!reads.includes("po_tomorrow"), "R11: a payout arriving tomorrow is not read");
-    assert.equal(reads.length, 5, "R11: at most 5 per read");
-    assert.deepEqual(reads.sort(), ["po_3", "po_4", "po_5", "po_6", "po_7"], "R11: the oldest first");
+    await refreshPayouts({ stripe: t.api, db: t.db, orgId: "org", limit: 5 });
+    assert.ok(!reads.includes("po_tomorrow"), "R11: a payout arriving tomorrow waits behind the ones due");
+    assert.equal(reads.length, 5, "R11: at most `limit` per read");
+    assert.deepEqual(reads.sort(), ["po_3", "po_4", "po_5", "po_6", "po_7"], "R11: the oldest due first");
+    // Merged (simplify item 4): after the due ones, the other recent payouts
+    // (a paid one can still fail), as the fee-return sweep read them.
+    reads = [];
+    await refreshPayouts({ stripe: t.api, db: t.db, orgId: "org" });
+    assert.ok(reads.includes("po_tomorrow") && reads.length === 8, "the default reads the recent ones after the due ones");
     // 13ac6414: a payout's status only moves forward. A stale Stripe answer
     // ranked below what is recorded (pending after in_transit) is ignored.
     {
@@ -2449,19 +2454,23 @@ for (const [why, row] of [
         payout_status: null, payout_arrives_on: null, created_at: new Date().toISOString() });
       let answer = "in_transit";
       r.api.payouts.retrieve = async (id) => ({ id, status: answer, arrival_date: Math.floor(Date.now() / 1000) - 86400 });
-      await refreshPayoutsFor({ stripe: r.api, db: r.db, orgId: "org" });
+      await refreshPayouts({ stripe: r.api, db: r.db, orgId: "org" });
       assert.equal(r.db.rows.at(-1).payout_status, "in_transit", "a newer answer moves it forward");
       answer = "pending";
       const before = JSON.stringify(r.db.rows.at(-1));
-      await refreshPayoutsFor({ stripe: r.api, db: r.db, orgId: "org" });
-      assert.equal(JSON.stringify(r.db.rows.at(-1)), before, "a lower-ranked answer is ignored: nothing on the row is written");
+      await refreshPayouts({ stripe: r.api, db: r.db, orgId: "org" });
+      // The database keeps it (keep_payout_status_forward, pgTAP): the server
+      // keeps no copy of the ranks.
+      assert.notEqual(JSON.stringify(r.db.rows.at(-1)), before, "the answer is written; the database's trigger keeps the status and day");
+      const lib = (await import("node:fs")).readFileSync(new URL("../api/_stripe-withdrawals.js", import.meta.url), "utf8");
+      assert.ok(!/const rank = \{ pending: 1/.test(lib) && !lib.includes("returnFeesOnFailedPayouts"), "one payout-read loop, no copy of the ranks");
     }
     // Never throws.
     const broken = oneBalanceWorld({ steps: [step("p1", 10000)] });
     broken.db.rows.push({ id: "sw-x", org_id: "org", stripe_account_id: "acct_f", state: "paid_out", payout_id: "po_x", payout_status: null,
       payout_arrives_on: null, created_at: new Date().toISOString() });
     broken.api.payouts.retrieve = async () => { throw new Error("Stripe down"); };
-    assert.equal(await refreshPayoutsFor({ stripe: broken.api, db: broken.db, orgId: "org" }), 0, "R11: a failed read never throws");
+    assert.equal(await refreshPayouts({ stripe: broken.api, db: broken.db, orgId: "org" }), 0, "R11: a failed read never throws");
   }
 
   // 37b6c70f: what other open withdrawals on the account still hold of the
