@@ -386,9 +386,9 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
         maybeSingle: async () => ({ data: rows.find((row) => filters.every((f) => f(row))) ?? null, error: null }),
         eq: (other, wanted) => (filters.push((row) => row[other] === wanted), q),
         // payment_events: a lost dispute recorded on that payment, by its
-        // cause (round 32: never by the note's words) and its Stripe id.
-        like: (_, pattern) => ({ limit: async () => ({ data: table === "payment_events"
-          ? events.filter((event) => filters.every((f) => f(event)) && event.note.endsWith(pattern.split("%").at(-1))) : [], error: null }) }),
+        // cause (round 32) and its Stripe id (stripe_ref, 20261121390000):
+        // never by the note's words.
+        limit: async () => ({ data: table === "payment_events" ? events.filter((event) => filters.every((f) => f(event))) : [], error: null }),
       };
       return q;
     } }) }),
@@ -405,18 +405,18 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   // Fix round 19 (L7): lost before approval already, so the payment no
   // longer names the charge: a late event about it is done, not retried.
   assert.equal(await paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Dispute lost: $107.00 went back to the brand. Stripe's dispute fee $15.00 is TSC's. (Stripe du_late)" }]),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", stripe_ref: "du_late", note: "Dispute lost: $107.00 went back to the brand. Stripe's dispute fee $15.00 is TSC's. (Stripe du_late)" }]),
     dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "a late dispute event after a loss: nothing to do, no retry");
   // Round 32 (DB review #5): the loss is known by its cause, whatever the note says.
   assert.equal(await paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Reworded later, any words. (Stripe du_late)" }]),
-    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "R32: a reworded note still counts: the cause decides");
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", stripe_ref: "du_late", note: "Reworded later, any words, no id at all." }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), null, "R32: a reworded note still counts: the cause and the Stripe id decide");
   await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", cause: null, note: "Dispute lost: $107.00 went back to the brand. (Stripe du_late)" }]),
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: null, stripe_ref: "du_late", note: "Dispute lost: $107.00 went back to the brand. (Stripe du_late)" }]),
     dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "R32: words alone never count");
   await assert.rejects(paymentForDispute({ stripe: stripeWith({ payment_id: "pay-lost" }),
-    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", note: "Dispute lost: … (Stripe du_other)" }]),
-    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "another dispute's note does not count");
+    db: dbWith(rows, [{ payment_id: "pay-lost", cause: "dispute_lost", stripe_ref: "du_other", note: "Dispute lost: … (Stripe du_late)" }]),
+    dispute: { id: "du_late", charge: "ch_old", payment_intent: "pi_old" } }), /not recorded yet/, "another dispute's event does not count, whatever its note says");
   assert.equal(await paymentForDispute({ stripe: stripeWith({ kind: "credits" }), db: dbWith(rows), dispute: { charge: "ch_y", payment_intent: "pi_y" } }),
     null, "another app's charge or a credit pack: nothing");
   assert.equal(await paymentForDispute({ stripe: stripeWith({}), db: dbWith(rows), dispute: { charge: "ch_z" } }), null, "no intent: nothing");
@@ -988,7 +988,7 @@ for (const [why, row] of [
     from(table) {
       if (table === "stripe_withdrawals") return { update: () => ({ eq: async () => ({ error: null }) }) };
       if (table === "stripe_connect_accounts") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { org_id: "org-1" }, error: null }) }) }) };
-      if (table === "notifications") return { insert: async (row) => (told.push(row), { error: null }) };
+      if (table === "notifications") return { upsert: async (row) => (told.push(row), { error: null }) };
       throw new Error(`unexpected table ${table}`);
     },
   };
@@ -1621,6 +1621,12 @@ for (const [why, row] of [
         if (name === "notifications") {
           const q = table(() => notices)();
           q.insert = async (row) => { notices.push({ id: randomUUID(), ...row }); return { data: null, error: null }; };
+          // ON CONFLICT (org_id, dedupe_key) DO NOTHING, as the unique index does.
+          q.upsert = async (row, options) => {
+            assert.deepEqual(options, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true });
+            if (!notices.some((n) => n.org_id === row.org_id && n.dedupe_key != null && n.dedupe_key === row.dedupe_key)) notices.push({ id: randomUUID(), ...row });
+            return { data: null, error: null };
+          };
           return q;
         }
         if (name === "order_payments") return table(() => steps.map((step) => ({ id: step.id, state: "confirmed", order_id: step.order,
@@ -1895,6 +1901,7 @@ for (const [why, row] of [
     assert.equal(told[0].org_id, "org");
     await withdraw(w, 5000, { requestId });
     assert.equal(w.db.notices.filter((n) => n.kind === "withdrawal").length, 1, "pressed again: not told twice");
+    assert.equal(told[0].dedupe_key, `withdrawal_asked:${w.db.rows[0].id}`, "once by its key (20261121390000), not by looking for any notice about it");
   }
 
   // D1 first: $30 already in the factory's Stripe account, $50 asked: only $20 is claimed and transferred.

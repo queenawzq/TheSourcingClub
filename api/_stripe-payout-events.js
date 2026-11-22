@@ -50,21 +50,23 @@ export async function tellPayoutEvent(db, event) {
       title: "A withdrawal did not go through",
       body: `Your withdrawal of ${amount} ${said.has("paid") ? "did not reach your bank after all" : "did not go through"}. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
     };
-  const { error } = await db.from("notifications").insert({
+  const outcome = event.type === "payout.paid" ? "paid" : "failed";
+  // Once per payout and outcome (its key, 20261121390000).
+  const { error } = await db.from("notifications").upsert({
     org_id: known.data.org_id, ...notice,
-    ...(payout.id ? { data: { payout_id: payout.id, payout: event.type === "payout.paid" ? "paid" : "failed" } } : {}),
-  });
+    ...(payout.id ? { data: { payout_id: payout.id, payout: outcome }, dedupe_key: `payout:${payout.id}:${outcome}` } : {}),
+  }, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
   return true;
 }
 
-/** "paid" and/or "failed": the notices this company was already sent about this payout. Never throws. */
+/** "paid" and/or "failed": the notices this company was already sent about this payout, by their keys. Never throws. */
 async function saidAboutPayout(db, orgId, payoutId) {
   try {
-    const { data, error } = await db.from("notifications").select("data")
-      .eq("org_id", orgId).in("kind", ["funds_released", "payout_method_changed"]).eq("data->>payout_id", payoutId);
+    const { data, error } = await db.from("notifications").select("dedupe_key")
+      .eq("org_id", orgId).in("dedupe_key", [`payout:${payoutId}:paid`, `payout:${payoutId}:failed`]);
     if (error) return new Set();
-    return new Set((data ?? []).map((row) => row.data?.payout).filter(Boolean));
+    return new Set((data ?? []).map((row) => String(row.dedupe_key).split(":").pop()));
   } catch {
     return new Set();
   }

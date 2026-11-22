@@ -817,21 +817,19 @@ async function tellWithdrawalAsked(stripe, db, row, payout) {
           .catch((failure) => console.error("stripe-withdrawals destination", row.id, failure?.message));
       }
     }
-    const { data: already } = await db.from("notifications").select("id")
-      .eq("kind", "withdrawal").eq("subject_type", "withdrawal").eq("subject_id", row.id).limit(1);
-    if (already?.length) return;
     const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(Number(minor) / 100);
     const asked = row.usd_cents != null ? money(row.usd_cents, "usd") : money(row.amount_minor, row.currency);
     to = to ?? "your bank account";
-    await db.from("notifications").insert({
-      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id,
+    // Once (its key, 20261121390000): the withdraw call and a later read may both get here.
+    await db.from("notifications").upsert({
+      org_id: row.org_id, kind: "withdrawal", subject_type: "withdrawal", subject_id: row.id, dedupe_key: `withdrawal_asked:${row.id}`,
       // When it was asked for: listed before its payout's own notices, which
       // Stripe can send before this call gets here (at once, in test mode).
       ...(row.created_at ? { created_at: row.created_at } : {}),
       title: `Withdrawal of ${asked} requested`, body: `To ${to.replace(/^(Bank account|Debit card)\b/, (named) => named.toLowerCase())}.`,
       data: { amount_cents: row.usd_cents ?? row.amount_minor, currency: row.usd_cents != null ? "USD" : row.currency.toUpperCase(),
         receives_minor: payout?.amount ?? null, receives_currency: payout?.currency?.toUpperCase() ?? null },
-    });
+    }, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true });
   } catch (failure) {
     console.error("stripe-withdrawals notice", row.id, failure?.message);
   }

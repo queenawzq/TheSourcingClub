@@ -556,7 +556,7 @@ export async function paymentForDispute({ stripe, db, dispute }) {
       // Lost before approval already: the payment went back to Due and no
       // longer names this charge. A late event about it changes nothing.
       const { data: events, error: eventsError } = await db.from("payment_events").select("id")
-        .eq("payment_id", ownId).eq("cause", "dispute_lost").like("note", `%(Stripe ${dispute.id})`).limit(1);
+        .eq("payment_id", ownId).eq("cause", "dispute_lost").eq("stripe_ref", dispute.id).limit(1);
       if (eventsError) throw new Error(eventsError.message);
       if (events?.length) return null;
       throw new Error("the disputed charge's payment is not recorded yet");

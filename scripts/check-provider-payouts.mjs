@@ -675,7 +675,7 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
       if (table === "stripe_connect_accounts") {
         return { select: () => ({ eq: (_, id) => ({ maybeSingle: async () => ({ data: id === "acct_known" ? { org_id: "org-1" } : null, error: null }) }) }) };
       }
-      return { insert: async (row) => { inserted.push(row); return { error: null }; } };
+      return { upsert: async (row, options) => { assert.deepEqual(options, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true }); inserted.push(row); return { error: null }; } };
     },
   };
   const payoutEvent = (type, payout, account = "acct_known") => ({ type, account, data: { object: { amount: 123456, currency: "eur", ...payout } } });
@@ -726,7 +726,12 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
       let patch = null;
       let inserting = null;
       const run = () => {
-        if (inserting) { tables[table].push(structuredClone(inserting)); return { error: null }; }
+        if (inserting) {
+          // An upsert that ignores duplicates: a row with the same company and key is not written again.
+          if (inserting.dedupe_key && tables[table].some((row) => row.org_id === inserting.org_id && row.dedupe_key === inserting.dedupe_key)) return { error: null };
+          tables[table].push(structuredClone(inserting));
+          return { error: null };
+        }
         const rows = tables[table].filter((row) => filters.every((f) => f(row)));
         if (patch) rows.forEach((row) => Object.assign(row, structuredClone(patch)));
         return { data: rows, error: null };
@@ -735,6 +740,7 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
         select() { return q; },
         update(fields) { patch = fields; return q; },
         insert(row) { inserting = row; return q; },
+        upsert(row) { inserting = row; return q; },
         eq(column, value) { filters.push((row) => fieldOf(row, column) === value); return q; },
         in(column, values) { filters.push((row) => values.includes(fieldOf(row, column))); return q; },
         is(column, value) { filters.push((row) => (row[column] ?? null) === value); return q; },
