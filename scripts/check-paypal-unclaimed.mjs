@@ -1,7 +1,8 @@
 /**
  * A PayPal withdrawal nobody claimed (no PayPal account at the address) is
- * taken back by itself: the first read that finds it UNCLAIMED asks PayPal to
- * cancel it, and what PayPal then says is recorded as any answer is. Runs the
+ * taken back by itself: once it has been unclaimed for UNCLAIMED_WAIT_HOURS
+ * (from when PayPal sent it), the next read asks PayPal to cancel it, and
+ * what PayPal then says is recorded as any answer is. Runs the
  * real core (readBack, syncWithdrawals, readBackWithdrawalRef), the real
  * PayPal adapter and the real PayPal client against a pretend PayPal and a
  * pretend database that ends a withdrawal once, as record_withdrawal /
@@ -18,7 +19,7 @@
  * CANCEL_RETRY_MINUTES.
  */
 import assert from "node:assert/strict";
-import { CANCEL_RETRY_MINUTES, WITHDRAWAL_UNCLAIMED, readBackWithdrawalRef, syncWithdrawals } from "../api/_withdrawals.js";
+import { CANCEL_RETRY_MINUTES, UNCLAIMED_WAIT_HOURS, WITHDRAWAL_UNCLAIMED, WITHDRAWAL_UNCLAIMED_WAIT, readBackWithdrawalRef, syncWithdrawals } from "../api/_withdrawals.js";
 import { paypalAdapter } from "../api/_withdrawal-adapters.js";
 import { PAYPAL_UNCLAIMED, paypalFrom } from "../api/_paypal.js";
 
@@ -28,10 +29,12 @@ for (const name of Object.keys(process.env)) {
 
 const SENT = 6372; // what was sent: $65 less PayPal's $1.28 fee
 const T0 = Date.parse("2026-11-23T16:30:00Z");
+// Cases 1-8: PayPal sent it more than a day before T0, so it is due.
+const SENT_LONG_AGO = new Date(T0 - (UNCLAIMED_WAIT_HOURS + 1) * 3_600_000).toISOString();
 const minutes = (n) => T0 + n * 60_000;
 
 /** A pretend PayPal: one batch, one item, its state, and how cancel answers. */
-function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = false } = {}) {
+function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = false, sentAt = SENT_LONG_AGO } = {}) {
   const calls = { cancel: 0, status: 0 };
   const paypal = {
     state,
@@ -51,8 +54,8 @@ function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = f
       if (url.endsWith("/v1/payments/payouts/BATCH1")) {
         calls.status += 1;
         return reply(200, {
-          batch_header: { batch_status: "SUCCESS" },
-          items: [{ payout_item_id: "ITEM1", transaction_status: paypal.state, payout_item: { amount: { value: (SENT / 100).toFixed(2), currency: "USD" } } }],
+          batch_header: { batch_status: "SUCCESS", time_created: sentAt },
+          items: [{ payout_item_id: "ITEM1", transaction_status: paypal.state, ...(sentAt ? { time_processed: sentAt } : {}), payout_item: { amount: { value: (SENT / 100).toFixed(2), currency: "USD" } } }],
         });
       }
       throw new Error(`unexpected PayPal request ${init.method ?? "GET"} ${url}`);
@@ -231,9 +234,54 @@ for (const state of ["PENDING", "ONHOLD", "SUCCESS"]) {
   assert.equal(db.credited, 0);
 }
 
+// 9. Not a day yet: PayPal is not asked to cancel, however often it is read,
+// and staff read that it goes back a day after it was sent. Once the day has
+// passed, the next read cancels it, once, and it is credited once.
+{
+  const sentAt = new Date(T0).toISOString();
+  const paypal = pretendPayPal({ sentAt });
+  const db = pretendDb();
+  for (const at of [0, 1, 60, 600, UNCLAIMED_WAIT_HOURS * 60 - 1]) await sync(paypal, db, minutes(at));
+  assert.equal(paypal.calls.cancel, 0, "not asked to cancel before a day");
+  assert.equal(db.row.status, "paying");
+  assert.equal(db.row.staff_sentence, WITHDRAWAL_UNCLAIMED_WAIT, "staff read that it goes back after a day");
+  assert.equal(db.credited, 0);
+  const day = UNCLAIMED_WAIT_HOURS * 60;
+  await Promise.all([sync(paypal, db, minutes(day)), sync(paypal, db, minutes(day)), sync(paypal, db, minutes(day + 1))]);
+  await sync(paypal, db, minutes(day + 60));
+  assert.equal(paypal.calls.cancel, 1, "a day passed: cancelled once");
+  assert.equal(db.credited, SENT, "credited once");
+  assert.equal(db.notices.length, 1);
+}
+
+// 10. Claimed within the day: never cancelled, never credited, reads Paid.
+{
+  const paypal = pretendPayPal({ sentAt: new Date(T0).toISOString() });
+  const db = pretendDb();
+  await sync(paypal, db, minutes(60));
+  paypal.state = "SUCCESS";
+  await sync(paypal, db, minutes(UNCLAIMED_WAIT_HOURS * 60 + 5));
+  assert.equal(paypal.calls.cancel, 0);
+  assert.equal(db.row.status, "paid");
+  assert.equal(db.credited, 0);
+}
+
+// 11. PayPal gives no time it was sent: never cancelled by us (its own 30-day
+// return still credits it), and staff read the waiting line.
+{
+  const paypal = pretendPayPal({ sentAt: null });
+  const db = pretendDb();
+  await sync(paypal, db, minutes(UNCLAIMED_WAIT_HOURS * 60 * 3));
+  assert.equal(paypal.calls.cancel, 0);
+  assert.equal(db.row.staff_sentence, WITHDRAWAL_UNCLAIMED_WAIT);
+}
+
 // 8. Staff's line is new for withdrawals only: a per-step payout keeps its own
 // (it has a Cancel payment button), and the withdrawal's no longer says to cancel.
 assert.notEqual(WITHDRAWAL_UNCLAIMED, PAYPAL_UNCLAIMED);
-assert.doesNotMatch(WITHDRAWAL_UNCLAIMED, /cancel|pay again|ask the factory/i);
+for (const line of [WITHDRAWAL_UNCLAIMED, WITHDRAWAL_UNCLAIMED_WAIT]) {
+  assert.notEqual(line, PAYPAL_UNCLAIMED);
+  assert.doesNotMatch(line, /cancel|pay again|ask the factory|TSC/i);
+}
 
-console.log("paypal-unclaimed: an unclaimed withdrawal is cancelled by the first read, credited once; reads at once, a refused or lost cancel, a claim meanwhile and PayPal's own return credit nothing extra; one cancel per wait");
+console.log("paypal-unclaimed: an unclaimed withdrawal is left a day, then cancelled by the next read, credited once; reads at once, a refused or lost cancel, a claim meanwhile and PayPal's own return credit nothing extra; one cancel per wait");

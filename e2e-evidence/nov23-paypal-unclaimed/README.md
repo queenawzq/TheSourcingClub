@@ -8,7 +8,9 @@ Local stack, PayPal **sandbox**, Nov 23, 2026.
 - A withdrawal PayPal holds UNCLAIMED (no PayPal account at the address) reads "Sending" for 30 days, with no action for staff.
 - The factory reads "Processing" and is not told (`b1-factory-before-unclaimed-processing.jpg`, taken during the first sandbox run).
 
-**After (this branch), in the PayPal sandbox, with nobody pressing anything after Pay:**
+**After (this branch):** an item unclaimed for a day (from PayPal's `time_processed`) is cancelled by the next read. Until then staff read "Not claimed: no PayPal account at this address. Returning it to the factory's balance a day after it was sent."
+
+**The cancel in the PayPal sandbox, with nobody pressing anything after Pay.** This run was made before the one-day wait was added, so the cancel came on the first read. The cancel call and what is recorded afterwards are unchanged; the wait is pinned by the fake PayPal below.
 1. Kowloon Sourcing Partners (PayPal address with no account) withdraws $63.72. Staff approve and pay it; PayPal batch `2MJJ7RJ4GJCPG`, item `7NKWMLGFSSMQU`, reads UNCLAIMED.
 2. The next read of the board (the 30 s read-back) found the item UNCLAIMED. It claimed the cancel (`read_back_at` stamped 16:50:09 UTC), and PayPal cancelled the item, which then read RETURNED.
 3. `b1-staff-after-auto-cancel.jpg`: the row reads Failed, with the existing returned sentence.
@@ -24,6 +26,9 @@ The races are pinned by `npm run check:paypal-unclaimed`, which runs in the buil
 - a claim meanwhile
 - PayPal's own 30-day return
 - one cancel per 10 minutes
+- not a day yet: no cancel, and the waiting line; a day passed: one cancel, one credit
+- claimed within the day: Paid, nothing credited
+- no time from PayPal: never cancelled by us (PayPal's own 30-day return still credits it)
 
 ## M1: a capacity window typed without a year
 

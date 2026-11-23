@@ -154,7 +154,7 @@ export const paypalAdapter = {
     // (record_withdrawal_returned; the factory bears the fee, as it does on a payout).
     const returned = status.state === "failed" && ["RETURNED", "REFUNDED", "REVERSED"].includes(status.raw) && Number.isFinite(status.sentMinor);
     return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null,
-      unclaimed: status.raw === "UNCLAIMED",
+      unclaimed: status.raw === "UNCLAIMED", sentAt: status.sentAt ?? null,
       returnedCents: returned ? status.sentMinor : null };
   },
   /**

@@ -289,11 +289,13 @@ export const withdrawalFailure = (adapter, raw) =>
  */
 export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null, now = Date.now() }) {
   let status = await adapter.status(client, ref);
-  // Nobody claimed it (PayPal: no account at the address): taken back at once,
-  // so the money is in the factory's balance again without anyone pressing
-  // anything. PayPal decides; what it then says is recorded below, like any
-  // answer. One attempt per row per CANCEL_RETRY_MINUTES, whoever reads it.
-  if (status.unclaimed && !wasPaid && typeof adapter.cancelUnclaimed === "function" && await claimCancel(db, id, now)) {
+  // Nobody claimed it (PayPal: no account at the address): taken back once it
+  // has been unclaimed for UNCLAIMED_WAIT_HOURS (time to open or confirm an
+  // account), so the money is in the factory's balance again without anyone
+  // pressing anything. PayPal decides; what it then says is recorded below,
+  // like any answer. One attempt per row per CANCEL_RETRY_MINUTES, whoever reads it.
+  const due = status.unclaimed && unclaimedLongEnough(status.sentAt, now);
+  if (due && !wasPaid && typeof adapter.cancelUnclaimed === "function" && await claimCancel(db, id, now)) {
     try {
       await adapter.cancelUnclaimed(client, ref);
     } catch (failure) {
@@ -334,13 +336,22 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false, 
     await record(db, id, "paid", { receives: status.arrivesMinor ?? null });
     return "paid";
   }
-  const waiting = status.unclaimed ? WITHDRAWAL_UNCLAIMED : status.waiting;
+  const waiting = status.unclaimed ? (due ? WITHDRAWAL_UNCLAIMED : WITHDRAWAL_UNCLAIMED_WAIT) : status.waiting;
   if (waiting) await record(db, id, "sent", { sentence: waiting });
   return "sent";
 }
 
 /** Staff's line on a withdrawal nobody claimed: it is being taken back (readBack). */
 export const WITHDRAWAL_UNCLAIMED = "Not claimed: no PayPal account at this address. Returning it to the factory's balance.";
+/** Staff's line while an unclaimed withdrawal waits its day before it is taken back. */
+export const WITHDRAWAL_UNCLAIMED_WAIT = "Not claimed: no PayPal account at this address. Returning it to the factory's balance a day after it was sent.";
+/** How long a withdrawal stays unclaimed before it is taken back, from when PayPal sent it. */
+export const UNCLAIMED_WAIT_HOURS = 24;
+/** A day since PayPal sent it. A time PayPal did not give (or that can't be read) is never long enough: its own 30-day return still stands. */
+function unclaimedLongEnough(sentAt, now) {
+  const sent = Date.parse(sentAt ?? "");
+  return Number.isFinite(sent) && now - sent >= UNCLAIMED_WAIT_HOURS * 3_600_000;
+}
 /** How long after an attempt to cancel an unclaimed withdrawal the next one may be made. */
 export const CANCEL_RETRY_MINUTES = 10;
 
