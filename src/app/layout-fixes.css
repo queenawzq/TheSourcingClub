@@ -54,9 +54,12 @@
   #root .marketplace-header {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   }
-  #root .directory-hero {
+  #root main:not(.factory-browse-marketplace-page) .directory-hero {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   }
+}
+/* P-04: Browse RFQs' header, from the width where the design stops stacking it. */
+@media (min-width: 1181px) {
   #root .factory-browse-marketplace-page .directory-hero {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   }
@@ -145,13 +148,16 @@
 }
 
 /* P-12: the call buttons move under a conversation's title when the title
-   would otherwise get too narrow to read. */
-#root .message-room-header {
-  flex-wrap: wrap;
-}
-#root .message-room-identity {
-  flex: 1 1 220px;
-  min-width: 0;
+   would otherwise get too narrow to read. Below 1221px the design already
+   puts them under it. */
+@media (min-width: 1221px) {
+  #root .message-room-header {
+    flex-wrap: wrap;
+  }
+  #root .message-room-identity {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
 }
 
 /* P-16: on a phone, order tabs that don't fit go onto another line instead
