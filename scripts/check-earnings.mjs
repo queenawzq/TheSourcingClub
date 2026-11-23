@@ -182,9 +182,15 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   const placed = new Map([["sending", new Set(["pending"])], ["bounced", new Set(["pending"])], ["clearing", new Set(["pending"])], ["free", new Set(["available"])]]);
   assert.equal(legacyOnItsWayCents(rows, placed), 300, "R33: only a payout under way is on its way, never a failed one");
   const bounced = rows[1];
-  for (const where of ["processing", "pending", "available"]) {
-    assert.notEqual(earningStatus(bounced, null, new Map([["bounced", new Set([where])]])), ON_ITS_WAY, `R33: a failed per-step payout never reads On its way (${where})`);
+  // Since Nov 23 a payout on its way reads "Processing", the same word as a
+  // withdrawal waiting or being sent, so only "pending" and "available" can differ.
+  assert.equal(ON_ITS_WAY, "Processing", "a withdrawal on its way reads Processing, not On its way");
+  for (const where of ["pending", "available"]) {
+    assert.notEqual(earningStatus(bounced, null, new Map([["bounced", new Set([where])]])), ON_ITS_WAY, `R33: a failed per-step payout never reads Processing (${where})`);
   }
+  // Placed under processing it is a withdrawal waiting (Processing), never counted as a payout under way.
+  assert.equal(earningStatus(bounced, null, new Map([["bounced", new Set(["processing"])]])), "Processing");
+  assert.equal(legacyOnItsWayCents([bounced], new Map([["bounced", new Set(["processing"])]])), 0, "R33: a failed per-step payout is not a payout under way");
   assert.equal(earningStatus(bounced, null, new Map([["bounced", new Set(["available"])]])), "Added to your balance", "R33: in the balance, as the server says");
   assert.equal(earningStatus(rows[0], null, new Map([["sending", new Set(["processing"])]])), ON_ITS_WAY, "one under way still is");
   assert.equal(legacyOnItsWayCents(rows, new Map()), 0, "nothing without the server's figures");
@@ -293,7 +299,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.deepEqual(held, { pending: 0, processing: 11467, clearing: 0, onHold: 0, waiting: 10000, onItsWay: 1467 }, "held Stripe money reads on its way, never 'withdraw once processing finishes'");
   const listedRows = serverWithdrawalRows(listed.withdrawals, { pool: new Map([["p1", { id: "p1", status: "cancelled" }]]), stripe: new Map() });
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
-    ["stripe-s1", "On its way", -184094],
+    ["stripe-s1", "Processing", -184094],
     ["asked-p1", "Cancelled", -4500],
     ["asked-p2", "Processing", -100000],
     ["asked-p3", "On hold", -4500],
@@ -560,7 +566,7 @@ assert.match(readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import
   const onPayments = new Map(steps.map((step) => [step.id, earningStatus(step, null, placedBy(figures))]));
   const onOrder = earningWordsFor(steps, figures);
   assert.deepEqual([...onOrder], [...onPayments], "R32: the order page's words are Payments' words");
-  assert.deepEqual([...onOrder.values()], ["Processing", "On its way", "Added to your balance", "On its way"],
+  assert.deepEqual([...onOrder.values()], ["Processing", "Processing", "Added to your balance", "Processing"],
     "R32: waiting withdrawal, Stripe payout on its way, a split step, a per-step payout under way");
   // Without the figures (the old order page) the first two read differently: the reason for the change.
   assert.notEqual(earningStatus(steps[0]), onOrder.get("waiting-paypal"), "R32: the payment alone said otherwise");
@@ -940,7 +946,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(!/#[0-9a-f]{6}/i.test(css.slice(css.indexOf("/* Every word a Payments row can show"), css.indexOf(".brand-transaction-view")).replace(/#fff0ed|#b93824|#eaf2ff/gi, "")),
     "R32: no new colours, only the existing red and blue");
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
-  assert.ok(zh.includes("(m) => `${m[1]} 待确认。处理完成后即可提现。`]") && zh.includes("(m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月"), "R32: pending is 待确认, as the tile says");
+  // The card's "$X pending." sentence went on Nov 23; no other Chinese for pending crept in.
   assert.ok(!zh.includes("待处理") && !zh.includes("已回到你的余额"), "R32: one Chinese for pending and for back in your balance");
   const bell = readFileSync(new URL("../src/shared/notification-zh.mjs", import.meta.url), "utf8");
   assert.ok(!bell.includes("已回到你的余额"), "R32: the bell says back in your balance as main does (已退回你的余额)");
@@ -992,20 +998,13 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(page.includes(".filter((row) => stepRowCents(row, perPayment) !== null)") && page.includes("amount: stepRowCents(row, perPayment),"),
     "F1: Transactions draws the step rows from the server's figures");
 
-  // F3: owing TSC, money clearing pays that first: no day promised for what will not be withdrawable.
-  assert.equal(words.pendingSentence(4693, 0, "Nov 24"), "$46.93 pending. Available to withdraw on Nov 24.", "no debt: main's sentence");
-  assert.equal(words.pendingSentence(4693, 6500, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: debt of $65 over $46.93: no date");
-  assert.equal(words.pendingSentence(4693, 180500, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: debt of $1,805");
-  assert.equal(words.pendingSentence(4693, 4693, "Nov 24"), "$46.93 pending. It goes toward what you owe TSC.", "F3: exactly covered: nothing left");
-  assert.equal(words.pendingSentence(10000, 6500, "Nov 24"), "$100.00 pending. $35.00 available to withdraw on Nov 24.", "F3: in part: the true amount");
-  assert.equal(words.pendingSentence(10000, 6500, null), "$100.00 pending. $35.00 can be withdrawn once processing finishes.");
-  assert.equal(words.pendingSentence(10000, 0, null), "$100.00 pending. You can withdraw once processing finishes.", "main's sentence");
+  // F3, then Nov 23: the card no longer says "$X pending. Available to withdraw on …"
+  // (each row says its own day); the disabled Withdraw's tooltip still follows the debt.
   const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
   assert.ok(card.includes("arrivesOn && clearingAfterDebt(pendingLines.clearing, uncoveredDebtCents(figures)) > 0 ? availableOnWords(arrivesOn)")
-    && card.includes("pendingSentence(cents, uncoveredDebtCents(figures), arrivesOn)"), "F3: the disabled Withdraw's tooltip and the line follow the debt");
+    && !card.includes("pendingSentence(") && !/pending\. Available to withdraw on/.test(card), "F3: the disabled Withdraw's tooltip follows the debt; no pending sentence on the card");
   const zhSource = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
-  assert.ok(zhSource.includes("pending\\. It goes toward what you owe TSC\\.$/, (m) => `${m[1]} 待确认。将先用于抵扣你欠 TSC 的款项。`]")
-    && zhSource.includes("available to withdraw on ${MON}") && zhSource.includes("can be withdrawn once processing finishes\\.$/"), "F3: the new lines in Chinese");
+  assert.ok(zhSource.includes("^Available to withdraw on ${MON}") && !zhSource.includes("on its way$/"), "the tooltip in Chinese; no \"$X on its way\" left");
 
   // F2: a Stripe bank with PayPal saved is not "your only withdrawal method".
   const bank = { id: "ba_1", currency: "eur", default: true, standard: true, last4: "0154" };

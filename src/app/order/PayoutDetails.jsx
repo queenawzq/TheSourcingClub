@@ -415,7 +415,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
-      // A brand pays the step plus TSC's fee; the factory earns the step.
       note: [
         // "Available Nov 19": when Stripe lets it be withdrawn.
         clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
@@ -423,7 +422,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         // With a payout fee the amount is what the factory received, so the step is said here.
         payoutFee(row) > 0
           ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`
-          : row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+          : null,
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row, clearing, placed),

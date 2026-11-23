@@ -2690,10 +2690,9 @@ async function main() {
         check(!/\$[\d,.]+ waiting/i.test(earnings.cardText), "the card has no \"$X waiting\" line: the withdrawal's own row says it");
         check(earnings.open.some((text) => /Processing withdrawal/.test(text)) && !earnings.open.some((text) => /Pending withdrawal/.test(text)),
           "its row reads \"Processing withdrawal\"");
-        const headerPending = /\$([\d,]+\.\d{2}) pending\./.exec(earnings.line)?.[1];
-        const headerCents = headerPending ? asCents(headerPending) : 0;
-        check(earnings.pendingCard !== null && asCents(earnings.pendingCard) === headerCents,
-          `the Pending card (${earnings.pendingCard}) is the card's pending amount (${money(headerCents)}): the waiting withdrawal is in neither`);
+        // The card no longer says "$X pending" (Nov 23): each row says its own day.
+        check(earnings.pendingCard !== null && !/\$[\d,]+\.\d{2} pending\./.test(earnings.line),
+          `the Pending card (${earnings.pendingCard}) is shown and the balance line has no "$X pending." sentence`);
         // Nothing under it is refunded or disputed, and the seed's paid PayPal
         // withdrawal took its own step (round 15): it is never "On hold", on
         // the card or in Transactions.

@@ -7,7 +7,7 @@ import { SIGN_IN_ENDED, supabase } from "../../lib/supabase.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { countryNameZh, wholeEntry } from "../live-zh.js";
 import { formatMoney } from "../../lib/money.js";
-import { availableOnWords, pendingSentence, stripeRemovalRefusal } from "./stripe-card-words.mjs";
+import { availableOnWords, stripeRemovalRefusal } from "./stripe-card-words.mjs";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import { chooserMethod, paidByWise, payoutMethodLines, payoutMethodFeeUrl } from "../../shared/payout-method-info.mjs";
@@ -974,15 +974,12 @@ export default function StripePayoutCard({
   const arrivesOn = clearsOn && !Number.isNaN(clearsOn.getTime()) && !(Number.isFinite(stripeClears) && stripeClears * 1000 < clearsOn.getTime())
     ? clearsOn.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : availableFrom(balance);
-  // "$X pending": only card payments still clearing, with the day they can be withdrawn.
-  // Owing TSC more than Available covers, the money clearing pays that first
-  // (Available is net of it): no day when none of it will be withdrawable,
-  // only the part that will be otherwise (clearingAfterDebt).
-  const pendingWords = (cents) => (cents > 0 ? <>{pendingSentence(cents, uncoveredDebtCents(figures), arrivesOn)} <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null);
-  // The Pending and Processing figures in their lines: money clearing ("$X
-  // pending. Available to withdraw on …"), withdrawals and old payouts on
-  // their way ("$Y on its way"), disputed steps ("$Z on hold"). A withdrawal
-  // waiting for staff is said by its own row only.
+  // Card payments still clearing: no "$X pending" sentence here, each row says
+  // its own day ("Available Nov 25."); the Pending balance help stays on the
+  // line while money is clearing.
+  // The Processing figure in its line: withdrawals and old payouts on their
+  // way ("$Y processing"), disputed steps ("$Z on hold"). A withdrawal waiting
+  // for staff is said by its own row only.
   // A withdrawal on its way is never called available to withdraw.
   const pendingLines = pendingParts(figures) ?? { clearing: 0, onItsWay: 0, onHold: 0, waiting: 0 };
   const cardPending = pendingLines.clearing;
@@ -1071,15 +1068,14 @@ export default function StripePayoutCard({
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : figures ? (
             <p className="payout-balance-line" data-testid="payout-balance-line">{[
-              "Earnings stay in your balance until you withdraw them.",
-              // Its "?" sits right after it, not on a line of its own.
-              pendingWords(cardPending ?? 0),
+              // The Pending balance "?" sits right after it, not on a line of its own.
+              <>Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</>,
               // Orders are in USD; an account is credited in its own currency.
               heldCurrency ? `Part of your balance is held in ${heldCurrency}, so USD amounts are estimates.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
           ) : null}
-          {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} on its way`}</p> : null}
+          {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} processing`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
           {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
           {/* Only what its earnings do not cover: covered, Available is already net of it and there is no line. */}
