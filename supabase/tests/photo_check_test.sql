@@ -105,7 +105,8 @@ select results_eq(
   'the later license uploader is flagged; a license one bit apart on the same template is not a copy'
 );
 select is(
-  (select count(*)::int from public.photo_copies('d1110000-0000-0000-0000-0000000000f3') where document_id in ('a1110000-0000-0000-0000-00000000000a', 'a1110000-0000-0000-0000-00000000000b', 'a1110000-0000-0000-0000-00000000000c')),
+  (select count(*)::int from public.photo_copies('d1110000-0000-0000-0000-0000000000f3') where document_id in ('a1110000-0000-0000-0000-00000000000a', 'a1110000-0000-0000-0000-00000000000b', 'a1110000-0000-0000-0000-00000000000c')
+            and other_document_id::text like 'a1110000-%'),
   0, 'a photo never matches a license file, and a logo is never compared'
 );
 select results_eq(

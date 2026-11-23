@@ -416,8 +416,8 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_funded(%L, %L, %L, %L, %s)', pg_temp.pay(4, 2), 'ch_pgtap_uw2_4_2', 'card', 'Visa ···4242', 10000)),
   'the brand funds the next step');
 select ok((select string_agg(coalesce(body, ''), ' ') from public.notifications where org_id = pg_temp.org(4)
-            and created_at = now() and body like '%TSC holds%') like '%added to your balance when the brand approves it%',
-  'N1: the funded notice says it is added to the balance when the brand approves it');
+            and created_at = now() and kind = 'payment_confirmed') like '%It will become available when % approves this step.%',
+  'N1: the funded notice says it becomes available when the brand approves it');
 select ok((select count(*) = 0 from public.notifications where org_id = pg_temp.org(4) and body like '%paid to you when the brand approves%'),
   'N1: never "paid to you when the brand approves it"');
 

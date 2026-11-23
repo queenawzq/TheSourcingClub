@@ -287,8 +287,24 @@ export const withdrawalFailure = (adapter, raw) =>
  * since) is recorded. `returnedCents`: what a signed refund event says came
  * back (Wise's transfers#refund), in the withdrawal's currency.
  */
-export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null }) {
-  const status = await adapter.status(client, ref);
+export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null, now = Date.now() }) {
+  let status = await adapter.status(client, ref);
+  // Nobody claimed it (PayPal: no account at the address): taken back once it
+  // has been unclaimed for UNCLAIMED_WAIT_HOURS (time to open or confirm an
+  // account), so the money is in the factory's balance again without anyone
+  // pressing anything. PayPal decides; what it then says is recorded below,
+  // like any answer. One attempt per row per CANCEL_RETRY_MINUTES, whoever reads it.
+  const due = status.unclaimed && unclaimedLongEnough(status.sentAt, now);
+  if (due && !wasPaid && typeof adapter.cancelUnclaimed === "function" && await claimCancel(db, id, now)) {
+    try {
+      await adapter.cancelUnclaimed(client, ref);
+    } catch (failure) {
+      // Refused (claimed meanwhile) or no answer: nothing changes here; the
+      // next read tries again after the wait, and the provider's own return stands.
+      log("withdrawal cancel unclaimed", failure, { id });
+    }
+    status = await adapter.status(client, ref);
+  }
   const ended = status.state === "failed" || status.state === "cancelled";
   // A transfer the provider does not say failed is not a return, whatever a
   // refund event says (a partial refund on a delivered transfer): left for staff.
@@ -320,8 +336,40 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false, 
     await record(db, id, "paid", { receives: status.arrivesMinor ?? null });
     return "paid";
   }
-  if (status.waiting) await record(db, id, "sent", { sentence: status.waiting });
+  const waiting = status.unclaimed ? (due ? WITHDRAWAL_UNCLAIMED : WITHDRAWAL_UNCLAIMED_WAIT) : status.waiting;
+  if (waiting) await record(db, id, "sent", { sentence: waiting });
   return "sent";
+}
+
+/** Staff's line on a withdrawal nobody claimed: it is being taken back (readBack). */
+export const WITHDRAWAL_UNCLAIMED = "Not claimed: no PayPal account at this address. Returning it to the factory's balance.";
+/** Staff's line while an unclaimed withdrawal waits its day before it is taken back. */
+export const WITHDRAWAL_UNCLAIMED_WAIT = "Not claimed: no PayPal account at this address. Returning it to the factory's balance a day after it was sent.";
+/** How long a withdrawal stays unclaimed before it is taken back, from when PayPal sent it. */
+export const UNCLAIMED_WAIT_HOURS = 24;
+/** A day since PayPal sent it. A time PayPal did not give (or that can't be read) is never long enough: its own 30-day return still stands. */
+function unclaimedLongEnough(sentAt, now) {
+  const sent = Date.parse(sentAt ?? "");
+  return Number.isFinite(sent) && now - sent >= UNCLAIMED_WAIT_HOURS * 3_600_000;
+}
+/** How long after an attempt to cancel an unclaimed withdrawal the next one may be made. */
+export const CANCEL_RETRY_MINUTES = 10;
+
+/**
+ * The right to try a cancel now: one reader at a time, at most once per
+ * CANCEL_RETRY_MINUTES. Kept on read_back_at, which only paid rows are
+ * otherwise read by (syncWithdrawals): on a row being sent it says when the
+ * cancel was last tried. A failed claim tries nothing.
+ */
+async function claimCancel(db, id, now) {
+  const before = new Date(now - CANCEL_RETRY_MINUTES * 60_000).toISOString();
+  const { data, error } = await db.from("factory_withdrawals").update({ read_back_at: new Date(now).toISOString() })
+    .eq("id", id).eq("status", "paying").or(`read_back_at.is.null,read_back_at.lt.${before}`).select("id");
+  if (error) {
+    log("withdrawal cancel claim", error, { id });
+    return false;
+  }
+  return (data ?? []).length === 1;
 }
 
 /**
@@ -355,7 +403,7 @@ export async function syncWithdrawals({ adapter, client, db, now = Date.now() })
   ]);
   if (paying.error || paid.error) throw new PayoutFailure("database", "The board couldn't read its withdrawals. Reload the page.");
   const rows = [...(paying.data ?? []), ...(paid.data ?? [])];
-  const answers = await Promise.allSettled(rows.map((row) => readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid" })));
+  const answers = await Promise.allSettled(rows.map((row) => readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid", now })));
   for (const a of answers.filter((x) => x.status === "rejected")) log("withdrawal sync", a.reason, { provider: adapter.provider });
   // Read: its turn comes again after the others (a failed read stays first).
   const read = rows.filter((row, i) => row.status === "paid" && answers[i].status === "fulfilled").map((row) => row.id);

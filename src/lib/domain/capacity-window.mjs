@@ -222,6 +222,16 @@ function read(text, now) {
     else if (before && !startYearWritten) start = { ...start, year: start.year - 1 };
     else if (before) return refuse({ code: "order" });
   }
+  // No year written and already over this year: the next one ("Feb 1 - Mar
+  // 15" typed in November is next February), as the model reads it
+  // (api/parse-capacity-window.js). A window still open, or with a year
+  // written, is left as it is.
+  if (!startYearWritten && !endYearWritten
+    && calendarDay(end ? last(end) : last(start)) < todayOf(now)) {
+    const oneMonth = end === start;
+    start = { ...start, year: start.year + 1 };
+    if (end) end = oneMonth ? start : { ...end, year: end.year + 1 };
+  }
   // Feb 29 is real only in a leap year, which is known only now.
   for (const point of [start, end].filter(Boolean)) {
     if (point.day != null && !isReal(point.year, point.month, point.day)) return refuse({ code: "invalid", piece: point.text });
@@ -271,9 +281,9 @@ export function parseCapacityWindow(text, now = new Date()) {
 /**
  * Why this window cannot be kept as typed, or null when it can:
  * `{ code: "format" | "words" | "many" | "invalid" | "order" | "long" | "past", piece?, yearWritten? }`.
- * "words": text besides dates and units, which would be dropped. "past": with
- * no year written, "Jan 5 - Mar 1" in November means this year's, which is not
- * what the vendor meant, so it is refused rather than guessed forward.
+ * "words": text besides dates and units, which would be dropped. "past": a
+ * window over with a year written ("Jan 5 - Mar 1 2026" in November). With no
+ * year written it is next year's ("Jan 5 - Mar 1" in November).
  */
 export function capacityWindowProblem(text, now = new Date()) {
   return read(text, now).problem;
