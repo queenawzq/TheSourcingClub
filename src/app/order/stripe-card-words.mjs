@@ -4,20 +4,8 @@
  * run them (scripts/check-earnings.mjs).
  */
 import { formatMoney } from "../../lib/money.js";
-import { clearingAfterDebt } from "./payment-summary.mjs";
 
 export const availableOnWords = (day) => `Available to withdraw on ${day}`;
-/**
- * The card's pending line. `debt` is what the factory owes TSC beyond its
- * cleared earnings (uncoveredDebtCents): money clearing pays it first.
- */
-export function pendingSentence(cents, debt, day) {
-  const left = clearingAfterDebt(cents, debt);
-  const pending = `${formatMoney(cents, "USD")} pending.`;
-  if (left <= 0) return `${pending} It goes toward what you owe TSC.`;
-  if (left < cents) return day ? `${pending} ${formatMoney(left, "USD")} available to withdraw on ${day}.` : `${pending} ${formatMoney(left, "USD")} can be withdrawn once processing finishes.`;
-  return `${pending} ${day ? `${availableOnWords(day)}.` : "You can withdraw once processing finishes."}`;
-}
 
 const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 

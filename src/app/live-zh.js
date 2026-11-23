@@ -118,7 +118,7 @@ const PATTERNS = [
   [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (.+)$/, (m, inner) => `周${DAYS[m[1]]}，${inner(m[2])}`],
   [/^(\d{1,2}):(\d{2}) (AM|PM)( [A-Z]{2,5})?$/, (m) => `${clock(m[1], m[2], m[3])}${m[4] ?? ""}`],
   [/^just now$/i, () => "刚刚"],
-  [/^(\$[\d,.]+) on its way$/, (m) => `${m[1]} 正在途中`],
+  [/^(\$[\d,.]+) processing$/, (m) => `${m[1]} 处理中`],
   // A bank and its last four digits on a withdrawal row: "Bank of China ending 5001".
   [/^(.{1,80}) ending (\d{4})$/, (m) => `${m[1]} 尾号 ${m[2]}`],
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],
@@ -152,13 +152,6 @@ const PATTERNS = [
   [new RegExp(`^Available to withdraw on ${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现`],
   // Where a Stripe withdrawal went (stripe_withdrawals.destination_label), in the notices' words.
   [/^(Bank account|Debit card) ending in (\d+)$/, (m) => `${m[1] === "Bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）`],
-  // The line under the balance (StripePayoutCard): what is pending, when it can be withdrawn.
-  [new RegExp(`^(\\$[\\d,.]+) pending\\. Available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。${MONTHS[m[2]]} 月 ${Number(m[3])} 日起可提现。`],
-  [/^(\$[\d,.]+) pending\. You can withdraw once processing finishes\.$/, (m) => `${m[1]} 待确认。处理完成后即可提现。`],
-  // Owing TSC more than the cleared balance covers: the money clearing pays that first.
-  [/^(\$[\d,.]+) pending\. It goes toward what you owe TSC\.$/, (m) => `${m[1]} 待确认。将先用于抵扣你欠 TSC 的款项。`],
-  [new RegExp(`^(\\$[\\d,.]+) pending\\. (\\$[\\d,.]+) available to withdraw on ${MON} (\\d{1,2})\\.$`), (m) => `${m[1]} 待确认。其中 ${m[2]} ${MONTHS[m[3]]} 月 ${Number(m[4])} 日起可提现。`],
-  [/^(\$[\d,.]+) pending\. (\$[\d,.]+) can be withdrawn once processing finishes\.$/, (m) => `${m[1]} 待确认。其中 ${m[2]} 处理完成后即可提现。`],
   [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
