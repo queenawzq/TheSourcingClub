@@ -1,5 +1,5 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
-import { adapterFor, approveWithdrawal, cancelUnclaimedWithdrawal, factoryQuote, previewWithdrawal, syncWithdrawals } from "./_withdrawals.js";
+import { adapterFor, approveWithdrawal, factoryQuote, previewWithdrawal, syncWithdrawals } from "./_withdrawals.js";
 import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import { checkStripeWithdrawal } from "./_stripe-withdrawals.js";
 
@@ -49,7 +49,7 @@ export default async function handler(request, response) {
       adapter = adapterFor(asked);
     } else {
       const found = await db.from("factory_withdrawals")
-        .select("id, org_id, provider, status, provider_ref, amount_cents, currency, account_id, paid_to_changed_at, factory_payout_accounts (method, paypal_email, wise_recipient_id, wise_recipient_type, wise_currency, payee_changed_at)")
+        .select("id, org_id, provider, status, amount_cents, currency, account_id, paid_to_changed_at, factory_payout_accounts (method, paypal_email, wise_recipient_id, wise_recipient_type, wise_currency, payee_changed_at)")
         .eq("id", withdrawalId).maybeSingle();
       if (found.error || !found.data) return reply(response, 404, { error: "That withdrawal isn't on the board any more. Reload the page." });
       const account = found.data.factory_payout_accounts ?? {};
@@ -68,7 +68,6 @@ export default async function handler(request, response) {
     if (action === "sync") return reply(response, 200, await syncWithdrawals({ adapter, client, db }));
     if (action === "preview") return reply(response, 200, await previewWithdrawal({ adapter, client, caller, db, row, cnyConfirmed }));
     if (action === "approve") return reply(response, 200, await approveWithdrawal({ adapter, client, caller, db, id: row.id, cnyConfirmed }));
-    if (action === "cancel_unclaimed") return reply(response, 200, await cancelUnclaimedWithdrawal({ adapter, client, db, row }));
     return reply(response, 400, { error: "unknown action" });
   } catch (failure) {
     console.error("withdrawal:", withoutSecrets(failure?.message), { action, withdrawalId, kind: failure?.kind ?? null, detail: withoutSecrets(failure?.detail ?? "") });

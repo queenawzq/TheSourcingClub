@@ -1,22 +1,24 @@
 /**
- * Staff's "Cancel payment" on a PayPal withdrawal nobody claimed (no PayPal
- * account at the address). Runs the real core (cancelUnclaimedWithdrawal,
- * readBack, syncWithdrawals), the real PayPal adapter and the real PayPal
- * client against a pretend PayPal and a pretend database that ends a
- * withdrawal once, as record_withdrawal / record_withdrawal_returned do.
+ * A PayPal withdrawal nobody claimed (no PayPal account at the address) is
+ * taken back by itself: the first read that finds it UNCLAIMED asks PayPal to
+ * cancel it, and what PayPal then says is recorded as any answer is. Runs the
+ * real core (readBack, syncWithdrawals, readBackWithdrawalRef), the real
+ * PayPal adapter and the real PayPal client against a pretend PayPal and a
+ * pretend database that ends a withdrawal once, as record_withdrawal /
+ * record_withdrawal_returned do, and claims a cancel as an atomic update.
  *
  *   npm run check:paypal-unclaimed
  *
- * The evasions, written before the code: a press on an item that is not
- * unclaimed; two presses at once; a press racing the 30 s read-back; the
- * factory claiming it between the read and the cancel; a cancel whose answer
- * is lost; a row no longer being sent. In every one PayPal's answer decides,
- * nothing is credited unless PayPal says the money came back, and nothing is
- * credited twice.
+ * The evasions, written before the code: reads at once (the board's sync in
+ * two tabs, the webhook); a cancel PayPal refuses (claimed meanwhile, or a
+ * 500 as its sandbox once answered); a cancel whose answer is lost; PayPal's
+ * own 30-day return; reading too often. In every one PayPal's answer
+ * decides, nothing is credited unless PayPal says the money came back,
+ * nothing is credited twice, and PayPal is asked to cancel at most once per
+ * CANCEL_RETRY_MINUTES.
  */
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import { CANCEL_REFUSED, cancelUnclaimedWithdrawal, syncWithdrawals } from "../api/_withdrawals.js";
+import { CANCEL_RETRY_MINUTES, WITHDRAWAL_UNCLAIMED, readBackWithdrawalRef, syncWithdrawals } from "../api/_withdrawals.js";
 import { paypalAdapter } from "../api/_withdrawal-adapters.js";
 import { PAYPAL_UNCLAIMED, paypalFrom } from "../api/_paypal.js";
 
@@ -24,7 +26,9 @@ for (const name of Object.keys(process.env)) {
   if (/^(PAYPAL_|STRIPE_|WISE_|SUPABASE_|VITE_SUPABASE_)/.test(name) || name === "VERCEL_ENV") delete process.env[name];
 }
 
-const SENT = 6420; // what was sent: $65 less the fee
+const SENT = 6372; // what was sent: $65 less PayPal's $1.28 fee
+const T0 = Date.parse("2026-11-23T16:30:00Z");
+const minutes = (n) => T0 + n * 60_000;
 
 /** A pretend PayPal: one batch, one item, its state, and how cancel answers. */
 function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = false } = {}) {
@@ -51,7 +55,7 @@ function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = f
           items: [{ payout_item_id: "ITEM1", transaction_status: paypal.state, payout_item: { amount: { value: (SENT / 100).toFixed(2), currency: "USD" } } }],
         });
       }
-      throw new Error(`unexpected PayPal call ${init.method ?? "GET"} ${url}`);
+      throw new Error(`unexpected PayPal request ${init.method ?? "GET"} ${url}`);
     },
   };
   paypal.client = paypalFrom({ PAYPAL_API_BASE: "https://api-m.sandbox.paypal.com", PAYPAL_CLIENT_ID: "id", PAYPAL_CLIENT_SECRET: "s" }, paypal.fetch);
@@ -59,13 +63,14 @@ function pretendPayPal({ state = "UNCLAIMED", onCancel = null, claimOnCancel = f
 }
 
 /**
- * A pretend database: the withdrawal row, and the two record functions as the
- * migrations write them for these cases. An ended row is never changed again
- * (record_withdrawal returns it as it is; record_withdrawal_returned does
- * nothing for the same figure), so the balance is credited at most once.
+ * A pretend database: the withdrawal row; the two record functions as the
+ * migrations write them for these cases (an ended row is never changed again,
+ * so the balance is credited at most once); and the cancel claim, an UPDATE
+ * ... WHERE status = 'paying' AND (read_back_at IS NULL OR read_back_at < x)
+ * that one statement at a time wins.
  */
 function pretendDb(status = "paying") {
-  const row = { id: "w1", provider: "paypal", status, provider_ref: "BATCH1", amount_cents: 6500, staff_sentence: PAYPAL_UNCLAIMED, back_cents: 0, kept_cents: 0 };
+  const row = { id: "w1", provider: "paypal", status, provider_ref: "BATCH1", currency: "USD", amount_cents: 6500, staff_sentence: "Sent. Waiting for the provider to confirm.", read_back_at: null, back_cents: 0, kept_cents: 0 };
   const notices = [];
   let credited = 0;
   const end = (cameBack, sentence) => {
@@ -76,11 +81,12 @@ function pretendDb(status = "paying") {
     credited += cameBack;
     notices.push("Withdrawal of $65.00 did not go through");
   };
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
   const db = {
     row, notices,
     get credited() { return credited; },
     rpc: async (name, args) => {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await tick();
       if (name === "record_withdrawal") {
         if (["paid", "failed", "declined", "cancelled"].includes(row.status)) return { data: row, error: null };
         if (args.outcome === "sent") row.staff_sentence = args.sentence ?? row.staff_sentence;
@@ -97,10 +103,28 @@ function pretendDb(status = "paying") {
     },
     from: (table) => {
       assert.equal(table, "factory_withdrawals");
+      const filters = [];
+      let patch = null;
       const query = {
-        select: () => query, eq: () => query, not: () => query, gte: () => query, or: () => query, order: () => query,
-        update: () => ({ in: async () => ({ error: null }) }),
+        select: () => query,
+        eq: (column, value) => (filters.push((r) => r[column] === value), query),
+        not: () => query, gte: () => query, order: () => query,
+        or: (text) => {
+          const before = text.match(/read_back_at\.lt\.(.+)$/)?.[1];
+          if (before) filters.push((r) => r.read_back_at === null || r.read_back_at < before);
+          return query;
+        },
+        update: (values) => (patch = values, query),
+        in: async () => ({ error: null }),
+        maybeSingle: async () => ({ data: filters.every((f) => f(row)) ? { ...row } : null, error: null }),
         limit: async () => ({ data: row.status === "paying" ? [{ id: row.id, provider_ref: row.provider_ref, status: row.status }] : [], error: null }),
+        then: (resolve, reject) => tick().then(() => {
+          // The claim: one UPDATE, checked and written in one step.
+          if (!patch) return { data: [], error: null };
+          if (!filters.every((f) => f(row))) return { data: [], error: null };
+          Object.assign(row, patch);
+          return { data: [{ id: row.id }], error: null };
+        }).then(resolve, reject),
       };
       return query;
     },
@@ -108,106 +132,108 @@ function pretendDb(status = "paying") {
   return db;
 }
 
-const cancel = (paypal, db) => cancelUnclaimedWithdrawal({ adapter: paypalAdapter, client: paypal.client, db, row: { ...db.row } });
+const sync = (paypal, db, now = T0) => syncWithdrawals({ adapter: paypalAdapter, client: paypal.client, db, now });
+const webhook = (paypal, db) => readBackWithdrawalRef({ provider: "paypal", client: paypal.client, db, ref: "BATCH1" });
 
-// 1. Unclaimed: PayPal cancels it, it reads RETURNED, and the withdrawal ends
-// as a returned one does: what was sent is back in the balance, the factory told.
+// 1. The first read that finds it unclaimed takes it back: PayPal cancels it,
+// it reads RETURNED, and the withdrawal ends as a returned one does. What was
+// sent comes back to the balance (PayPal keeps its fee, as on any return), and
+// the factory is told once.
 {
   const paypal = pretendPayPal();
   const db = pretendDb();
-  const result = await cancel(paypal, db);
-  assert.deepEqual(result, { done: "failed" });
+  await sync(paypal, db);
   assert.equal(paypal.calls.cancel, 1);
   assert.equal(db.row.status, "failed");
   assert.equal(db.credited, SENT, "what PayPal gave back is credited");
+  assert.equal(db.row.kept_cents, 128, "PayPal's fee is the factory's, as on any return");
   assert.equal(db.notices.length, 1, "the factory is told once");
   assert.match(db.row.staff_sentence, /PayPal returned this to TSC/);
 }
 
-// 2. Two presses at once: one cancel goes through, the other is refused by
-// PayPal (no longer unclaimed); credited once, told once.
+// 2. Reads at once (the board's sync in two tabs and PayPal's webhook): one
+// cancel, credited once, told once.
 {
   const paypal = pretendPayPal();
   const db = pretendDb();
-  const results = await Promise.all([cancel(paypal, db), cancel(paypal, db)]);
-  assert.ok(results.every((r) => r.done === "failed"), JSON.stringify(results));
-  assert.equal(db.credited, SENT, "two presses credit once");
-  assert.equal(db.notices.length, 1, "two presses tell once");
-}
-
-// 3. A press racing the 30 s read-back: credited once.
-{
-  const paypal = pretendPayPal();
-  const db = pretendDb();
-  await Promise.all([cancel(paypal, db), syncWithdrawals({ adapter: paypalAdapter, client: paypal.client, db }), syncWithdrawals({ adapter: paypalAdapter, client: paypal.client, db })]);
+  await Promise.all([sync(paypal, db), sync(paypal, db), webhook(paypal, db), webhook(paypal, db)]);
+  assert.equal(paypal.calls.cancel, 1, "one reader claims the cancel");
   assert.equal(db.row.status, "failed");
-  assert.equal(db.credited, SENT, "the read-back racing the cancel credits once");
+  assert.equal(db.credited, SENT, "reads at once credit once");
   assert.equal(db.notices.length, 1);
-  // And a read-back after it changes nothing.
-  await syncWithdrawals({ adapter: paypalAdapter, client: paypal.client, db });
-  assert.equal(db.credited, SENT);
+  await sync(paypal, db, minutes(60));
+  assert.equal(db.credited, SENT, "a read after it changes nothing");
+  assert.equal(paypal.calls.cancel, 1, "and asks nothing more");
 }
 
-// 4. Claimed between the read and the cancel: PayPal refuses, nothing is
-// credited, the row reads Paid, and staff are told.
+// 3. Claimed between the read and the cancel: PayPal refuses, nothing is
+// credited, and the row reads Paid.
 {
   const paypal = pretendPayPal({ claimOnCancel: true });
   const db = pretendDb();
-  const result = await cancel(paypal, db);
-  assert.deepEqual(result, { done: "paid", refused: CANCEL_REFUSED });
+  await sync(paypal, db);
   assert.equal(db.row.status, "paid");
   assert.equal(db.credited, 0, "a claimed payment is never credited back");
 }
 
-// 5. Not unclaimed (PayPal still processing it, or already paid): no cancel is asked.
-for (const state of ["PENDING", "SUCCESS", "ONHOLD"]) {
+// 4. PayPal refuses the cancel (a 500, as its sandbox answered on Nov 7, or a
+// 4xx): nothing changes but staff's line, nothing is credited, PayPal is not
+// asked again for CANCEL_RETRY_MINUTES, and is asked again after it.
+for (const refusal of [500, 400]) {
+  const paypal = pretendPayPal({ onCancel: (_p, reply) => reply(refusal, { name: refusal === 500 ? "INTERNAL_SERVICE_ERROR" : "VALIDATION_ERROR" }) });
+  const db = pretendDb();
+  await sync(paypal, db);
+  assert.equal(db.row.status, "paying", `${refusal}: the row is left as it was`);
+  assert.equal(db.row.staff_sentence, WITHDRAWAL_UNCLAIMED, `${refusal}: staff read that it is being returned`);
+  assert.equal(db.credited, 0);
+  assert.equal(db.notices.length, 0);
+  for (const at of [0.5, 1, 5, CANCEL_RETRY_MINUTES - 1]) await sync(paypal, db, minutes(at));
+  assert.equal(paypal.calls.cancel, 1, `${refusal}: not asked again within ${CANCEL_RETRY_MINUTES} minutes`);
+  await sync(paypal, db, minutes(CANCEL_RETRY_MINUTES + 1));
+  assert.equal(paypal.calls.cancel, 2, `${refusal}: asked again after the wait`);
+  assert.equal(db.credited, 0);
+}
+
+// 5. The cancel's answer is lost: nothing is credited until PayPal says it
+// came back; the next read records it once.
+{
+  const paypal = pretendPayPal({ onCancel: () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }); } });
+  const db = pretendDb();
+  await sync(paypal, db);
+  assert.equal(db.credited, 0, "no answer, no credit");
+  assert.equal(db.row.status, "paying");
+  paypal.state = "RETURNED"; // it did cancel, after all
+  await sync(paypal, db, minutes(1));
+  assert.equal(db.credited, SENT, "the next read records it once");
+  assert.equal(paypal.calls.cancel, 1);
+}
+
+// 6. PayPal's own 30-day return, with every cancel refused until then: the
+// read-back credits it once, however many reads follow, at once or later.
+{
+  const paypal = pretendPayPal({ onCancel: (_p, reply) => reply(500, { name: "INTERNAL_SERVICE_ERROR" }) });
+  const db = pretendDb();
+  await sync(paypal, db);
+  assert.equal(db.credited, 0, "still unclaimed: nothing credited");
+  paypal.state = "RETURNED";
+  await Promise.all([sync(paypal, db, minutes(43_200)), sync(paypal, db, minutes(43_200)), webhook(paypal, db)]);
+  await sync(paypal, db, minutes(43_300));
+  assert.equal(db.credited, SENT, "the 30-day return credits once");
+  assert.equal(db.notices.length, 1);
+}
+
+// 7. Not unclaimed (still processing, on hold, or paid): PayPal is not asked to cancel.
+for (const state of ["PENDING", "ONHOLD", "SUCCESS"]) {
   const paypal = pretendPayPal({ state });
   const db = pretendDb();
-  await cancel(paypal, db);
+  await sync(paypal, db);
   assert.equal(paypal.calls.cancel, 0, `${state}: PayPal is not asked to cancel`);
   assert.equal(db.credited, 0);
 }
 
-// 6. The cancel's answer is lost: nothing is credited until PayPal says it
-// came back; the next read (or press) records it once.
-{
-  const paypal = pretendPayPal({ onCancel: () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }); } });
-  const db = pretendDb();
-  const result = await cancel(paypal, db);
-  assert.equal(result.done, "sent");
-  assert.match(result.refused, /didn't answer/);
-  assert.equal(db.credited, 0, "no answer, no credit");
-  assert.equal(db.row.status, "paying");
-  paypal.state = "RETURNED"; // it did cancel, after all
-  await syncWithdrawals({ adapter: paypalAdapter, client: paypal.client, db });
-  assert.equal(db.credited, SENT, "the read-back records it once");
-}
+// 8. Staff's line is new for withdrawals only: a per-step payout keeps its own
+// (it has a Cancel payment button), and the withdrawal's no longer says to cancel.
+assert.notEqual(WITHDRAWAL_UNCLAIMED, PAYPAL_UNCLAIMED);
+assert.doesNotMatch(WITHDRAWAL_UNCLAIMED, /cancel|pay again|ask the factory/i);
 
-// 7. PayPal refuses for another reason and the item stays unclaimed: nothing changes.
-{
-  const paypal = pretendPayPal({ onCancel: (_p, reply) => reply(400, { name: "VALIDATION_ERROR" }) });
-  const db = pretendDb();
-  const result = await cancel(paypal, db);
-  assert.deepEqual(result, { done: "sent", refused: CANCEL_REFUSED });
-  assert.equal(db.row.status, "paying");
-  assert.equal(db.row.staff_sentence, PAYPAL_UNCLAIMED, "the row keeps its sentence, and its button");
-  assert.equal(db.credited, 0);
-}
-
-// 8. A row no longer being sent is refused before PayPal is asked.
-for (const status of ["failed", "paid", "requested"]) {
-  const paypal = pretendPayPal();
-  const db = pretendDb(status);
-  await assert.rejects(cancel(paypal, db), /isn't waiting any more/);
-  assert.equal(paypal.calls.cancel + paypal.calls.status, 0);
-}
-
-// 9. The board shows the button by the row's sentence: the same words as the server's.
-{
-  const board = fs.readFileSync(new URL("../src/app/admin/AdminWithdrawals.jsx", import.meta.url), "utf8");
-  const shown = board.match(/PAYPAL_UNCLAIMED_SENTENCE = "([^"]+)"/)?.[1];
-  assert.equal(shown, PAYPAL_UNCLAIMED, "AdminWithdrawals' PAYPAL_UNCLAIMED_SENTENCE is api/_paypal.js's PAYPAL_UNCLAIMED");
-  assert.match(board, /data-testid="withdrawal-cancel-unclaimed"[^>]*>Cancel payment</);
-}
-
-console.log("paypal-unclaimed: PayPal decides; a cancelled one ends as a returned one, credited once; two presses, the read-back race, a claim meanwhile and a lost answer credit nothing extra");
+console.log("paypal-unclaimed: an unclaimed withdrawal is cancelled by the first read, credited once; reads at once, a refused or lost cancel, a claim meanwhile and PayPal's own return credit nothing extra; one cancel per wait");

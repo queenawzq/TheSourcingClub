@@ -287,8 +287,22 @@ export const withdrawalFailure = (adapter, raw) =>
  * since) is recorded. `returnedCents`: what a signed refund event says came
  * back (Wise's transfers#refund), in the withdrawal's currency.
  */
-export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null }) {
-  const status = await adapter.status(client, ref);
+export async function readBack({ adapter, client, db, id, ref, wasPaid = false, returnedCents = null, now = Date.now() }) {
+  let status = await adapter.status(client, ref);
+  // Nobody claimed it (PayPal: no account at the address): taken back at once,
+  // so the money is in the factory's balance again without anyone pressing
+  // anything. PayPal decides; what it then says is recorded below, like any
+  // answer. One attempt per row per CANCEL_RETRY_MINUTES, whoever reads it.
+  if (status.unclaimed && !wasPaid && typeof adapter.cancelUnclaimed === "function" && await claimCancel(db, id, now)) {
+    try {
+      await adapter.cancelUnclaimed(client, ref);
+    } catch (failure) {
+      // Refused (claimed meanwhile) or no answer: nothing changes here; the
+      // next read tries again after the wait, and the provider's own return stands.
+      log("withdrawal cancel unclaimed", failure, { id });
+    }
+    status = await adapter.status(client, ref);
+  }
   const ended = status.state === "failed" || status.state === "cancelled";
   // A transfer the provider does not say failed is not a return, whatever a
   // refund event says (a partial refund on a delivered transfer): left for staff.
@@ -320,8 +334,31 @@ export async function readBack({ adapter, client, db, id, ref, wasPaid = false, 
     await record(db, id, "paid", { receives: status.arrivesMinor ?? null });
     return "paid";
   }
-  if (status.waiting) await record(db, id, "sent", { sentence: status.waiting });
+  const waiting = status.unclaimed ? WITHDRAWAL_UNCLAIMED : status.waiting;
+  if (waiting) await record(db, id, "sent", { sentence: waiting });
   return "sent";
+}
+
+/** Staff's line on a withdrawal nobody claimed: it is being taken back (readBack). */
+export const WITHDRAWAL_UNCLAIMED = "Not claimed: no PayPal account at this address. Returning it to the factory's balance.";
+/** How long after an attempt to cancel an unclaimed withdrawal the next one may be made. */
+export const CANCEL_RETRY_MINUTES = 10;
+
+/**
+ * The right to try a cancel now: one reader at a time, at most once per
+ * CANCEL_RETRY_MINUTES. Kept on read_back_at, which only paid rows are
+ * otherwise read by (syncWithdrawals): on a row being sent it says when the
+ * cancel was last tried. A failed claim tries nothing.
+ */
+async function claimCancel(db, id, now) {
+  const before = new Date(now - CANCEL_RETRY_MINUTES * 60_000).toISOString();
+  const { data, error } = await db.from("factory_withdrawals").update({ read_back_at: new Date(now).toISOString() })
+    .eq("id", id).eq("status", "paying").or(`read_back_at.is.null,read_back_at.lt.${before}`).select("id");
+  if (error) {
+    log("withdrawal cancel claim", error, { id });
+    return false;
+  }
+  return (data ?? []).length === 1;
 }
 
 /**
@@ -355,7 +392,7 @@ export async function syncWithdrawals({ adapter, client, db, now = Date.now() })
   ]);
   if (paying.error || paid.error) throw new PayoutFailure("database", "The board couldn't read its withdrawals. Reload the page.");
   const rows = [...(paying.data ?? []), ...(paid.data ?? [])];
-  const answers = await Promise.allSettled(rows.map((row) => readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid" })));
+  const answers = await Promise.allSettled(rows.map((row) => readBack({ adapter, client, db, id: row.id, ref: row.provider_ref, wasPaid: row.status === "paid", now })));
   for (const a of answers.filter((x) => x.status === "rejected")) log("withdrawal sync", a.reason, { provider: adapter.provider });
   // Read: its turn comes again after the others (a failed read stays first).
   const read = rows.filter((row, i) => row.status === "paid" && answers[i].status === "fulfilled").map((row) => row.id);
@@ -364,34 +401,6 @@ export async function syncWithdrawals({ adapter, client, db, now = Date.now() })
     if (stamped?.error) log("withdrawal sync", stamped.error, { provider: adapter.provider, step: "read_back_at" });
   }
   return { read: answers.filter((x) => x.status === "fulfilled").length };
-}
-
-/**
- * Staff's "Cancel payment" on a withdrawal its provider holds unclaimed
- * (PayPal: no account at the address). The provider decides, never this
- * server: it cancels only an item still unclaimed, and whatever it then says
- * is recorded by readBack, exactly as the 30 s read-back would record it. A
- * cancelled item reads RETURNED, which ends the withdrawal as any returned
- * one ends (record_withdrawal_returned: back in the balance, the factory told).
- * Two presses, or a press racing the read-back, record once: the database
- * does nothing for a withdrawal already ended.
- */
-export const CANCEL_REFUSED = "PayPal wouldn't cancel this: it may have been claimed. Press Refresh.";
-export async function cancelUnclaimedWithdrawal({ adapter, client, db, row }) {
-  if (typeof adapter.cancelUnclaimed !== "function") throw new PayoutFailure("refused", "This withdrawal can't be cancelled here.");
-  if (row.status !== "paying" || !row.provider_ref) throw refusalFrom({ hint: "withdrawal_not_waiting" });
-  let refused = null;
-  try {
-    await adapter.cancelUnclaimed(client, row.provider_ref);
-  } catch (failure) {
-    // Unsure (a timeout): the provider may have cancelled it; the read below,
-    // or the next one, says. Refused: nothing changed there.
-    if (!(failure instanceof PayoutFailure)) throw failure;
-    log("withdrawal cancel", failure, { id: row.id });
-    refused = failure.unsure ? failure.message : CANCEL_REFUSED;
-  }
-  const done = await readBack({ adapter, client, db, id: row.id, ref: row.provider_ref });
-  return done === "failed" ? { done } : { done, refused: refused ?? (done === "paid" ? CANCEL_REFUSED : null) };
 }
 
 export const adapterFor = (provider) => ADAPTERS[provider] ?? null;
