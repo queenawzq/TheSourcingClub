@@ -422,6 +422,10 @@ async function formatters() {
       ["Q1 2027", "2027-01-01", "2027-03-31", null],
       ["1.12 - 15.1", "2026-12-01", "2027-01-15", null],
       ["12/1 - 1/15", "2026-12-01", "2027-01-15", null],
+      // No year, already over this year: next year's.
+      ["Jan 5 - Mar 1", "2027-01-05", "2027-03-01", null],
+      ["1月5日至3月1日", "2027-01-05", "2027-03-01", null],
+      ["1月到2月", "2027-01-01", "2027-02-28", null],
     ]) {
       expect(`window kept: ${typed}`, capacityWindowProblem(typed, nov), null);
       const parsed = parseCapacityWindow(typed, nov);
@@ -431,7 +435,7 @@ async function formatters() {
       expect(`window reads back: ${back}`, [again.capacity_window_start, again.capacity_window_end, again.capacity_window_units].join(), [start, end, units].join());
     }
     for (const [typed, why] of [
-      ["1月到2月", "past"],
+      ["2026年1月到2月", "past"],
       ["soon", "format"],
       ["300 units", "format"],
       ["Dec 12-30 · partner confirmed", "words"],
@@ -440,10 +444,21 @@ async function formatters() {
       ["Feb 30 - Mar 3, 2027", "invalid"],
       ["13月5日", "format"],
       ["", "format"],
-      ["Jan 5 - Mar 1", "past"],
-      ["1月5日至3月1日", "past"],
+      ["Jan 5 - Mar 1, 2026", "past"],
+      ["2026年1月5日至3月1日", "past"],
     ]) {
       expect(`window refused: ${typed}`, capacityWindowProblem(typed, nov)?.code, why);
+    }
+    // Typed late in December: a window already over this year is next year's,
+    // one still open is this year's.
+    const lateDec = new Date(2026, 11, 30, 18);
+    for (const [typed, start, end] of [
+      ["Dec 1 - 15", "2027-12-01", "2027-12-15"],
+      ["Dec 20 - Jan 15", "2026-12-20", "2027-01-15"],
+      ["Feb 1 - Mar 15", "2027-02-01", "2027-03-15"],
+    ]) {
+      const parsed = parseCapacityWindow(typed, lateDec);
+      expect(`window read in December: ${typed}`, [parsed.capacity_window_start, parsed.capacity_window_end].join(), [start, end].join());
     }
 
     // The daily job runs at 07:00 UTC and wrote "in 3 days" for a step due
