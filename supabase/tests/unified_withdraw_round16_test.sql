@@ -131,7 +131,7 @@ select matches(pg_temp.body('c16b0000-0000-0000-0000-00000000000b', 'payment_con
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''c16f0004-0000-0000-0000-000000000001'', ''ch_pgtap_r16_4'', ''card'', ''Visa ···4242'', 4000)')$$,
   'the paid step is funded');
 select matches(pg_temp.body('c16b0000-0000-0000-0000-00000000000b', 'payment_confirmed', 'c16f0004-0000-0000-0000-000000000001'),
-  ' received on R16 request 1 \(R16-1\)\. TSC holds it and adds it to the factory''s balance when you approve this step\.$', 'a paid step: added on approval');
+  ' received on R16 request 1 \(R16-1\)\. It becomes available to the factory when you approve this step\.$', 'a paid step: added on approval');
 select is((select count(*)::int from public.notifications where org_id = 'c16b0000-0000-0000-0000-00000000000b'
             and subject_id in ('c16f0003-0000-0000-0000-000000000001', 'c16f0004-0000-0000-0000-000000000001')
             and (body like '%TSC will pay the factory%' or body like '%pays the factory when you approve%')), 0,

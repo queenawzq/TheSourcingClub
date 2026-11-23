@@ -91,7 +91,7 @@ select is(pg_temp.told('b40f0011-0000-0000-0000-000000000000'),
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''b40f0012-0000-0000-0000-000000000000'', ''ch_pgtap_r40_12'', ''card'', ''Visa ending in 0077'', 32100)')$$,
   'an undisputed charge is recorded as funded');
 select is(pg_temp.told('b40f0012-0000-0000-0000-000000000000'),
-  'Payment held for "R40 lab dip": TSC holds $300.00 for this step on R40 request (R40-1). You can start this work; it is added to your balance when the brand approves it.',
+  'Payment held for "R40 lab dip": R40 Brand funded $300.00 for R40 lab dip on R40 request. It will become available when R40 Brand approves this step.',
   'the usual notice');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b40f0012-0000-0000-0000-000000000000'', true)')$$, 'disputed before approval');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b40f0012-0000-0000-0000-000000000000'', false)')$$, 'and won');

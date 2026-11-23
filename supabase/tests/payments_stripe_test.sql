@@ -294,11 +294,11 @@ reset role;
 select public.record_payment_funded(pg_temp.p18_pay('order_a', 'Fit sample'), 'ch_p18_a', 'card', 'Visa ···4242', 55129);
 select is(pg_temp.p18_state('order_a', 'Fit sample'), 'confirmed', 'the card payment arrived: TSC holds it');
 select ok(
-  (select n.body like '%received on %' || o.order_number || '%TSC holds it%' from public.notifications n
+  (select n.body like '%received on %' || o.order_number || '%becomes available to the factory when you approve this step%' from public.notifications n
      join public.production_orders o on o.id = n.order_id
     where n.kind = 'payment_confirmed' and n.org_id = '18b00000-0000-0000-0000-00000000000b'
       and n.order_id = (select id from p18 where name = 'order_a')),
-  'the brand''s "TSC holds it" names the order');
+  'the brand''s funded notice names the order and says the money waits for approval');
 select is(
   (select row(confirmed_by is null, confirmed_at is not null, release_requested_at is null, payment_method_label)::text
      from public.order_payments where id = pg_temp.p18_pay('order_a', 'Fit sample')),
