@@ -22,7 +22,9 @@ for (const text of ["Earnings stay in your balance until you withdraw them.", "O
 // from the page's Pending figure. One card carries them for every method (D3).
 const sentence = "Earnings stay in your balance until you withdraw them.";
 assert.ok(card.split(sentence).length - 1 >= 1, "the sentence is on the card, whatever the method");
-assert.ok((card.match(/pendingWords\(/g) ?? []).length >= 1, "the card says what is pending, with the one helper");
+// Nov 23: the "$X pending. Available to withdraw on …" sentence went (each row
+// says its own day); the Pending balance helper stays, after the sentence above.
+assert.ok(card.includes('Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">'), "the Pending balance helper stays on the line while money is pending");
 // "$X pending" is the card's own line from the figures (pendingParts), not a figure the page passes.
 assert.ok(card.includes("const pendingLines = pendingParts(figures)") && !page.includes("pendingTotal"), "the card's pending line comes from the figures it is given");
 // One balance, one Withdraw, whatever the method (Nov 19): the button is

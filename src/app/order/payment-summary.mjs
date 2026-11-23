@@ -559,8 +559,8 @@ export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD
   return `Payout fee ${money(Number(feeCents), "USD")} is taken from this payment: you receive ${money(Number(receivesMinor), String(receivesCurrency || "USD").toUpperCase())}.`;
 }
 
-/** A Stripe payout that has left and not yet reached the bank (until its arrival day). */
-export const ON_ITS_WAY = "On its way";
+/** A Stripe payout that has left and not yet reached the bank (until its arrival day): "Processing", like every withdrawal under way. */
+export const ON_ITS_WAY = "Processing";
 export const BANK_PROCESSING = "Your bank is processing the payout.";
 const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Cancelled" };
 
