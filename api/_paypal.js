@@ -144,6 +144,8 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
         waiting: raw === "UNCLAIMED" ? PAYPAL_UNCLAIMED : null,
         factoryFixes: raw === "UNCLAIMED",
         itemId: item.payout_item_id ?? null,
+        // When PayPal sent the item (left unclaimed from then on); the batch's own time if absent.
+        sentAt: item.time_processed ?? answer.body.batch_header?.time_created ?? null,
         // What was sent to the factory, in minor units of the withdrawal's currency: on a
         // returned item PayPal gives back this, and keeps its fee (the item
         // still bears payout_item_fee once RETURNED; sandbox, 2026-11-22).

@@ -154,7 +154,20 @@ export const paypalAdapter = {
     // (record_withdrawal_returned; the factory bears the fee, as it does on a payout).
     const returned = status.state === "failed" && ["RETURNED", "REFUNDED", "REVERSED"].includes(status.raw) && Number.isFinite(status.sentMinor);
     return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null,
+      unclaimed: status.raw === "UNCLAIMED", sentAt: status.sentAt ?? null,
       returnedCents: returned ? status.sentMinor : null };
+  },
+  /**
+   * Take back a payment nobody has claimed (no PayPal account at the address),
+   * from readBack. PayPal decides: only an item it still reads UNCLAIMED is
+   * cancelled, and a cancel it refuses (claimed in the meantime) throws its
+   * refusal. What it did is then read back and recorded like any other answer.
+   */
+  async cancelUnclaimed(paypal, ref) {
+    const status = await paypal.status(ref);
+    if (status.raw !== "UNCLAIMED" || !status.itemId) return { cancelled: false, raw: status.raw };
+    const answer = await paypal.cancel(status.itemId);
+    return { cancelled: true, raw: answer.raw };
   },
 };
 
