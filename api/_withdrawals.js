@@ -215,6 +215,13 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
   if (claim.provider !== adapter.provider) throw new PayoutFailure("database", "This withdrawal is paid another way. Reload the board.");
   const ctx = contextFrom(claim, { caller, db, cnyConfirmed, country: await factoryCountry(db, claim.org_id) });
   let ref = claim.provider_ref ?? null;
+  // A press after an unsure one: the provider may already hold this key's
+  // payment (Wise funded it, then the answer was lost). Until the same key has
+  // been shown to the provider again, nothing may give the withdrawal a new
+  // key: our own checks keep the attempt, and the next press asks again. As
+  // the per-step payout does (_provider-payouts.js, claim.resumed).
+  const resumed = Boolean(claim.resumed);
+  let askedProvider = false;
 
   try {
     if (!ref) {
@@ -222,7 +229,7 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
       const short = await providerShort(adapter, client, ctx);
       if (short) {
         const sentence = `${adapter.label} balance is short by ${money(short, ctx.currency)}. Top up TSC's ${adapter.label} balance, then approve again.`;
-        await record(db, id, "requeue", { sentence });
+        await record(db, id, resumed ? "sent" : "requeue", { sentence });
         return { done: "short_balance", sentence };
       }
       const quote = checkQuote(adapter, ctx, await adapter.quote(client, ctx));
@@ -236,6 +243,7 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
         const kept = await db.from("factory_withdrawals").update({ leaves_cents: Math.round(quote.leavesCents) }).eq("id", id);
         if (kept?.error) log("withdrawal leaves_cents", kept.error, { id });
       }
+      askedProvider = true;
       const paid = await adapter.pay(client, ctx, quote);
       ref = paid.ref;
       await record(db, id, "sent", { ref, sentence: "Sent. Waiting for the provider to confirm." });
@@ -247,6 +255,13 @@ export async function approveWithdrawal({ adapter, client, caller, db, id, cnyCo
       // The provider may have it: stays "paying", and the same key finds it.
       await db.rpc("record_withdrawal", { target_withdrawal: id, outcome: "sent", sentence: failure.message });
       throw failure;
+    }
+    if (!ref && resumed && !askedProvider) {
+      // Our own check said no before the provider was asked about this key
+      // again: it may still have the first attempt's payment. Keep the key.
+      const sentence = known ? failure.message : `${adapter.label} couldn't be asked about this yet. Press again.`;
+      await db.rpc("record_withdrawal", { target_withdrawal: id, outcome: "sent", sentence });
+      throw known ? failure : new PayoutFailure("refused", sentence);
     }
     if (!ref) {
       // A certain "no" before the provider had it: nothing was sent.
