@@ -21,6 +21,10 @@ const { now } = todayIn(ZONE);
 // The next December (this one unless it has passed).
 const decYear = now.getMonth() === 11 && now.getDate() > 20 ? now.getFullYear() + 1 : now.getFullYear();
 const dec = (day) => `${decYear}-12-${String(day).padStart(2, "0")}`;
+// The next February: a year-less window already past this year is next year's,
+// as the typed-window parser reads it (capacity-window.mjs).
+const febYear = now.getMonth() >= 1 ? now.getFullYear() + 1 : now.getFullYear();
+const feb = (day) => `${febYear}-02-${String(day).padStart(2, "0")}`;
 
 /** [typed, expected start, expected end] — null start: no window. "any": any valid window or none. */
 const CASES = [
@@ -28,6 +32,7 @@ const CASES = [
   ["12月中旬", dec(11), dec(20)],
   ["early to mid December", dec(1), dec(20)],
   ["late December", dec(21), dec(31)],
+  ["early Feb, partner to confirm", feb(1), feb(10)],
   ["TBC", null, null],
   ["asap", null, null],
   ["2 weeks after deposit", null, null],

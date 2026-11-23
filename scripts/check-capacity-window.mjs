@@ -128,10 +128,11 @@ const REFUSED = [
   ["12-1 - 1-15", "format"],
   ["138 0013 8000", "format"],
   ["Dec 1 - Jan 15 to be confirmed", "words"],
-  ["Aug 12-30 · partner confirmed", "past"],
+  ["Aug 12-30 · partner confirmed", "words"],
   ["Dec 12-30 · partner confirmed", "words"],
   // Extra words never hide what is wrong with the dates themselves
-  ["Jan 5 - Mar 1 tentative", "past"],
+  ["Jan 5 - Mar 1 tentative", "words"],
+  ["Jan 5 - Mar 1 2026 tentative", "past"],
   ["Feb 30 - Mar 15 approx", "invalid"],
   ["Dec 1 2026 - Jan 15 2026 approx", "order"],
   ["12.1.2026 - 15.1.2027 approx", "long"],
@@ -157,8 +158,9 @@ const REFUSED = [
   ["Dec 2026 - Dec 2027", "long"],
   ["Feb 29 2028 - Mar 2 2029", "long"],
   ["15.1.2027 - 1.12.2026", "order"],
-  ["Jan 5 - Mar 1", "past"],
-  ["8月12日至30日", "past"],
+  ["Jan 5 - Mar 1 2026", "past"],
+  ["Nov 1 - 10, 2026", "past"],
+  ["Aug 2026", "past"],
   ["Q5 2027", "format"],
 ];
 
@@ -186,14 +188,53 @@ for (const [typed, start, end, units] of KEPT) {
   }
 }
 
+// No year written and already over this year: next year's, typed in November
+// or in December. Still ahead (or open now) this year: this year's. A year
+// written and over: refused (REFUSED above).
+for (const [now, typed, start, end] of [
+  [NOW, "Feb 1 - Mar 15", "2027-02-01", "2027-03-15"],
+  [NOW, "Jan 5 - Mar 1", "2027-01-05", "2027-03-01"],
+  [NOW, "8月12日至30日", "2027-08-12", "2027-08-30"],
+  [NOW, "1.2 - 15.3", "2027-02-01", "2027-03-15"],
+  [NOW, "2/1 - 3/15", "2027-02-01", "2027-03-15"],
+  [NOW, "Feb", "2027-02-01", "2027-02-28"],
+  [NOW, "Q1", "2027-01-01", "2027-03-31"],
+  [NOW, "Nov 1 - 10", "2027-11-01", "2027-11-10"],
+  [NOW, "Nov 1 - 30", "2026-11-01", "2026-11-30"],
+  [NOW, "Nov 18", "2026-11-18", null],
+  [NOW, "Dec 1 - 15", "2026-12-01", "2026-12-15"],
+  [NOW, "Oct 1 - Jan 15", "2026-10-01", "2027-01-15"],
+  [new Date(2026, 11, 28, 12), "Feb 1 - Mar 15", "2027-02-01", "2027-03-15"],
+  [new Date(2026, 11, 28, 12), "Dec 1 - 15", "2027-12-01", "2027-12-15"],
+  [new Date(2026, 11, 28, 12), "Dec 20 - Jan 15", "2026-12-20", "2027-01-15"],
+  [new Date(2026, 11, 28, 12), "Dec 31", "2026-12-31", null],
+  [new Date(2026, 11, 31, 23), "Dec 30", "2027-12-30", null],
+  [new Date(2026, 11, 28, 12), "Feb 29", null, null],
+  [new Date(2027, 10, 20, 12), "Feb 29 - Mar 2", "2028-02-29", "2028-03-02"],
+]) {
+  const got = parseCapacityWindow(typed, now);
+  const want = { capacity_window_start: start, capacity_window_end: end, capacity_window_units: null };
+  if (JSON.stringify(got) !== JSON.stringify(want)) fail(`${JSON.stringify(typed)} on ${now.toDateString()} read as ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+  if (start) {
+    // What the vendor sees back is the same window again.
+    const shown = formatCapacityWindow(got, now);
+    if (JSON.stringify(parseCapacityWindow(shown, now)) !== JSON.stringify(want)) fail(`${JSON.stringify(typed)} on ${now.toDateString()} reads back as ${JSON.stringify(shown)}, another window`);
+  }
+}
+if (capacityWindowProblem("Feb 29", new Date(2026, 11, 28, 12))?.code !== "invalid") fail("Feb 29 next year, not a leap year, is refused as invalid");
+for (const now of [NOW, new Date(2026, 11, 28, 12)]) {
+  for (const typed of ["Jan 5 - Mar 1 2026", "Feb 1, 2026 - Mar 15, 2026", "12-1-2026"]) {
+    if (capacityWindowProblem(typed, now)?.code !== "past") fail(`${JSON.stringify(typed)} with its year written is still refused as past on ${now.toDateString()}`);
+  }
+}
+
 for (const [typed, reason] of REFUSED) {
   const problem = capacityWindowProblem(typed, NOW);
   if (problem?.code !== reason) fail(`${JSON.stringify(typed)} gave ${problem?.code ?? "no refusal"}, not ${reason}`);
 }
 // A window already over is not stored: the form says it was not kept.
-if (parseCapacityWindow("Jan 5 - Mar 1", NOW).capacity_window_start !== null) fail("a past window is not stored");
+if (parseCapacityWindow("Jan 5 - Mar 1 2026", NOW).capacity_window_start !== null) fail("a past window is not stored");
 // Whether a year was typed decides the advice for a past window.
-if (capacityWindowProblem("Jan 5 - Mar 1", NOW)?.yearWritten !== false) fail("a past window with no year says so");
 if (capacityWindowProblem("12-1-2026", NOW)?.yearWritten !== true) fail("a past window with a year says so");
 // The refused piece is named, so the sentence says what to fix.
 if (capacityWindowProblem("Feb 30 - Mar 15", NOW)?.piece !== "Feb 30") fail("an impossible day names the piece typed");
@@ -245,10 +286,10 @@ for (const [typed, asks] of [
   ["mid December", true], ["12月中旬", true], ["TBC", true], ["Dec 1 - Jan 15 partner confirmed", true],
   ["Feb 30 - Mar 15", false], ["Jan 5 - Mar 1", false], ["12.1.2026 - 15.1.2027", false],
   ["Dec 1 2026 - Jan 15 2026", false], ["Dec 1, Dec 15 and Jan 15", false], ["Dec 1 - Jan 15", false],
-  ["Jan 5 - Mar 1 tentative", false], ["Feb 30 - Mar 15 approx", false], ["12.1.2026 - 15.1.2027 approx", false],
+  ["Jan 5 - Mar 1 tentative", true], ["Jan 5 - Mar 1 2026 tentative", false], ["Feb 30 - Mar 15 approx", false], ["12.1.2026 - 15.1.2027 approx", false],
   // A year-less window read as past, with words that name part of a period: next year's, for the model
   ["early Jan to end Feb", true], ["mid January", true], ["1月中旬", true], ["2月上旬", true], ["end of Q1", true],
-  ["January", false], ["early January approx", false], ["mid Jan 2026", false],
+  ["January", false], ["early January approx", true], ["mid Jan 2026", false],
 ]) {
   if (windowNeedsReading(capacityWindowProblem(typed, NOW)) !== asks) fail(`${JSON.stringify(typed)} ${asks ? "should" : "should not"} be sent to the model`);
 }

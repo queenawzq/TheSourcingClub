@@ -70,6 +70,8 @@ export async function adminWithdrawals() {
 export const previewWithdrawal =(id, cnyConfirmed = false) => call({ action: "preview", withdrawalId: id, cnyConfirmed });
 export const approveWithdrawal = (id, cnyConfirmed = false) => call({ action: "approve", withdrawalId: id, cnyConfirmed });
 export const syncWithdrawals = (provider) => call({ action: "sync", provider });
+/** Staff's "Cancel payment" on a PayPal withdrawal nobody claimed: { done, refused? }. PayPal decides. */
+export const cancelUnclaimedWithdrawal = (id) => call({ action: "cancel_unclaimed", withdrawalId: id });
 /** Staff's "Check again" on a Stripe withdrawal under "Needs checking": { sentence, sent, returned, unsure }. */
 export const checkStripeWithdrawal = (id) => call({ action: "check_stripe", withdrawalId: id });
 

@@ -156,6 +156,18 @@ export const paypalAdapter = {
     return { state: status.state ?? "sent", raw: status.raw, arrivesMinor: null, failure: status.failure, waiting: status.waiting ?? null,
       returnedCents: returned ? status.sentMinor : null };
   },
+  /**
+   * Take back a payment nobody has claimed (no PayPal account at the address).
+   * PayPal decides: only an item it still reads UNCLAIMED is cancelled, and a
+   * cancel it refuses (claimed in the meantime) throws its refusal. What it
+   * did is then read back and recorded like any other answer (readBack).
+   */
+  async cancelUnclaimed(paypal, ref) {
+    const status = await paypal.status(ref);
+    if (status.raw !== "UNCLAIMED" || !status.itemId) return { cancelled: false, raw: status.raw };
+    const answer = await paypal.cancel(status.itemId);
+    return { cancelled: true, raw: answer.raw };
+  },
 };
 
 // No "bank" adapter: TSC no longer pays a bank by hand (20261117500000); a bank

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { formatMoney } from "../../lib/money.js";
-import { approveWithdrawal, declineWithdrawal, owesTscSentence, previewWithdrawal } from "../../lib/domain/withdrawals.js";
+import { approveWithdrawal, cancelUnclaimedWithdrawal, declineWithdrawal, owesTscSentence, previewWithdrawal } from "../../lib/domain/withdrawals.js";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
@@ -13,6 +13,8 @@ import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 const NAME = { wise: "Wise", paypal: "PayPal", bank: "Bank transfer", tazapay: "Tazapay" };
 const STATUS = { requested: "Waiting", paying: "Sending", paid: "Paid", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
+/** api/_paypal.js's PAYPAL_UNCLAIMED, the row's sentence while PayPal holds it unclaimed (check:withdrawals pins the two equal). */
+export const PAYPAL_UNCLAIMED_SENTENCE = "Not claimed: no PayPal account at this address. Ask the factory to open one, or cancel and pay again. Returns to TSC after 30 days.";
 const moneyIn = (minor, currency) => (minor == null ? "—" : formatMoney(Number(minor), currency ?? "USD"));
 
 function WithdrawalActions({ row, onChanged }) {
@@ -64,8 +66,22 @@ function WithdrawalActions({ row, onChanged }) {
   // The provider has it: its answer is read back every 30 s, nothing to press.
   // Only a send that never reached the provider (no reference) is pressed
   // again, with the same key, so it cannot pay twice.
+  // Nobody claimed it (no PayPal account at the address): staff may take it
+  // back. PayPal decides; a cancelled one ends as a returned one does.
+  const unclaimed = row.status === "paying" && row.provider === "paypal" && row.provider_ref
+    && row.staff_sentence === PAYPAL_UNCLAIMED_SENTENCE;
+  const cancelUnclaimed = () => run(async () => {
+    const result = await cancelUnclaimedWithdrawal(row.id);
+    if (result.refused) setProblem(result.refused);
+  });
   if (row.status === "paying") {
-    return <div className="admin-actions">{said}{row.provider_ref ? null : <button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button>}</div>;
+    return (
+      <div className="admin-actions">
+        {said}
+        {row.provider_ref ? null : <button type="button" className="admin-approve" disabled={working} onClick={pay}>Press again</button>}
+        {unclaimed ? <button type="button" className="admin-reject" disabled={working} data-testid="withdrawal-cancel-unclaimed" onClick={cancelUnclaimed}>Cancel payment</button> : null}
+      </div>
+    );
   }
   if (step === "decline") {
     return (

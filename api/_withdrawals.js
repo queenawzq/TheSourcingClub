@@ -366,6 +366,34 @@ export async function syncWithdrawals({ adapter, client, db, now = Date.now() })
   return { read: answers.filter((x) => x.status === "fulfilled").length };
 }
 
+/**
+ * Staff's "Cancel payment" on a withdrawal its provider holds unclaimed
+ * (PayPal: no account at the address). The provider decides, never this
+ * server: it cancels only an item still unclaimed, and whatever it then says
+ * is recorded by readBack, exactly as the 30 s read-back would record it. A
+ * cancelled item reads RETURNED, which ends the withdrawal as any returned
+ * one ends (record_withdrawal_returned: back in the balance, the factory told).
+ * Two presses, or a press racing the read-back, record once: the database
+ * does nothing for a withdrawal already ended.
+ */
+export const CANCEL_REFUSED = "PayPal wouldn't cancel this: it may have been claimed. Press Refresh.";
+export async function cancelUnclaimedWithdrawal({ adapter, client, db, row }) {
+  if (typeof adapter.cancelUnclaimed !== "function") throw new PayoutFailure("refused", "This withdrawal can't be cancelled here.");
+  if (row.status !== "paying" || !row.provider_ref) throw refusalFrom({ hint: "withdrawal_not_waiting" });
+  let refused = null;
+  try {
+    await adapter.cancelUnclaimed(client, row.provider_ref);
+  } catch (failure) {
+    // Unsure (a timeout): the provider may have cancelled it; the read below,
+    // or the next one, says. Refused: nothing changed there.
+    if (!(failure instanceof PayoutFailure)) throw failure;
+    log("withdrawal cancel", failure, { id: row.id });
+    refused = failure.unsure ? failure.message : CANCEL_REFUSED;
+  }
+  const done = await readBack({ adapter, client, db, id: row.id, ref: row.provider_ref });
+  return done === "failed" ? { done } : { done, refused: refused ?? (done === "paid" ? CANCEL_REFUSED : null) };
+}
+
 export const adapterFor = (provider) => ADAPTERS[provider] ?? null;
 
 /**
