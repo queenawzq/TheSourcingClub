@@ -29,6 +29,7 @@ import { reservedEmailNotice } from "../../shared/reserved-email.mjs";
 import "../shell.css";
 import "./console-live.css";
 import "../live-quiet.css";
+import "../layout-fixes.css";
 
 // Staff's two boards live outside this page; the sidebar has to reach them.
 const STAFF_PAGES = [

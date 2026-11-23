@@ -70,6 +70,7 @@ import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import { useUnreadMessages } from "./message/use-unread.js";
 import "./shell.css";
+import "./layout-fixes.css";
 
 // Lazy: only someone following a Terms or Privacy link needs it.
 const LegalPage = lazy(() => import("./LegalPage.jsx"));

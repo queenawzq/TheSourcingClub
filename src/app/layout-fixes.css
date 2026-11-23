@@ -1,0 +1,240 @@
+/*
+ * Layout problems: long names, titles and amounts that ran out of their box
+ * or made the page scroll sideways. Spacing and overflow only: every rule
+ * changes what happens to content that is too long for its space, and leaves
+ * content that fits where it was. Live app only (app.html, admin.html); the
+ * prototypes keep their own styles.
+ *
+ * `#root` lifts each rule above the design's class chains without
+ * `!important`. Where the design already uses `!important`, the rule says so.
+ */
+
+/* P-01: a card subtitle (a vendor's address) ends in "…" instead of
+   widening the page on a phone. */
+#root .marketplace-factory-title > div > p,
+#root .shared-card-heading > div > p,
+#root .directory-factory-intro > div > p,
+#root .saved-factory-identity > div > p {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* P-02: the invitation and sign-in cards fit the phone's width. */
+#root .gate {
+  grid-template-columns: minmax(0, 1fr);
+}
+#root .gate-card {
+  min-width: 0;
+}
+#root .gate-eyebrow {
+  overflow-wrap: anywhere;
+}
+#root .gate-row {
+  flex-wrap: wrap;
+}
+#root .gate-row > * {
+  white-space: nowrap;
+}
+
+/* P-03: a "Join <company> as <role>" button keeps the design's one-line
+   button and ends its label in "…" instead of spilling out of both sides. */
+#root .gate-card > .primary-btn {
+  display: block !important; /* the design's inline-flex is !important, and a flex label can't end in "…" */
+  min-width: 0;
+  overflow: hidden;
+  line-height: var(--button-height);
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+/* P-04, P-05: the header's search box takes the space there is (on a phone
+   the design already stacks them). */
+@media (min-width: 761px) {
+  #root .marketplace-header {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  }
+  #root main:not(.factory-browse-marketplace-page) .directory-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  }
+}
+/* P-04: Browse RFQs' header, from the width where the design stops stacking it. */
+@media (min-width: 1181px) {
+  #root .factory-browse-marketplace-page .directory-hero {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  }
+}
+
+/* P-06: the brand category list stays inside its card. */
+#root .brand-category-multiselect,
+#root .brand-category-multiselect > summary,
+#root .brand-category-multiselect-menu label {
+  min-width: 0;
+  max-width: 100%;
+}
+#root .brand-category-multiselect-menu label {
+  overflow-wrap: anywhere;
+}
+
+/* P-07, P-14, P-22: a long vendor name gives way to its badge and button.
+   On a computer it wraps (live-quiet.css shows a vendor's whole name), so it
+   no longer runs under "Request quote" or puts its badge on the next card,
+   where it sat on a call's Chinese name. On a phone it ends in "…", as the
+   dashboard's cards already do. */
+#root .marketplace-factory-title .factory-name-row {
+  min-width: 0;
+}
+#root .marketplace-factory-title .factory-name-row h3 {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+@media (min-width: 761px) {
+  #root .marketplace-factory-title .factory-name-row h3 {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 760px) {
+  #root .marketplace-factory-title .factory-name-row h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* P-08: the company box shows two lines of a long name, then "…". */
+#root .account-card > div {
+  min-width: 0;
+}
+#root .account-card strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+/* P-09: the company name on a profile banner leaves room for the banner's
+   button (Edit, Save, Saved) in the top right corner: beside the name on a
+   computer, above it on a phone. */
+@media (min-width: 761px) {
+  #root .factory-profile-hero:has(> .factory-profile-banner-edit) .factory-profile-title-row {
+    padding-right: 120px;
+  }
+}
+@media (max-width: 760px) {
+  #root .factory-profile-hero:has(> .factory-profile-banner-edit) > .factory-profile-identity {
+    padding-top: var(--button-height);
+  }
+}
+
+/* P-10: a large step amount keeps its own width before the status label. */
+#root .milestone-row-actions {
+  grid-template-columns: minmax(64px, max-content) 80px 32px 160px;
+}
+#root .factory-milestone-actions > strong {
+  white-space: nowrap;
+}
+
+/* P-11: long step names under the progress bar wrap to two lines inside
+   their own step. */
+#root .project-progress-step small {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* P-12: the call buttons move under a conversation's title when the title
+   would otherwise get too narrow to read. Below 1221px the design already
+   puts them under it. */
+@media (min-width: 1221px) {
+  #root .message-room-header {
+    flex-wrap: wrap;
+  }
+  #root .message-room-identity {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+}
+
+/* P-16: on a phone, order tabs that don't fit go onto another line instead
+   of being cut off at the "Manage tabs" link, which stays beside the first. */
+@media (max-width: 760px) {
+  #root .projects-tabs .project-tabs-scroll {
+    flex-wrap: wrap;
+    row-gap: 0;
+    overflow: visible;
+  }
+  #root .projects-tabs > .project-tab-manage {
+    align-self: start;
+  }
+}
+
+/* P-17: on a phone, the order filters sit two to a row so their words fit. */
+@media (max-width: 480px) {
+  #root .brand-projects-page .projects-controls,
+  #root .projects-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important; /* the design's 3-column rule is !important */
+  }
+  #root .projects-controls > .rfqs-search {
+    grid-column: 1 / -1;
+  }
+}
+
+/* P-13, P-15: on a phone, a card title shows in full. live-quiet.css
+   already unclips these titles below 760px; this lifts the two-line limit
+   that was left on (P-15: the third line printed over the subtitle), and the
+   design's one-line rule on a factory's request cards (P-13), which is
+   !important, so this is too. */
+@media (max-width: 760px) {
+  #root .shared-card-heading h2,
+  #root .shared-card-heading h3 {
+    display: block;
+    -webkit-line-clamp: none;
+  }
+  #root .factory-request-card .factory-request-title h2 {
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+}
+
+/* P-14: on a phone, the invite step's four facts sit two to a row. */
+@media (max-width: 760px) {
+  #root .invite-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* P-18: the vendor's own (Chinese) name ends in "…" where it is cut. */
+#root .tsc-vendor-name-original {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* P-19: the staff withdrawals table fits its board: long company names wrap
+   instead of widening the first column past the screen. */
+#root .admin-payments-page td:first-child,
+#root .admin-payments-page td:first-child strong {
+  white-space: normal;
+}
+
+/* P-21: on a phone, a review row's company name and address wrap beside
+   the status label instead of shrinking to a few letters. */
+@media (max-width: 760px) {
+  #root .admin-verification-row .admin-entity-identity strong,
+  #root .admin-verification-row .admin-entity-identity small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* P-20, P-21: a status label keeps its words; the company name beside it
+   gives way instead. */
+#root .admin-review-header > .project-status,
+#root .admin-verification-row .project-status {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
