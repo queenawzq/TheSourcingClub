@@ -24,7 +24,14 @@ export const DEMO_LOGINS = {
   // Open requests from a second brand that has paid nothing yet, so Browse
   // RFQs' filters have requests to tell apart, "Payment verified" included.
   secondBrand: { role: "Brand two", name: "Maple Row Studio", email: "demo-brand-two@example.com" },
+  // Payment reviews: its payment to Riverbend Knit is disputed with its bank,
+  // so it is under review (messaging only) until staff unpause it in
+  // Payments → Needs checking → Payment reviews.
+  reviewBrand: { role: "Brand under review (disputed payment)", name: "Harbor Lane Goods", email: "demo-brand-review@example.com" },
   factory: { role: "Factory", name: "Demo Factory", email: "demo-factory@example.com" },
+  // Payment reviews: paused by Harbor Lane's dispute and by a refund after
+  // approval on a Demo Brand step, until staff decide. Paid by PayPal.
+  reviewFactory: { role: "Factory under review (withdrawals paused)", name: "Riverbend Knit Co.", email: "demo-factory-review@example.com" },
   // A member of Demo Factory with Add update only: it posts step updates but
   // cannot send a quote, invite, or change Settings.
   factoryMember: { role: "Factory member, updates only", name: "Demo Factory (member)", email: "demo-factory-member@example.com" },

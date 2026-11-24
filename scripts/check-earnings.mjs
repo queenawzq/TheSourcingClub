@@ -690,48 +690,44 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   }
 }
 
-// Refunds and lost disputes (20261121200000): the factory's part goes down
-// on dated rows of their own (the step's row is never rewritten); money that
-// had already been withdrawn is owed to TSC inside Available, which can read
-// below zero, and nothing more can be withdrawn while it is not covered.
+// Refunds and lost disputes before approval (20261121200000): the factory's
+// part goes down on dated rows of their own (the step's row is never
+// rewritten). After approval nothing is taken by itself: a payment review
+// pauses withdrawals until staff decide (20261124100000), and what staff
+// return to the brand is its own dated row. Nothing is ever owed to TSC.
 {
-  const { DISPUTE_LOST, REFUNDED, owedToTscCause, owedToTscCents, owedToTscLine, paymentRefund, refundRows } = await import("../src/app/order/payment-summary.mjs");
-  const fmt = (cents) => `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toFixed(2)}`;
-  // F3's state from the pgTAP suite: $400 withdrawn by PayPal then a lost
-  // dispute on the $500 deposit, $150 withdrawn by Stripe then refunded.
+  const { DISPUTE_LOST, REFUNDED, RETURNED, paymentRefund, refundRows, reviewLines } = await import("../src/app/order/payment-summary.mjs");
   const tsc = {
-    awaiting_cents: 0, available_cents: -55000, pending_cents: 0, processing_cents: 0, paid_out_cents: 54000, total_cents: -1000,
-    owed_to_tsc_cents: 55000, parts: { owed_cleared_cents: 0, pool_available_cents: 0 },
+    awaiting_cents: 0, available_cents: 15000, pending_cents: 0, processing_cents: 0, paid_out_cents: 40000, total_cents: 55000,
+    parts: { owed_cleared_cents: 15000, pool_available_cents: 0 },
     rows: [
       { payment_id: "dep", figure: "paid_out", amount_cents: 40000 },
-      { payment_id: "dep", figure: "refunded", amount_cents: -50000, cause: "dispute_lost", at: "2026-11-21T10:00:00Z" },
-      { payment_id: "fit", figure: "paid_out", amount_cents: 15000, stripe: true },
-      { payment_id: "fit", figure: "refunded", amount_cents: -15000, cause: "refund", at: "2026-11-21T11:00:00Z" },
+      { payment_id: "dep", figure: "refunded", amount_cents: -5000, cause: "dispute_lost", at: "2026-11-21T10:00:00Z" },
+      { payment_id: "fit", figure: "available", amount_cents: 15000 },
+      { payment_id: "fit", figure: "refunded", amount_cents: -1000, cause: "refund", at: "2026-11-21T11:00:00Z" },
+      { payment_id: "fit", figure: "refunded", amount_cents: -2000, cause: "returned", at: "2026-11-24T11:00:00Z" },
     ],
+    review: { paused: true, step_title: "Fit sample", order_number: "TSC-000016" },
     withdrawals: [],
   };
   const summary = summaryFrom(tsc);
-  assert.deepEqual([summary.available, summary.paid, summary.total], [-55000, 54000, -1000], "Available below zero; Paid out as sent; Total adds up");
-  assert.equal(owedToTscCents(tsc), 55000);
-  assert.equal(owedToTscCents({ tsc }), 55000, "read through the Stripe answer's database part too");
-  assert.equal(owedToTscCents(balanceFigures(tsc, null, null)), 55000, "and kept by the server's balance answer");
-  assert.equal(owedToTscLine(55000, fmt), "You owe TSC $550.00. A payment was refunded after you withdrew it.");
-  assert.equal(owedToTscLine(0, fmt), null, "no line without a debt");
-  // Fix round 19: a lost dispute is said as one, never as a refund.
-  assert.equal(owedToTscLine(50000, fmt, "dispute_lost"), "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.");
-  assert.equal(owedToTscLine(50000, fmt, "both"), "You owe TSC $500.00. Money was returned to the brand after you withdrew it.", "R32: one phrase for money going back to the brand");
-  const rowsOf = (...causes) => ({ rows: causes.map((cause, i) => ({ figure: "refunded", amount_cents: -100, payment_id: `p${i}`, cause, at: "2026-11-21T10:00:00Z" })) });
-  assert.deepEqual([owedToTscCause(rowsOf("dispute_lost")), owedToTscCause(rowsOf("refund")), owedToTscCause(rowsOf("refund", "dispute_lost"))],
-    ["dispute_lost", "refund", "both"], "the cause comes from the dated refund rows");
-  assert.doesNotMatch(owedToTscLine(55000, fmt), /next earnings/i, "never promises to take it from later earnings (not decided)");
+  assert.deepEqual([summary.available, summary.paid, summary.total], [15000, 40000, 55000], "Total adds up; nothing below zero");
+  assert.deepEqual(reviewLines(tsc), ["Withdrawals are paused while a payment is reviewed.",
+    'A brand requested a refund for "Fit sample" on TSC-000016, so our team is reviewing the payment.'], "the card's two sentences, naming the order (two orders can share a step's name)");
+  assert.deepEqual(reviewLines({ tsc }), reviewLines(tsc), "read through the Stripe answer's database part too");
+  assert.deepEqual(reviewLines(balanceFigures(tsc, null, null)), reviewLines(tsc), "and kept by the server's balance answer");
+  assert.equal(reviewLines({ ...tsc, review: null }), null, "no line when nothing is reviewed");
+  for (const line of reviewLines(tsc)) {
+    // "TSC" only as part of an order number.
+    assert.doesNotMatch(line, /owe|\bTSC\b(?!-\d)|nothing (has been|was) taken|hasn't changed|your fault/i, "never blames the factory or says what was not taken");
+  }
   assert.deepEqual(refundRows(tsc), [
-    { paymentId: "dep", cause: "dispute_lost", at: "2026-11-21T10:00:00Z", amount: -50000 },
-    { paymentId: "fit", cause: "refund", at: "2026-11-21T11:00:00Z", amount: -15000 },
-  ], "one dated row per refund or lost dispute, below zero");
+    { paymentId: "dep", cause: "dispute_lost", at: "2026-11-21T10:00:00Z", amount: -5000 },
+    { paymentId: "fit", cause: "refund", at: "2026-11-21T11:00:00Z", amount: -1000 },
+    { paymentId: "fit", cause: "returned", at: "2026-11-24T11:00:00Z", amount: -2000 },
+  ], "one dated row per refund, lost dispute or staff return, below zero");
   assert.equal(figuresByPayment(tsc).get("dep").has("refunded"), false, "a row below zero never decides a step's word");
-  assert.deepEqual([DISPUTE_LOST, REFUNDED], ["Reversed by the brand's bank", "Refunded"]);
-  // Withdraw offers nothing while the debt is not covered: the server's reach
-  // is net of it (owed_reachable, pinned in pgTAP); the page has no reach of its own.
+  assert.deepEqual([DISPUTE_LOST, REFUNDED, RETURNED], ["Reversed by the brand's bank", "Refunded", "Returned to the brand"]);
   assert.deepEqual(withdrawReach(undefined), { stripe: null, balance: null, estimated: false }, "no answer, no reach");
   // The order page's line: the brand's whole amount, the factory's part.
   assert.deepEqual(paymentRefund({ charged_cents: 99208, refunded_cents: 5000, dispute_lost_cents: 0, factory_refund_cents: 4536 }),
@@ -741,16 +737,15 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const parts = pendingParts({ pending_cents: 0, processing_cents: 20000, parts: {},
     withdrawals: [{ id: "w", road: "pool", word: "on_hold", amount_cents: 25000, parts: [{ word: "waiting", amount_cents: 20000 }, { word: "refunded", amount_cents: 5000 }] }] });
   assert.deepEqual([parts.onHold, parts.waiting], [0, 20000], "the block holds $200; the refunded $50 is on no line");
-  // The card and the block, in the page's code.
+  // The card: the review's line, Withdraw off, and no "owes TSC" anywhere.
   const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
-  assert.ok(card.includes("owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))"), "the card says what is owed to TSC, and why");
-  // C1 (round 36): the line says only what earnings do not cover; once they
-  // cover it, no line (Available already counts the whole debt).
-  const { uncoveredDebtCents } = await import("../src/app/order/payment-summary.mjs");
-  assert.equal(uncoveredDebtCents({ ...tsc, uncovered_debt_cents: 25000 }), 25000);
-  assert.equal(uncoveredDebtCents({ tsc: { ...tsc, uncovered_debt_cents: 0 } }), 0, "covered: no line");
-  assert.equal(uncoveredDebtCents(balanceFigures({ ...tsc, uncovered_debt_cents: 25000 }, null, null)), 25000, "kept by the server's balance answer");
-  assert.ok(!card.includes("owedToTscLine(owedToTscCents("), "never the whole debt on the card's line");
+  assert.ok(card.includes('data-testid="payout-under-review"') && card.includes("Boolean(review) ||"), "the card says the review and turns Withdraw off");
+  const shown = [card, readFileSync(new URL("../src/app/order/payment-summary.mjs", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../src/app/admin/AdminWithdrawals.jsx", import.meta.url), "utf8")];
+  for (const source of shown) assert.doesNotMatch(source, /owes? TSC|owedToTsc/, "no screen says a factory owes TSC");
   // The order page: a lost dispute is never "refunded" (fix round 19).
   const orderPage = readFileSync(new URL("../src/app/order/LiveOrderDetail.jsx", import.meta.url), "utf8");
   // Round 36 (#3): one rule for "no withdrawal method", the server's
@@ -771,9 +766,9 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   // Chinese for the new screen words: the live patterns and the factory's dictionary.
   const zh = readFileSync(new URL("../src/app/live-zh.js", import.meta.url), "utf8");
   const literals = [...zh.matchAll(/\[(\/\^.*?\$\/)[a-z]*,/g)].map(([, literal]) => new RegExp(literal.slice(1, -1)));
-  for (const text of ["You owe TSC $550.00. A payment was refunded after you withdrew it.", "$50.00 refunded", "$45.00 returned to the brand", "$50.00 reversed by your bank",
+  for (const text of ['Withdrawals are paused while a payment is reviewed. A brand requested a refund for "Fit sample", so our team is reviewing the payment.', "$50.00 refunded", "$45.00 returned to the brand", "$50.00 reversed by your bank",
     "$50.00 returned to the brand", "$46.73 reversed by the brand's bank",
-    "You owe TSC $500.00. The brand's bank reversed a payment after you withdrew it.", "You owe TSC $500.00. Money was returned to the brand after you withdrew it.", "$900.00 funded for Bulk deposit, added to your balance",
+    "Withdrawals are paused while a payment is reviewed.", "$900.00 funded for Bulk deposit, added to your balance",
     "$963.00 funded for Bulk deposit, added to the factory's balance"]) {
     assert.ok(literals.some((re) => re.test(text)), `Chinese for "${text}"`);
   }
@@ -817,7 +812,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(order.includes("Number(milestone.payment?.factory_refund_cents ?? 0)") && order.includes('if (refund.factory >= Number(payment.amount_cents)) return refund.refunded > 0 ? "Refunded" : DISPUTE_LOST;')
     && order.includes(" - wentBack))"), "Release and Funded figures net of refunds; a fully refunded deposit reads Refunded");
   const staff = read("../src/app/admin/AdminWithdrawals.jsx");
-  assert.ok(staff.includes("of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC")
+  assert.ok(staff.includes("of this payout went back to the brand after it was sent. It's in Payment reviews.")
     && staff.includes("<strong>{moneyIn(holds, row.currency)}</strong>"), "staff see what a withdrawal still holds, and the amount at risk while it is sent");
 }
 
@@ -980,16 +975,22 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
     { payment_id: "0df1", figure: "refunded", amount_cents: -5000, stripe: false, cause: "dispute_lost" },
   ]);
   const perPayment = summary.paymentFigureCents(figures);
-  // F1: no "Pending · Available <day>" row for money that went back to the brand.
-  assert.equal(summary.stepRowCents(fullRefund, perPayment), null, "F1: refunded in full: no step row; the Refunded row says it");
-  assert.equal(summary.stepRowCents(lostDispute, perPayment), null, "F1: dispute lost: no step row; the Reversed row says it");
-  assert.equal(summary.stepRowCents(partRefund, perPayment), 4693, "F1: refunded in part: Pending only for what is left");
+  // One representation (20261124100100): each step's row stays at what it
+  // earned; what went back is its own dated row below zero, and the rows add
+  // up to the figure (was F1: the step row showed only what was left).
+  assert.equal(summary.stepRowCents(fullRefund, perPayment), 6500, "refunded in full: the step row keeps what it earned");
+  assert.equal(summary.stepRowCents(lostDispute, perPayment), 5000, "dispute lost: the step row keeps what it earned");
+  assert.equal(summary.stepRowCents(partRefund, perPayment), 6500, "refunded in part: the step row keeps what it earned");
   assert.equal(earningStatus(partRefund, null, figuresByPayment(figures)), "Pending", "F1: what is left is still clearing");
   assert.equal(summary.refundRows(figures).length, 3, "F1: each refund keeps its own dated row");
-  // What a page draws is the sum of the server's rows for those three steps.
+  // What a page draws: the steps' rows plus their dated rows below zero.
   const drawn = [fullRefund, lostDispute, partRefund].map((row) => summary.stepRowCents(row, perPayment)).filter((cents) => cents !== null)
-    .reduce((sum, cents) => sum + cents, 0);
-  assert.equal(drawn, Number(figures.pending_cents), "F1: the rows' Pending equals the Pending figure");
+    .reduce((sum, cents) => sum + cents, 0)
+    + summary.refundRows(figures).reduce((sum, part) => sum + part.amount, 0);
+  assert.equal(drawn, Number(figures.pending_cents), "the rows add up to the Pending figure");
+  // Its "Available <day>" note goes with money that is all gone back.
+  const details = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
+  assert.ok(details.includes("allWentBack(row) ? null : clearingNote(row, clearing)"), "no Available day on a step whose money all went back");
   // Unchanged elsewhere: no refund, a released step (refund owed to TSC), no figures.
   assert.equal(summary.stepRowCents(step("plain", 6500), perPayment), 6500);
   assert.equal(summary.stepRowCents(pay("e1fd", 6500, "released", { stripe_transfer_id: "tr_1" }), perPayment), 6500, "a step already paid out keeps what was sent");
@@ -1024,4 +1025,4 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   }
 }
 
-console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, owed to TSC inside Available");
+console.log("earnings figures: every state in one place, adding up, same rules as the board; refunds on their own rows, nothing ever owed to TSC");

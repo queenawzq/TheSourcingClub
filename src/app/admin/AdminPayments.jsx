@@ -53,6 +53,8 @@ import { boardSections, paidByBank, paidByPaypal, paidByStripe, paidByWise, prov
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
+import { PaymentReviewsSection } from "./PaymentReviews.jsx";
+import { paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
 import { adminBalanceAttention, adminWithdrawals, checkStripeWithdrawal, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
@@ -82,6 +84,10 @@ const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_i
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
 /** The board's word once a press sent money: the row itself moves to Processing. */
 const SentContext = createContext(null);
+// Orders of factories paused by a payment review: no payout button on their
+// rows (the database refuses every road too; 20261124100100).
+const PausedContext = createContext(new Set());
+const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).";
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -465,6 +471,7 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
   const [confirming, setConfirming] = useState(null);
+  const paused = useContext(PausedContext);
   if (section === "failed" && row.refund_failed_at) {
     if (confirming) {
       return (
@@ -499,6 +506,9 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
     const provider = providerFor(row);
     if (provider && attempt?.status === "processing") {
       return <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+    }
+    if (paused.has(row.order_id)) {
+      return <span className="admin-sub admin-row-message" data-testid="payout-paused">{PAUSED_ROW}</span>;
     }
     const pay = provider ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
     return paidByStripe(row) ? (
@@ -779,14 +789,18 @@ export default function AdminPayments() {
   const [setups, setSetups] = useState(() => new Map());
   const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
   const [attention, setAttention] = useState(null);
+  const [reviews, setReviews] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [board, tried, asked, checking] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals(),
+      const [board, tried, asked, checking, reviewed] = await Promise.all([paymentBoard(), providerAttempts(), adminWithdrawals(),
         // Its own failure is said in its tab; the rest of the board stands without it.
-        adminBalanceAttention().catch((failure) => ({ disputed: [], stuck: [], recover: [], refund_failed: [], returned: [], error: failure }))]);
+        adminBalanceAttention().catch((failure) => ({ disputed: [], stuck: [], recover: [], refund_failed: [], returned: [], error: failure })),
+        // Payment reviews (20261124100000): the same, in Needs checking.
+        paymentReviewBoard().then((list) => ({ list }), (failure) => ({ list: [], error: failure }))]);
       setWithdrawals(asked);
       setAttention(checking);
+      setReviews(reviewed);
       setRows(board);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
@@ -893,28 +907,27 @@ export default function AdminPayments() {
     <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
                      load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} withdrawals={withdrawals}
-                     attention={attention} />
+                     attention={attention} reviews={reviews} />
     </AdminWorkspaceShell>
   );
 }
 
-/** How money that was withdrawn went: "PayPal", "Stripe", "PayPal and Stripe". */
+/** Each provider's name on a row. */
 const WITHDRAWN_BY = { stripe: "Stripe", paypal: "PayPal", wise: "Wise", bank: "bank transfer", tazapay: "bank transfer" };
-const withdrawnByWords = (roads) => [...new Set((roads ?? []).map((road) => WITHDRAWN_BY[road] ?? road))].join(" and ") || "bank transfer";
 
 /**
  * Owed money only staff can see is stuck: a step whose brand charge is
  * disputed (on hold in the factory's Pending until the dispute is decided in
  * Stripe), a PayPal / Wise withdrawal returned after it was paid, and a Stripe withdrawal from the balance that stopped half-way or
- * was refused because TSC's Stripe balance was short; and money refunded to
- * the brand (or a dispute lost) after the factory had withdrawn it, which TSC
- * has to recover. Nobody else is told.
+ * was refused because TSC's Stripe balance was short. Disputes and refunds
+ * after approval are payment reviews (PaymentReviews.jsx). Nobody else is told.
  */
 function AttentionSection({ attention, onChanged }) {
-  const recover = attention.recover ?? [];
   const refundFailed = attention.refund_failed ?? [];
   const returned = attention.returned ?? [];
-  const count = attention.disputed.length + attention.stuck.length + recover.length + refundFailed.length + returned.length;
+  // A disputed step and money refunded after it was withdrawn are payment
+  // reviews now, in their own section above (20261124100000).
+  const count = attention.stuck.length + refundFailed.length + returned.length;
   const [checking, setChecking] = useState(null);
   const [said, setSaid] = useState({});
   async function checkAgain(row) {
@@ -940,40 +953,6 @@ function AttentionSection({ attention, onChanged }) {
           <table>
             <thead><tr><th>Factory</th><th>Amount</th><th>What happened</th><th>When</th></tr></thead>
             <tbody>
-              {attention.disputed.map((row) => (
-                <tr key={`d-${row.payment_id}`} data-testid="attention-disputed">
-                  <td>{row.factory_name}<br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></td>
-                  <td>{moneyIn(row.amount_cents, row.currency)}</td>
-                  <td>
-                    {/* Part of it may already be in a withdrawal TSC is sending or has paid: said apart, it has left the balance. */}
-                    {Number(row.in_withdrawal_cents) > 0
-                      ? `The brand disputed this charge. ${moneyIn(Math.max(0, Number(row.amount_cents) - Number(row.in_withdrawal_cents)), row.currency)} is on hold until the dispute is settled; ${moneyIn(Math.min(Number(row.amount_cents), Number(row.in_withdrawal_cents)), row.currency)} was already in a withdrawal being sent or paid to the factory.`
-                      : "The brand disputed this charge. It is on hold until the dispute is settled."}
-                    {" "}Respond to the dispute in Stripe: if TSC wins, the factory can withdraw it.{" "}
-                    {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
-                  </td>
-                  <td><PaymentDate value={row.disputed_at} /></td>
-                </tr>
-              ))}
-              {recover.map((row) => (
-                // Refunded to the brand (or a dispute lost) after the factory had
-                // withdrawn it: TSC paid that money twice. Staff cannot be notified.
-                <tr key={`r-${row.payment_id ?? row.org_id}`} data-testid="attention-recover">
-                  <td>{row.factory_name}{row.order_number ? <><br /><span className="admin-sub">{row.order_number}{row.milestone_title ? ` · ${row.milestone_title}` : ""}</span></> : null}</td>
-                  <td>{moneyIn(row.amount_cents, row.currency)}</td>
-                  <td>
-                    {row.cause === "dispute_lost"
-                      ? `Dispute lost after it was withdrawn: recover ${moneyIn(row.amount_cents, row.currency)}.`
-                      : `Refunded after it was withdrawn: recover ${moneyIn(row.amount_cents, row.currency)}.`}
-                    {Number(row.withdrawn_cents) > 0 ? ` Already withdrawn ${moneyIn(row.withdrawn_cents, row.currency)} (${withdrawnByWords(row.withdrawn_by)}).` : ""}
-                    {row.balance_cents != null ? ` Factory's balance now: ${moneyIn(row.balance_cents, "USD")}.` : ""}
-                    {Number(row.dispute_fee_cents) > 0 ? ` Stripe's dispute fee: ${moneyIn(row.dispute_fee_cents, row.currency)}, borne by TSC.` : ""}
-                    {" "}
-                    {row.stripe_payment_intent_id ? <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a> : null}
-                  </td>
-                  <td><PaymentDate value={row.at} /></td>
-                </tr>
-              ))}
               {returned.map((row) => (
                 // A PayPal / Wise withdrawal returned after it was recorded paid:
                 // the money is back with TSC and in the factory's balance.
@@ -1047,7 +1026,7 @@ const TABS = [
  * rows. All four queues always have a tab.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null, attention = null }) {
+  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map(), withdrawals = null, attention = null, reviews = null }) {
   // Payout owed, unless a link asks for another tab (?tab=, as the overview's
   // "Payments owed" card does for the queue its count is in).
   const [chosen, setChosen] = useState(() => {
@@ -1066,9 +1045,12 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     if (done !== "paid") setChosen("clearing");
   }, []);
   const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
+  const pausedOrgs = new Set((reviews?.list ?? []).filter((row) => row.factory_paused).map((row) => row.factory_org_id));
+  const pausedOrders = new Set((reviews?.list ?? []).flatMap((row) => row.factory_order_ids ?? []));
   if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
-  if (attention) sections.attention = [...attention.disputed, ...attention.stuck, ...(attention.recover ?? []), ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
+  // Disputes and refunds after approval are payment reviews now (20261124100000): each open one counts here.
+  if (attention) sections.attention = [...(reviews?.list ?? []).filter((row) => row.open), ...attention.stuck, ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
   const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
@@ -1084,6 +1066,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
   return (
     <SentContext.Provider value={onSent}>
+    <PausedContext.Provider value={pausedOrders}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -1111,10 +1094,15 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
-      {active === "attention" && attention ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
-      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine} /> : null}
+      {active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
+      {/* Its own rows, or its own failure; the reviews above say "All clear" when nothing is open. */}
+      {active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
+        ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
+      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
+        pausedOrgs={pausedOrgs} /> : null}
 
     </main>
+    </PausedContext.Provider>
     </SentContext.Provider>
   );
 }

@@ -253,12 +253,28 @@ reset role;
 select pg_temp.act_as('01'); set local role authenticated;
 select throws_ok($$select public.admin_balance_attention()$$, '42501', null, 'F4: the board stays staff only');
 reset role;
+-- Paused payments (20261124100000): the overview counts the dispute's payment
+-- review (the server opens it alongside record_payment_disputed), not the step.
+select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int, 'F4: the disputed step alone is not counted on the overview');
+select lives_ok(format($$select pg_temp.as_server(%L)$$,
+  format('select public.record_payment_review_dispute(%L, %L, %L, %s, null, null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'needs_response', 10700)),
+  'the server opens the dispute''s payment review');
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int + 1, 'F4: and counted on the overview');
+select lives_ok(format($$select pg_temp.as_server(%L)$$,
+  format('select public.record_payment_review_dispute(%L, %L, %L, %s, null, null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'won', 10700)),
+  'the server records the win on the review (applyDispute does this first)');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(1, 4))),
   'the dispute is won');
 select ok((select disputed_at is null from public.order_payments where id = pg_temp.pay(1, 4)), 'the step is no longer disputed');
 select pg_temp.act_as('01'); set local role authenticated;
 select is(pg_temp.fig(1, pg_temp.pay(1, 4)), 'available', 'and Available again');
+reset role;
+-- Staff decide the review (nothing taken) and unpause the brand: off the count.
+select set_config('tsc.uw2_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(1, 4)), true);
+select pg_temp.act_as('06'); set local role authenticated;
+select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory'); select public.unpause_brand(%L)$$,
+  current_setting('tsc.uw2_review'), current_setting('tsc.uw2_review')),
+  'staff decide the review: Pay factory, and unpause the brand');
 reset role;
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int, 'F4: and off the overview count');
 

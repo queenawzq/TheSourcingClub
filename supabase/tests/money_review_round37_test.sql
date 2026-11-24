@@ -3,6 +3,10 @@
 -- M-1 (g1): two debts, earnings that cover part: the To recover rows add up to
 --   the uncovered amount, the covered part off the oldest.
 -- M-2 (g2): the "on hold" notice and the takes guard say the uncovered amount.
+--   Since paused payments (20261124100000) a refund after approval makes no
+--   debt: the factory keeps its earning, a payment review opens, and its
+--   withdrawals pause (payment_under_review) until staff decide. g2, g3 and
+--   g6 below now assert that.
 -- Netting, every order of events (g3, g6): a refund on a later step that was
 --   never withdrawn, a lost dispute on a later step, a failed refund lowering
 --   the debt. Total is the five figures added up and what the factory earned
@@ -189,21 +193,23 @@ select is((select sum((x ->> 'amount_cents')::bigint) from jsonb_array_elements(
 -- M-2. g2: $500 refunded after it was paid out; $200 of earnings left.
 -- ===========================================================================
 select pg_temp.server(format('select public.record_payment_refund_amount(%L, %L, 53500)', pg_temp.pay(21), 'pi_pgtap_r37_21'));
-select is((pg_temp.figures(2) ->> 'uncovered')::bigint, 30000::bigint, 'g2: $300 not covered');
-select is((select body from public.notifications where org_id = pg_temp.org(2) and kind = 'withdrawal' and title = 'Withdrawal of $100.00 on hold'),
-          'You owe TSC $300.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
-          'the notice says the uncovered $300, as the card does (not the whole $500)');
-create function pg_temp.guard_detail() returns text language plpgsql as $f$
+select is(jsonb_build_object('uncovered', (pg_temp.figures(2) ->> 'uncovered')::bigint, 'paused', public.factory_paused(pg_temp.org(2))),
+          '{"uncovered":0,"paused":true}'::jsonb, 'g2: a refund after approval makes no debt; the factory is paused for review');
+select is((select title from public.notifications where org_id = pg_temp.org(2) and kind = 'payment_disputed' and title = 'Withdrawals paused')
+          || ' / ' || public.withdrawal_blocker((select w from public.factory_withdrawals w where id = pg_temp.wd(21))),
+          'Withdrawals paused / payment_under_review',
+          'no "owe TSC" notice: the factory is told withdrawals are paused, and its waiting withdrawal is held for the review');
+create function pg_temp.guard_hint() returns text language plpgsql as $f$
 declare d text;
 begin
   update public.factory_withdrawals set status = 'paying', lease_until = now() + interval '1 minute' where id = pg_temp.wd(21);
   return null;
 exception when others then
-  get stacked diagnostics d = pg_exception_detail;
+  get stacked diagnostics d = pg_exception_hint;
   return d;
 end;
 $f$;
-select is(pg_temp.guard_detail(), '$300.00', 'the takes guard refuses with the uncovered amount too');
+select is(pg_temp.guard_hint(), 'payment_under_review', 'the takes guard refuses to pay it while the payment is reviewed');
 
 -- ===========================================================================
 -- Netting. g3: p32, never withdrawn, is refunded in full.
@@ -214,14 +220,12 @@ select ok(pg_temp.total_holds(3), 'g3: Total adds up');
 select pg_temp.server(format('select public.record_payment_refund_amount(%L, %L, 53500)', pg_temp.pay(32), 'pi_pgtap_r37_32'));
 select is(public.payment_debt_cents((select p from public.order_payments p where id = pg_temp.pay(32))), 0::bigint,
           'a refund of money never withdrawn is no debt: it leaves the balance');
-select is(pg_temp.figures(3), '{"available":-50000,"processing":10000,"paid_out":50000,"uncovered":50000,"total":10000}'::jsonb,
-          'Available falls by it; now $500 of the debt is not covered; Paid out unchanged');
+select is(pg_temp.figures(3), '{"available":0,"processing":10000,"paid_out":50000,"uncovered":0,"total":60000}'::jsonb,
+          'a refund after approval changes no figure: the factory keeps its earning until staff decide');
 select ok(pg_temp.total_holds(3), 'g3: Total still adds up');
-select is(pg_temp.recover(3), jsonb_build_array(jsonb_build_object('payment', pg_temp.pay(31)::text, 'amount', 50000)),
-          'To recover: the step that was paid out, for the uncovered amount');
-select is((select body from public.notifications where org_id = pg_temp.org(3) and kind = 'withdrawal' and title = 'Withdrawal of $100.00 on hold'),
-          'You owe TSC $500.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.',
-          'the waiting withdrawal is held, in the existing words (p31 was withdrawn)');
+select is(pg_temp.recover(3), '[]'::jsonb, 'nothing To recover: the refund after approval made no debt');
+select is(public.withdrawal_blocker((select w from public.factory_withdrawals w where id = pg_temp.wd(31))), 'payment_under_review',
+          'the waiting withdrawal is held for the payment review, not for a debt');
 
 -- ===========================================================================
 -- L-3. g4: PayPal returns a paid $1,000 withdrawal (fee $30) and says nothing
@@ -273,14 +277,13 @@ select is(pg_temp.figures(6), '{"available":50000,"processing":0,"paid_out":3000
           'g6: $300 owed, netted from the $800 step');
 select pg_temp.server(format('select public.record_payment_disputed(%L, true)', pg_temp.pay(61)));
 select pg_temp.server(format('select public.record_payment_dispute_lost(%L, %L, 85600, 1500)', pg_temp.pay(61), 'du_pgtap_r37_61'));
-select is(pg_temp.figures(6), '{"available":-30000,"processing":0,"paid_out":30000,"uncovered":30000,"total":0}'::jsonb,
-          'the lost dispute takes the step out of the balance; $300 now uncovered; Paid out unchanged');
+select is(pg_temp.figures(6), '{"available":50000,"processing":0,"paid_out":30000,"uncovered":0,"total":80000}'::jsonb,
+          'a dispute lost after approval changes no figure: the factory keeps the step until staff decide');
 select ok(pg_temp.total_holds(6), 'g6: Total adds up');
-select is(pg_temp.recover(6), jsonb_build_array(jsonb_build_object('payment', pg_temp.pay(62)::text, 'amount', 30000)),
-          'To recover: only the step that was paid out');
+select is(pg_temp.recover(6), '[]'::jsonb, 'nothing To recover: the old debt is still covered by the step');
 select pg_temp.server(format('select public.record_payment_refund_failed(%L, %L, 0)', pg_temp.pay(62), 'pi_pgtap_r37_62'));
-select is(pg_temp.figures(6), '{"available":0,"processing":0,"paid_out":30000,"uncovered":0,"total":30000}'::jsonb,
-          'the refund failed: the debt is gone at once; Paid out unchanged');
+select is(pg_temp.figures(6), '{"available":80000,"processing":0,"paid_out":30000,"uncovered":0,"total":110000}'::jsonb,
+          'the refund failed: the old $300 debt is gone at once, back in Available; Paid out unchanged');
 select ok(pg_temp.total_holds(6), 'g6: Total still adds up');
 select is(pg_temp.recover(6), '[]'::jsonb, 'nothing To recover');
 

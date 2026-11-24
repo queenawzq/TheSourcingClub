@@ -190,7 +190,7 @@ const RELEASE_REFUSALS = {
   reveal_not_owed: "TSC doesn't owe this company a payout by hand, so its number stays hidden.",
   no_number: "No full account number is on file. Ask the factory to add it on its Payments page.",
   // The rules every withdrawal follows (20261121340000).
-  payout_owes_tsc: (cause) => `The factory owes TSC ${cause?.details || "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
   payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",

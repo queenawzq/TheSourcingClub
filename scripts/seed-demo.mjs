@@ -99,6 +99,8 @@ const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const secondBrand = await demoUser(LOGINS.secondBrand);
+const reviewBrand = await demoUser(LOGINS.reviewBrand);
+const reviewFactory = await demoUser(LOGINS.reviewFactory);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
@@ -124,7 +126,7 @@ const COUNTRY_CASES = {
   verifyHk: { name: "Kowloon Bay Garments", email: "demo-verify-hk@example.com" },
 };
 for (const [key, login] of Object.entries(COUNTRY_CASES)) callUsers[key] = await demoUser(login);
-const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, unsignedBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, unsignedBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, reviewBrand, reviewFactory, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -1079,8 +1081,8 @@ async function sendQuote(vendor, vendorOrg, rfq, { price, quantity, lead, note, 
 }
 
 /** Award a quote; the order is created in the same transaction. */
-async function award(quote) {
-  must(await brand.client.rpc("award_quote", { quote_id: quote.id }), "award");
+async function award(quote, buyerClient = brand.client) {
+  must(await buyerClient.rpc("award_quote", { quote_id: quote.id }), "award");
   return must(await admin.from("production_orders").select("*").eq("quote_id", quote.id).single(), "the new order");
 }
 
@@ -1446,8 +1448,10 @@ await orderWithCancelProposed({
 // are real database states with nothing at Stripe behind them. Paying a
 // "Due" or "Failed" one on a test site goes through Stripe test mode for real.
 console.log("payments");
-async function runningOrder({ title, brief, quantity, unitPrice, vendor = factory, vendorOrg = factoryOrg }) {
+async function runningOrder({ title, brief, quantity, unitPrice, vendor = factory, vendorOrg = factoryOrg, buyer = null }) {
+  const by = buyer ?? { client: brand.client, org: brandOrg };
   const rfq = await publishRequest({
+    by,
     title, brief, quantity,
     colours: [["Ecru", quantity]],
     material: "As per the tech pack",
@@ -1459,8 +1463,8 @@ async function runningOrder({ title, brief, quantity, unitPrice, vendor = factor
   });
   let order = await award(await sendQuote(vendor, vendorOrg, rfq, {
     price: unitPrice, quantity, lead: 30, note: "Fit sample, then bulk.",
-  }));
-  must(await brand.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
+  }), by.client);
+  must(await by.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
   order = must(await admin.from("production_orders").select("*").eq("id", order.id).single(), `order: ${title}`);
   if (order.status === "pending_schedule") {
     must(await vendor.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
@@ -1526,13 +1530,13 @@ async function fundedByStripe(payment, method) {
   return held;
 }
 /** The factory posts on the open step and the brand approves it (it must be funded). */
-async function approveOpenStep(order, title, vendor = factory) {
+async function approveOpenStep(order, title, vendor = factory, buyerClient = brand.client) {
   const step = must(await admin.from("order_milestones").select("id")
     .eq("order_id", order.id).eq("state", "active").order("sort").limit(1).single(), `open step: ${title}`);
   must(await vendor.client.rpc("post_milestone_update", {
     target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
   }), `factory update: ${title}`);
-  must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
+  must(await buyerClient.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
 }
 
 /**
@@ -1669,13 +1673,7 @@ const cord = await runningOrder({
   vendor: tradingCompany, vendorOrg: tradingOrg,
 });
 await funded(await dueNow(cord, cordTitle), CARD);
-// 7b. Refunded after it was withdrawn: Lakeside Mills withdrew its whole fit
-//    sample by PayPal (paid), then staff refunded half of the brand's charge
-//    in Stripe for a short shipment. Recorded the way the server records what
-//    Stripe reports (record_payment_refund_amount, 20261121200000): the step
-//    stays done, Paid out is unchanged, and the factory's part of the refund
-//    is owed to TSC, inside its Available; staff see it on Needs checking. The
-//    payment carries a demo PaymentIntent id (no Stripe charge behind it).
+// 7b. Lakeside Mills withdrew its whole fit sample by PayPal (paid).
 {
   const title = "Washed silk slip dress, AW27";
   const order = await runningOrder({
@@ -1683,19 +1681,9 @@ await funded(await dueNow(cord, cordTitle), CARD);
     vendor: otherDomainFactory, vendorOrg: otherDomainOrg,
   });
   const fit = await dueNow(order, title);
-  const intent = `pi_demo_refund_${fit.id.slice(0, 8)}`;
-  const total = await charged(fit);
-  must(await admin.rpc("attach_payment_intent", { target_payment: fit.id, payment_intent: intent, charged: total }), "the demo charge's intent");
-  must(await admin.rpc("record_payment_funded", {
-    target_payment: fit.id, charge: null, method_type: CARD[0], method_label: CARD[1], received: total,
-  }), "a payment held by TSC");
+  await funded(fit, CARD);
   await approveOpenStep(order, title, otherDomainFactory);
   await withdrawnByPaypal(otherDomainOrg, otherDomainFactory, lakesidePaypal, "CN", fit, "DEMO-20260002");
-  const refunded = must(await admin.rpc("record_payment_refund_amount", {
-    target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
-  }), "half refunded after it was withdrawn");
-  const debt = must(await admin.rpc("factory_debt_cents", { target_org: otherDomainOrg.id }), "what Lakeside owes TSC");
-  if (!(Number(refunded.refunded_cents) > 0) || !(Number(debt) > 0)) throw new Error("the refund after a withdrawal should leave Lakeside owing TSC");
 }
 // 8. Lakeside Mills (China, PayPal) has an approved fit sample waiting on staff.
 //    Hangzhou Test Knit (China) has one too and no withdrawal method: its money
@@ -1710,6 +1698,93 @@ for (const [title, person, org] of [
   });
   await funded(await dueNow(order, title), CARD);
   await approveOpenStep(order, title, person);
+}
+
+// 7c. Payment reviews (20261124100000), recorded the way the server records
+//    what Stripe reports; each payment carries a demo PaymentIntent id (no
+//    Stripe charge behind it). Two companies of their own, so every other
+//    demo stays as it was:
+//    - Harbor Lane Goods paid Riverbend Knit for a fit sample, approved it,
+//      then its bank opened a dispute (record_payment_review_dispute, then
+//      record_payment_disputed): Harbor is paused to messaging only (its next
+//      step is due: Fund is refused; Riverbend's quote on its open request:
+//      Accept is refused), and Riverbend's withdrawals are paused.
+//    - Demo Brand's approved fit sample with Riverbend was half refunded in
+//      Stripe (record_payment_refund_amount): Riverbend is paused, Demo Brand
+//      is not, and nothing is taken from Riverbend.
+//    Staff decide in Payments → Needs checking → Payment reviews.
+console.log("payment reviews");
+const reviewBrandOrg = must(await reviewBrand.client.rpc("create_org", { org_name: LOGINS.reviewBrand.name, org_kind: "brand" }), "create the brand under review");
+must(await admin.from("brand_profiles").upsert({
+  org_id: reviewBrandOrg.id, hq_location: "Portland, United States",
+  onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+}), "the brand under review's profile");
+const reviewFactoryOrg = must(await reviewFactory.client.rpc("create_org", { org_name: LOGINS.reviewFactory.name, org_kind: "factory" }), "create the factory under review");
+must(await admin.from("factory_profiles").upsert({
+  org_id: reviewFactoryOrg.id, country_code: "VN", location: "Ho Chi Minh City, Vietnam", moq: 200, typical_lead_days: 40,
+  intro: "Cut-and-sew knits and wovens, small runs.", onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified", trust_tier: "verified", published_at: new Date().toISOString(),
+}), "the factory under review's profile");
+must(await admin.from("credit_ledger").insert({
+  org_id: reviewFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
+}), "the factory under review's credits");
+must(await reviewFactory.client.from("factory_payout_accounts").insert({
+  org_id: reviewFactoryOrg.id, method: "paypal", paypal_email: "riverbend-payouts@example.com", bank_country: "VN", is_primary: true,
+}), "the factory under review's PayPal account");
+async function fundedWithIntent(payment, kind) {
+  const intent = `pi_demo_${kind}_${payment.id.slice(0, 8)}`;
+  const total = await charged(payment);
+  must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent, charged: total }), `the ${kind} charge's intent`);
+  must(await admin.rpc("record_payment_funded", {
+    target_payment: payment.id, charge: null, method_type: CARD[0], method_label: CARD[1], received: total,
+  }), `the ${kind} payment held by TSC`);
+  return { intent, total };
+}
+{
+  const buyer = { client: reviewBrand.client, org: reviewBrandOrg };
+  const title = "Waxed cotton field jacket, AW27";
+  const order = await runningOrder({
+    title, brief: "60 waxed cotton field jackets, corduroy collar.", quantity: 60, unitPrice: 8400,
+    vendor: reviewFactory, vendorOrg: reviewFactoryOrg, buyer,
+  });
+  const fit = await dueNow(order, title);
+  const { total } = await fundedWithIntent(fit, "dispute");
+  await approveOpenStep(order, title, reviewFactory, reviewBrand.client);
+  // Its next request, quoted by Riverbend and waiting for Harbor to choose.
+  const next = await publishRequest({
+    by: buyer, title: "Waxed cotton tote, AW27", brief: "200 waxed cotton totes, leather handles.", quantity: 200,
+    colours: [["Olive", 200]], material: "8oz waxed cotton", samples: "One sample before bulk", extra: "",
+    month: "2027-04-01", tags: [["product_category", "accessories"], ["region", "china"]], question: "Can you match the jacket's wax?",
+  });
+  await sendQuote(reviewFactory, reviewFactoryOrg, next, { price: 2100, quantity: 200, lead: 35, note: "Same wax as the jacket." });
+  must(await admin.rpc("record_payment_review_dispute", {
+    target_payment: fit.id, dispute_id: `dp_demo_${fit.id.slice(0, 8)}`, status: "needs_response",
+    amount_cents: total, due_by: new Date(Date.now() + 9 * 86400000).toISOString(), fee_cents: 1500,
+  }), "the dispute opens a payment review");
+  must(await admin.rpc("record_payment_disputed", { target_payment: fit.id, disputed: true }), "the charge is disputed");
+}
+{
+  const title = "Linen camp shirt, AW27";
+  const order = await runningOrder({
+    title, brief: "150 linen camp-collar shirts.", quantity: 150, unitPrice: 2200,
+    vendor: reviewFactory, vendorOrg: reviewFactoryOrg,
+  });
+  const fit = await dueNow(order, title);
+  const { intent, total } = await fundedWithIntent(fit, "refund");
+  await approveOpenStep(order, title, reviewFactory);
+  must(await admin.rpc("record_payment_refund_amount", {
+    target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
+  }), "half refunded after approval");
+}
+{
+  const paused = async (fn, org) => must(await admin.rpc(fn, { target_org: org.id }), `${fn} ${org.id}`);
+  const want = [[await paused("brand_paused", reviewBrandOrg), true], [await paused("factory_paused", reviewFactoryOrg), true],
+    [await paused("brand_paused", brandOrg), false], [await paused("brand_paused", secondBrandOrg), false],
+    [await paused("factory_paused", factoryOrg), false], [await paused("factory_paused", secondFactoryOrg), false],
+    [await paused("factory_paused", otherDomainOrg), false]];
+  if (want.some(([have, should]) => have !== should)) {
+    throw new Error("payment reviews: only Harbor Lane and Riverbend should be paused");
+  }
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production

@@ -17,6 +17,7 @@ import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
+import { PAUSED_ACCEPT, usePaymentPause } from "../payment-pause.jsx";
 
 export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
   const { navigate } = useRouter();
@@ -36,6 +37,9 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
     }).catch((failure) => { if (active) setError(failure); });
     return () => { active = false; };
   }, [quoteId]);
+  // A brand paused by a payment review can't accept a quote: said up front,
+  // not after the click (the database refuses it too).
+  const pause = usePaymentPause(state?.rfq?.brand_org_id);
 
   if (loadError) return <FlowShell screen="contract" canBack={false} primaryLabel=""><p className="composer-error" role="alert">{loadError.message}</p></FlowShell>;
   if (!state) return null;
@@ -52,7 +56,9 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       ? `This request is ${state.rfq.status}, so no quote on it can be chosen.`
       : found.raw.status !== "submitted"
         ? `This quote was ${found.raw.status}.`
-        : !isOwner
+        : pause.brand
+          ? PAUSED_ACCEPT
+          : !isOwner
           ? "Only someone with Quote flow can choose a quote, because choosing creates the production order. Ask an owner for this permission."
           : null;
   // Keep the permission explanation visible as well as on the disabled button.

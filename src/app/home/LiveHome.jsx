@@ -40,6 +40,7 @@ import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { brandHasHistory, followRead, homeLayout, withinCap } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
+import { usePaymentPause } from "../payment-pause.jsx";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -101,11 +102,14 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
       type: "Payment",
       tone: "danger",
       title: `${formatMoney(owed.reduce((total, payment) => total + chargedCents(payment), 0), owed[0].currency)} due`,
-      meta: !failed ? "" : one ? "Payment failed" : `${failed} of ${owed.length} failed`,
+      // Paused by a payment review: the same refusal as the Fund page, and no
+      // Fund step to press (20261124100200).
+      meta: waiting.paused ? "You can't fund steps while your account is under review."
+        : !failed ? "" : one ? "Payment failed" : `${failed} of ${owed.length} failed`,
       facts: [],
       // One payment opens its Fund screen; several open Payments, which lists each.
-      action: one ? (failed ? "Pay again" : "Fund step") : "View payments",
-      onClick: () => navigate(one ? `/orders/${one.order_id}/payments/${one.id}` : "/payments"),
+      action: waiting.paused ? "View payments" : one ? (failed ? "Pay again" : "Fund step") : "View payments",
+      onClick: () => navigate(!waiting.paused && one ? `/orders/${one.order_id}/payments/${one.id}` : "/payments"),
     });
   }
 
@@ -173,6 +177,8 @@ async function owedPayments(orgId, orders, isFactory, snapshot) {
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
   const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, waiting: {}, hasHistory: false, loaded: false });
+  // A brand paused by a payment review isn't offered Fund step (its Fund page refuses too).
+  const pause = usePaymentPause(org.id);
   // The first read failed: nothing is known, so no layout can be drawn.
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -294,7 +300,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   // A call invite waiting on the brand comes first: it has a time on it.
   const attention = [
     ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
-    ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate, state.waiting) ?? []),
+    ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate, { ...state.waiting, paused: pause.brand }) ?? []),
   ];
   const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const layout = homeLayout({

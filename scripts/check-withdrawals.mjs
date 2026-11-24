@@ -16,6 +16,8 @@ import { wiseAdapter } from "../api/_withdrawal-adapters.js";
 import { PayoutFailure } from "../api/_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE, wiseFrom } from "../api/_wise.js";
 import { WITHDRAWAL_FAILED_NOTE, figuresByPayment, serverWithdrawalRows, staffBankNote, summaryFrom, withdrawReach, withdrawalRows } from "../src/app/order/payment-summary.mjs";
+/** A dispute also opens a payment review (20261124100000); the money calls are checked apart from it. */
+const withoutReview = (calls) => calls.filter(([name]) => name !== "record_payment_review_dispute");
 
 // Fix round 34: a charge as Stripe's typings describe it at the SDK's API
 // version: `disputed`, never `dispute`. Fixtures name their dispute
@@ -300,7 +302,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const db = { rpc: async (name, args) => { seen.push([name, args]); return { data: null, error: null }; } };
   assert.equal(await applyDispute({ db, paymentId: "p", dispute: { id: "du_w", status: "won" } }), false);
   assert.equal(await applyDispute({ db, paymentId: "p", dispute: { id: "du_o", status: "needs_response" } }), true);
-  assert.deepEqual(seen.map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false], ["record_payment_disputed", true]],
+  assert.deepEqual(withoutReview(seen).map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false], ["record_payment_disputed", true]],
     "won: the hold is lifted; open: on hold");
 }
 
@@ -328,7 +330,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   };
   const checked = await checkCharge({ stripe, db, paymentId: "p1", charge: "ch_1" });
   assert.deepEqual([checked.refunded, checked.dispute], [true, "open"]);
-  assert.deepEqual(seen.map(([name]) => name), ["record_payment_refund_amount", "record_payment_disputed"], "the refund and the dispute, each recorded");
+  assert.deepEqual(withoutReview(seen).map(([name]) => name), ["record_payment_refund_amount", "record_payment_disputed"], "the refund and the dispute, each recorded");
   // A won dispute on a waiting PayPal / Wise withdrawal's step: recorded as
   // won (the hold lifted), as every other road does; it used to stay held.
   seen.length = 0;
@@ -337,7 +339,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const { refuseIfTakenChargesReturned } = await import("../api/_withdrawals.js");
   const takesDb = { ...db, from() { const c = { select: () => c, eq: () => c, then: (ok) => ok({ data: [{ payment_id: "p1", order_payments: { stripe_charge_id: "ch_1" } }], error: null }) }; return c; } };
   await refuseIfTakenChargesReturned({ db: takesDb, id: "w1", build: () => won });
-  assert.deepEqual(seen.map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false]], "won: the hold is lifted on the PayPal / Wise road too");
+  assert.deepEqual(withoutReview(seen).map(([name, args]) => [name, args.disputed]), [["record_payment_disputed", false]], "won: the hold is lifted on the PayPal / Wise road too");
   // Every road calls it.
   const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
   assert.ok(read("../api/_stripe-withdrawals.js").includes("await checkCharge({ stripe, db, paymentId: take.payment_id, charge: take.charge_id })"), "Stripe withdrawal");
@@ -521,7 +523,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     assert.deepEqual(d, { disputed: true }, "disputed and not recorded: disputed true");
     const w = world();
     await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge({ disputed: true }), decision: d, write: true });
-    assert.deepEqual(w.calls, [["record_payment_disputed", { target_payment: "pay-b", disputed: true }]]);
+    assert.deepEqual(withoutReview(w.calls), [["record_payment_disputed", { target_payment: "pay-b", disputed: true }]]);
     const dry = world();
     const lines = await applyBackfill({ stripe: dry.stripe, db: dry.db, row: row(), charge: charge(), decision: d, write: false });
     assert.equal(dry.calls.length, 0, "a dry run writes nothing");
@@ -535,7 +537,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
     }
     const w = world();
     await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge(), decision: { disputed: false }, write: true });
-    assert.deepEqual(w.calls, [["record_payment_disputed", { target_payment: "pay-b", disputed: false }]]);
+    assert.deepEqual(withoutReview(w.calls), [["record_payment_disputed", { target_payment: "pay-b", disputed: false }]]);
   }
   // Won and not recorded, or open and recorded: nothing to change.
   assert.deepEqual(decideBackfill({ row: row(), charge: charge({ disputed: true }), dispute: { status: "won" } }), {});
@@ -548,7 +550,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
       "recorded already: nothing");
     const w = world();
     const lines = await applyBackfill({ stripe: w.stripe, db: w.db, row: row(), charge: charge({ disputed: true }), dispute: lostDispute, decision: d, write: true });
-    assert.deepEqual(w.calls, [["record_payment_dispute_lost", { target_payment: "pay-b", dispute_id: "du_l", lost_cents: 10000, fee_cents: 1500 }]]);
+    assert.deepEqual(withoutReview(w.calls), [["record_payment_dispute_lost", { target_payment: "pay-b", dispute_id: "du_l", lost_cents: 10000, fee_cents: 1500 }]]);
     assert.match(lines[0], /dispute lost in Stripe, not recorded: recorded as lost/);
   }
 
@@ -637,7 +639,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.ok(x.calls.some(([name, args]) => name === "record_payment_refund_amount" && args.target_payment === "pay-0" && args.refunded_cents === 1000),
     "R11: a refunded charge is recorded (applyChargeRefund), at Stripe's amount");
   assert.deepEqual(x.calls.find(([name]) => name === "record_payment_disputed")?.[1], { target_payment: "pay-1", disputed: true }, "R11: a disputed one is recorded");
-  const others = x.calls.filter(([name]) => !["record_payment_refund_amount", "record_payment_disputed", "record_charges_checked"].includes(name));
+  const others = x.calls.filter(([name]) => !["record_payment_refund_amount", "record_payment_disputed", "record_payment_review_dispute", "record_charges_checked"].includes(name));
   assert.deepEqual(others, [], "R11: nothing else is written");
   assert.equal(x.calls.filter(([name]) => name === "record_payment_refund_amount" || name === "record_payment_disputed").length, 2,
     "R11: the charges with neither change are not written");
@@ -915,7 +917,7 @@ for (const [why, row] of [
   let n = 0;
   const owed = (over = {}) => ({ payment_id: `p${++n}`, state: "confirmed", release_requested_at: "2026-11-01", order_status: "active",
     stripe_payment_intent_id: `pi_${n}`, factory_stripe_ready: false, payout_method: "paypal", ...over });
-  const fake = ({ rows = [], attempts = [], withdrawals = [], pool = [], disputed = [], stuck = [], fail = null } = {}) => ({
+  const fake = ({ rows = [], attempts = [], withdrawals = [], pool = [], disputed = [], stuck = [], reviews = [], fail = null } = {}) => ({
     rpc: async (name) => {
       if (fail === "throw") throw new Error("offline");
       if (fail === name) return { data: null, error: { message: "down" } };
@@ -923,6 +925,7 @@ for (const [why, row] of [
       if (name === "admin_provider_attempts") return { data: attempts, error: null };
       if (name === "admin_withdrawals") return { data: { withdrawals, pool_payment_ids: pool }, error: null };
       if (name === "admin_balance_attention") return { data: { disputed, stuck }, error: null };
+      if (name === "payment_review_board") return { data: reviews, error: null };
       throw new Error(`unexpected ${name}`);
     },
   });
@@ -950,8 +953,12 @@ for (const [why, row] of [
     "a cancelled order's refund Stripe refused is under Failed");
   assert.equal(await hrefFor({ ...all, rows: [wiseMoving] }), `${BOARD}?tab=processing`, "else Processing");
   assert.equal(await hrefFor({ ...all, rows: [] }), `${BOARD}?tab=withdrawals`, "else Withdrawals");
-  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], disputed: [{}] }), `${BOARD}?tab=needs_checking`,
+  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], stuck: [{}] }), `${BOARD}?tab=needs_checking`,
     "else Needs checking (a finished withdrawal is not waiting)");
+  // A payment review (20261124100000) comes first: a factory, and maybe a brand, wait on staff.
+  assert.equal(await hrefFor({ ...all, reviews: [{ open: true }] }), `${BOARD}?tab=needs_checking`, "an open payment review first");
+  assert.equal(await hrefFor({ ...all, reviews: [{ open: false }] }), BOARD, "a decided one is no queue");
+  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }], disputed: [{}] }), BOARD, "a disputed step alone is a payment review now, not a queue of its own");
   assert.equal(await hrefFor({}), BOARD, "nothing waiting: the board");
   // Owed money waiting in a balance is no queue of staff's.
   const waiting = owed();
@@ -1748,6 +1755,8 @@ for (const [why, row] of [
           row.owed_cents = args.amount;
           return { data: { claimed_cents: args.amount, takes: made }, error: null };
         }
+        // Paused while a payment is reviewed (20261124100000): only when a case says so.
+        if (name === "factory_paused") return { data: Boolean(db.paused), error: null };
         if (name === "owed_reachable") {
           if (db.reachFails) return { data: null, error: { message: "database did not answer", code: "08006" } };
           return { data: { any_cents: stripeReach(), stripe_cents: stripeReach() }, error: null };
@@ -1803,6 +1812,11 @@ for (const [why, row] of [
         }
         if (name === "record_payment_disputed") {
           steps.find((s) => s.id === args.target_payment).disputedRecorded = true;
+          return { data: null, error: null };
+        }
+        // The dispute opens a payment review (20261124100000).
+        if (name === "record_payment_review_dispute") {
+          steps.find((s) => s.id === args.target_payment).reviewOpened = true;
           return { data: null, error: null };
         }
         throw new Error(`unexpected rpc ${name}`);

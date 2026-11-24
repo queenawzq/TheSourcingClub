@@ -4,6 +4,10 @@
 --     is told ("on hold", the whole amount) once the withdrawal hands the
 --     step back; the webhook recording it again, or any later call, writes
 --     no second notice.
+--     Paused payments (20261124100000): tell_payment_hold sends nothing now
+--     (a dispute's payment review says it), so G1 asserts no per-step "on
+--     hold" notice is ever written, while disputed_at still puts the step's
+--     money in Pending.
 -- G7 (f2): removing the default bank while the PayPal takes over says the
 --     bank was removed, beside the new default.
 -- L2 (f1): a Stripe withdrawal still open an hour after it was asked for is
@@ -119,15 +123,17 @@ select lives_ok($$update public.stripe_withdrawals set state = 'refused', reason
   'the refused withdrawal hands the step back');
 set constraints all immediate;
 set constraints all deferred;
-select is(pg_temp.holds(), 'The brand disputed the charge. $500.00 is held until the dispute is settled.',
-  'now the factory is told it is on hold, at the true amount');
+select pg_temp.act_as('01');
+select is(row(pg_temp.holds(), (public.factory_balance('b30b0000-0000-0000-0000-0000000000e1') -> 'parts' ->> 'disputed_cents')::bigint),
+          row(''::text, 50000::bigint),
+  'no per-step "on hold" notice any more; the step''s $500 is back as disputed (Pending)');
 -- The webhook comes later and finds it recorded; any other path telling it again.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b30f0011-0000-0000-0000-000000000000'', true)')$$,
   'the webhook records the same dispute');
 select public.tell_payment_hold(p, true) from public.order_payments p where p.id = 'b30f0011-0000-0000-0000-000000000000';
 set constraints all immediate;
 set constraints all deferred;
-select is(pg_temp.holds(), 'The brand disputed the charge. $500.00 is held until the dispute is settled.', 'told once');
+select is(pg_temp.holds(), '', 'still no "on hold" notice, however often it is recorded or told');
 -- Settled in TSC's favour, then disputed again: a new dispute is told again.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b30f0011-0000-0000-0000-000000000000'', false)')$$, 'won');
 set local session_replication_role = replica;
@@ -139,8 +145,10 @@ update public.notifications set created_at = created_at - interval '1 minute',
  where org_id = 'b30b0000-0000-0000-0000-0000000000e1' and kind = 'payment_disputed';
 set local session_replication_role = origin;
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b30f0011-0000-0000-0000-000000000000'', true)')$$, 'disputed again');
-select is((select count(*)::int from public.notifications where org_id = 'b30b0000-0000-0000-0000-0000000000e1'
-             and kind = 'payment_disputed' and title like '% on hold'), 2, 'a new dispute is a new notice');
+select is(row((select count(*)::int from public.notifications where org_id = 'b30b0000-0000-0000-0000-0000000000e1'
+                 and kind = 'payment_disputed' and title like '% on hold'),
+              (select disputed_at is not null from public.order_payments where id = 'b30f0011-0000-0000-0000-000000000000')),
+          row(0, true), 'a new dispute is recorded on the step, with no per-step notice');
 
 -- G7 --------------------------------------------------------------------------
 select pg_temp.act_as('04'); set local role authenticated;
