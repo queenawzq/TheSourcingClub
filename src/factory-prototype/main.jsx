@@ -8632,6 +8632,17 @@ function FactoryOnboardingStep({
       MOQ: "Minimum Order Quantity",
       "Bulk production lead time": "Bulk Production Lead Time",
       "Typical sample lead time": "Typical Sample Lead Time",
+      // The trading company's review rows, by the question each one reads back.
+      "About the company": "About the trading company",
+      "Production programs": "Production programs supported",
+      "Digital tools": "Digital tools (optional)",
+      "Other capabilities": "Equipment",
+      "Typical MOQ": "Typical minimum order",
+      "Lead Time": "Typical lead time",
+      "Order value": "Typical order value",
+      "Partner factories": "Number of active partner factories",
+      Incoterms: "Supported Incoterms",
+      "Payment terms": "Typical payment terms",
     };
     const staticRows = new Set(["Target length", "Required areas", "Reference style"]);
     const reviewValue = (sectionIndex, rowIndex, drawn) => {
@@ -8644,6 +8655,7 @@ function FactoryOnboardingStep({
         const inUse = values?.["registration-in-use"] ? `${listSeparator}${values["registration-in-use"]}` : "";
         return values?.["registration-number"] ? `${values["registration-number"]}${listSeparator}${fileStatus}${inUse}` : fileStatus;
       }
+      if (english === "Walkthrough video") return walkthroughDocuments.length ? reviewStatus.uploaded : reviewStatus.notAdded;
       if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? reviewStatus.uploaded : reviewStatus.notUploaded;
       if (/catalogue|samples|portfolio/i.test(english)) {
         const count = Number(values?.["uploaded-samples"]) || 0;
