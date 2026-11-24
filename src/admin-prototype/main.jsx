@@ -9,6 +9,7 @@ import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
 import { verificationMockProfiles } from "./verification-mock.js";
 import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
+import { suggestedApprovalMessage } from "../shared/approval-message.mjs";
 
 import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
@@ -1177,6 +1178,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [approveNote, setApproveNote] = useState("");
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
   // decision fired with the status alone. Live, that is not cosmetic — the
@@ -1228,6 +1231,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     setApprovalTier(suggestedTier);
   }, [profile?.id, suggestedTier]);
   if (!profile) return null;
+  const approveLabel = isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile";
   // With the score card, "Suggest with AI" is fed the weak sub-checks; the removed rows are not read.
   // A brand is asked from its checks as before (details, terms, images), never for its optional registration.
   const requestGaps = brandScore ? brandRequestGaps(profile.checks, documents ?? [])
@@ -1408,8 +1412,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
-                {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
+              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => { setApproveNote(suggestedApprovalMessage(profile.entityType)); setApproveOpen(true); }}>
+                {approveLabel}
               </button>
               {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
@@ -1439,6 +1443,19 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 finally { setDeleteBusy(false); }
               }}>{deleteBusy ? "Deleting…" : `Delete ${deleteLabel} permanently`}</button>
             </footer>
+          </section>
+        </div>
+      )}
+      {approveOpen && (
+        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setApproveOpen(false)}>
+          <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="approve-message-title">
+            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setApproveOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+            <header><div><span>Final decision</span><h2 id="approve-message-title">{approveLabel}</h2></div></header>
+            <div className="admin-request-message-heading">
+              <div><strong>Message to applicant</strong><span>Optional. Sent with the approval email and notification. Start a line with "-" to make a bullet.</span></div>
+            </div>
+            <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={approveNote} onChange={(event) => setApproveNote(event.target.value)} /></label>
+            <footer><button className="secondary-btn" type="button" onClick={() => setApproveOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => { setApproveOpen(false); onDecision(profile.id, "Approved", approveNote.trim() || null, isVendor ? approvalTier : null); }}>{approveLabel}</button></footer>
           </section>
         </div>
       )}
@@ -1704,6 +1721,7 @@ const TEST_EMAILS = [
   { key: "onboarding-factory", label: "Onboarding received · Factory" },
   { key: "onboarding-trading-company", label: "Onboarding received · Trading company" },
   { key: "review-approved", label: "Review decision · Approved", localized: true },
+  { key: "review-approved-message", label: "Review decision · Approved with a message", localized: true },
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
   { key: "review-resubmitted", label: "Review · Company sent its profile back (to staff)" },

@@ -64,6 +64,21 @@ check("the decline in Chinese", declinedEmail({ ...options, locale: "zh" }).subj
 const approved = accountApprovedEmail({ ...options, note: "" });
 check("an approval with no note has no note box", !approved.html.includes("A note from our team"));
 
+// The approval pop-up's suggested messages: each reaches the email as typed, in its own box,
+// a vendor's with its Chinese, a brand's in English with nothing to translate.
+const { suggestedApprovalMessage } = await import("../src/shared/approval-message.mjs");
+for (const type of ["Brand", "Factory", "Trading company"]) {
+  const message = suggestedApprovalMessage(type);
+  check(`${type}'s suggested message has no "TSC"`, !/\bTSC\b/.test(message));
+  check(`${type}'s suggested message has Chinese only for a vendor`, /[\u4e00-\u9fff]/.test(message) === (type !== "Brand"));
+  for (const locale of ["en", "zh"]) {
+    const email = accountApprovedEmail({ ...options, locale, note: message });
+    const first = message.split("\n\n")[0];
+    check(`${type}'s message is in the ${locale} approval email`, email.html.includes(first.replaceAll("'", "&#039;")) && email.text.includes(first));
+  }
+}
+check("Test emails sends the factory's suggested message", /"review-approved-message"[\s\S]{0,240}suggestedApprovalMessage\("Factory"\)/.test(readFileSync(new URL("../api/send-test-email.js", import.meta.url), "utf8")));
+
 // Test emails: its sample is parsed from the file, so importing it needs no keys.
 const testEmails = readFileSync(new URL("../api/send-test-email.js", import.meta.url), "utf8");
 for (const locale of ["en", "zh"]) {
