@@ -97,7 +97,9 @@ export function tradingProfileChecks(parts, now = new Date()) {
       title: "Company identity",
       todo: "your company details",
       ...(identityGaps.length
-        ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
+        // Brands never see the address itself (only its city and country), so
+        // a missing one is said as what to do.
+        ? missing(identityGaps.includes("company address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
         : complete("Company name, address, year founded, team size and languages are complete.")),
     },
     {

@@ -188,7 +188,9 @@ export function factoryProfileChecks(parts, now = new Date()) {
       title: "Factory identity",
       todo: "your factory details",
       ...(identityGaps.length
-        ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
+        // Brands never see the address itself (only its city and country), so
+        // a missing one is said as what to do.
+        ? missing(identityGaps.includes("factory address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
         : complete("Factory name, address, nearest port, year founded and employee count are complete.")),
     },
     {
