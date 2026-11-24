@@ -16,7 +16,7 @@ import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 import { brandVerification } from "../src/shared/brand-verification.mjs";
 import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
 import { compareAddresses, addressOwnerCheck } from "../api/_address.js";
-import { addressCheck } from "../src/shared/verification-score.mjs";
+import { addressCheck, siteDifferences } from "../src/shared/verification-score.mjs";
 import { dropContradictedPhotoFindings } from "../api/admin-review-assist.js";
 
 let failed = 0;
@@ -101,6 +101,44 @@ console.log("staff's own result (Nov 25)");
   const reg = (addressConfirmed) => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current, checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, Izmir", addressConfirmed });
   check(reg(false).score === 60 && /address differs/.test(reg(false).registry.summary), `an address the registry shows differently flags (${reg(false).registry.summary})`);
   check(reg(true).score === 90 && !/address/.test(reg(true).registry.summary), `once staff confirm the address, it is settled (${reg(true).score}, ${reg(true).registry.summary})`);
+}
+console.log("Hong Kong (Nov 25)");
+{
+  const address = "Unit 1205, 12/F, Tower 2, Harbour Centre, 8 Hok Cheung Street, Hung Hom, Kowloon, Hong Kong";
+  const v = scoreVerification({
+    detail: { title: "Harbour Line Trading Limited", productionAddress: address, registration: { country: "HK", number: "71234567" } },
+    extra: { registrationFiles: [{ id: "f" }], signals: [
+      { kind: "document_reading", subjectId: "f", automatic: true, checkedAt: "2026-11-24T10:00:00Z", details: { fileId: "f", numberAtReading: "71234567",
+        extracted: { legalName: "Harbour Line Trading Limited", registrationNumber: "71234567-000-11-25-6", address },
+        differences: [{ field: "number", document: "71234567-000-11-25-6", typed: "71234567" }] } },
+    ] },
+    rules: { approvalProblem: null },
+  }, { timeZone: "UTC" });
+  const find = (key) => v.groups.flatMap((g) => g.checks).find((c) => c.key === key);
+  check(find("licence").score === SCORES.licence.clean && !v.groups[0].fields.find((f) => f.key === "number")?.typed,
+    `the certificate's full number is the typed BR number (${find("licence").verdict})`);
+  // The address check stored before the fix said "only the area matches" on identical text.
+  const stored = { kind: "address", automatic: true, checkedAt: "2026-11-24T10:00:00Z", result: "industrial", details: { checks: [
+    { key: "address_owner", level: "medium", reasons: [], details: { comparisons: [{ between: ["license", "typed"], verdict: "partial", same: ["city"], differs: [] }] } },
+  ] } };
+  const w = scoreVerification({
+    detail: { title: "Harbour Line Trading Limited", productionAddress: address, registration: { country: "HK", number: "71234567" } },
+    extra: { registrationFiles: [{ id: "f" }], signals: [stored,
+      { kind: "document_reading", subjectId: "f", automatic: true, checkedAt: "2026-11-24T10:00:00Z", details: { fileId: "f", numberAtReading: "71234567", extracted: { legalName: "Harbour Line Trading Limited", registrationNumber: "71234567", address } } }] },
+    rules: { approvalProblem: null },
+  }, { timeZone: "UTC" });
+  const addr = w.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
+  check(addr.verdict.startsWith("Same as the licence") && addr.score === SCORES.address.same, `identical addresses match (${addr.verdict}, ${addr.score})`);
+  const owner = addressOwnerCheck({ typed: address, license: address, registry: "", typedFrom: "production" });
+  check(owner.level === "high" && compareAddresses(address, `${address}.`).verdict === "match", `the address check itself says identical text is the same address (${owner.level})`);
+  check(compareAddresses("Merter, Güngören, Istanbul", "Merter, Güngören, Istanbul").verdict !== "match", "an identical area with no number is still only an area");
+  check(!siteDifferences({ number: "71234567-000-11-25-6" }, { number: "71234567", country: "HK" }).number
+    && siteDifferences({ number: "71234568-000-11-25-6" }, { number: "71234567", country: "HK" }).number, "the registry's full certificate number is the company's BR number");
+  // The proof stays on the row after an explanation, which is a check of its own with no files.
+  const reg = registryCheck({ detail: { registration: { country: "HK", number: "71234567" },
+    current: { id: "y", source: "hk_cr", result: "found", details: { name: "Harbour Line Trading Limited", nameDiffersConfirmed: true, reason: "x" } },
+    checks: [{ id: "y", details: {} }, { id: "x", details: { form: 2, outcome: "found", proof: [{ path: "p/1.png", name: "registry-check.png" }] } }] }, country: "HK", title: "Harbour Line Trading Limited" });
+  check(reg.registry.proof?.[0]?.name === "registry-check.png", `the explained check keeps its proof (${reg.registry.proof?.length ?? 0} file)`);
 }
 console.log("fix round 2");
 {
