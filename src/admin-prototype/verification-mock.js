@@ -35,6 +35,9 @@ const PHOTO = {
 function siteForm(country, prefill, profile, defaultSite) {
   return { sites: siteOptions(country, {}, profile.name), defaultSite, prefill, profile };
 }
+function certForm(site, href, prefill) {
+  return { sites: [{ key: "issuer", name: site, label: site, href }], defaultSite: site, prefill };
+}
 const CN_PROFILE = { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou, Zhejiang 杭州市萧山区江东三路18号" };
 const CN_SAVED = siteRecord({
   outcome: "found", site: "GSXT", name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "浙江省杭州市萧山区江东三路18号",
@@ -121,7 +124,7 @@ const chinaOriginal = {
           { key: "holder", label: "Holder", value: "Hangzhou Qianjiang Garment Co., Ltd.", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
+          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "", form: certForm("OEKO-TEX label check", "https://www.oeko-tex.com/en/label-check", { number: "SH025 187429", holder: "Hangzhou Qianjiang Garment Co., Ltd." }) }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
         ],
       },
     ],
@@ -176,7 +179,7 @@ const chinaCopy = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 40, verdict: "Copy, not the original licence" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司", form: siteForm("CN", { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "广州市白云区黄埔路112号5栋" }, { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" }, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
         ],
       },
       {
@@ -394,7 +397,7 @@ const portugalFactory = {
           { key: "holder", label: "Holder", value: "Têxteis Douro – Confecções, Lda", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
+          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "", form: certForm("GOTS certified suppliers", "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers", { number: "CU 1048211", holder: "Têxteis Douro – Confecções, Lda" }) }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
         ],
       },
     ],

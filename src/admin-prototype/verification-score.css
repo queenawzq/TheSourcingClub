@@ -1459,3 +1459,6 @@ a.vr-text-action {
 .vr-history li { display: grid; gap: 1px; }
 .vr-history strong { color: var(--vr-ink); font-size: 13px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
 .vr-history small { color: var(--vr-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
+/* A save that can't run yet (nothing chosen, a note missing) reads as off. */
+.vr-record-actions .primary-btn:disabled,
+.vr-override .primary-btn:disabled { opacity: 0.45; cursor: default; }

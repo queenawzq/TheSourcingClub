@@ -143,7 +143,7 @@ export function recordedCheck(check, record) {
     const words = siteVerdict(saved, scores);
     return {
       ...check, counts: undefined, score: words.score, verdict: words.verdict, blocks: null,
-      registry: { ...check.registry, ...saved, ...(isCert ? { holder: record.seen?.holder ?? "" } : {}), source: saved.site, by: "You, just now", for: null, summary: siteSummary(saved, "You, just now") },
+      registry: { ...check.registry, ...saved, ...(isCert ? { holder: record.seen?.holder ?? "" } : {}), source: saved.site, by: "You, just now", for: null, summary: siteSummary(saved, "You, just now"), form: check.registry.form },
     };
   }
   const { result, reference, name, reason } = record;

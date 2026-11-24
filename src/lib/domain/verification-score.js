@@ -145,7 +145,7 @@ const extensionOf = (file) => {
 
 /** Upload one proof file (staff only). Resolves `{ path, name, type }`, or throws in short words. */
 export async function uploadProofFile(orgId, file) {
-  if (!PROOF_TYPES.includes(file?.type)) throw new Error("Use a screenshot (PNG, JPG) or a PDF");
+  if (!PROOF_TYPES.includes(file?.type)) throw new Error("Use a screenshot (PNG, JPG, WebP) or a PDF");
   if (file.size > PROOF_LIMIT_MB * 1024 * 1024) throw new Error(`Files up to ${PROOF_LIMIT_MB} MB`);
   const path = `${PROOF_FOLDER}/${orgId}/${crypto.randomUUID()}.${extensionOf(file)}`;
   const { error } = await supabase.storage.from("org-private").upload(path, file, { contentType: file.type, upsert: false });

@@ -224,8 +224,8 @@ const TITLES = [
  */
 const SENTENCES = [
   // Staff corrected a vendor's profile (Nov 24)
-  [/^We updated your company type to Trading company\.$/, () => "我们已将你的公司类型更新为贸易公司。"],
-  [/^We updated your company type to Factory\.$/, () => "我们已将你的公司类型更新为工厂。"],
+  [/^We updated your company type to trading company\.$/, () => "我们已将你的公司类型更新为贸易公司。"],
+  [/^We updated your company type to factory\.$/, () => "我们已将你的公司类型更新为工厂。"],
   [/^We updated your company address\.$/, () => "我们已更新你的公司地址。"],
   // People
   [/^They accepted the invitation and can now work with the permissions it gave them\.$/, () => "对方已接受邀请，现在可以按邀请中的权限开展工作。"],

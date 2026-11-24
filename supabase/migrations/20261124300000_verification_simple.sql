@@ -319,10 +319,15 @@ begin
   if answer <> 'found' and said is null then
     raise exception 'add a note' using errcode = '22023';
   end if;
-  if char_length(where_text) > 120 or char_length(coalesce(said, '')) > 1000 or char_length(coalesce(url, '')) > 500
-     or char_length(coalesce(seen_name, '')) > 300 or char_length(coalesce(seen_number, '')) > 60
+  if char_length(where_text) > 120 then
+    raise exception 'the site name is too long' using errcode = '22023';
+  elsif char_length(coalesce(said, '')) > 1000 then
+    raise exception 'the note is too long' using errcode = '22023';
+  elsif char_length(coalesce(url, '')) > 500 then
+    raise exception 'the link is too long' using errcode = '22023';
+  elsif char_length(coalesce(seen_name, '')) > 300 or char_length(coalesce(seen_number, '')) > 60
      or char_length(coalesce(seen_address, '')) > 500 then
-    raise exception 'too long' using errcode = '22023';
+    raise exception 'the name, number or address is too long' using errcode = '22023';
   end if;
   files := public.verification_proof_clean(target_org, proof);
 
@@ -400,9 +405,14 @@ begin
   if answer in ('not_found', 'could_not_check') and said is null then
     raise exception 'add a note' using errcode = '22023';
   end if;
-  if char_length(where_text) > 120 or char_length(coalesce(said, '')) > 1000 or char_length(coalesce(url, '')) > 500
-     or char_length(coalesce(seen ->> 'number', '')) > 120 or char_length(coalesce(seen ->> 'holder', '')) > 300 then
-    raise exception 'too long' using errcode = '22023';
+  if char_length(where_text) > 120 then
+    raise exception 'the site name is too long' using errcode = '22023';
+  elsif char_length(coalesce(said, '')) > 1000 then
+    raise exception 'the note is too long' using errcode = '22023';
+  elsif char_length(coalesce(url, '')) > 500 then
+    raise exception 'the link is too long' using errcode = '22023';
+  elsif char_length(coalesce(seen ->> 'number', '')) > 120 or char_length(coalesce(seen ->> 'holder', '')) > 300 then
+    raise exception 'the number or holder is too long' using errcode = '22023';
   end if;
   files := public.verification_proof_clean(target_org, proof);
 
@@ -491,7 +501,7 @@ begin
     values (target_org, 'profile_updated', 'org', target_org, 'Your company profile was updated',
             concat_ws(' ',
               case when kind_changed then 'We updated your company type to '
-                   || case new_kind when 'trading_company' then 'Trading company' else 'Factory' end || '.' end,
+                   || case new_kind when 'trading_company' then 'trading company' else 'factory' end || '.' end,
               case when address_changed then 'We updated your company address.' end));
   end if;
   return jsonb_build_object('vendorKind', coalesce(new_kind, old_kind), 'kindChanged', kind_changed, 'addressChanged', address_changed);

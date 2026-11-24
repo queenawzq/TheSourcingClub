@@ -506,7 +506,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const form = registry.form ?? { sites: [], defaultSite: registry.source ?? "", prefill: {}, profile: {} };
   const ids = { site: useId(), list: useId(), note: useId(), link: useId(), files: useId() };
   const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
-  const earlier = savedByPerson && registry.form ? registry : null;
+  const earlier = savedByPerson && registry.version === 2 ? registry : null;
   // An earlier record's site; never the generic "Issuer's list" of a record made before the form.
   const [site, setSite] = useState(earlier?.site || (savedByPerson && !isCert ? registry.source : "") || form.defaultSite || "");
   // A first record starts with nothing chosen: staff pick what the site showed (Nov 24 tester).
@@ -523,7 +523,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const known = form.sites?.find((item) => item.name.toLowerCase() === site.trim().toLowerCase()) ?? null;
   const showsSeen = result === "found";
   const needsNote = result === "not_found" || result === "could_not_check";
-  const showsNote = !showsSeen;
+  // A note is optional on Found and Expired, required on Not found and Couldn't check.
+  const showsNote = Boolean(result);
   const differs = isCert ? {} : siteDifferences(seen, form.profile);
   const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy;
 
@@ -561,7 +562,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       siteKey: known?.key ?? "site",
       result,
       seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])) : {},
-      note: showsNote ? note.trim() : "",
+      note: note.trim(),
       link: link.trim(),
       proof,
     }));
@@ -626,7 +627,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
   );
 }
 
-function SubCheck({ check, groupKey, legalName, canReason, actions }) {
+function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown = false }) {
   const [mode, setMode] = useState(null);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
@@ -658,7 +659,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
         </p>
       )}
-      {!mode && (canRecord || check.lookup || canReason) && (
+      {!mode && (canRecord || check.lookup || canReason || check.duplicate) && (
         <div className="vr-sub-actions">
           {canRecord && (
             <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
@@ -666,6 +667,9 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
             </button>
           )}
           {check.lookup && <LookupAction lookup={check.lookup} />}
+          {check.duplicate && !numberShown && actions.explainField && (
+            <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
+          )}
           {canReason && (
             <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
               {check.reason && !check.reason.earlier ? "Edit reason" : "Add reason"}
@@ -674,6 +678,9 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
         </div>
       )}
       {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
+      {mode === "shared" && (
+        <ReasonForm label={`Why ${check.duplicate.with} has the same number`} saveLabel="Save" onSave={(text) => actions.explainField(groupKey, { key: "number" }, text)} onDone={close} />
+      )}
       {mode === "reason" && (
         <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
       )}
@@ -866,6 +873,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                       groupKey={group.key}
                       legalName={values.legalName}
                       canReason={canReason && check.canReason !== false}
+                      numberShown={fields.some((field) => field.key === "number" && field.duplicate)}
                       actions={actions}
                       key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}
                     />

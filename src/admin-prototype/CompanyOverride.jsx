@@ -18,8 +18,9 @@ export function changeWords(change) {
   const d = change.details ?? {};
   const files = d.files ? ` · ${d.files} ${d.files === 1 ? "file" : "files"}` : "";
   const note = d.note ? ` · ${d.note}` : "";
-  if (change.kind === "registry_check") return `Registry check: ${RESULT_WORDS[d.result] ?? "Recorded on"} ${d.site ?? ""}${note}${files}`.trim();
-  if (change.kind === "certificate_check") return `Certificate check: ${RESULT_WORDS[d.result] ?? "Recorded on"} ${d.site ?? ""}${note}${files}`.trim();
+  const result = d.site ? `${RESULT_WORDS[d.result] ?? "Recorded on"} ${d.site}` : (RESULT_WORDS[d.result] ?? "Recorded").replace(/ on$/, "");
+  if (change.kind === "registry_check") return `Registry check: ${result}${note}${files}`;
+  if (change.kind === "certificate_check") return `Certificate check: ${result}${note}${files}`;
   if (change.kind === "vendor_kind") return `Type changed to ${KIND_WORDS[d.to] ?? d.to}`;
   if (change.kind === "address") return "Address changed";
   return "Changed";
@@ -119,7 +120,7 @@ export function CompanyOverride({ orgId, entityType, address, actions, refreshKe
                 <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Street, district, city, province, country" />
               </label>
             )}
-            {error && <p className="admin-approve-block" role="alert">{error}</p>}
+            {error && <p className="admin-error" role="alert">{error}</p>}
             <footer>
               <button className="secondary-btn" type="button" onClick={close} disabled={busy}>Cancel</button>
               <button className="primary-btn" type="button" disabled={busy || unchanged} onClick={save}>{busy ? "Saving…" : "Save"}</button>

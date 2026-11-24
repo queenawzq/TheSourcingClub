@@ -289,7 +289,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     },
     profile: { name: String(title ?? ""), number: String(reg?.number ?? ""), address: String(typedAddress ?? "") },
   };
-  const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", form, ...fields });
+  const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", ...fields, form });
   const current = detail?.current ?? null;
   // A check saved before the company has a number still counts (the stuck save, Nov 24).
   if (!reg && !current) return { ...base, score: null, verdict: "No registration number yet", canReason: false, registry: record({}) };
@@ -371,7 +371,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   }
   // The reason typed with "Name differs" stays on the row afterwards (grey, who and when).
   const recorded = out.registry?.reason && current ? { text: out.registry.reason, by: out.registry.by, at: current.checked_at ?? null, recorded: true } : null;
-  return { ...base, ...out, canReason: true, ...(recorded ? { reason: recorded } : {}), ...(lookup ? { lookup } : {}) };
+  // A shared number to explain: offered on this row too, for a company whose number field is not shown (nothing read).
+  const shared = (detail.duplicates ?? []).length && !detail.duplicateExplained ? { duplicate: { with: detail.duplicates.map((o) => o.name).join(", ") } } : {};
+  return { ...base, ...out, canReason: true, ...shared, ...(recorded ? { reason: recorded } : {}), ...(lookup ? { lookup } : {}) };
 }
 
 /* ------------------------------------------------------------ the one form (Nov 24) */
@@ -451,7 +453,8 @@ export function siteDifferences(seen, profile) {
 export function siteRecord(details, profile) {
   const seen = { name: details.name ?? "", number: details.number ?? "", address: details.address ?? "" };
   return {
-    form: 2,
+    // A record saved on the one form (its own key: `form` is the form's options).
+    version: 2,
     site: String(details.site ?? "").trim(),
     result: details.outcome ?? null,
     ...seen,

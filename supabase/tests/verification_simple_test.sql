@@ -106,7 +106,7 @@ reset role;
 select is((select vendor_kind::text from public.factory_profiles where org_id = 'd2400000-0000-0000-0000-0000000000f2'), 'trading_company', 'the type changed');
 select is((select address from public.factory_production_addresses where org_id = 'd2400000-0000-0000-0000-0000000000f2'), 'No. 8 Organize Sanayi, Nilüfer, Bursa, Türkiye', 'the address changed');
 select is((select body from public.notifications where org_id = 'd2400000-0000-0000-0000-0000000000f2' and kind = 'profile_updated'),
-  'We updated your company type to Trading company. We updated your company address.', 'the company is told once, both changes named');
+  'We updated your company type to trading company. We updated your company address.', 'the company is told once, both changes named');
 select is((select count(*)::int from public.org_review_changes where org_id = 'd2400000-0000-0000-0000-0000000000f2'), 6, 'every save is in the history');
 
 -- A trading-only licence: a factory needs a reason, a trading company does not -------------------
