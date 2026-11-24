@@ -13,7 +13,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(58);
+select plan(59);
 
 -- People. Two hours old unless the test is about age.
 insert into auth.users (id, email, created_at) values
@@ -294,8 +294,10 @@ select ok(exists (select 1 from auth.users where id = 'c2200000-0000-0000-0000-0
       and (select result -> 'keptUsers' from p22_purge) @> '[{"id":"c2200000-0000-0000-0000-00000000000c"}]',
   'a test user whose signature a real company holds is kept, and named');
 
-select is((select version from public.current_legal_documents() where kind = 'privacy'), 8,
-  'privacy policy v8 is the current one (20261108700100: registration documents read by AI, VIES, Nominatim)');
+select is((select version from public.current_legal_documents() where kind = 'privacy'), 9,
+  'privacy policy v9 is the current one (20261124490000: help filling in and reviewing profiles)');
+select ok((select full_en from public.current_legal_documents() where kind = 'privacy') like '%for five things.%When a company fills in its profile or a quote, the address or production dates it types may be sent to the model%help with filling in and reviewing profiles%',
+  'v9 names the address and production dates sent to the model');
 
 select * from finish();
 
