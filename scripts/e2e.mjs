@@ -104,6 +104,33 @@ async function clientAs(email) {
   return { client, token: data.session.access_token, userId: data.user.id };
 }
 
+/**
+ * Sign a client in with the code that would be emailed, as someone reading
+ * their own mailbox does: joining a company needs that, not a password.
+ */
+async function signInWithEmailedCode(person, email) {
+  const { data, error } = await db.auth.admin.generateLink({ type: "magiclink", email });
+  if (error) throw error;
+  const { error: verifyError } = await person.client.auth.verifyOtp({ email, token: data.properties.email_otp, type: "email" });
+  if (verifyError) throw new Error(`${email} could not sign in with a code: ${verifyError.message}`);
+  return person;
+}
+
+/** The newest six-digit code Mailpit holds for this address. */
+async function emailedCode(email, after = 0) {
+  for (let tries = 0; tries < 20; tries += 1) {
+    const found = await (await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)).json().catch(() => ({}));
+    const newest = (found.messages ?? []).find((message) => Date.parse(message.Created) >= after);
+    if (newest) {
+      const message = await (await fetch(`${MAIL}/api/v1/message/${newest.ID}`)).json();
+      const code = String(message.Text ?? "").match(/\b\d{6}\b/)?.[0];
+      if (code) return code;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return null;
+}
+
 /** An invitation sent the way Settings sends it, as that person. */
 async function inviteThrough(person, body) {
   const response = await fetch(`${API}/api/send-team-invite`, {
@@ -1777,7 +1804,7 @@ async function main() {
     await db.auth.admin.createUser({
       email: teammateEmail, password: PASSWORD, email_confirm: true, user_metadata: { full_name: "Theo Teammate" },
     });
-    const teammate = await clientAs(teammateEmail);
+    const teammate = await signInWithEmailedCode(await clientAs(teammateEmail), teammateEmail);
     const { error: teammateJoinError } = await teammate.client.rpc("accept_invitation", { invitation_id: teammateInvite.body.id });
     const { data: teammateRow } = await db.from("org_members")
       .select("role, permissions, title").eq("org_id", brandOrg.id).eq("user_id", teammate.userId).maybeSingle();
@@ -4901,7 +4928,18 @@ async function main() {
       "an invited person is offered the organisation, not asked to create one");
     await record(page, "You have been invited", "the invitation was in the database from the start; nothing ever showed it");
 
+    // Signed in with a password, the invited mailbox is not proven yet
+    // (Confirm email is off): Join emails a code and asks for it.
+    const codeAsked = Date.now() - 2000;
     await page.locator('[data-testid="accept-invitation"]').click();
+    await waitFor(page, '[data-testid="join-code-form"]', 25000);
+    const { data: notYetJoined } = await db.from("org_invitations").select("status").eq("id", invited.id).single();
+    check(notYetJoined?.status === "pending", `a password sign-in alone does not join: the emailed code is asked for first (${notYetJoined?.status})`);
+    await record(page, "Join asks for the emailed code", "the address was only typed; the code shows it is their mailbox");
+    const joinCode = await emailedCode(colleagueEmail, codeAsked);
+    check(Boolean(joinCode), "the code is emailed to the invited address");
+    await page.locator('[data-testid="join-code-form"] input[name="code"]').fill(joinCode ?? "");
+    await page.locator('[data-testid="join-with-code"]').click();
     await page.waitForTimeout(4000);
     await waitFor(page, ".home-stack", 30000);
     await record(page, "Joined", "straight into the brand they were invited to, with no onboarding to redo");

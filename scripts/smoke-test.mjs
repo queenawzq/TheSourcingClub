@@ -250,6 +250,18 @@ async function signedInUser(email) {
   return { client, id: data.user.id };
 }
 
+/**
+ * Sign an existing client in with the code that would be emailed, as someone
+ * reading their own mailbox does. The admin API hands the code over instead of
+ * sending it.
+ */
+async function signInWithEmailedCode(client, email) {
+  const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
+  if (error) throw error;
+  const { error: verifyError } = await client.auth.verifyOtp({ email, token: data.properties.email_otp, type: "email" });
+  if (verifyError) throw verifyError;
+}
+
 const stamp = Date.now();
 
 console.log("\nsignup");
@@ -2302,10 +2314,19 @@ console.log("\nphase 5 — the home screen, and joining a team");
   stealError ? ok("and cannot be accepted by anyone but the person invited")
              : fail("LEAK: accepted somebody else's invitation");
 
+  // Confirm email is off: a password session only shows the address was
+  // typed. Joining needs the session the emailed code opens.
+  const { error: typedOnlyError } = await joiner.client
+    .rpc("accept_invitation", { invitation_id: theirs[0].id });
+  typedOnlyError?.hint === "mailbox_unproven"
+    ? ok("signed in with a password, the invited address cannot join yet (mailbox not proven)")
+    : fail("LEAK: joined without proving the invited mailbox", typedOnlyError ?? "accepted");
+
+  await signInWithEmailedCode(joiner.client, `joiner-${stamp}@example.com`);
   const { error: acceptError } = await joiner.client
     .rpc("accept_invitation", { invitation_id: theirs[0].id });
   acceptError ? fail("the invited person accepts", acceptError)
-              : ok("the invited person accepts and joins the organisation");
+              : ok("signed in with the emailed code, the invited person accepts and joins the organisation");
 
   const { data: nowIn } = await admin
     .from("org_members").select("role").eq("org_id", org.id).eq("user_id", joiner.id).maybeSingle();

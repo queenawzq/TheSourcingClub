@@ -519,6 +519,105 @@ function useInviteLink() {
   return { id, preview, cameThroughForm, clear, retry: () => setAttempt((count) => count + 1) };
 }
 
+/**
+ * Joining needs the invited mailbox, not only its address. "Confirm email" is
+ * off, so whoever signed up with an invited address first could join that
+ * company. accept_invitation() now refuses a session opened with a password
+ * (hint `mailbox_unproven`, 20261124600000); the person is emailed a sign-in
+ * code, and the session that code opens may join. Same person, same user id,
+ * so nothing on the page reloads in between.
+ */
+function useInvitationJoin() {
+  const { user, sendEmailCode, verifyEmailCode, clearError, error } = useAuth();
+  const email = String(user?.email ?? "").toLowerCase();
+  // The invitation waiting for its code, or null.
+  const [codeFor, setCodeFor] = useState(null);
+
+  const sendCode = () => sendEmailCode(email, { createUser: false, keepSignedIn: keepChoice() });
+
+  /** The company joined, or null while the emailed code is asked for. */
+  async function join(invitationId) {
+    try {
+      return await acceptInvitation(invitationId);
+    } catch (failure) {
+      if (failure?.cause?.hint !== "mailbox_unproven") throw failure;
+      await sendCode();
+      setCodeFor(invitationId);
+      return null;
+    }
+  }
+
+  /** The company joined, or null when the code was refused (the reason is `error`). */
+  async function confirm(code) {
+    if (!(await verifyEmailCode(email, code, { keepSignedIn: keepChoice() }))) return null;
+    const org = await acceptInvitation(codeFor);
+    setCodeFor(null);
+    return org;
+  }
+
+  return {
+    email, codeFor, error, join, confirm, resend: sendCode,
+    cancel: () => { setCodeFor(null); clearError(); },
+  };
+}
+
+/** The emailed code, asked for before joining. In the sign-in code screen's style. */
+function JoinCodeForm({ joining, company, onJoined, onFailed, onBack = joining.cancel, compact = false }) {
+  const [working, setWorking] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    const code = String(new FormData(event.currentTarget).get("code") ?? "").trim();
+    if (!code || working) return;
+    setWorking(true);
+    try {
+      const org = await joining.confirm(code);
+      if (org) await onJoined(org);
+    } catch (failure) {
+      onFailed?.(failure);
+    }
+    setWorking(false);
+  }
+
+  const field = (
+    <input name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" aria-label="Six-digit code" />
+  );
+  const note = `We emailed a code to ${joining.email}. Enter it to join ${company ?? "the company"}.`;
+  const buttons = (
+    <>
+      <button type="submit" className="primary-btn" disabled={working} data-testid="join-with-code">{working ? "Joining…" : "Join"}</button>
+      <button type="button" className="quiet-btn" disabled={working} onClick={joining.resend}>Send a new code</button>
+      <button type="button" className="quiet-btn" disabled={working} onClick={onBack}>Back</button>
+    </>
+  );
+
+  if (compact) {
+    return (
+      <form onSubmit={submit} data-testid="join-code-form">
+        <p>{note}</p>
+        {field}
+        {joining.error ? <p className="tsc-team-notice-error">{joining.error.message}</p> : null}
+        <div className="tsc-team-notice-actions">{buttons}</div>
+      </form>
+    );
+  }
+  return (
+    <div className="gate">
+      <form className="gate-card" onSubmit={submit} data-testid="join-code-form">
+        <p className="gate-eyebrow">Signed in as {joining.email}</p>
+        <h1>Enter the code we emailed you</h1>
+        <p className="gate-note">{note}</p>
+        <label className="field">
+          <span>Six-digit code</span>
+          {field}
+        </label>
+        {joining.error ? <p className="gate-error">{joining.error.message}</p> : null}
+        <div className="gate-row">{buttons}</div>
+      </form>
+    </div>
+  );
+}
+
 function InviteCard({ title, note, children }) {
   return (
     <div className="gate">
@@ -534,19 +633,25 @@ function InviteCard({ title, note, children }) {
 /** Signed in through the invitation's form: join, and land in the company. */
 function JoinFromLink({ link }) {
   const { refreshOrgs, selectOrg } = useAuth();
+  const joining = useInvitationJoin();
   const [failed, setFailed] = useState(false);
   const started = useRef(false);
+
+  async function joined(org) {
+    await refreshOrgs();
+    if (org?.id) selectOrg(org.id);
+    link.clear();
+  }
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    acceptInvitation(link.id).then(async (org) => {
-      await refreshOrgs();
-      if (org?.id) selectOrg(org.id);
-      link.clear();
-    }, () => setFailed(true));
+    joining.join(link.id).then((org) => (org ? joined(org) : null), () => setFailed(true));
   }, []);
 
+  if (joining.codeFor && !failed) {
+    return <JoinCodeForm joining={joining} company={link.preview?.company} onJoined={joined} onFailed={() => setFailed(true)} onBack={link.clear} />;
+  }
   if (!failed) return <Loading label={`Joining ${link.preview?.company ?? "the company"}…`} />;
   return (
     <InviteCard
@@ -662,6 +767,7 @@ function ChooseOrgType() {
   const [name, setName] = useState(answeredName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const joining = useInvitationJoin();
   // Nothing is drawn until the account has been read: this form must not be
   // on screen, even for a moment, for someone who has left a company.
   const [autoCreating, setAutoCreating] = useState(true);
@@ -772,6 +878,18 @@ function ChooseOrgType() {
     </p>
   ) : null;
 
+  if (waiting.length && joining.codeFor) {
+    const company = waiting.find((invitation) => invitation.id === joining.codeFor)?.orgs?.name;
+    return (
+      <JoinCodeForm
+        joining={joining}
+        company={company}
+        onJoined={() => refreshOrgs()}
+        onFailed={(failure) => { joining.cancel(); setError(failure); }}
+      />
+    );
+  }
+
   if (waiting.length) {
     return (
       <div className="gate">
@@ -793,8 +911,8 @@ function ChooseOrgType() {
                 setBusy(true);
                 setError(null);
                 try {
-                  await acceptInvitation(invitation.id);
-                  await refreshOrgs();
+                  if (await joining.join(invitation.id)) await refreshOrgs();
+                  else setBusy(false);
                 } catch (failure) {
                   setError(failure);
                   setBusy(false);
@@ -1121,6 +1239,7 @@ function TeamNotices() {
   const [notNow, setNotNow] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const joining = useInvitationJoin();
 
   useEffect(() => {
     let cancelled = false;
@@ -1135,18 +1254,26 @@ function TeamNotices() {
   const invitation = invitations.find((row) => !notNow.includes(row.id)) ?? null;
   if (!lostAccess && !invitation) return null;
 
+  async function joined(org) {
+    await refreshOrgs();
+    if (org?.id) selectOrg(org.id);
+    setInvitations((rows) => rows.filter((row) => row.id !== invitation.id));
+  }
+
+  function failed(failure) {
+    setError(/expired|not found|already used/i.test(failure.message)
+      ? "This invitation has expired or was withdrawn. Ask them to send it again."
+      : "We could not join you to this company. Try again.");
+  }
+
   async function join() {
     setBusy(true);
     setError(null);
     try {
-      const org = await acceptInvitation(invitation.id);
-      await refreshOrgs();
-      if (org?.id) selectOrg(org.id);
-      setInvitations((rows) => rows.filter((row) => row.id !== invitation.id));
+      const org = await joining.join(invitation.id);
+      if (org) await joined(org);
     } catch (failure) {
-      setError(/expired|not found|already used/i.test(failure.message)
-        ? "This invitation has expired or was withdrawn. Ask them to send it again."
-        : "We could not join you to this company. Try again.");
+      failed(failure);
     }
     setBusy(false);
   }
@@ -1168,12 +1295,22 @@ function TeamNotices() {
             {invitation.title ? ` as ${invitation.title}` : ""}.
           </p>
           {error ? <p className="tsc-team-notice-error">{error}</p> : null}
-          <div className="tsc-team-notice-actions">
-            <button type="button" className="quiet-btn" disabled={busy} onClick={() => setNotNow((ids) => [...ids, invitation.id])}>Not now</button>
-            <button type="button" className="primary-btn" disabled={busy} data-testid="join-invited-company" onClick={join}>
-              {busy ? "Joining…" : "Join"}
-            </button>
-          </div>
+          {joining.codeFor === invitation.id ? (
+            <JoinCodeForm
+              compact
+              joining={joining}
+              company={invitation.orgs?.name}
+              onJoined={joined}
+              onFailed={(failure) => { joining.cancel(); failed(failure); }}
+            />
+          ) : (
+            <div className="tsc-team-notice-actions">
+              <button type="button" className="quiet-btn" disabled={busy} onClick={() => setNotNow((ids) => [...ids, invitation.id])}>Not now</button>
+              <button type="button" className="primary-btn" disabled={busy} data-testid="join-invited-company" onClick={join}>
+                {busy ? "Joining…" : "Join"}
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
     </div>
