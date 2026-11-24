@@ -1918,7 +1918,7 @@ const onboardingCopy = {
           ["Factory Name", "e.g. Golden Thread Manufacturing", true],
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
-          ["Factory Address", "e.g. No. 8 Industrial Road, Humen, Dongguan, Guangdong, China"],
+          ["Factory Address", "e.g. 8 Industrial Rd, Humen, Dongguan, China"],
           ["Nearest Port", "e.g. Port of Shanghai"],
           ["Total Employees", "e.g. 120"]
         ],
@@ -2195,7 +2195,7 @@ const tradingOnboardingCopy = {
         type: "fields",
         title: "Tell us about your trading company",
         intro: "Share the company details brands need before starting a sourcing relationship.",
-        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Company Address", "e.g. Unit 1203, 12/F, Tower 1, 100 Nathan Road, Tsim Sha Tsui, Kowloon, Hong Kong"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
+        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Company Address", "e.g. 100 Nathan Road, Kowloon, Hong Kong"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
       },
       {
         type: "context",
@@ -2319,7 +2319,7 @@ tradingOnboardingCopy.zh = {
       type: "fields",
       title: "介绍你的贸易公司",
       intro: "填写品牌在建立采购合作关系前需要了解的公司信息。",
-      fields: [["公司名称", "例如：经纬采购集团", true], ["成立年份", "例如：2016"], ["官网", "www.example.com"], ["公司地址", "例如：香港九龙尖沙咀弥敦道100号1座12楼1203室"], ["团队人数", "例如：25"], ["支持语言", "例如：英语、普通话、葡萄牙语"]]
+      fields: [["公司名称", "例如：经纬采购集团", true], ["成立年份", "例如：2016"], ["官网", "www.example.com"], ["公司地址", "例如：香港九龙尖沙咀弥敦道100号1203室"], ["团队人数", "例如：25"], ["支持语言", "例如：英语、普通话、葡萄牙语"]]
     },
     {
       type: "context",
