@@ -577,6 +577,18 @@ export function disputeFeeCents(dispute) {
  * ends the hold). Returns true while it is on hold.
  */
 export async function applyDispute({ db, paymentId, dispute }) {
+  // Every dispute pauses the factory's withdrawals and the brand until staff
+  // decide (a payment review, 20261124100000): opened once, Stripe's status
+  // and respond-by date kept on it. Its outcome never decides by itself.
+  if (dispute?.id) {
+    const dueBy = Number(dispute.evidence_details?.due_by);
+    await rpc(db, "record_payment_review_dispute", {
+      target_payment: paymentId, dispute_id: dispute.id, status: dispute.status ?? null,
+      amount_cents: Number.isFinite(Number(dispute.amount)) ? Number(dispute.amount) : null,
+      due_by: dueBy > 0 ? new Date(dueBy * 1000).toISOString() : null,
+      fee_cents: disputeFeeCents(dispute),
+    });
+  }
   const state = disputeState({ disputed: true }, dispute);
   if (state === "lost") {
     await rpc(db, "record_payment_dispute_lost", {

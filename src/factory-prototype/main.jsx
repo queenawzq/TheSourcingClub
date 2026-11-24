@@ -1142,6 +1142,7 @@ export const factoryMainZhText = {
   "This IBAN isn't valid. Check each character.": "此 IBAN 无效，请逐个核对字符。",
   "Refunded": "已退款",
   "Reversed by the brand's bank": "已被品牌的银行撤回",
+  "Returned to the brand": "已退回品牌",
   "This amount was returned to the brand.": "这笔金额已退回品牌。",
   "Order payment": "订单付款",
   "Only a company owner can withdraw": "只有公司所有者可以提现",

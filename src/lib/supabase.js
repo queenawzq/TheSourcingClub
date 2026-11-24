@@ -271,11 +271,14 @@ export function unwrap({ data, error }, context) {
     const noAnswer = isNoAnswer(error);
     const message = noAnswer
       ? AUTH_MESSAGES.no_connection[globalThis.navigator?.languages?.some((language) => /^zh\b/i.test(language)) ? "zh" : "en"]()
+      // A brand under review: the database's own sentence, whole (20261124100000).
+      : error.hint === "brand_under_review" ? error.message
       : context ? `${context}: ${error.message}` : error.message;
     const wrapped = new Error(message);
     wrapped.noAnswer = noAnswer;
     wrapped.cause = error;
     wrapped.code = error.code;
+    wrapped.hint = error.hint;
     throw wrapped;
   }
   return data;

@@ -28,6 +28,7 @@ const REFUSALS = {
   withdrawal_open: "You already have a withdrawal waiting. Cancel it first to ask for a different amount.",
   withdrawal_amount: "Enter an amount to withdraw.",
   withdrawal_over_balance: "That is more than your balance.",
+  payment_under_review: "Withdrawals are paused while a payment is reviewed.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",

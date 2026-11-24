@@ -86,6 +86,11 @@ export async function withdrawWithFee({ stripe, db, orgId, accountId, country = 
   // currency. Otherwise `amount` is in `currency`, from the Stripe money only.
   const paidIn = oneBalance ? String(payoutCurrency ?? "usd").toLowerCase() : currency;
   if (oneBalance && currency !== "usd") throw new PayoutMethodRefusal("Choose a valid available balance to withdraw.");
+  // A payment under review pauses every withdrawal, its own Stripe money
+  // included (20261124100000). Not read: refused, never skipped. The database
+  // refuses the claim too.
+  const paused = await call(db, "factory_paused", { target_org: orgId }).catch(() => null);
+  if (paused !== false) throw new PayoutMethodRefusal(paused ? UNDER_REVIEW : CANNOT_PROCESS);
   await checkWithdrawalRequest(stripe, accountId, { amount, currency: paidIn, requestId, destination });
   // A previous account's Stripe money: the same "owes TSC" rule as the one
   // balance (gatherOwed), so it cannot be emptied before the debt is covered.
@@ -415,6 +420,8 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
 
 /** Said when owed money is needed but the account cannot take transfers yet (the existing sentence of /api/stripe-connect). */
 export const NOT_VERIFIED = "Finish payout verification before withdrawing.";
+/** Every road, while a payment is reviewed (payment_reviews, 20261124100000). */
+export const UNDER_REVIEW = "Withdrawals are paused while a payment is reviewed.";
 
 /** The held takes of a withdrawal with the charge each is paid from. */
 async function readTakes(db, row) {

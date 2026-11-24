@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { clearingAfterDebt, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { clearingAfterDebt, uncoveredDebtCents, parseWithdrawAmount, pendingParts, reviewLines, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1048,7 +1048,10 @@ export default function StripePayoutCard({
   // does not change once they do.
   // A method saved just now counts at once, before the figures are read again.
   const showWithdraw = Boolean(account?.transfers_active) || Boolean(figures?.has_method) || balanceChoices.length > 0 || balanceOff.length > 0;
-  const withdrawTitle = stripeCan || balanceCan ? undefined
+  // A payment under review pauses every withdrawal (payment reviews, 20261124100000).
+  const review = reviewLines(figures);
+  const withdrawTitle = review ? review[0]
+    : stripeCan || balanceCan ? undefined
     : paused ? "Withdrawals paused"
     : account?.transfers_active && !account.payouts_enabled && !figures?.has_method ? "Finish setup to withdraw"
     : arrivesOn && clearingAfterDebt(pendingLines.clearing, uncoveredDebtCents(figures)) > 0 ? availableOnWords(arrivesOn)
@@ -1077,9 +1080,7 @@ export default function StripePayoutCard({
           ) : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} processing`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
-          {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
-          {/* Only what its earnings do not cover: covered, Available is already net of it and there is no line. */}
-          {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
+          {review ? <p className="live-payment-notice" role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -1101,7 +1102,7 @@ export default function StripePayoutCard({
           {isOwner ? showWithdraw ? (
             <>
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance"
-              disabled={busy || !(stripeCan || balanceCan)}
+              disabled={busy || Boolean(review) || !(stripeCan || balanceCan)}
               title={figures ? withdrawTitle : undefined}
               onClick={openWithdraw}>Withdraw</button>
             <button className="secondary-btn compact-btn" type="button" data-testid={account?.transfers_active ? undefined : "add-payout-method"} disabled={busy} onClick={openManage}>{cardWords.methods}</button>

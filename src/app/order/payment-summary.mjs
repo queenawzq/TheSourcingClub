@@ -188,53 +188,44 @@ export function stepRowCents(row, perPayment) {
 }
 
 /**
- * Money refunded to the brand (or a dispute lost) after the factory had
- * withdrawn it, in US$ cents: owed to TSC, already taken off Available
- * (factory_balance().owed_to_tsc_cents). 0 when none or not known.
- */
-export const owedToTscCents = (figures) => Math.max(0, Number(figures?.tsc?.owed_to_tsc_cents ?? figures?.owed_to_tsc_cents) || 0);
-/**
- * The part of it the factory's earnings do not cover
- * (factory_balance().uncovered_debt_cents): the card's line says only this,
- * and none once they cover it (Available is already net of it).
+ * The part of a debt its earnings do not cover (factory_balance().uncovered_debt_cents).
+ * Always 0 since payment reviews (20261124100000): a refund or dispute never
+ * takes money from the balance by itself. Kept for the clearing sum below.
  */
 export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.uncovered_debt_cents ?? figures?.uncovered_debt_cents) || 0);
 /**
  * What of the money clearing (`clearing`, US$ cents) will be withdrawable once
- * it clears: a debt its cleared earnings do not cover (`debt`,
- * uncoveredDebtCents()) is paid from it first, as Available is net of it.
+ * it clears, less any uncovered debt (always 0 now).
  */
 export const clearingAfterDebt = (clearing, debt) => Math.max(0, (Number(clearing) || 0) - Math.max(0, Number(debt) || 0));
 /**
- * The card's line for it (Available already counts it), in the words of what
- * sent the money back: a refund, a dispute lost, or both.
+ * The card's two sentences while a payment is reviewed (factory_balance().review),
+ * or null. Only a refund or a dispute pauses today, so "requested a refund" is
+ * true of both, and nothing says the factory did anything wrong.
  */
-export const owedToTscLine = (cents, formatMoney, cause = "refund") => {
-  if (!(cents > 0)) return null;
-  const owed = `You owe TSC ${formatMoney(cents, "USD")}.`;
-  if (cause === "dispute_lost") return `${owed} The brand's bank reversed a payment after you withdrew it.`;
-  if (cause === "both") return `${owed} Money was returned to the brand after you withdrew it.`;
-  return `${owed} A payment was refunded after you withdrew it.`;
-};
-/** What sent it back, from the dated refund rows: "refund", "dispute_lost" or "both". */
-export function owedToTscCause(figures) {
-  const causes = new Set(refundRows(figures).map((row) => (row.cause === "dispute_lost" ? "dispute_lost" : "refund")));
-  return causes.size > 1 ? "both" : causes.has("dispute_lost") ? "dispute_lost" : "refund";
+export function reviewLines(figures) {
+  const review = figures?.tsc?.review ?? figures?.review;
+  if (!review?.paused) return null;
+  const step = review.step_title ? `"${review.step_title}"` : "a payment";
+  return ["Withdrawals are paused while a payment is reviewed.",
+    `A brand requested a refund for ${step}, so our team is reviewing the payment.`];
 }
 
 /**
  * The dated rows a refund or a lost dispute adds to an earning (factory_balance()
  * rows with figure "refunded" below zero): the factory's part, on the day it
- * went back. The step's own row is never rewritten. `cause` "refund" or
- * "dispute_lost".
+ * went back. The step's own row is never rewritten. `cause` "refund",
+ * "dispute_lost" or "returned" (staff's decision in a payment review).
  */
 export function refundRows(figures) {
   return (figures?.tsc?.rows ?? figures?.rows ?? [])
     .filter((row) => row?.figure === "refunded" && Number(row.amount_cents) < 0 && row.payment_id)
-    .map((row) => ({ paymentId: row.payment_id, cause: row.cause === "dispute_lost" ? "dispute_lost" : "refund", at: row.at ?? null, amount: Number(row.amount_cents) }));
+    .map((row) => ({ paymentId: row.payment_id, cause: ["dispute_lost", "returned"].includes(row.cause) ? row.cause : "refund", at: row.at ?? null, amount: Number(row.amount_cents) }));
 }
 /** A lost dispute's word on a Transactions row (the amount is beside it), and its order-page line. */
 export const DISPUTE_LOST = "Reversed by the brand's bank";
+/** What staff returned to the brand from the balance after a payment review (20261124100000). */
+export const RETURNED = "Returned to the brand";
 export const reversedByBankLine = (amount) => `${amount} reversed by the brand's bank`;
 
 /**

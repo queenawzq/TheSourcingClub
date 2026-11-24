@@ -18,6 +18,7 @@ import { syncUiLanguage, useUiLanguage } from "../lib/ui-language.js";
 import FactoryLanguageLayer from "./FactoryLanguageLayer.jsx";
 import BrandEnglishLayer from "./BrandEnglishLayer.jsx";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
+import { myPaymentPause } from "../lib/domain/payment-reviews.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -1103,6 +1104,7 @@ function Shell() {
       onSignOut={signOut}
     >
       <TeamNotices />
+      {isFactory ? null : <BrandReviewNotice org={activeOrg} />}
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
     </DesignFrame>
   );
@@ -1114,6 +1116,36 @@ function Shell() {
  * company invited them (Join / Not now). Not in the design, which has no
  * signed-in invitation at all; drawn as a small card in the app's style.
  */
+/**
+ * A brand paused by a payment review (a disputed payment): what it can still
+ * do, on every page, until staff unpause it (20261124100000). The database
+ * refuses the rest. Read on load, when the page is shown again, and every
+ * minute, since staff unpause it from elsewhere. No design draws it; it uses
+ * the team notices' frame.
+ */
+function BrandReviewNotice({ org }) {
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const read = () => myPaymentPause(org.id)
+      .then((status) => { if (!cancelled) setPaused(Boolean(status?.brand_paused)); })
+      .catch(() => {});
+    read();
+    const timer = setInterval(read, 60000);
+    const onShow = () => { if (document.visibilityState === "visible") read(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { cancelled = true; clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
+  }, [org.id]);
+  if (!paused) return null;
+  return (
+    <div className="tsc-team-notices" role="status" data-testid="brand-under-review">
+      <div className="tsc-team-notice">
+        <p>Your account is under review. You can still message vendors.</p>
+      </div>
+    </div>
+  );
+}
+
 function TeamNotices() {
   const { user, lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
   const [invitations, setInvitations] = useState([]);
