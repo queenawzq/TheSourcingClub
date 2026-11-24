@@ -20,7 +20,7 @@
  */
 import { urlFor } from "../../lib/domain/documents.js";
 import {
-  explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, saveCheckReason, verificationScore, photoSearchLink,
+  explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, recordStaffResult, saveCheckReason, verificationScore, photoSearchLink,
   proofFileUrl, removeProofFile, saveCertificateCheck, saveRegistryCheck, updateCompanyProfile, uploadProofFile,
 } from "../../lib/domain/verification-score.js";
 import { rerunVerificationGroup, verificationFieldEdits } from "../../lib/domain/verification-rerun.js";
@@ -219,6 +219,15 @@ export function verificationActions(orgId, { reload, changed }) {
       result: DB_PHOTO[record.result] ?? record.result, link: record.whereUrl ?? "",
     })),
     explainField: (groupKey, field, text) => after(() => explainSharedNumber(orgId, text)),
+    /** Staff's own result on the address, factory-or-trader or licence check (Nov 25). */
+    recordOverride: (groupKey, check, record) => after(() => recordStaffResult(orgId, check, record)),
+    /** Edit address, from the Address block (Nov 25): saved, then the address alone is checked again and the score read when done. */
+    saveAddress: async (address) => {
+      const saved = await updateVendorProfile(orgId, { address });
+      await reload();
+      changed?.();
+      saved?.checked?.then(async () => { await reload(); changed?.(); }, () => null);
+    },
     /** A typed number that differs from the licence's, explained: the registry record whose reason the approval rule reads. */
     explainTyped: (groupKey, field, text, registryRow) => after(() => recordRegistryResult(orgId, {
       source: registryRow?.registry?.sourceKey, result: "name_differs", name: registryRow?.registry?.name ?? "", reason: text,

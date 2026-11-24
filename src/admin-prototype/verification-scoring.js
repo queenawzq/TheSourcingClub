@@ -3,13 +3,14 @@
  * the prototype's mock and the live review page. Pure functions only: no
  * data, so importing it never brings the mock profiles into the live app.
  *
- * Overall = Business registration 60 + Company information 40. Certification
+ * Business registration 75 (licence, registry, address) + Company information 25 (factory or trader,
+ * photos); the overall keeps the split from before the address moved (Nov 25). Certification
  * evidence is shown but not counted. A check not done yet scores 0 and says
  * so, so an unchecked registry never looks like a passed one.
  */
-import { siteRecord, siteSummary, siteVerdict } from "../shared/verification-score.mjs";
+import { overallByShares, siteRecord, siteSummary, siteVerdict } from "../shared/verification-score.mjs";
 
-export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
+export const GROUP_WEIGHTS = { business_registration: 75, company_information: 25 };
 
 /**
  * How much a group counts: its own `weight` when it carries one (a brand's groups, Nov 13), else the
@@ -32,6 +33,8 @@ export function scoreGroup(group) {
 }
 
 export function scoreOverall(groups) {
+  const byShares = overallByShares(groups, groupWeight, scoreGroup);
+  if (byShares !== undefined) return byShares;
   let sum = 0;
   let weight = 0;
   let scored = false;
@@ -179,8 +182,8 @@ export function withReason(check, text) {
 }
 
 export const GROUP_TIPS = {
-  business_registration: "The licence and the official registry: is this a registered company? Counts for 60% of the score.",
-  company_information: "Factory or trader, and whether the address and photos are its own. Counts for 40% of the score.",
+  business_registration: "The licence, the official registry and the address: is this a registered company, and is the address its own? Counts for 75% of the score.",
+  company_information: "Factory or trader, and whether the photos are its own. Counts for 25% of the score.",
   certification: "Whether each certificate is real and current. Not part of the score.",
 };
 

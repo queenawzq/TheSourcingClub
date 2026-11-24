@@ -1,13 +1,15 @@
 /**
- * Live only (Nov 24): staff correct a vendor's type and address from the
- * review page, and see who changed what (the review history). Drawn in the
- * page's own small-dialog style; the prototype passes no actions and draws
- * none of it.
+ * Live only (Nov 24): staff correct a vendor's type from the review page, and
+ * see who changed what (the review history). Drawn in the page's own
+ * small-dialog style; the prototype passes no actions and draws none of it.
+ * The address is edited in the verification card's Address block (Nov 25),
+ * in `AddressDialog`, the same dialog.
  *
- *   actions.updateCompanyProfile(orgId, { vendorKind, address })
+ *   actions.updateCompanyProfile(orgId, { vendorKind })
  *   actions.reviewChanges(orgId) → [{ kind, details, at, by }]
  */
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -31,16 +33,79 @@ function stamp(change) {
   return [change.by, when].filter(Boolean).join(", ");
 }
 
-export function CompanyOverride({ orgId, entityType, address, actions, refreshKey = 0, onChanged }) {
+/** The small dialog's frame, above the verification pop-up when it opens from there (`over`). */
+function OverrideDialog({ title, busy, error, saveDisabled, onSave, onClose, over = false, children }) {
+  const close = () => { if (!busy) onClose(); };
+  const dialog = (
+    <div className={`approve-fund-modal-layer${over ? " vr-dialog-over" : ""}`} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="company-override-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close" onClick={close}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+        <header>
+          <div>
+            <span>Company</span>
+            <h2 id="company-override-title">{title}</h2>
+            <p>The company is told its profile was updated.</p>
+          </div>
+        </header>
+        {children}
+        {error && <p className="admin-error" role="alert">{error}</p>}
+        <footer>
+          <button className="secondary-btn" type="button" onClick={close} disabled={busy}>Cancel</button>
+          <button className="primary-btn" type="button" disabled={busy || saveDisabled} onClick={onSave}>{busy ? "Saving…" : "Save"}</button>
+        </footer>
+      </section>
+    </div>
+  );
+  return over ? createPortal(dialog, document.body) : dialog;
+}
+
+/** Edit address, from the Address block: `onSave(address)` saves it and has the address checked again. */
+export function AddressDialog({ label, address, onSave, onClose }) {
+  const [text, setText] = useState(address ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onSave(text.trim());
+      onClose();
+    } catch (failure) {
+      setError(failure?.message || "Couldn't save. Try again.");
+      setBusy(false);
+    }
+  };
+  return (
+    <OverrideDialog
+      title={`Edit ${label.toLowerCase()}`}
+      busy={busy}
+      error={error}
+      saveDisabled={!text.trim() || text.trim() === (address ?? "").trim()}
+      onSave={save}
+      onClose={onClose}
+      over
+    >
+      <label className="factory-onboarding-field">
+        <span>{label}</span>
+        <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Street, district, city, province, country" />
+      </label>
+    </OverrideDialog>
+  );
+}
+
+export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged }) {
   const [open, setOpen] = useState(null);
   const [kind, setKind] = useState("manufacturer");
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState([]);
   const [showAll, setShowAll] = useState(false);
   const currentKind = entityType === "Trading company" ? "trading_company" : "manufacturer";
-  const addressLabel = currentKind === "trading_company" ? "Company address" : "Factory address";
 
   const loadHistory = useCallback(() => {
     if (!actions?.reviewChanges || !orgId) return;
@@ -50,37 +115,31 @@ export function CompanyOverride({ orgId, entityType, address, actions, refreshKe
 
   if (!actions?.updateCompanyProfile) return null;
 
-  const start = (which) => {
+  const start = () => {
     setError("");
     setKind(currentKind);
-    setText(address ?? "");
-    setOpen(which);
+    setOpen("type");
   };
-  const close = () => { if (!busy) setOpen(null); };
   const save = async () => {
     setBusy(true);
     setError("");
     try {
-      const saved = await actions.updateCompanyProfile(orgId, open === "type" ? { vendorKind: kind } : { address: text.trim() });
+      await actions.updateCompanyProfile(orgId, { vendorKind: kind });
       setOpen(null);
       loadHistory();
       onChanged?.();
-      // The address check runs after the save: the score is read again when it is done.
-      saved?.checked?.then(() => onChanged?.(), () => null);
     } catch (failure) {
       setError(failure?.message || "Couldn't save. Try again.");
     } finally {
       setBusy(false);
     }
   };
-  const unchanged = open === "type" ? kind === currentKind : !text.trim() || text.trim() === (address ?? "").trim();
   const shown = showAll ? history : history.slice(0, 3);
 
   return (
     <div className="vr-override">
       <div className="vr-override-actions">
-        <button className="vr-text-action" type="button" onClick={() => start("type")}>Change type</button>
-        <button className="vr-text-action" type="button" onClick={() => start("address")}>Edit address</button>
+        <button className="vr-text-action" type="button" onClick={start}>Change type</button>
       </div>
       {history.length > 0 && (
         <div className="vr-history">
@@ -96,39 +155,17 @@ export function CompanyOverride({ orgId, entityType, address, actions, refreshKe
         </div>
       )}
       {open && (
-        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="company-override-title">
-            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={close}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
-            <header>
-              <div>
-                <span>Company</span>
-                <h2 id="company-override-title">{open === "type" ? "Change type" : `Edit ${addressLabel.toLowerCase()}`}</h2>
-                <p>The company is told its profile was updated.</p>
-              </div>
-            </header>
-            {open === "type" ? (
-              <fieldset className="admin-tier-picker">
-                <legend>Type</legend>
-                {Object.entries(KIND_WORDS).map(([key, label]) => (
-                  <label className={`admin-tier-option${kind === key ? " selected" : ""}`} key={key}>
-                    <input type="radio" name="vendor-kind" value={key} checked={kind === key} onChange={() => setKind(key)} />
-                    <span><strong>{label}</strong></span>
-                  </label>
-                ))}
-              </fieldset>
-            ) : (
-              <label className="factory-onboarding-field">
-                <span>{addressLabel}</span>
-                <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Street, district, city, province, country" />
+        <OverrideDialog title="Change type" busy={busy} error={error} saveDisabled={kind === currentKind} onSave={save} onClose={() => setOpen(null)}>
+          <fieldset className="admin-tier-picker">
+            <legend>Type</legend>
+            {Object.entries(KIND_WORDS).map(([key, label]) => (
+              <label className={`admin-tier-option${kind === key ? " selected" : ""}`} key={key}>
+                <input type="radio" name="vendor-kind" value={key} checked={kind === key} onChange={() => setKind(key)} />
+                <span><strong>{label}</strong></span>
               </label>
-            )}
-            {error && <p className="admin-error" role="alert">{error}</p>}
-            <footer>
-              <button className="secondary-btn" type="button" onClick={close} disabled={busy}>Cancel</button>
-              <button className="primary-btn" type="button" disabled={busy || unchanged} onClick={save}>{busy ? "Saving…" : "Save"}</button>
-            </footer>
-          </section>
-        </div>
+            ))}
+          </fieldset>
+        </OverrideDialog>
       )}
     </div>
   );

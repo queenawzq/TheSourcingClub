@@ -1450,7 +1450,7 @@ a.vr-text-action {
 
 .vr-sub-copy .vr-sub-summary { color: var(--vr-muted); }
 
-/* Live only (Nov 24): Change type, Edit address and the review history, under Review details. */
+/* Live only (Nov 24): Change type and the review history, under Review details. */
 .vr-override { display: grid; gap: 12px; }
 .vr-override-actions { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .vr-history { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--vr-line-soft); }
@@ -1461,4 +1461,9 @@ a.vr-text-action {
 .vr-history small { color: var(--vr-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
 /* A save that can't run yet (nothing chosen, a note missing) reads as off. */
 .vr-record-actions .primary-btn:disabled,
-.vr-override .primary-btn:disabled { opacity: 0.45; cursor: default; }
+.vr-override .primary-btn:disabled,
+.vr-dialog-over .primary-btn:disabled { opacity: 0.45; cursor: default; }
+/* Edit address opens from the verification pop-up (Nov 25): its dialog sits above it. */
+.vr-dialog-over { z-index: 150; }
+/* The Address block's versions, one per line, under the check (Nov 25). */
+.vr-sub-lines { display: grid; gap: 2px; margin-top: 6px; }

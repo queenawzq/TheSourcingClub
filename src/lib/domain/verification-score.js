@@ -117,6 +117,18 @@ export async function recordPhoto(orgId, documentId, { result, link = "", note =
   return saved;
 }
 
+/**
+ * Staff's own result on a check (Nov 25): address confirmed | problem | could_not_check (for the address shown),
+ * scope factory | trading_company | could_not_tell, licence original | problem | could_not_check (for its file).
+ */
+export async function recordStaffResult(orgId, check, { result, note }) {
+  return plain(await supabase.rpc("admin_record_signal", {
+    target_org: orgId, kind: check.key, subject: check.key === "licence" ? check.fileId ?? null : null, result,
+    note: String(note || "").trim(),
+    details: check.key === "address" ? { address: check.edit?.value ?? "" } : {},
+  }), "record the check");
+}
+
 /** "Add reason" on a sub-check: licence | registry | scope | address | photos | certificate (with its id). */
 export async function saveCheckReason(orgId, checkKey, text, subjectId = null, writtenFor = null) {
   // `writtenFor`: the verdict the reason explains; it stops lifting the check once the verdict changes.

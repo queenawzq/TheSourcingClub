@@ -19,7 +19,27 @@ import { computeLevels } from "./verification-levels.mjs";
 import { companyNameKey, registrySources, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
-export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
+// The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
+// Company information is factory or trader 10 + photos 15.
+export const GROUP_WEIGHTS = { business_registration: 75, company_information: 25 };
+
+/**
+ * The overall keeps the split it had before the address moved (registration 60: licence and registry;
+ * company 40: factory or trader, address and photos), rounded as it was, so the move changed no company's score.
+ */
+const OVERALL_SHARES = { licence: "registration", registry: "registration", scope: "company", address: "company", photos: "company" };
+const SHARE_WEIGHTS = { registration: 60, company: 40 };
+
+/** A vendor's overall, from its checks' old split; undefined when the groups are not a vendor's (a brand's). */
+export function overallByShares(groups, isCounted, groupScore) {
+  const counted = (groups ?? []).filter(isCounted);
+  const checks = counted.flatMap((group) => (group.checks ?? []).filter((check) => check.weight));
+  if (!counted.length || counted.some((group) => group.weight != null) || !checks.every((check) => OVERALL_SHARES[check.key])) return undefined;
+  if (!checks.some((check) => check.score != null)) return null;
+  const sum = Object.entries(SHARE_WEIGHTS)
+    .reduce((total, [share, weight]) => total + (groupScore({ checks: checks.filter((check) => OVERALL_SHARES[check.key] === share) }) ?? 0) * weight, 0);
+  return Math.round(sum / 100);
+}
 
 export const SCORES = {
   licence: { clean: 95, taxPlate: 70, partial: 70, differs: 50, edited: 40, copy: 40, sample: 10, unreadable: 10, otherCompanyFirst: 5 },
@@ -31,6 +51,40 @@ export const SCORES = {
   certificate: { found: 90, holderDiffers: 60, expired: 15, not_found: 5 },
   reasonFloor: 60,
 };
+
+/* ------------------------------------------------------- staff's own result */
+
+/** What a check staff decided themselves says (Nov 25): address, factory or trader, licence. */
+export const OVERRIDE_WORDS = {
+  address: { confirmed: "Confirmed by staff", problem: "Problem found by staff", could_not_check: "Staff couldn't check" },
+  scope: { factory: "Factory, by staff", trading_company: "Trading company, by staff", could_not_tell: "Staff couldn't tell" },
+  licence: { original: "Original, by staff", problem: "Problem found by staff", could_not_check: "Staff couldn't check" },
+};
+
+/**
+ * A check with staff's own result in place of the automatic one. Confirmed / original score as a clean
+ * automatic result; a problem as the lowest (an address elsewhere, an unreadable licence); factory or trader
+ * scores 100 when it is what the profile says the company is, else as a trading licence. "Couldn't check" /
+ * "Couldn't tell" keeps the automatic score. A reason written before is replaced by staff's note.
+ */
+export function overrideCheck(check, record, { vendorKind = null } = {}) {
+  const trading = vendorKind === "trading_company";
+  const scores = {
+    address: { confirmed: SCORES.address.same, problem: SCORES.address.elsewhere },
+    scope: { factory: trading ? SCORES.scope.trading : SCORES.scope.making, trading_company: trading ? SCORES.scope.making : SCORES.scope.trading },
+    licence: { original: SCORES.licence.clean, problem: SCORES.licence.unreadable },
+  };
+  const automatic = check.automatic ?? { score: check.score, verdict: check.verdict };
+  const { reason, ...rest } = check;
+  return {
+    ...rest,
+    score: scores[check.key]?.[record.result] ?? automatic.score ?? null,
+    verdict: OVERRIDE_WORDS[check.key]?.[record.result] ?? check.verdict,
+    short: null,
+    automatic,
+    staff: { result: record.result, note: record.note ?? "", by: record.by ?? "" },
+  };
+}
 
 /* ------------------------------------------------------------ arithmetic */
 
@@ -48,6 +102,8 @@ export function scoreGroup(group) {
 }
 
 export function scoreOverall(groups) {
+  const byShares = overallByShares(groups, (group) => GROUP_WEIGHTS[group.key], scoreGroup);
+  if (byShares !== undefined) return byShares;
   let sum = 0;
   let weight = 0;
   let scored = false;
@@ -949,7 +1005,13 @@ export function scoreVerification(input, { timeZone } = {}) {
   const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt", "formerVerdict"].includes(k)));
 
   // Business registration
-  const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
+  const licenceRecord = files[0] ? (signals ?? []).filter((s) => s.kind === "licence" && !s.automatic && s.subjectId === files[0].id)
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
+  const licenceAuto = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
+  const licence = licenceRecord
+    ? { ...overrideCheck(licenceAuto, { result: licenceRecord.result, note: licenceRecord.note ?? "", by: byWords(licenceRecord.checkedBy, licenceRecord.checkedAt, timeZone) }), fileId: files[0].id }
+    // `fileId`, not `subjectId`: a licence reason is saved without a subject.
+    : { ...licenceAuto, ...(files[0] ? { fileId: files[0].id } : { canOverride: false }) };
   const documentDiffers = (input?.rules?.approvalProblem ?? detail.approvalProblem) === "document_differs" ? differingField(detail, reading) : null;
   const typedAddress = String(detail.productionAddress ?? "").trim() || String(detail.location ?? "").trim();
   const readValues = reading?.details?.extracted ?? {};
@@ -957,7 +1019,34 @@ export function scoreVerification(input, { timeZone } = {}) {
     detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress,
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
-  const brChecks = [licence, registry];
+  // Company information's inputs, read here: the address check is in this group (Nov 25).
+  const siteSignal = signals.find((s) => s.kind === "address" && s.automatic) ?? null;
+  // Staff's own result on a check (Nov 25): the newest, for this licence file / this address.
+  const vendorKind = input?.profile?.vendorKind ?? null;
+  const staffRecord = (kind, fits = () => true) => signals.filter((s) => s.kind === kind && !s.automatic && fits(s))
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null;
+  const withStaff = (check, record) => (record
+    ? overrideCheck(check, { result: record.result, note: record.note ?? "", by: byWords(record.checkedBy, record.checkedAt, timeZone) }, { vendorKind })
+    : check);
+  const addressRecord = typedAddress ? staffRecord("address", (s) => String(s.details?.address ?? "").trim() === typedAddress) : null;
+  const address = withStaff(withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress })), addressRecord);
+  if (!typedAddress) address.canOverride = false;
+  const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
+  const registryAddress = registry.registry?.result === "found" ? String(registry.registry.address ?? "").trim() : "";
+  const licenceDiffers = Boolean(licenceAddress) && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high";
+  // Each version of the address, one per line: what the company typed, the licence's, the registry's.
+  address.lines = [
+    typedAddress ? { key: "typed", label: "Typed", value: typedAddress } : null,
+    licenceAddress ? {
+      key: "licence", label: licence.label, value: licenceAddress,
+      // The parts the address check found differing, on the licence's side: only those are marked ("3栋", not the whole line).
+      ...(licenceDiffers ? { parts: (level.address_owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
+        .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)) } : {}),
+    } : null,
+    registryAddress ? { key: "registry", label: "Registry", value: registryAddress, ...(registry.registry?.differs?.address ? { differs: true } : {}) } : null,
+  ].filter(Boolean);
+  address.edit = { label: input?.profile?.vendorKind === "trading_company" ? "Company address" : "Factory address", value: typedAddress };
+  const brChecks = [licence, registry, address];
   const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? lowerFirst(registry.verdict)}`, { title });
   const staleWords = (() => {
     if (!reading) return null;
@@ -986,16 +1075,13 @@ export function scoreVerification(input, { timeZone } = {}) {
   };
 
   // Company information
-  const siteSignal = signals.find((s) => s.kind === "address" && s.automatic) ?? latest(signals, "address") ?? null;
-  const scope = withReason(scopeCheck({ reading, level: level.trading_scope, country, vendorKind: input?.profile?.vendorKind ?? null }));
-  const address = withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress }));
+  const scope = withStaff(withReason(scopeCheck({ reading, level: level.trading_scope, country, vendorKind })), staffRecord("scope"));
   const tiles = photoTiles({ photos: extra.photos, signals, photoCheck, timeZone });
   const photos = withReason(photosCheck(tiles));
-  const ciChecks = [scope, address, photos];
-  const ciVerdict = groupVerdict(ciChecks, () => (scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`));
-  const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
+  const ciChecks = [scope, photos];
+  const ciVerdict = groupVerdict(ciChecks, () => (scope.staff || scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`));
   // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
-  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
+  const ciStamp = [photoCheck?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
     key: "company_information",
     label: "Company information",
@@ -1007,17 +1093,8 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAt: ciStamp ? `Checked ${stampWords(ciStamp, timeZone)}` : "",
     readAtIso: ciStamp,
     stale: null,
-    fields: [
-      ...(typedAddress ? [{
-        key: "siteAddress", label: input?.profile?.vendorKind === "trading_company" ? "Company address" : "Factory address", value: typedAddress, wide: true, editable: true,
-        ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? {
-          licence: licenceAddress,
-          // The parts the address check found differing, on the licence's side: only those are boxed ("3栋", not the whole line).
-          licenceParts: (level.address_owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
-            .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)),
-        } : {}),
-      }] : []),
-    ],
+    // The address is in Business registration (Nov 25).
+    fields: [],
     checks: ciChecks.map(clean),
   };
 
@@ -1078,7 +1155,7 @@ export function scoreVerification(input, { timeZone } = {}) {
     weakest: weakest ? { key: weakest.key, label: weakest.label, group: weakest.group, score: weakest.score, verdict: weakest.verdict } : null,
     approvalProblem,
     approvalBlock: approvalBlockWords(approvalProblem, detail, reading, { licence: files.length > 0 }),
-    facts: factsFrom({ input, reading, files, typedAddress, timeZone, country, licenceLabel: licence.label }),
+    facts: factsFrom({ input, reading, files, timeZone, country, licenceLabel: licence.label }),
     groups,
   };
 }
@@ -1087,7 +1164,7 @@ export function scoreVerification(input, { timeZone } = {}) {
 
 const DETAIL_FIELDS = [["legalName", "legal name"], ["website", "website"], ["location", "location"], ["employees", "team size"], ["foundedYear", "year founded"], ["intro", "introduction"]];
 
-function factsFrom({ input, reading, files, typedAddress, timeZone, country, licenceLabel }) {
+function factsFrom({ input, reading, files, timeZone, country, licenceLabel }) {
   const facts = [];
   const terms = input?.terms;
   const signer = terms?.signedBy && terms.signature && companyNameKey(terms.signedBy) !== companyNameKey(terms.signature)
@@ -1106,7 +1183,6 @@ function factsFrom({ input, reading, files, typedAddress, timeZone, country, lic
     key: "details", label: "Company details", ok: complete,
     value: complete ? "Complete" : listed.length ? `${capital(listed.length > 1 ? `${listed.slice(0, -1).join(", ")} and ${listed.at(-1)}` : listed[0])} only` : "Not filled in",
   });
-  if (typedAddress) facts.push({ key: "address", label: input?.profile?.vendorKind === "trading_company" ? "Company address" : "Factory address", value: typedAddress });
   const founded = reading?.details?.foundedOn ?? null;
   const where = licenceLabel === "Tax plate" ? "the tax plate" : country === "PT" ? "the certificate" : "the licence";
   if (founded) {

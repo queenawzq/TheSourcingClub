@@ -548,7 +548,7 @@ export async function runAddressCheck({ orgId, asServer, requestedBy = null, fet
     const { detail, signals } = await addressInputs(asServer, orgId);
     const details = { ...(await addressAnswer({ detail, signals, fetchImpl, callModelImpl, siteAddress })), ...(extraDetails ?? {}) };
     // Run again: the map not answering is no new answer, so the last address check stands.
-    if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address")) return { available: true, kept: true, ...details };
+    if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address" && s.automatic)) return { available: true, kept: true, ...details };
     // Run again on an unchanged address that answers less specifically keeps the earlier answer (fix round 2).
     if (keepIfFailed) {
       const previous = (signals ?? []).find((s) => s.kind === "address" && s.automatic)?.details ?? null;

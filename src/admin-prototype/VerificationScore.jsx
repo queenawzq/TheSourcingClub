@@ -22,7 +22,8 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
-import { holderCompareName, holderDiffersFrom, siteDifferences } from "../shared/verification-score.mjs";
+import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } from "../shared/verification-score.mjs";
+import { AddressDialog } from "./CompanyOverride.jsx";
 import "./verification-score.css";
 
 function useCountUp(value, duration = 700) {
@@ -216,12 +217,14 @@ const byMe = "You, just now";
  * as the database would. Same signatures as the live ones, so the modal
  * cannot tell them apart.
  */
-function mockActions(setGroups, groupsRef) {
+function mockActions(setGroups, groupsRef, entityType = null) {
   const change = (groupKey, update) => setGroups((current) => current.map((group) => (group.key === groupKey ? update(group) : group)));
   const changeCheck = (groupKey, next) => change(groupKey, (group) => ({
     ...group,
     // A registry check staff record becomes the group's verdict: the header must not keep saying "not checked" or "renamed".
     ...(next.key === "registry" && next.registry?.by === byMe ? { verdict: next.verdict, why: "" } : {}),
+    // So does staff's own decision on what the company is: the heading must not keep the automatic "Not a factory".
+    ...(next.key === "scope" && next.staff?.by === byMe ? { verdict: next.verdict, why: next.staff.note } : {}),
     checks: group.checks.map((item) => (item.key === next.key ? next : item)),
   }));
   return {
@@ -242,6 +245,17 @@ function mockActions(setGroups, groupsRef) {
       ...group,
       fields: group.fields.map((item) => (item.key === field.key ? { ...item, duplicate: { ...item.duplicate, explained: { text, by: byMe } } } : item)),
     })),
+    // A check decided by staff: scored as the live page scores it (overrideCheck).
+    recordOverride: async (groupKey, check, { result, note }) => changeCheck(groupKey, overrideCheck(check, { result, note, by: byMe }, { vendorKind: entityType === "Trading company" ? "trading_company" : null })),
+    // Edit address: the typed line changes; the address check is not run again in the prototype.
+    saveAddress: async (address) => setGroups((current) => current.map((group) => ({
+      ...group,
+      checks: group.checks.map((check) => (!check.edit ? check : {
+        ...check,
+        edit: { ...check.edit, value: address },
+        lines: [{ key: "typed", label: "Typed", value: address }, ...(check.lines ?? []).filter((line) => line.key !== "typed")],
+      })),
+    }))),
     runAgain: (groupKey, values) => new Promise((resolve) => {
       window.setTimeout(() => {
         const group = groupsRef.current.find((item) => item.key === groupKey);
@@ -293,7 +307,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
   const localRef = useRef(localGroups);
   localRef.current = localGroups;
   const groups = (liveActions ? verification?.groups : localGroups) ?? [];
-  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef), [liveActions]);
+  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef, profile?.entityType ?? null), [liveActions, profile?.entityType]);
   const [openKey, setOpenKey] = useState(() => new URLSearchParams(window.location.search).get("check"));
   // Automatic checks still running when the page opens (the mock's timers, or the database saying so);
   // Run again adds its group while it runs.
@@ -648,14 +662,57 @@ function RecordForm({ check, onSave, onDone, actions }) {
   );
 }
 
-function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown = false }) {
+// The checks staff can decide themselves (Nov 25). The address: the whole check, not only whose address it is
+// (a home or an office at the right address is a problem too). Factory or trader: what the company is.
+const OVERRIDE_RESULTS = {
+  address: [{ key: "confirmed", label: "Confirmed" }, { key: "problem", label: "Problem found" }, { key: "could_not_check", label: "Couldn't check" }],
+  scope: [{ key: "factory", label: "Factory" }, { key: "trading_company", label: "Trading company" }, { key: "could_not_tell", label: "Couldn't tell" }],
+  licence: [{ key: "original", label: "Original" }, { key: "problem", label: "Problem found" }, { key: "could_not_check", label: "Couldn't check" }],
+};
+
+/** A check decided by staff: one of its results, and what they saw. */
+function OverrideForm({ check, onSave, onDone }) {
+  const [result, setResult] = useState(check.staff?.result ?? null);
+  const [note, setNote] = useState(check.staff?.note ?? "");
+  const [save, run] = useSave();
+  const id = useId();
+  const ready = Boolean(result && note.trim());
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready || save.busy) return;
+    const { ok } = await run(() => onSave({ result, note: note.trim() }));
+    if (ok) onDone();
+  };
+  return (
+    <form className="vr-record" onSubmit={submit}>
+      <Segmented options={OVERRIDE_RESULTS[check.key]} value={result} onChange={setResult} name={`override-${id}`} label="What you found" />
+      <div className="vr-field">
+        <label htmlFor={id}>Note</label>
+        <textarea id={id} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
+      </div>
+      <SaveError text={save.error} />
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
+      </div>
+    </form>
+  );
+}
+
+function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false }) {
   const [mode, setMode] = useState(null);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
   const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
   const close = () => setMode(null);
+  const canEditAddress = Boolean(check.edit && actions.saveAddress);
+  // Staff decide the address, factory-or-trader and licence checks themselves (Nov 25).
+  const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
+  // A check staff record by hand has its own note: no separate reason (Nov 25).
+  const canReason = canReasonGiven && !canOverride && !canRecord;
+  const typedLine = check.lines?.find((line) => line.key === "typed")?.value ?? "";
   return (
-    <li className={`vr-sub${mode ? " is-open" : ""}`}>
+    <li className={`vr-sub${mode && mode !== "address" ? " is-open" : ""}`}>
       <div className="vr-sub-line">
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
@@ -668,6 +725,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
           {registry?.proof?.length > 0 && !mode && (
             <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
           )}
+          {check.staff?.by && <small>Checked by staff · {check.staff.by}</small>}
           {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
         </div>
         <div className="vr-sub-score">
@@ -675,6 +733,17 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
           <Meter value={check.score} />
         </div>
       </div>
+      {check.lines?.length > 0 && (
+        // The address, each version on its own line (Nov 25); the licence's and the registry's mark what differs.
+        <div className="vr-sub-lines">
+          {check.lines.map((line) => (
+            <p className={`vr-compare${line.key === "typed" ? "" : " is-licence"}`} key={line.key}>
+              <span>{line.label}:</span> {line.parts ? marked(line.value, typedLine, line.parts) : line.differs ? marked(line.value, typedLine, []) : line.value}
+            </p>
+          ))}
+        </div>
+      )}
+      {check.staff?.note && mode !== "override" && <p className="vr-sub-note"><span>{check.staff.note}</span></p>}
       {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
         <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
       )}
@@ -684,7 +753,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
           <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
         </p>
       )}
-      {!mode && (canRecord || check.lookup || canReason || check.duplicate) && (
+      {!mode && (canRecord || check.lookup || canReason || check.duplicate || canEditAddress || canOverride) && (
         <div className="vr-sub-actions">
           {canRecord && (
             <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
@@ -692,6 +761,8 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
             </button>
           )}
           {check.lookup && <LookupAction lookup={check.lookup} />}
+          {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
+          {canEditAddress && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
           {check.duplicate && !numberShown && actions.explainField && (
             <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
           )}
@@ -701,6 +772,10 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
             </button>
           )}
         </div>
+      )}
+      {mode === "override" && <OverrideForm check={check} onSave={(record) => actions.recordOverride(groupKey, check, record)} onDone={close} />}
+      {mode === "address" && (
+        <AddressDialog label={check.edit.label} address={check.edit.value} onSave={actions.saveAddress} onClose={close} />
       )}
       {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
       {mode === "shared" && (
@@ -804,7 +879,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
 
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record")) onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-dialog-over")) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
