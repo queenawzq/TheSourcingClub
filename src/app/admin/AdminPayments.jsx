@@ -1084,7 +1084,8 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
       {active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
-      {active === "attention" && attention ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
+      {active === "attention" && attention && !(sections.attention.length > 0 && attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length === 0)
+        ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
       {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
         pausedOrgs={new Set((reviews?.list ?? []).filter((row) => row.factory_paused).map((row) => row.factory_org_id))} /> : null}
 

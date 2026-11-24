@@ -24,7 +24,7 @@ function disputeWords(row) {
   if (status === "lost") return "Dispute lost";
   const due = day(row.dispute_due_by);
   if (status === "under_review" || status === "warning_under_review") return "Dispute open · waiting for the bank's decision";
-  return `Dispute open · waiting for the bank's decision${due ? ` · respond in Stripe by ${due}` : ""}`;
+  return `Dispute open · waiting for the bank's decision${due ? ` · respond in Stripe by ${due}, or the bank decides for the brand` : ""}`;
 }
 
 /** Dollars typed ("900", "900.50") to cents; null when not a positive amount. */
@@ -69,6 +69,7 @@ function ReviewActions({ row, onChanged }) {
     return (
       <div className="admin-actions">
         {said}
+        <span className="admin-sub admin-row-message">The brand already has this money back. This amount comes out of the factory's balance.</span>
         <label className="admin-sub">Amount to refund (USD)
           <input inputMode="decimal" value={amount} data-testid="review-refund-amount"
                  onChange={(event) => setAmount(event.target.value)} />
@@ -96,6 +97,7 @@ function ReviewActions({ row, onChanged }) {
         <>
           {/* Refund brand only once the brand has its money back: a refund, or a dispute the bank decided for it. */}
           <button type="button" className="admin-approve" disabled={working} data-testid="review-pay-factory"
+                  title="The factory can withdraw again. Nothing is taken from its balance."
                   onClick={() => run(() => payFactory(row.id), "Factory unpaused. Nothing was taken.")}>Pay factory</button>
           {row.cause === "dispute" && row.dispute_status !== "lost" ? null : (
           <button type="button" className="admin-reject" disabled={working || !row.approved || !(Number(row.returnable_cents) > 0)} data-testid="review-refund-brand"
@@ -111,7 +113,13 @@ function ReviewActions({ row, onChanged }) {
       ) : null}
       {row.brand_paused ? (
         <button type="button" className="admin-approve" disabled={working} data-testid="review-unpause-brand"
+                title="The brand can post requests, fund steps, accept quotes, approve steps and cancel orders again."
                 onClick={() => run(() => unpauseBrand(row.id), "Brand unpaused.")}>Unpause brand</button>
+      ) : null}
+      {row.factory_paused ? (
+        <span className="admin-sub admin-row-message">
+          {`Pay factory: its withdrawals start again and nothing is taken${row.cause === "dispute" && row.dispute_status !== "lost" ? "; if the bank decides for the brand, we bear the loss" : ""}.`}
+        </span>
       ) : null}
     </div>
   );
@@ -145,7 +153,7 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                   <td>
                     <span>{row.cause === "dispute" ? disputeWords(row) : "Refunded in Stripe after approval"}</span>
                     <span className="admin-sub">
-                      {row.factory_paused ? `Factory paused · balance now ${moneyIn(row.returnable_cents)}` : "Factory not paused"}
+                      {row.factory_paused ? `Factory's withdrawals paused · its balance now ${moneyIn(row.returnable_cents)}` : "Factory's withdrawals not paused"}
                       {Number(row.in_withdrawal_cents) > 0 ? ` · ${moneyIn(row.in_withdrawal_cents)} of this step in a waiting withdrawal` : ""}
                     </span>
                     {Number(row.withdrawn_cents) > 0 ? (
@@ -155,9 +163,9 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                     {row.open && row.cause === "dispute" && !["won", "warning_closed", "lost"].includes(row.dispute_status) ? (
                       <span className="admin-sub">Refund brand is available once the bank decides for the brand. This step stays on hold until then.</span>
                     ) : null}
-                    {Number(row.dispute_fee_cents) > 0 ? <span className="admin-sub">{`Dispute fee ${moneyIn(row.dispute_fee_cents)}`}</span> : null}
+                    {Number(row.dispute_fee_cents) > 0 ? <span className="admin-sub">{`Stripe's dispute fee ${moneyIn(row.dispute_fee_cents)}, paid by us`}</span> : null}
                     <span className="admin-sub">
-                      {row.cause !== "dispute" ? "Brand not paused" : row.brand_paused ? "Brand paused: messaging only" : `Brand unpaused${row.brand_unpaused_by_name ? ` by ${row.brand_unpaused_by_name}` : ""}`}
+                      {row.cause !== "dispute" ? "Brand not paused" : row.brand_paused ? "Brand paused: it can only message vendors" : `Brand unpaused${row.brand_unpaused_by_name ? ` by ${row.brand_unpaused_by_name}` : ""}`}
                     </span>
                     {row.stripe_payment_intent_id ? (
                       <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a>

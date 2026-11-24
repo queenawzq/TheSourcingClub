@@ -121,6 +121,7 @@ const ZH_SAMPLES = [
   { kind: "payment_disputed", title: "Review complete", body: 'The review of the payment for "Fit sample" is done. Withdrawals stay paused while another payment is reviewed.' },
   { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" is done. You can withdraw your balance again.' },
   { kind: "payment_disputed", title: "Review complete", body: "You can fund steps and accept quotes again." },
+  { kind: "payment_disputed", title: 'Payment for "Deposit" under review', body: "Our team is reviewing this payment before it goes to your balance." },
   { kind: "withdrawal", title: "Withdrawal of $10.00 requested", body: "To bank account ending in 6789." },
   { kind: "withdrawal", title: "Withdrawal of $45.00 on hold", body: 'The brand\'s payment for "Fit sample" was refunded. Cancel this withdrawal and withdraw again.' },
   { kind: "withdrawal", title: "Withdrawal of $45.00 cancelled", body: "$20.00 is back in your balance." },

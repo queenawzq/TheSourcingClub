@@ -12,7 +12,7 @@
  *   demo-factory@example.com      the factory that quoted and runs the orders
  *   demo-factory-two@example.com  a second factory, with a competing quote
  *   demo-factory-new@example.com  a factory waiting for verification
- *   demo-brand-two@example.com    a brand with five open requests, under review (a disputed payment to Ningbo)
+ *   demo-brand-two@example.com    a brand with five open requests, nothing paid
  *   demo-admin@example.com        a platform admin, for /admin.html
  *
  * All use the password "demo password 8". The list lives in
@@ -89,6 +89,8 @@ const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const secondBrand = await demoUser(LOGINS.secondBrand);
+const reviewBrand = await demoUser(LOGINS.reviewBrand);
+const reviewFactory = await demoUser(LOGINS.reviewFactory);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
@@ -100,7 +102,7 @@ const zhFactory = await demoUser(LOGINS.zhFactory);
 const callUsers = {};
 for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
 for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
-const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, reviewBrand, reviewFactory, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -1614,17 +1616,35 @@ for (const [title, person, org] of [
 
 // 7c. Payment reviews (20261124100000), recorded the way the server records
 //    what Stripe reports; each payment carries a demo PaymentIntent id (no
-//    Stripe charge behind it):
-//    - Maple Row Studio paid Ningbo Loomworks for a fit sample, approved it,
+//    Stripe charge behind it). Two companies of their own, so every other
+//    demo stays as it was:
+//    - Harbor Lane Goods paid Riverbend Knit for a fit sample, approved it,
 //      then its bank opened a dispute (record_payment_review_dispute, then
-//      record_payment_disputed): Maple Row is paused to messaging only (its
-//      next step is due: Fund is refused; Accept is refused on its requests'
-//      quotes), and Ningbo's withdrawals are paused.
-//    - Demo Brand's approved fit sample with Ningbo was half refunded in
-//      Stripe (record_payment_refund_amount): Ningbo is paused, Demo Brand is
-//      not, and nothing is taken from Ningbo.
+//      record_payment_disputed): Harbor is paused to messaging only (its next
+//      step is due: Fund is refused; Riverbend's quote on its open request:
+//      Accept is refused), and Riverbend's withdrawals are paused.
+//    - Demo Brand's approved fit sample with Riverbend was half refunded in
+//      Stripe (record_payment_refund_amount): Riverbend is paused, Demo Brand
+//      is not, and nothing is taken from Riverbend.
 //    Staff decide in Payments → Needs checking → Payment reviews.
 console.log("payment reviews");
+const reviewBrandOrg = must(await reviewBrand.client.rpc("create_org", { org_name: LOGINS.reviewBrand.name, org_kind: "brand" }), "create the brand under review");
+must(await admin.from("brand_profiles").upsert({
+  org_id: reviewBrandOrg.id, hq_location: "Portland, United States",
+  onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+}), "the brand under review's profile");
+const reviewFactoryOrg = must(await reviewFactory.client.rpc("create_org", { org_name: LOGINS.reviewFactory.name, org_kind: "factory" }), "create the factory under review");
+must(await admin.from("factory_profiles").upsert({
+  org_id: reviewFactoryOrg.id, country_code: "VN", location: "Ho Chi Minh City, Vietnam", moq: 200, typical_lead_days: 40,
+  intro: "Cut-and-sew knits and wovens, small runs.", onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified", trust_tier: "verified", published_at: new Date().toISOString(),
+}), "the factory under review's profile");
+must(await admin.from("credit_ledger").insert({
+  org_id: reviewFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
+}), "the factory under review's credits");
+must(await reviewFactory.client.from("factory_payout_accounts").insert({
+  org_id: reviewFactoryOrg.id, method: "paypal", paypal_email: "riverbend-payouts@example.com", bank_country: "VN", is_primary: true,
+}), "the factory under review's PayPal account");
 async function fundedWithIntent(payment, kind) {
   const intent = `pi_demo_${kind}_${payment.id.slice(0, 8)}`;
   const total = await charged(payment);
@@ -1635,15 +1655,22 @@ async function fundedWithIntent(payment, kind) {
   return { intent, total };
 }
 {
-  const buyer = { client: secondBrand.client, org: secondBrandOrg };
+  const buyer = { client: reviewBrand.client, org: reviewBrandOrg };
   const title = "Waxed cotton field jacket, AW27";
   const order = await runningOrder({
     title, brief: "60 waxed cotton field jackets, corduroy collar.", quantity: 60, unitPrice: 8400,
-    vendor: secondFactory, vendorOrg: secondFactoryOrg, buyer,
+    vendor: reviewFactory, vendorOrg: reviewFactoryOrg, buyer,
   });
   const fit = await dueNow(order, title);
   const { total } = await fundedWithIntent(fit, "dispute");
-  await approveOpenStep(order, title, secondFactory, secondBrand.client);
+  await approveOpenStep(order, title, reviewFactory, reviewBrand.client);
+  // Its next request, quoted by Riverbend and waiting for Harbor to choose.
+  const next = await publishRequest({
+    by: buyer, title: "Waxed cotton tote, AW27", brief: "200 waxed cotton totes, leather handles.", quantity: 200,
+    colours: [["Olive", 200]], material: "8oz waxed cotton", samples: "One sample before bulk", extra: "",
+    month: "2027-04-01", tags: [["product_category", "accessories"], ["region", "china"]], question: "Can you match the jacket's wax?",
+  });
+  await sendQuote(reviewFactory, reviewFactoryOrg, next, { price: 2100, quantity: 200, lead: 35, note: "Same wax as the jacket." });
   must(await admin.rpc("record_payment_review_dispute", {
     target_payment: fit.id, dispute_id: `dp_demo_${fit.id.slice(0, 8)}`, status: "needs_response",
     amount_cents: total, due_by: new Date(Date.now() + 9 * 86400000).toISOString(), fee_cents: 1500,
@@ -1654,21 +1681,24 @@ async function fundedWithIntent(payment, kind) {
   const title = "Linen camp shirt, AW27";
   const order = await runningOrder({
     title, brief: "150 linen camp-collar shirts.", quantity: 150, unitPrice: 2200,
-    vendor: secondFactory, vendorOrg: secondFactoryOrg,
+    vendor: reviewFactory, vendorOrg: reviewFactoryOrg,
   });
   const fit = await dueNow(order, title);
   const { intent, total } = await fundedWithIntent(fit, "refund");
-  await approveOpenStep(order, title, secondFactory);
+  await approveOpenStep(order, title, reviewFactory);
   must(await admin.rpc("record_payment_refund_amount", {
     target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
   }), "half refunded after approval");
 }
-const pausedBrand = must(await admin.rpc("brand_paused", { target_org: secondBrandOrg.id }), "Maple Row paused");
-const pausedFactory = must(await admin.rpc("factory_paused", { target_org: secondFactoryOrg.id }), "Ningbo paused");
-const lakesidePaused = must(await admin.rpc("factory_paused", { target_org: otherDomainOrg.id }), "Lakeside not paused");
-const demoBrandPaused = must(await admin.rpc("brand_paused", { target_org: brandOrg.id }), "Demo Brand not paused");
-if (pausedBrand !== true || pausedFactory !== true || lakesidePaused !== false || demoBrandPaused !== false) {
-  throw new Error("payment reviews: Maple Row and Ningbo should be paused, Lakeside and Demo Brand not");
+{
+  const paused = async (fn, org) => must(await admin.rpc(fn, { target_org: org.id }), `${fn} ${org.id}`);
+  const want = [[await paused("brand_paused", reviewBrandOrg), true], [await paused("factory_paused", reviewFactoryOrg), true],
+    [await paused("brand_paused", brandOrg), false], [await paused("brand_paused", secondBrandOrg), false],
+    [await paused("factory_paused", factoryOrg), false], [await paused("factory_paused", secondFactoryOrg), false],
+    [await paused("factory_paused", otherDomainOrg), false]];
+  if (want.some(([have, should]) => have !== should)) {
+    throw new Error("payment reviews: only Harbor Lane and Riverbend should be paused");
+  }
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production
@@ -1766,7 +1796,7 @@ done. Every login uses the password "${PASSWORD}".
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
-  second brand    ${LOGINS.secondBrand.email}   (five open requests; under review: a disputed payment, messaging only)
+  second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   other domain    ${LOGINS.otherDomainFactory.email}   (China, PayPal; invite it from another demo company: "already has an account")
   China, new      ${LOGINS.chinaNewFactory.email}   (money waiting, no withdrawal method yet)

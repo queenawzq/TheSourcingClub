@@ -196,8 +196,8 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(
   'R9: the payment-only step, its charge already disputed, is funded');
 select is((select title || ' | ' || body from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
             and kind = 'payment_disputed' and subject_id = 'ce8f0009-0000-0000-0000-000000000001'),
-  null,
-  'R9: no per-step "on hold" notice (paused payments)');
+  'Payment for "R8 deposit" under review | Our team is reviewing this payment before it goes to your balance.',
+  'R9: told in the payment review''s words, never "on hold" or "added to your balance" (paused payments)');
 select is((select count(*)::int from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
             and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and body like '%added to your balance%'), 0,
   'R9: never "added to your balance"');
