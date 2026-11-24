@@ -14,6 +14,11 @@ import { createPortal } from "react-dom";
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
 const DAY = { month: "short", day: "numeric" };
+const STAFF_RESULT_WORDS = {
+  confirmed: "Confirmed", problem: "Problem found", could_not_check: "Couldn't check",
+  factory: "Factory", trading_company: "Trading company", could_not_tell: "Couldn't tell", original: "Original",
+};
+const DECISION_WORDS = { approved: "Approved", declined: "Declined", needs_information: "Asked for more information" };
 
 /** One line of the history, in plain words. */
 export function changeWords(change) {
@@ -25,6 +30,10 @@ export function changeWords(change) {
   if (change.kind === "certificate_check") return `Certificate check: ${result}${note}${files}`;
   if (change.kind === "vendor_kind") return `Type changed to ${KIND_WORDS[d.to] ?? d.to}`;
   if (change.kind === "address") return "Address changed";
+  // Staff's own result on a check, and each decision (Nov 25).
+  const staffCheck = { address_check: "Address check", scope_check: "Factory or trader", licence_check: "Licence check" }[change.kind];
+  if (staffCheck) return `${staffCheck}: ${STAFF_RESULT_WORDS[d.result] ?? d.result}${note}`;
+  if (change.kind === "decision") return DECISION_WORDS[d.state] ?? "Decided";
   return "Changed";
 }
 

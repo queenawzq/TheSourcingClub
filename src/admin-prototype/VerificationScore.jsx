@@ -593,7 +593,10 @@ function RecordForm({ check, onSave, onDone, actions }) {
       site: site.trim(),
       siteKey: known?.key ?? "site",
       result,
-      seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])) : {},
+      // An address left as prefilled was never read off the registry: it is not recorded, so it claims no match
+      // and flags no difference later (Nov 25 tester). Name and number keep their prefill: staff compare those.
+      seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])
+        .filter(([key, value]) => isCert || key !== "address" || value !== String(form.prefill?.address ?? "").trim())) : {},
       note: note.trim(),
       link: link.trim(),
       proof,

@@ -338,7 +338,7 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
-export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "" }) {
+export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "", addressConfirmed = false }) {
   const reg = detail?.registration ?? null;
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
@@ -367,7 +367,11 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   if (current && current.details?.form === 2) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const by = byWords(person.checkedBy, current.checked_at, timeZone);
-    const saved = siteRecord(current.details ?? {}, form.profile);
+    const asSaved = siteRecord(current.details ?? {}, form.profile);
+    // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
+    const saved = addressConfirmed
+      ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
+      : asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
     out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
     if (detail.renamedSinceCheck && saved.result === "found") {
@@ -1015,8 +1019,11 @@ export function scoreVerification(input, { timeZone } = {}) {
   const documentDiffers = (input?.rules?.approvalProblem ?? detail.approvalProblem) === "document_differs" ? differingField(detail, reading) : null;
   const typedAddress = String(detail.productionAddress ?? "").trim() || String(detail.location ?? "").trim();
   const readValues = reading?.details?.extracted ?? {};
+  // Staff's own result on the address, for the address now typed (Nov 25).
+  const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
   const registry = withReason(registryCheck({
-    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress,
+    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
   // Company information's inputs, read here: the address check is in this group (Nov 25).
@@ -1028,7 +1035,6 @@ export function scoreVerification(input, { timeZone } = {}) {
   const withStaff = (check, record) => (record
     ? overrideCheck(check, { result: record.result, note: record.note ?? "", by: byWords(record.checkedBy, record.checkedAt, timeZone) }, { vendorKind })
     : check);
-  const addressRecord = typedAddress ? staffRecord("address", (s) => String(s.details?.address ?? "").trim() === typedAddress) : null;
   const address = withStaff(withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress })), addressRecord);
   if (!typedAddress) address.canOverride = false;
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
