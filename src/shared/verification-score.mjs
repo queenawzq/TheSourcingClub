@@ -539,7 +539,7 @@ function scopeField({ reading, country }) {
 
 /* ------------------------------------------------------------ company information */
 
-export function scopeCheck({ reading, level, country }) {
+export function scopeCheck({ reading, level, country, vendorKind = null }) {
   const base = { key: "scope", label: "Factory or trader", weight: 10, reasonKey: "scope" };
   const scope = reading?.details?.tradingScope;
   if (!reading) return { ...base, score: null, verdict: "Licence not read yet", canReason: false };
@@ -547,6 +547,10 @@ export function scopeCheck({ reading, level, country }) {
   const quote = scope.quote ? ` (${scope.quote})` : "";
   // Nov 13 (Queena): the verdict says plainly whether it is a factory, then the evidence.
   // `formerVerdict`: the words before Nov 13, so a reason written for them keeps holding.
+  // A trading company with a trading licence is what it says it is (Nov 24): full score, nothing to explain.
+  if ((level?.level === "low" || scope.trading) && vendorKind === "trading_company") {
+    return { ...base, score: SCORES.scope.making, canReason: true, short: "trading licence", verdict: `Trading company: trading licence${quote}` };
+  }
   if (level?.level === "low" || scope.trading) {
     const coded = country === "TR" || country === "PT";
     // "Wholesale" only when the licence says so: its words, or every activity code a wholesale one (46…).
@@ -914,12 +918,12 @@ export function scoreVerification(input, { timeZone } = {}) {
 
   // Company information
   const siteSignal = signals.find((s) => s.kind === "address" && s.automatic) ?? latest(signals, "address") ?? null;
-  const scope = withReason(scopeCheck({ reading, level: level.trading_scope, country }));
+  const scope = withReason(scopeCheck({ reading, level: level.trading_scope, country, vendorKind: input?.profile?.vendorKind ?? null }));
   const address = withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress }));
   const tiles = photoTiles({ photos: extra.photos, signals, photoCheck, timeZone });
   const photos = withReason(photosCheck(tiles));
   const ciChecks = [scope, address, photos];
-  const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
+  const ciVerdict = groupVerdict(ciChecks, () => (scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`));
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
   // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
   const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;

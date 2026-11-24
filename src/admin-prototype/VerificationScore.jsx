@@ -357,7 +357,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
         </div>
         <p className="vr-overall-line">
           {/* "Factory: …" / "Not a factory: …" names its check already, so it stands alone. */}
-          {weakest ? <><span>Weakest:</span> {/^(Not a )?[Ff]actory:/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
+          {weakest ? <><span>Weakest:</span> {/^((Not a )?[Ff]actory|Trading company):/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
         </p>
         {counted.length > 0 && (
           <div className="vr-weightbar" role="img" aria-label={counted.map((group) => `${group.label} ${scoreGroup(group) ?? 0}%`).join(", ")}>

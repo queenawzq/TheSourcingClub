@@ -16,7 +16,8 @@
 --    first folder being its id, so they never match; staff read every
 --    org-private object already, and may write and delete in that folder only.
 -- 5. Staff may change a vendor's type and its address
---    (admin_update_company_profile); the company is told.
+--    (admin_update_company_profile); the company is told. A trading company's
+--    trading-only licence no longer blocks Approve; a factory's still does.
 -- 6. Every one of these is kept in org_review_changes (staff only): who,
 --    when, what.
 --
@@ -104,8 +105,12 @@ begin
     return 'duplicate';
   end if;
   trading := public.registry_trading_reading(target_org);
-  if trading is not null and not exists (select 1 from public.registry_trader_reviews t
-                                          where t.org_id = target_org and t.reading_id = (trading ->> 'id')::uuid) then
+  -- A trading company's licence is a trading licence: only a factory needs a reason for one (Nov 24).
+  if trading is not null
+     and not exists (select 1 from public.factory_profiles f
+                      where f.org_id = target_org and f.vendor_kind = 'trading_company')
+     and not exists (select 1 from public.registry_trader_reviews t
+                      where t.org_id = target_org and t.reading_id = (trading ->> 'id')::uuid) then
     return 'trading_only';
   end if;
   return null;

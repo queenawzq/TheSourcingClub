@@ -3,7 +3,7 @@
 -- read or write any of it. Fixtures prefixed pgtap24-; counts filter on ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(33);
 
 insert into auth.users (id, email) values
   ('c2400000-0000-0000-0000-000000000001', 'p24-admin@example.com'),
@@ -108,6 +108,20 @@ select is((select address from public.factory_production_addresses where org_id 
 select is((select body from public.notifications where org_id = 'd2400000-0000-0000-0000-0000000000f2' and kind = 'profile_updated'),
   'We updated your company type to Trading company. We updated your company address.', 'the company is told once, both changes named');
 select is((select count(*)::int from public.org_review_changes where org_id = 'd2400000-0000-0000-0000-0000000000f2'), 6, 'every save is in the history');
+
+-- A trading-only licence: a factory needs a reason, a trading company does not -------------------
+insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, mime_type) values
+  ('a2400000-0000-0000-0000-000000000003', 'd2400000-0000-0000-0000-0000000000f3', 'business_registration', 'org-private', 'd2400000-0000-0000-0000-0000000000f3/plate.pdf', 'plate.pdf', 'application/pdf');
+insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic) values
+  ('d2400000-0000-0000-0000-0000000000f3', 'document_reading', 'a2400000-0000-0000-0000-000000000003', 'read',
+   '{"tradingScope":{"trading":true,"read":true,"recognised":true,"quote":"Toptan giyim"}}', true);
+insert into public.registry_checks (org_id, source, result, note, details, automatic)
+values ('d2400000-0000-0000-0000-0000000000f3', 'site', 'found', 'Found on the register', '{}', false);
+select is(public.registry_approval_problem('d2400000-0000-0000-0000-0000000000f3'), 'trading_only',
+  'a factory whose licence reads trading only still needs a reason');
+update public.factory_profiles set vendor_kind = 'trading_company' where org_id = 'd2400000-0000-0000-0000-0000000000f3';
+select is(public.registry_approval_problem('d2400000-0000-0000-0000-0000000000f3'), null,
+  'typed as a trading company, its trading licence no longer blocks Approve');
 
 select * from finish();
 rollback;

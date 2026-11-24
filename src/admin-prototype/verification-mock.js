@@ -445,4 +445,23 @@ const newBrand = {
   }),
 };
 
-export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory, newBrand].map(withScore);
+/* ---------- (c2) The same wholesaler, typed as a trading company (Nov 24): its trading licence is what it is ---------- */
+const turkeyTradingCompany = {
+  ...turkeyTrader,
+  id: "verify-tr-trading",
+  initials: "MS",
+  name: "Merter Sourcing",
+  entityType: "Trading company",
+  summary: "Sources denim and woven trousers from partner mills for European brands.",
+  verification: {
+    ...turkeyTrader.verification,
+    groups: turkeyTrader.verification.groups.map((group) => (group.key !== "company_information" ? group : {
+      ...group,
+      verdict: "Trading company: trading licence",
+      why: "The tax plate shows wholesale of clothing, which is what a trading company does.",
+      checks: group.checks.map((check) => (check.key === "scope" ? { ...check, score: 100, verdict: "Trading company: trading licence" } : check)),
+    })),
+  },
+};
+
+export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, turkeyTradingCompany, portugalFactory, newBrand].map(withScore);
