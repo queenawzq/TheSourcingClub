@@ -1237,7 +1237,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   }, [actions, profile?.id]);
   // One reason for the registry block, the pop-up's (fix round, Nov 24): the score's words, once it is read.
   const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
-  const savedAddress = verification?.facts?.find((fact) => fact.key === "address")?.value ?? "";
+  // The address the company typed, from the Address block (Nov 25: no longer a line in Review details).
+  const savedAddress = verification?.groups?.flatMap((group) => group.checks ?? []).find((check) => check.edit)?.edit.value ?? "";
   const deleteLabel = profile?.entityType === "Trading company" ? "trading company" : isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1391,12 +1392,11 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               </>)}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
-              {/* Live only: Change type, Edit address, and who changed what. */}
+              {/* Live only: Change type, and who changed what. Edit address is in the Address block (Nov 25). */}
               {isVendor && actions.updateCompanyProfile && (
                 <CompanyOverride
                   orgId={profile.id}
                   entityType={profile.entityType}
-                  address={savedAddress}
                   actions={actions}
                   refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
                   onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}

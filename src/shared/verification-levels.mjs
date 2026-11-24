@@ -323,7 +323,7 @@ export function deriveLevels({ detail, extra, states = {} }) {
   const signals = extra?.signals ?? [];
   const reading = latest(signals, "document_reading");
   const files = extra?.registrationFiles ?? [];
-  const addressSignal = signals.find((signal) => signal.kind === "address" && signal.automatic) ?? latest(signals, "address");
+  const addressSignal = signals.find((signal) => signal.kind === "address" && signal.automatic) ?? null;
   return [
     licenseRead({ reading, hasFile: files.length > 0, latestFileId: files[0]?.id ?? null, currentNumber: detail?.registration?.number ?? null }),
     registry(detail ? { ...detail, reopenings: states.reopenings ?? [] } : detail),
