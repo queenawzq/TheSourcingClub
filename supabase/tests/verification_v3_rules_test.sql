@@ -95,6 +95,7 @@ select throws_ok($$select public.admin_explain_trading_scope('d9300000-0000-0000
 reset role;
 update public.factory_profiles set verification_status = 'verified' where org_id = 'd9300000-0000-0000-0000-0000000000f3';
 set local tsc.skip_registry_guard = 'on';
+set local tsc.skip_terms_guard = 'on';
 insert into public.org_reviews (org_id, state) values ('d9300000-0000-0000-0000-0000000000f3', 'approved')
   on conflict (org_id) do update set state = 'approved';
 set local tsc.skip_registry_guard = 'off';

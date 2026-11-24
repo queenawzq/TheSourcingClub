@@ -48,14 +48,16 @@ import {
 } from "../../shared/registration-number.mjs";
 
 
-/** Index of the designed "You're all set" card, the last of the eleven. */
-const LAST_STEP = 10;
-
-/** Index of the designed profile review card. */
-const REVIEW_STEP = 8;
-
-/** Index of the designed terms card. */
-const TERMS_STEP = 9;
+/**
+ * Where the designed cards sit: "You're all set" (the last), the profile review and the terms.
+ * A trading company's copy has one card fewer (no walkthrough), so its cards sit one earlier;
+ * staff can change a company's type after it finished (Nov 24), so this follows the type.
+ */
+const STEPS = {
+  factory: { LAST_STEP: 10, REVIEW_STEP: 8, TERMS_STEP: 9 },
+  trading: { LAST_STEP: 9, REVIEW_STEP: 7, TERMS_STEP: 8 },
+};
+export const onboardingSteps = (companyType) => STEPS[companyType === "trading" ? "trading" : "factory"];
 
 /**
  * Designed English label → factory_profiles column.
@@ -159,6 +161,7 @@ function startVerification(orgId) {
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
+  const initial = onboardingSteps(initialCompanyType);
   // Asked for more information, the factory lands on its profile summary
   // (Queena, Nov 9): no card in between.
   const askedForMore = review?.state === "needs_information";
@@ -166,11 +169,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // its dots reach every step it has been to (onboarding-step.js).
   const [step, setStep, furthestStep, forgetStepsAhead] = useOnboardingStep(
     org.id,
-    askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep,
-    { lastStep: LAST_STEP, resume: initialStep === 0 },
+    askedForMore && initialStep >= initial.LAST_STEP ? initial.REVIEW_STEP : Math.min(initialStep, initial.LAST_STEP),
+    { lastStep: initial.LAST_STEP, resume: initialStep === 0 },
   );
   // True while answering staff's request, until the profile is sent back.
-  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
+  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= initial.LAST_STEP);
   // The staff request this mount has just answered (resubmit.mjs).
   const [answered, setAnswered] = useState(null);
   // A request that arrives while the finish card is open opens the summary too.
@@ -186,6 +189,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
+  const { LAST_STEP, REVIEW_STEP, TERMS_STEP } = onboardingSteps(companyType);
   // The language chosen at sign-up carries on here.
   // The person's language: the sign-up page's, or their saved one when a
   // company already onboarded is sent back here (src/lib/ui-language.js).

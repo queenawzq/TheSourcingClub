@@ -1087,7 +1087,8 @@ function Shell() {
         onComplete={loadProfile}
         onSignOut={signOut}
         review={review}
-        initialStep={isFactory ? 10 : 9}
+        // The finish card: a trading company's copy has one card fewer than a factory's.
+        initialStep={isFactory ? (profile.vendor_kind === "trading_company" ? 9 : 10) : 9}
         initialCompanyType={profile.vendor_kind === "trading_company" ? "trading" : "factory"}
       />
     );

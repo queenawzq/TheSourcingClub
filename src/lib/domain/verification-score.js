@@ -129,3 +129,68 @@ export async function saveCheckReason(orgId, checkKey, text, subjectId = null, w
 export async function explainSharedNumber(orgId, text) {
   return plain(await supabase.rpc("admin_explain_duplicate", { target_org: orgId, note: text }), "save the explanation");
 }
+
+/* ------------------------------------------------------------ the one form (Nov 24) */
+
+/** Proof files live under one staff folder in the private bucket; the company's own rules never reach it. */
+export const PROOF_FOLDER = "5aff0000-0000-4000-8000-000000000001";
+export const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
+export const PROOF_LIMIT_MB = 20;
+
+const extensionOf = (file) => {
+  const fromName = /\.([a-z0-9]{1,5})$/i.exec(file?.name ?? "")?.[1];
+  if (fromName) return fromName.toLowerCase();
+  return { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf" }[file?.type] ?? "bin";
+};
+
+/** Upload one proof file (staff only). Resolves `{ path, name, type }`, or throws in short words. */
+export async function uploadProofFile(orgId, file) {
+  if (!PROOF_TYPES.includes(file?.type)) throw new Error("Use a screenshot (PNG, JPG, WebP) or a PDF");
+  if (file.size > PROOF_LIMIT_MB * 1024 * 1024) throw new Error(`Files up to ${PROOF_LIMIT_MB} MB`);
+  const path = `${PROOF_FOLDER}/${orgId}/${crypto.randomUUID()}.${extensionOf(file)}`;
+  const { error } = await supabase.storage.from("org-private").upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw new Error("Couldn't upload the file. Try again.");
+  return { path, name: file.name || "file", type: file.type };
+}
+
+/** Remove a proof file that was never saved on a check (best effort). */
+export async function removeProofFile(path) {
+  if (!String(path ?? "").startsWith(`${PROOF_FOLDER}/`)) return;
+  await supabase.storage.from("org-private").remove([path]).catch(() => null);
+}
+
+/** A signed link to a proof file, 15 minutes. */
+export async function proofFileUrl(path) {
+  const { data } = await supabase.storage.from("org-private").createSignedUrl(path, 900);
+  return data?.signedUrl ?? null;
+}
+
+const proofList = (files) => (files ?? []).map((f) => ({ path: f.path, name: f.name, type: f.type ?? "" }));
+
+/** Registry form: result found | not_found | could_not_check; seen = { name, number, address } as the site shows them. */
+export async function saveRegistryCheck(orgId, { site, siteKey, result, seen = {}, note = "", link = "", proof = [] }) {
+  return plain(await supabase.rpc("admin_save_registry_check", {
+    target_org: orgId, site, site_key: siteKey ?? "site", result,
+    seen: result === "found" ? seen : {}, note: note || null, link: link || null, proof: proofList(proof),
+  }), "record the check");
+}
+
+/** Certificate form: found | expired | not_found | could_not_check; seen = { number, holder }. */
+export async function saveCertificateCheck(orgId, certificationId, { site, result, seen = {}, note = "", link = "", proof = [] }) {
+  return plain(await supabase.rpc("admin_save_certificate_check", {
+    target_org: orgId, certificate: certificationId, site, result,
+    seen, note: note || null, link: link || null, proof: proofList(proof),
+  }), "record the check");
+}
+
+/** Staff change a vendor's type (manufacturer | trading_company) and/or its address. The company is told. */
+export async function updateCompanyProfile(orgId, { vendorKind = null, address = null }) {
+  return plain(await supabase.rpc("admin_update_company_profile", {
+    target_org: orgId, vendor_kind: vendorKind, address,
+  }), "update the company");
+}
+
+/** The review history: [{ kind, details, at, by }], newest first. */
+export async function reviewChanges(orgId) {
+  return plain(await supabase.rpc("admin_review_changes", { target_org: orgId }), "load the history") ?? [];
+}

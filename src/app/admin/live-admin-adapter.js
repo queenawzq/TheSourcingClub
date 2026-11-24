@@ -22,9 +22,10 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
-import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { adminLevelInputs, adminRegistryStates, registryApprovalBlock, termsApprovalBlock } from "../../lib/domain/registration.js";
 import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
-import { loadVerificationScore, scoreAvailable, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { loadVerificationScore, scoreAvailable, updateVendorProfile, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { reviewChanges } from "../../lib/domain/verification-score.js";
 import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
 import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
@@ -166,6 +167,7 @@ export function withRegistry(profile, state) {
   const when = state.checked_at ? shortDate(state.checked_at) : "";
   const words = state.state === "found"
     ? (state.kind === "document" ? `Registration document checked ${when}.` : `Found on an official registry ${when}.`)
+    : state.state === "judged" ? `Registry couldn't be checked ${when}; staff note on file.`
     : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number or name changed."
     : "No registry check recorded yet.";
   // "100% complete" read as checked when nothing had been: until a check is
@@ -479,6 +481,9 @@ export function createAdminAdapter({ user, signOut }) {
        */
       approvalBlock: registryApprovalBlock,
 
+      /** Why a brand or vendor cannot be approved yet: it has not signed the current terms. Live only. */
+      termsBlock: termsApprovalBlock,
+
       /**
        * The verification score card (Nov 12 design): the score in the shape
        * of verification-mock.js, the writes behind each row's modal, and a
@@ -488,6 +493,10 @@ export function createAdminAdapter({ user, signOut }) {
       verificationScore: loadVerificationScore,
       verificationActions,
       verificationFileUrl,
+
+      /** Staff correct a vendor's type and address, and read who changed what (Nov 24). Live only. */
+      updateCompanyProfile: updateVendorProfile,
+      reviewChanges,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.

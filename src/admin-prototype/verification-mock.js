@@ -17,6 +17,7 @@
 
 import { scoreOverall, withPhotoCheck } from "./verification-scoring.js";
 import { brandVerification } from "../shared/brand-verification.mjs";
+import { siteOptions, siteRecord, siteSummary } from "../shared/verification-score.mjs";
 
 export * from "./verification-scoring.js";
 
@@ -27,7 +28,24 @@ const PHOTO = {
   floor: "/assets/factory-header.png",
 };
 
-/* ---------- (a) China, original licence, QCC recorded ---------- */
+/**
+ * The one record form's data (Nov 24): the country's usual sites, the values as the document shows
+ * them (the form's prefill) and the company's own (what the page compares with).
+ */
+function siteForm(country, prefill, profile, defaultSite) {
+  return { sites: siteOptions(country, {}, profile.name), defaultSite, prefill, profile };
+}
+function certForm(site, href, prefill) {
+  return { sites: [{ key: "issuer", name: site, label: site, href }], defaultSite: site, prefill };
+}
+const CN_PROFILE = { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou, Zhejiang 杭州市萧山区江东三路18号" };
+const CN_SAVED = siteRecord({
+  outcome: "found", site: "GSXT", name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "浙江省杭州市萧山区江东三路18号",
+  proof: [{ path: "mock-gsxt-1", name: "gsxt-record.png", type: "image/png", url: PHOTO.floor }, { path: "mock-gsxt-2", name: "gsxt-annual-report.png", type: "image/png", url: PHOTO.line }],
+}, CN_PROFILE);
+const TR_PROFILE = { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" };
+
+/* ---------- (a) China, original licence, GSXT recorded ---------- */
 const chinaOriginal = {
   id: "verify-cn-original",
   initials: "QJ",
@@ -57,8 +75,8 @@ const chinaOriginal = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Original licence, found on QCC",
-        why: "Every field on the licence is readable and matches the QCC record staff checked.",
+        verdict: "Original licence, found on GSXT",
+        why: "Every field on the licence is readable and matches the GSXT record staff checked.",
         evidence: { kind: "licence", variant: "cn", file: "business-licence.jpg" },
         readAt: "Read Nov 11, 10:42",
         fields: [
@@ -72,7 +90,7 @@ const chinaOriginal = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 98, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 10", result: "found", reference: "qcc.com/firm/7a1c…", name: "杭州钱江服装有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 90, verdict: "Found on GSXT, name, number and address match", registry: { ...CN_SAVED, source: "GSXT", by: "Maya Chen, Nov 10", reference: "", summary: siteSummary(CN_SAVED, "Maya Chen, Nov 10"), form: siteForm("CN", { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "杭州市萧山区江东三路18号" }, CN_PROFILE, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
         ],
       },
       {
@@ -106,7 +124,7 @@ const chinaOriginal = {
           { key: "holder", label: "Holder", value: "Hangzhou Qianjiang Garment Co., Ltd.", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
+          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "", form: certForm("OEKO-TEX label check", "https://www.oeko-tex.com/en/label-check", { number: "SH025 187429", holder: "Hangzhou Qianjiang Garment Co., Ltd." }) }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
         ],
       },
     ],
@@ -147,6 +165,9 @@ const chinaCopy = {
         why: "The image is stamped “仅供认证使用” (for verification use only). Ask for a photo of the original.",
         evidence: { kind: "licence", variant: "cn-copy", file: "licence-copy.jpg" },
         readAt: "Read Nov 12, 08:15",
+        // A licence nobody had read yet: it reads by itself when the page opens (Nov 24).
+        checkingMs: 2000,
+        checkingWords: "Reading the document…",
         fields: [
           { key: "number", label: "Registration number", value: "91440111MA59C2RX8L", copy: true, typed: "91440111MA59C2RX8J" },
           { key: "established", label: "Established", value: "2018-06-02" },
@@ -158,7 +179,7 @@ const chinaCopy = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 40, verdict: "Copy, not the original licence" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司", form: siteForm("CN", { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "广州市白云区黄埔路112号5栋" }, { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" }, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
         ],
       },
       {
@@ -238,7 +259,7 @@ const turkeyTrader = {
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti." }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti.", form: siteForm("TR", { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" }, TR_PROFILE, "GİB") }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
         ],
       },
       {
@@ -376,7 +397,7 @@ const portugalFactory = {
           { key: "holder", label: "Holder", value: "Têxteis Douro – Confecções, Lda", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
+          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "", form: certForm("GOTS certified suppliers", "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers", { number: "CU 1048211", holder: "Têxteis Douro – Confecções, Lda" }) }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
         ],
       },
     ],
@@ -427,4 +448,23 @@ const newBrand = {
   }),
 };
 
-export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory, newBrand].map(withScore);
+/* ---------- (c2) The same wholesaler, typed as a trading company (Nov 24): its trading licence is what it is ---------- */
+const turkeyTradingCompany = {
+  ...turkeyTrader,
+  id: "verify-tr-trading",
+  initials: "MS",
+  name: "Merter Sourcing",
+  entityType: "Trading company",
+  summary: "Sources denim and woven trousers from partner mills for European brands.",
+  verification: {
+    ...turkeyTrader.verification,
+    groups: turkeyTrader.verification.groups.map((group) => (group.key !== "company_information" ? group : {
+      ...group,
+      verdict: "Trading company: trading licence",
+      why: "The tax plate shows wholesale of clothing, which is what a trading company does.",
+      checks: group.checks.map((check) => (check.key === "scope" ? { ...check, score: 100, verdict: "Trading company: trading licence" } : check)),
+    })),
+  },
+};
+
+export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, turkeyTradingCompany, portugalFactory, newBrand].map(withScore);

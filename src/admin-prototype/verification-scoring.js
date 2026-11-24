@@ -7,6 +7,8 @@
  * evidence is shown but not counted. A check not done yet scores 0 and says
  * so, so an unchecked registry never looks like a passed one.
  */
+import { siteRecord, siteSummary, siteVerdict } from "../shared/verification-score.mjs";
+
 export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
 
 /**
@@ -44,11 +46,14 @@ export function scoreOverall(groups) {
   return weight && scored ? Math.round(sum / weight) : null;
 }
 
-/** The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence. */
+/**
+ * The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence,
+ * and a check at 75 or above is never named the weakest: a full match is not a weakness (fix round, Nov 24).
+ */
 export function weakestCheck(groups) {
   return groups
     .filter((group) => groupWeight(group))
-    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null).map((check) => ({ ...check, group: group.label })))
+    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null && check.score < 75).map((check) => ({ ...check, group: group.label })))
     .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
 }
 
@@ -119,7 +124,6 @@ export function photoCheck(photos) {
 export const RECORD_RESULTS = {
   registry: [
     { key: "found", label: "Found" },
-    { key: "name_differs", label: "Name differs" },
     { key: "not_found", label: "Not found" },
     { key: "could_not_check", label: "Couldn't check" },
   ],
@@ -132,7 +136,20 @@ export const RECORD_RESULTS = {
 };
 
 /** What a staff record does to a registry or certificate check. */
-export function recordedCheck(check, { result, reference, name, reason }) {
+export function recordedCheck(check, record) {
+  // The one form (Nov 24): worded and scored as the live page words a saved record.
+  if (record.site != null) {
+    const isCert = check.kind === "certificate";
+    const profile = check.registry.form?.profile ?? {};
+    const saved = siteRecord({ outcome: record.result, site: record.site, ...record.seen, note: record.note, reference: record.link, proof: record.proof }, isCert ? null : profile);
+    const scores = isCert ? { found: 92, nameDiffers: 92, expired: 15, notFound: 5 } : { found: 90, nameDiffers: 60, notFound: 5 };
+    const words = siteVerdict(saved, scores);
+    return {
+      ...check, counts: undefined, score: words.score, verdict: words.verdict, blocks: null,
+      registry: { ...check.registry, ...saved, ...(isCert ? { holder: record.seen?.holder ?? "" } : {}), source: saved.site, by: "You, just now", for: null, summary: siteSummary(saved, "You, just now"), form: check.registry.form },
+    };
+  }
+  const { result, reference, name, reason } = record;
   const source = check.registry.source;
   const outcome = check.kind === "certificate"
     ? {

@@ -9,17 +9,19 @@
  *
  *   the score                 → verificationScore (verification-score.js),
  *                               with Run again's field edits drawn as "Edited by"
- *   Found / Name differs / …  → recordRegistryResult; on a certificate,
- *                               recordCertificateResult
+ *   the record form          → saveRegistryCheck; on a certificate,
+ *                               saveCertificateCheck (Nov 24); proof files
+ *                               → uploadProofFile / removeProofFile
  *   a reason on a check       → saveCheckReason
  *   a photo's search          → recordPhoto
  *   Explain shared number     → explainSharedNumber
- *   Run again                 → rerunVerificationGroup (verification-rerun.js),
+ *   Save changes (was Run again) → rerunVerificationGroup (verification-rerun.js),
  *                               sending only the fields staff edited
  */
 import { urlFor } from "../../lib/domain/documents.js";
 import {
   explainSharedNumber, recordCertificateResult, recordPhoto, recordRegistryResult, saveCheckReason, verificationScore, photoSearchLink,
+  proofFileUrl, removeProofFile, saveCertificateCheck, saveRegistryCheck, updateCompanyProfile, uploadProofFile,
 } from "../../lib/domain/verification-score.js";
 import { rerunVerificationGroup, verificationFieldEdits } from "../../lib/domain/verification-rerun.js";
 
@@ -70,8 +72,75 @@ function withSearchLinks(verification) {
   };
 }
 
-// The score last read per company: Run again's "before", and the certificate it re-reads.
+// The score last read per company: Save changes' "before", and the certificate it re-reads.
 const lastRead = new Map();
+
+/*
+ * A document never read (Nov 24): the page asks the automatic checks to read it when it opens,
+ * once per company per page load, with the staff member's token, and the card says
+ * "Reading the document…" until the reading lands (the page reads again while a group is checking).
+ */
+const readingStarted = new Map();
+
+async function staffToken() {
+  const { supabase } = await import("../../lib/supabase.js");
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token ?? null;
+}
+
+// A document that could not be read is not sent again on every visit: once per file per 6 hours.
+const TRIED_MS = 6 * 60 * 60 * 1000;
+const triedKey = (fileId) => `tsc-read-tried:${fileId}`;
+function triedRecently(fileId) {
+  try { return Date.now() - Number(window.localStorage.getItem(triedKey(fileId)) ?? 0) < TRIED_MS; } catch { return false; }
+}
+function markTried(fileId) {
+  try { window.localStorage.setItem(triedKey(fileId), String(Date.now())); } catch { /* private mode */ }
+}
+
+function startReading(orgId, fileId) {
+  if (fileId) markTried(fileId);
+  const run = { state: "running" };
+  readingStarted.set(orgId, run);
+  (async () => {
+    try {
+      const token = await staffToken();
+      if (!token) throw new Error("signed out");
+      const reply = await fetch("/api/verification-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orgId }),
+      });
+      if (!reply.ok) throw new Error(String(reply.status));
+      run.state = "done";
+    } catch {
+      run.state = "failed";
+    }
+  })();
+  return run;
+}
+
+/** The licence uploaded and never read: no reading behind the group, and nothing reading it now. */
+const neverRead = (group) => group?.key === "business_registration" && group.evidence?.kind === "licence"
+  && group.evidence.files?.length > 0 && !group.readAtIso;
+
+function withReading(orgId, verification) {
+  const group = verification.groups.find((g) => g.key === "business_registration");
+  if (!neverRead(group)) return verification;
+  const fileId = group.evidence.files[0]?.id ?? null;
+  const run = readingStarted.get(orgId)
+    ?? (fileId && triedRecently(fileId) ? { state: "failed" } : startReading(orgId, fileId));
+  const failed = run.state === "failed" || run.state === "done";
+  // Done with no reading is a reading that failed: staff record what the registry shows instead.
+  const patch = failed
+    ? {
+      stale: "Couldn't read the document",
+      verdict: "Couldn't read the document",
+      checks: (group.checks ?? []).map((check) => (check.key === "licence" && check.score == null ? { ...check, verdict: "Couldn't read the document" } : check)),
+    }
+    : { checking: true, checkingWords: "Reading the document…" };
+  return { ...verification, groups: verification.groups.map((g) => (g === group ? { ...g, ...patch } : g)) };
+}
 
 /** `{ facts, groups, … }` in the shape of verification-mock.js, or throws. */
 export async function loadVerificationScore(orgId, { urls = true } = {}) {
@@ -80,7 +149,9 @@ export async function loadVerificationScore(orgId, { urls = true } = {}) {
     verificationScore(orgId, { urls, timeZone }),
     urls ? verificationFieldEdits(orgId).catch(() => null) : null,
   ]);
-  const verification = withSearchLinks(withEdits(score, edits));
+  let verification = withSearchLinks(withEdits(score, edits));
+  // Only the review page (urls) starts a reading; the queue never does.
+  if (urls) verification = withReading(orgId, verification);
   if (urls) lastRead.set(orgId, verification);
   return verification;
 }
@@ -128,11 +199,21 @@ export function verificationActions(orgId, { reload, changed }) {
     changed?.();
   };
   return {
-    recordCheck: (groupKey, check, { result, reference, name, reason, source }) => after(() => (
-      check.kind === "certificate"
+    recordCheck: (groupKey, check, record) => after(() => {
+      // The one form (Nov 24): where staff checked, what it showed, the values as the site shows them, proof files.
+      if (record.site != null) {
+        return check.kind === "certificate"
+          ? saveCertificateCheck(orgId, check.subjectId, record)
+          : saveRegistryCheck(orgId, record);
+      }
+      const { result, reference, name, reason, source } = record;
+      return check.kind === "certificate"
         ? recordCertificateResult(orgId, check.subjectId, { result, reference, note: reason, number: check.lookup?.copy ?? "" })
-        : recordRegistryResult(orgId, { source: source ?? check.registry?.sourceKey, result, reference, name, reason })
-    )),
+        : recordRegistryResult(orgId, { source: source ?? check.registry?.sourceKey, result, reference, name, reason });
+    }),
+    uploadProof: (file) => uploadProofFile(orgId, file),
+    removeProof: (path) => removeProofFile(path),
+    proofUrl: (file) => proofFileUrl(file.path),
     saveReason: (groupKey, check, text) => after(() => saveCheckReason(orgId, check.reasonKey ?? check.key, text, check.subjectId ?? null, check.verdict ?? null)),
     recordPhoto: (groupKey, index, record, photo) => after(() => recordPhoto(orgId, photo?.id, {
       result: DB_PHOTO[record.result] ?? record.result, link: record.whereUrl ?? "",
@@ -154,7 +235,32 @@ export function verificationActions(orgId, { reload, changed }) {
         await reload();
         changed?.();
       }
-      return outcome.ok ? {} : { error: outcome.error || "Couldn't run again" };
+      return outcome.ok ? {} : { error: outcome.error || "Couldn't save. Try again." };
     },
   };
+}
+
+/**
+ * Change type / Edit address (Nov 24). A new address is then structured into its parts
+ * (street, city, country) by the address route, when the site has it; a failure there
+ * never undoes the save.
+ */
+export async function updateVendorProfile(orgId, change) {
+  try {
+    await updateCompanyProfile(orgId, change);
+  } catch (error) {
+    throw new Error(staffWords(error));
+  }
+  // The type is read as the score is read (no run needed); a new address is checked again, and only the address.
+  // The save returns at once (fix round, Nov 24: it waited ~10 s for the check); `checked` settles when it is done.
+  if (!change.address) return {};
+  const checked = rerunVerificationGroup({
+    orgId, group: "company_information", fields: { siteAddress: change.address }, before: lastRead.get(orgId) ?? null, addressOnly: true,
+  }).catch(() => null);
+  staffToken().then((token) => token && fetch("/api/structure-address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ orgId }),
+  })).catch(() => null);
+  return { checked };
 }

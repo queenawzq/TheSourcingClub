@@ -74,8 +74,16 @@ async function demoUser({ email, name }) {
     }), `create ${email}`);
   }
   const client = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
-  if (error) throw new Error(`sign in as ${email}: ${error.message}`);
+  // A hosted project limits sign-ins per hour; with this many demo users a reseed of a test database
+  // reaches it. Wait and try again (up to 12 times, a minute apart) rather than stop halfway.
+  for (let attempt = 1; ; attempt += 1) {
+    const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+    if (!error) break;
+    const limited = error.status === 429 || /rate limit/i.test(error.message ?? "");
+    if (!limited || attempt >= 12) throw new Error(`sign in as ${email}: ${error.message}`);
+    console.log(`  sign-in limit reached for ${email}; waiting 60 s (try ${attempt} of 12)`);
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+  }
   const { data } = await client.auth.getUser();
   return { client, id: data.user.id, email };
 }
@@ -85,6 +93,7 @@ const brand = await demoUser(LOGINS.brand);
 const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const pendingBrand = await demoUser(LOGINS.pendingBrand);
+const unsignedBrand = await demoUser(LOGINS.unsignedBrand);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
@@ -101,7 +110,21 @@ const zhFactory = await demoUser(LOGINS.zhFactory);
 const callUsers = {};
 for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
 for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
-const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
+// Factories from eight more countries waiting for review, so staff can walk each country's registry
+// without signing one up. Nobody signs in as them, so they have no sign-in button (demo-logins.mjs);
+// their owners are demo users all the same, so the next run clears them.
+const COUNTRY_CASES = {
+  verifyEs: { name: "Confecciones Levante", email: "demo-verify-es@example.com" },
+  verifyGb: { name: "Pennine Knitwear", email: "demo-verify-gb@example.com" },
+  verifyIt: { name: "Maglificio Val Seriana", email: "demo-verify-it@example.com" },
+  verifyVn: { name: "Song Hong Garment", email: "demo-verify-vn@example.com" },
+  verifyIn: { name: "Tiruppur Knit Exports", email: "demo-verify-in@example.com" },
+  verifyBd: { name: "Meghna Apparels", email: "demo-verify-bd@example.com" },
+  verifyUs: { name: "Carolina Cut & Sew", email: "demo-verify-us@example.com" },
+  verifyHk: { name: "Kowloon Bay Garments", email: "demo-verify-hk@example.com" },
+};
+for (const [key, login] of Object.entries(COUNTRY_CASES)) callUsers[key] = await demoUser(login);
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, unsignedBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -429,6 +452,18 @@ must(await admin.from("brand_profiles").upsert({
   verification_status: "pending",
 }), "pending brand profile");
 
+// The one company waiting for review that has not signed the terms, so the
+// review page shows "Approve needs: the company to sign the terms". The
+// signing pass at the end leaves it out.
+const unsignedBrandOrg = must(await unsignedBrand.client.rpc("create_org", { org_name: LOGINS.unsignedBrand.name, org_kind: "brand" }), "create unsigned brand org");
+must(await admin.from("brand_profiles").upsert({
+  org_id: unsignedBrandOrg.id,
+  legal_name: "Fernhill Basics Ltd",
+  hq_location: "Bristol, UK",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "pending",
+}), "unsigned brand profile");
+
 // A factory waiting for a decision, for the same finish-card check.
 const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
 // It also carries what a reviewer (and the admin's AI suggestions) should
@@ -613,19 +648,27 @@ for (const [key, setup] of Object.entries(CALL_SETUP)) {
 // review page: A ≈93 Strong, B ≈72 Needs a look, C ≈28 Flagged, D ≈73 Needs
 // a look (≈84 once Run again reads its current upload).
 console.log("verification score cases");
+// The terms each kind of company signs at the end of onboarding: the latest published version.
+const CURRENT_TERMS = Object.fromEntries(
+  must(await admin.from("legal_documents").select("id, kind, version").in("kind", ["terms_brand", "terms_factory", "terms_trading"])
+    .order("version", { ascending: true }), "current terms").map((doc) => [doc.kind, doc]),
+);
 {
   const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString();
   const nowIso = new Date().toISOString();
   const verifyOrg = async (key, { signer, ...profile }, { address, registration }) => {
     const user = callUsers[key];
-    const org = must(await user.client.rpc("create_org", { org_name: LOGINS[key].name, org_kind: "factory" }), `create ${key}`);
+    const login = LOGINS[key] ?? COUNTRY_CASES[key];
+    const org = must(await user.client.rpc("create_org", { org_name: login.name, org_kind: "factory" }), `create ${key}`);
     must(await admin.from("factory_profiles").upsert({
       org_id: org.id, onboarding_completed_at: nowIso, verification_status: "pending", published_at: nowIso, ...profile,
     }), `${key} profile`);
     if (address) must(await user.client.from("factory_profiles").update({ production_address: address }).eq("org_id", org.id), `${key} production address`);
     if (registration) must(await user.client.rpc("save_company_registration", { target_org: org.id, ...registration }), `${key} registration`);
     must(await admin.from("terms_acceptances").insert({
-      org_id: org.id, terms_version: "1", signature: signer ?? LOGINS[key].name, accepted_by: user.id, accepted_at: day(-2),
+      org_id: org.id, terms_version: `${CURRENT_TERMS.terms_factory.kind} v${CURRENT_TERMS.terms_factory.version}`,
+      legal_document_id: CURRENT_TERMS.terms_factory.id,
+      signature: signer ?? login.name, accepted_by: user.id, accepted_at: day(-2),
     }), `${key} terms`);
     return { org, user };
   };
@@ -802,6 +845,48 @@ console.log("verification score cases");
     await certReading(d, cert, { certNumber: "CU 1048211", validUntil: "2027-08-31", holder: "Têxteis Douro – Confecções, Lda" });
     must(await staff.rpc("admin_check_reason", { target_org: d.org.id, check_key: "certificate", note: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", subject: cert.id }), "D's certificate reason");
   }
+
+  // Eight more countries, each waiting for staff's first registry check: a registration document the
+  // reading has read, the number typed at onboarding, a production address and signed terms.
+  const countryCases = [
+    { key: "verifyEs", country: "ES", legal: "Confecciones Levante, S.L.", number: "B54839216", file: "es-nota-simple.png", documentType: "Nota simple informativa",
+      address: "Calle Severo Ochoa 18, Polígono Industrial Carrús, 03205 Elche, Alicante", founded: "2011-05-12", scope: "Confección de prendas de vestir exteriores; fabricación de prendas de punto",
+      intro: "Cut-and-sew outerwear and knit tops, 3 lines, private label for EU brands.", employees: 85, signer: "Lucía Martínez" },
+    { key: "verifyGb", country: "GB", legal: "Pennine Knitwear Ltd", number: "14827365", file: "gb-certificate.png", documentType: "Certificate of Incorporation",
+      address: "Unit 4, Abbey Meadows Mills, Abbey Lane, Leicester LE4 5DQ", founded: "2023-04-18", scope: "14390 Manufacture of other knitted and crocheted apparel",
+      intro: "Fully-fashioned knitwear in lambswool and merino, small runs from 50 pieces.", employees: 22, signer: "Tom Hargreaves" },
+    { key: "verifyIt", country: "IT", legal: "Maglificio Val Seriana S.r.l.", number: "04812730165", file: "it-visura.png", documentType: "Visura camerale",
+      address: "Via Provinciale 62, 24021 Albino (BG)", founded: "2009-02-09", scope: "Fabbricazione di articoli di maglieria (ATECO 14.39)",
+      intro: "Knitwear mill with 12 flat-knitting machines, cashmere and wool blends.", employees: 40, signer: "Giulia Rota" },
+    { key: "verifyVn", country: "VN", legal: "Song Hong Garment Company Limited", number: "0108472915", file: "vn-dkkd.png", documentType: "Giấy chứng nhận đăng ký doanh nghiệp",
+      address: "Lô CN3, Khu công nghiệp Quang Minh, Huyện Mê Linh, Hà Nội", founded: "2018-09-14", scope: "1410 May trang phục",
+      intro: "Woven shirts and trousers, 6 lines, FOB for US and EU retailers.", employees: 420, signer: "Nguyễn Thu Hà" },
+    { key: "verifyIn", country: "IN", legal: "Tiruppur Knit Exports Private Limited", number: "U18101TZ2015PTC021847", file: "in-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "14/2 Kangeyam Road, Veerapandi, Tiruppur, Tamil Nadu 641605", founded: "2015-07-21", scope: "Manufacture of knitted and crocheted apparel",
+      intro: "Cotton jersey T-shirts and babywear, GOTS organic lines, 8 sewing lines.", employees: 260, signer: "Karthik Subramanian" },
+    { key: "verifyBd", country: "BD", legal: "Meghna Apparels Limited", number: "C-148273/2018", file: "bd-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "Plot 27, BSCIC Industrial Estate, Konabari, Gazipur 1751", founded: "2018-03-06", scope: "Manufacture of woven and knit readymade garments",
+      intro: "Basics in volume: tees, polos and denim, 14 lines.", employees: 900, signer: "Farhana Rahman" },
+    { key: "verifyUs", country: "US", legal: "Carolina Cut & Sew LLC", number: "2214587", file: "us-certificate.png", documentType: "Certificate of Organization",
+      address: "1180 Highland Ave NE, Hickory, NC 28601", founded: "2019-10-03", scope: "Cut and sew apparel contractor",
+      intro: "Domestic cut-and-sew for small brands: samples, grading and runs from 100.", employees: 35, signer: "Megan Carter" },
+    { key: "verifyHk", country: "HK", legal: "Kowloon Bay Garments Limited", number: "3184276", file: "hk-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "Flat B, 9/F, Kowloon Bay Industrial Centre, 15 Wang Hoi Road, Kowloon Bay, Kowloon", founded: "2022-08-11", scope: "Garment manufacturing and export",
+      intro: "Sampling room in Hong Kong with production partners in Guangdong.", employees: 18, signer: "Chan Ka Wai" },
+  ];
+  // The location under the name says the country, as onboarding's does.
+  const COUNTRY_NAMES = { ES: "Spain", GB: "United Kingdom", IT: "Italy", VN: "Vietnam", IN: "India", BD: "Bangladesh", US: "United States", HK: "Hong Kong" };
+  for (const c of countryCases) {
+    const v = await verifyOrg(c.key, {
+      legal_name: c.legal, country_code: c.country, location: `${c.address}, ${COUNTRY_NAMES[c.country]}`, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
+      intro: c.intro, signer: c.signer,
+    }, { address: c.address, registration: { country: c.country, number: c.number } });
+    const file = await upload(v, "business_registration", c.file, { ...doc(c.file), createdAt: day(-1) });
+    await reading(v, file, {
+      documentType: c.documentType, registrationNumber: c.number, legalName: c.legal, address: c.address, businessScope: c.scope, foundingDate: c.founded,
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: c.scope, makingFrom: "words" }, fileName: c.file, title: c.legal, numberAtReading: c.number });
+  }
+  console.log(`${countryCases.length} more countries waiting for review: ${countryCases.map((c) => c.country).join(", ")}`);
 }
 
 // A company staff can review but nobody can be emailed about: no members, so
@@ -1699,6 +1784,39 @@ must(await admin.from("notification_email_outbox")
   .eq("status", "pending"), "skip the seed's own emails");
 
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
+// Every company that finished onboarding signed the terms there (it is a
+// required step), so each seeded one has signed the current version of its
+// kind, by its owner, except the one case kept unsigned. Northgate Goods has
+// no members: the person who signed has since left it.
+console.log("signed terms");
+{
+  const northgateSigner = await demoUser({ email: "demo-northgate-former-owner@example.com", name: "Northgate Goods (former owner)" });
+  const northgate = must(await admin.from("orgs").select("id").eq("slug", "demo-no-contact").single(), "Northgate Goods");
+  const seededMembers = must(await admin.from("org_members").select("org_id, user_id, role, created_at").in("user_id", demoUserIds).order("created_at"), "seeded companies");
+  const orgIds = [...new Set([...seededMembers.map((member) => member.org_id), northgate.id])].filter((id) => id !== unsignedBrandOrg.id);
+  const orgs = must(await admin.from("orgs").select("id, type, name").in("id", orgIds), "seeded company kinds");
+  const finishedFactories = must(await admin.from("factory_profiles").select("org_id, vendor_kind").in("org_id", orgIds).not("onboarding_completed_at", "is", null), "finished factories");
+  const finishedBrands = must(await admin.from("brand_profiles").select("org_id").in("org_id", orgIds).not("onboarding_completed_at", "is", null), "finished brands");
+  const kindOf = new Map([
+    ...finishedFactories.map((row) => [row.org_id, row.vendor_kind === "trading_company" ? "terms_trading" : "terms_factory"]),
+    ...finishedBrands.map((row) => [row.org_id, "terms_brand"]),
+  ]);
+  const owners = must(await admin.from("org_members").select("org_id, user_id, role, created_at").in("org_id", orgIds).eq("role", "owner").order("created_at"), "owners");
+  const profiles = must(await admin.from("user_profiles").select("id, full_name").in("id", [...owners.map((owner) => owner.user_id), northgateSigner.id]), "owner names");
+  const nameOf = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
+  const rows = orgs.filter((org) => kindOf.has(org.id)).map((org) => {
+    const doc = CURRENT_TERMS[kindOf.get(org.id)];
+    const signer = owners.find((owner) => owner.org_id === org.id)?.user_id ?? (org.id === northgate.id ? northgateSigner.id : null);
+    return signer && {
+      org_id: org.id, terms_version: `${doc.kind} v${doc.version}`, legal_document_id: doc.id,
+      signature: nameOf.get(signer) || org.name, accepted_by: signer,
+    };
+  }).filter(Boolean);
+  // A company signed already (the verification cases) keeps its signature.
+  must(await admin.from("terms_acceptances").upsert(rows, { onConflict: "org_id,terms_version", ignoreDuplicates: true }), "sign the terms");
+  console.log(`  ${rows.length} companies signed; ${LOGINS.unsignedBrand.name} left unsigned`);
+}
+
 // A bell reading 79 says the seed was busy, not that anything needs looking at.
 // Each demo company keeps its five newest unread; the rest stay in the list, read.
 const demoMembers = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo companies");
@@ -1756,6 +1874,7 @@ done. Every login uses the password "${PASSWORD}".
   factory member  ${LOGINS.factoryMember.email}   (Demo Factory, Add update only)
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   pending brand   ${LOGINS.pendingBrand.email}   (waiting for verification)
+  unsigned brand  ${LOGINS.unsignedBrand.email}   (waiting for verification, terms not signed: Approve waits)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
