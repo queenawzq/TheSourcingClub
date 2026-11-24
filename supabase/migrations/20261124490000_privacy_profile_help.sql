@@ -7,7 +7,6 @@
 --     street, city and country (api/structure-address.js, 20261124400000);
 --   - the production dates it types on a quote's capacity window, when the
 --     form cannot read them itself (api/parse-capacity-window.js).
--- Wording approved by Youssef (Nov 24).
 --
 -- A new row; earlier versions stay. English only, like every earlier version;
 -- nobody signs anything new. The edit refuses to run on text that does not
