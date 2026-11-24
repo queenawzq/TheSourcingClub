@@ -1199,6 +1199,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // found it), re-read whenever the registry panel records a check.
   const [registryChanged, setRegistryChanged] = useState(0);
   const [approveBlock, setApproveBlock] = useState(null);
+  // Live only: Approve waits for the company's signed terms, brand or vendor.
+  const [termsBlock, setTermsBlock] = useState(null);
   const live = useLiveVerification(profile?.id, Boolean(isVendor && !profile?.verification && actions.verificationScore && profile?.id), () => {
     setRegistryChanged((n) => n + 1);
     onRegistryChange?.();
@@ -1217,6 +1219,14 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     actions.approvalBlock(profile.id).then((reason) => { if (!cancelled) setApproveBlock(reason); }, () => {});
     return () => { cancelled = true; };
   }, [actions, isVendor, profile?.id, registryChanged]);
+  useEffect(() => {
+    setTermsBlock(null);
+    if (!actions.termsBlock || !profile?.id) return undefined;
+    let cancelled = false;
+    actions.termsBlock(profile.id).then((reason) => { if (!cancelled) setTermsBlock(reason); }, () => {});
+    return () => { cancelled = true; };
+  }, [actions, profile?.id]);
+  const approveBlocks = [approveBlock, termsBlock].filter(Boolean);
   const deleteLabel = isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1420,10 +1430,10 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
+              <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0} title={approveBlocks.join("\n") || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
                 {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
               </button>
-              {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}
+              {approveBlocks.map((block) => <p key={block} className="admin-approve-block" role="note">{block}</p>)}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}

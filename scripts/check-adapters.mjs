@@ -40,6 +40,7 @@ const ALLOWED_ABSENT = {
   // Credits are not in the admin design (rule B: built live only, flagged).
   "admin:companyCredits:mock": "live only; the review page draws no credits card without it",
   // The registry guard is live only: the prototype approves with no registry.
+  "admin:termsBlock:mock": "live only; the database refuses Approve without signed terms",
   "admin:approvalBlock:mock": "live only; without it Approve is never greyed for a missing registry check",
   "admin:reviewEmailStatus:mock": "live only; the prototype has no email outbox, so the review page draws no email card without it",
   "admin:resendReviewEmails:mock": "live only; only called from the email card, which needs reviewEmailStatus",

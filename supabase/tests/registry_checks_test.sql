@@ -34,6 +34,8 @@ select is(public.registration_number_problem(null, ''), 'missing', 'other: blank
 select is(public.registration_number_problem('CN', '９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ'), null, 'CN: full-width characters from a Chinese keyboard pass');
 
 -- Fixtures --------------------------------------------------------------------
+-- Signed terms are tested in verification_simple_test.sql.
+set local tsc.skip_terms_guard = 'on';
 insert into auth.users (id, email) values
   ('c8600000-0000-0000-0000-000000000001', 'p86-admin@example.com'),
   ('c8600000-0000-0000-0000-000000000002', 'p86-factory@example.com'),

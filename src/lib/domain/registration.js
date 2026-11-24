@@ -104,6 +104,13 @@ export function approvalBlockText(detail) {
   return approvalBlockWords(detail.approvalProblem, detail);
 }
 
+/** Staff: Approve waits for the company's signed terms (the database refuses it otherwise). */
+export async function termsApprovalBlock(orgId) {
+  const { data, error } = await supabase.rpc("admin_terms_signed", { target_org: orgId });
+  if (error) throw error;
+  return data ? null : "Approve needs: the company to sign the terms";
+}
+
 export async function registryApprovalBlock(orgId) {
   return approvalBlockText(await adminRegistryDetail(orgId));
 }

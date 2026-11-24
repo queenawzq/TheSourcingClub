@@ -22,7 +22,7 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
-import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
+import { adminLevelInputs, adminRegistryStates, registryApprovalBlock, termsApprovalBlock } from "../../lib/domain/registration.js";
 import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
 import { loadVerificationScore, scoreAvailable, updateVendorProfile, verificationActions, verificationFileUrl } from "./live-verification.js";
 import { reviewChanges } from "../../lib/domain/verification-score.js";
@@ -480,6 +480,9 @@ export function createAdminAdapter({ user, signOut }) {
        * database refuses it otherwise). Live only.
        */
       approvalBlock: registryApprovalBlock,
+
+      /** Why a brand or vendor cannot be approved yet: it has not signed the current terms. Live only. */
+      termsBlock: termsApprovalBlock,
 
       /**
        * The verification score card (Nov 12 design): the score in the shape

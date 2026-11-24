@@ -4,6 +4,8 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 select plan(56);
+-- Signed terms are tested in verification_simple_test.sql.
+set local tsc.skip_terms_guard = 'on';
 
 insert into auth.users (id, email) values
   ('c8700000-0000-0000-0000-000000000001', 'p87-admin@example.com'),
