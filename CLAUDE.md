@@ -466,6 +466,11 @@ a company-level verdict and a file-level one cannot contradict each other.
   Queena, Nov 7); reveals of an account number are still recorded. A Wise or
   PayPal payout underway sits under Processing, which names each row's
   provider.
+- **Signing up never makes anyone staff** (`20261124700000`). "Confirm email"
+  is off, so a new account's address proves nothing: the old allowlist
+  (`admin_emails`) made whoever registered a listed address first an admin.
+  Staff are added on purpose, `platform_admins` by user id, after the person
+  has an account. `admin_emails` remains and grants nothing.
 - **Every function on this surface is `security definer` and has no policy
   behind it.** The `is_platform_admin()` test is the first statement in each,
   before any `select` — checking afterwards leaks existence through `P0002`

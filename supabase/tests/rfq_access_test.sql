@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(35);
+select plan(36);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -439,7 +439,8 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Admin allowlist (migration 024)
+-- Admin allowlist (migration 024), no longer granting (20261124700000):
+-- sign-up proves no mailbox, so an address on the list is not staff by itself.
 -- ---------------------------------------------------------------------------
 
 reset role;
@@ -450,8 +451,15 @@ insert into auth.users (id, email) values
 select is(
   (select count(*)::int from public.platform_admins
      where user_id = 'c0000000-0000-0000-0000-0000000000a1'),
+  0,
+  'signing up with an allowlisted address does not make the account staff'
+);
+
+select is(
+  (select count(*)::int from public.user_profiles
+     where id = 'c0000000-0000-0000-0000-0000000000a1'),
   1,
-  'an allowlisted address becomes a platform admin on first sign-in'
+  'signing up still creates the profile'
 );
 
 insert into auth.users (id, email) values
