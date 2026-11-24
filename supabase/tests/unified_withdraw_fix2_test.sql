@@ -260,6 +260,9 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_review_dispute(%L, %L, %L, %s, null, null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'needs_response', 10700)),
   'the server opens the dispute''s payment review');
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int + 1, 'F4: and counted on the overview');
+select lives_ok(format($$select pg_temp.as_server(%L)$$,
+  format('select public.record_payment_review_dispute(%L, %L, %L, %s, null, null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'won', 10700)),
+  'the server records the win on the review (applyDispute does this first)');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(1, 4))),
   'the dispute is won');
 select ok((select disputed_at is null from public.order_payments where id = pg_temp.pay(1, 4)), 'the step is no longer disputed');

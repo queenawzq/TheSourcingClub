@@ -65,25 +65,29 @@ function ReviewActions({ row, onChanged }) {
 
   if (step === "refund") {
     const cents = centsFrom(amount);
-    const over = cents != null && cents > Number(row.returnable_cents);
+    // Never more than the factory's part of what the brand got back, nor its balance now.
+    const most = Math.min(Number(row.factory_part_cents) || 0, Number(row.returnable_cents) || 0);
+    const over = cents != null && cents > most;
     return (
       <div className="admin-actions">
         {said}
-        <span className="admin-sub admin-row-message">The brand already has this money back. This amount comes out of the factory's balance.</span>
-        <label className="admin-sub">Amount to refund (USD)
+        <span className="admin-sub admin-row-message">The brand already has this money back. This only lowers the factory's balance.</span>
+        <label className="admin-sub">Amount to take from the factory's balance (USD)
           <input inputMode="decimal" value={amount} data-testid="review-refund-amount"
                  onChange={(event) => setAmount(event.target.value)} />
         </label>
         <span className={over ? "admin-error admin-row-message" : "admin-sub admin-row-message"}>
-          {`Up to ${moneyIn(row.returnable_cents)}, the factory's balance now.`}
+          {Number(row.factory_part_cents) <= Number(row.returnable_cents)
+            ? `Up to ${moneyIn(most)} (the factory's part of what the brand got back).`
+            : `Up to ${moneyIn(most)} (the factory's balance now).`}
         </span>
         <label className="admin-sub">Note for the factory (required)
           <input value={note} maxLength={300} data-testid="review-refund-note" onChange={(event) => setNote(event.target.value)} />
         </label>
         <button type="button" className="admin-reject" data-testid="review-refund-confirm"
                 disabled={working || cents == null || over || note.trim().length < 3}
-                onClick={() => run(() => refundBrand(row.id, cents, note.trim()), `${moneyIn(cents)} returned to the brand from the factory's balance.`)}>
-          {cents != null ? `Refund ${moneyIn(cents)}` : "Refund"}
+                onClick={() => run(() => refundBrand(row.id, cents, note.trim()), `${moneyIn(cents)} taken from the factory's balance.`)}>
+          {cents != null ? `Take ${moneyIn(cents)} from balance` : "Take from balance"}
         </button>
         <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setProblem(null); }}>Cancel</button>
       </div>
@@ -118,7 +122,9 @@ function ReviewActions({ row, onChanged }) {
       ) : null}
       {row.factory_paused ? (
         <span className="admin-sub admin-row-message">
-          {`Pay factory: its withdrawals start again and nothing is taken${row.cause === "dispute" && row.dispute_status !== "lost" ? "; if the bank decides for the brand, we bear the loss" : ""}.`}
+          {row.cause === "dispute" && row.dispute_status !== "lost"
+            ? "Pay factory: its withdrawals start again and nothing is taken. This step stays on hold until the bank decides; if it decides for the brand, we bear the loss."
+            : "Pay factory: its withdrawals start again and nothing is taken."}
         </span>
       ) : null}
     </div>
@@ -153,7 +159,8 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                   <td>
                     <span>{row.cause === "dispute" ? disputeWords(row) : "Refunded in Stripe after approval"}</span>
                     <span className="admin-sub">
-                      {row.factory_paused ? `Factory's withdrawals paused · its balance now ${moneyIn(row.returnable_cents)}` : "Factory's withdrawals not paused"}
+                      {row.factory_still_paused ? `Factory's withdrawals paused · its balance now ${moneyIn(row.returnable_cents)}` : "Factory's withdrawals not paused"}
+                      {row.step_on_hold ? " · this step on hold until the bank decides" : ""}
                       {Number(row.in_withdrawal_cents) > 0 ? ` · ${moneyIn(row.in_withdrawal_cents)} of this step in a waiting withdrawal` : ""}
                     </span>
                     {Number(row.withdrawn_cents) > 0 ? (
@@ -175,8 +182,8 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                     {row.decision ? (
                       <span className="admin-sub" data-testid="review-decision">
                         {row.decision === "refund_brand"
-                          ? `${moneyIn(row.returned_cents)} refunded to the brand from the factory's balance.`
-                          : "Factory paid. Nothing was taken."}
+                          ? `${moneyIn(row.returned_cents)} taken from the factory's balance (brand already refunded).`
+                          : "Factory keeps the money. Nothing was taken."}
                         {row.decided_by_name ? ` ${row.decided_by_name}, ${day(row.decided_at)}.` : ` ${day(row.decided_at)}.`}
                         {row.note ? ` Note: ${row.note}` : ""}
                       </span>

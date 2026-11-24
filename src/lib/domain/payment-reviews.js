@@ -17,7 +17,7 @@ export async function paymentReviewBoard() {
 
 const REFUSALS = {
   review_decided: "This review was already decided. Reload the board.",
-  review_amount: "Enter an amount to refund.",
+  review_amount: "Enter an amount to take from the factory's balance.",
   review_dispute_open: "The bank hasn't decided this dispute yet. Refund brand is available once the brand has its money back.",
   review_not_approved: "This step isn't approved, so its money isn't in the factory's balance. Choose Pay factory.",
   review_note: "Add a note for the factory.",
@@ -27,7 +27,8 @@ const REFUSALS = {
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must decide.",
 };
 const said = (error) => {
-  if (error?.hint === "review_over_balance" && (error.details ?? error.detail)) return `You can refund up to ${error.details ?? error.detail}, the factory's balance now.`;
+  if (error?.hint === "review_over_balance" && (error.details ?? error.detail)) return `You can take up to ${error.details ?? error.detail}, the factory's balance now.`;
+  if (error?.hint === "review_over_part" && (error.details ?? error.detail)) return `You can take up to ${error.details ?? error.detail}, the factory's part of what the brand got back.`;
   return REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.";
 };
 

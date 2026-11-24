@@ -163,7 +163,7 @@ const PATTERNS = [
   [/^(\$[\d,.]+) reversed by your bank$/, (m) => `${m[1]} 已被你的银行撤回`],
   // Withdrawals paused while a payment is reviewed (20261124100000).
   [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)", so our team is reviewing the payment\.$/,
-    (m) => `付款审核期间，提现已暂停。一位品牌就“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
+    (m) => `付款审核期间，提现已暂停。品牌方就“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
   [/^Withdrawals are paused while a payment is reviewed\.$/, () => "付款审核期间，提现已暂停。"],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.

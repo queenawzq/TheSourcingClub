@@ -701,7 +701,7 @@ body {
   line-height: 20px;
 }
 .tsc-team-notice p { margin: 0; }
-/* A brand under review (payment reviews): above a flow's 76px bottom bar, never over its buttons. */
+/* A brand under review (payment reviews): above a flow's 76px bottom bar, never over its buttons; closed with OK. */
 .tsc-team-notices.tsc-review-notice { bottom: 92px; }
 .tsc-team-notice .tsc-team-notice-error { margin-top: 8px; color: var(--danger); }
 .tsc-team-notice-actions {

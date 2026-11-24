@@ -191,7 +191,7 @@ select is(pg_temp.told(pg_temp.org('e1'), 'Withdrawals paused'),
   'A brand requested a refund for "PR24 deposit" on PR24 request 1 (PR24-1), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
   'the factory is told, without blame');
 select is(pg_temp.told(pg_temp.org('b1'), 'Account under review'),
-  'A payment for "PR24 deposit" on PR24 request 1 (PR24-1) was disputed with your bank. Until the review is done, you can message vendors but can''t post requests, fund steps, accept quotes, approve steps or cancel orders.',
+  'A payment for "PR24 deposit" on PR24 request 1 (PR24-1) was disputed with your bank. Until our review is done, you can only message vendors.',
   'the brand is told what it can still do');
 select is(public.factory_paused(pg_temp.org('e2')), false, 'another factory is not paused');
 
@@ -305,7 +305,7 @@ select ok((select dispute_lost_cents = 21400 and review_kept_cents = 21400 and f
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 25000, 'too much')$$, pg_temp.review(1, 'dispute')),
-  '22023', 'You can refund up to $200.00, the factory''s balance now.', 'never more than the balance');
+  '22023', 'You can take up to $200.00, the factory''s part of what the brand got back.', 'never more than the factory''s part of what went back');
 select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 5000, '  ')$$, pg_temp.review(1, 'dispute')),
   '22023', 'Add a note for the factory.', 'a note is required');
 select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 0, 'zero')$$, pg_temp.review(1, 'dispute')),
@@ -321,7 +321,7 @@ select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal('e1', '01') -> 
                    where r ->> 'cause' = 'returned' and (r ->> 'amount_cents')::bigint = -5000), 'a dated "returned" row');
 select is(public.factory_paused(pg_temp.org('e1')), false, 'the factory can withdraw again');
 select is(public.brand_paused(pg_temp.org('b1')), true, 'the brand stays paused until staff unpause it');
-select is(pg_temp.told(pg_temp.org('e1'), 'Review complete'),
+select is(pg_temp.told(pg_temp.org('e1'), 'Payment review complete'),
   '$50.00 for "PR24 deposit" was returned to the brand. You can withdraw the rest of your balance. Note from our team: The sample did not arrive.',
   'the factory is told what was returned and the note');
 select pg_temp.act_as('02');
@@ -330,7 +330,7 @@ select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(1, 'd
 select throws_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(1, 'dispute')), '22023', null, 'once');
 reset role;
 select is(public.brand_paused(pg_temp.org('b1')), false, 'the brand is unpaused');
-select is(pg_temp.told(pg_temp.org('b1'), 'Review complete'), 'You can fund steps and accept quotes again.', 'and told');
+select is(pg_temp.told(pg_temp.org('b1'), 'Account review complete'), 'Your account is no longer under review.', 'and told');
 select pg_temp.act_as('03');
 set local role authenticated;
 select lives_ok($$select public.begin_payment_checkout('c24f0004-0000-0000-0000-000000000001')$$, 'it can fund again');
@@ -384,10 +384,12 @@ set local role authenticated;
 select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory')$$, pg_temp.review(6, 'refund')), 'decide one');
 reset role;
 select is(public.factory_paused(pg_temp.org('e3')), true, 'still paused by the other');
-select is(pg_temp.told(pg_temp.org('e3'), 'Review complete'),
+select is(pg_temp.told(pg_temp.org('e3'), 'Payment review complete'),
   'The review of the payment for "PR24 sample three" is done. Withdrawals stay paused while another payment is reviewed.', 'and told so');
 select pg_temp.act_as('02');
 set local role authenticated;
+select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 46000, 'too much')$$, pg_temp.review(5, 'dispute')),
+  '22023', 'You can take up to $450.00, the factory''s balance now.', 'never more than the balance now (the $200 withdrawn is not offered)');
 select lives_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 45000, 'Goods not delivered.')$$, pg_temp.review(5, 'dispute')),
   'refund all that is left');
 reset role;
@@ -397,6 +399,31 @@ select is(pg_temp.avail('e3', '05'), 0::bigint, 'Available is zero, never below'
 select is(public.factory_paused(pg_temp.org('e3')), false, 'F3 unpaused');
 
 -- ===========================================================================
+-- 6b. A disputed step is on hold: never taken from; Pay factory says it stays
+--     on hold, and the factory is told when the bank settles it.
+-- ===========================================================================
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0003-0000-0000-0000-000000000002'', ''dp_pgtap_pr24_3'', ''needs_response'', 32100, null, null)')$$,
+  'a dispute on F2''s approved deposit');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', true)')$$, 'its charge is disputed');
+select is(public.review_returnable_cents(pg_temp.org('e2')), 0::bigint, 'a step on hold is never offered to take from');
+select pg_temp.act_as('02');
+set local role authenticated;
+select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory')$$, pg_temp.review(3, 'dispute')), 'staff let F2 withdraw');
+select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(3, 'dispute')), 'and unpause its brand');
+reset role;
+select is((select body from public.notifications where org_id = pg_temp.org('e2') and dedupe_key = 'payment_review_done:' || pg_temp.review(3, 'dispute')),
+  'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again. "PR24 deposit two" stays on hold until the payment is settled.',
+  'the factory is told the step stays on hold');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), true,
+  'decided, but still on staff''s list until the bank decides');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0003-0000-0000-0000-000000000002'', ''dp_pgtap_pr24_3'', ''won'', 32100, null, null)')$$,
+  'the bank decides for us');
+select is(pg_temp.told(pg_temp.org('e2'), 'Hold lifted on "PR24 deposit two"'), '$300.00 is no longer on hold.', 'the factory is told the hold lifted');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), false,
+  'and it leaves staff''s list');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', false)')$$, 'the hold is lifted');
+
+-- ===========================================================================
 -- 7. Nothing is owed, ever; the overview counts open reviews.
 -- ===========================================================================
 select is((select count(*)::int from public.order_payments p where p.order_id in
@@ -404,8 +431,8 @@ select is((select count(*)::int from public.order_payments p where p.order_id in
             and coalesce(public.payment_debt_cents(p), 0) > 0), 0, 'no payment carries a debt');
 select is(public.factory_debt_uncovered_cents(pg_temp.org('e3')), 0::bigint, 'no factory owes anything');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.board()) x where (x ->> 'open')::boolean
-            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 1,
-  'one review still open: F3''s brand is still paused');
+            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 2,
+  'still on staff''s list: F3''s brand is paused, and the fit sample''s dispute waits for the bank although decided');
 
 select * from finish();
 rollback;

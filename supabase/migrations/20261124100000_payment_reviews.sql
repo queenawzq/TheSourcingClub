@@ -212,6 +212,8 @@ as $$
      and not p.withdrawal_pool
      and not p.stripe_release_started
      and p.release_claimed_at is null
+     -- A disputed step is on hold until the bank decides: never taken from.
+     and p.disputed_at is null
      -- A per-step payout under way or failed is staff's to settle (paid again,
      -- or by hand): never taken from.
      and coalesce((select x.status from public.provider_payouts x where x.payment_id = p.id
@@ -232,6 +234,38 @@ as $$
 $$;
 revoke all on function public.review_returnable_cents(uuid) from public, anon, authenticated;
 grant execute on function public.review_returnable_cents(uuid) to service_role;
+
+-- Whether a review still needs staff: a decision, a brand to unpause, or a
+-- dispute the bank hasn't decided yet (someone must respond in Stripe).
+create or replace function public.payment_review_needs_staff(v public.payment_reviews)
+returns boolean
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select v.decided_at is null
+      or (v.cause = 'dispute' and v.brand_unpaused_at is null)
+      or (v.cause = 'dispute' and coalesce(v.dispute_status, '') not in ('won', 'lost', 'warning_closed'));
+$$;
+revoke all on function public.payment_review_needs_staff(public.payment_reviews) from public, anon, authenticated;
+grant execute on function public.payment_review_needs_staff(public.payment_reviews) to service_role;
+
+-- The factory's part of what went back to the brand on a review: in
+-- proportion to its step within the charge, never more than the step.
+create or replace function public.payment_review_factory_part(v public.payment_reviews)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select least(public.payment_factory_base_cents(p),
+               coalesce(round(v.amount_cents::numeric * p.amount_cents
+                              / nullif(coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents), 0))::bigint, 0))
+    from public.order_payments p where p.id = v.payment_id;
+$$;
+revoke all on function public.payment_review_factory_part(public.payment_reviews) from public, anon, authenticated;
+grant execute on function public.payment_review_factory_part(public.payment_reviews) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. Opening a review, and what each side is told.
@@ -288,7 +322,7 @@ begin
     insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
     values (o.brand_org_id, 'payment_disputed', 'payment', p.id, o.id,
             'Account under review',
-            format('A payment for "%s" on %s was disputed with your bank. Until the review is done, you can message vendors but can''t post requests, fund steps, accept quotes, approve steps or cancel orders.',
+            format('A payment for "%s" on %s was disputed with your bank. Until our review is done, you can only message vendors.',
                    step, o.order_number),
             jsonb_build_object('review_id', v.id),
             'payment_review_brand:' || v.id)
@@ -313,6 +347,7 @@ declare
   p public.order_payments;
   o public.production_orders;
   v public.payment_reviews;
+  was_status text;
 begin
   if nullif(btrim(coalesce(dispute_id, '')), '') is null then
     raise exception 'a dispute names its id' using errcode = '22023';
@@ -332,6 +367,7 @@ begin
    order by created_at desc limit 1
    for update;
   if found then
+    was_status := v.dispute_status;
     update public.payment_reviews
        set dispute_status = coalesce(status, dispute_status),
            dispute_due_by = coalesce(due_by, dispute_due_by),
@@ -340,6 +376,20 @@ begin
            updated_at = now()
      where id = v.id
     returning * into v;
+    -- Staff already let the factory withdraw, and the bank has now decided:
+    -- the step's hold lifts (record_payment_disputed / _dispute_lost, next),
+    -- so the factory is told, once, on an approved step.
+    if v.decided_at is not null and v.decision = 'pay_factory'
+       and status in ('won', 'lost', 'warning_closed') and was_status is distinct from status
+       and (p.state = 'released' or p.release_requested_at is not null) and p.disputed_at is not null then
+      insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, dedupe_key)
+      select o.factory_org_id, 'payment_disputed', 'payment', p.id, o.id,
+             format('Hold lifted on "%s"', coalesce(m.title, o.order_number)),
+             format('%s is no longer on hold.', public.format_money(public.payment_factory_cents(p), p.currency)),
+             'payment_review_settled:' || v.id
+        from public.order_milestones m right join (select 1) one on m.id = p.milestone_id
+      on conflict (org_id, dedupe_key) do nothing;
+    end if;
     return v;
   end if;
   -- First heard of once it was already settled in TSC's favour: nothing to review.
@@ -439,9 +489,14 @@ begin
     if said_note is null then
       raise exception 'Add a note for the factory.' using errcode = '22023', hint = 'review_note';
     end if;
+    -- Never more than the factory's part of what the brand got back.
+    if amount_cents > public.payment_review_factory_part(v) then
+      raise exception 'You can take up to %, the factory''s part of what the brand got back.', public.format_money(public.payment_review_factory_part(v), 'USD')
+        using errcode = '22023', hint = 'review_over_part', detail = public.format_money(public.payment_review_factory_part(v), 'USD');
+    end if;
     cap := public.review_returnable_cents(v.factory_org_id);
     if amount_cents > cap then
-      raise exception 'You can refund up to %, the factory''s balance now.', public.format_money(cap, 'USD')
+      raise exception 'You can take up to %, the factory''s balance now.', public.format_money(cap, 'USD')
         using errcode = '22023', hint = 'review_over_balance', detail = public.format_money(cap, 'USD');
     end if;
     left_to_take := amount_cents;
@@ -472,8 +527,7 @@ begin
   still_paused := public.factory_paused(v.factory_org_id);
   insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
   values (v.factory_org_id, 'payment_disputed', 'payment', p.id, o.id,
-          case when v.decision = 'refund_brand' then 'Review complete'
-               when still_paused then 'Review complete'
+          case when v.decision = 'refund_brand' or still_paused then 'Payment review complete'
                else 'Withdrawals resumed' end,
           case when v.decision = 'refund_brand'
                  then format('%s for "%s" was returned to the brand.', public.format_money(v.returned_cents, 'USD'), step)
@@ -481,6 +535,9 @@ begin
           || case when still_paused then ' Withdrawals stay paused while another payment is reviewed.'
                   when v.decision = 'refund_brand' then ' You can withdraw the rest of your balance.'
                   else ' You can withdraw your balance again.' end
+          -- A disputed step stays on hold until the bank decides (told again then).
+          || case when v.decision = 'pay_factory' and p.disputed_at is not null
+                  then format(' "%s" stays on hold until the payment is settled.', step) else '' end
           || case when said_note is not null then ' Note from our team: ' || said_note else '' end,
           jsonb_build_object('review_id', v.id, 'returned_cents', v.returned_cents),
           'payment_review_done:' || v.id)
@@ -522,7 +579,7 @@ begin
   if not public.brand_paused(v.brand_org_id) then
     insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
     values (v.brand_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
-            'Review complete', 'You can fund steps and accept quotes again.',
+            'Account review complete', 'Your account is no longer under review.',
             jsonb_build_object('review_id', v.id), 'payment_review_brand_done:' || v.id)
     on conflict (org_id, dedupe_key) do nothing;
   end if;
@@ -553,9 +610,7 @@ begin
       'milestone_title', m.title, 'cause', v.cause,
       'amount_cents', v.amount_cents, 'currency', v.currency,
       -- The factory's part of that amount: Refund brand's suggestion.
-      'factory_part_cents', least(public.payment_factory_base_cents(p),
-          coalesce(round(v.amount_cents::numeric * p.amount_cents
-                         / nullif(coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents), 0))::bigint, 0)),
+      'factory_part_cents', public.payment_review_factory_part(v),
       'step_cents', public.payment_factory_base_cents(p),
       'stripe_ref', v.stripe_ref, 'stripe_payment_intent_id', p.stripe_payment_intent_id,
       'dispute_status', v.dispute_status, 'dispute_due_by', v.dispute_due_by,
@@ -576,14 +631,17 @@ begin
       'in_withdrawal_cents', coalesce((select sum(t.amount_cents) from public.payment_takes t
                                         where t.payment_id = p.id and t.status = 'held'), 0),
       'factory_paused', v.decided_at is null,
+      -- Paused by any review (this one decided, another still open).
+      'factory_still_paused', public.factory_paused(v.factory_org_id),
+      'step_on_hold', p.disputed_at is not null,
       'brand_paused', v.cause = 'dispute' and v.brand_unpaused_at is null,
       'decision', v.decision, 'returned_cents', v.returned_cents, 'note', v.note,
       'decided_at', v.decided_at, 'decided_by_name', (select u.full_name from public.user_profiles u where u.id = v.decided_by),
       'brand_unpaused_at', v.brand_unpaused_at,
       'brand_unpaused_by_name', (select u.full_name from public.user_profiles u where u.id = v.brand_unpaused_by),
       'created_at', v.created_at,
-      'open', v.decided_at is null or (v.cause = 'dispute' and v.brand_unpaused_at is null)
-    ) order by (v.decided_at is null or (v.cause = 'dispute' and v.brand_unpaused_at is null)) desc,
+      'open', public.payment_review_needs_staff(v)
+    ) order by public.payment_review_needs_staff(v) desc,
                v.dispute_due_by nulls last, v.created_at)
       from public.payment_reviews v
       join public.order_payments p on p.id = v.payment_id
@@ -591,7 +649,7 @@ begin
       join public.orgs f on f.id = v.factory_org_id
       join public.orgs b on b.id = v.brand_org_id
       left join public.order_milestones m on m.id = p.milestone_id
-     where v.decided_at is null or (v.cause = 'dispute' and v.brand_unpaused_at is null)
+     where public.payment_review_needs_staff(v)
         or greatest(v.decided_at, v.brand_unpaused_at) > now() - interval '30 days'), '[]'::jsonb);
 end;
 $$;
@@ -1839,7 +1897,7 @@ begin
      -- Payment reviews waiting on staff (20261124100000), in place of the
      -- disputed steps and the debts to recover they replaced.
      + (select count(*)::integer from public.payment_reviews v
-         where v.decided_at is null or (v.cause = 'dispute' and v.brand_unpaused_at is null))
+         where public.payment_review_needs_staff(v))
      + jsonb_array_length(attention -> 'returned')
      + jsonb_array_length(attention -> 'refund_failed'),
     (select count(*)::integer from public.admin_verification_queue() q

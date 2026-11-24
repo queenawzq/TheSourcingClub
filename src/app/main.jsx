@@ -1125,6 +1125,12 @@ function Shell() {
  */
 function BrandReviewNotice({ org }) {
   const [paused, setPaused] = useState(false);
+  // Closed with OK: gone for this tab until the next sign-in or tab; the
+  // refusals still say it on every action it blocks.
+  const closedKey = `tsc-review-notice-closed:${org.id}`;
+  const [closed, setClosed] = useState(() => {
+    try { return sessionStorage.getItem(closedKey) === "1"; } catch { return false; }
+  });
   useEffect(() => {
     let cancelled = false;
     const read = () => myPaymentPause(org.id)
@@ -1136,11 +1142,18 @@ function BrandReviewNotice({ org }) {
     document.addEventListener("visibilitychange", onShow);
     return () => { cancelled = true; clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
   }, [org.id]);
-  if (!paused) return null;
+  if (!paused || closed) return null;
+  const close = () => {
+    try { sessionStorage.setItem(closedKey, "1"); } catch { /* closed for this view only */ }
+    setClosed(true);
+  };
   return (
     <div className="tsc-team-notices tsc-review-notice" role="status" data-testid="brand-under-review">
       <div className="tsc-team-notice">
-        <p>Your account is under review. You can still message vendors.</p>
+        <p>A payment was disputed, so your account is under review. You can still message vendors.</p>
+        <div className="tsc-team-notice-actions">
+          <button type="button" className="quiet-btn" onClick={close}>OK</button>
+        </div>
       </div>
     </div>
   );
