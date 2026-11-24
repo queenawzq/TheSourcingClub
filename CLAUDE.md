@@ -470,7 +470,9 @@ a company-level verdict and a file-level one cannot contradict each other.
   is off, so a new account's address proves nothing: the old allowlist
   (`admin_emails`) made whoever registered a listed address first an admin.
   Staff are added on purpose, `platform_admins` by user id, after the person
-  has an account. `admin_emails` remains and grants nothing.
+  has an account. `admin_emails` remains and grants nothing. Anything else
+  that trusts a sign-up's address has the same flaw: joining a team by
+  invitation does, until it asks for a code emailed to that address (#151).
 - **Every function on this surface is `security definer` and has no policy
   behind it.** The `is_platform_admin()` test is the first statement in each,
   before any `select` — checking afterwards leaks existence through `P0002`

@@ -120,9 +120,9 @@ function AdminConsole() {
     return (
       <Gate title="Not a staff account">
         <p className="gate-note">
-          {user?.email} is not on the platform admin list, so this workspace has nothing
-          to show. If that is wrong, ask someone who already has access to add the
-          address — it takes effect the next time you sign in.
+          {user?.email} is not a staff account, so this workspace has nothing to
+          show. If that is wrong, ask someone who already has access to add this
+          account — it takes effect the next time you sign in.
         </p>
         <button type="button" className="secondary-btn" onClick={signOut}>Sign out</button>
       </Gate>
