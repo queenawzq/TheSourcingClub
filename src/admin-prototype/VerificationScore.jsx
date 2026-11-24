@@ -507,7 +507,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const ids = { site: useId(), list: useId(), note: useId(), link: useId(), files: useId() };
   const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
   const earlier = savedByPerson && registry.form ? registry : null;
-  const [site, setSite] = useState(earlier?.site || (savedByPerson ? registry.source : "") || form.defaultSite || "");
+  // An earlier record's site; never the generic "Issuer's list" of a record made before the form.
+  const [site, setSite] = useState(earlier?.site || (savedByPerson && !isCert ? registry.source : "") || form.defaultSite || "");
   // A first record starts with nothing chosen: staff pick what the site showed (Nov 24 tester).
   const initialResult = savedByPerson ? (registry.result === "name_differs" ? "found" : registry.result) : null;
   const [result, setResult] = useState(initialResult);
@@ -636,9 +637,10 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
       <div className="vr-sub-line">
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
-          <span>{check.verdict}</span>
+          {/* A saved record's one line says it all (Nov 24); a renamed company keeps its verdict above it. */}
+          {(!registry?.summary || registry.for) && <span>{check.verdict}</span>}
           {registry?.summary
-            ? <small className="vr-sub-summary">{registry.summary}{registry.for ? `, for “${registry.for}”` : ""}</small>
+            ? (registry.for ? <small className="vr-sub-summary">{registry.summary}, for “{registry.for}”</small> : <span>{registry.summary}</span>)
             : registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
           {registry?.proof?.length > 0 && !mode && (
             <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>

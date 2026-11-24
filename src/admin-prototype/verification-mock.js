@@ -42,7 +42,7 @@ const CN_SAVED = siteRecord({
 }, CN_PROFILE);
 const TR_PROFILE = { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" };
 
-/* ---------- (a) China, original licence, QCC recorded ---------- */
+/* ---------- (a) China, original licence, GSXT recorded ---------- */
 const chinaOriginal = {
   id: "verify-cn-original",
   initials: "QJ",
@@ -72,8 +72,8 @@ const chinaOriginal = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Original licence, found on QCC",
-        why: "Every field on the licence is readable and matches the QCC record staff checked.",
+        verdict: "Original licence, found on GSXT",
+        why: "Every field on the licence is readable and matches the GSXT record staff checked.",
         evidence: { kind: "licence", variant: "cn", file: "business-licence.jpg" },
         readAt: "Read Nov 11, 10:42",
         fields: [

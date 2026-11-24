@@ -88,7 +88,18 @@ async function staffToken() {
   return data?.session?.access_token ?? null;
 }
 
-function startReading(orgId) {
+// A document that could not be read is not sent again on every visit: once per file per 6 hours.
+const TRIED_MS = 6 * 60 * 60 * 1000;
+const triedKey = (fileId) => `tsc-read-tried:${fileId}`;
+function triedRecently(fileId) {
+  try { return Date.now() - Number(window.localStorage.getItem(triedKey(fileId)) ?? 0) < TRIED_MS; } catch { return false; }
+}
+function markTried(fileId) {
+  try { window.localStorage.setItem(triedKey(fileId), String(Date.now())); } catch { /* private mode */ }
+}
+
+function startReading(orgId, fileId) {
+  if (fileId) markTried(fileId);
   const run = { state: "running" };
   readingStarted.set(orgId, run);
   (async () => {
@@ -116,7 +127,9 @@ const neverRead = (group) => group?.key === "business_registration" && group.evi
 function withReading(orgId, verification) {
   const group = verification.groups.find((g) => g.key === "business_registration");
   if (!neverRead(group)) return verification;
-  const run = readingStarted.get(orgId) ?? startReading(orgId);
+  const fileId = group.evidence.files[0]?.id ?? null;
+  const run = readingStarted.get(orgId)
+    ?? (fileId && triedRecently(fileId) ? { state: "failed" } : startReading(orgId, fileId));
   const failed = run.state === "failed" || run.state === "done";
   // Done with no reading is a reading that failed: staff record what the registry shows instead.
   const patch = failed

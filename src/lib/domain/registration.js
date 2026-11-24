@@ -98,7 +98,8 @@ export async function adminRegistryDetail(orgId) {
  * database's guard (guard_approval_needs_registry).
  */
 export function approvalBlockText(detail) {
-  if (!detail?.registration) return "Needs the company's registration number first";
+  // A company with no registration on file can still be approved on a recorded check (Nov 24):
+  // the database's own answer decides, as it does for every other block.
   // Worded by where each block is cleared on the Nov 12 review page (verification-score.mjs).
   return approvalBlockWords(detail.approvalProblem, detail);
 }

@@ -410,6 +410,10 @@ function bigrams(text) {
 
 /** Same address, written differently: one holds the other, or most character pairs are shared. */
 export function addressesMatch(a, b) {
+  // One in Chinese, the other in English: not comparable word for word, so never a difference (Nov 24 tester).
+  const hasHan = (text) => /\p{Script=Han}/u.test(String(text ?? ""));
+  const latin = (text) => /[A-Za-z]{3}/.test(String(text ?? "").replace(/\p{Script=Han}/gu, ""));
+  if (hasHan(a) !== hasHan(b) && !(hasHan(a) && latin(a) && latin(b)) && !(hasHan(b) && latin(b) && latin(a))) return true;
   // Both carry Chinese: the Chinese parts (with their numbers) are what to compare, whatever English sits beside them.
   const han = (text) => String(text ?? "").normalize("NFKC").replace(/[^\p{Script=Han}0-9]/gu, "");
   const hx = han(a);
@@ -428,13 +432,16 @@ addressesMatch.plain = (x, y) => {
   return (2 * shared) / total >= 0.6;
 };
 
+/** Both in Chinese or both not: a Chinese name and its English one are not compared. */
+const sameScript = (a, b) => /\p{Script=Han}/u.test(String(a)) === /\p{Script=Han}/u.test(String(b));
+
 /** What differs between what the site shows and the company's own profile. Blank on either side never differs. */
 export function siteDifferences(seen, profile) {
   const name = String(seen?.name ?? "").trim();
   const number = plainNumber(seen?.number);
   const address = String(seen?.address ?? "").trim();
   return {
-    name: Boolean(name && profile?.name && companyNameKey(name) !== companyNameKey(profile.name) && !namesPartlyMatch(name, profile.name)),
+    name: Boolean(name && profile?.name && sameScript(name, profile.name) && companyNameKey(name) !== companyNameKey(profile.name) && !namesPartlyMatch(name, profile.name)),
     number: Boolean(number && plainNumber(profile?.number) && number !== plainNumber(profile.number)),
     address: Boolean(address && profile?.address && !addressesMatch(address, profile.address)),
   };
