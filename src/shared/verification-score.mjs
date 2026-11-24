@@ -311,7 +311,8 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   for (const line of d.differences ?? []) {
     const what = line.field === "number" ? "Number" : "Name";
     if (line.nearly) add(SCORES.licence.partial, `Read; ${what.toLowerCase()} nearly matches`);
-    else if (line.field !== "number" && namesPartlyMatch(line.document, line.typed ?? title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
+    // A bilingual licence's names are joined with " / " (Nov 25): any one of them may be the shorter one.
+    else if (line.field !== "number" && String(line.document ?? "").split(" / ").some((name) => namesPartlyMatch(name.trim(), line.typed ?? title))) add(SCORES.licence.partial, "Read; legal name looks cut short");
     else add(SCORES.licence.differs, `${what} differs from what they typed`);
   }
   const numberNotRead = !String(x.registrationNumber ?? "").trim()
