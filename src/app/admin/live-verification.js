@@ -238,6 +238,10 @@ export async function updateVendorProfile(orgId, change) {
   } catch (error) {
     throw new Error(staffWords(error));
   }
+  // The checks that read the type and the address run again with them (no new reading of the licence).
+  await rerunVerificationGroup({
+    orgId, group: "company_information", fields: change.address ? { siteAddress: change.address } : {}, before: lastRead.get(orgId) ?? null,
+  }).catch(() => null);
   if (change.address) {
     staffToken().then((token) => token && fetch("/api/structure-address", {
       method: "POST",

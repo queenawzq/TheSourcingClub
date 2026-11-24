@@ -113,6 +113,45 @@ end;
 $$;
 revoke all on function public.registry_approval_problem(uuid) from public, anon, authenticated;
 
+-- The queue's registry state (from 20261108700200): "Couldn't check" with a
+-- note is staff's judgement, so an approved company with one is not "lost".
+create or replace function public.admin_registry_states()
+returns table (org_id uuid, state text, kind text, checked_at timestamptz, registration_uploaded_at timestamptz,
+               duplicates int, duplicate_names text[], duplicate_explained boolean)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'only platform admins may read registry states' using errcode = '42501';
+  end if;
+  return query
+    select f.org_id,
+           case when c.result = 'found' and public.registry_check_holds(f.org_id, c.details) then 'found'
+                when c.result = 'could_not_check' and nullif(trim(coalesce(c.details ->> 'note', '')), '') is not null then 'judged'
+                when f.verification_status = 'verified' and (c.id is not null or exists (
+                  select 1 from public.registry_checks x where x.org_id = f.org_id and not x.automatic)) then 'lost'
+                else 'none' end,
+           case when c.id is null then null
+                when public.registry_source_is_official(c.source) and c.number_checked is not null then 'registry'
+                else 'document' end,
+           c.checked_at,
+           (select max(d.created_at) from public.documents d
+             where d.org_id = f.org_id and d.kind = 'business_registration'),
+           (select count(*)::int from public.registry_duplicate_orgs(f.org_id)),
+           (select array_agg(d.name) from public.registry_duplicate_orgs(f.org_id) d),
+           exists (select 1 from public.registry_duplicate_reviews x
+                     join public.company_registrations r on r.org_id = x.org_id and r.number = x.number
+                    where x.org_id = f.org_id)
+      from public.factory_profiles f
+      left join lateral (select * from public.current_registry_check(f.org_id)) c on true;
+end;
+$$;
+revoke all on function public.admin_registry_states() from public, anon;
+grant execute on function public.admin_registry_states() to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 6. The review history (staff only)
 -- ---------------------------------------------------------------------------

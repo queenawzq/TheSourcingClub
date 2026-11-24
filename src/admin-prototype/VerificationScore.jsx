@@ -508,7 +508,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
   const earlier = savedByPerson && registry.form ? registry : null;
   const [site, setSite] = useState(earlier?.site || (savedByPerson ? registry.source : "") || form.defaultSite || "");
-  const initialResult = savedByPerson ? (registry.result === "name_differs" ? "found" : registry.result) : "found";
+  // A first record starts with nothing chosen: staff pick what the site showed (Nov 24 tester).
+  const initialResult = savedByPerson ? (registry.result === "name_differs" ? "found" : registry.result) : null;
   const [result, setResult] = useState(initialResult);
   const fieldsFor = SEEN_FIELDS[isCert ? "certificate" : "registry"];
   const [seen, setSeen] = useState(() => Object.fromEntries(fieldsFor.map(([key]) => [key, String((earlier && earlier[key]) || (savedByPerson && key === "name" ? registry.name : "") || form.prefill?.[key] || "")])));
@@ -523,7 +524,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const needsNote = result === "not_found" || result === "could_not_check";
   const showsNote = !showsSeen;
   const differs = isCert ? {} : siteDifferences(seen, form.profile);
-  const ready = site.trim() && (!needsNote || note.trim()) && !upload.busy;
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy;
 
   const addFiles = async (list) => {
     const files = [...(list ?? [])];
@@ -762,8 +763,8 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
   const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
   const canRun = group.rerunnable !== false && fields.length > 0;
-  // A brand's groups have nowhere to keep a reason (`reasons: false`).
-  const canReason = group.reasons !== false && group.evidence?.kind !== "none";
+  // A brand's groups have nowhere to keep a reason (`reasons: false`); otherwise each check says (`canReason`).
+  const canReason = group.reasons !== false;
   // A new reading (Run again, or a teammate's) replaces the fields; staff's own unsaved edits are only replaced by it.
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
@@ -862,7 +863,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                       check={check}
                       groupKey={group.key}
                       legalName={values.legalName}
-                      canReason={canReason}
+                      canReason={canReason && check.canReason !== false}
                       actions={actions}
                       key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}
                     />

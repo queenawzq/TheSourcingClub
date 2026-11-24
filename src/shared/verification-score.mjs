@@ -462,7 +462,7 @@ const listWords = (items) => (items.length <= 1 ? items.join("") : `${items.slic
 export function matchWords(saved) {
   const keys = ["name", "number", "address"];
   const differ = keys.filter((k) => saved.differs?.[k]);
-  if (differ.length) return `${listWords(differ)} ${differ.length === 1 ? "differs" : "differ"}`;
+  if (differ.length) return `${listWords(differ)} ${differ.length === 1 ? "differs" : "differ"} from the profile`;
   const same = keys.filter((k) => saved.compared?.[k]);
   if (!same.length) return "";
   return `${listWords(same)} ${same.length === 1 ? "matches" : "match"}`;

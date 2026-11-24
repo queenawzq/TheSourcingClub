@@ -3,7 +3,7 @@
 -- read or write any of it. Fixtures prefixed pgtap24-; counts filter on ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(31);
 
 insert into auth.users (id, email) values
   ('c2400000-0000-0000-0000-000000000001', 'p24-admin@example.com'),
@@ -84,6 +84,10 @@ set local role authenticated;
 select lives_ok($$select public.admin_save_registry_check('d2400000-0000-0000-0000-0000000000f2', 'e-Devlet', 'edevlet', 'could_not_check', '{}', 'Site down all day')$$, 'Couldn''t check with a note saves');
 reset role;
 select is(public.registry_approval_problem('d2400000-0000-0000-0000-0000000000f2'), null, 'Couldn''t check with a note: staff judgement, Approve open');
+set local role authenticated;
+select is((select state from public.admin_registry_states() where org_id = 'd2400000-0000-0000-0000-0000000000f2'), 'judged',
+  'the queue does not call it a lost check');
+reset role;
 set local role authenticated;
 select lives_ok($$select public.admin_save_registry_check('d2400000-0000-0000-0000-0000000000f2', 'GİB', 'gib', 'found',
   '{"name":"Anadolu Örme Sanayi A.Ş.","number":"9123456712","address":"Bursa"}', null, 'https://example.com/x',
