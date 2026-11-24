@@ -4,7 +4,7 @@
 -- Fixtures prefixed pgtap-addr-; every count filters on its own ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(25);
 
 insert into auth.users (id, email) values
   ('c4400000-0000-0000-0000-000000000001', 'paddr-admin@example.com'),
@@ -88,6 +88,26 @@ select is((select coalesce(city, 'none') || '|' || coalesce(country_code, 'none'
   from public.factory_production_addresses where org_id = 'd4400000-0000-0000-0000-0000000000f1'),
   'none|none|false|none', 'the old parts go with the old address');
 reset role;
+
+-- The country Browse files it under follows the address (20261124400100) ------------
+select public.save_company_address_parts('d4400000-0000-0000-0000-0000000000f1',
+  'Lô B2, KCN Tân Tạo, Bình Tân, Thành phố Hồ Chí Minh, Việt Nam',
+  '{"city": "Thành phố Hồ Chí Minh", "city_en": "Ho Chi Minh City", "country_code": "VN"}'::jsonb, 'Ho Chi Minh City, Vietnam', 'model');
+select is((select country_code || '|' || location from public.factory_profiles where org_id = 'd4400000-0000-0000-0000-0000000000f1'),
+  'VN|Ho Chi Minh City, Vietnam', 'a country read from the address is the one Browse filters on');
+select public.save_company_address_parts('d4400000-0000-0000-0000-0000000000f1',
+  'Lô B2, KCN Tân Tạo, Bình Tân, Thành phố Hồ Chí Minh, Việt Nam', '{}'::jsonb, 'Vietnam', 'typed');
+select is((select country_code from public.factory_profiles where org_id = 'd4400000-0000-0000-0000-0000000000f1'),
+  'VN', 'no country read leaves the stored one');
+
+-- Settings no longer sets a vendor's location -----------------------------------------
+set local request.jwt.claims = '{"sub":"c4400000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select is((public.save_account_settings('d4400000-0000-0000-0000-0000000000f1', null, '+84 28 1234 5678', null)) ->> 'location',
+  'Vietnam', 'a Settings save without a location answers with the one stored');
+reset role;
+select is((select location from public.factory_profiles where org_id = 'd4400000-0000-0000-0000-0000000000f1'),
+  'Vietnam', 'and leaves it as the address gave it');
 
 -- The backfill ----------------------------------------------------------------------
 -- The migration has run already: a vendor with a location and no address got

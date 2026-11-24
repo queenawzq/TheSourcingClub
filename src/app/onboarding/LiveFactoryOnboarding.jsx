@@ -23,6 +23,8 @@ import { reopensSummary } from "./resubmit.mjs";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { addressPatch, completeOnboarding, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
+import { constraintInWords } from "../../shared/constraint-words.mjs";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
 import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
@@ -204,6 +206,15 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     return () => { cancelled = true; };
   }, [org.id, signable.doc]);
   const [busy, setBusy] = useState(false);
+  // The address the company was asked to complete (no city or country read);
+  // Next again with the same words goes on.
+  const [addressAsked, setAddressAsked] = useState(null);
+  useEffect(() => setAddressAsked(null), [step]);
+  // A refused value in the page's language, not the database's words.
+  const inWords = (problem) => {
+    const words = constraintInWords(problem?.cause ?? problem, language === "zh" ? "zh" : "en");
+    return words ? new Error(words) : problem;
+  };
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
   const [registrationFileName, setRegistrationFileName] = useState("");
@@ -575,7 +586,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     const typed = typedAddressIn(submitted);
     let addressChanged = false;
     if (typed !== undefined) {
-      const { patch: addressColumns, changed } = addressPatch(typed, typedAddressIn(values));
+      const { patch: addressColumns, changed } = addressPatch(typed, typedAddressIn(values), savedCountry);
       Object.assign(patch, addressColumns);
       addressChanged = changed;
     }
@@ -640,6 +651,15 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
    */
   async function next(submitted = {}, target = null) {
     if (busy) return;
+    const askAbout = String(typedAddressIn(submitted) ?? "").trim();
+    if (addressMissesPlace(askAbout)) {
+      if (addressAsked !== askAbout) {
+        setAddressAsked(askAbout);
+        return;
+      }
+    } else if (addressAsked !== null) {
+      setAddressAsked(null);
+    }
     setBusy(true);
     setError(null);
 
@@ -720,7 +740,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setStep((current) => current + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (saveError) {
-      setError(saveError);
+      setError(inWords(saveError));
     } finally {
       setBusy(false);
     }
@@ -738,7 +758,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       await persist(partial);
       await onSignOut?.();
     } catch (saveError) {
-      setError(saveError);
+      setError(inWords(saveError));
       setBusy(false);
     }
   }
@@ -797,6 +817,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
       registration={registrationField}
+      fieldNotices={addressAsked === null ? null : {
+        [factoryFieldName(ADDRESS_LABELS.factory)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+        [factoryFieldName(ADDRESS_LABELS.trading)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+      }}
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending

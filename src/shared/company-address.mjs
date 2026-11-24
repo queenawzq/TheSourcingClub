@@ -281,3 +281,22 @@ export function brandLocation(parts) {
 export function fallbackLocation(typed) {
   return countryName(countryIn(typed));
 }
+
+/**
+ * An address that names no country we can read, or nothing beside its
+ * country: brands would read the country alone, or nothing. The company is
+ * asked to add them (ADDRESS_PLACE_NOTICE); nothing is refused.
+ */
+export function addressMissesPlace(typed) {
+  const said = String(typed ?? "").trim();
+  if (!said) return false;
+  if (!countryIn(said)) return true;
+  // Chinese script runs province, city and street together.
+  if (/\p{Script=Han}/u.test(said)) return said.replace(/中华人民共和国|中國|中国/g, "").trim().length < 2;
+  return said.split(/[,，;\n/／]/).map((part) => part.trim()).filter(Boolean).length < 2;
+}
+
+export const ADDRESS_PLACE_NOTICE = {
+  en: "Add the city and country, so brands can see where you are.",
+  zh: "请填写城市和国家/地区，以便品牌了解您的位置。",
+};

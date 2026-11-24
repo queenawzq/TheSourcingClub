@@ -41,6 +41,7 @@ import { loadOwnProfile as loadParts } from "./load-profile.js";
 import { profileSources } from "../../shared/profile-translation.mjs";
 import "./profile.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
 
 /** The page's data, and a reload that keeps the page up while it fetches. */
 function useProfileParts(org) {
@@ -221,6 +222,9 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
   const dialogs = {
     editors,
     nameLocked: org.role !== "owner",
+    // Under the address field while it names no city or country (in English;
+    // the page's Chinese layer translates it).
+    addressNotice: (typed) => (addressMissesPlace(typed) ? ADDRESS_PLACE_NOTICE.en : ""),
     initialEditor: editor,
     files: fileDialogs(org, parts, reload),
     onSave: async (section, form) => {

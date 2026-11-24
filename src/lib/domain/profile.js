@@ -8,7 +8,7 @@
  * today.
  */
 import { fetchApi, supabase, unwrap } from "../supabase.js";
-import { countryIn, fallbackLocation } from "../../shared/company-address.mjs";
+import { countryIn, countryName, fallbackLocation } from "../../shared/company-address.mjs";
 import { registrationCountryFrom } from "../../shared/registration-number.mjs";
 
 const BRAND_COLUMNS = `
@@ -72,11 +72,13 @@ export function countryCodeFrom(location, countryTerms = []) {
  * until the server's split (structureAddress) makes it "City, Country".
  * Unchanged, location is left alone: an existing company keeps what it had.
  */
-export function addressPatch(typed, previous) {
+export function addressPatch(typed, previous, previousCountry = null) {
   const said = String(typed ?? "").trim();
   const patch = { production_address: said };
   if (said === String(previous ?? "").trim()) return { patch, changed: false };
-  patch.location = fallbackLocation(said) ?? null;
+  // No country in the words: the one Browse already files the company under,
+  // as the server's split keeps it (api/structure-address.js decide()).
+  patch.location = fallbackLocation(said) ?? (said ? countryName(previousCountry) : null) ?? null;
   const code = said ? registrationCountryFrom(said, countryIn(said)) : null;
   if (code) patch.country_code = code;
   return { patch, changed: Boolean(said) };

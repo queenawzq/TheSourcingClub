@@ -9,7 +9,7 @@
  * name is ours; a brand never reads a street, a number or a script it can't
  * read; with no answer at all, the brand reads the country from the text.
  */
-import { acceptAddressParts, brandLocation, countryIn, countryName, fallbackLocation } from "../src/shared/company-address.mjs";
+import { acceptAddressParts, addressMissesPlace, brandLocation, countryIn, countryName, fallbackLocation } from "../src/shared/company-address.mjs";
 import { decide } from "../api/structure-address.js";
 
 let failed = 0;
@@ -178,6 +178,31 @@ console.log("No answer: the address is kept as typed");
   check(blank.location === null, "no country in the text: brands read nothing rather than a street", blank);
   const answered = await decide("中国广东省东莞市虎门镇工业路8号", { city: "东莞市", city_en: "Dongguan", country_code: "CN" });
   check(answered.source === "model" && answered.location === "Dongguan, China", "an answer: the parts and City, Country", answered);
+}
+
+console.log("One country: what brands read and what Browse files the vendor under");
+{
+  const city = await decide("Hangzhou", { city: "Hangzhou", city_en: "Hangzhou", country_code: null }, "PT");
+  check(city.location === "Hangzhou" && city.parts.country_code == null, "a city with no country is never joined to the stored country", city);
+  const inferred = await decide("Rua do Freixo 1071, 4300-219 Porto", { city: "Porto", city_en: "Porto", country_code: "PT" }, "CN");
+  check(inferred.location === "Porto, Portugal" && inferred.parts.country_code === "PT", "a country inferred from the city replaces the stored one", inferred);
+  const typed = await decide("Calle 5 #12, Lima, Peru", null, "CN");
+  check(typed.location === "Peru" && typed.parts.country_code === "PE", "no model: a typed country is recorded, so the filter follows it", typed);
+  const nothing = await decide("Building 3, 8 Gongye Road", null, "CN");
+  check(nothing.location === "China", "no model and no country typed: the stored country, never the street", nothing);
+}
+
+console.log("Asking for the city and country");
+for (const [typed, asks] of [
+  ["Hangzhou", true],
+  ["Building 3, 8 Gongye Road", true],
+  ["Rua do Freixo 1071, 4300-219 Porto", true],
+  ["Rua do Freixo 1071, 4300-219 Porto, Portugal", false],
+  ["中国广东省东莞市虎门镇工业路8号", false],
+  ["Unit 1203, 100 Nathan Road, Kowloon, Hong Kong", false],
+  ["", false],
+]) {
+  check(addressMissesPlace(typed) === asks, `${JSON.stringify(typed)} ${asks ? "asks" : "doesn't ask"}`);
 }
 
 if (failed) {

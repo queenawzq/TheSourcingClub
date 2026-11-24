@@ -8,6 +8,9 @@
 --   - the production dates it types on a quote's capacity window, when the
 --     form cannot read them itself (api/parse-capacity-window.js).
 --
+-- The count of uses ("for four things") goes: the paragraphs after it name
+-- more uses than one number can keep up with.
+--
 -- A new row; earlier versions stay. English only, like every earlier version;
 -- nobody signs anything new. The edit refuses to run on text that does not
 -- read as expected, so a changed policy is written by hand instead.
@@ -19,7 +22,7 @@ declare
   current_text    text;
   next_text       text;
   ai_old  constant text := 'We use an AI model provider, through OpenRouter, for four things.';
-  ai_new  constant text := 'We use an AI model provider, through OpenRouter, for five things.';
+  ai_new  constant text := 'We use an AI model provider, through OpenRouter, in the following ways.';
   brief   constant text := 'A sourcing brief may be drafted from your description.';
   filling constant text := ' When a company fills in its profile or a quote, the address or production dates it types may be sent to the model to put them in the right fields.';
   list_old constant text := 'OpenRouter for translation, drafting, message screening, help with profile reviews and reading registration documents;';

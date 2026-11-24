@@ -35,7 +35,7 @@ async function renameIfChanged(org, name, parts) {
  */
 async function saveWithAddress(org, patch, typed, parts) {
   if (typed === undefined) return saveFactoryProfile(org.id, patch);
-  const { patch: addressColumns, changed } = addressPatch(typed, parts.profile?.production_address);
+  const { patch: addressColumns, changed } = addressPatch(typed, parts.profile?.production_address, parts.profile?.country_code);
   await saveFactoryProfile(org.id, { ...patch, ...addressColumns });
   // Returned, not waited on by the save: the page re-reads when it answers.
   return changed ? { structured: structureAddress(org.id) } : undefined;

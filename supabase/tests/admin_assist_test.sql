@@ -296,7 +296,7 @@ select ok(exists (select 1 from auth.users where id = 'c2200000-0000-0000-0000-0
 
 select is((select version from public.current_legal_documents() where kind = 'privacy'), 9,
   'privacy policy v9 is the current one (20261124490000: help filling in and reviewing profiles)');
-select ok((select full_en from public.current_legal_documents() where kind = 'privacy') like '%for five things.%When a company fills in its profile or a quote, the address or production dates it types may be sent to the model%help with filling in and reviewing profiles%',
+select ok((select full_en from public.current_legal_documents() where kind = 'privacy') like '%through OpenRouter, in the following ways.%When a company fills in its profile or a quote, the address or production dates it types may be sent to the model%help with filling in and reviewing profiles%',
   'v9 names the address and production dates sent to the model');
 
 select * from finish();

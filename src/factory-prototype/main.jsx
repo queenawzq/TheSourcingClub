@@ -936,6 +936,13 @@ export const factoryMainZhText = {
   "Website URL": "官网",
   "Factory location": "工厂所在地",
   "Factory address": "工厂地址",
+  "Company address": "公司地址",
+  "Profile overview": "资料概览",
+  "e.g. 8 Industrial Rd, Humen, Dongguan, China": "例如：中国广东省东莞市虎门镇工业路8号",
+  "e.g. 100 Nathan Road, Kowloon, Hong Kong": "例如：香港九龙尖沙咀弥敦道100号1203室",
+  "Add the city and country, so brands can see where you are.": "请填写城市和国家/地区，以便品牌了解您的位置。",
+  "Set from your factory address. Change it on your profile.": "由您的工厂地址生成，请在资料页修改。",
+  "Set from your company address. Change it on your profile.": "由您的公司地址生成，请在资料页修改。",
   "Nearest port": "最近港口",
   "Total employees": "员工总数",
   "Production fit": "生产匹配",
@@ -4264,7 +4271,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
             <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
-            <ProfileEditField label="Factory address" value={form.address} onChange={(value) => updateField("address", value)} />
+            <ProfileEditField label="Factory address" value={form.address} placeholder="e.g. 8 Industrial Rd, Humen, Dongguan, China" notice={live?.addressNotice?.(form.address) ?? ""} onChange={(value) => updateField("address", value)} />
             <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
             <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
           </div>
@@ -4279,7 +4286,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
             <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
-            <ProfileEditField label="Company address" value={form.address} onChange={(value) => updateField("address", value)} />
+            <ProfileEditField label="Company address" value={form.address} placeholder="e.g. 100 Nathan Road, Kowloon, Hong Kong" notice={live?.addressNotice?.(form.address) ?? ""} onChange={(value) => updateField("address", value)} />
             <ProfileEditField label="Team size" value={form.employees} onChange={(value) => updateField("employees", value)} />
             <ProfileEditField label="Languages supported" value={form.languages} onChange={(value) => updateField("languages", value)} />
           </div>
@@ -4839,11 +4846,12 @@ function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "ima
   );
 }
 
-function ProfileEditField({ label, value, onChange, lockedReason = "" }) {
+function ProfileEditField({ label, value, onChange, lockedReason = "", placeholder, notice = "" }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}</span>
-      <input value={value} readOnly={lockedReason ? true : undefined} title={lockedReason || undefined} data-testid={lockedReason ? "name-locked" : undefined} onChange={(event) => onChange(event.target.value)} />
+      <input value={value} placeholder={placeholder} readOnly={lockedReason ? true : undefined} title={lockedReason || undefined} data-testid={lockedReason ? "name-locked" : undefined} onChange={(event) => onChange(event.target.value)} />
+      {notice && <small className="factory-onboarding-validation-message" data-shown="true" role="status">{notice}</small>}
     </label>
   );
 }
@@ -8077,6 +8085,9 @@ export function FactoryOnboarding({
   // Live only: the registration number field on the verification step,
   // { label, hint, value, confirmed, confirmLabel, second, check, checkSecond }.
   registration = null,
+  // Live only: a line under a field, by its name (the address without a city
+  // or country).
+  fieldNotices = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -8103,7 +8114,7 @@ export function FactoryOnboarding({
     });
 
     invalidFields.forEach((field) => {
-      field.closest(".factory-onboarding-field, .onboarding-chip-group, .factory-terms-required, .onboarding-company-type")?.classList.add("has-onboarding-error");
+      field.closest(".factory-onboarding-field, .onboarding-chip-group, .factory-terms-required, .onboarding-company-type, .factory-brand-asset-card")?.classList.add("has-onboarding-error");
     });
 
     if (invalidFields.length) {
@@ -8165,6 +8176,7 @@ export function FactoryOnboarding({
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
           registration={registration}
+          fieldNotices={fieldNotices}
         />
         {extra}
 
@@ -8218,7 +8230,7 @@ export function FactoryOnboarding({
 function FactoryOnboardingStep({
   step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
   certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
-  documents = {}, onDeleteDocument, termsAcceptance, registration = null,
+  documents = {}, onDeleteDocument, termsAcceptance, registration = null, fieldNotices = null,
 }) {
   const walkthroughDocuments = documents["factory-walkthrough"] ?? [];
   // Keys and option lists both resolve through the English copy, so neither
@@ -8401,7 +8413,7 @@ function FactoryOnboardingStep({
     return (
       <div className="factory-onboarding-form-grid">
         {content.fields.map(([label, placeholder, required], index) => (
-          <OnboardingField label={label} placeholder={placeholder} required={required} language={language} name={nameAt("fields", index)} defaultValue={valueAt("fields", index)} key={label} />
+          <OnboardingField label={label} placeholder={placeholder} required={required} language={language} name={nameAt("fields", index)} defaultValue={valueAt("fields", index)} notice={fieldNotices?.[nameAt("fields", index)]} key={label} />
         ))}
         {content.add && <button className="onboarding-text-action" type="button">{content.add}</button>}
         {content.helper && <p className="onboarding-helper">{content.helper}</p>}
@@ -8891,6 +8903,7 @@ function OnboardingVerification({
         name="business-registration"
         documents={registrationDocuments}
         onDeleteDocument={onDeleteRegistration}
+        requiredMessage={live ? (isZh ? "请上传文件后继续。" : "Upload a file to continue.") : ""}
       />
       {registration && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
       {content.photosTitle && (
@@ -9084,6 +9097,8 @@ function OnboardingBrandContext({ content, language, values = {}, documents = {}
 function OnboardingAssetUploadCard({
   title, helper, accept, fileAccept, uploadLabel, uploadMoreLabel, uploadedLabel, deleteLabel,
   name, multiple = true, documents = [], onDeleteDocument,
+  // Live only: Next waits for a file, saying so in `requiredMessage`.
+  requiredMessage = "",
 }) {
   const [files, setFiles] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -9174,6 +9189,12 @@ function OnboardingAssetUploadCard({
         {hasFiles ? uploadMoreLabel : uploadLabel}
       </button>
       <small>{accept}</small>
+      {requiredMessage && (
+        <>
+          <input type="hidden" data-onboarding-required="true" data-valid={hasFiles ? "true" : "false"} readOnly />
+          <small className="factory-onboarding-validation-message">{requiredMessage}</small>
+        </>
+      )}
       {hasFiles && (
         <div className="factory-brand-uploaded-files" aria-live="polite">
           {documents.map((doc) => (
@@ -9256,11 +9277,12 @@ function OnboardingRegistrationNumber({ registration, onNoNumberChange }) {
   );
 }
 
-function OnboardingField({ label, placeholder, required = false, language = "en", name, defaultValue, readOnly = false }) {
+function OnboardingField({ label, placeholder, required = false, language = "en", name, defaultValue, readOnly = false, notice = "" }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}{required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
       <input name={name ?? factoryFieldName(label)} defaultValue={defaultValue ?? ""} placeholder={placeholder} required={required} readOnly={readOnly} data-onboarding-required={required ? "true" : undefined} />
+      {notice && <small className="factory-onboarding-validation-message" data-shown="true" role="status">{notice}</small>}
       {required && (
         <small className="factory-onboarding-validation-message">
           {language === "zh" ? `请输入${label}后继续。` : `Enter your ${label.toLowerCase()} to continue.`}

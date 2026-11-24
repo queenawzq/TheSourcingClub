@@ -2547,6 +2547,8 @@ export function SettingsScreen({
   grantablePermissions,
   accountLocked = false,
   nameLocked = false,
+  // Live only: why Location can't be typed here (a vendor's comes from its address).
+  locationLocked = "",
   saveNote = "",
   busy = false,
   error = null,
@@ -2770,7 +2772,7 @@ export function SettingsScreen({
                 </label>
                 <label>
                   <span>Location</span>
-                  <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
+                  <input name="account-location" defaultValue={account.location} readOnly={locationLocked || accountLocked ? true : undefined} title={locationLocked || undefined} />
                 </label>
                 {onLanguageChange ? (
                   <label className="tsc-settings-language">
