@@ -46,11 +46,14 @@ export function scoreOverall(groups) {
   return weight && scored ? Math.round(sum / weight) : null;
 }
 
-/** The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence. */
+/**
+ * The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence,
+ * and a check at 75 or above is never named the weakest: a full match is not a weakness (fix round, Nov 24).
+ */
 export function weakestCheck(groups) {
   return groups
     .filter((group) => groupWeight(group))
-    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null).map((check) => ({ ...check, group: group.label })))
+    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null && check.score < 75).map((check) => ({ ...check, group: group.label })))
     .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
 }
 

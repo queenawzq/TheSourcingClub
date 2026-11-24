@@ -252,16 +252,15 @@ export async function updateVendorProfile(orgId, change) {
     throw new Error(staffWords(error));
   }
   // The type is read as the score is read (no run needed); a new address is checked again, and only the address.
-  if (change.address) {
-    await rerunVerificationGroup({
-      orgId, group: "company_information", fields: { siteAddress: change.address }, before: lastRead.get(orgId) ?? null, addressOnly: true,
-    }).catch(() => null);
-  }
-  if (change.address) {
-    staffToken().then((token) => token && fetch("/api/structure-address", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ orgId }),
-    })).catch(() => null);
-  }
+  // The save returns at once (fix round, Nov 24: it waited ~10 s for the check); `checked` settles when it is done.
+  if (!change.address) return {};
+  const checked = rerunVerificationGroup({
+    orgId, group: "company_information", fields: { siteAddress: change.address }, before: lastRead.get(orgId) ?? null, addressOnly: true,
+  }).catch(() => null);
+  staffToken().then((token) => token && fetch("/api/structure-address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ orgId }),
+  })).catch(() => null);
+  return { checked };
 }

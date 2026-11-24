@@ -1226,7 +1226,9 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     actions.termsBlock(profile.id).then((reason) => { if (!cancelled) setTermsBlock(reason); }, () => {});
     return () => { cancelled = true; };
   }, [actions, profile?.id]);
-  const approveBlocks = [approveBlock, termsBlock].filter(Boolean);
+  // One reason for the registry block, the pop-up's (fix round, Nov 24): the score's words, once it is read.
+  const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
+  const savedAddress = verification?.facts?.find((fact) => fact.key === "address")?.value ?? "";
   const deleteLabel = isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1279,7 +1281,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
       <div className="admin-review-shell">
         <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to verification queue</button>
         <header className="admin-review-header">
-          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{profile.name}</h1><p>{profile.location} · Submitted {profile.submitted}</p></div></div>
+          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{profile.name}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · Submitted {profile.submitted}</p></div></div>
           <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
         </header>
 
@@ -1378,7 +1380,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 <CompanyOverride
                   orgId={profile.id}
                   entityType={profile.entityType}
-                  address={verification?.facts?.find((fact) => fact.key === "address")?.value ?? ""}
+                  address={savedAddress}
                   actions={actions}
                   refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
                   onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}
@@ -1387,7 +1389,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
-              <h2>Complete this review</h2>
+              <h2>{profile.status === "Approved" ? "Review complete" : "Complete this review"}</h2>
               {isVendor && (
                 <fieldset className="admin-tier-picker">
                   <legend>Assign marketplace badge</legend>

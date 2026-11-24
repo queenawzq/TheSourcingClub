@@ -94,7 +94,8 @@ check("dead links are gone: gov.pt certificate, Gazette title search, e-Devlet b
   assert.ok(!urls.some((url) => /gov\.pt\/servicos|ticaretsicil|belge-dogrulama/.test(url)));
 });
 check("official sources: the same list as registry_source_is_official()", () => {
-  assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "gib", "gsxt", "national", "permit", "vies"]);
+  assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "companies_house", "gib", "gsxt", "hk_cr", "mca", "national", "permit",
+    "registro_imprese", "rjsc", "rmc", "state_register", "vies"]);
 });
 check("trading scope: trade words with no making word are flagged, quoting the words", () => {
   assert.deepEqual(tradingScope("纺织品、服装的批发、零售；货物进出口"), { trading: true, read: true, recognised: true, quote: "进出口, 批发, 零售" });

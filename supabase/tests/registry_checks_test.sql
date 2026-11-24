@@ -134,18 +134,15 @@ select throws_ok(
   '22023', null, 'staff cannot record VIES''s own "registered"'
 );
 reset role;
--- VIES's automatic answer, as the server records it: never a match.
+-- VIES's automatic answer, as the server records it.
 select lives_ok(
   $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999905', 'vies', 'registered', '{"name":"P86 FACTORY, LDA"}'::jsonb)$$,
   'the server records VIES''s answer'
 );
-set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
-set local role authenticated;
-select throws_ok(
-  $$select public.admin_review_decision('d8600000-0000-0000-0000-0000000000f1', 'approved')$$,
-  '22023', null, 'and VIES alone does not allow approval'
-);
-reset role;
+-- Since 20261124320000 an answer naming the company counts for approval
+-- (another name does not: registry_check_number_test.sql).
+select is(public.registry_approval_problem('d8600000-0000-0000-0000-0000000000f1'), null,
+  'and VIES naming the company counts for approval');
 -- One now() per transaction: age the earlier checks so "latest" means something.
 update public.registry_checks set checked_at = checked_at - interval '1 minute' where org_id = 'd8600000-0000-0000-0000-0000000000f1';
 set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';

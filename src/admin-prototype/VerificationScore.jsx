@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
-import { siteDifferences } from "../shared/verification-score.mjs";
+import { holderCompareName, holderDiffersFrom, siteDifferences } from "../shared/verification-score.mjs";
 import "./verification-score.css";
 
 function useCountUp(value, duration = 700) {
@@ -491,6 +491,9 @@ function ProofChip({ file, onOpen, onRemove }) {
   );
 }
 
+// A prefilled value is selected on focus, so what is typed replaces it rather than joining its end.
+const selectAll = (event) => event.target.select();
+
 const SEEN_FIELDS = {
   registry: [["name", "Company name"], ["number", "Registration number"], ["address", "Address", true]],
   certificate: [["number", "Certificate number"], ["holder", "Holder"]],
@@ -514,8 +517,12 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const [result, setResult] = useState(initialResult);
   const fieldsFor = SEEN_FIELDS[isCert ? "certificate" : "registry"];
   const [seen, setSeen] = useState(() => Object.fromEntries(fieldsFor.map(([key]) => [key, String((earlier && earlier[key]) || (savedByPerson && key === "name" ? registry.name : "") || form.prefill?.[key] || "")])));
-  const [note, setNote] = useState(earlier?.note ?? registry.reason ?? "");
-  const [link, setLink] = useState(registry.reference ?? "");
+  // One note per outcome (fix round, Nov 24): a note written for Not found never rides along into Found.
+  const [notes, setNotes] = useState(() => (initialResult ? { [initialResult]: earlier?.note ?? registry.reason ?? "" } : {}));
+  const note = (result && notes[result]) || "";
+  const setNote = (text) => setNotes((current) => ({ ...current, [result]: text }));
+  // Only a person's own earlier link; never an automatic answer's reference (a VAT id is not a link).
+  const [link, setLink] = useState(savedByPerson ? registry.reference ?? "" : "");
   const [proof, setProof] = useState(() => earlier?.proof ?? []);
   const [added] = useState(() => new Set());
   const [upload, setUpload] = useState({ busy: 0, error: "" });
@@ -525,7 +532,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const needsNote = result === "not_found" || result === "could_not_check";
   // A note is optional on Found and Expired, required on Not found and Couldn't check.
   const showsNote = Boolean(result);
-  const differs = isCert ? {} : siteDifferences(seen, form.profile);
+  const differs = isCert ? { holder: holderDiffersFrom(seen.holder, form.holderNames) } : siteDifferences(seen, form.profile);
   const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy;
 
   const addFiles = async (list) => {
@@ -574,7 +581,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       <div className="vr-field">
         <label htmlFor={ids.site}>Where you checked</label>
         <div className="vr-input has-open">
-          <input id={ids.site} list={ids.list} value={site} spellCheck={false} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onChange={(event) => setSite(event.target.value)} />
+          <input id={ids.site} list={ids.list} value={site} spellCheck={false} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onFocus={selectAll} onChange={(event) => setSite(event.target.value)} />
           {known?.href && <LookupAction lookup={{ label: "Open", href: known.href }} />}
         </div>
         {form.sites?.length > 0 && <datalist id={ids.list}>{form.sites.map((item) => <option value={item.name} key={item.key}>{item.label}</option>)}</datalist>}
@@ -588,7 +595,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       />
       {showsSeen && fieldsFor.map(([key, label, multiline]) => {
         const Control = multiline ? "textarea" : "input";
-        const other = form.profile?.[key] ?? "";
+        const other = isCert ? holderCompareName(seen[key], form.holderNames) : form.profile?.[key] ?? "";
         return (
           <div className={`vr-field${differs[key] ? " is-differs" : ""}`} key={key}>
             <label htmlFor={`${ids.site}-${key}`}>{label}</label>
@@ -616,7 +623,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       </div>
       <div className="vr-field">
         <label htmlFor={ids.link}>Link (optional)</label>
-        <input id={ids.link} value={link} onChange={(event) => setLink(event.target.value)} />
+        <input id={ids.link} value={link} spellCheck={false} onFocus={selectAll} onChange={(event) => setLink(event.target.value)} />
       </div>
       <SaveError text={save.error} />
       <div className="vr-record-actions">
@@ -643,6 +650,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
           {registry?.summary
             ? (registry.for ? <small className="vr-sub-summary">{registry.summary}, for “{registry.for}”</small> : <span>{registry.summary}</span>)
             : registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {check.sharedNumber && !numberShown && <small>Same registration number as {check.sharedNumber.with}</small>}
           {registry?.proof?.length > 0 && !mode && (
             <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
           )}
@@ -653,6 +661,9 @@ function SubCheck({ check, groupKey, legalName, canReason, actions, numberShown 
           <Meter value={check.score} />
         </div>
       </div>
+      {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
+        <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
+      )}
       {check.reason && mode !== "reason" && (
         <p className={`vr-sub-note${check.reason.earlier ? " is-earlier" : ""}`}>
           <span>{check.reason.text}</span>

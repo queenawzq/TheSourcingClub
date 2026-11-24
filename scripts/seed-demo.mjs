@@ -101,6 +101,20 @@ const zhFactory = await demoUser(LOGINS.zhFactory);
 const callUsers = {};
 for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
 for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
+// Factories from eight more countries waiting for review, so staff can walk each country's registry
+// without signing one up. Nobody signs in as them, so they have no sign-in button (demo-logins.mjs);
+// their owners are demo users all the same, so the next run clears them.
+const COUNTRY_CASES = {
+  verifyEs: { name: "Confecciones Levante", email: "demo-verify-es@example.com" },
+  verifyGb: { name: "Pennine Knitwear", email: "demo-verify-gb@example.com" },
+  verifyIt: { name: "Maglificio Val Seriana", email: "demo-verify-it@example.com" },
+  verifyVn: { name: "Song Hong Garment", email: "demo-verify-vn@example.com" },
+  verifyIn: { name: "Tiruppur Knit Exports", email: "demo-verify-in@example.com" },
+  verifyBd: { name: "Meghna Apparels", email: "demo-verify-bd@example.com" },
+  verifyUs: { name: "Carolina Cut & Sew", email: "demo-verify-us@example.com" },
+  verifyHk: { name: "Kowloon Bay Garments", email: "demo-verify-hk@example.com" },
+};
+for (const [key, login] of Object.entries(COUNTRY_CASES)) callUsers[key] = await demoUser(login);
 const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, unsignedBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
@@ -635,7 +649,8 @@ const CURRENT_TERMS = Object.fromEntries(
   const nowIso = new Date().toISOString();
   const verifyOrg = async (key, { signer, ...profile }, { address, registration }) => {
     const user = callUsers[key];
-    const org = must(await user.client.rpc("create_org", { org_name: LOGINS[key].name, org_kind: "factory" }), `create ${key}`);
+    const login = LOGINS[key] ?? COUNTRY_CASES[key];
+    const org = must(await user.client.rpc("create_org", { org_name: login.name, org_kind: "factory" }), `create ${key}`);
     must(await admin.from("factory_profiles").upsert({
       org_id: org.id, onboarding_completed_at: nowIso, verification_status: "pending", published_at: nowIso, ...profile,
     }), `${key} profile`);
@@ -644,7 +659,7 @@ const CURRENT_TERMS = Object.fromEntries(
     must(await admin.from("terms_acceptances").insert({
       org_id: org.id, terms_version: `${CURRENT_TERMS.terms_factory.kind} v${CURRENT_TERMS.terms_factory.version}`,
       legal_document_id: CURRENT_TERMS.terms_factory.id,
-      signature: signer ?? LOGINS[key].name, accepted_by: user.id, accepted_at: day(-2),
+      signature: signer ?? login.name, accepted_by: user.id, accepted_at: day(-2),
     }), `${key} terms`);
     return { org, user };
   };
@@ -821,6 +836,46 @@ const CURRENT_TERMS = Object.fromEntries(
     await certReading(d, cert, { certNumber: "CU 1048211", validUntil: "2027-08-31", holder: "Têxteis Douro – Confecções, Lda" });
     must(await staff.rpc("admin_check_reason", { target_org: d.org.id, check_key: "certificate", note: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", subject: cert.id }), "D's certificate reason");
   }
+
+  // Eight more countries, each waiting for staff's first registry check: a registration document the
+  // reading has read, the number typed at onboarding, a production address and signed terms.
+  const countryCases = [
+    { key: "verifyEs", country: "ES", legal: "Confecciones Levante, S.L.", number: "B54839216", file: "es-nota-simple.png", documentType: "Nota simple informativa",
+      address: "Calle Severo Ochoa 18, Polígono Industrial Carrús, 03205 Elche, Alicante", founded: "2011-05-12", scope: "Confección de prendas de vestir exteriores; fabricación de prendas de punto",
+      intro: "Cut-and-sew outerwear and knit tops, 3 lines, private label for EU brands.", employees: 85, signer: "Lucía Martínez" },
+    { key: "verifyGb", country: "GB", legal: "Pennine Knitwear Ltd", number: "14827365", file: "gb-certificate.png", documentType: "Certificate of Incorporation",
+      address: "Unit 4, Abbey Meadows Mills, Abbey Lane, Leicester LE4 5DQ", founded: "2023-04-18", scope: "14390 Manufacture of other knitted and crocheted apparel",
+      intro: "Fully-fashioned knitwear in lambswool and merino, small runs from 50 pieces.", employees: 22, signer: "Tom Hargreaves" },
+    { key: "verifyIt", country: "IT", legal: "Maglificio Val Seriana S.r.l.", number: "04812730165", file: "it-visura.png", documentType: "Visura camerale",
+      address: "Via Provinciale 62, 24021 Albino (BG)", founded: "2009-02-09", scope: "Fabbricazione di articoli di maglieria (ATECO 14.39)",
+      intro: "Knitwear mill with 12 flat-knitting machines, cashmere and wool blends.", employees: 40, signer: "Giulia Rota" },
+    { key: "verifyVn", country: "VN", legal: "Song Hong Garment Company Limited", number: "0108472915", file: "vn-dkkd.png", documentType: "Giấy chứng nhận đăng ký doanh nghiệp",
+      address: "Lô CN3, Khu công nghiệp Quang Minh, Huyện Mê Linh, Hà Nội", founded: "2018-09-14", scope: "1410 May trang phục",
+      intro: "Woven shirts and trousers, 6 lines, FOB for US and EU retailers.", employees: 420, signer: "Nguyễn Thu Hà" },
+    { key: "verifyIn", country: "IN", legal: "Tiruppur Knit Exports Private Limited", number: "U18101TZ2015PTC021847", file: "in-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "14/2 Kangeyam Road, Veerapandi, Tiruppur, Tamil Nadu 641605", founded: "2015-07-21", scope: "Manufacture of knitted and crocheted apparel",
+      intro: "Cotton jersey T-shirts and babywear, GOTS organic lines, 8 sewing lines.", employees: 260, signer: "Karthik Subramanian" },
+    { key: "verifyBd", country: "BD", legal: "Meghna Apparels Limited", number: "C-148273/2018", file: "bd-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "Plot 27, BSCIC Industrial Estate, Konabari, Gazipur 1751", founded: "2018-03-06", scope: "Manufacture of woven and knit readymade garments",
+      intro: "Basics in volume: tees, polos and denim, 14 lines.", employees: 900, signer: "Farhana Rahman" },
+    { key: "verifyUs", country: "US", legal: "Carolina Cut & Sew LLC", number: "2214587", file: "us-certificate.png", documentType: "Certificate of Organization",
+      address: "1180 Highland Ave NE, Hickory, NC 28601", founded: "2019-10-03", scope: "Cut and sew apparel contractor",
+      intro: "Domestic cut-and-sew for small brands: samples, grading and runs from 100.", employees: 35, signer: "Megan Carter" },
+    { key: "verifyHk", country: "HK", legal: "Kowloon Bay Garments Limited", number: "3184276", file: "hk-incorporation.png", documentType: "Certificate of Incorporation",
+      address: "Flat B, 9/F, Kowloon Bay Industrial Centre, 15 Wang Hoi Road, Kowloon Bay, Kowloon", founded: "2022-08-11", scope: "Garment manufacturing and export",
+      intro: "Sampling room in Hong Kong with production partners in Guangdong.", employees: 18, signer: "Chan Ka Wai" },
+  ];
+  for (const c of countryCases) {
+    const v = await verifyOrg(c.key, {
+      legal_name: c.legal, country_code: c.country, location: c.address, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
+      intro: c.intro, signer: c.signer,
+    }, { address: c.address, registration: { country: c.country, number: c.number } });
+    const file = await upload(v, "business_registration", c.file, { ...doc(c.file), createdAt: day(-1) });
+    await reading(v, file, {
+      documentType: c.documentType, registrationNumber: c.number, legalName: c.legal, address: c.address, businessScope: c.scope, foundingDate: c.founded,
+    }, { tradingScope: { trading: false, read: true, recognised: true, quote: c.scope, makingFrom: "words" }, fileName: c.file, title: c.legal, numberAtReading: c.number });
+  }
+  console.log(`${countryCases.length} more countries waiting for review: ${countryCases.map((c) => c.country).join(", ")}`);
 }
 
 // A company staff can review but nobody can be emailed about: no members, so

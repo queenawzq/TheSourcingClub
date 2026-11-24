@@ -259,11 +259,12 @@ const enc = encodeURIComponent;
 export const REGISTRY_SOURCES = {
   CN: [
     { ...DOCUMENT_SOURCE, label: "Uploaded business licence" },
+    // The official register (fix round, Nov 24): the one prefilled.
+    { key: "gsxt", label: "GSXT (needs a mainland connection)", url: () => "https://www.gsxt.gov.cn/", copy: "number", seen: ["name", "address"] },
     // QCC's free search answers from outside China (tested Nov 8). A
     // commercial copy of the registry: a brand reads its check as
     // "Registration document", not "Official registry".
     { key: "qcc", label: "QCC (commercial copy of the registry)", action: "Look up on QCC", url: () => "https://www.qcckyc.com/free-company-search", copy: "number", seen: ["name", "address", "startDate", "industry"] },
-    { key: "gsxt", label: "GSXT (needs a mainland connection)", url: () => "https://www.gsxt.gov.cn/", seen: ["name", "address"] },
     { key: "permit", label: "National pollutant permit site", url: () => "https://permit.mee.gov.cn/perxxgkinfo/syssb/xkgg/xkgg!licenseInformation.action", seen: ["name", "address"] },
   ],
   TR: [
@@ -277,16 +278,48 @@ export const REGISTRY_SOURCES = {
     { ...DOCUMENT_SOURCE, label: "Uploaded tax registration letter" },
   ],
   PT: [
-    { key: "vies", label: "EU VIES tax number check", url: () => "https://ec.europa.eu/taxation_customs/vies/", seen: ["name", "address"] },
+    // The company register's own publications (Ministry of Justice), searched by NIPC: the one prefilled.
+    { key: "acts", label: "Published company acts", url: () => "https://publicacoes.mj.pt/Pesquisa.aspx", copy: "number", seen: ["name"] },
     // The certidão answers only Portuguese connections (tested Nov 8): staff
     // read the PDF the factory uploaded, or one opened with the access code.
     { key: "certidao", label: "Permanent certificate (certidão, with the access code)", url: null, copy: "accessCode", seen: ["name", "address"] },
-    { key: "acts", label: "Published company acts", url: () => "https://publicacoes.mj.pt/Pesquisa.aspx", copy: "number", seen: ["name"] },
+    { key: "vies", label: "EU VIES tax number check", url: () => "https://ec.europa.eu/taxation_customs/vies/", seen: ["name", "address"] },
     DOCUMENT_SOURCE,
   ],
   VN: [
     DOCUMENT_SOURCE,
     { key: "national", label: "National Business Registration Portal", url: () => "https://dangkykinhdoanh.gov.vn/vn/Pages/Trangchu.aspx", copy: "number", seen: ["name", "address"] },
+    { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
+  ],
+  // Each country's official company register (fix round, Nov 24).
+  GB: [
+    { key: "companies_house", label: "Companies House", url: (reg, title) => `https://find-and-update.company-information.service.gov.uk/search/companies?q=${enc(reg?.number || title || "")}`, copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  ES: [
+    { key: "rmc", label: "Registro Mercantil Central", url: () => "https://www.rmc.es/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  IT: [
+    { key: "registro_imprese", label: "Registro Imprese (chambers of commerce)", url: () => "https://www.registroimprese.it/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  IN: [
+    { key: "mca", label: "MCA company master data", url: () => "https://www.mca.gov.in/content/mca/global/en/mca/master-data/MDS.html", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  BD: [
+    { key: "rjsc", label: "RJSC (Registrar of Joint Stock Companies)", url: () => "https://roc.gov.bd/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  HK: [
+    { key: "hk_cr", label: "Companies Registry (e-Search)", url: () => "https://www.e-services.cr.gov.hk/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  // No national register: each state's Secretary of State keeps its own.
+  US: [
+    { key: "state_register", label: "State business register (Secretary of State)", url: null, copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
     { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
   ],
 };
@@ -312,7 +345,8 @@ export function registrySourceUrl(source, registration, title) {
 }
 
 /** An official source (the brand reads "Official registry"); the same list as registry_source_is_official(). */
-export const OFFICIAL_SOURCES = new Set(["vies", "gib", "gsxt", "certidao", "acts", "permit", "national"]);
+export const OFFICIAL_SOURCES = new Set(["vies", "gib", "gsxt", "certidao", "acts", "permit", "national",
+  "companies_house", "rmc", "registro_imprese", "mca", "rjsc", "hk_cr", "state_register"]);
 
 export const REGISTRY_RESULTS = [
   { key: "found", label: "Found, matches" },

@@ -61,10 +61,12 @@ export function CompanyOverride({ orgId, entityType, address, actions, refreshKe
     setBusy(true);
     setError("");
     try {
-      await actions.updateCompanyProfile(orgId, open === "type" ? { vendorKind: kind } : { address: text.trim() });
+      const saved = await actions.updateCompanyProfile(orgId, open === "type" ? { vendorKind: kind } : { address: text.trim() });
       setOpen(null);
       loadHistory();
       onChanged?.();
+      // The address check runs after the save: the score is read again when it is done.
+      saved?.checked?.then(() => onChanged?.(), () => null);
     } catch (failure) {
       setError(failure?.message || "Couldn't save. Try again.");
     } finally {
