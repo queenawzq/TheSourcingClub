@@ -635,7 +635,7 @@ function registrationFields({ reading, detail, country, timeZone, documentDiffer
   if (country === "TR") push({ key: "letterNumber", label: "Letter number", value: reg.registrationLetterNumber ?? "", copy: true });
   if (country === "TR") push({ key: "taxOffice", label: "Tax office", value: x.taxOffice ?? "" });
   push({ key: "established", label: country === "PT" ? "Registered" : "Established", value: reading?.details?.foundedOn ?? x.foundingDate ?? x.issueDate ?? "" });
-  push({ key: "legalName", label: "Legal name", value: x.legalName ?? "", editable: true, always: Boolean(reading), ...(typedOf("name") ? { typed: String(typedOf("name")) } : {}), ...(country === "TR" ? { wide: true } : {}) });
+  push({ key: "legalName", label: "Legal name", value: x.legalName ?? "", editable: true, always: Boolean(reading), ...(typedOf("name") ? { typed: String(typedOf("name")), ...(documentDiffers === "name" ? { explainTyped: "Why the typed name differs from the licence" } : {}) } : {}), ...(country === "TR" ? { wide: true } : {}) });
   push({ key: "representative", label: "Legal representative", value: x.legalRepresentative ?? "" });
   push({ key: "legalNameEnglish", label: "Name in English", value: x.legalNameEnglish ?? "", wide: true });
   const codes = (x.activityCodes ?? []).join(" · ");
@@ -912,7 +912,8 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
     name_differs: "Registry: name differs, record the check again",
     document_differs: field === "number"
       ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and save"
-      : "Registry: the name on the licence differs from what they typed, record the check again",
+      // What clears it (Nov 25): an explanation, or a registry check showing the licence's name (or theirs).
+      : "Registry name: the licence's name differs from what they typed. Explain it on the Typed: line, or record a check with the name the registry shows",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
@@ -934,7 +935,7 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
     name_differs: ["business_registration", "registry", "Approve needs: record the registry check again"],
     document_differs: ["business_registration", "registry", field === "number"
       ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and save"
-      : "Approve needs: record the registry check again"],
+      : "Approve needs: the name differs from the licence. Explain it on the Typed: line, or record a check with the name the registry shows"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
     number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
