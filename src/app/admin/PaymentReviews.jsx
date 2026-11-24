@@ -23,8 +23,8 @@ function disputeWords(row) {
   if (status === "won" || status === "warning_closed") return "Dispute won";
   if (status === "lost") return "Dispute lost";
   const due = day(row.dispute_due_by);
-  if (status === "under_review" || status === "warning_under_review") return "Dispute open · evidence sent, waiting for the bank";
-  return `Dispute open${due ? ` · respond in Stripe by ${due}` : ""}`;
+  if (status === "under_review" || status === "warning_under_review") return "Dispute open · waiting for the bank's decision";
+  return `Dispute open · waiting for the bank's decision${due ? ` · respond in Stripe by ${due}` : ""}`;
 }
 
 /** Dollars typed ("900", "900.50") to cents; null when not a positive amount. */
@@ -94,15 +94,19 @@ function ReviewActions({ row, onChanged }) {
       {said}
       {row.factory_paused ? (
         <>
+          {/* Refund brand only once the brand has its money back: a refund, or a dispute the bank decided for it. */}
           <button type="button" className="admin-approve" disabled={working} data-testid="review-pay-factory"
                   onClick={() => run(() => payFactory(row.id), "Factory unpaused. Nothing was taken.")}>Pay factory</button>
-          <button type="button" className="admin-reject" disabled={working || !(Number(row.returnable_cents) > 0)} data-testid="review-refund-brand"
-                  title={Number(row.returnable_cents) > 0 ? undefined : "Nothing left in the factory's balance to refund."}
+          {row.cause === "dispute" && row.dispute_status !== "lost" ? null : (
+          <button type="button" className="admin-reject" disabled={working || !row.approved || !(Number(row.returnable_cents) > 0)} data-testid="review-refund-brand"
+                  title={!row.approved ? "This step isn't approved, so its money isn't in the factory's balance."
+                    : Number(row.returnable_cents) > 0 ? undefined : "Nothing left in the factory's balance to refund."}
                   onClick={() => {
                     setAmount((Math.min(Number(row.factory_part_cents) || 0, Number(row.returnable_cents) || 0) / 100).toFixed(2));
                     setNote("");
                     setStep("refund");
                   }}>Refund brand…</button>
+          )}
         </>
       ) : null}
       {row.brand_paused ? (
@@ -149,7 +153,7 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                     ) : null}
                     {!row.approved ? <span className="admin-sub">Not approved yet: this step's money isn't in the factory's balance.</span> : null}
                     {row.open && row.cause === "dispute" && !["won", "warning_closed", "lost"].includes(row.dispute_status) ? (
-                      <span className="admin-sub">This step stays on hold until the dispute is settled in Stripe, whatever you decide here.</span>
+                      <span className="admin-sub">Refund brand is available once the bank decides for the brand. This step stays on hold until then.</span>
                     ) : null}
                     {Number(row.dispute_fee_cents) > 0 ? <span className="admin-sub">{`Dispute fee ${moneyIn(row.dispute_fee_cents)}`}</span> : null}
                     <span className="admin-sub">

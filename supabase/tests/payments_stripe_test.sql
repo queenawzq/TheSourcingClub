@@ -467,13 +467,16 @@ select is(
             and (b.stripe_release_started or b.provider_status in ('processing', 'failed')))
        or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled' and b.refund_failed_at is not null)))
   -- Also staff's (20261120210000): withdrawals waiting to be approved or paid,
-  -- and the Needs checking rows (disputed owed steps, stuck Stripe withdrawals,
-  -- and money to recover after a refund, 20261121200000).
+  -- and the Needs checking rows (stuck Stripe withdrawals, returned and failed
+  -- refunds), plus the payment reviews waiting on staff, which replaced the
+  -- disputed steps and the money to recover (20261124100000).
   -- Counted from the same sources, so the identity holds whatever else the
   -- shared stack holds.
   + (select count(*)::integer from public.factory_withdrawals w where w.status in ('requested', 'paying'))
-  + jsonb_array_length(public.admin_balance_attention() -> 'disputed') + jsonb_array_length(public.admin_balance_attention() -> 'stuck')
-  + jsonb_array_length(public.admin_balance_attention() -> 'recover'),
+  + jsonb_array_length(public.admin_balance_attention() -> 'stuck')
+  + (select count(*)::integer from jsonb_array_elements(public.payment_review_board()) v where (v ->> 'open')::boolean)
+  + jsonb_array_length(public.admin_balance_attention() -> 'returned')
+  + jsonb_array_length(public.admin_balance_attention() -> 'refund_failed'),
   'the overview counts every payment waiting on staff, and not money owed in a balance');
 -- And for this file's fixtures alone: the owed Balance step adds nothing.
 select ok(not exists (select 1 from jsonb_array_elements(public.admin_balance_attention() -> 'disputed') d
@@ -739,14 +742,22 @@ reset role;
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select public.confirm_payment_received(pg_temp.p18_pay('order_d', 'Balance'), null, null);
--- ...but not while the factory owes TSC the refunded Fit sample it was paid
--- (20261121340000: the withdrawal rules hold for per-step payouts too).
-select throws_ok(
-  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
-  '22023', 'the factory owes TSC $550.00', 'a bank-wire payment waits while the factory owes TSC');
 reset role;
--- Once that is recovered (staff record it), the bank wire is paid out by staff.
-update public.order_payments set refunded_cents = 0, refunded_at = null where id = pg_temp.p18_pay('order_d', 'Fit sample');
+-- The refunded Fit sample it was paid no longer makes the factory owe TSC:
+-- it opened a payment review instead, and the factory keeps its earning
+-- until staff decide (20261124100000).
+select ok(
+  (select public.factory_paused(o.factory_org_id) and coalesce(public.payment_debt_cents(p), 0) = 0
+          and public.factory_debt_uncovered_cents(o.factory_org_id) = 0 and p.factory_refund_cents = 0
+     from public.order_payments p join public.production_orders o on o.id = p.order_id
+    where p.id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  'a refund after the payout owes TSC nothing: the factory is paused for a payment review');
+-- Staff decide the review (Pay factory), then the bank wire is paid out by staff.
+select set_config('tsc.p18_review', (select id::text from public.payment_reviews where payment_id = pg_temp.p18_pay('order_d', 'Fit sample')), true);
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select public.decide_payment_review(current_setting('tsc.p18_review')::uuid, 'pay_factory');
+reset role;
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select lives_ok(

@@ -212,8 +212,10 @@ as $$
      and not p.withdrawal_pool
      and not p.stripe_release_started
      and p.release_claimed_at is null
+     -- A per-step payout under way or failed is staff's to settle (paid again,
+     -- or by hand): never taken from.
      and coalesce((select x.status from public.provider_payouts x where x.payment_id = p.id
-                    order by x.created_at desc limit 1), '') <> 'processing'
+                    order by x.created_at desc limit 1), '') not in ('processing', 'failed')
    order by (p.id = first_payment) desc, p.release_requested_at desc, p.id;
 $$;
 revoke all on function public.review_returnable_parts(uuid, uuid) from public, anon, authenticated;
@@ -418,6 +420,19 @@ begin
   step := coalesce(m.title, o.order_number);
 
   if decision = 'refund_brand' then
+    -- Only money that reached the factory's balance through this step: before
+    -- approval the brand's money goes back through Stripe (a lost dispute
+    -- sends it to pay again), so taking from the balance would take it twice.
+    if not (p.state = 'released' or p.release_requested_at is not null) then
+      raise exception 'This step isn''t approved, so its money isn''t in the factory''s balance. Choose Pay factory.'
+        using errcode = '22023', hint = 'review_not_approved';
+    end if;
+    -- A dispute: only once the bank decided for the brand (lost). Until then
+    -- the brand has not had its money back; Pay factory or wait for the bank.
+    if v.cause = 'dispute' and coalesce(v.dispute_status, '') <> 'lost' then
+      raise exception 'The bank hasn''t decided this dispute yet. Refund brand is available once the brand has its money back.'
+        using errcode = '22023', hint = 'review_dispute_open';
+    end if;
     if amount_cents is null or amount_cents <= 0 then
       raise exception 'Enter an amount to refund.' using errcode = '22023', hint = 'review_amount';
     end if;
@@ -841,6 +856,10 @@ begin
          review_kept_cents = greatest(0, review_kept_cents - (was_total - total))
    where id = p.id
   returning * into p;
+  -- An open refund review says only what still went back (20261124100000).
+  update public.payment_reviews
+     set amount_cents = greatest(0, amount_cents - (was_total - total)), updated_at = now()
+   where payment_id = p.id and cause = 'refund' and decided_at is null;
   insert into public.payment_events (payment_id, stripe_ref, from_state, to_state, actor_kind, note)
   values (p.id, record_payment_refund_failed.payment_intent, p.state, p.state, 'system',
           format('A refund failed in Stripe: %s refunded in all.', public.format_money(total, p.currency)) || ref);
@@ -1828,3 +1847,30 @@ begin
 end;
 $function$;
 
+-- From 20261121400000_one_rule_per_check.sql: the pause is a refusal too, so
+-- staff cannot start paying a waiting withdrawal while the factory is paused.
+create or replace function public.check_withdrawal_can_go(w public.factory_withdrawals)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  why text := public.withdrawal_blocker(w);
+begin
+  if why = 'withdrawal_owes_tsc' then
+    -- The amount travels in detail, for staff's sentence.
+    -- What its earnings do not cover: the To recover row's amount (20261121380000).
+    raise exception 'the factory owes TSC %', public.format_money(public.factory_debt_uncovered_cents(w.org_id), 'USD')
+      using errcode = '22023', hint = 'withdrawal_owes_tsc', detail = public.format_money(public.factory_debt_uncovered_cents(w.org_id), 'USD');
+  elsif why = 'payment_under_review' then
+    -- A payment review pauses every withdrawal, a waiting one included (20261124100000).
+    raise exception 'Withdrawals are paused while a payment is reviewed.' using errcode = '22023', hint = 'payment_under_review';
+  elsif why = 'withdrawal_over_balance' then
+    raise exception 'the factory''s balance no longer covers this' using errcode = '22023', hint = 'withdrawal_over_balance';
+  end if;
+end;
+$$;
+revoke all on function public.check_withdrawal_can_go(public.factory_withdrawals) from public, anon, authenticated;
+grant execute on function public.check_withdrawal_can_go(public.factory_withdrawals) to service_role;

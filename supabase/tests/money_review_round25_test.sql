@@ -7,6 +7,10 @@
 --     told it owes TSC that part.
 -- e3: a withdrawal told "on hold" earlier, then sent, then refunded: told.
 -- e4: old-pool money refunded while its payout is sent: counted and told.
+-- Paused payments (20261124100000): a refund after approval takes nothing
+--     from a withdrawal being sent and makes no debt; it opens a payment
+--     review. e1-e4 now assert that: the withdrawal is unchanged, nothing is
+--     owed, and the factory is paused.
 -- e5: removing the default PayPal never makes the switched-off Wise the default.
 --
 -- Fixtures: slugs pgtap-r25-*, ids b25?xxxx-...; every count is scoped to them.
@@ -212,26 +216,31 @@ select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w1')::uuid)$$, '
 select lives_ok($$select pg_temp.refund(11, 53500)$$, 'e1: the brand is refunded in full while it is sent');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''failed'', sentence => ''unclaimed'')', current_setting('tsc.r25_w1')))$$,
   'e1: the payout fails');
+-- Paused payments: the refund took nothing from it, so all of it comes back.
 select is(pg_temp.told_w(current_setting('tsc.r25_w1'), '% did not go through'),
-  'Withdrawal of $500.00 did not go through | This amount was returned to the brand.', 'e1: never "the amount is back in your balance"');
-select is((select x ->> 'back_cents' from jsonb_array_elements(pg_temp.bal(1) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r25_w1')), '0',
-  'e1: the card reads what came back: nothing');
+  'Withdrawal of $500.00 did not go through | The amount is back in your balance. Check your withdrawal method, then withdraw again.',
+  'e1: the amount is back in its balance (the refund took nothing from it)');
+select is(row((select x ->> 'back_cents' from jsonb_array_elements(pg_temp.bal(1) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r25_w1')),
+              (pg_temp.bal(1) ->> 'available_cents')::bigint, public.factory_paused(pg_temp.org(1))),
+          row('50000'::text, 50000::bigint, true),
+  'e1: the card reads all $500 came back; the factory is under review');
 
 -- e2 ------------------------------------------------------------------------
 select set_config('tsc.r25_w2', pg_temp.req(2, 50000)::text, true);
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w2')::uuid)$$, 'e2: staff send $500');
 select lives_ok($$select pg_temp.refund(21, 10700)$$, 'e2: $107 refunded while sent');
 select lives_ok($$select pg_temp.refund(21, 21400)$$, 'e2: $107 more');
-select is(pg_temp.told_w(current_setting('tsc.r25_w2'), '% being checked'),
-  'Withdrawal of $500.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal. || '
-  || 'Withdrawal of $500.00 being checked | $200.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
-  'e2: told each new amount, with all that went back so far');
+select is(row(pg_temp.told_w(current_setting('tsc.r25_w2'), '% being checked'),
+              (select amount_cents from public.payment_reviews where payment_id = pg_temp.pay(21) and decided_at is null)),
+          row(null::text, 21400::bigint),
+  'e2: no "being checked" notice: one payment review holds all $214 of the charge that went back so far');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''paid'', ''PP-R25'', 0, 50000, ''USD'', null)', current_setting('tsc.r25_w2')))$$,
   'e2: the payout completes');
 select is(pg_temp.told_w(current_setting('tsc.r25_w2'), '% paid out to you'),
-  '$500.00 paid out to you | Sent to pgtap-r25-f2@example.com. Payout fee $0.00 is taken from this payment: you receive $500.00. You now owe TSC $200.00, the part returned to the brand after it was sent.',
-  'e2: told it now owes TSC the part that went back');
-select is((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, 20000::bigint, 'e2: and it does');
+  '$500.00 paid out to you | Sent to pgtap-r25-f2@example.com. Payout fee $0.00 is taken from this payment: you receive $500.00.',
+  'e2: told it was paid, never that it owes TSC');
+select is(row((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, public.factory_paused(pg_temp.org(2))), row(0::bigint, true),
+  'e2: it owes nothing; the factory is under review');
 
 -- e3 ------------------------------------------------------------------------
 select set_config('tsc.r25_w3', pg_temp.req(3, 50000)::text, true);
@@ -240,23 +249,27 @@ insert into public.notifications (org_id, kind, subject_type, subject_id, title,
 values (pg_temp.org(3), 'withdrawal', 'withdrawal', current_setting('tsc.r25_w3')::uuid, 'Withdrawal of $500.00 on hold', 'earlier');
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w3')::uuid)$$, 'e3: staff send it');
 select lives_ok($$select pg_temp.refund(31, 10700)$$, 'e3: $107 refunded while sent');
-select is(pg_temp.told_w(current_setting('tsc.r25_w3'), '% being checked'),
-  'Withdrawal of $500.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
-  'e3: told, though it was told "on hold" before');
+select is(row(pg_temp.told_w(current_setting('tsc.r25_w3'), '% being checked'),
+              (select title from public.notifications where org_id = pg_temp.org(3) and title = 'Withdrawals paused')),
+          row(null::text, 'Withdrawals paused'::text),
+  'e3: told its withdrawals are paused (no "being checked"), though it was told "on hold" before');
 
 -- e4 ------------------------------------------------------------------------
 select set_config('tsc.r25_w4', pg_temp.req(4, 30000)::text, true);
 select is((select sum(amount_cents) from public.payment_takes where factory_withdrawal_id = current_setting('tsc.r25_w4')::uuid and payment_id = pg_temp.pay(41))::bigint, 30000::bigint, 'e4: $300 of the old-pool deposit, held by its take');
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r25_w4')::uuid)$$, 'e4: staff send it');
 select lives_ok($$select pg_temp.refund(41, 10700)$$, 'e4: $107 of the pool deposit refunded while sent');
-select is((pg_temp.staff_row(current_setting('tsc.r25_w4')::uuid) ->> 'refunded_cents')::bigint, 10000::bigint, 'e4: staff see the $100 at risk');
-select is(pg_temp.told_w(current_setting('tsc.r25_w4'), '% being checked'),
-  'Withdrawal of $300.00 being checked | $100.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.', 'e4: the factory is told');
+-- Paused payments: nothing at risk on the withdrawal; the factory is paused.
+select is(row((pg_temp.staff_row(current_setting('tsc.r25_w4')::uuid) ->> 'refunded_cents')::bigint, public.factory_paused(pg_temp.org(4))),
+          row(0::bigint, true), 'e4: staff see nothing refunded on it; the factory is under review');
+select is(row(pg_temp.told_w(current_setting('tsc.r25_w4'), '% being checked'),
+              (select title from public.notifications where org_id = pg_temp.org(4) and title = 'Withdrawals paused')),
+          row(null::text, 'Withdrawals paused'::text), 'e4: the factory is told its withdrawals are paused');
 select is((select x -> 'parts' from jsonb_array_elements(pg_temp.bal(4) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r25_w4')),
-  '[{"word": "on_its_way", "amount_cents": 20000}, {"word": "refunded", "amount_cents": 10000}]'::jsonb, 'e4: its block');
+  '[{"word": "on_its_way", "amount_cents": 30000}]'::jsonb, 'e4: its block: all $300 on its way');
 select ok((pg_temp.bal(4) ->> 'total_cents')::bigint = (pg_temp.bal(4) ->> 'awaiting_cents')::bigint + (pg_temp.bal(4) ->> 'available_cents')::bigint
   + (pg_temp.bal(4) ->> 'pending_cents')::bigint + (pg_temp.bal(4) ->> 'processing_cents')::bigint + (pg_temp.bal(4) ->> 'paid_out_cents')::bigint
-  and (pg_temp.bal(4) ->> 'processing_cents')::bigint = 20000, 'e4: Processing $200, Total adds up');
+  and (pg_temp.bal(4) ->> 'processing_cents')::bigint = 30000, 'e4: Processing $300, Total adds up');
 
 -- e5 ------------------------------------------------------------------------
 select pg_temp.act_as('07'); set local role authenticated;

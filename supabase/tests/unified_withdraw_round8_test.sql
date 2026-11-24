@@ -108,9 +108,11 @@ begin
 end;
 $f$;
 
--- PayPal: waiting ($100, step 1), on hold ($45, step 2, refunded below),
--- on its way ($10, step 3, staff paying), paid ($20, step 4), returned
--- (a cancelled $5 request).
+-- PayPal: waiting ($100, step 1), waiting ($45, step 2, refunded below after
+-- approval: since paused payments, 20261124100000, nothing is taken from the
+-- factory; a payment review opens and staff decide it, paying the factory, so
+-- the rest of this fixture runs unpaused), on its way ($10, step 3, staff
+-- paying), paid ($20, step 4), returned (a cancelled $5 request).
 select set_config('tsc.r8_wait', pg_temp.ask(10000)::text, true);
 select set_config('tsc.r8_hold', pg_temp.ask(4500)::text, true);
 select set_config('tsc.r8_way', pg_temp.ask(1000)::text, true);
@@ -119,6 +121,12 @@ select set_config('tsc.r8_back', pg_temp.ask(500)::text, true);
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(2), 'pi_pgtap_r8_2', 'The payment was refunded.')),
   'step 2, held by the $45 request, is refunded');
+select is(public.factory_paused('ce8b0000-0000-0000-0000-0000000000e1'), true, 'a refund after approval pauses the factory for a payment review');
+select set_config('tsc.r8_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(2) and decided_at is null), true);
+select pg_temp.act_as('02'); set local role authenticated;
+select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8_review')::uuid, 'pay_factory')$$,
+  'staff decide the review: pay the factory (nothing taken)');
+reset role;
 select pg_temp.act_as('02'); set local role authenticated;
 select lives_ok($$select public.claim_withdrawal(current_setting('tsc.r8_way')::uuid)$$, 'staff start paying the $10 request');
 reset role;
@@ -130,7 +138,7 @@ select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r8_back')
 reset role;
 
 select is(pg_temp.word(current_setting('tsc.r8_wait')::uuid), 'waiting', 'a requested, covered PayPal withdrawal: waiting');
-select is(pg_temp.word(current_setting('tsc.r8_hold')::uuid), 'on_hold', 'one whose step was refunded: on hold');
+select is(pg_temp.word(current_setting('tsc.r8_hold')::uuid), 'waiting', 'one whose step was refunded after approval: still waiting, nothing was taken');
 select is(pg_temp.word(current_setting('tsc.r8_way')::uuid), 'on_its_way', 'one staff are paying: on its way');
 select is(pg_temp.word(current_setting('tsc.r8_paid')::uuid), 'paid', 'a paid one: paid');
 select is(pg_temp.word(current_setting('tsc.r8_back')::uuid), 'returned', 'a cancelled one: returned');
@@ -143,11 +151,11 @@ select is((pg_temp.bal() ->> 'processing_cents')::bigint,
     jsonb_array_elements(coalesce(x -> 'parts', jsonb_build_array(jsonb_build_object('word', x -> 'word', 'amount_cents', x -> 'amount_cents')))) p
     where p ->> 'word' in ('waiting', 'on_hold', 'on_its_way'))::bigint,
   'waiting + on hold + on its way = Processing, to the cent');
--- Round 16: the $45 on the refunded step went back to the brand: in no figure.
-select is((pg_temp.bal() ->> 'processing_cents')::bigint, (10000 + 1000)::bigint, 'that is $100 + $10; the refunded $45 is in none');
+-- Paused payments: the $45 on the step refunded after approval stays the factory's.
+select is((pg_temp.bal() ->> 'processing_cents')::bigint, (10000 + 4500 + 1000)::bigint, 'that is $100 + $45 + $10; the factory keeps the refunded step''s $45');
 select is((select p from jsonb_array_elements(pg_temp.bal() -> 'withdrawals') x, jsonb_array_elements(x -> 'parts') p
             where (x ->> 'id')::uuid = current_setting('tsc.r8_hold')::uuid),
-  '{"word": "refunded", "amount_cents": 4500}'::jsonb, 'its part reads refunded, never on hold');
+  '{"word": "waiting", "amount_cents": 4500}'::jsonb, 'its part reads waiting, never refunded');
 
 -- Stripe: on its way before its arrival day, paid after, returned when refused
 -- or its payout failed.
@@ -173,8 +181,9 @@ select is((select count(*)::int from jsonb_array_elements(pg_temp.bal() -> 'with
 
 -- ===========================================================================
 -- Fix round 9 (20261120280000): a payment-only step whose charge was disputed
--- before its payment was recorded: funded, the factory is told the money is
--- on hold, never "added to your balance", and it is held in Pending.
+-- before its payment was recorded: funded, never "added to your balance", and
+-- it is held in Pending. (Since paused payments, 20261124100000, no per-step
+-- "on hold" notice is sent: a payment review tells the factory.)
 -- ===========================================================================
 set local session_replication_role = replica;
 insert into public.order_milestones (id, order_id, kind, title, amount_cents, state, sort)
@@ -187,8 +196,8 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(
   'R9: the payment-only step, its charge already disputed, is funded');
 select is((select title || ' | ' || body from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
             and kind = 'payment_disputed' and subject_id = 'ce8f0009-0000-0000-0000-000000000001'),
-  'Payment for "R8 deposit" on hold | The brand disputed the charge. $70.00 is held until the dispute is settled.',
-  'R9: the factory is told the money is on hold');
+  null,
+  'R9: no per-step "on hold" notice (paused payments)');
 select is((select count(*)::int from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
             and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and body like '%added to your balance%'), 0,
   'R9: never "added to your balance"');
@@ -258,7 +267,10 @@ reset role;
 -- ===========================================================================
 -- 87f83990 (20261120310000): a waiting PayPal request partly on a refunded
 -- step is split: that part on hold, the rest still waiting. A clean one is
--- one part. Parts always add up to the amount.
+-- one part. Parts always add up to the amount. Since paused payments
+-- (20261124100000) a refund after approval refunds no part: the factory is
+-- paused for review and its waiting requests read on hold, whole, until
+-- staff decide.
 -- ===========================================================================
 set local session_replication_role = replica;
 insert into auth.users (id, email) values ('ce8a0000-0000-0000-0000-000000000004', 'pgtap-r8-04@example.com');
@@ -313,10 +325,15 @@ select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid), '[{"word": "
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refunded(''ce8f1002-0000-0000-0000-000000000002'', ''pi_pgtap_r8p_2'', ''The payment was refunded.'')')$$,
   'the $50 step is refunded');
 select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid),
-  '[{"word": "waiting", "amount_cents": 2500}, {"word": "refunded", "amount_cents": 5000}]'::jsonb,
-  'the $75 request: $25 still waiting, $50 refunded (round 16: never on hold)');
+  '[{"word": "on_hold", "amount_cents": 7500}]'::jsonb,
+  'the $75 request: paused for the payment review, the whole $75 on hold, nothing refunded');
 select is((select sum((p ->> 'amount_cents')::bigint)::bigint from jsonb_array_elements(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid)) p),
   7500::bigint, 'its parts add up to its amount');
+select set_config('tsc.r8p_review', (select id::text from public.payment_reviews where payment_id = 'ce8f1002-0000-0000-0000-000000000002' and decided_at is null), true);
+select pg_temp.act_as('02'); set local role authenticated;
+select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8p_review')::uuid, 'pay_factory')$$,
+  'staff decide that review too: pay the factory');
+reset role;
 select is(pg_temp.parts_of(current_setting('tsc.r8p_clean')::uuid), '[{"word": "waiting", "amount_cents": 4000}]'::jsonb,
   'a clean request: one part, with its word and its whole amount');
 

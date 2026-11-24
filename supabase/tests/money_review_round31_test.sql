@@ -1,9 +1,9 @@
 -- One balance, fix round 31 (20261121330000), money review r30 L1.
 --
--- A Stripe withdrawal holds $200 of a $500 step; the dispute is recorded and
--- the factory told "$300.00 is held". The withdrawal is refused and its part
--- comes back: the bell now says "$500.00 is held", once. Telling it again,
--- at the same or a smaller amount, writes nothing.
+-- A Stripe withdrawal holds $200 of a $500 step; the dispute is recorded.
+-- Since paused payments (20261124100000) tell_payment_hold is a no-op: the
+-- per-step "on hold" notice is never sent (a payment review tells the factory
+-- instead), at any amount, however often the dispute is recorded again.
 --
 -- Fixtures: slugs pgtap-r31-*, ids b31?xxxx-...; every count is scoped to them.
 begin;
@@ -72,16 +72,15 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_dispute
   'the dispute is recorded while the withdrawal holds part of the step');
 set constraints all immediate;
 set constraints all deferred;
-select is(pg_temp.holds(), 'The brand disputed the charge. $300.00 is held until the dispute is settled.',
-  'the factory is told the part left is held');
+select is(pg_temp.holds(), '',
+  'no per-step hold notice for the part left (paused payments: the review tells the factory)');
 -- (the stripe_withdrawals_end_takes trigger returns its unattempted parts)
 select lives_ok($$update public.stripe_withdrawals set state = 'refused', reason = 'refused' where id = 'b3180000-0000-0000-0000-000000000001'$$,
   'the refused withdrawal hands its $200 back');
 set constraints all immediate;
 set constraints all deferred;
-select is(pg_temp.holds(),
-  'The brand disputed the charge. $300.00 is held until the dispute is settled. || The brand disputed the charge. $500.00 is held until the dispute is settled.',
-  'the factory is told the full $500.00 is now held');
+select is(pg_temp.holds(), '',
+  'no per-step hold notice once the full $500.00 is back either');
 -- The webhook records it again; any other path tells it again: nothing new.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b31f0011-0000-0000-0000-000000000000'', true)')$$,
   'the webhook records the same dispute');
@@ -89,9 +88,9 @@ select public.tell_payment_hold(p, true) from public.order_payments p where p.id
 set constraints all immediate;
 set constraints all deferred;
 select is((select count(*)::int from public.notifications where org_id = 'b31b0000-0000-0000-0000-0000000000e1'
-             and kind = 'payment_disputed' and title like '% on hold'), 2, 'the same amount is not told twice');
-select is((select (data ->> 'held_cents')::bigint from public.notifications where org_id = 'b31b0000-0000-0000-0000-0000000000e1'
-             and kind = 'payment_disputed' and body like '%$500.00%'), 50000::bigint, 'the notice keeps the amount it told');
+             and kind = 'payment_disputed' and title like '% on hold'), 0, 'telling it again writes nothing: tell_payment_hold is a no-op');
+select isnt((select disputed_at from public.order_payments where id = 'b31f0011-0000-0000-0000-000000000000'), null,
+  'the step is still marked disputed (its money stays in Pending)');
 
 -- Shape -----------------------------------------------------------------------
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = 'tell_payment_hold'), 1,

@@ -1138,7 +1138,7 @@ function BrandReviewNotice({ org }) {
   }, [org.id]);
   if (!paused) return null;
   return (
-    <div className="tsc-team-notices" role="status" data-testid="brand-under-review">
+    <div className="tsc-team-notices tsc-review-notice" role="status" data-testid="brand-under-review">
       <div className="tsc-team-notice">
         <p>Your account is under review. You can still message vendors.</p>
       </div>

@@ -208,6 +208,9 @@ select throws_ok($$insert into public.stripe_withdrawals (org_id, stripe_account
 select is(public.withdrawal_blocker(jsonb_populate_record(null::public.factory_withdrawals,
             jsonb_build_object('id', gen_random_uuid(), 'org_id', pg_temp.org('e1')))), 'payment_under_review',
   'a waiting withdrawal is held, so staff cannot pay it');
+select throws_ok($$select public.check_withdrawal_can_go(jsonb_populate_record(null::public.factory_withdrawals,
+                     jsonb_build_object('id', gen_random_uuid(), 'org_id', 'c24b0000-0000-0000-0000-0000000000e1')))$$,
+  '22023', 'Withdrawals are paused while a payment is reviewed.', 'staff paying a waiting withdrawal is refused (claim_withdrawal, guard_withdrawal_takes)');
 
 -- ===========================================================================
 -- 3. The paused brand: messaging only.
@@ -263,6 +266,8 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_
   'part of it failed');
 select ok((select refunded_cents = 5350 and review_kept_cents = 5350 and factory_refund_cents = 0
              from public.order_payments where id = pg_temp.pay(3)), 'the kept part follows; still nothing taken');
+select is((select amount_cents from public.payment_reviews where id = pg_temp.review(3, 'refund')), 5350::bigint,
+  'the open review says only what still went back');
 
 -- Before approval: lower amount, no review.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_amount(''c24f0002-0000-0000-0000-000000000001'', ''pi_pgtap_pr24_2'', 1070)')$$,
@@ -285,6 +290,18 @@ select is((select (x ->> 'returnable_cents')::bigint from jsonb_array_elements(p
   20000::bigint, 'the board offers up to the $200 deposit still with us');
 select is((select (x ->> 'factory_part_cents')::bigint from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(1, 'dispute')),
   20000::bigint, 'the factory''s part of the $214 dispute is $200');
+select pg_temp.act_as('02');
+set local role authenticated;
+select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 5000, 'early')$$, pg_temp.review(1, 'dispute')),
+  '22023', 'The bank hasn''t decided this dispute yet. Refund brand is available once the brand has its money back.',
+  'no Refund brand while the bank has not decided');
+reset role;
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0001-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_1'', ''lost'', 21400, null, 1500)')$$,
+  'the bank decides for the brand');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_dispute_lost(''c24f0001-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_1'', 21400, 1500)')$$,
+  'recorded as lost after approval');
+select ok((select dispute_lost_cents = 21400 and review_kept_cents = 21400 and factory_refund_cents = 0
+             from public.order_payments where id = pg_temp.pay(1)), 'nothing taken by itself');
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 25000, 'too much')$$, pg_temp.review(1, 'dispute')),
@@ -317,6 +334,18 @@ select is(pg_temp.told(pg_temp.org('b1'), 'Review complete'), 'You can fund step
 select pg_temp.act_as('03');
 set local role authenticated;
 select lives_ok($$select public.begin_payment_checkout('c24f0004-0000-0000-0000-000000000001')$$, 'it can fund again');
+reset role;
+
+-- A dispute on a step not approved yet: its money is not in the balance, so
+-- Refund brand is refused (it would take the brand's money twice).
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0002-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_2'', ''needs_response'', 9630, null, null)')$$,
+  'a dispute on the held fit sample');
+select pg_temp.act_as('02');
+set local role authenticated;
+select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 1000, 'no')$$, pg_temp.review(2, 'dispute')),
+  '22023', 'This step isn''t approved, so its money isn''t in the factory''s balance. Choose Pay factory.', 'no Refund brand before approval');
+select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory')$$, pg_temp.review(2, 'dispute')), 'Pay factory instead');
+select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(2, 'dispute')), 'and unpause the brand');
 reset role;
 
 -- Pay factory: nothing taken.

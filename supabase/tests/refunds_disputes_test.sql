@@ -3,14 +3,14 @@
 -- A refund staff make in Stripe is recorded at the amount Stripe reports and
 -- never made bigger. Before approval: a partial refund leaves the step funded
 -- at the lower amount; a full one sends it back to Due and the brand pays
--- again. After approval the step stays done and only the factory's earning
--- goes down (its part in proportion to the step within the charge): first
--- from money still with TSC, then from a waiting withdrawal (that part reads
--- Refunded, out of Total), and only what already left TSC is owed to TSC,
--- inside Available. Paid out never falls. A lost dispute is the same as a
--- refund of the disputed amount; its hold ends and Stripe's fee is recorded.
--- Staff see every debt on Needs checking; nothing new can be withdrawn while
--- it is not covered.
+-- again. After approval the step stays done and, since paused payments
+-- (20261124100000), the factory's earning does NOT go down: the refund or
+-- lost dispute is kept on the payment (review_kept_cents), a payment review
+-- opens and the factory's withdrawals pause until staff decide. Nothing is
+-- taken from a waiting withdrawal, nothing is ever owed to TSC, and no
+-- "earnings went down" / "owe TSC" notice is sent. Paid out never falls. A
+-- lost dispute is recorded like a refund of the disputed amount; its hold
+-- ends and Stripe's fee is recorded.
 --
 -- Fixtures: slugs pgtap-r17-*, ids c17?xxxx-...; every count is scoped to them.
 --   F1 (owner 01): before approval (P1 partial, P2 full, P7 lost dispute),
@@ -165,6 +165,20 @@ begin
   return n;
 end;
 $f$;
+create function pg_temp.reviews(n int) returns jsonb language plpgsql as $f$
+declare j jsonb;
+begin
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  select coalesce(jsonb_agg(jsonb_build_object('pay', x ->> 'payment_id', 'cause', x ->> 'cause', 'amount', (x ->> 'amount_cents')::bigint,
+                                               'withdrawn', (x ->> 'withdrawn_cents')::bigint, 'fee', x -> 'dispute_fee_cents')
+                            order by x ->> 'cause'), '[]'::jsonb) into j
+    from jsonb_array_elements(public.payment_review_board()) x
+   where (x ->> 'factory_org_id')::uuid = pg_temp.org(n) and (x ->> 'factory_paused')::boolean;
+  reset role;
+  return j;
+end;
+$f$;
 create function pg_temp.recover(n int) returns jsonb language sql as $f$
   select coalesce(jsonb_agg(x order by x ->> 'amount_cents'), '[]'::jsonb) from jsonb_array_elements(pg_temp.attention() -> 'recover') x
    where (x ->> 'org_id')::uuid = pg_temp.org(n);
@@ -240,15 +254,18 @@ select is(pg_temp.told_count(pg_temp.org(1), pg_temp.pay(7)) + pg_temp.told_coun
 
 -- A funded deposit (the factory's already) refunded in full: the step stays done.
 select lives_ok($$select pg_temp.refund(3, 21400)$$, 'the deposit''s charge is refunded in full, after it was added to the balance');
-select ok((select state = 'confirmed' and release_requested_at is not null and refunded_cents = 21400 and factory_refund_cents = 20000
-             from public.order_payments where id = pg_temp.pay(3)), 'the payment stays the factory''s step, at nothing');
+select ok((select state = 'confirmed' and release_requested_at is not null and refunded_cents = 21400 and factory_refund_cents = 0
+                  and review_kept_cents = 21400
+             from public.order_payments where id = pg_temp.pay(3)) and public.factory_paused(pg_temp.org(1)),
+  'the payment stays the factory''s step, its earning kept: a payment review pauses the factory instead (20261124100000)');
 select is((select state from public.order_milestones where id = 'c17e0003-0000-0000-0000-000000000001'), 'complete', 'the step stays done');
 select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(3)),
   'Your payment for "R17 deposit" was refunded | $214.00 was refunded to your card.', 'the brand is told, and not asked to pay again');
 select is(pg_temp.told(pg_temp.org(1), pg_temp.pay(3)),
-  'Payment for "R17 deposit" refunded | The brand was refunded $214.00. Your earnings from R17 request 1 (R17-1) went down by $200.00.', 'the factory is told');
-select is(pg_temp.line(pg_temp.bal(1)), 'awaiting 7500, available 0, pending 0, processing 0, paid out 0, total 7500',
-  'F1 after: the fit sample at $75.00; the deposit, the lab dip and the trims in no figure');
+  'Withdrawals paused | A brand requested a refund for "R17 deposit" on R17 request 1 (R17-1), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'the factory is told its withdrawals are paused, not that its earnings went down');
+select is(pg_temp.line(pg_temp.bal(1)), 'awaiting 7500, available 20000, pending 0, processing 0, paid out 0, total 27500',
+  'F1 after: the fit sample at $75.00, the deposit still Available while it is reviewed; the lab dip and the trims in no figure');
 select ok(pg_temp.adds_up(pg_temp.bal(1)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 select is((pg_temp.bal(1) ->> 'owed_to_tsc_cents')::bigint, 0::bigint, 'nothing had left TSC: nothing is owed');
 
@@ -262,35 +279,37 @@ select lives_ok($$select set_config('tsc.r17_w2',
 reset role;
 select is(pg_temp.line(pg_temp.bal(2)), 'awaiting 0, available 5000, pending 0, processing 25000, paid out 0, total 30000', 'F2 before');
 select lives_ok($$select pg_temp.refund(4, 10700)$$, 'staff refund $107.00 of the deposit''s charge (a short shipment)');
-select ok((select refunded_cents = 10700 and factory_refund_cents = 10000 from public.order_payments where id = pg_temp.pay(4)),
-  'the factory''s part is $100.00');
-select is(pg_temp.line(pg_temp.bal(2)), 'awaiting 0, available 0, pending 0, processing 20000, paid out 0, total 20000',
-  'first from the $50 still with TSC, then $50 of the waiting withdrawal: out of Total');
+select ok((select refunded_cents = 10700 and factory_refund_cents = 0 and review_kept_cents = 10700 from public.order_payments where id = pg_temp.pay(4))
+          and public.factory_paused(pg_temp.org(2)),
+  'the factory''s part is kept: a payment review pauses F2 (20261124100000)');
+select is(pg_temp.line(pg_temp.bal(2)), 'awaiting 0, available 5000, pending 0, processing 25000, paid out 0, total 30000',
+  'nothing is taken: not from the $50 still with TSC, not from the waiting withdrawal');
 select ok(pg_temp.adds_up(pg_temp.bal(2)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 select is((select x -> 'parts' from jsonb_array_elements(pg_temp.bal(2) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r17_w2')),
-  '[{"word": "waiting", "amount_cents": 20000}, {"word": "refunded", "amount_cents": 5000}]'::jsonb,
-  'the withdrawal: $200 it still holds, $50 refunded (never on hold)');
+  '[{"word": "on_hold", "amount_cents": 25000}]'::jsonb,
+  'the withdrawal: all $250 still held by it, nothing refunded out of it (paused, not lowered)');
 select is((select x ->> 'word' from jsonb_array_elements(pg_temp.bal(2) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r17_w2')),
   'on_hold', 'it is on hold until cancelled');
-select is((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(2) and kind = 'withdrawal' and title like '%on hold'),
-  'Withdrawal of $250.00 on hold | The brand''s payment for "R17 bulk deposit" was refunded. Cancel this withdrawal and withdraw again.',
-  'the factory is told, once');
+select is((select count(*)::int from public.notifications where org_id = pg_temp.org(2) and kind = 'withdrawal' and title like '%on hold'), 0,
+  'no "withdrawal on hold, refunded" notice: the refund took nothing from it');
 select is(pg_temp.told(pg_temp.org(2), pg_temp.pay(4)),
-  'Payment for "R17 bulk deposit" refunded | The brand was refunded $107.00. Your earnings from R17 request 2 (R17-2) went down by $100.00.', 'and of the refund');
+  'Withdrawals paused | A brand requested a refund for "R17 bulk deposit" on R17 request 2 (R17-2), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'the factory is told, once, that its withdrawals are paused');
 select pg_temp.act_as('02'); set local role authenticated;
 select throws_ok($$select public.claim_withdrawal(current_setting('tsc.r17_w2')::uuid)$$, '22023', null, 'staff cannot pay it');
 reset role;
 select pg_temp.act_as('04'); set local role authenticated;
-select is((public.my_withdrawal_balance(pg_temp.org(2)) -> 'returnable' ->> current_setting('tsc.r17_w2'))::bigint, 20000::bigint,
-  'cancelling gives back what it still holds');
+select is((public.my_withdrawal_balance(pg_temp.org(2)) -> 'returnable' ->> current_setting('tsc.r17_w2'))::bigint, 25000::bigint,
+  'cancelling gives back all it holds');
 select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r17_w2')::uuid)$$, 'the owner cancels it');
 reset role;
 select is((select body from public.notifications where org_id = pg_temp.org(2) and kind = 'withdrawal' and title like '%cancelled'),
-  '$200.00 is back in your balance.', 'and is told truthfully what comes back');
-select is(pg_temp.line(pg_temp.bal(2)), 'awaiting 0, available 20000, pending 0, processing 0, paid out 0, total 20000', 'F2 after');
+  'The amount is back in your balance.', 'and is told truthfully what comes back: all of it');
+select is(pg_temp.line(pg_temp.bal(2)), 'awaiting 0, available 30000, pending 0, processing 0, paid out 0, total 30000', 'F2 after: nothing taken');
 
 -- ===========================================================================
--- 3. Refunded or lost after the money left: owed to TSC.
+-- 3. Refunded or lost after the money left: once owed to TSC; now a
+--    payment review, and nothing is owed (20261124100000).
 -- ===========================================================================
 select lives_ok($$select pg_temp.as_server('select public.claim_owed_steps(''c17b0000-0000-0000-0000-0000000000e3'', 15000, ''stripe'', ''c1780000-0000-0000-0000-000000000003'')')$$,
   'F3 withdraws the $150 fit sample through Stripe');
@@ -311,19 +330,23 @@ create temp table r17_before on commit drop as select (pg_temp.bal(3) ->> 'paid_
 
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c17f0005-0000-0000-0000-000000000003'', true)')$$,
   'the brand disputes the deposit''s charge');
+-- The server opens the dispute's payment review alongside (20261124100000).
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c17f0005-0000-0000-0000-000000000003'', ''du_pgtap_r17_5'', ''needs_response'', 53500, null, null)')$$,
+  'and the server opens its payment review');
 select ok(exists (select 1 from jsonb_array_elements(pg_temp.attention() -> 'disputed') x where (x ->> 'payment_id')::uuid = pg_temp.pay(5)
                    and (x ->> 'in_withdrawal_cents')::bigint = 40000), 'staff see it, $400 of it already withdrawn');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_dispute_lost(%L, %L, 53500, 1500)', pg_temp.pay(5), 'du_pgtap_r17_5')), 'TSC loses the dispute');
 select ok((select disputed_at is null and dispute_lost_cents = 53500 and dispute_lost_at is not null and dispute_fee_cents = 1500
-                  and factory_refund_cents = 50000 and state = 'confirmed'
-             from public.order_payments where id = pg_temp.pay(5)), 'recorded as the disputed amount gone back; the hold ends; the fee kept');
+                  and factory_refund_cents = 0 and review_kept_cents = 53500 and state = 'confirmed'
+             from public.order_payments where id = pg_temp.pay(5)),
+  'recorded as the disputed amount gone back; the hold ends; the fee kept; the factory''s earning kept for the review');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(5)),
-  'Payment for "R17 bulk deposit" on hold | The brand disputed the charge. $100.00 is held until the dispute is settled. || '
-  || 'Payment for "R17 bulk deposit" reversed | The brand''s bank reversed the payment. Your earnings from R17 request 3 (R17-3) went down by $500.00. You''d already withdrawn $400.00 of that, so you now owe TSC $400.00.',
-  'the factory is told, with what it had already withdrawn');
-select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(5)),
-  'Your bank reversed your payment for "R17 bulk deposit" | $535.00 went back to your card.', 'the brand is told');
+  'Withdrawals paused | A brand requested a refund for "R17 bulk deposit" on R17 request 3 (R17-3), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'the factory is told only that withdrawals are paused: no hold notice, no "owe TSC"');
+select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(5)
+              and kind = 'payment_refunded'),
+  'Your bank reversed your payment for "R17 bulk deposit" | $535.00 went back to your card.', 'the brand is told (besides its own "Account under review")');
 select ok(not exists (select 1 from jsonb_array_elements(pg_temp.attention() -> 'disputed') x where (x ->> 'payment_id')::uuid = pg_temp.pay(5)),
   'staff are no longer told to respond to it');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
@@ -331,41 +354,42 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c17f0005-0000-0000-0000-000000000003'', true)')$$,
   'and a later read of the charge says "disputed"');
 select ok((select disputed_at is null from public.order_payments where id = pg_temp.pay(5))
-      and pg_temp.told_count(pg_temp.org(3), pg_temp.pay(5)) = 2, 'never on hold again; nobody told twice');
+      and pg_temp.told_count(pg_temp.org(3), pg_temp.pay(5)) = 1, 'never on hold again; nobody told twice');
 
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(6), 'pi_pgtap_r17_6', 'The payment was refunded.')),
   'the fit sample''s charge is refunded in full, after the factory withdrew it');
-select ok((select state = 'released' and refunded_cents = 16050 and factory_refund_cents = 15000 from public.order_payments where id = pg_temp.pay(6)),
-  'it stays paid out; the whole charge is recorded as refunded');
+select ok((select state = 'released' and refunded_cents = 16050 and factory_refund_cents = 0 and review_kept_cents = 16050
+             from public.order_payments where id = pg_temp.pay(6)),
+  'it stays paid out; the whole charge is recorded as refunded; the factory''s earning kept for a review');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(6)),
-  'Payment for "R17 fit sample" refunded | The brand was refunded $160.50. Your earnings from R17 request 3 (R17-3) went down by $150.00. You''d already withdrawn $150.00 of that, so you now owe TSC $150.00.',
-  'the factory is told');
+  'Withdrawals paused | A brand requested a refund for "R17 fit sample" on R17 request 3 (R17-3), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'the factory is told its withdrawals are paused, not that it owes TSC');
 
-select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available -55000, pending 0, processing 0, paid out 54000, total -1000',
-  'F3 after: Paid out unchanged, $550 owed to TSC inside Available (the PayPal fee keeps Total below zero)');
+select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 10000, pending 0, processing 0, paid out 54000, total 64000',
+  'F3 after: nothing moves; nothing is owed to TSC');
 select is((pg_temp.bal(3) ->> 'paid_out_cents')::bigint, (select paid_out from r17_before), 'Paid out never falls');
-select is((pg_temp.bal(3) ->> 'owed_to_tsc_cents')::bigint, 55000::bigint, 'owed to TSC: $550');
+select is((pg_temp.bal(3) ->> 'owed_to_tsc_cents')::bigint, 0::bigint, 'owed to TSC: nothing');
 select ok(pg_temp.adds_up(pg_temp.bal(3)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 
-select is((select jsonb_agg(jsonb_build_object('pay', x ->> 'payment_id', 'amount', (x ->> 'amount_cents')::bigint, 'cause', x ->> 'cause',
-                                               'by', x -> 'withdrawn_by', 'fee', x -> 'dispute_fee_cents', 'balance', (x ->> 'balance_cents')::bigint)
-                      order by (x ->> 'amount_cents')::bigint)
-             from jsonb_array_elements(pg_temp.recover(3)) x),
+select is(pg_temp.recover(3), '[]'::jsonb, 'nothing to recover on Needs checking');
+select is(pg_temp.reviews(3),
   jsonb_build_array(
-    jsonb_build_object('pay', pg_temp.pay(6)::text, 'amount', 15000, 'cause', 'refund', 'by', '["stripe"]'::jsonb, 'fee', null, 'balance', -55000),
-    jsonb_build_object('pay', pg_temp.pay(5)::text, 'amount', 40000, 'cause', 'dispute_lost', 'by', '["paypal"]'::jsonb, 'fee', 1500, 'balance', -55000)),
-  'staff see both on Needs checking: to recover, how it went, the dispute fee, the factory''s balance now');
+    jsonb_build_object('pay', pg_temp.pay(5)::text, 'cause', 'dispute', 'amount', 53500, 'withdrawn', 40000, 'fee', 1500),
+    jsonb_build_object('pay', pg_temp.pay(6)::text, 'cause', 'refund', 'amount', 16050, 'withdrawn', 15000, 'fee', null)),
+  'staff see both as open payment reviews: the cause, the amount, what was already withdrawn, the dispute fee');
 select is(pg_temp.owed_count(), (select owed from r17_before) + 2, 'and the overview counts them');
 
 select pg_temp.act_as('05'); set local role authenticated;
 select throws_ok($$select public.request_withdrawal('c17b0000-0000-0000-0000-0000000000e3', 100, 'c1790000-0000-0000-0000-000000000003')$$,
-  '22023', 'That is more than your balance.', 'nothing more can be withdrawn while the debt is not covered');
-select is((public.my_withdrawal_balance(pg_temp.org(3)) ->> 'available_cents')::bigint, 0::bigint, 'Withdraw offers nothing');
+  '22023', 'Withdrawals are paused while a payment is reviewed.', 'nothing more can be withdrawn while the payments are reviewed');
+select ok((public.my_withdrawal_balance(pg_temp.org(3)) ->> 'available_cents')::bigint = 10000
+          and (public.my_payment_pause(pg_temp.org(3)) -> 'factory' ->> 'count')::int = 2,
+  'Withdraw shows the $100 balance, not lowered, and says it is paused by two reviews');
 select throws_ok($$select public.admin_balance_attention()$$, '42501', null, 'a factory cannot read staff''s list');
 reset role;
-select is((select (public.owed_reachable(pg_temp.org(3)) ->> 'stripe_cents')::bigint), -55000::bigint,
-  'the Stripe road is net of the debt too (its own Stripe money cannot cover it)');
+select is((select (public.owed_reachable(pg_temp.org(3)) ->> 'stripe_cents')::bigint), 10000::bigint,
+  'the Stripe road carries no debt either');
 
 -- ===========================================================================
 -- 4. Grants and shape.

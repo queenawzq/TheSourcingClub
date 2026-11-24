@@ -18,6 +18,8 @@ export async function paymentReviewBoard() {
 const REFUSALS = {
   review_decided: "This review was already decided. Reload the board.",
   review_amount: "Enter an amount to refund.",
+  review_dispute_open: "The bank hasn't decided this dispute yet. Refund brand is available once the brand has its money back.",
+  review_not_approved: "This step isn't approved, so its money isn't in the factory's balance. Choose Pay factory.",
   review_note: "Add a note for the factory.",
   review_brand_not_paused: "This brand isn't paused by this review. Reload the board.",
   review_own_company: "You belong to this brand, so someone else on the staff must decide.",
