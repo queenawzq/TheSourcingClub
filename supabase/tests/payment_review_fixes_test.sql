@@ -8,7 +8,8 @@
 --  3. A dispute on a step not approved yet pauses the brand only; lost before
 --     approval, the paused brand is not told to pay again; lost once the step
 --     is approved, the factory is paused then.
---  4. Open on staff's list = a decision or a brand to unpause.
+--  4. Open on staff's list = a decision, a brand to unpause, or a dispute the
+--     bank hasn't decided (20261124100200).
 --
 -- Fixtures: slugs pgtap-pr24x-*, ids c25?xxxx-...; every count is scoped to them.
 --   F1 (owner 01) <- B1 (owner 03): Q1 approved deposit $200 (charged $214),
@@ -200,6 +201,8 @@ set local role authenticated;
 select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(4, 'dispute')), 'staff unpause the brand for it');
 reset role;
 select is((select decision from public.payment_reviews where id = pg_temp.review(4, 'dispute')), 'brand_unpaused', 'which closes that review');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(4, 'dispute')), true,
+  'but it stays open and counted while the bank hasn''t decided (20261124100200)');
 update public.order_payments set release_requested_at = now() where id = 'c25f0004-0000-0000-0000-000000000002';
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c25f0004-0000-0000-0000-000000000002'', ''dp_pgtap_pr24x_4'', ''lost'', 32100, null, 1500)')$$,
   'approved since, then the bank decides for the brand');

@@ -154,6 +154,8 @@ const PATTERNS = [
   [/^(Bank account|Debit card) ending in (\d+)$/, (m) => `${m[1] === "Bank account" ? "银行账户" : "借记卡"}（尾号 ${m[2]}）`],
   [/^Part of your balance is held in ([A-Z]{3}(?:(?:, | and )[A-Z]{3})*), so USD amounts are estimates\.$/, (m) => `你的部分余额以 ${m[1].split(/, | and /).join("、")} 持有，因此美元金额为估算值。`],
   [/^(\$[\d,.]+) on hold$/, (m) => `${m[1]} 暂扣中`],
+  // Disputed steps on the card, with their reason (20261124100200).
+  [/^(\$[\d,.]+) on hold until the bank decides on a card dispute$/, (m) => `${m[1]} 暂扣中，等待银行对银行卡争议作出决定`],
   // Refunded to the brand: part of a waiting withdrawal, or of a step on the order page.
   [/^(\$[\d,.]+) refunded$/, (m) => `${m[1]} 已退款`],
   // A refund and a lost dispute on one step: the factory's part of both.

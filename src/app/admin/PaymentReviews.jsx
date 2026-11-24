@@ -13,8 +13,9 @@ import { stripeDashboardUrl } from "../../lib/domain/stripe.js";
  * No design draws it yet; it uses the board's own table, row actions and the
  * admin's small confirm dialog.
  *
- * Open reviews (a decision, or a brand to unpause) are the list and its
- * count; decided ones are under a closed "Decided" fold (20261124100100).
+ * Open reviews (a decision, a brand to unpause, or a dispute the bank hasn't
+ * decided: 20261124100200) are the list and its count; the rest are under a
+ * closed "Decided" fold (20261124100100).
  */
 
 const moneyIn = (cents, currency = "USD") => formatMoney(Number(cents) || 0, currency || "USD");
@@ -246,6 +247,10 @@ function ReviewRow({ row, onChanged }) {
             {row.decided_by_name ? ` ${row.decided_by_name}, ${day(row.decided_at)}.` : ` ${day(row.decided_at)}.`}
             {row.note ? ` Note: ${row.note}` : ""}
           </span>
+        ) : null}
+        {/* Staff can't be notified: it stays here, counted, until the bank decides (20261124100200). */}
+        {row.open && row.decision && disputeOpen(row) ? (
+          <span className="admin-sub" data-testid="review-waiting-bank">{`Stays here until the bank decides${row.dispute_due_by && !["under_review", "warning_under_review"].includes(row.dispute_status) ? `. Respond in Stripe by ${day(row.dispute_due_by)}` : ""}.`}</span>
         ) : null}
         {row.open ? <ReviewActions row={row} onChanged={onChanged} /> : null}
       </td>

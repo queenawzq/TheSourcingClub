@@ -423,13 +423,13 @@ reset role;
 select is((select body from public.notifications where org_id = pg_temp.org('e2') and dedupe_key = 'payment_review_done:' || pg_temp.review(3, 'dispute')),
   'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again. "PR24 deposit two" stays on hold until the payment is settled.',
   'the factory is told the step stays on hold');
-select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), false,
-  'decided: under Decided, waiting for the bank, not counted as open (20261124100100)');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), true,
+  'decided, but still open and counted until the bank decides (20261124100200)');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0003-0000-0000-0000-000000000002'', ''dp_pgtap_pr24_3'', ''won'', 32100, null, null)')$$,
   'the bank decides for us');
 select is(pg_temp.told(pg_temp.org('e2'), 'Hold lifted on "PR24 deposit two"'), '$300.00 is no longer on hold.', 'the factory is told the hold lifted');
-select is((select (x ->> 'dispute_status') from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), 'won',
-  'its row says the bank decided');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), false,
+  'and it moves to Decided');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', false)')$$, 'the hold is lifted');
 
 -- ===========================================================================
@@ -440,8 +440,8 @@ select is((select count(*)::int from public.order_payments p where p.order_id in
             and coalesce(public.payment_debt_cents(p), 0) > 0), 0, 'no payment carries a debt');
 select is(public.factory_debt_uncovered_cents(pg_temp.org('e3')), 0::bigint, 'no factory owes anything');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.board()) x where (x ->> 'open')::boolean
-            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 1,
-  'open on staff''s list: only F3''s paused brand (decided reviews are not counted)');
+            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 2,
+  'open on staff''s list: F3''s paused brand, and the fit sample''s dispute the bank hasn''t decided although both sides are decided');
 
 select * from finish();
 rollback;
