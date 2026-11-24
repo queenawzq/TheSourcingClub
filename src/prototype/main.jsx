@@ -2772,7 +2772,8 @@ export function SettingsScreen({
                 </label>
                 <label>
                   <span>Location</span>
-                  <input name="account-location" defaultValue={account.location} readOnly={locationLocked || accountLocked ? true : undefined} title={locationLocked || undefined} />
+                  <input name="account-location" className={locationLocked ? "tsc-settings-readonly" : undefined} defaultValue={account.location} readOnly={locationLocked || accountLocked ? true : undefined} tabIndex={locationLocked ? -1 : undefined} title={locationLocked || undefined} />
+                  {locationLocked && <small className="tsc-settings-field-note">{locationLocked}</small>}
                 </label>
                 {onLanguageChange ? (
                   <label className="tsc-settings-language">

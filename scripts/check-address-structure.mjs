@@ -188,6 +188,11 @@ console.log("One country: what brands read and what Browse files the vendor unde
   check(inferred.location === "Porto, Portugal" && inferred.parts.country_code === "PT", "a country inferred from the city replaces the stored one", inferred);
   const typed = await decide("Calle 5 #12, Lima, Peru", null, "CN");
   check(typed.location === "Peru" && typed.parts.country_code === "PE", "no model: a typed country is recorded, so the filter follows it", typed);
+  const hkStreet = await decide("弥敦道100号1203室", { street: "弥敦道100号1203室", city: null, city_en: null, country_code: "HK" }, "HK");
+  check(hkStreet.location === "Hong Kong" && hkStreet.parts.country_code == null, "a Hong Kong street in Chinese with no area: still Hong Kong, never China", hkStreet);
+  const street = await decide("工业路8号", { street: "工业路8号", city: null, city_en: null, country_code: "CN" }, "PT");
+  check(street.location === "Portugal", "a Chinese street alone: the stored country, not a guessed China", street);
+  check(countryIn("弥敦道100号1203室") === null && countryIn("九龙弥敦道100号") === "HK" && countryIn("油尖旺区弥敦道100号") === "HK", "Chinese script without a mainland place is not read as China; Hong Kong areas are Hong Kong");
   const nothing = await decide("Building 3, 8 Gongye Road", null, "CN");
   check(nothing.location === "China", "no model and no country typed: the stored country, never the street", nothing);
 }
@@ -199,6 +204,10 @@ for (const [typed, asks] of [
   ["Rua do Freixo 1071, 4300-219 Porto", true],
   ["Rua do Freixo 1071, 4300-219 Porto, Portugal", false],
   ["中国广东省东莞市虎门镇工业路8号", false],
+  ["弥敦道100号1203室", true],
+  ["工业路8号", true],
+  ["中国工业路8号", true],
+  ["香港九龙尖沙咀弥敦道100号1203室", false],
   ["Unit 1203, 100 Nathan Road, Kowloon, Hong Kong", false],
   ["", false],
 ]) {

@@ -24,7 +24,7 @@ import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.
 import { addressPatch, completeOnboarding, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
-import { constraintInWords } from "../../shared/constraint-words.mjs";
+import { constraintInWords, constraintName } from "../../shared/constraint-words.mjs";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
 import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
@@ -211,9 +211,14 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const [addressAsked, setAddressAsked] = useState(null);
   useEffect(() => setAddressAsked(null), [step]);
   // A refused value in the page's language, not the database's words.
+  // The year is said at its own field, not by the buttons.
   const inWords = (problem) => {
-    const words = constraintInWords(problem?.cause ?? problem, language === "zh" ? "zh" : "en");
-    return words ? new Error(words) : problem;
+    const raw = problem?.cause ?? problem;
+    const words = constraintInWords(raw, language === "zh" ? "zh" : "en");
+    if (!words) return problem;
+    const said = new Error(words);
+    if (/founded_year_check$/.test(constraintName(raw) ?? "")) said.field = factoryFieldName("Year Founded");
+    return said;
   };
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
@@ -807,7 +812,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       values={values}
       termsAcceptance={termsAcceptance}
       busy={busy}
-      error={error ?? (step === TERMS_STEP ? signable.error : null)}
+      error={(error?.field ? null : error) ?? (step === TERMS_STEP ? signable.error : null)}
       terms={signable.sections}
       fullTerms={signable.full}
       certificationOptions={certificationOptions}
@@ -817,9 +822,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
       registration={registrationField}
-      fieldNotices={addressAsked === null ? null : {
-        [factoryFieldName(ADDRESS_LABELS.factory)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
-        [factoryFieldName(ADDRESS_LABELS.trading)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+      fieldNotices={addressAsked === null && !error?.field ? null : {
+        ...(addressAsked === null ? {} : {
+          [factoryFieldName(ADDRESS_LABELS.factory)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+          [factoryFieldName(ADDRESS_LABELS.trading)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+        }),
+        ...(error?.field ? { [error.field]: error.message } : {}),
       }}
       documents={documents}
       onDeleteDocument={removeDocument}

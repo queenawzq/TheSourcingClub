@@ -9,7 +9,6 @@
  */
 import { fetchApi, supabase, unwrap } from "../supabase.js";
 import { countryIn, countryName, fallbackLocation } from "../../shared/company-address.mjs";
-import { registrationCountryFrom } from "../../shared/registration-number.mjs";
 
 const BRAND_COLUMNS = `
   org_id, legal_name, business_email, website_url, hq_location, founded_year,
@@ -79,7 +78,7 @@ export function addressPatch(typed, previous, previousCountry = null) {
   // No country in the words: the one Browse already files the company under,
   // as the server's split keeps it (api/structure-address.js decide()).
   patch.location = fallbackLocation(said) ?? (said ? countryName(previousCountry) : null) ?? null;
-  const code = said ? registrationCountryFrom(said, countryIn(said)) : null;
+  const code = said ? countryIn(said) : null;
   if (code) patch.country_code = code;
   return { patch, changed: Boolean(said) };
 }

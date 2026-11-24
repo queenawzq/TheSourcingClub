@@ -103,11 +103,23 @@ export function countryName(code) {
   return known ? SHORT_NAMES[upper] ?? known.en : null;
 }
 
+// Hong Kong's areas and districts as written in Chinese: an address can name
+// one and never write 香港 (弥敦道 is a street; 九龙 says where it is).
+const HK_PLACES_ZH = [
+  "九龙", "九龍", "新界", "港岛", "港島", "香港岛", "香港島",
+  "尖沙咀", "油麻地", "旺角", "深水埗", "长沙湾", "長沙灣", "红磡", "紅磡", "土瓜湾", "土瓜灣", "九龙湾", "九龍灣",
+  "观塘", "觀塘", "黄大仙", "黃大仙", "油尖旺", "中环", "中環", "上环", "上環", "湾仔", "灣仔", "铜锣湾", "銅鑼灣",
+  "北角", "鲗鱼涌", "鰂魚涌", "柴湾", "柴灣", "香港仔", "中西区", "中西區", "荃湾", "荃灣", "葵涌", "沙田",
+  "大埔", "屯门", "屯門", "元朗", "将军澳", "將軍澳", "西贡", "西貢", "上水", "粉岭", "粉嶺", "离岛", "離島",
+];
+// A mainland address names its province, city, district, county or town.
+const MAINLAND_PLACE = /[省市区區县縣镇鎮乡鄉]|自治区|自治區/;
+
 // Other ways people write a country, beyond Intl's English and Chinese names.
 const ALIASES = {
   CN: ["PRC", "P.R.C.", "P.R. China", "PR China", "People's Republic of China", "中國", "中华人民共和国"],
-  HK: ["Hong Kong", "Hong Kong SAR", "Hongkong", "HKSAR", "香港", "中国香港", "中國香港"],
-  MO: ["Macao", "Macau", "澳门", "澳門"],
+  HK: ["Hong Kong", "Hong Kong SAR", "Hongkong", "HKSAR", "香港", "中国香港", "中國香港", ...HK_PLACES_ZH],
+  MO: ["Macao", "Macau", "澳门", "澳門", "氹仔", "路环", "路環"],
   TW: ["台湾", "台灣", "臺灣", "台北", "臺北", "新北", "台中", "臺中", "台南", "臺南", "高雄", "桃园", "桃園"],
   TR: ["Turkey", "Turkiye", "Türkiye", "土耳其"],
   VN: ["Viet Nam", "Vietnam", "越南"],
@@ -171,7 +183,9 @@ export function countryIn(typed) {
   const pool = specific.length ? specific : found;
   const best = pool.sort((a, b) => b.end - a.end)[0];
   if (best) return best.code;
-  return /[\u4e00-\u9fff]/.test(text) ? registrationCountryFrom(text) : null;
+  // Chinese script naming no country is mainland China only when it names a
+  // mainland place: 弥敦道100号 could be Hong Kong, so it says nothing.
+  return /[\u4e00-\u9fff]/.test(text) && MAINLAND_PLACE.test(text) ? registrationCountryFrom(text) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,8 +305,9 @@ export function addressMissesPlace(typed) {
   const said = String(typed ?? "").trim();
   if (!said) return false;
   if (!countryIn(said)) return true;
-  // Chinese script runs province, city and street together.
-  if (/\p{Script=Han}/u.test(said)) return said.replace(/中华人民共和国|中國|中国/g, "").trim().length < 2;
+  // Chinese script runs province, city and street together: a city, district
+  // or Hong Kong area must be there, not only a street.
+  if (/\p{Script=Han}/u.test(said)) return !(MAINLAND_PLACE.test(said) || HK_PLACES_ZH.some((place) => said.includes(place)) || /澳门|澳門|氹仔|台北|臺北|新北|台中|臺中|台南|臺南|高雄|桃园|桃園/.test(said));
   return said.split(/[,，;\n/／]/).map((part) => part.trim()).filter(Boolean).length < 2;
 }
 
