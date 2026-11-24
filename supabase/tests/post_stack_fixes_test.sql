@@ -18,7 +18,7 @@ set local tsc.skip_registry_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(12);
+select plan(14);
 
 insert into auth.users (id, email) values
   ('f9a10000-0000-0000-0000-000000000001', 'psb-staff-brand@example.com'),
@@ -174,6 +174,24 @@ select is(
     where org_id = 'f9a20000-0000-0000-0000-0000000000f1' and kind = 'verification_approved'),
   1,
   'approving twice tells the company once'
+);
+
+set local request.jwt.claims = '{"sub":"f9a10000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select public.admin_review_decision('f9a20000-0000-0000-0000-0000000000f1', 'approved', 'A second welcome.');
+reset role;
+
+select is(
+  (select count(*)::integer from public.notifications
+    where org_id = 'f9a20000-0000-0000-0000-0000000000f1' and kind = 'verification_approved'),
+  1,
+  'approving an approved company again with a new message tells it nothing'
+);
+
+select is(
+  (select note from public.org_reviews where org_id = 'f9a20000-0000-0000-0000-0000000000f1'),
+  null,
+  'and keeps the message it was sent (none)'
 );
 
 set local request.jwt.claims = '{"sub":"f9a10000-0000-0000-0000-000000000003","role":"authenticated"}';

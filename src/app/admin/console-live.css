@@ -125,6 +125,8 @@
    in a 256px column wrapped letter by letter. */
 .admin-review-email-card > .secondary-btn { width: 100%; margin-top: 12px; }
 .admin-review-email-card .admin-assist-meta { margin: 8px 0 0; }
+/* The message sent with the decision: its list in the same type as its paragraphs. */
+.admin-review-email-card .tsc-review-note { font-size: 14px; line-height: 21px; }
 .admin-review-email-lines {
   display: grid;
   gap: 10px;

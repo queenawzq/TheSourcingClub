@@ -6,7 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { accountApprovedEmail, declinedEmail, needsInformationEmail } from "./generate-account-approved-email.mjs";
-import { noteHasList, parseReviewNote, reviewNoteHtml } from "../src/shared/review-note.mjs";
+import { noteHasList, parseReviewNote, reviewNoteHtml, reviewNoteText } from "../src/shared/review-note.mjs";
 
 let failures = 0;
 const check = (name, ok, detail = "") => {
@@ -66,6 +66,11 @@ check("an approval with no note has no note box", !approved.html.includes("A not
 
 // The approval pop-up's suggested messages: each reaches the email as typed, in its own box.
 // Chinese follows the English only for a vendor likely to read it; a brand's is English.
+// The bell draws text only: "- " lines read as the bullets the pop-ups promise, nothing else changes.
+check("bell text: dashes become bullets", reviewNoteText("Welcome.\n\n- Add photos\n- Add capacity") === "Welcome.\n\n• Add photos\n• Add capacity");
+check("bell text: numbered stays numbered", reviewNoteText("1. One\n2. Two") === "1. One\n2. Two");
+check("bell text: a sentence is unchanged", reviewNoteText("Order 30 - 40 units.") === "Order 30 - 40 units.");
+check("bell text: empty is empty", reviewNoteText(null) === "");
 const { suggestedApprovalMessage, readsChinese } = await import("../src/shared/approval-message.mjs");
 const hasChinese = (text) => /[\u4e00-\u9fff]/.test(text);
 for (const [reader, expected] of [
