@@ -779,7 +779,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
 
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record")) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -840,7 +840,8 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
             : { text: group.readAt ?? "" };
 
   return (
-    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    // A click beside the pop-up closes it, unless a form is open in it: typed words are never lost that way (Nov 24 tester).
+    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(".vr-record") && onClose()}>
       <section className="vr-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className="vr-modal-head">
           <div className="vr-modal-title">
