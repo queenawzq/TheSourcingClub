@@ -2109,7 +2109,11 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const actions = useActions();
   const viewer = useViewer();
 
-  const profiles = queue ?? [];
+  // A re-read that fails (after a record on the review page) keeps the last queue on screen: the
+  // workspace only blanks when the first read fails, never under an open dialog (Nov 24 testers).
+  const lastQueue = useRef(null);
+  if (queue) lastQueue.current = queue;
+  const profiles = queue ?? lastQueue.current ?? [];
   const rfqList = rfqRows ?? [];
   const quoteList = quoteRows ?? [];
   const users = userRows ?? [];
@@ -2117,7 +2121,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const metrics = metricRow ?? {};
   // Only the first read blanks the workspace: a refresh after a record keeps the review page (and its open modal) on screen.
   const loading = (queueLoading && !queue) || rfqsLoading || quotesLoading || usersLoading;
-  const loadError = queueError || rfqsError || quotesError || usersError;
+  const loadError = (queueError && !lastQueue.current) || rfqsError || quotesError || usersError;
 
   const query = new URLSearchParams(window.location.search);
   const requested = query.get("screen") || "overview";

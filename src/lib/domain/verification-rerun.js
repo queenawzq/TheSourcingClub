@@ -60,7 +60,7 @@ export function groupScore(verification, key) {
 
 /** The runner, with its dependencies passed in so the check script can drive it. */
 export function createRerun({ getToken = sessionToken, fetchImpl = (...args) => fetch(...args), readScore = defaultReadScore } = {}) {
-  return async function rerunVerificationGroup({ orgId, group, fields = {}, before = null, subjectId = null } = {}) {
+  return async function rerunVerificationGroup({ orgId, group, fields = {}, before = null, subjectId = null, addressOnly = false } = {}) {
     let previous = before;
     try {
       if (!previous) previous = await readScore(orgId).catch(() => null);
@@ -71,7 +71,7 @@ export function createRerun({ getToken = sessionToken, fetchImpl = (...args) => 
         const reply = await fetchImpl("/api/verification-rerun", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ orgId, group, fields, ...(subjectId ? { subjectId } : {}) }),
+          body: JSON.stringify({ orgId, group, fields, ...(subjectId ? { subjectId } : {}), ...(addressOnly ? { addressOnly: true } : {}) }),
         });
         answer = await reply.json().catch(() => null);
         if (!answer) answer = { ok: false, code: reply.status === 401 ? "signed_out" : reply.status === 403 ? "not_staff" : "failed" };

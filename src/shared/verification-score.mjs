@@ -436,6 +436,7 @@ addressesMatch.plain = (x, y) => {
 
 /** Both in Chinese or both not: a Chinese name and its English one are not compared. */
 const sameScript = (a, b) => /\p{Script=Han}/u.test(String(a)) === /\p{Script=Han}/u.test(String(b));
+const bothHan = (a, b) => /\p{Script=Han}{4}/u.test(String(a)) && /\p{Script=Han}{4}/u.test(String(b));
 
 /** What differs between what the site shows and the company's own profile. Blank on either side never differs. */
 export function siteDifferences(seen, profile) {
@@ -462,7 +463,12 @@ export function siteRecord(details, profile) {
     reference: details.reference ?? details.link ?? "",
     proof: Array.isArray(details.proof) ? details.proof : [],
     differs: details.outcome === "found" ? siteDifferences(seen, profile) : { name: false, number: false, address: false },
-    compared: { name: Boolean(seen.name && profile?.name), number: Boolean(plainNumber(seen.number) && plainNumber(profile?.number)), address: Boolean(seen.address && profile?.address) },
+    // Only what was really compared is said to match: a Chinese value and an English one are not compared.
+    compared: {
+      name: Boolean(seen.name && profile?.name && sameScript(seen.name, profile.name)),
+      number: Boolean(plainNumber(seen.number) && plainNumber(profile?.number)),
+      address: Boolean(seen.address && profile?.address && (sameScript(seen.address, profile.address) || bothHan(seen.address, profile.address))),
+    },
   };
 }
 
