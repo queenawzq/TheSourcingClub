@@ -58,6 +58,8 @@ const ZH_SAMPLES = [
   { kind: "credits_adjusted", title: "TSC added 100 credits", body: "Goodwill for the delay", typed: true },
   { kind: "credits_adjusted", title: "TSC removed 25 credits", body: "Refunded quote", typed: true },
   { kind: "verification_approved", title: "Your profile is verified", body: "" },
+  { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company type to Trading company. We updated your company address." },
+  { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company type to Factory." },
   { kind: "verification_declined", title: "We could not verify your profile", body: "The licence was unreadable.", typed: true },
   { kind: "verification_needs_information", title: "We need a little more information", body: "Please upload your licence.", typed: true },
   { kind: "verification_reopened", title: "Your legal name changed: TSC will verify it again", body: "" },

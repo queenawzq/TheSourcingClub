@@ -111,15 +111,20 @@ function startReading(orgId) {
 
 /** The licence uploaded and never read: no reading behind the group, and nothing reading it now. */
 const neverRead = (group) => group?.key === "business_registration" && group.evidence?.kind === "licence"
-  && group.evidence.files?.length > 0 && !group.readAtIso && !group.checking;
+  && group.evidence.files?.length > 0 && !group.readAtIso;
 
 function withReading(orgId, verification) {
   const group = verification.groups.find((g) => g.key === "business_registration");
   if (!neverRead(group)) return verification;
   const run = readingStarted.get(orgId) ?? startReading(orgId);
-  const patch = run.state === "failed" || run.state === "done"
-    // Done with no reading is a reading that failed: staff record what the registry shows instead.
-    ? { stale: "Couldn't read the document" }
+  const failed = run.state === "failed" || run.state === "done";
+  // Done with no reading is a reading that failed: staff record what the registry shows instead.
+  const patch = failed
+    ? {
+      stale: "Couldn't read the document",
+      verdict: "Couldn't read the document",
+      checks: (group.checks ?? []).map((check) => (check.key === "licence" && check.score == null ? { ...check, verdict: "Couldn't read the document" } : check)),
+    }
     : { checking: true, checkingWords: "Reading the document…" };
   return { ...verification, groups: verification.groups.map((g) => (g === group ? { ...g, ...patch } : g)) };
 }

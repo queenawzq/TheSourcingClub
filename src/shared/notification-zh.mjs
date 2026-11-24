@@ -129,6 +129,7 @@ const TITLES = [
   ["verification_approved", /^Your profile is verified$/, () => "你的资料已通过验证"],
   ["verification_declined", /^We could not verify your profile$/, () => "我们无法验证你的资料"],
   ["verification_needs_information", /^We need a little more information$/, () => "我们还需要一些信息"],
+  ["profile_updated", /^Your company profile was updated$/, () => "你的公司资料已更新"],
   ["verification_reopened", /^Your legal name changed: TSC will verify it again$/, () => "你的法定名称已变更：TSC 将重新验证"],
   ["verification_reopened", /^Your company name changed: TSC will verify it again$/, () => "你的公司名称已变更：TSC 将重新验证"],
   ["verification_reopened", /^Your registration number changed: TSC will verify it again$/, () => "你的注册号已变更：TSC 将重新验证"],
@@ -222,6 +223,10 @@ const TITLES = [
  * deadline in the reader's zone.
  */
 const SENTENCES = [
+  // Staff corrected a vendor's profile (Nov 24)
+  [/^We updated your company type to Trading company\.$/, () => "我们已将你的公司类型更新为贸易公司。"],
+  [/^We updated your company type to Factory\.$/, () => "我们已将你的公司类型更新为工厂。"],
+  [/^We updated your company address\.$/, () => "我们已更新你的公司地址。"],
   // People
   [/^They accepted the invitation and can now work with the permissions it gave them\.$/, () => "对方已接受邀请，现在可以按邀请中的权限开展工作。"],
   [/^Everything they worked on stays with the company\.$/, () => "其经手的所有内容都保留在公司中。"],

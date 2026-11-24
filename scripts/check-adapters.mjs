@@ -46,6 +46,9 @@ const ALLOWED_ABSENT = {
   "admin:verificationScore:mock": "live only; the prototype's profiles carry their own verification, so its card never reads one",
   "admin:verificationActions:mock": "live only; the prototype's card keeps its edits in its own state",
   "admin:verificationFileUrl:mock": "live only; the prototype's evidence is drawn, not stored",
+  // Staff correcting a vendor's type and address (Nov 24): no design draws it.
+  "admin:updateCompanyProfile:mock": "live only; Review details draws no Change type / Edit address without it",
+  "admin:reviewChanges:mock": "live only; only called from Change type / Edit address, which needs updateCompanyProfile",
   "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
