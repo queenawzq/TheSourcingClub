@@ -155,7 +155,7 @@ function nameAt(text, name) {
 export function countryIn(typed) {
   const text = clean(typed).normalize("NFKC").replace(/İ/g, "I");
   if (!text) return null;
-  const lastPart = text.split(/[,，、\n]/).map((part) => part.trim()).filter(Boolean).pop() ?? "";
+  const lastPart = text.split(/[,，、\n/／]/).map((part) => part.trim()).filter(Boolean).pop() ?? "";
   const found = [];
   for (const row of allCodes()) {
     const candidates = [row.en, row.zh, ...(ALIASES[row.code] ?? [])];
@@ -206,7 +206,8 @@ function placeOrNull(typed, value, max) {
   if (!text || !isLatin(text)) return text;
   const core = placeCore(text);
   if (!core) return null;
-  const segments = String(typed ?? "").split(/[,，;\n]|\.\s/).map(placeCore);
+  // Commas, lines, "/" ("Esenyurt / İstanbul / TÜRKİYE") and sentence breaks.
+  const segments = String(typed ?? "").split(/[,，;\n/／]|\.\s/).map(placeCore);
   return segments.includes(core) ? text : null;
 }
 

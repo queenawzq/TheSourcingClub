@@ -56,6 +56,18 @@ const CASES = [
     location: "Istanbul, Türkiye",
   },
   {
+    label: "Turkish, parts separated by slashes",
+    typed: "Merkez Mah. 12, 34510 Esenyurt / İstanbul / TÜRKİYE",
+    model: { street: "Merkez Mah. 12", city: "İstanbul", city_en: "Istanbul", postal_code: "34510", country_code: "TR" },
+    location: "Istanbul, Türkiye",
+  },
+  {
+    label: "Turkish, slashes without spaces",
+    typed: "Fatih Cad. No:5, Esenyurt/İSTANBUL, TÜRKİYE",
+    model: { city: "İSTANBUL", city_en: "Istanbul", country_code: "TR" },
+    location: "Istanbul, Türkiye",
+  },
+  {
     label: "Turkey, the old English name",
     typed: "Atatürk Cad. 45, Merter, Güngören, Istanbul, Turkey",
     model: { city: "Istanbul", city_en: "Istanbul", country_code: "TR" },

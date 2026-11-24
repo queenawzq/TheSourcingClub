@@ -67,7 +67,7 @@ export function tradingProfileChecks(parts, now = new Date()) {
 
   const identityGaps = gaps([
     // Brands read the location the address gives (src/shared/company-address.mjs).
-    ["headquarters", profile?.production_address || profile?.location],
+    ["company address", profile?.production_address || profile?.location],
     ["year founded", profile?.founded_year],
     ["team size", profile?.employee_count != null],
     ["languages", profile?.languages_supported],
@@ -98,7 +98,7 @@ export function tradingProfileChecks(parts, now = new Date()) {
       todo: "your company details",
       ...(identityGaps.length
         ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Company name, headquarters, year founded, team size and languages are complete.")),
+        : complete("Company name, address, year founded, team size and languages are complete.")),
     },
     {
       key: "network",

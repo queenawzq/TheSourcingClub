@@ -161,7 +161,7 @@ export function factoryProfileChecks(parts, now = new Date()) {
 
   const identityGaps = [
     // Brands read the location the address gives (src/shared/company-address.mjs).
-    ["location", profile?.production_address || profile?.location],
+    ["factory address", profile?.production_address || profile?.location],
     ["nearest port", profile?.nearest_port],
     ["year founded", profile?.founded_year],
     ["employee count", profile?.employee_count],
@@ -189,7 +189,7 @@ export function factoryProfileChecks(parts, now = new Date()) {
       todo: "your factory details",
       ...(identityGaps.length
         ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Factory name, location, nearest port, year founded and employee count are complete.")),
+        : complete("Factory name, address, nearest port, year founded and employee count are complete.")),
     },
     {
       key: "production",

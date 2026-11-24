@@ -26,7 +26,7 @@ const PROFILE = {
   legal_name: "宁波晨织服饰有限公司",
   website_url: "https://chenzhi-knit.example.com",
   country_code: "CN",
-  location: "浙江省宁波市鄞州区",
+  location: "Ningbo, China",
   nearest_port: "宁波港",
   founded_year: 2011,
   employee_count: 160,
@@ -101,6 +101,14 @@ export async function seedZhFactory({ admin, factory, name, brand, staff }) {
     org_id: org.id, ...PROFILE,
     onboarding_completed_at: now, verification_status: "verified", trust_tier: "verified", published_at: now,
   }), "its profile");
+  // Its one address, as the server records it (api/structure-address.js):
+  // the full text for the company and staff, "Ningbo, China" for brands.
+  const address = "浙江省宁波市鄞州区江南路1588号";
+  must(await admin.from("factory_profiles").update({ production_address: address }).eq("org_id", org.id), "its address");
+  must(await admin.rpc("save_company_address_parts", {
+    target_org: org.id, for_address: address, source: "model", brand_location: PROFILE.location,
+    parts: { street: "鄞州区江南路1588号", city: "宁波市", city_en: "Ningbo", region: "浙江省", country_code: "CN" },
+  }), "its address parts");
   // The grant a verified vendor gets, as every demo factory has it.
   must(await admin.from("credit_ledger").insert({
     org_id: org.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",

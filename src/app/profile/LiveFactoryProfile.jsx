@@ -217,9 +217,11 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
     initialEditor: editor,
     files: fileDialogs(org, parts, reload),
     onSave: async (section, form) => {
-      await saveProfileSection(org, section, form, parts);
+      const saved = await saveProfileSection(org, section, form, parts);
       await refreshOrgs();
       await reload();
+      // A changed address: its city reaches the page when the server has read it.
+      saved?.structured?.then((answer) => answer && reload());
     },
     // Leave a dialog's own address once it closes, so a refresh shows the
     // profile rather than reopening it.

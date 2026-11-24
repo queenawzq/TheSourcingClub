@@ -37,7 +37,8 @@ async function saveWithAddress(org, patch, typed, parts) {
   if (typed === undefined) return saveFactoryProfile(org.id, patch);
   const { patch: addressColumns, changed } = addressPatch(typed, parts.profile?.production_address);
   await saveFactoryProfile(org.id, { ...patch, ...addressColumns });
-  if (changed) structureAddress(org.id);
+  // Returned, not waited on by the save: the page re-reads when it answers.
+  return changed ? { structured: structureAddress(org.id) } : undefined;
 }
 
 async function saveOverview(org, form, terms, parts) {
@@ -49,7 +50,7 @@ async function saveOverview(org, form, terms, parts) {
     employee_count: firstNumber(form.employees),
   };
   await renameIfChanged(org, form.name, parts);
-  await saveWithAddress(org, patch, form.address, parts);
+  return saveWithAddress(org, patch, form.address, parts);
 }
 
 /**

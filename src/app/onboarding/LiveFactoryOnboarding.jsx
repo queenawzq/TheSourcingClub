@@ -647,6 +647,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
       const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, ...answers } = submitted;
+      // One address on either copy of the flow: a vendor that switches between
+      // factory and trading company finds it already filled in.
+      const address = typedAddressIn(submitted);
+      if (address !== undefined) {
+        answers[factoryFieldName(ADDRESS_LABELS.factory)] = address;
+        answers[factoryFieldName(ADDRESS_LABELS.trading)] = address;
+      }
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature && !termsAcceptance) {

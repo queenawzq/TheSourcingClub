@@ -935,6 +935,7 @@ export const factoryMainZhText = {
   "Year founded": "成立年份",
   "Website URL": "官网",
   "Factory location": "工厂所在地",
+  "Factory address": "工厂地址",
   "Nearest port": "最近港口",
   "Total employees": "员工总数",
   "Production fit": "生产匹配",
