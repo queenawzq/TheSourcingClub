@@ -22,6 +22,7 @@ import { supabase, isConfigured, sentTwice, setKeepSignedIn, keepNewAccount, isT
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
+import { EMAIL_CODE_RESEND_SECONDS, emailCodeRetryAfter } from "../shared/email-code.mjs";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 import { takeRecoveryToken } from "./recovery-link.mjs";
 import { createActiveOrgStorage, pickActiveOrg } from "./active-org-storage.mjs";
@@ -675,11 +676,13 @@ export function AuthProvider({ children }) {
           },
         });
         if (otpError) {
+          const retryAfter = emailCodeRetryAfter(otpError);
+          if (retryAfter) return { sent: false, retryAfter };
           reportNoAnswer("code", otpError);
           setError(readable(otpError));
-          return false;
+          return { sent: false };
         }
-        return true;
+        return { sent: true, retryAfter: EMAIL_CODE_RESEND_SECONDS };
       },
 
       /** Exchange the emailed code for a session, kept as the login form's box says. */
