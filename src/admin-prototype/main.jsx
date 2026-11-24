@@ -7,6 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
+import { CompanyOverride } from "./CompanyOverride.jsx";
 import { verificationMockProfiles } from "./verification-mock.js";
 import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
 
@@ -1362,6 +1363,17 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               </>)}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
+              {/* Live only: Change type, Edit address, and who changed what. */}
+              {isVendor && actions.updateCompanyProfile && (
+                <CompanyOverride
+                  orgId={profile.id}
+                  entityType={profile.entityType}
+                  address={verification?.facts?.find((fact) => fact.key === "address")?.value ?? ""}
+                  actions={actions}
+                  refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
+                  onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}
+                />
+              )}
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>

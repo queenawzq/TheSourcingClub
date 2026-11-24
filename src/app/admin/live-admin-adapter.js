@@ -24,7 +24,8 @@
  */
 import { adminLevelInputs, adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
 import { LEVEL_WORDS, computeLevels } from "../../shared/verification-levels.mjs";
-import { loadVerificationScore, scoreAvailable, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { loadVerificationScore, scoreAvailable, updateVendorProfile, verificationActions, verificationFileUrl } from "./live-verification.js";
+import { reviewChanges } from "../../lib/domain/verification-score.js";
 import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
 import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
@@ -488,6 +489,10 @@ export function createAdminAdapter({ user, signOut }) {
       verificationScore: loadVerificationScore,
       verificationActions,
       verificationFileUrl,
+
+      /** Staff correct a vendor's type and address, and read who changed what (Nov 24). Live only. */
+      updateCompanyProfile: updateVendorProfile,
+      reviewChanges,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.

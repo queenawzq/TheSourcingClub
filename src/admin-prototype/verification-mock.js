@@ -17,6 +17,7 @@
 
 import { scoreOverall, withPhotoCheck } from "./verification-scoring.js";
 import { brandVerification } from "../shared/brand-verification.mjs";
+import { siteOptions, siteRecord, siteSummary } from "../shared/verification-score.mjs";
 
 export * from "./verification-scoring.js";
 
@@ -26,6 +27,20 @@ const PHOTO = {
   denim: "/assets/dashboard-rfq-denim.jpg",
   floor: "/assets/factory-header.png",
 };
+
+/**
+ * The one record form's data (Nov 24): the country's usual sites, the values as the document shows
+ * them (the form's prefill) and the company's own (what the page compares with).
+ */
+function siteForm(country, prefill, profile, defaultSite) {
+  return { sites: siteOptions(country, {}, profile.name), defaultSite, prefill, profile };
+}
+const CN_PROFILE = { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou, Zhejiang 杭州市萧山区江东三路18号" };
+const CN_SAVED = siteRecord({
+  outcome: "found", site: "GSXT", name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "浙江省杭州市萧山区江东三路18号",
+  proof: [{ path: "mock-gsxt-1", name: "gsxt-record.png", type: "image/png", url: PHOTO.floor }, { path: "mock-gsxt-2", name: "gsxt-annual-report.png", type: "image/png", url: PHOTO.line }],
+}, CN_PROFILE);
+const TR_PROFILE = { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" };
 
 /* ---------- (a) China, original licence, QCC recorded ---------- */
 const chinaOriginal = {
@@ -72,7 +87,7 @@ const chinaOriginal = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 98, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 10", result: "found", reference: "qcc.com/firm/7a1c…", name: "杭州钱江服装有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 90, verdict: "Found on GSXT, name, number and address match", registry: { ...CN_SAVED, source: "GSXT", by: "Maya Chen, Nov 10", reference: "", summary: siteSummary(CN_SAVED, "Maya Chen, Nov 10"), form: siteForm("CN", { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "杭州市萧山区江东三路18号" }, CN_PROFILE, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
         ],
       },
       {
@@ -147,6 +162,9 @@ const chinaCopy = {
         why: "The image is stamped “仅供认证使用” (for verification use only). Ask for a photo of the original.",
         evidence: { kind: "licence", variant: "cn-copy", file: "licence-copy.jpg" },
         readAt: "Read Nov 12, 08:15",
+        // A licence nobody had read yet: it reads by itself when the page opens (Nov 24).
+        checkingMs: 2000,
+        checkingWords: "Reading the document…",
         fields: [
           { key: "number", label: "Registration number", value: "91440111MA59C2RX8L", copy: true, typed: "91440111MA59C2RX8J" },
           { key: "established", label: "Established", value: "2018-06-02" },
@@ -238,7 +256,7 @@ const turkeyTrader = {
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti." }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti.", form: siteForm("TR", { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" }, TR_PROFILE, "GİB") }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
         ],
       },
       {

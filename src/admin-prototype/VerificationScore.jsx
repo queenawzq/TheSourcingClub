@@ -6,7 +6,7 @@
  * (Queena, Nov 11). The card shows a score and a one-line verdict per row;
  * everything else lives in the row's modal: the checks behind the score, what
  * was read from the document as editable fields, the file itself, and one
- * action, Run again.
+ * action, Save changes.
  *
  * One component, two data sources. The prototype passes a mock profile and
  * the card keeps its edits in local state (`mockActions`). The live review
@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
+import { siteDifferences } from "../shared/verification-score.mjs";
 import "./verification-score.css";
 
 function useCountUp(value, duration = 700) {
@@ -225,6 +226,13 @@ function mockActions(setGroups, groupsRef) {
   }));
   return {
     recordCheck: async (groupKey, check, record) => changeCheck(groupKey, recordedCheck(check, record)),
+    // Proof files stay in this browser: a link to the file itself.
+    uploadProof: async (file) => {
+      const url = URL.createObjectURL(file);
+      return { path: url, name: file.name, type: file.type, url };
+    },
+    removeProof: (path) => { try { URL.revokeObjectURL(path); } catch { /* not a blob link */ } },
+    proofUrl: async (file) => file.url ?? null,
     saveReason: async (groupKey, check, text) => changeCheck(groupKey, withReason(check, text)),
     recordPhoto: async (groupKey, index, record) => change(groupKey, (group) => withPhotoCheck({
       ...group,
@@ -391,7 +399,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 <div className="vr-row-copy">
                   <span className="vr-row-title">{group.label}{groupTip(group) && <InfoTip text={groupTip(group)} label={group.label} />}</span>
                   {busy
-                    ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />Checking…</span>
+                    ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />{group.checkingWords ?? "Checking…"}</span>
                     : failed
                       ? <span className="vr-row-verdict vr-tier-low"><i aria-hidden="true" />{group.error}</span>
                       : <span className={`vr-row-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" />{group.verdict || "Nothing submitted"}</span>}
@@ -422,8 +430,6 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
 }
 
 /* ------------------------------------------------------------ sub-checks */
-
-const sameName = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
 function ReasonForm({ initial = "", label = "Reason", saveLabel = "Save reason", onSave, onDone }) {
   const [text, setText] = useState(initial);
@@ -463,77 +469,156 @@ function Segmented({ options, value, onChange, name, label }) {
   );
 }
 
-function RecordForm({ check, legalName, onSave, onDone }) {
+/** A proof file: opens in a new tab (a signed link, minted on click, live). */
+function ProofChip({ file, onOpen, onRemove }) {
+  const [failed, setFailed] = useState(false);
+  const open = async (event) => {
+    event.preventDefault();
+    const tab = window.open("about:blank", "_blank");
+    const href = file.url ?? await Promise.resolve(onOpen?.(file)).catch(() => null);
+    if (href && tab) { tab.opener = null; tab.location.href = href; }
+    else { tab?.close(); setFailed(true); }
+  };
+  return (
+    <span className="vr-proof-chip">
+      <a href={file.url ?? "#"} onClick={open} title={failed ? "Couldn't open the file" : file.name}>{file.name}</a>
+      {onRemove && (
+        <button type="button" aria-label={`Remove ${file.name}`} onClick={() => onRemove(file)}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+        </button>
+      )}
+    </span>
+  );
+}
+
+const SEEN_FIELDS = {
+  registry: [["name", "Company name"], ["number", "Registration number"], ["address", "Address", true]],
+  certificate: [["number", "Certificate number"], ["holder", "Holder"]],
+};
+
+/**
+ * The one record form (Nov 24): where staff checked, what it showed, the values as the site shows them
+ * (prefilled from the document), proof files and a link or note. The page compares the values itself.
+ */
+function RecordForm({ check, onSave, onDone, actions }) {
   const registry = check.registry;
   const isCert = check.kind === "certificate";
-  const ids = { name: useId(), reason: useId(), reference: useId(), source: useId() };
-  // Where the check was made: the country's main source unless staff pick another (QCC fails, GSXT works).
-  const sources = !isCert && registry.sources?.length > 1 ? registry.sources : null;
-  const [sourceKey, setSourceKey] = useState(registry.sourceKey ?? sources?.[0]?.key ?? null);
-  const sourceLabel = sources?.find((item) => item.key === sourceKey)?.label ?? registry.source;
-  // Staff's own earlier answer is the starting point; an automatic check's is not theirs to repeat.
-  const [result, setResult] = useState(registry.result && !registry.for && registry.by !== "Checked automatically" ? registry.result : "found");
-  const [name, setName] = useState(isCert ? "" : (registry.result === "name_differs" ? registry.name : legalName) ?? "");
-  const [reference, setReference] = useState(registry.reference ?? "");
-  const [reason, setReason] = useState(registry.reason ?? "");
+  const form = registry.form ?? { sites: [], defaultSite: registry.source ?? "", prefill: {}, profile: {} };
+  const ids = { site: useId(), list: useId(), note: useId(), link: useId(), files: useId() };
+  const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
+  const earlier = savedByPerson && registry.form ? registry : null;
+  const [site, setSite] = useState(earlier?.site || (savedByPerson ? registry.source : "") || form.defaultSite || "");
+  const initialResult = savedByPerson ? (registry.result === "name_differs" ? "found" : registry.result) : "found";
+  const [result, setResult] = useState(initialResult);
+  const fieldsFor = SEEN_FIELDS[isCert ? "certificate" : "registry"];
+  const [seen, setSeen] = useState(() => Object.fromEntries(fieldsFor.map(([key]) => [key, String((earlier && earlier[key]) || (savedByPerson && key === "name" ? registry.name : "") || form.prefill?.[key] || "")])));
+  const [note, setNote] = useState(earlier?.note ?? registry.reason ?? "");
+  const [link, setLink] = useState(registry.reference ?? "");
+  const [proof, setProof] = useState(() => earlier?.proof ?? []);
+  const [added] = useState(() => new Set());
+  const [upload, setUpload] = useState({ busy: 0, error: "" });
   const [save, run] = useSave();
-  const showsName = !isCert && (result === "found" || result === "name_differs");
-  const needsReason = result === "name_differs";
+  const known = form.sites?.find((item) => item.name.toLowerCase() === site.trim().toLowerCase()) ?? null;
+  const showsSeen = result === "found";
+  const needsNote = result === "not_found" || result === "could_not_check";
+  const showsNote = !showsSeen;
+  const differs = isCert ? {} : siteDifferences(seen, form.profile);
+  const ready = site.trim() && (!needsNote || note.trim()) && !upload.busy;
 
-  // Typing a name the registry shows differently is "Name differs"; typing it back is "Found".
-  const changeName = (value) => {
-    setName(value);
-    if (!legalName) return;
-    if (!sameName(value, legalName) && result === "found") setResult("name_differs");
-    if (sameName(value, legalName) && result === "name_differs") setResult("found");
+  const addFiles = async (list) => {
+    const files = [...(list ?? [])];
+    if (!files.length) return;
+    setUpload((current) => ({ busy: current.busy + files.length, error: "" }));
+    for (const file of files) {
+      try {
+        const saved = await actions.uploadProof(file);
+        added.add(saved.path);
+        setProof((current) => [...current, saved]);
+      } catch (error) {
+        setUpload((current) => ({ ...current, error: error?.message || "Couldn't upload the file" }));
+      } finally {
+        setUpload((current) => ({ ...current, busy: current.busy - 1 }));
+      }
+    }
+  };
+  const removeFile = (file) => {
+    setProof((current) => current.filter((item) => item.path !== file.path));
+    // Only a file added in this form goes for good; a saved one stays with the earlier record.
+    if (added.has(file.path)) actions.removeProof?.(file.path);
+  };
+  const cancel = () => {
+    added.forEach((path) => actions.removeProof?.(path));
+    onDone();
   };
 
   const submit = async (event) => {
     event.preventDefault();
-    if ((needsReason && !reason.trim()) || save.busy) return;
+    if (!ready || save.busy) return;
     const { ok } = await run(() => onSave({
-      result, reference: reference.trim(), name: showsName ? name.trim() : "", reason: needsReason ? reason.trim() : "", ...(sourceKey ? { source: sourceKey } : {}),
+      site: site.trim(),
+      siteKey: known?.key ?? "site",
+      result,
+      seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])) : {},
+      note: showsNote ? note.trim() : "",
+      link: link.trim(),
+      proof,
     }));
     if (ok) onDone();
   };
 
   return (
     <form className="vr-record" onSubmit={submit}>
-      {sources && (
-        <div className="vr-field">
-          <label htmlFor={ids.source}>Checked on</label>
-          <select id={ids.source} value={sourceKey ?? ""} onChange={(event) => setSourceKey(event.target.value)}>
-            {sources.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
-          </select>
+      <div className="vr-field">
+        <label htmlFor={ids.site}>Where you checked</label>
+        <div className="vr-input has-open">
+          <input id={ids.site} list={ids.list} value={site} spellCheck={false} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onChange={(event) => setSite(event.target.value)} />
+          {known?.href && <LookupAction lookup={{ label: "Open", href: known.href }} />}
         </div>
-      )}
+        {form.sites?.length > 0 && <datalist id={ids.list}>{form.sites.map((item) => <option value={item.name} key={item.key}>{item.label}</option>)}</datalist>}
+      </div>
       <Segmented
         options={RECORD_RESULTS[isCert ? "certificate" : "registry"]}
         value={result}
         onChange={setResult}
         name={`record-${check.key}`}
-        label={`What ${isCert ? "the issuer's list" : sourceLabel} showed`}
+        label="What it showed"
       />
-      {showsName && (
-        <div className={`vr-field${needsReason ? " is-differs" : ""}`}>
-          <label htmlFor={ids.name}>Name on {sourceLabel}</label>
-          <input id={ids.name} value={name} spellCheck={false} onChange={(event) => changeName(event.target.value)} />
-        </div>
-      )}
-      {needsReason && (
+      {showsSeen && fieldsFor.map(([key, label, multiline]) => {
+        const Control = multiline ? "textarea" : "input";
+        const other = form.profile?.[key] ?? "";
+        return (
+          <div className={`vr-field${differs[key] ? " is-differs" : ""}`} key={key}>
+            <label htmlFor={`${ids.site}-${key}`}>{label}</label>
+            <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={seen[key]} spellCheck={false} onChange={(event) => setSeen((current) => ({ ...current, [key]: event.target.value }))} />
+            {differs[key] && <p className="vr-compare is-typed"><span>Profile:</span> {marked(other, seen[key])}</p>}
+          </div>
+        );
+      })}
+      {showsNote && (
         <div className="vr-field">
-          <label htmlFor={ids.reason}>Reason</label>
-          <textarea id={ids.reason} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <label htmlFor={ids.note}>{needsNote ? "Note" : "Note (optional)"}</label>
+          <textarea id={ids.note} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
         </div>
       )}
       <div className="vr-field">
-        <label htmlFor={ids.reference}>Link or reference</label>
-        <input id={ids.reference} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={`${isCert ? "Issuer's list" : sourceLabel} page link`} />
+        <span className="vr-field-label" id={ids.files}>Proof</span>
+        <div className="vr-proof" aria-labelledby={ids.files}>
+          {proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} onRemove={removeFile} key={file.path} />)}
+          <label className="vr-text-action vr-proof-add">
+            {upload.busy ? <><Spinner ink />Uploading…</> : "Add screenshots or PDFs"}
+            <input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+          </label>
+        </div>
+        {upload.error && <p className="vr-save-error" role="alert">{upload.error}</p>}
+      </div>
+      <div className="vr-field">
+        <label htmlFor={ids.link}>Link (optional)</label>
+        <input id={ids.link} value={link} onChange={(event) => setLink(event.target.value)} />
       </div>
       <SaveError text={save.error} />
       <div className="vr-record-actions">
-        <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
-        <button className="primary-btn compact-btn" type="submit" disabled={(needsReason && !reason.trim()) || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
+        <button className="secondary-btn compact-btn" type="button" onClick={cancel}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
       </div>
     </form>
   );
@@ -551,7 +636,12 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
           <span>{check.verdict}</span>
-          {registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {registry?.summary
+            ? <small className="vr-sub-summary">{registry.summary}{registry.for ? `, for “${registry.for}”` : ""}</small>
+            : registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {registry?.proof?.length > 0 && !mode && (
+            <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
+          )}
           {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
         </div>
         <div className="vr-sub-score">
@@ -569,7 +659,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
         <div className="vr-sub-actions">
           {canRecord && (
             <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
-              {registry.result && registry.by !== "Checked automatically" ? "Update check" : `Record ${registry.source} check`}
+              {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit" : "Record check"}
             </button>
           )}
           {check.lookup && <LookupAction lookup={check.lookup} />}
@@ -580,7 +670,7 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           )}
         </div>
       )}
-      {mode === "record" && <RecordForm check={check} legalName={legalName} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
+      {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
       {mode === "reason" && (
         <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
       )}
@@ -669,8 +759,9 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle", from: null });
   const score = group.checking || group.error ? null : scoreGroup(group);
-  // Run again reads what was uploaded: a file with no reading yet has no fields, and is exactly what it is for.
-  const canRun = group.rerunnable !== false && (fields.length > 0 || (group.evidence?.kind ?? "none") !== "none");
+  // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
+  const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
+  const canRun = group.rerunnable !== false && fields.length > 0;
   // A brand's groups have nowhere to keep a reason (`reasons: false`).
   const canReason = group.reasons !== false && group.evidence?.kind !== "none";
   // A new reading (Run again, or a teammate's) replaces the fields; staff's own unsaved edits are only replaced by it.
@@ -686,8 +777,8 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   // The other counted groups' scores before a run: a licence edit (the business scope) can move Company information.
   const otherScores = () => Object.fromEntries((groups ?? []).filter((g) => g.key !== group.key && groupWeight(g)).map((g) => [g.key, scoreGroup(g)]));
   const runAgain = async () => {
+    if (!edited.length) return;
     const from = score;
-    const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
     otherBefore.current = otherScores();
     setRun({ state: "running", from });
     onRunning(true);
@@ -695,7 +786,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     try {
       outcome = await actions.runAgain(group.key, values, edited, cert?.id ?? null);
     } catch (error) {
-      outcome = { error: error?.message || "Couldn't run again" };
+      outcome = { error: error?.message || "Couldn't save. Try again." };
     }
     onRunning(false);
     setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done", from });
@@ -730,9 +821,10 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     ? (groups ?? []).filter((g) => g.key in otherBefore.current && scoreGroup(g) != null && scoreGroup(g) !== otherBefore.current[g.key])
       .map((g) => `${g.label} ${otherBefore.current[g.key] ?? 0}% to ${scoreGroup(g)}%`)
     : [];
-  const status = run.state === "running" ? { text: "Checking again…" }
+  const status = run.state === "running" ? { text: "Saving…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
-      : run.state === "done" ? { text: [to == null ? "Read again" : to === run.from ? `Same result: ${to}%` : `Score updated: ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
+      : run.state === "done" ? { text: [to == null || to === run.from ? "Saved" : `Saved. Score ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
+        : group.checking && group.checkingWords ? { text: group.checkingWords }
         : group.error ? { text: group.error, tone: "error" }
           : group.stale ? { text: group.stale, tone: "stale" }
             : { text: group.readAt ?? "" };
@@ -815,10 +907,10 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
             {status.text}
           </p>
           <button className="secondary-btn" type="button" onClick={onClose}>Close</button>
-          {canRun && (
+          {canRun && (edited.length > 0 || run.state === "running") && (
             <button className="primary-btn vr-run" type="button" disabled={run.state === "running"} onClick={runAgain}>
               {run.state === "running" && <Spinner />}
-              {run.state === "running" ? "Running" : "Run again"}
+              {run.state === "running" ? "Saving" : "Save changes"}
             </button>
           )}
         </footer>

@@ -7,7 +7,8 @@
 
 .vr-card,
 .vr-layer,
-.vr-facts {
+.vr-facts,
+.vr-override {
   --vr-strong-fill: #eaf4ff;
   --vr-strong-stroke: #8db7ff;
   --vr-strong-text: #1a4df2;
@@ -1381,3 +1382,80 @@ a.vr-text-action {
 
 /* A group with no file behind it (a brand's Company information): the checks take the width. */
 .vr-modal-body.is-single { grid-template-columns: minmax(0, 1fr); }
+
+/* ------------------------------------------------ the one record form (Nov 24) */
+
+.vr-field.is-differs textarea { border-color: var(--vr-potential-stroke); background: var(--vr-potential-fill); }
+.vr-input.has-open { display: flex; align-items: center; gap: 12px; }
+.vr-input.has-open input { flex: 1 1 auto; min-width: 0; }
+.vr-input.has-open .vr-text-action { flex: none; }
+
+.vr-proof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.vr-proof-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--vr-line);
+  border-radius: 14px;
+  background: #fff;
+  font-size: 12px;
+  line-height: 16px;
+}
+.vr-sub-copy .vr-proof-chip { padding-right: 10px; }
+.vr-proof-chip a {
+  overflow: hidden;
+  color: var(--vr-blue);
+  font-weight: 700;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-proof-chip a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.vr-proof-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--vr-muted);
+  cursor: pointer;
+}
+.vr-proof-chip button:hover { background: var(--vr-none-fill); color: var(--vr-ink); }
+.vr-proof-chip svg { width: 12px; height: 12px; }
+
+.vr-proof-add { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; }
+.vr-proof-add input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.vr-proof-add:focus-within { outline: 2px solid var(--vr-blue); outline-offset: 2px; border-radius: 3px; }
+
+.vr-sub-copy .vr-sub-summary { color: var(--vr-muted); }
+
+/* Live only (Nov 24): Change type, Edit address and the review history, under Review details. */
+.vr-override { display: grid; gap: 12px; }
+.vr-override-actions { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.vr-history { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--vr-line-soft); }
+.vr-history > span { color: var(--vr-muted); font-size: 12px; font-weight: 700; line-height: 16px; }
+.vr-history ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.vr-history li { display: grid; gap: 1px; }
+.vr-history strong { color: var(--vr-ink); font-size: 13px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
+.vr-history small { color: var(--vr-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
