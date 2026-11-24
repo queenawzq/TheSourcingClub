@@ -8635,7 +8635,8 @@ function FactoryOnboardingStep({
       "Bulk production lead time": "Bulk Production Lead Time",
       "Typical sample lead time": "Typical Sample Lead Time",
       // The trading company's review rows, by the question each one reads back.
-      "About the company": "About the trading company",
+      // One About box on both copies, named for the factory's (OnboardingBrandContext).
+      "About the company": "About the factory",
       "Production programs": "Production programs supported",
       "Digital tools": "Digital tools (optional)",
       "Other capabilities": "Equipment",
