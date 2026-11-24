@@ -73,8 +73,16 @@ async function demoUser({ email, name }) {
     }), `create ${email}`);
   }
   const client = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
-  if (error) throw new Error(`sign in as ${email}: ${error.message}`);
+  // A hosted project limits sign-ins per hour; with this many demo users a reseed of a test database
+  // reaches it. Wait and try again (up to 12 times, a minute apart) rather than stop halfway.
+  for (let attempt = 1; ; attempt += 1) {
+    const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+    if (!error) break;
+    const limited = error.status === 429 || /rate limit/i.test(error.message ?? "");
+    if (!limited || attempt >= 12) throw new Error(`sign in as ${email}: ${error.message}`);
+    console.log(`  sign-in limit reached for ${email}; waiting 60 s (try ${attempt} of 12)`);
+    await new Promise((resolve) => setTimeout(resolve, 60_000));
+  }
   const { data } = await client.auth.getUser();
   return { client, id: data.user.id, email };
 }
