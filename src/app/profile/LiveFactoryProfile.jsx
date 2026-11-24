@@ -195,10 +195,17 @@ function ownWords(parts) {
   return new Set([...profileSources(parts), parts.orgName, parts.profile?.legal_name, ...custom].filter(Boolean).map((text) => String(text).trim()));
 }
 
+/** Fired once the server has split a saved address (api/structure-address.js). */
+const ADDRESS_READ = "tsc:company-address-read";
+
 export default function LiveFactoryProfile({ org, page = "profile", editor = null }) {
   const { refreshOrgs } = useAuth();
   const { navigate } = useRouter();
   const { parts, error, reload } = useProfileParts(org);
+  useEffect(() => {
+    window.addEventListener(ADDRESS_READ, reload);
+    return () => window.removeEventListener(ADDRESS_READ, reload);
+  }, [reload]);
 
   if (!parts) return <Waiting error={error} />;
 
@@ -220,8 +227,10 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
       const saved = await saveProfileSection(org, section, form, parts);
       await refreshOrgs();
       await reload();
-      // A changed address: its city reaches the page when the server has read it.
-      saved?.structured?.then((answer) => answer && reload());
+      // A changed address: its city reaches the page when the server has read
+      // it. Told by an event, since leaving a dialog's own address
+      // (/profile/edit/…) mounts a new page, which this one's reload misses.
+      saved?.structured?.then((answer) => answer && window.dispatchEvent(new Event(ADDRESS_READ)));
     },
     // Leave a dialog's own address once it closes, so a refresh shows the
     // profile rather than reopening it.
