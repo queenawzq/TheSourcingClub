@@ -167,7 +167,7 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
                       <span className="admin-sub">{`Already withdrawn from this step: ${moneyIn(row.withdrawn_cents)} (${withdrawnBy(row.withdrawn_by)}). It can't be taken back.`}</span>
                     ) : null}
                     {!row.approved ? <span className="admin-sub">Not approved yet: this step's money isn't in the factory's balance.</span> : null}
-                    {row.open && row.cause === "dispute" && !["won", "warning_closed", "lost"].includes(row.dispute_status) ? (
+                    {row.factory_paused && row.cause === "dispute" && !["won", "warning_closed", "lost"].includes(row.dispute_status) ? (
                       <span className="admin-sub">Refund brand is available once the bank decides for the brand. This step stays on hold until then.</span>
                     ) : null}
                     {Number(row.dispute_fee_cents) > 0 ? <span className="admin-sub">{`Stripe's dispute fee ${moneyIn(row.dispute_fee_cents)}, paid by us`}</span> : null}

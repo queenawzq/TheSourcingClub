@@ -1080,7 +1080,7 @@ export default function StripePayoutCard({
           ) : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} processing`}</p> : null}
           {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
-          {review ? <p className="live-payment-notice" role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
+          {review ? <p role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
