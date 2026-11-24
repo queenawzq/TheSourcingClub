@@ -335,6 +335,48 @@ const LEGACY_SOURCES = [
   { key: "edevlet", label: "e-Devlet barcode check" },
 ];
 
+// The US has no national register: each state's Secretary of State keeps its own (fix round 2, Nov 24).
+const US_STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware",
+  DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
+  PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
+// Each state's own business search, where its page was checked (Nov 24); another state is named, not linked.
+const US_STATE_SEARCH = {
+  AL: "https://arc-sos.state.al.us/CGI/CORPNAME.MBR/INPUT",
+  CA: "https://bizfileonline.sos.ca.gov/search/business",
+  CO: "https://www.coloradosos.gov/biz/BusinessEntityCriteriaExt.do",
+  DE: "https://icis.corp.delaware.gov/ecorp/entitysearch/NameSearch.aspx",
+  FL: "https://search.sunbiz.org/Inquiry/CorporationSearch/ByName",
+  GA: "https://ecorp.sos.ga.gov/BusinessSearch",
+  MA: "https://corp.sec.state.ma.us/corpweb/corpsearch/corpsearch.aspx",
+  MN: "https://mblsportal.sos.mn.gov/Business/Search",
+  NC: "https://www.sosnc.gov/online_services/search/by_title/_Business_Registration",
+  NJ: "https://www.njportal.com/DOR/BusinessNameSearch/",
+  NV: "https://esos.nv.gov/EntitySearch/OnlineEntitySearch",
+  NY: "https://apps.dos.ny.gov/publicInquiry/",
+  OR: "https://sos.oregon.gov/business/pages/find.aspx",
+  SC: "https://businessfilings.sc.gov/BusinessFiling/Entity/Search",
+  TN: "https://tncab.tnsos.gov/business-entity-search",
+  TX: "https://www.sos.state.tx.us/corp/sosda/index.shtml",
+  VA: "https://cis.scc.virginia.gov/EntitySearch/Index",
+  WA: "https://ccfs.sos.wa.gov/",
+};
+
+/** The US state an address is in ("Hickory, NC 28601" or "…, North Carolina"), with its business search if known; else null. */
+export function usStateFrom(address) {
+  const text = String(address ?? "");
+  const code = text.match(/(?:^|[\s,])([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/)?.[1]
+    ?? text.match(/,\s*([A-Z]{2})\s*(?:,|$)/)?.[1]
+    ?? Object.entries(US_STATE_NAMES).find(([, name]) => new RegExp(`\\b${name}\\b`, "i").test(text))?.[0];
+  if (!code || !US_STATE_NAMES[code]) return null;
+  return { code, name: US_STATE_NAMES[code], url: US_STATE_SEARCH[code] ?? null };
+}
+
 export function registrySources(country) {
   return REGISTRY_SOURCES[country] ?? OTHER_SOURCES;
 }

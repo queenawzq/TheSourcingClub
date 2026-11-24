@@ -523,7 +523,18 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const setNote = (text) => setNotes((current) => ({ ...current, [result]: text }));
   // Only a person's own earlier link; never an automatic answer's reference (a VAT id is not a link).
   const [link, setLink] = useState(savedByPerson ? registry.reference ?? "" : "");
-  const [proof, setProof] = useState(() => earlier?.proof ?? []);
+  // Proof files belong to their outcome too (fix round 2): a Found record's screenshots never ride into Couldn't check.
+  // Files added before an outcome is chosen go with the first one chosen.
+  const [proofs, setProofs] = useState(() => ({ [initialResult ?? ""]: earlier?.proof ?? [] }));
+  const proof = proofs[result ?? ""] ?? [];
+  const setProof = (update) => {
+    const bucket = result ?? "";
+    setProofs((current) => ({ ...current, [bucket]: update(current[bucket] ?? []) }));
+  };
+  const chooseResult = (next) => {
+    if (result == null) setProofs((current) => (current[""]?.length && !current[next]?.length ? { ...current, [next]: current[""], "": [] } : current));
+    setResult(next);
+  };
   const [added] = useState(() => new Set());
   const [upload, setUpload] = useState({ busy: 0, error: "" });
   const [save, run] = useSave();
@@ -573,7 +584,10 @@ function RecordForm({ check, onSave, onDone, actions }) {
       link: link.trim(),
       proof,
     }));
-    if (ok) onDone();
+    if (!ok) return;
+    // Files added under another outcome and not saved with this one go for good.
+    added.forEach((path) => { if (!proof.some((file) => file.path === path)) actions.removeProof?.(path); });
+    onDone();
   };
 
   return (
@@ -589,7 +603,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       <Segmented
         options={RECORD_RESULTS[isCert ? "certificate" : "registry"]}
         value={result}
-        onChange={setResult}
+        onChange={chooseResult}
         name={`record-${check.key}`}
         label="What it showed"
       />

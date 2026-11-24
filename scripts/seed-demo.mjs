@@ -873,9 +873,11 @@ const CURRENT_TERMS = Object.fromEntries(
       address: "Flat B, 9/F, Kowloon Bay Industrial Centre, 15 Wang Hoi Road, Kowloon Bay, Kowloon", founded: "2022-08-11", scope: "Garment manufacturing and export",
       intro: "Sampling room in Hong Kong with production partners in Guangdong.", employees: 18, signer: "Chan Ka Wai" },
   ];
+  // The location under the name says the country, as onboarding's does.
+  const COUNTRY_NAMES = { ES: "Spain", GB: "United Kingdom", IT: "Italy", VN: "Vietnam", IN: "India", BD: "Bangladesh", US: "United States", HK: "Hong Kong" };
   for (const c of countryCases) {
     const v = await verifyOrg(c.key, {
-      legal_name: c.legal, country_code: c.country, location: c.address, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
+      legal_name: c.legal, country_code: c.country, location: `${c.address}, ${COUNTRY_NAMES[c.country]}`, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
       intro: c.intro, signer: c.signer,
     }, { address: c.address, registration: { country: c.country, number: c.number } });
     const file = await upload(v, "business_registration", c.file, { ...doc(c.file), createdAt: day(-1) });

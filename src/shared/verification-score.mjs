@@ -16,7 +16,7 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources } from "./registration-number.mjs";
+import { companyNameKey, registrySources, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
 export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
@@ -154,7 +154,11 @@ function defaultSource(country) {
 }
 
 /** "Open QCC" with the link and what to copy, for the registry sub-row. */
-function registryLookup(country, sourceKey, registration, title) {
+function registryLookup(country, sourceKey, registration, title, address = "") {
+  if (country === "US" && (sourceKey === "state_register" || sourceKey === "site")) {
+    const state = stateSite(address);
+    if (state.href) return { label: `Open ${state.name}`, href: state.href, ...(registration?.number ? { copy: registration.number } : {}) };
+  }
   const source = registrySources(country).find((s) => s.key === sourceKey)
     ?? registrySources(country).find((s) => s.key !== "document" && typeof s.url === "function");
   if (!source || typeof source.url !== "function") return null;
@@ -283,12 +287,13 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
   const base = { key: "registry", label: "Official registry", kind: "registry", weight: 30, reasonKey: "registry" };
-  const lookup = reg?.number ? registryLookup(country, sourceKey, reg, title) : null;
+  const lookup = reg?.number ? registryLookup(country, sourceKey, reg, title, typedAddress) : null;
   // The one form (Nov 24): where staff checked, prefilled with the country's usual registry, and the
   // name, number and address as the document shows them; the company's own values to compare with.
   const form = {
-    sites: siteOptions(country, reg, title),
-    defaultSite: DEFAULT_SOURCE[country] ? capital(sourceWords(DEFAULT_SOURCE[country]).replace(/^the /, "")) : "",
+    sites: siteOptions(country, reg, title, typedAddress),
+    defaultSite: country === "US" ? stateSite(typedAddress).name
+      : DEFAULT_SOURCE[country] ? capital(sourceWords(DEFAULT_SOURCE[country]).replace(/^the /, "")) : "",
     prefill: {
       name: String(prefill?.name || title || ""),
       number: String(prefill?.number || reg?.number || ""),
@@ -392,14 +397,22 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
 const DEFAULT_SITE_SKIP = new Set(["document"]);
 
 /** The sites a country's registry check usually goes to: short name, key and link. */
-export function siteOptions(country, registration, title) {
+export function siteOptions(country, registration, title, address = "") {
   return registrySources(country)
     .filter((source) => !DEFAULT_SITE_SKIP.has(source.key))
     .map((source) => {
+      if (source.key === "state_register") return stateSite(address, source);
       let href = null;
       try { href = typeof source.url === "function" ? source.url(registration ?? {}, title) : null; } catch { href = null; }
       return { key: source.key, name: capital(sourceWords(source.key).replace(/^the /, "")), label: source.label ?? sourceWords(source.key), href };
     });
+}
+
+/** A US company's register: its state's business search, read from the address; else where to look, said in the field. */
+function stateSite(address, source) {
+  const state = usStateFrom(address);
+  const name = state ? `${state.name} business search` : "The company's state business register";
+  return { key: "state_register", name, label: state ? `${state.name} Secretary of State` : source?.label ?? "State business register (Secretary of State)", href: state?.url ?? null };
 }
 
 /** The key a typed site is saved under: a known one by its name, else "site". */
@@ -532,8 +545,10 @@ export function siteSummary(saved, by, extra = "") {
   const lead = saved.result === "found" ? `Found on ${where}` : saved.result === "expired" ? `Expired on ${where}`
     : saved.result === "not_found" ? `Not found on ${where}` : `Couldn't check ${where}`;
   const files = saved.proof?.length ? `${saved.proof.length} ${saved.proof.length === 1 ? "file" : "files"}` : "";
-  const middle = saved.result === "found" ? matchWords(saved) : String(saved.note ?? "").trim();
-  return [lead, middle, extra, files, by].filter(Boolean).join(" · ");
+  const note = String(saved.note ?? "").trim();
+  // Every outcome's note is on its line, Found's too (fix round 2, Nov 24).
+  const middle = saved.result === "found" ? [matchWords(saved), note] : [note];
+  return [lead, ...middle, extra, files, by].filter(Boolean).join(" · ");
 }
 
 const NUMBER_LABEL = { CN: "Registration number", TR: "Tax number (VKN)", PT: "NIPC (company number)" };

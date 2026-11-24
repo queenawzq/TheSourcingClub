@@ -1229,7 +1229,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // One reason for the registry block, the pop-up's (fix round, Nov 24): the score's words, once it is read.
   const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
   const savedAddress = verification?.facts?.find((fact) => fact.key === "address")?.value ?? "";
-  const deleteLabel = isVendor ? "factory" : "brand";
+  const deleteLabel = profile?.entityType === "Trading company" ? "trading company" : isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
     (document) => document.kind === "walkthrough" && document.status !== "rejected" && Number(document.size_bytes) > 0,
