@@ -716,11 +716,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const answering = resubmitting || review?.state === "needs_information";
       if (step === REVIEW_STEP && answering && termsAcceptance) {
         // Terms already signed: confirming the summary sends it back to staff
-        // and stays on the summary, with no page after it.
+        // and opens the finish card, as a reload would.
         await resubmitForReview(org.id);
         setAnswered(review);
         startVerification(org.id);
         setResubmitting(false);
+        setStep(LAST_STEP);
         onComplete();
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
@@ -840,7 +841,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       // is not the only copy: an address that cannot receive it (Nov 13)
       // otherwise left the factory with no sign of the request.
       notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
-      completion={reviewCompletion(review, {
+      // The request just answered is not shown again while the review re-reads.
+      completion={reviewCompletion(review === answered ? null : review, {
         language: language,
         onUpdate: () => {
           setResubmitting(true);
