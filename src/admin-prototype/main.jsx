@@ -1180,6 +1180,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [requestOpen, setRequestOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [approveNote, setApproveNote] = useState("");
+  const [approveNoteFor, setApproveNoteFor] = useState(null);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
   // decision fired with the status alone. Live, that is not cosmetic — the
@@ -1412,7 +1413,12 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => { setApproveNote(suggestedApprovalMessage(profile.entityType)); setApproveOpen(true); }}>
+              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => {
+                // Staff's edits stay while they reopen it; another company starts from its own suggestion
+                // (chosen again once the submission, with the country and languages, has loaded).
+                if (approveNoteFor !== profile.id) { setApproveNote(suggestedApprovalMessage(profile.entityType, { countryCode: submission?.profile?.country_code, locales: (submission?.members ?? []).map((member) => member.locale) })); setApproveNoteFor(submission ? profile.id : null); }
+                setApproveOpen(true);
+              }}>
                 {approveLabel}
               </button>
               {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}

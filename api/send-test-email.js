@@ -48,10 +48,11 @@ const TEMPLATES = {
   "onboarding-factory": async (locale) => (await loadOnboardingEmail())("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory", locale)),
   "onboarding-trading-company": async (locale) => (await loadOnboardingEmail())("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory", locale)),
   "review-approved": (locale, name) => review("approved", locale, name, ""),
-  // The approval pop-up's suggested message for a factory, as a company would get it unedited.
+  // The approval pop-up's suggested message for a factory, as a company would get it unedited:
+  // the 中文 sample is a factory in China's, with the Chinese after the English.
   "review-approved-message": async (locale, name) => {
     const { suggestedApprovalMessage } = await import("../src/shared/approval-message.mjs");
-    return review("approved", locale, name, suggestedApprovalMessage("Factory"));
+    return review("approved", locale, name, suggestedApprovalMessage("Factory", { countryCode: locale === "zh" ? "CN" : null }));
   },
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_REQUEST[locale === "zh" ? "zh" : "en"]),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
