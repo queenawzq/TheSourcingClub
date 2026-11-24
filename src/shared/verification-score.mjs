@@ -16,7 +16,7 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources, usStateFrom } from "./registration-number.mjs";
+import { companyNameKey, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
 // The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
@@ -355,7 +355,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       number: String(prefill?.number || reg?.number || ""),
       address: String(prefill?.address || typedAddress || ""),
     },
-    profile: { name: String(title ?? ""), number: String(reg?.number ?? ""), address: String(typedAddress ?? "") },
+    profile: { name: String(title ?? ""), number: String(reg?.number ?? ""), address: String(typedAddress ?? ""), country: country ?? null },
   };
   const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", ...fields, form });
   const current = detail?.current ?? null;
@@ -387,6 +387,12 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       source: src.replace(/^the /, ""), sourceKey: current.source, by, result: outcome === "mismatch" ? "not_found" : outcome,
       reference: cd.reference ?? "", name: (detail.renamedSinceCheck ? title : cd.name ?? title) ?? "",
       ...(cd.reason ? { reason: String(cd.reason) } : {}),
+      // An explanation is saved as a check of its own, with no files: the proof of the check it explains stays
+      // on the row (Nov 25), from the latest person's check on this number that has some.
+      ...(!current.automatic && !(Array.isArray(cd.proof) && cd.proof.length) ? (() => {
+        const earlier = checks.find((c) => c.id !== current.id && !c.automatic && Array.isArray(c.details?.proof) && c.details.proof.length);
+        return earlier ? { proof: earlier.details.proof } : {};
+      })() : {}),
     });
     if (detail.renamedSinceCheck) {
       out = { score: null, verdict: "Renamed since the check", registry: { ...registry, for: cd.titleAtCheck ?? cd.nameAtCheck ?? null } };
@@ -529,7 +535,9 @@ export function siteDifferences(seen, profile) {
   const address = String(seen?.address ?? "").trim();
   return {
     name: Boolean(name && profile?.name && sameScript(name, profile.name) && companyNameKey(name) !== companyNameKey(profile.name) && !namesPartlyMatch(name, profile.name)),
-    number: Boolean(number && plainNumber(profile?.number) && number !== plainNumber(profile.number)),
+    // The same number written another way by the country's rule (a Hong Kong certificate's full number) does not differ.
+    number: Boolean(number && plainNumber(profile?.number) && number !== plainNumber(profile.number)
+      && !(profile?.country && sameRegistrationNumber(profile.country, seen.number, profile.number))),
     address: Boolean(address && profile?.address && !addressesMatch(address, profile.address)),
   };
 }
@@ -984,7 +992,12 @@ export function scoreVerification(input, { timeZone } = {}) {
   const country = detail.registration?.country ?? detail.countryCode ?? input?.profile?.countryCode ?? null;
   const title = detail.title ?? input?.profile?.legalName ?? input?.profile?.name ?? "";
   const files = extra.registrationFiles ?? [];
-  const reading = latest(signals, "document_reading");
+  const read = latest(signals, "document_reading");
+  // A number the licence writes another way by the country's rule (a Hong Kong certificate's full number) is no
+  // difference, also on a reading stored before the rule (Nov 25).
+  const reading = read && (read.details?.differences ?? []).some((line) => line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))
+    ? { ...read, details: { ...read.details, differences: read.details.differences.filter((line) => !(line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))) } }
+    : read;
   const reasons = reasonsByKey(input ?? {}, timeZone);
   const photoCheck = input?.photoCheck ?? null;
 
@@ -1036,18 +1049,26 @@ export function scoreVerification(input, { timeZone } = {}) {
   const withStaff = (check, record) => (record
     ? overrideCheck(check, { result: record.result, note: record.note ?? "", by: byWords(record.checkedBy, record.checkedAt, timeZone) }, { vendorKind })
     : check);
-  const address = withStaff(withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress })), addressRecord);
-  if (!typedAddress) address.canOverride = false;
   const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
+  // The typed address and the licence's, the same text with a street or building number in it, are the same
+  // address in any language, also for a result stored before the address check knew it (Nov 25: an English Hong
+  // Kong address parsed to its city only scored "Only the area matches").
+  const sameText = Boolean(typedAddress && licenceAddress) && /\d/.test(typedAddress) && plainAddress(typedAddress) === plainAddress(licenceAddress);
+  const ownerStored = level.address_owner;
+  // Only a result the address check stored is corrected: one that never ran stays "Not checked yet".
+  const owner = sameText && ownerStored && ownerStored.level === "medium" && !(ownerStored.details?.comparisons ?? []).some((c) => c.verdict === "differs")
+    ? { ...ownerStored, level: "high" } : ownerStored;
+  const address = withStaff(withReason(addressCheck({ owner, siteSignal, typedAddress })), addressRecord);
+  if (!typedAddress) address.canOverride = false;
   const registryAddress = registry.registry?.result === "found" ? String(registry.registry.address ?? "").trim() : "";
-  const licenceDiffers = Boolean(licenceAddress) && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high";
+  const licenceDiffers = Boolean(licenceAddress) && address.score != null && address.score < SCORES.address.same && owner?.level !== "high";
   // Each version of the address, one per line: what the company typed, the licence's, the registry's.
   address.lines = [
     typedAddress ? { key: "typed", label: "Typed", value: typedAddress } : null,
     licenceAddress ? {
       key: "licence", label: licence.label, value: licenceAddress,
       // The parts the address check found differing, on the licence's side: only those are marked ("3栋", not the whole line).
-      ...(licenceDiffers ? { parts: (level.address_owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
+      ...(licenceDiffers ? { parts: (owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
         .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)) } : {}),
     } : null,
     registryAddress ? { key: "registry", label: "Registry", value: registryAddress, ...(registry.registry?.differs?.address ? { differs: true } : {}) } : null,

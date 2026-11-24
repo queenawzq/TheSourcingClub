@@ -108,6 +108,28 @@ export function normaliseRegistrationNumber(country, value) {
   return text;
 }
 
+// The EU's VAT prefixes (Greece writes EL): a VAT number is the prefix and the national number.
+const EU_VAT_PREFIX = Object.fromEntries(["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "HR", "HU", "IE", "IT", "LT", "LU",
+  "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"].map((code) => [code, code]).concat([["GR", "EL"]]));
+
+/**
+ * Two ways of writing the same registration number, by the country's own rule, never by guessing:
+ * - Hong Kong: the 8-digit Business Registration number is the start of the certificate's full number
+ *   (71234567 and 71234567-000-11-25-6);
+ * - the EU: a VAT number is the country's prefix and the national number (ESB12345678 and B12345678).
+ * China's old 15-digit registration number cannot be derived from the 18-character code, so it never matches.
+ */
+export function sameRegistrationNumber(country, a, b) {
+  const x = normaliseRegistrationNumber(country, a);
+  const y = normaliseRegistrationNumber(country, b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (country === "HK") return /^\d{8}$/.test(short) && /^\d{9,}$/.test(long) && long.startsWith(short);
+  const prefix = EU_VAT_PREFIX[country];
+  return Boolean(prefix) && long === prefix + short;
+}
+
 export function usccCheckChar(first17) {
   let sum = 0;
   for (let i = 0; i < 17; i += 1) sum += USCC_CHARS.indexOf(first17[i]) * USCC_WEIGHTS[i];
