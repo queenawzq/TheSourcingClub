@@ -39,9 +39,16 @@ as $$
    where c.org_id = target_org
      and not c.automatic
      and (r.number = c.number_checked
-          -- No number yet (or a sole proprietor with none): the check made
-          -- without one. A number added later makes it out of date.
-          or (r.number is null and c.number_checked is null))
+          -- No registration on file yet: the check made without a number.
+          -- A number added later makes it out of date.
+          or (r.org_id is null and c.number_checked is null)
+          -- A sole proprietor in Turkey or Portugal, checked on its documents
+          -- (as before); and outside China, a registration with no number. In
+          -- China a credit code is always required, so a numberless check
+          -- never counts there.
+          or (r.number is null and c.number_checked is null
+              and ((r.no_company_number and r.country_code in ('TR', 'PT'))
+                   or r.country_code is distinct from 'CN')))
    order by c.checked_at desc
    limit 1
 $$;
