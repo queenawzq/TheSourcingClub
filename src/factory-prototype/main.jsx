@@ -1918,8 +1918,7 @@ const onboardingCopy = {
           ["Factory Name", "e.g. Golden Thread Manufacturing", true],
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
-          ["Factory Location", "City, Country"],
-          ["Production Address", "Full address of your production site"],
+          ["Factory Address", "e.g. No. 8 Industrial Road, Humen, Dongguan, Guangdong, China"],
           ["Nearest Port", "e.g. Port of Shanghai"],
           ["Total Employees", "e.g. 120"]
         ],
@@ -2012,7 +2011,7 @@ const onboardingCopy = {
         title: "Review your profile",
         intro: "Confirm the main details brands will use to understand and match with your factory.",
         sections: [
-          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Location", "Dongguan, China"], ["Production Address", "No. 8 Industrial Road, Humen, Dongguan"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
+          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Factory Address", "No. 8 Industrial Road, Humen, Dongguan, Guangdong, China"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
           ["Factory context", [["About the factory", "Full-service woven and cut & sew factory focused on premium small-batch production, sampling support, and export quality."], ["Factory logo", "Uploaded"], ["Samples & product catalogues", "3 uploads"]]],
           ["Production fit", [["Manufacturing model", "OEM / made to specification, Full package production (FPP)"], ["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Market Level & Retail Price", "Premium / contemporary (retail $100-$500)"]]],
           ["Specialty, services, markets & tools", [["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Design Services", "Pattern making, Sample development"], ["Primary export markets", "United States & Canada, European Union"], ["3D & digital tools", "None selected"], ["Key machines or equipment", "Flatlock, linking, embroidery, washing"]]],
@@ -2057,7 +2056,7 @@ const onboardingCopy = {
       },
       {
         title: "告诉我们你的工厂信息",
-        fields: [["工厂名称", "例如：金线服装制造", true], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["生产地址", "生产厂区的完整地址"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
+        fields: [["工厂名称", "例如：金线服装制造", true], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂地址", "例如：中国广东省东莞市虎门镇工业路8号"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
         helper: "你最常使用的海港或机场。"
       },
       {
@@ -2143,7 +2142,7 @@ const onboardingCopy = {
         title: "确认你的工厂资料",
         intro: "请确认品牌将看到并用于匹配的主要信息。",
         sections: [
-          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["所在地", "中国东莞"], ["生产地址", "东莞市虎门镇工业路8号"], ["最近港口", "深圳"], ["员工总数", "120"]]],
+          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["工厂地址", "中国广东省东莞市虎门镇工业路8号"], ["最近港口", "深圳"], ["员工总数", "120"]]],
           ["工厂背景", [["工厂介绍", "专注高级小批量生产、打样支持和出口品质的全服务梭织与针织裁剪缝制工厂。"], ["工厂 Logo", "已上传"], ["样品与产品目录册", "已上传 3 个文件"]]],
           ["生产匹配", [["合作生产模式", "OEM / 按品牌规格生产，全包生产 FPP"], ["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["市场层级与成品零售价", "高级成衣 / 当代品牌（成品零售价 $100-$500）"]]],
           ["专长、服务、市场与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "制版，样衣开发"], ["主要出口市场", "美国与加拿大，欧盟"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
@@ -2196,7 +2195,7 @@ const tradingOnboardingCopy = {
         type: "fields",
         title: "Tell us about your trading company",
         intro: "Share the company details brands need before starting a sourcing relationship.",
-        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Headquarters / primary sourcing office", "e.g. Hong Kong / Shenzhen, China"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
+        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Company Address", "e.g. Unit 1203, 12/F, Tower 1, 100 Nathan Road, Tsim Sha Tsui, Kowloon, Hong Kong"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
       },
       {
         type: "context",
@@ -2269,7 +2268,7 @@ const tradingOnboardingCopy = {
         intro: "Confirm the main details brands will use to understand and match with your trading company.",
         reviewEditSteps: [1, 2, 3, 4, 5, 6],
         sections: [
-          ["Company details", [["Company Name", "Pacific Source Partners"], ["Year Founded", "2016"], ["Website URL", "pacificsourcepartners.com"], ["Headquarters / primary sourcing office", "Hong Kong / Shenzhen, China"], ["Team size", "25"], ["Languages supported", "English, Mandarin, Cantonese"]]],
+          ["Company details", [["Company Name", "Pacific Source Partners"], ["Year Founded", "2016"], ["Website URL", "pacificsourcepartners.com"], ["Company Address", "Unit 1203, 12/F, Tower 1, 100 Nathan Road, Tsim Sha Tsui, Kowloon, Hong Kong"], ["Team size", "25"], ["Languages supported", "English, Mandarin, Cantonese"]]],
           ["Company context", [["About the company", "Multi-region sourcing and production management for premium apparel brands."], ["Company logo", "Uploaded"], ["Products sourced & product catalogues", "3 uploads"]]],
           ["Sourcing network", [["Production programs", "OEM / made to specification, Full package production (FPP)"], ["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Sourcing Regions", "China, Portugal"], ["Market Level & Retail Price", "Premium / contemporary (retail $100-$500)"]]],
           ["Services & oversight", [["Core services", "Supplier matching, Sample management, Production management"], ["Product development", "Tech pack support, Sample development, Material sourcing"], ["Quality & compliance", "Factory verification, in-line inspection, final inspection"], ["Primary destination markets", "United States & Canada, European Union"], ["Digital tools", "None selected"], ["Other capabilities", "Packaging and freight consolidation"]]],
@@ -2320,7 +2319,7 @@ tradingOnboardingCopy.zh = {
       type: "fields",
       title: "介绍你的贸易公司",
       intro: "填写品牌在建立采购合作关系前需要了解的公司信息。",
-      fields: [["公司名称", "例如：经纬采购集团", true], ["成立年份", "例如：2016"], ["官网", "www.example.com"], ["总部 / 主要采购办公室", "例如：中国香港 / 深圳"], ["团队人数", "例如：25"], ["支持语言", "例如：英语、普通话、葡萄牙语"]]
+      fields: [["公司名称", "例如：经纬采购集团", true], ["成立年份", "例如：2016"], ["官网", "www.example.com"], ["公司地址", "例如：香港九龙尖沙咀弥敦道100号1座12楼1203室"], ["团队人数", "例如：25"], ["支持语言", "例如：英语、普通话、葡萄牙语"]]
     },
     {
       type: "context",
@@ -2393,7 +2392,7 @@ tradingOnboardingCopy.zh = {
       intro: "请确认品牌将用于了解并匹配你的贸易公司的主要信息。",
       reviewEditSteps: [1, 2, 3, 4, 5, 6],
       sections: [
-        ["公司信息", [["公司名称", "Pacific Source Partners"], ["成立年份", "2016"], ["官网", "pacificsourcepartners.com"], ["总部 / 主要采购办公室", "中国香港 / 深圳"], ["团队人数", "25"], ["支持语言", "英语、普通话、粤语"]]],
+        ["公司信息", [["公司名称", "Pacific Source Partners"], ["成立年份", "2016"], ["官网", "pacificsourcepartners.com"], ["公司地址", "香港九龙尖沙咀弥敦道100号1座12楼1203室"], ["团队人数", "25"], ["支持语言", "英语、普通话、粤语"]]],
         ["公司背景", [["公司介绍", "为高级服装品牌提供多地区采购与生产管理服务。"], ["公司标识", "已上传"], ["采购产品与产品目录册", "已上传 3 个文件"]]],
         ["供应商网络", [["生产合作模式", "OEM / 按品牌规格生产，全包生产 FPP"], ["生产类型", "针织裁剪缝制、梭织"], ["产品品类", "上装、下装"], ["采购产品", "纽扣衬衫、府绸上衣、梭织连衣裙"], ["采购地区", "中国、葡萄牙"], ["市场层级与成品零售价", "高级成衣 / 当代品牌（成品零售价 $100-$500）"]]],
         ["服务与监督", [["核心服务", "供应商匹配、样品管理、生产管理"], ["产品开发", "技术包支持、样衣开发、面料采购"], ["质量与合规", "工厂验证、中期验货、终期验货"], ["主要目的地市场", "美国与加拿大、欧盟"], ["数字工具", "未选择"], ["其他能力", "包装与货运整合"]]],
@@ -3257,6 +3256,7 @@ function FactoryActivityDrawer({ language = "en", onClose }) {
 const factoryProfileData = {
   name: "Atelier Minho",
   location: "Porto, Portugal",
+  address: "Rua do Freixo 1071, 4300-219 Porto, Portugal",
   nearestPort: "Port of Leixoes",
   founded: "2016",
   website: "www.atelierminho.pt",
@@ -3392,11 +3392,15 @@ export function TradingCompanyProfilePage({ language = "en", onViewCompletion, l
   // the database get one.
   const canEdit = (editor) => isOwnerView && (!live || Boolean(live.editors?.includes(editor)));
   const editProps = (editor) => (live ? { editable: canEdit(editor), onEdit: () => setActiveEditor(editor) } : { editable: isOwnerView });
-  const overviewRows = live ? live.overviewRows : [
+  // The company reads its full address; the public view (what brands see)
+  // shows its city and country only.
+  const overviewRows = live ? (isOwnerView ? live.overviewRows : live.publicOverviewRows ?? live.overviewRows) : [
     [text("Company name", "公司名称"), "Pacific Source Partners"],
     [text("Year founded", "成立年份"), "2016"],
     [text("Website URL", "官网"), "pacificsourcepartners.com"],
-    [text("Headquarters", "总部"), text("Hong Kong / Shenzhen, China", "中国香港 / 深圳")],
+    isOwnerView
+      ? [text("Company address", "公司地址"), text("Unit 1203, 12/F, Tower 1, 100 Nathan Road, Tsim Sha Tsui, Kowloon, Hong Kong", "香港九龙尖沙咀弥敦道100号1座12楼1203室")]
+      : [text("Headquarters", "总部"), text("Hong Kong / Shenzhen, China", "中国香港 / 深圳")],
     [text("Team size", "团队人数"), text("25 people", "25 人")],
     [text("Languages", "支持语言"), text("English, Mandarin, Cantonese", "英语、普通话、粤语")]
   ];
@@ -3630,7 +3634,8 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
     ["Factory name", data.name],
     ["Year founded", data.founded],
     ["Website URL", data.website],
-    ["Factory location", data.location],
+    // The factory reads its full address; the public view shows city and country.
+    isOwnerView ? ["Factory address", data.address || data.location] : ["Factory location", data.location],
     ["Nearest port", data.nearestPort],
     ["Total employees", data.employees]
   ];
@@ -4108,6 +4113,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
   const [form, setForm] = useState(() => live ? { ...live.form } : ({
     name: data.name,
     location: data.location,
+    address: data.address || data.location,
     nearestPort: data.nearestPort,
     founded: data.founded,
     website: data.website,
@@ -4158,7 +4164,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
     if (editor === "overview") {
       onSave({
         name: form.name,
-        location: form.location,
+        address: form.address,
         nearestPort: form.nearestPort,
         founded: form.founded,
         website: form.website,
@@ -4257,7 +4263,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
             <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
-            <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
+            <ProfileEditField label="Factory address" value={form.address} onChange={(value) => updateField("address", value)} />
             <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
             <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
           </div>
@@ -4272,7 +4278,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
             <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
-            <ProfileEditField label="Headquarters" value={form.location} onChange={(value) => updateField("location", value)} />
+            <ProfileEditField label="Company address" value={form.address} onChange={(value) => updateField("address", value)} />
             <ProfileEditField label="Team size" value={form.employees} onChange={(value) => updateField("employees", value)} />
             <ProfileEditField label="Languages supported" value={form.languages} onChange={(value) => updateField("languages", value)} />
           </div>
@@ -8605,7 +8611,6 @@ function FactoryOnboardingStep({
     // lookup does not depend on the display language.
     const englishSections = (companyType === "trading" ? tradingOnboardingCopy : onboardingCopy).en.steps[step]?.sections ?? [];
     const reviewAlias = {
-      Location: "Factory Location",
       "Production Type": "Production type",
       "Product Categories": "Product categories",
       "Market Level & Retail Price": "Market level",

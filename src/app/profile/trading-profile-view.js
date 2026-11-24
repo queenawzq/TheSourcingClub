@@ -66,7 +66,8 @@ export function tradingProfileChecks(parts, now = new Date()) {
   const gaps = (pairs) => pairs.filter(([, given]) => !given).map(([label]) => label);
 
   const identityGaps = gaps([
-    ["headquarters", profile?.location],
+    // Brands read the location the address gives (src/shared/company-address.mjs).
+    ["headquarters", profile?.production_address || profile?.location],
     ["year founded", profile?.founded_year],
     ["team size", profile?.employee_count != null],
     ["languages", profile?.languages_supported],
@@ -191,6 +192,16 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Company name", name],
       ["Year founded", profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN],
       ["Website URL", profile?.website_url || NOT_GIVEN],
+      // The full address: the company's own page only.
+      ["Company address", profile?.production_address || profile?.location || NOT_GIVEN],
+      ["Team size", team ? `${team} people` : NOT_GIVEN],
+      ["Languages", profile?.languages_supported || NOT_GIVEN],
+    ],
+    // What a brand sees, for the page's public view.
+    publicOverviewRows: [
+      ["Company name", name],
+      ["Year founded", profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN],
+      ["Website URL", profile?.website_url || NOT_GIVEN],
       ["Headquarters", location],
       ["Team size", team ? `${team} people` : NOT_GIVEN],
       ["Languages", profile?.languages_supported || NOT_GIVEN],
@@ -251,7 +262,7 @@ export function tradingProfileEditForm(parts) {
     name: orgName || profile?.legal_name || "",
     founded: text(profile?.founded_year),
     website: text(profile?.website_url),
-    location: text(profile?.location),
+    address: text(profile?.production_address),
     employees: text(profile?.employee_count),
     languages: text(profile?.languages_supported),
     intro: text(profile?.intro),

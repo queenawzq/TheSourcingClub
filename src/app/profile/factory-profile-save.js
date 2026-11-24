@@ -7,7 +7,7 @@
  * dialog saves only its own section: a save never touches a field or chip
  * group that dialog doesn't show.
  */
-import { countryCodeFrom, firstNumber, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { addressPatch, firstNumber, saveFactoryProfile, structureAddress } from "../../lib/domain/profile.js";
 import { CUSTOM_KINDS, addCustomTerm, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
@@ -28,22 +28,28 @@ async function renameIfChanged(org, name, parts) {
   unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: name }));
 }
 
+/**
+ * The one address, as onboarding saves it (addressPatch): the full text is
+ * the company's and staff's, a brand reads only the location it gives. Then
+ * the server splits it, not waited on.
+ */
+async function saveWithAddress(org, patch, typed, parts) {
+  if (typed === undefined) return saveFactoryProfile(org.id, patch);
+  const { patch: addressColumns, changed } = addressPatch(typed, parts.profile?.production_address);
+  await saveFactoryProfile(org.id, { ...patch, ...addressColumns });
+  if (changed) structureAddress(org.id);
+}
+
 async function saveOverview(org, form, terms, parts) {
-  const location = textOrNull(form.location);
   const patch = {
     intro: textOrNull(form.intro),
     founded_year: firstNumber(form.founded),
     website_url: textOrNull(form.website),
-    location,
     nearest_port: textOrNull(form.nearestPort),
     employee_count: firstNumber(form.employees),
   };
-  // Re-read the country only when there is a location to read it from, so
-  // clearing the field doesn't erase a code onboarding found.
-  const code = countryCodeFrom(location, terms.country ?? []);
-  if (code) patch.country_code = code;
   await renameIfChanged(org, form.name, parts);
-  await saveFactoryProfile(org.id, patch);
+  await saveWithAddress(org, patch, form.address, parts);
 }
 
 /**
@@ -137,19 +143,15 @@ async function saveReferences(org, form, existing) {
  */
 async function saveTradingSection(org, editor, form, terms, parts) {
   if (editor === "company") {
-    const location = textOrNull(form.location);
     const patch = {
       intro: textOrNull(form.intro),
       founded_year: firstNumber(form.founded),
       website_url: textOrNull(form.website),
-      location,
       employee_count: firstNumber(form.employees),
       languages_supported: textOrNull(form.languages),
     };
-    const code = countryCodeFrom(location, terms.country ?? []);
-    if (code) patch.country_code = code;
     await renameIfChanged(org, form.name, parts);
-    return saveFactoryProfile(org.id, patch);
+    return saveWithAddress(org, patch, form.address, parts);
   }
   if (editor === "commercial") {
     return saveFactoryProfile(org.id, {

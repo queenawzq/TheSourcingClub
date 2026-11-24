@@ -160,7 +160,8 @@ export function factoryProfileChecks(parts, now = new Date()) {
   const missing = (description, action, suggestion) => ({ tone: "missing", status: "Needs attention", description, action, suggestion });
 
   const identityGaps = [
-    ["location", profile?.location],
+    // Brands read the location the address gives (src/shared/company-address.mjs).
+    ["location", profile?.production_address || profile?.location],
     ["nearest port", profile?.nearest_port],
     ["year founded", profile?.founded_year],
     ["employee count", profile?.employee_count],
@@ -317,6 +318,8 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const data = {
     name,
     location: profile?.location || NOT_GIVEN,
+    // The full address: the factory's own page only, never a brand's.
+    address: profile?.production_address || profile?.location || NOT_GIVEN,
     nearestPort: profile?.nearest_port || NOT_GIVEN,
     founded: profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN,
     website: profile?.website_url || NOT_GIVEN,
@@ -413,7 +416,7 @@ export function factoryProfileEditForm(parts, now = new Date()) {
 
   return {
     name: orgName || profile?.legal_name || "",
-    location: text(profile?.location),
+    address: text(profile?.production_address),
     nearestPort: text(profile?.nearest_port),
     founded: text(profile?.founded_year),
     website: text(profile?.website_url),

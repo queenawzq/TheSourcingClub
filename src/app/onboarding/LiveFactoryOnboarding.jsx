@@ -21,7 +21,7 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { addressPatch, completeOnboarding, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
@@ -42,7 +42,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -71,8 +71,8 @@ const COLUMN_FOR_LABEL = {
   "Factory Name": "legal_name",
   "Year Founded": "founded_year",
   "Website URL": "website_url",
-  "Factory Location": "location",
-  "Production Address": "production_address",
+  // One address (Factory Address / Company Address): saved apart, by
+  // addressPatch, since a brand must read only its city and country.
   "Nearest Port": "nearest_port",
   "Total Employees": "employee_count",
   "About the factory": "intro",
@@ -84,7 +84,6 @@ const COLUMN_FOR_LABEL = {
   // Trading-company copy. Six of these share a column with the factory
   // question they mirror; the rest arrived with migration 20260920000500.
   "Company Name": "legal_name",
-  "Headquarters / primary sourcing office": "location",
   "Team size": "employee_count",
   "About the trading company": "intro",
   "Languages supported": "languages_supported",
@@ -95,6 +94,10 @@ const COLUMN_FOR_LABEL = {
   "Supported Incoterms": "supported_incoterms",
   "Typical payment terms": "typical_payment_terms",
 };
+
+/** The one address's label on each copy of the flow. */
+const ADDRESS_LABELS = { factory: "Factory Address", trading: "Company Address" };
+const typedAddressIn = (fields) => fields[factoryFieldName(ADDRESS_LABELS.factory)] ?? fields[factoryFieldName(ADDRESS_LABELS.trading)];
 
 const NUMERIC_COLUMNS = new Set([
   "founded_year", "employee_count", "moq", "typical_lead_days",
@@ -227,7 +230,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos, savedAddress] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -238,6 +241,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
           listDocuments(org.id, "factory_photo"),
+          supabase.from("factory_production_addresses").select("address").eq("org_id", org.id).maybeSingle(),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
         if (savedRegistration?.number) {
@@ -272,6 +276,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
+        }
+        const address = savedAddress?.data?.address;
+        if (address) {
+          restored[factoryFieldName(ADDRESS_LABELS.factory)] = address;
+          restored[factoryFieldName(ADDRESS_LABELS.trading)] = address;
         }
         // The company typed its name at signup: start from it.
         if (!profile.legal_name && org.name) {
@@ -352,14 +361,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     [terms, language],
   );
 
-  /** The country read out of the typed location (see countryCodeFrom in profile.js). */
-  const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
 
-  // The registration number's country: from the location typed on step 2
+  // The registration number's country: from the address typed on step 2
   // (either kind of vendor), else what was saved. Decides the field's name,
   // hint and check digit.
-  const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
-  const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
+  const typedAddress = typedAddressIn(values);
+  const registrationCountry = (typedAddress ? addressPatch(typedAddress, "").patch.country_code : null) ?? savedCountry;
   const registrationField = useMemo(() => {
     // China types no number: it is read off the licence.
     if (numberFromDocument(registrationCountry)) return null;
@@ -562,15 +569,19 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       if (registrationCountry) patch.country_code = registrationCountry;
     }
 
-    // Either kind of vendor's location; "Turkey" and Chinese-only locations
-    // too, which the taxonomy's labels ("Türkiye", "China") don't match.
-    const location = submitted[factoryFieldName("Factory Location")] ?? submitted[factoryFieldName("Headquarters / primary sourcing office")];
-    if (location !== undefined) {
-      const code = registrationCountryFrom(location, countryCodeFrom(location));
-      if (code) patch.country_code = code;
+    // Either kind of vendor's one address. The full address is the company's
+    // and staff's; a brand reads only location, the country until the server
+    // splits the address into "City, Country" (structureAddress, not waited on).
+    const typed = typedAddressIn(submitted);
+    let addressChanged = false;
+    if (typed !== undefined) {
+      const { patch: addressColumns, changed } = addressPatch(typed, typedAddressIn(values));
+      Object.assign(patch, addressColumns);
+      addressChanged = changed;
     }
 
     await saveFactoryProfile(org.id, patch);
+    if (addressChanged) structureAddress(org.id);
     // After the profile save, so the checks read the address just typed.
     if (evidenceUploaded) startVerification(org.id);
 
