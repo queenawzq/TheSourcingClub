@@ -84,6 +84,7 @@ const brand = await demoUser(LOGINS.brand);
 const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const pendingBrand = await demoUser(LOGINS.pendingBrand);
+const unsignedBrand = await demoUser(LOGINS.unsignedBrand);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
@@ -100,7 +101,7 @@ const zhFactory = await demoUser(LOGINS.zhFactory);
 const callUsers = {};
 for (const key of ["callA", "callB", "callC", "callD1", "callD2", "callE1", "callE2", "callE3"]) callUsers[key] = await demoUser(LOGINS[key]);
 for (const key of ["verifyCn", "verifyCnCopy", "verifyTr", "verifyTrTwin", "verifyPt"]) callUsers[key] = await demoUser(LOGINS[key]);
-const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
+const demoUsers = { ...callUsers, switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, unsignedBrand, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, zhFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -428,6 +429,18 @@ must(await admin.from("brand_profiles").upsert({
   verification_status: "pending",
 }), "pending brand profile");
 
+// The one company waiting for review that has not signed the terms, so the
+// review page shows "Approve needs: the company to sign the terms". The
+// signing pass at the end leaves it out.
+const unsignedBrandOrg = must(await unsignedBrand.client.rpc("create_org", { org_name: LOGINS.unsignedBrand.name, org_kind: "brand" }), "create unsigned brand org");
+must(await admin.from("brand_profiles").upsert({
+  org_id: unsignedBrandOrg.id,
+  legal_name: "Fernhill Basics Ltd",
+  hq_location: "Bristol, UK",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "pending",
+}), "unsigned brand profile");
+
 // A factory waiting for a decision, for the same finish-card check.
 const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
 // It also carries what a reviewer (and the admin's AI suggestions) should
@@ -612,6 +625,11 @@ for (const [key, setup] of Object.entries(CALL_SETUP)) {
 // review page: A ≈93 Strong, B ≈72 Needs a look, C ≈28 Flagged, D ≈73 Needs
 // a look (≈84 once Run again reads its current upload).
 console.log("verification score cases");
+// The terms each kind of company signs at the end of onboarding: the latest published version.
+const CURRENT_TERMS = Object.fromEntries(
+  must(await admin.from("legal_documents").select("id, kind, version").in("kind", ["terms_brand", "terms_factory", "terms_trading"])
+    .order("version", { ascending: true }), "current terms").map((doc) => [doc.kind, doc]),
+);
 {
   const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString();
   const nowIso = new Date().toISOString();
@@ -624,7 +642,9 @@ console.log("verification score cases");
     if (address) must(await user.client.from("factory_profiles").update({ production_address: address }).eq("org_id", org.id), `${key} production address`);
     if (registration) must(await user.client.rpc("save_company_registration", { target_org: org.id, ...registration }), `${key} registration`);
     must(await admin.from("terms_acceptances").insert({
-      org_id: org.id, terms_version: "1", signature: signer ?? LOGINS[key].name, accepted_by: user.id, accepted_at: day(-2),
+      org_id: org.id, terms_version: `${CURRENT_TERMS.terms_factory.kind} v${CURRENT_TERMS.terms_factory.version}`,
+      legal_document_id: CURRENT_TERMS.terms_factory.id,
+      signature: signer ?? LOGINS[key].name, accepted_by: user.id, accepted_at: day(-2),
     }), `${key} terms`);
     return { org, user };
   };
@@ -1698,6 +1718,39 @@ must(await admin.from("notification_email_outbox")
   .eq("status", "pending"), "skip the seed's own emails");
 
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
+// Every company that finished onboarding signed the terms there (it is a
+// required step), so each seeded one has signed the current version of its
+// kind, by its owner, except the one case kept unsigned. Northgate Goods has
+// no members: the person who signed has since left it.
+console.log("signed terms");
+{
+  const northgateSigner = await demoUser({ email: "demo-northgate-former-owner@example.com", name: "Northgate Goods (former owner)" });
+  const northgate = must(await admin.from("orgs").select("id").eq("slug", "demo-no-contact").single(), "Northgate Goods");
+  const seededMembers = must(await admin.from("org_members").select("org_id, user_id, role, created_at").in("user_id", demoUserIds).order("created_at"), "seeded companies");
+  const orgIds = [...new Set([...seededMembers.map((member) => member.org_id), northgate.id])].filter((id) => id !== unsignedBrandOrg.id);
+  const orgs = must(await admin.from("orgs").select("id, type, name").in("id", orgIds), "seeded company kinds");
+  const finishedFactories = must(await admin.from("factory_profiles").select("org_id, vendor_kind").in("org_id", orgIds).not("onboarding_completed_at", "is", null), "finished factories");
+  const finishedBrands = must(await admin.from("brand_profiles").select("org_id").in("org_id", orgIds).not("onboarding_completed_at", "is", null), "finished brands");
+  const kindOf = new Map([
+    ...finishedFactories.map((row) => [row.org_id, row.vendor_kind === "trading_company" ? "terms_trading" : "terms_factory"]),
+    ...finishedBrands.map((row) => [row.org_id, "terms_brand"]),
+  ]);
+  const owners = must(await admin.from("org_members").select("org_id, user_id, role, created_at").in("org_id", orgIds).eq("role", "owner").order("created_at"), "owners");
+  const profiles = must(await admin.from("user_profiles").select("id, full_name").in("id", [...owners.map((owner) => owner.user_id), northgateSigner.id]), "owner names");
+  const nameOf = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
+  const rows = orgs.filter((org) => kindOf.has(org.id)).map((org) => {
+    const doc = CURRENT_TERMS[kindOf.get(org.id)];
+    const signer = owners.find((owner) => owner.org_id === org.id)?.user_id ?? (org.id === northgate.id ? northgateSigner.id : null);
+    return signer && {
+      org_id: org.id, terms_version: `${doc.kind} v${doc.version}`, legal_document_id: doc.id,
+      signature: nameOf.get(signer) || org.name, accepted_by: signer,
+    };
+  }).filter(Boolean);
+  // A company signed already (the verification cases) keeps its signature.
+  must(await admin.from("terms_acceptances").upsert(rows, { onConflict: "org_id,terms_version", ignoreDuplicates: true }), "sign the terms");
+  console.log(`  ${rows.length} companies signed; ${LOGINS.unsignedBrand.name} left unsigned`);
+}
+
 // A bell reading 79 says the seed was busy, not that anything needs looking at.
 // Each demo company keeps its five newest unread; the rest stay in the list, read.
 const demoMembers = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo companies");
@@ -1717,6 +1770,7 @@ done. Every login uses the password "${PASSWORD}".
   factory member  ${LOGINS.factoryMember.email}   (Demo Factory, Add update only)
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   pending brand   ${LOGINS.pendingBrand.email}   (waiting for verification)
+  unsigned brand  ${LOGINS.unsignedBrand.email}   (waiting for verification, terms not signed: Approve waits)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
