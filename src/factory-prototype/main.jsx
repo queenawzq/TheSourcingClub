@@ -1293,6 +1293,7 @@ export const factoryMainZhText = {
   "Available balance (USD)": "可提现余额 (USD)",
   "Available balance (estimated USD)": "可提现余额（估算美元）",
   "Money you can withdraw to your bank now. This is your overall balance across all clients.": "你现在可以提现到银行账户的金额。这是你在所有客户中的总余额。",
+  "Money you can withdraw to your bank once withdrawals resume. This is your overall balance across all clients.": "提现恢复后你可以提现到银行账户的金额。这是你在所有客户中的总余额。",
   "Amount (estimated USD)": "金额（估算美元）",
   "Earnings stay in your balance until you withdraw them.": "收入会留在你的余额中，直到你提现。",
   "On hold": "暂扣中",

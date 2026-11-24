@@ -84,6 +84,10 @@ const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_i
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
 /** The board's word once a press sent money: the row itself moves to Processing. */
 const SentContext = createContext(null);
+// Orders of factories paused by a payment review: no payout button on their
+// rows (the database refuses every road too; 20261124100100).
+const PausedContext = createContext(new Set());
+const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).";
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -467,6 +471,7 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
   const [confirming, setConfirming] = useState(null);
+  const paused = useContext(PausedContext);
   if (section === "failed" && row.refund_failed_at) {
     if (confirming) {
       return (
@@ -501,6 +506,9 @@ function Actions({ row, section, note, onNoteChange, onDecide, busy, refusal, at
     const provider = providerFor(row);
     if (provider && attempt?.status === "processing") {
       return <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+    }
+    if (paused.has(row.order_id)) {
+      return <span className="admin-sub admin-row-message" data-testid="payout-paused">{PAUSED_ROW}</span>;
     }
     const pay = provider ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
     return paidByStripe(row) ? (
@@ -1037,6 +1045,8 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     if (done !== "paid") setChosen("clearing");
   }, []);
   const sections = boardSections(rows, attempts, withdrawals?.poolPaymentIds);
+  const pausedOrgs = new Set((reviews?.list ?? []).filter((row) => row.factory_paused).map((row) => row.factory_org_id));
+  const pausedOrders = new Set((reviews?.list ?? []).flatMap((row) => row.factory_order_ids ?? []));
   if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   // Disputes and refunds after approval are payment reviews now (20261124100000): each open one counts here.
@@ -1056,6 +1066,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
   return (
     <SentContext.Provider value={onSent}>
+    <PausedContext.Provider value={pausedOrders}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
       {tabs.length > 1 ? (
@@ -1084,12 +1095,14 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       ) : null}
       {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
       {active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
-      {active === "attention" && attention && !(sections.attention.length > 0 && attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length === 0)
+      {/* Its own rows, or its own failure; the reviews above say "All clear" when nothing is open. */}
+      {active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
         ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
       {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
-        pausedOrgs={new Set((reviews?.list ?? []).filter((row) => row.factory_paused).map((row) => row.factory_org_id))} /> : null}
+        pausedOrgs={pausedOrgs} /> : null}
 
     </main>
+    </PausedContext.Provider>
     </SentContext.Provider>
   );
 }

@@ -124,6 +124,9 @@ const ZH_SAMPLES = [
   { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" is done. You can withdraw your balance again.' },
   { kind: "payment_disputed", title: "Account review complete", body: "Your account is no longer under review." },
   { kind: "payment_disputed", title: 'Payment for "Deposit" under review', body: "Our team is reviewing this payment before it goes to your balance." },
+  // A refund that failed after Refund brand; a lost dispute told to a paused brand (20261124100100).
+  { kind: "payment_refunded", title: 'Refund for "Deposit" didn\'t go through', body: "The refund to the brand didn't go through. Your earnings from TSC-1042 went back up by $40.00. Withdrawals are paused while our team reviews the payment again." },
+  { kind: "payment_refunded", title: 'Your bank reversed your payment for "Deposit"', body: "$107.00 went back to your card." },
   { kind: "withdrawal", title: "Withdrawal of $10.00 requested", body: "To bank account ending in 6789." },
   { kind: "withdrawal", title: "Withdrawal of $45.00 on hold", body: 'The brand\'s payment for "Fit sample" was refunded. Cancel this withdrawal and withdraw again.' },
   { kind: "withdrawal", title: "Withdrawal of $45.00 cancelled", body: "$20.00 is back in your balance." },

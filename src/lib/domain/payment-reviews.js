@@ -20,6 +20,8 @@ const REFUSALS = {
   review_amount: "Enter an amount to take from the factory's balance.",
   review_dispute_open: "The bank hasn't decided this dispute yet. Refund brand is available once the brand has its money back.",
   review_not_approved: "This step isn't approved, so its money isn't in the factory's balance. Choose Pay factory.",
+  review_brand_only: "This step isn't approved, so the factory isn't paused. Use Unpause brand.",
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
   review_note: "Add a note for the factory.",
   review_brand_not_paused: "This brand isn't paused by this review. Reload the board.",
   review_own_company: "You belong to this brand, so someone else on the staff must decide.",

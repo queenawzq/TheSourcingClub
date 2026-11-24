@@ -162,6 +162,9 @@ const PATTERNS = [
   // The brand's line for part of a payment its bank took back.
   [/^(\$[\d,.]+) reversed by your bank$/, (m) => `${m[1]} 已被你的银行撤回`],
   // Withdrawals paused while a payment is reviewed (20261124100000).
+  // With the order since 20261124100100 (two orders can share a step's name).
+  [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)" on (.+), so our team is reviewing the payment\.$/,
+    (m) => `付款审核期间，提现已暂停。品牌方就 ${m[2]} 中的“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
   [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)", so our team is reviewing the payment\.$/,
     (m) => `付款审核期间，提现已暂停。品牌方就“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
   [/^Withdrawals are paused while a payment is reviewed\.$/, () => "付款审核期间，提现已暂停。"],

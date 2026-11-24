@@ -6,8 +6,9 @@
 --     database while the factory owes TSC more than its other earnings.
 -- M3  (e2): the waiting withdrawal on hold because of that debt is told what
 --     is owed, never an unrelated step, never to withdraw again.
--- L1  (e3, p31): staff's record of a bank transfer that already went is
---     never refused; the pool money refunded since becomes a debt.
+-- L1  (e3, p31): staff's record of a bank transfer is refused while the
+--     factory is paused by a payment review (20261124100100), and recorded
+--     once staff decide; the refund leaves no debt.
 -- L2  (e4, p41): an older old-pool withdrawal the pool still covers is
 --     covered and paid, though a newer one is short.
 --     (e5, p51 p52): the pool paid beyond what it holds no longer blocks a
@@ -283,7 +284,7 @@ select is((select count(*)::int from public.payment_takes where stripe_withdrawa
 select is((select owed_cents from public.stripe_withdrawals where id = 'b1980000-0000-0000-0000-000000000002'), null::bigint, 'and nothing claimed');
 
 -- ===========================================================================
--- L1. A bank transfer staff already sent is recorded, whatever happened since.
+-- L1. A bank transfer is recorded once the factory is no longer paused.
 -- ===========================================================================
 -- A bank withdrawal of the old pool, asked before bank requests stopped.
 insert into public.factory_withdrawals (org_id, account_id, provider, amount_cents, pool_cents, currency, paid_to, paid_to_changed_at)
@@ -293,14 +294,21 @@ select set_config('tsc.r19_w3', (select id::text from public.factory_withdrawals
 -- this waiting withdrawal holds the deposit.
 select is(public.convert_withdrawal_pool(), 3, 'the old-pool deposits are converted');
 select lives_ok($$select pg_temp.refund(31, 53500)$$, 'the pool deposit is refunded in full while staff send the wire');
-select pg_temp.act_as('02'); set local role authenticated;
-select lives_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('tsc.r19_w3')::uuid, 'WIRE-R19')$$,
-  'staff record the wire that went: never refused');
-reset role;
-select is((select status from public.factory_withdrawals where id = current_setting('tsc.r19_w3')::uuid), 'paid', 'recorded as paid');
 select is(row((pg_temp.bal(3) ->> 'owed_to_tsc_cents')::bigint, public.factory_paused(pg_temp.org(3))), row(0::bigint, true),
   'the refunded $500 is not owed to TSC: a payment review is open instead');
 select is(pg_temp.recover(3), '[]'::jsonb, 'nothing on To recover');
+-- Paused: no road pays the factory, a bank record included (20261124100100).
+select pg_temp.act_as('02'); set local role authenticated;
+select throws_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('tsc.r19_w3')::uuid, 'WIRE-R19')$$,
+  '22023', 'This factory''s withdrawals are paused while a payment is reviewed.',
+  'staff can''t record the wire while the factory is paused');
+reset role;
+select is(pg_temp.pay_factory(3), 'pay_factory', 'staff decide: Pay factory');
+select pg_temp.act_as('02'); set local role authenticated;
+select lives_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('tsc.r19_w3')::uuid, 'WIRE-R19')$$,
+  'then the wire is recorded');
+reset role;
+select is((select status from public.factory_withdrawals where id = current_setting('tsc.r19_w3')::uuid), 'paid', 'recorded as paid');
 select is((select count(*)::int from pg_proc where proname = 'guard_withdrawal_takes'
             and prosrc like '%tsc.bank_sent%'), 1, 'the guard steps aside only for that record');
 select is(current_setting('tsc.bank_sent', true), 'off', 'and only inside it');

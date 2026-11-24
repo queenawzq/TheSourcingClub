@@ -35,6 +35,7 @@ import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useVendorNames } from "../vendor-names.jsx";
 import { useEnglishContent } from "../content-translation.js";
+import { PAUSED_POST, usePaymentPause } from "../payment-pause.jsx";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
@@ -164,6 +165,10 @@ export default function LiveComposer({ org, rfqId }) {
   const [terms, setTerms] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // A brand paused by a payment review can't post: told from the first step,
+  // not at the last click (the database refuses it too).
+  const pause = usePaymentPause(org?.id);
+  const pausedLine = pause.brand ? <p className="composer-error" role="status" data-testid="composer-paused">{PAUSED_POST}</p> : null;
   const [vendors, setVendors] = useState([]);
   const [excludedVendors,setExcludedVendors] = useState([]);
   const [selectedVendors, setSelectedVendors] = useState([]);
@@ -611,6 +616,7 @@ export default function LiveComposer({ org, rfqId }) {
   if (step === "describe") {
     return (
       <FlowShell screen="describe">
+        {pausedLine}
         <DescribeScreen
           value={freeText}
           onValueChange={setFreeText}
@@ -730,9 +736,10 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={() => setStep("review")}
         onNext={publish}
         // Published with nobody invited, no vendor could ever see the request.
-        primaryDisabled={!openToAll && selectedVendors.length === 0}
-        primaryTitle={!openToAll && selectedVendors.length === 0 ? "Choose a vendor, or open it to all vendors" : ""}
+        primaryDisabled={pause.brand || (!openToAll && selectedVendors.length === 0)}
+        primaryTitle={pause.brand ? PAUSED_POST : !openToAll && selectedVendors.length === 0 ? "Choose a vendor, or open it to all vendors" : ""}
       >
+        {pausedLine}
         {matchingV2 && (() => {
           // Each invite card carries its own match explanation; this panel holds
           // only what applies to the whole selection.
@@ -815,6 +822,7 @@ export default function LiveComposer({ org, rfqId }) {
         disabled: busy || saveState === "saving" || saveState === "saved",
       }}
     >
+      {pausedLine}
       {reorder && (
         <p className="composer-note" data-testid="reorder-note">
           Reordering {reorder.title} with {vendorNames.text(reorder.factoryOrgId, reorder.factoryName)}.

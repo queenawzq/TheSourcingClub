@@ -278,6 +278,8 @@ const SENTENCES = [
   [/^That amount stays on this order\.$/, () => "这笔金额仍保留在此订单中。"],
   [amountRe("^Your AMT refund didn't go through, so TSC still holds your payment for this step\\.$"), (amount) => `你的 ${amount} 退款未成功，因此 TSC 仍为此步骤托管你的付款。`],
   [/^The refund to the brand didn't go through\.$/, () => "给品牌的退款未成功。"],
+  // A refund that failed after staff returned money to the brand (20261124100100).
+  [/^Withdrawals are paused while our team reviews the payment again\.$/, () => "我们的团队正在重新审核这笔付款，提现暂停。"],
   [/^TSC will send it again\.$/, () => "TSC 会重新退款。"],
   [/^This amount was returned to the brand\.$/, () => "这笔金额已退回品牌。"],
   [amountRe("^AMT of it was returned to the brand after it was sent\\.$"), (amount) => `其中 ${amount} 在发出后已退回品牌。`],

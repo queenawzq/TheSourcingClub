@@ -337,16 +337,25 @@ select lives_ok($$select public.begin_payment_checkout('c24f0004-0000-0000-0000-
 reset role;
 
 -- A dispute on a step not approved yet: its money is not in the balance, so
--- Refund brand is refused (it would take the brand's money twice).
+-- only the brand is paused (20261124100100); neither Pay factory nor Refund
+-- brand applies, and unpausing the brand closes the review.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0002-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_2'', ''needs_response'', 9630, null, null)')$$,
   'a dispute on the held fit sample');
+select is((select pauses_factory from public.payment_reviews where id = pg_temp.review(2, 'dispute')), false,
+  'before approval the factory is not paused for it');
+select is((select count(*)::int from public.notifications where data ->> 'review_id' = pg_temp.review(2, 'dispute')::text and title = 'Withdrawals paused'),
+  0, 'and is not told it is');
+select is(public.brand_paused(pg_temp.org('b1')), true, 'the brand is paused');
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok(format($$select public.decide_payment_review(%L, 'refund_brand', 1000, 'no')$$, pg_temp.review(2, 'dispute')),
-  '22023', 'This step isn''t approved, so its money isn''t in the factory''s balance. Choose Pay factory.', 'no Refund brand before approval');
-select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory')$$, pg_temp.review(2, 'dispute')), 'Pay factory instead');
-select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(2, 'dispute')), 'and unpause the brand');
+  '22023', 'This step isn''t approved, so the factory isn''t paused. Use Unpause brand.', 'no Refund brand before approval');
+select throws_ok(format($$select public.decide_payment_review(%L, 'pay_factory')$$, pg_temp.review(2, 'dispute')),
+  '22023', 'This step isn''t approved, so the factory isn''t paused. Use Unpause brand.', 'no Pay factory either');
+select lives_ok(format($$select public.unpause_brand(%L)$$, pg_temp.review(2, 'dispute')), 'unpause the brand');
 reset role;
+select is((select decision from public.payment_reviews where id = pg_temp.review(2, 'dispute')), 'brand_unpaused',
+  'which closes the review');
 
 -- Pay factory: nothing taken.
 select pg_temp.act_as('02');
@@ -414,13 +423,13 @@ reset role;
 select is((select body from public.notifications where org_id = pg_temp.org('e2') and dedupe_key = 'payment_review_done:' || pg_temp.review(3, 'dispute')),
   'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again. "PR24 deposit two" stays on hold until the payment is settled.',
   'the factory is told the step stays on hold');
-select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), true,
-  'decided, but still on staff''s list until the bank decides');
+select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), false,
+  'decided: under Decided, waiting for the bank, not counted as open (20261124100100)');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0003-0000-0000-0000-000000000002'', ''dp_pgtap_pr24_3'', ''won'', 32100, null, null)')$$,
   'the bank decides for us');
 select is(pg_temp.told(pg_temp.org('e2'), 'Hold lifted on "PR24 deposit two"'), '$300.00 is no longer on hold.', 'the factory is told the hold lifted');
-select is((select (x ->> 'open')::boolean from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), false,
-  'and it leaves staff''s list');
+select is((select (x ->> 'dispute_status') from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), 'won',
+  'its row says the bank decided');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', false)')$$, 'the hold is lifted');
 
 -- ===========================================================================
@@ -431,8 +440,8 @@ select is((select count(*)::int from public.order_payments p where p.order_id in
             and coalesce(public.payment_debt_cents(p), 0) > 0), 0, 'no payment carries a debt');
 select is(public.factory_debt_uncovered_cents(pg_temp.org('e3')), 0::bigint, 'no factory owes anything');
 select is((select count(*)::int from jsonb_array_elements(pg_temp.board()) x where (x ->> 'open')::boolean
-            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 2,
-  'still on staff''s list: F3''s brand is paused, and the fit sample''s dispute waits for the bank although decided');
+            and (x ->> 'factory_org_id')::uuid in (pg_temp.org('e1'), pg_temp.org('e2'), pg_temp.org('e3'))), 1,
+  'open on staff''s list: only F3''s paused brand (decided reviews are not counted)');
 
 select * from finish();
 rollback;

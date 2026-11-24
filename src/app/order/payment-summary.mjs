@@ -173,18 +173,17 @@ export function paymentFigureCents(figures) {
 }
 
 /**
- * The amount on a step's own Transactions row, from the server's figures
- * (paymentFigureCents()). A funded step refunded in part, or reversed by the
- * brand's bank, since lists only what the factory still earns from it, beside
- * the dated row that says what went back; with nothing left it has no row of
- * its own (null), since that dated row says it. A released step keeps what
- * was sent: a later refund of it is owed to TSC.
+ * The amount on a step's own Transactions row: what the step earned, never
+ * rewritten. A refund, a lost dispute or money staff returned to the brand
+ * is its own dated row below zero beside it.
  */
 export function stepRowCents(row, perPayment) {
-  const own = factoryAmount(row);
-  const entry = perPayment instanceof Map ? perPayment.get(row?.id) : null;
-  if (row?.state !== "confirmed" || !entry || !(entry.back > 0)) return own;
-  return entry.left > 0 ? Math.min(own, entry.left) : null;
+  // One representation (20261124100100): the step's row stays at what was
+  // earned, and what went back is its own dated row below zero
+  // (refundRows), so the rows add up to the balance. `perPayment` is kept
+  // for callers; it no longer changes the step's row.
+  void perPayment;
+  return factoryAmount(row);
 }
 
 /**
@@ -207,8 +206,10 @@ export function reviewLines(figures) {
   const review = figures?.tsc?.review ?? figures?.review;
   if (!review?.paused) return null;
   const step = review.step_title ? `"${review.step_title}"` : "a payment";
+  // The order too: two orders can have a step of the same name.
+  const on = review.step_title && review.order_number ? ` on ${review.order_number}` : "";
   return ["Withdrawals are paused while a payment is reviewed.",
-    `A brand requested a refund for ${step}, so our team is reviewing the payment.`];
+    `A brand requested a refund for ${step}${on}, so our team is reviewing the payment.`];
 }
 
 /**

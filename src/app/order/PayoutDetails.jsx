@@ -359,6 +359,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const placed = figuresByPayment(answer?.figures);
   // What the server still counts of each payment, and what went back to the brand.
   const perPayment = paymentFigureCents(answer?.figures);
+  const allWentBack = (row) => {
+    const entry = perPayment.get(row.id);
+    return Boolean(entry && entry.back > 0 && !(entry.left > 0));
+  };
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval and withdrawals being processed."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
@@ -407,8 +411,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     return amount > 0 ? [{ ...row, amount }] : [];
   });
   const transactions = [
-    // A step refunded or reversed since it was funded: only what is left,
-    // and no row of its own once nothing is (stepRowCents).
+    // Each step at what it earned (stepRowCents); what went back is its own
+    // dated row below, so the rows add up to the balance.
     ...visibleEarnings.filter((row) => stepRowCents(row, perPayment) !== null).map((row) => ({
       id: `earning-${row.id}`,
       type: "earning",
@@ -416,9 +420,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       note: [
-        // "Available Nov 19": when Stripe lets it be withdrawn.
-        clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
-        owedClearingNote(row, placed) ? `${owedClearingNote(row, placed)}.` : null,
+        // "Available Nov 19": when Stripe lets it be withdrawn. Not for a step
+        // whose money all went back to the brand (its own row says so).
+        allWentBack(row) ? null : clearingNote(row, clearing) ? `${clearingNote(row, clearing)}.` : null,
+        allWentBack(row) ? null : owedClearingNote(row, placed) ? `${owedClearingNote(row, placed)}.` : null,
         // With a payout fee the amount is what the factory received, so the step is said here.
         payoutFee(row) > 0
           ? `Step ${formatMoney(grossAmount(row), row.currency)}. ${payoutFeeSentence(payoutFee(row), factoryAmount(row), row.currency)}`

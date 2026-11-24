@@ -18,7 +18,7 @@ import { syncUiLanguage, useUiLanguage } from "../lib/ui-language.js";
 import FactoryLanguageLayer from "./FactoryLanguageLayer.jsx";
 import BrandEnglishLayer from "./BrandEnglishLayer.jsx";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
-import { myPaymentPause } from "../lib/domain/payment-reviews.js";
+import { PaymentPauseNotice } from "./payment-pause.jsx";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -1104,7 +1104,7 @@ function Shell() {
       onSignOut={signOut}
     >
       <TeamNotices />
-      {isFactory ? null : <BrandReviewNotice org={activeOrg} />}
+      <PaymentPauseNotice org={activeOrg} isFactory={isFactory} />
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
     </DesignFrame>
   );
@@ -1123,42 +1123,6 @@ function Shell() {
  * minute, since staff unpause it from elsewhere. No design draws it; it uses
  * the team notices' frame.
  */
-function BrandReviewNotice({ org }) {
-  const [paused, setPaused] = useState(false);
-  // Closed with OK: gone for this tab until the next sign-in or tab; the
-  // refusals still say it on every action it blocks.
-  const closedKey = `tsc-review-notice-closed:${org.id}`;
-  const [closed, setClosed] = useState(() => {
-    try { return sessionStorage.getItem(closedKey) === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    let cancelled = false;
-    const read = () => myPaymentPause(org.id)
-      .then((status) => { if (!cancelled) setPaused(Boolean(status?.brand_paused)); })
-      .catch(() => {});
-    read();
-    const timer = setInterval(read, 60000);
-    const onShow = () => { if (document.visibilityState === "visible") read(); };
-    document.addEventListener("visibilitychange", onShow);
-    return () => { cancelled = true; clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
-  }, [org.id]);
-  if (!paused || closed) return null;
-  const close = () => {
-    try { sessionStorage.setItem(closedKey, "1"); } catch { /* closed for this view only */ }
-    setClosed(true);
-  };
-  return (
-    <div className="tsc-team-notices tsc-review-notice" role="status" data-testid="brand-under-review">
-      <div className="tsc-team-notice">
-        <p>A payment was disputed, so your account is under review. You can still message vendors.</p>
-        <div className="tsc-team-notice-actions">
-          <button type="button" className="quiet-btn" onClick={close}>OK</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function TeamNotices() {
   const { user, lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
   const [invitations, setInvitations] = useState([]);

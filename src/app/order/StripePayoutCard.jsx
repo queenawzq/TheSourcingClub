@@ -1061,7 +1061,10 @@ export default function StripePayoutCard({
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          <span className="payment-metric-label">{estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
+          <span className="payment-metric-label">{estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">{review
+            // While a payment is reviewed nothing can be withdrawn "now" (20261124100100).
+            ? "Money you can withdraw to your bank once withdrawals resume. This is your overall balance across all clients."
+            : "Money you can withdraw to your bank now. This is your overall balance across all clients."}</PaymentHelp></span>
           <strong data-testid="payout-balance">{figures ? formatMoney(Number(figures.available_cents) || 0, "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the figures answer.
