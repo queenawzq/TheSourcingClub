@@ -1776,7 +1776,7 @@ async function fundedWithIntent(payment, kind) {
     const step = await dueNow(ord, stepTitle);
     const money = await fundedWithIntent(step, kind);
     await approveOpenStep(ord, stepTitle, reviewFactory, reviewBrand.client);
-    decided[kind] = { step, ...money };
+    decided[kind] = { step, order: ord, ...money };
   }
   must(await admin.rpc("record_payment_review_dispute", {
     target_payment: fit.id, dispute_id: `dp_demo_${fit.id.slice(0, 8)}`, status: "needs_response",
@@ -1810,6 +1810,11 @@ async function fundedWithIntent(payment, kind) {
     }), "the belt's dispute won");
     must(await admin.rpc("record_payment_disputed", { target_payment: step.id, disputed: false }), "the belt's hold lifted");
   }
+  // Riverbend asks to cancel the belt order: the paused Harbor may accept it
+  // (the one thing it can do besides messaging).
+  must(await reviewFactory.client.rpc("propose_cancellation", {
+    target_order: decided.won.order.id, reason: "We can't source the bridle leather in time.",
+  }), "Riverbend proposes cancelling the belt order");
 }
 {
   const title = "Linen camp shirt, AW27";
