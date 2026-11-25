@@ -130,11 +130,28 @@ export function orderFiles(rfqDocuments, updates, milestones) {
  * the server's activity already has one. Newest first, like the rest.
  */
 export function withDisputes(rows, milestones) {
-  const have = new Set((rows ?? []).filter((row) => row.kind === "payment_disputed").map((row) => row.milestone_title));
-  const added = (milestones ?? [])
-    .filter((milestone) => milestone.payment?.disputed && milestone.payment.disputed_at && !have.has(milestone.title))
-    .map((milestone) => ({ kind: "payment_disputed", milestone_title: milestone.title, at: milestone.payment.disputed_at }));
-  return added.length ? [...(rows ?? []), ...added].sort((a, b) => String(b.at).localeCompare(String(a.at))) : rows;
+  const later = (a, b) => ((Date.parse(b ?? "") || 0) > (Date.parse(a ?? "") || 0) ? b : a);
+  const byTitle = new Map((milestones ?? []).map((milestone) => [milestone.title, milestone]));
+  // A dispute or a reversal is never before the funding it is about (Stripe can
+  // record the dispute a moment before the payment's own confirmation).
+  const afterFunding = (row) => {
+    const funded = byTitle.get(row.milestone_title)?.payment?.confirmed_at;
+    return funded && ["payment_disputed", "payment_reversed"].includes(row.kind) ? { ...row, at: later(row.at, funded) } : row;
+  };
+  const have = (kind) => new Set((rows ?? []).filter((row) => row.kind === kind).map((row) => row.milestone_title));
+  const disputed = have("payment_disputed");
+  const reversed = have("payment_reversed");
+  const added = (milestones ?? []).flatMap((milestone) => {
+    const payment = milestone.payment;
+    return [
+      payment?.disputed && payment.disputed_at && !disputed.has(milestone.title)
+        ? { kind: "payment_disputed", milestone_title: milestone.title, at: payment.disputed_at } : null,
+      // The brand's bank took the money back (a dispute lost).
+      Number(payment?.dispute_lost_cents) > 0 && payment.dispute_lost_at && !reversed.has(milestone.title)
+        ? { kind: "payment_reversed", milestone_title: milestone.title, at: payment.dispute_lost_at } : null,
+    ].filter(Boolean);
+  });
+  return [...(rows ?? []), ...added].map(afterFunding).sort((a, b) => (Date.parse(b.at ?? "") || 0) - (Date.parse(a.at ?? "") || 0));
 }
 
 export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null, paymentOnlySteps = null }) {
@@ -166,6 +183,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
         : `${paid(row)} funded for ${step}, held by TSC`;
       // A chargeback: "funded" above stays as what happened; this says what changed.
       case "payment_disputed": return `Payment disputed for ${step}`;
+      case "payment_reversed": return viewerOrgId === order.factory_org_id
+        ? `Payment for ${step} reversed by the brand's bank` : `Payment for ${step} reversed by your bank`;
       case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "payment_refunded": return `The payment for ${step} was refunded to the brand`;
       case "payment_refunded_after_payout": return `The payment for ${step} was refunded to the brand after it was paid out`;

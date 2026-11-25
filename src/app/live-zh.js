@@ -163,17 +163,30 @@ const PATTERNS = [
   [/^(\$[\d,.]+) reversed by the brand's bank$/, (m) => `${m[1]} 已被品牌的银行撤回`],
   // The brand's line for part of a payment its bank took back.
   [/^(\$[\d,.]+) reversed by your bank$/, (m) => `${m[1]} 已被你的银行撤回`],
+  // Total earnings' help, when a step not approved is under a card dispute.
+  [/^Includes (\$[\d,.]+) disputed\.$/, (m) => `其中 ${m[1]} 有争议。`],
+  // A row of money a refund took back from the balance.
+  [/^Refund$/, () => "退款"],
   // Withdrawals paused while a payment is reviewed (20261124100000).
   // With the order since 20261124100100 (two orders can share a step's name).
   [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)" on (.+), so our team is reviewing the payment\.$/,
     (m) => `付款审核期间，提现已暂停。品牌方就 ${m[2]} 中的“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
   [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)", so our team is reviewing the payment\.$/,
     (m) => `付款审核期间，提现已暂停。品牌方就“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
+  // A card dispute (the true cause, not a refund).
+  [/^Withdrawals are paused while a payment is reviewed\. A brand disputed a card payment for "(.+)" on (.+), so our team is reviewing it\.$/,
+    (m) => `付款审核期间，提现已暂停。品牌方对 ${m[2]} 中“${m[1]}”的银行卡付款提出了争议，我们的团队正在审核。`],
+  [/^Withdrawals are paused while a payment is reviewed\. A brand disputed a card payment for "(.+)", so our team is reviewing it\.$/,
+    (m) => `付款审核期间，提现已暂停。品牌方对“${m[1]}”的银行卡付款提出了争议，我们的团队正在审核。`],
+  [/^Withdrawals are paused while a payment is reviewed\. A brand disputed a card payment, so our team is reviewing it\.$/,
+    () => "付款审核期间，提现已暂停。品牌方对一笔银行卡付款提出了争议，我们的团队正在审核。"],
   [/^Withdrawals are paused while a payment is reviewed\.$/, () => "付款审核期间，提现已暂停。"],
   // The factory's order page while the brand is paused by a payment review (hand-written).
   [/^This order is on hold while our team reviews a payment\.$/, () => "我们的团队正在审核一笔付款，此订单暂时搁置。"],
+  [/^The brand disputed a card payment\. It can't fund or approve steps until our review is done\.$/, () => "品牌方对一笔银行卡付款提出了争议。在我们的审核完成前，品牌方无法为步骤付款或审批。"],
   // A step whose card payment the brand disputed with its bank.
   [/^Disputed$/, () => "付款争议中"],
+  [/^Payment for (.+) reversed by the brand's bank$/, (m, inner) => `${inner(m[1])} 的付款已被品牌的银行撤回`],
   [/^Payment disputed for (.+)$/, (m, inner) => `${inner(m[1])} 的付款有争议`],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.

@@ -14,12 +14,17 @@ import React, { useState } from "react";
 import { FlowShell, QuotesScreen } from "../../prototype/main.jsx";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
+import { useAuth } from "../../lib/auth.jsx";
+import { PAUSED_TITLE, usePaymentPause } from "../payment-pause.jsx";
 import { matchFit } from "../rfq/match-fit.js";
 import { useQuoteReview } from "./useQuoteReview.js";
 
 export default function LiveQuotes({ rfqId }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
+  // Under review (a card dispute): Choose quote is greyed, as the contract step refuses.
+  const { activeOrg } = useAuth();
+  const paused = usePaymentPause(activeOrg?.id).brand;
   const [selected, setSelected] = useState(null);
   const [compare, setCompare] = useState([]);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -129,6 +134,7 @@ export default function LiveQuotes({ rfqId }) {
         onChoose={(card) => navigate(`/rfqs/${rfqId}/quotes/${card.id}/contract`)}
         onMessage={message}
         error={error}
+        chooseLocked={paused ? PAUSED_TITLE : ""}
       />
     </FlowShell>
   );

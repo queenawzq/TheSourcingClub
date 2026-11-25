@@ -43,7 +43,7 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { supabase } from "../../lib/supabase.js";
 import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
-import { refundedInFull } from "../payments/brand-payments-view.js";
+import { refundLineWords, refundedInFull } from "../payments/brand-payments-view.js";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
@@ -136,7 +136,6 @@ function actionFor(milestone, viewer) {
   return none;
 }
 
-const refundDay = (value) => (value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
 /**
  * Where the step's money is, in words. TSC holds a funded payment until the
@@ -148,7 +147,7 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   // The brand reads each refund it got back on its own: "Refunded $50.00 · Nov 25".
   if (!isFactory && payment?.refunds?.length) {
     const money = (cents, currency) => formatMoney(Number(cents) || 0, currency ?? payment.currency ?? "USD");
-    const refunded = payment.refunds.map((refund) => `Refunded ${money(refund.amount_cents, refund.currency)} · ${refundDay(refund.refunded_at)}`);
+    const refunded = payment.refunds.map(refundLineWords);
     const held = ["confirmed", "released"].includes(payment.state);
     const refund = paymentRefund(payment);
     // All of it went back: the refunds say it, with nothing held.
@@ -706,7 +705,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     if (!["confirmed", "released"].includes(payment?.state)) return sum;
     // Held on a cancelled order: already taken off whole (refundPendingCents).
     if (isFactory && refundPendingWord(payment, order)) return sum;
-    return sum + (charged && !isFactory ? Number(payment.refunded_cents ?? 0) + Number(payment.dispute_lost_cents ?? 0) : Number(payment.factory_refund_cents ?? 0));
+    return sum + (charged && !isFactory ? paymentRefund(payment).brand : Number(payment.factory_refund_cents ?? 0));
   }, 0);
   const header = {
     title: order.rfqs?.title || order.order_number,
@@ -808,8 +807,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           : undefined}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
-        // The brand is paused by a payment review: one line under the timeline's title, like the brand's.
-        timelineNotice={onHold && order.status !== "cancelled" ? "This order is on hold while our team reviews a payment." : ""}
+        // The brand is paused by a card dispute (only a chargeback pauses a brand): one
+        // line under the timeline's title, like the brand's, in the word the step uses.
+        timelineNotice={onHold && order.status !== "cancelled" ? "The brand disputed a card payment. It can't fund or approve steps until our review is done." : ""}
       />
       {stepPopup}
       {cancel.dialog}

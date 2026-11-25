@@ -1567,6 +1567,7 @@ export function BillingScreen({ accountType = "brand", live = null }) {
           <h1>Payments</h1>
         </div>
       </header>
+      {live?.notice ? <p className="order-paused-line" role="status" data-testid="payments-paused-line">{live.notice}</p> : null}
       <div className="billing-controls">
         {isFactory && (
           <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
@@ -10171,6 +10172,8 @@ export function QuotesScreen({
   onMessage,
   busy = false,
   error = null,
+  // Live only: why Choose quote can't be used now (greyed, with this as its hover text).
+  chooseLocked = "",
 }) {
   const quoteList = liveQuotes ?? factories;
   const isLive = Boolean(liveQuotes);
@@ -10263,8 +10266,11 @@ export function QuotesScreen({
                   <strong
                     className="button-like-action"
                     data-testid="choose-quote"
+                    aria-disabled={chooseLocked ? "true" : undefined}
+                    title={chooseLocked || undefined}
                     {...asButton((event) => {
                       event.stopPropagation();
+                      if (chooseLocked) return;
                       setSelectedQuote(factory.name);
                       setSelectedReorderProject(null);
                       // Live, choosing walks to the contract step, where the
@@ -10416,6 +10422,8 @@ export function QuoteDetailScreen({
   onBack,
   onMessage,
   onChoose,
+  // Live only: why Choose quote can't be used now (greyed, with this as its hover text).
+  chooseLocked = "",
 }) {
   const factory = live
     ? { name: live.name, nameNode: live.nameNode, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
@@ -10520,7 +10528,10 @@ export function QuoteDetailScreen({
                 <strong
                   className="button-like-action"
                   data-testid="choose-quote-detail"
+                  aria-disabled={chooseLocked ? "true" : undefined}
+                  title={chooseLocked || undefined}
                   {...asButton(() => {
+                    if (chooseLocked) return;
                     if (onChoose) {
                       onChoose();
                       return;
