@@ -76,6 +76,34 @@ function namedSplitsFrom(text) {
   return splits.length >= 2 && splits.length <= 24 ? splits : [];
 }
 
+// Commas that end a clause, not the one in "1,000".
+const COMMA = /,(?!\d{3}\b)/;
+const NAMED_QUANTITY = /^([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)?)\s+(\d{1,3}(?:,\d{3})+|\d+)$/;
+// Words a "name number" pair can start with that are not a colour.
+const NOT_A_COLOUR = /^(?:total|units?|pcs|pieces?|moq|qty|quantity|approx|about|around|up to|over|under|by|in|within|of|at|for|than|sizes?|styles?)$/i;
+// "S 100 and M 200" is a size split, not colours.
+const SIZE_WORD = /^(?:x{0,3}s|m|x{0,3}l|\d?xl|one size|size \w+)$/i;
+
+/**
+ * "sage 150 and ecru 250" → Sage 150, Ecru 250, without the word "colours":
+ * a clause that is nothing but two or more name-and-number pairs, read only
+ * when they add up to the request's total (quantityLineFrom checks).
+ */
+function listedSplitsFrom(text) {
+  for (const sentence of text.split(/(?<!\d)[.;!?](?!\d)|\n/)) {
+    for (const clause of sentence.split(COMMA)) {
+      const parts = clause.trim().split(/\s*(?:,|\band\b|&)\s*/i).filter(Boolean);
+      if (parts.length < 2 || parts.length > 24) continue;
+      const matches = parts.map((part) => part.match(NAMED_QUANTITY));
+      if (matches.some((match) => !match || NOT_A_COLOUR.test(match[1]) || NOT_A_COLOUR.test(match[1].split(/\s+/)[0])
+        || SIZE_WORD.test(match[1]) || SIZE_WORD.test(match[1].split(/\s+/).pop()))) continue;
+      const splits = matches.map(([, name, quantity]) => ({ colour: capitalise(name.toLowerCase()), quantity: Number(quantity.replace(/,/g, "")) }));
+      if (splits.every((split) => split.quantity > 0)) return splits;
+    }
+  }
+  return [];
+}
+
 /**
  * Who sources the materials, in the review card's choice keys: "Factory
  * sources fabric and trims" → full. Anything less plain is left to the brand.
@@ -105,10 +133,22 @@ function sourcingFrom(text) {
  */
 function sourcingDetailsFrom(text) {
   const sentences = text.match(/(?:[^.!?\n]|(?<=\d)\.(?=\d))+[.!?]?/g) ?? [];
+  const aboutSourcing = (part) => VENDOR_SOURCES.test(part) || part.split(/;/).some(brandSupplies);
   return sentences
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => VENDOR_SOURCES.test(sentence)
-      || sentence.split(/;/).some(brandSupplies))
+    .map((sentence) => {
+      // Only the part of the sentence that says who sources what: in "400
+      // linen shirts, sage 150 and ecru 250, factory sources fabric; we
+      // provide labels." that is the last clause, not the shirts. The run
+      // from the first such clause to the last keeps "fabric, trims, zips".
+      const clauses = sentence.trim().split(COMMA);
+      const first = clauses.findIndex(aboutSourcing);
+      if (first < 0) return "";
+      const last = clauses.length - 1 - [...clauses].reverse().findIndex(aboutSourcing);
+      const run = clauses.slice(first, last + 1).join(",").trim().replace(/[.!?]?$/, "");
+      const end = sentence.trim().match(/[.!?]$/)?.[0] ?? (last === clauses.length - 1 ? "" : ".");
+      return capitalise(run) + end;
+    })
+    .filter(Boolean)
     .join(" ");
 }
 
@@ -123,6 +163,11 @@ function quantityLineFrom(text) {
   if (named.length) {
     const sum = named.reduce((acc, split) => acc + split.quantity, 0);
     if (!total || total === sum || named.some((split) => split.quantity === total)) return quantityLine(sum, null, named);
+  }
+  // A bare list ("sage 150 and ecru 250") only when it is the total, split.
+  const listed = listedSplitsFrom(text);
+  if (listed.length && total && listed.reduce((acc, split) => acc + split.quantity, 0) === total) {
+    return quantityLine(total, null, listed);
   }
   return quantityLine(total, colourCountFrom(text));
 }
