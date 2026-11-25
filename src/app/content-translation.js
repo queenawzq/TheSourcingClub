@@ -58,8 +58,23 @@ async function post(body) {
   return data;
 }
 
-/** Asks once per id per page; ids whose text did not all come back are asked again by the next screen. */
+/**
+ * Asks once per id per page; ids whose text did not all come back are asked
+ * again by the next screen. More ids than one request takes (a brand's 51st
+ * order on Payments) go in further requests, never dropped.
+ */
 async function ask(groups, extra = {}) {
+  const pending = groups.map(([field, prefix, max]) => [field, prefix, max,
+    [...new Set((extra[field] ?? []).filter(Boolean))].filter((id) => !asked.has(`${prefix}:${id}`))]);
+  const rounds = Math.max(0, ...pending.map(([, , max, ids]) => Math.ceil(ids.length / max)));
+  await Promise.all(Array.from({ length: rounds }, (_, round) => {
+    const part = {};
+    for (const [field, , max, ids] of pending) part[field] = ids.slice(round * max, (round + 1) * max);
+    return askOnce(groups, { ...extra, ...part });
+  }));
+}
+
+async function askOnce(groups, extra) {
   const fresh = {};
   const keys = [];
   for (const [field, prefix, max] of groups) {

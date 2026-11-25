@@ -32,6 +32,11 @@ const MAX_MESSAGES = 100;
 // Cached text costs nothing: far above a person reading, far below a script.
 const REQUESTS_PER_HOUR = 600;
 const UUID = /^[0-9a-f-]{36}$/i;
+// What one English request translates at most.
+const MAX_SOURCES = 120;
+// A stage or step title up to this long is a name (no "Automatically
+// translated" label); a longer one is a sentence and keeps its label.
+const NAME_MAX = 30;
 
 export const hashOf = (source) => createHash("sha256").update(`content-zh-v1:${source}`).digest("hex");
 // api/profile-translation.js's key, so a sentence reads the same English everywhere.
@@ -45,7 +50,7 @@ export const profileHashOf = (source) => createHash("sha256").update(`profile-en
 export function stepNameSources({ sampleLines = [], steps = [] }, sources) {
   const shown = new Set(sources);
   return [...new Set([...sampleLines.map((line) => line.stage), ...steps.map((step) => step.title)]
-    .filter((text) => typeof text === "string").map((text) => text.trim()))].filter((text) => shown.has(text));
+    .filter((text) => typeof text === "string").map((text) => text.trim()))].filter((text) => shown.has(text) && text.length <= NAME_MAX);
 }
 
 /** Text worth translating: has English words and no Chinese already. */
@@ -239,11 +244,12 @@ async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, r
     : { data: [] };
 
   const { needsEnglish, translateSources, titleFromFileName } = await import("../src/shared/profile-translation.mjs");
-  const sources = factoryWordsSources({
+  const all = factoryWordsSources({
     quotes: quotes.data, answers: answers.data, sampleLines: sampleLines.data, materialLines: materialLines.data,
     updates: updates.data, profiles: profiles.data, steps: milestones.data,
     sampleTitles: (samples.data ?? []).map((sample) => sample.title || titleFromFileName(sample.file_name)),
-  }, needsEnglish).slice(0, 120);
+  }, needsEnglish);
+  const sources = all.slice(0, MAX_SOURCES);
   const names = stepNameSources({ sampleLines: sampleLines.data, steps: milestones.data }, sources);
   // The vendor profile's key: one sentence reads the same English on Browse,
   // the vendor page, the invite step, quotes and the order.
@@ -252,5 +258,7 @@ async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, r
     translate: (text, { timeoutMs }) => translateText(text, { timeoutMs }),
     ...cacheFor(service, profileHashOf),
   });
-  return response.status(200).json({ translations, missing, incomplete: missing.length > 0, names: names.filter((name) => translations[name]) });
+  // Sources past the cut were not asked for: incomplete, so a later screen
+  // (the order page, for its one order) asks again.
+  return response.status(200).json({ translations, missing, incomplete: missing.length > 0 || all.length > MAX_SOURCES, names: names.filter((name) => translations[name]) });
 }
