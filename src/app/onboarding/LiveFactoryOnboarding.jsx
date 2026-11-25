@@ -261,7 +261,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         waitForReading ? getRegistration(org.id).catch(() => null) : null,
       ]);
       if (run !== following.current) return;
-      const settled = file && (!file.file || (file.copy !== null && (!waitForReading || file.read)));
+      // On load nothing is waited for: the by-number warning shows at once, the file copy when its fingerprint is
+      // known. Only right after a new licence does the row wait (up to 90 s) for that file's reading and fingerprint.
+      const settled = !waitForReading || (file && (!file.file || (file.read && file.copy !== null)));
       if (settled || Date.now() > deadline) {
         // A number the new file did not give (unreadable, or failing its check) is the old licence's: not shown.
         const numberIsThisFile = !waitForReading || Boolean(file?.numberRead);
