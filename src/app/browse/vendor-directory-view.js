@@ -102,21 +102,13 @@ export function vendorCard(parts, now = new Date()) {
 
   const category = (terms?.capacity_category ?? []).find((term) => term.id === capacityState?.capacity?.category_term_id);
   const minutes = minutesPerPieceFor(category);
+  const units = monthlyUnits(capacityState?.capacity, minutes);
   // Months with room left (mostly open or partly booked), and how many pieces
   // each could still take: the "Open capacity" filter reads these.
   const openMonths = Object.entries(capacityState?.months ?? {})
     .filter(([, level]) => level === "open" || level === "partial")
     .map(([month, level]) => ({ month, units: availableRange(capacityState.capacity, level, minutes)?.max ?? null }));
   const nextOpen = capacityWindow(6, now).find((month) => openMonths.some((open) => open.month === monthKey(month)));
-  // The pieces a brand can book, as the vendor page says them: the range for
-  // the open month the card names, or else for this month, at its booking
-  // level (availableRange, the same function as the page's "Estimated
-  // capacity"). A full month's total is not what a brand can book.
-  const shownMonth = nextOpen ?? capacityWindow(1, now)[0];
-  const shownRange = availableRange(capacityState?.capacity, capacityState?.months?.[monthKey(shownMonth)], minutes);
-  const capacityText = shownRange
-    ? `${shownRange.min === shownRange.max ? count(shownRange.max) : `${count(shownRange.min)}-${count(shownRange.max)}`} units`
-    : null;
 
   const moq = profile?.moq != null ? Number(profile.moq) : null;
   const lead = profile?.typical_lead_days != null ? Number(profile.typical_lead_days) : null;
@@ -136,7 +128,7 @@ export function vendorCard(parts, now = new Date()) {
       ["MOQ", row("MOQ")],
       ["Price point", priceLevel],
       ["Bulk lead", row("Bulk lead")],
-      ["Capacity", capacityText ?? NOT_GIVEN],
+      ["Capacity", view.performance.metrics.find((metric) => metric.label === "Capacity")?.value ?? NOT_GIVEN],
     ];
 
   const searchText = [
@@ -170,7 +162,7 @@ export function vendorCard(parts, now = new Date()) {
     ].filter(Boolean),
     capacityTags: [
       nextOpen ? `Open ${shortMonth(nextOpen)}` : null,
-      capacityText ? `Capacity ${capacityText}` : null,
+      units ? `Capacity ${count(units)} units` : null,
     ].filter(Boolean),
     insight: profile?.intro ? [profile.intro] : [],
     facts: {
