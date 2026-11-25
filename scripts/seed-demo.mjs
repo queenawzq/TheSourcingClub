@@ -1772,12 +1772,16 @@ must(await admin.from("factory_capacity").insert({ ...capacityRow, created_at: m
 must(await admin.from("factory_capacity_months").delete().eq("org_id", factoryOrg.id), "calendar, to write again");
 must(await admin.from("factory_capacity_months").insert(capacityMonths.map((row) => ({ ...row, updated_at: monthAgo }))), "calendar, a month old");
 
-// Email switches: the brand has "Payment and approval requests" off, so a
-// tester sees a switch in both states. The seed's own notifications are not
-// news to anyone, so none of their queued emails go out.
-must(await brand.client.rpc("set_notification_preference", {
-  target_org: brandOrg.id, category: "payments", enabled: false,
-}), "the brand's email switches");
+// Email switches: the brand waiting for review has "Payment and approval
+// requests" off, so a tester sees a switch in both states. Never a brand that
+// places orders (Demo Brand, the new brand): with the switch off it got none
+// of the payment or cancellation emails while the factory got every one
+// (flow check E8, W12).
+// The seed's own notifications are not news to anyone, so none of their
+// queued emails go out.
+must(await pendingBrand.client.rpc("set_notification_preference", {
+  target_org: pendingBrandOrg.id, category: "payments", enabled: false,
+}), "the pending brand's email switches");
 must(await admin.from("notification_email_outbox")
   .update({ status: "skipped", last_error: "demo seed" })
   .in("recipient_user_id", demoUserIds)
