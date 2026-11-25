@@ -142,6 +142,10 @@ function reviewDecisionEmail({
   // The sentence's own full stop: Chinese ends in 。, English in "."
   const stop = locale === "zh" ? "。" : ".";
   const safeNote = String(note ?? "").trim();
+  // A person whose name on file is the company's is greeted without it: the company is named in the next line
+  // (Nov 25: "Hi Atlas Knit Studio, / About Atlas Knit Studio:").
+  const sameAsCompany = String(recipientName ?? "").trim().toLowerCase() === String(companyName ?? "").trim().toLowerCase();
+  recipientName = sameAsCompany ? "" : recipientName;
   // The note is the card on a request or a decline, and a box of its own on an approval.
   const noteInCard = needsInformation || declined;
   const badge = BADGE[decision] ?? BADGE.approved;
