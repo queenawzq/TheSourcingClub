@@ -297,6 +297,8 @@ const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Ban
 
 export const ADDED_TO_BALANCE = "Added to your balance";
 export const ON_HOLD = "On hold";
+/** An open chargeback on the brand's card charge: its own status, in no figure but its own (T1 4b). */
+export const DISPUTED = "Disputed";
 export const REFUNDED = "Refunded";
 /**
  * Funded, then refunded to the brand (a refund or a lost dispute): it stays on
@@ -369,10 +371,11 @@ export function earningStatus(row, clearing = null, figures = null) {
   // bank yet: on its way until it lands, like that withdrawal's own row.
   if (row.state === "released" && where?.has("on_its_way")) return ON_ITS_WAY;
   if (row.state === "released") return (row.stripe_transfer_id && !withdrawnByTakes(row)) || backInStripeBalance(row) ? ADDED_TO_BALANCE : "Paid";
-  if (!toBeSent(row)) return "Awaiting approval";
-  // The brand disputed its card charge: held until the dispute is settled,
+  // The brand disputed its card charge with its bank (a chargeback; inquiries
+  // set nothing): Disputed until the bank decides, before or after approval,
   // never "available on" a day (the factory is told by its notification).
-  if (row.disputed_at) return ON_HOLD;
+  if (row.disputed_at) return DISPUTED;
+  if (!toBeSent(row)) return "Awaiting approval";
   // The brand's card payment is still clearing: the same word on the order
   // page and on Payments, from the payment's own date.
   if (stillClearing(row)) return "Pending";

@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
-  ON_HOLD, ON_ITS_WAY, pendingParts, serverWithdrawalRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withdrawReach, withdrawalProblem, withdrawalRows,
+  DISPUTED, ON_HOLD, ON_ITS_WAY, pendingParts, serverWithdrawalRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withdrawReach, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -409,10 +409,12 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 
 // Fix round 5 (local tester).
 {
-  // M5: a disputed step is On hold, never "Available <day>", on both pages.
+  // M5, T1 4b: a step under a chargeback is Disputed, never "Available <day>"
+  // or "Awaiting approval", on both pages, before and after approval.
   const disputed = pay("d1", 500, "confirmed", { ...APPROVED, disputed_at: "2026-11-20T00:00:00Z", funds_available_at: "2099-01-05T12:00:00Z" });
-  assert.equal(earningStatus(disputed), ON_HOLD);
-  assert.equal(earningStatus(disputed, null, new Map([["d1", new Set(["pending"])]])), ON_HOLD);
+  assert.equal(earningStatus(disputed), DISPUTED);
+  assert.equal(earningStatus(disputed, null, new Map([["d1", new Set(["pending"])]])), DISPUTED);
+  assert.equal(earningStatus(pay("d2", 500, "confirmed", { disputed_at: "2026-11-20T00:00:00Z" })), DISPUTED, "not approved yet: Disputed, not Awaiting approval");
   assert.equal(owedClearingNote(disputed, new Map([["d1", new Set(["pending"])]])), null, "no date for held money");
   // M4: a step all withdrawn reads Paid, whichever road took it.
   const sentByStripe = pay("s1", 6500, "released", { ...APPROVED, stripe_transfer_id: "tr_1", released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });

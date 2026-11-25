@@ -49,6 +49,7 @@ import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
 import {
   activityLines,
+  withDisputes,
   day,
   describeOrderContract,
   initials,
@@ -790,7 +791,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, paymentOnlySteps })}
+        activity={activityLines(withDisputes(activity, milestones), { order: namedOrder, viewerOrgId: org.id, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
@@ -853,7 +854,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, chargedByStep, paymentOnlySteps })}
+        activity={activityLines(withDisputes(activity, milestones), { order: namedOrder, viewerOrgId: org.id, chargedByStep, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}

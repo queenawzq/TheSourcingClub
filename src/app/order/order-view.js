@@ -124,6 +124,19 @@ export function orderFiles(rfqDocuments, updates, milestones) {
  * `paymentOnlySteps` (step titles): steps whose funding adds the money to the
  * factory's balance at once, never "held by TSC".
  */
+/**
+ * The order's activity with a dated row for each payment under a chargeback
+ * (its `disputed_at`; order_pause's disputed_payment_ids say which), unless
+ * the server's activity already has one. Newest first, like the rest.
+ */
+export function withDisputes(rows, milestones) {
+  const have = new Set((rows ?? []).filter((row) => row.kind === "payment_disputed").map((row) => row.milestone_title));
+  const added = (milestones ?? [])
+    .filter((milestone) => milestone.payment?.disputed && milestone.payment.disputed_at && !have.has(milestone.title))
+    .map((milestone) => ({ kind: "payment_disputed", milestone_title: milestone.title, at: milestone.payment.disputed_at }));
+  return added.length ? [...(rows ?? []), ...added].sort((a, b) => String(b.at).localeCompare(String(a.at))) : rows;
+}
+
 export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limit = 5, chargedByStep = null, paymentOnlySteps = null }) {
   const names = {
     [order.brand_org_id]: order.brand?.name ?? "The brand",
@@ -151,6 +164,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "payment_confirmed": return paymentOnlySteps?.has(step)
         ? `${paid(row)} funded for ${step}, added to ${viewerOrgId === order.factory_org_id ? "your" : "the factory's"} balance`
         : `${paid(row)} funded for ${step}, held by TSC`;
+      // A chargeback: "funded" above stays as what happened; this says what changed.
+      case "payment_disputed": return `Payment disputed for ${step}`;
       case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "payment_refunded": return `The payment for ${step} was refunded to the brand`;
       case "payment_refunded_after_payout": return `The payment for ${step} was refunded to the brand after it was paid out`;
