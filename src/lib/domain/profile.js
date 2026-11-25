@@ -14,7 +14,7 @@ const BRAND_COLUMNS = `
   org_id, legal_name, business_email, website_url, hq_location, founded_year,
   brand_category, intro, annual_revenue_band, pieces_per_year_band, order_size_band,
   collections_per_year, reorder_cadence, sourcing_stage,
-  target_price_min_cents, target_price_max_cents,
+  target_price_min_cents, target_price_max_cents, target_price_basis,
   verification_status, onboarding_completed_at, created_at, updated_at
 `;
 
