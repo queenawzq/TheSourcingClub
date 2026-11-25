@@ -1449,6 +1449,9 @@
 
 .admin-review-modal .admin-request-message textarea {
   min-height: 220px;
+  /* Grows with the message (a phone shows the whole English and Chinese welcome); the pop-up scrolls past that. */
+  field-sizing: content;
+  max-height: 60vh;
 }
 
 .admin-request-ai-error {

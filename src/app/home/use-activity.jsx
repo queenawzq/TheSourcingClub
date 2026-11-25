@@ -16,6 +16,7 @@ import {
   activityType, countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, notificationTitle, timeAgo,
 } from "../../lib/domain/notifications.js";
 import { supabase } from "../../lib/supabase.js";
+import { reviewNoteText } from "../../shared/review-note.mjs";
 import { useRouter } from "../../lib/router.jsx";
 import "../notifications.css";
 
@@ -32,7 +33,10 @@ function toActivityItem(notification, locale = "en") {
     notification,
     type: activityType(notification.kind, locale),
     title: notificationTitle(notification, { locale }),
-    meta: WORDS_MATTER.test(notification.kind) ? notificationBody(notification, { locale }) : "",
+    meta: !WORDS_MATTER.test(notification.kind) ? ""
+      // A staff note on a review decision, with its "- " lines as bullets, like its email.
+      : String(notification.kind ?? "").startsWith("verification_") ? reviewNoteText(notificationBody(notification, { locale }))
+        : notificationBody(notification, { locale }),
     time: timeAgo(notification.created_at, locale),
     unread: !notification.read_at,
   };

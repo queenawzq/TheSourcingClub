@@ -72,6 +72,17 @@ export function parseReviewNote(note) {
   return blocks;
 }
 
+/**
+ * The note as plain text for a place that draws text only (the bell): its
+ * lists as "• item" and "1. item", paragraphs as typed, so "- item" reads as
+ * the bullet the review pop-ups promise.
+ */
+export function reviewNoteText(note) {
+  return parseReviewNote(note).map((block) => (block.type === "paragraph"
+    ? block.lines.join("\n")
+    : block.items.map((item, at) => `${block.ordered ? `${block.start + at}.` : "•"} ${item}`).join("\n"))).join("\n\n");
+}
+
 /** True when the note has a list in it. */
 export const noteHasList = (note) => parseReviewNote(note).some((block) => block.type === "list");
 
