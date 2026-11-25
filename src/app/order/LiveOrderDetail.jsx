@@ -185,6 +185,8 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
     case "confirmed":
       // Held on a cancelled order it is on its way back to the brand: both sides read that.
       if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
+      // The brand disputed the charge with its bank: the money isn't held for the step any more.
+      if (payment.disputed_at) return "Disputed";
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
@@ -844,7 +846,12 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
         cancelLocked={brandPaused && proposeCancel ? PAUSED_TITLE : ""}
-        timelineNotice={brandPaused && running ? "Your account is under review. You can't fund, approve or cancel until it's done." : ""}
+        // The factory's cancellation can still be accepted while paused, so the
+        // line names only what is refused then.
+        timelineNotice={!(brandPaused && running) ? ""
+          : order.cancel_proposed_by_org && order.cancel_proposed_by_org !== org.id
+            ? "Your account is under review. You can't fund or approve until it's done."
+            : "Your account is under review. You can't fund, approve or cancel until it's done."}
       />
       {stepPopup}
       {cancel.dialog}

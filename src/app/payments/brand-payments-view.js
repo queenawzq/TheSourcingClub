@@ -40,6 +40,8 @@ export function paymentStatusWord(payment, order) {
     return paymentRefund(payment).refunded > 0 ? "Refunded" : "Reversed by your bank";
   }
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
+  // Disputed with the brand's bank: not held for the step while the bank decides.
+  if (payment.state === "confirmed" && payment.disputed_at) return "Disputed";
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
