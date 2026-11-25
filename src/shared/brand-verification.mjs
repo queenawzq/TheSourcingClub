@@ -70,11 +70,13 @@ function detailsCheck(row) {
   return { ...base, score, verdict: gaps ? `Missing: ${gaps}` : "Not complete", gaps };
 }
 
-function termsCheck(row, timeZone) {
+function termsCheck(row, timeZone, acceptedAt = null) {
   const base = { key: "terms", label: "Terms", weight: 30 };
   if (!row || row.result !== "Clear") return { ...base, score: BRAND_SCORES.terms.missing, verdict: "Not signed" };
   const signed = /Signed "([^"]*)" on (\d{1,2} \w{3} \d{4})/.exec(row.detail);
-  const words = [signed?.[1], day(signed?.[2], timeZone)].filter(Boolean).join(", ");
+  // The database writes the day in UTC; the signing time, when known, is read in the reader's zone (Nov 25: a
+  // brand signing on the evening of Nov 24 in New York read "Nov 25").
+  const words = [signed?.[1], day(acceptedAt ?? signed?.[2], timeZone)].filter(Boolean).join(", ");
   return { ...base, score: BRAND_SCORES.terms.signed, verdict: words ? `Signed by ${words}` : "Signed", signedWords: words };
 }
 
@@ -126,10 +128,10 @@ export function brandRequestGaps(checks, documents = []) {
  * `checks`: the `[label, result, value, detail]` rows. `documents`: the
  * company's files (`admin_org_documents()` rows), or none on the queue.
  */
-export function brandVerification({ checks, documents = [], submittedBy = null, timeZone } = {}) {
+export function brandVerification({ checks, documents = [], submittedBy = null, termsAcceptedAt = null, timeZone } = {}) {
   const registration = registrationCheck(tuple(checks, "Business registration"));
   const details = detailsCheck(tuple(checks, "Company details"));
-  const terms = termsCheck(tuple(checks, "Terms accepted"), timeZone);
+  const terms = termsCheck(tuple(checks, "Terms accepted"), timeZone, termsAcceptedAt);
   const files = (documents ?? []).filter(Boolean);
   const evidence = evidenceCheck(tuple(checks, "Brand evidence"), files.filter((d) => EVIDENCE_KINDS.has(d.kind)));
 

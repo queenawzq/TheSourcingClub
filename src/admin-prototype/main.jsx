@@ -1222,7 +1222,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const brandScore = useMemo(() => {
     if (isVendor || profile?.verification || !actions.verificationScore || !profile?.checks) return null;
     const owner = (submission?.members ?? []).find((member) => member.role === "owner") ?? submission?.members?.[0] ?? null;
-    return brandVerification({ checks: profile.checks, documents: documents ?? [], submittedBy: owner, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    return brandVerification({ checks: profile.checks, documents: documents ?? [], submittedBy: owner, termsAcceptedAt: submission?.terms?.acceptedAt ?? null, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
   }, [isVendor, profile, actions.verificationScore, submission, documents]);
   const verification = profile?.verification ?? live?.data ?? brandScore;
   const showsScore = Boolean(profile?.verification || live || brandScore);
