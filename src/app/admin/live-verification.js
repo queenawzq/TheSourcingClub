@@ -132,14 +132,37 @@ function withReading(orgId, verification) {
     ?? (fileId && triedRecently(fileId) ? { state: "failed" } : startReading(orgId, fileId));
   const failed = run.state === "failed" || run.state === "done";
   // Done with no reading is a reading that failed: staff record what the registry shows instead.
-  const patch = failed
-    ? {
-      stale: "Couldn't read the document",
-      verdict: "Couldn't read the document",
-      checks: (group.checks ?? []).map((check) => (check.key === "licence" && check.score == null ? { ...check, verdict: "Couldn't read the document" } : check)),
-    }
-    : { checking: true, checkingWords: "Reading the document…" };
-  return { ...verification, groups: verification.groups.map((g) => (g === group ? { ...g, ...patch } : g)) };
+  if (!failed) {
+    const patch = { checking: true, checkingWords: "Reading the document…" };
+    return { ...verification, groups: verification.groups.map((g) => (g === group ? { ...g, ...patch } : g)) };
+  }
+  // Every line that said the licence is still to be read now says it could not be (Nov 25: "not read yet" and
+  // "Not checked yet" stayed after the reading had failed), in this group and in Company information.
+  const licence = (group.checks ?? []).find((check) => check.key === "licence" && check.score == null);
+  const notRead = (text) => String(text ?? "")
+    .replace(licence ? `${licence.label}: ${licence.verdict}. ` : "\u0000", "")
+    .replace(licence ? `${licence.label}: ${licence.verdict}.` : "\u0000", "")
+    .replace(/Licence not read yet/g, "Licence couldn't be read")
+    .replace(/licence not read yet/g, "licence couldn't be read")
+    .trim();
+  return {
+    ...verification,
+    groups: verification.groups.map((g) => {
+      if (g === group) {
+        return {
+          ...g,
+          stale: "Couldn't read the document",
+          verdict: "Couldn't read the document",
+          why: notRead(g.why),
+          checks: (g.checks ?? []).map((check) => (check === licence ? { ...check, verdict: "Couldn't read the document" } : check)),
+        };
+      }
+      if (g.key === "company_information") {
+        return { ...g, verdict: notRead(g.verdict), why: notRead(g.why), checks: (g.checks ?? []).map((check) => ({ ...check, verdict: notRead(check.verdict) })) };
+      }
+      return g;
+    }),
+  };
 }
 
 /** `{ facts, groups, … }` in the shape of verification-mock.js, or throws. */
