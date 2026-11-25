@@ -340,3 +340,10 @@
 .payment-review-line { overflow-wrap: anywhere; }
 .admin-payments-page .payment-reviews-table td:nth-child(2) { white-space: nowrap; }
 .payment-review-nowrap, .payments-queue .payment-reviews-table .payment-review-line a { white-space: nowrap; }
+
+/* A staff refund line under its figure: wraps inside its cell. */
+.payment-refund-line { overflow-wrap: anywhere; max-width: 320px; }
+/* Two actions on a row (Refund again… and Close) stack in the sticky column. */
+.payment-reviews-table td.admin-actions { white-space: normal; }
+.payment-reviews-table td.admin-actions button { display: block; width: 100%; margin: 0 0 8px; }
+.payment-reviews-table td.admin-actions button:last-of-type { margin-bottom: 0; }
