@@ -962,11 +962,9 @@ const SCENARIOS = {
     await refused(admin.from("stripe_withdrawals").insert({ org_id: c.factoryOrg.id, stripe_account_id: "acct_pp_none", request_key: `pp-${randomUUID()}`, amount_minor: 1000, currency: "USD", state: "claimed" }), "payment_under_review", "a Stripe withdrawal claim in the database");
     await refused(staff.client.rpc("claim_withdrawal", { target_withdrawal: waitingId }), "payment_under_review", "staff pay the waiting withdrawal");
     const approve = await api("/api/withdrawal", staff, { action: "approve", withdrawalId: waitingId });
-    // Without PayPal keys (a local run) the route stops at "PayPal isn't set up"
-    // before it claims; claim_withdrawal above is the refusal it would reach.
-    if (approve.body?.kind !== "not_set_up") {
-      expectTrue(approve.status >= 400 && /paused/.test(approve.body?.error ?? ""), "staff Approve on the withdrawal refused in words", approve);
-    }
+    // The pause is said before whether PayPal is set up on this site (api/_paused.js).
+    expectTrue(approve.status === 409 && approve.body?.kind === "payment_under_review" && /paused while a payment is reviewed/.test(approve.body?.error ?? ""),
+      "staff Approve on the withdrawal refused in words, before any provider check", approve);
     must(await factory.client.rpc("cancel_withdrawal", { target_withdrawal: waitingId }), "the factory cancels its withdrawal");
 
     step("a factory paid by bank: hand payouts revealed before and after the pause");
