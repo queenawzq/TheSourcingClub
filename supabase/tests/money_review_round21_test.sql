@@ -210,7 +210,7 @@ $f$;
 -- ===========================================================================
 select lives_ok($$select pg_temp.lost(11, 50000)$$, '$500 of the $1,070 charge is lost in a dispute before approval');
 select lives_ok($$select pg_temp.refund(11, 57000)$$, 'the other $570 is refunded: all of it went back, the brand is sent back to pay');
-select is((pg_temp.p(11)).state::text, 'failed', 'sent back to pay');
+select is((pg_temp.p(11)).state::text, 'due', 'sent back to pay (Due, never Failed)');
 select lives_ok($$select pg_temp.failed(11, 107000, 0, 57000, 50000)$$, 'then the $570 refund fails, before the brand paid again');
 select is(row((pg_temp.p(11)).state::text, (pg_temp.p(11)).charged_cents, (pg_temp.p(11)).dispute_lost_cents, (pg_temp.p(11)).refunded_cents),
   row('confirmed'::text, 107000::bigint, 50000::bigint, 0::bigint), 'funded again with the charge, the $500 loss kept');

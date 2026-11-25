@@ -449,7 +449,9 @@ export async function overviewMetrics() {
     await supabase.rpc("admin_overview_metrics"),
     "load the marketplace overview",
   );
-  const row = rows?.[0] ?? {};
+  // An empty answer is a failed read, never a zero (T1 P4): the overview says so.
+  if (!rows?.length) throw new Error("The marketplace overview couldn't be loaded. Reload the page.");
+  const row = rows[0];
   const paymentsHref = await paymentsQueueHref();
 
   return {

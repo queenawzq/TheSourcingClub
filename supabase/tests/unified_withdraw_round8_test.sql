@@ -192,6 +192,9 @@ insert into public.order_payments (id, order_id, milestone_id, amount_cents, cur
 values ('ce8f0009-0000-0000-0000-000000000001', 'ce8d0000-0000-0000-0000-000000000001', 'ce8e0009-0000-0000-0000-000000000001',
         7000, 'USD', 'due', 'pi_pgtap_r8_9', now());
 set local session_replication_role = origin;
+-- The server records the chargeback's review before the payment (applyDispute), as Stripe sends it.
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''ce8f0009-0000-0000-0000-000000000001'', ''du_pgtap_r8_9'', ''needs_response'', 7000, now() + interval ''7 days'', null)')$$,
+  'R9: the chargeback''s review is recorded');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''ce8f0009-0000-0000-0000-000000000001'', ''ch_pgtap_r8_9'', ''card'', ''Visa ···0259'', 7000)')$$,
   'R9: the payment-only step, its charge already disputed, is funded');
 select is((select title || ' | ' || body from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
@@ -201,12 +204,15 @@ select is((select title || ' | ' || body from public.notifications where org_id 
 select is((select count(*)::int from public.notifications where org_id = 'ce8b0000-0000-0000-0000-0000000000e1'
             and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and body like '%added to your balance%'), 0,
   'R9: never "added to your balance"');
-select ok((select bool_and(r ->> 'figure' = 'pending' and coalesce((r ->> 'held')::boolean, false))
-             from jsonb_array_elements(pg_temp.bal() -> 'rows') r where (r ->> 'payment_id')::uuid = 'ce8f0009-0000-0000-0000-000000000001'),
-  'R9: held in Pending');
-select ok(exists (select 1 from public.notifications where org_id = 'ce8b0000-0000-0000-0000-00000000000b'
+-- The brand is paused by its chargeback: its money is recorded, nothing is
+-- paid out until it is unpaused, and it is not told "funded" (20261125100000, T1).
+select ok((select state = 'confirmed' and release_requested_at is null from public.order_payments where id = 'ce8f0009-0000-0000-0000-000000000001'),
+  'R9: recorded, not paid out while the brand is paused');
+select ok(not exists (select 1 from public.notifications where org_id = 'ce8b0000-0000-0000-0000-00000000000b'
                    and subject_id = 'ce8f0009-0000-0000-0000-000000000001' and kind = 'payment_confirmed'),
-  'R9: the brand is still told its payment is funded');
+  'R9: the brand is not told its disputed payment is funded');
+-- The rest of this file runs with the brand not paused.
+update public.payment_reviews set brand_unpaused_at = now() where stripe_ref = 'du_pgtap_r8_9';
 
 -- ===========================================================================
 -- Fix round 10 (20261120290000): Needs checking says who asked for each

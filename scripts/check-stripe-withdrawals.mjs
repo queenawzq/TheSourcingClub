@@ -589,14 +589,15 @@ for (const status of ["failed", "canceled"]) {
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, chargeback],
         events: [inquiryOpen, chargeback, inquiryClosed] });
-      assert.deepEqual(held, [true, true, true], "R34-1: the late warning_closed leaves the chargeback's hold");
+      // An inquiry holds nothing (20261125100000, T1); the chargeback does.
+      assert.deepEqual(held, [false, true, true], "R34-1: the late warning_closed leaves the chargeback's hold");
       assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: true }], "R34-1: recorded as still disputed");
     }
     // The charge carries no `dispute`: found by charge, newest first.
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true }, disputes: [inquiryClosed, chargeback],
         events: [inquiryOpen, chargeback, inquiryClosed] });
-      assert.deepEqual(held, [true, true, true], "R34-1: by charge too");
+      assert.deepEqual(held, [false, true, true], "R34-1: by charge too");
       assert.equal(calls.at(-1)[1].disputed, true);
     }
     // The chargeback lost meanwhile: the late warning_closed records the loss, never a lifted hold.
@@ -613,7 +614,7 @@ for (const status of ["failed", "canceled"]) {
     // An inquiry closed with no chargeback after it still lifts the hold.
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_inq" }, disputes: [inquiryClosed], events: [inquiryOpen, inquiryClosed] });
-      assert.deepEqual(held, [true, false], "R34-1: a closed inquiry alone lifts the hold");
+      assert.deepEqual(held, [false, false], "an inquiry never holds the step (20261125100000, T1)");
       assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: false }]);
     }
     // The chargeback won: the hold is lifted.

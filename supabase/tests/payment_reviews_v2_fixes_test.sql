@@ -164,7 +164,7 @@ select ok((select refunded_cents = 0 and review_kept_cents = 0 from public.order
 -- ===========================================================================
 select set_config('tsc.s2', pg_temp.claim(6, 10700, null)::text, true);
 select lives_ok($$select pg_temp.made(current_setting('tsc.s2')::uuid, 're_pgtap_pr27_s2')$$, 'all of the trims refunded');
-select is((select state::text from public.order_payments where id = pg_temp.pay(6)), 'failed', 'the step waits for the brand''s payment again');
+select is((select state::text from public.order_payments where id = pg_temp.pay(6)), 'due', 'the step waits for the brand''s payment again (Due)');
 select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''c27f0006-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_6'', ''ch_pgtap_pr27_6'', 10700, 0, 10700, 0, null)')$$,
   'Stripe fails that refund');
 select is((select state::text || ' ' || stripe_payment_intent_id from public.order_payments where id = pg_temp.pay(6)), 'confirmed pi_pgtap_pr27_6',
