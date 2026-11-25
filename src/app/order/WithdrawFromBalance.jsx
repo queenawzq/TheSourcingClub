@@ -5,7 +5,7 @@ import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
-import { AWAITING_REVIEW, NOTHING_BACK, ON_HOLD, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
+import { NOTHING_BACK, openWithdrawalWord, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
 import { RELOAD_AND_TRY_AGAIN, SIGN_IN_AGAIN } from "./balance-reader.mjs";
 
 /**
@@ -99,17 +99,6 @@ export const withdrawOptionLabel = (row, language = "en") => {
 };
 
 /**
- * An open withdrawal's word on the card: the word its Transactions row says
- * (serverWithdrawalRows), from the server's `word` for it, so the card and the
- * row never give one withdrawal two states.
- */
-export function openWithdrawalWord(row, word = null) {
-  if (word === "on_hold") return ON_HOLD;
-  if (word === "on_its_way") return "Processing";
-  return word === "waiting" || (!word && row?.status === "requested") ? AWAITING_REVIEW : "Processing";
-}
-
-/**
  * Open withdrawal details and the owner’s cancellation action: one row per
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
@@ -119,7 +108,7 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
   if (list.length) {
     // The server's word for it (factory_balance().withdrawals): a request whose
     // step was refunded underneath is on hold, for the owner and members alike.
-    const wordOf = (row) => openWithdrawalWord(row, words instanceof Map ? words.get(row.id) : null);
+    const wordOf = (row) => openWithdrawalWord(words instanceof Map ? words.get(row.id) : null, row.status);
     // The fee the row shows, taken from it as the row takes it (feeFor: PayPal
     // while waiting or being sent; none for a quoted fee until it is paid).
     const feeOf = (row) => {

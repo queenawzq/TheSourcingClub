@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import {
   awaitingApproval, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, heldOnCancelledOrder, toBeSent,
   ON_HOLD, ON_ITS_WAY, pendingParts, serverWithdrawalRows, legacyOnItsWayCents, owedClearingNote, parseWithdrawAmount, withdrawFeeLine, refundPendingWord, stillClearing, staffBankNote, summaryFrom, withdrawReach, withdrawalProblem, withdrawalRows,
+  openWithdrawalWord,
 } from "../src/app/order/payment-summary.mjs";
 import { balanceFigures } from "../api/_balance-figures.js";
 
@@ -392,15 +393,18 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 // Flow check R2m2: one waiting PayPal withdrawal says one state and one amount,
 // on the card and on its row.
 {
-  const { openWithdrawalWord } = await import("../src/app/order/WithdrawFromBalance.jsx").catch(() => ({}));
   const rows = serverWithdrawalRows([{ id: "p", road: "pool", provider: "paypal", word: "waiting", amount_cents: 50000, created_at: "2026-11-24T10:00:00Z" }], { feeFor: () => 981 });
   assert.equal(rows[0].status, "Awaiting review");
   assert.equal(rows[0].amount, -49019, "the row: $500 less the $9.81 fee");
-  if (openWithdrawalWord) {
-    assert.equal(openWithdrawalWord({ status: "requested" }, "waiting"), rows[0].status, "the card says the row's word");
-    assert.equal(openWithdrawalWord({ status: "requested" }, "on_hold"), "On hold");
-    assert.equal(openWithdrawalWord({ status: "approved" }, "on_its_way"), "Processing");
-  }
+  assert.equal(openWithdrawalWord("waiting", "requested"), rows[0].status, "the card says the row's word");
+  assert.equal(openWithdrawalWord("on_hold", "requested"), "On hold");
+  assert.equal(openWithdrawalWord("on_its_way", "paying"), "Processing");
+  // Before the server's word has loaded, card and row still agree.
+  assert.equal(openWithdrawalWord(null, "requested"), "Awaiting review", "a request with no word yet: Awaiting review, on the card");
+  const [early] = serverWithdrawalRows([{ id: "q", road: "pool", provider: "paypal", word: null, amount_cents: 50000 }], { pool: new Map([["q", { status: "requested" }]]) });
+  assert.equal(early.status, openWithdrawalWord(null, "requested"), "and on its row");
+  const block = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(block.includes("openWithdrawalWord(words instanceof Map ? words.get(row.id) : null, row.status)"), "the card asks the same function");
   const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(form.includes("Number(row.amount_cents) - refundedOf(row) - feeOf(row)"), "the card's amount is the row's: less the fee taken from it");
 }

@@ -308,11 +308,23 @@ export function failedWithdrawalNote(back, amount, currency = "USD") {
 export const AWAITING_REVIEW = "Awaiting review";
 /** A withdrawal that reached the factory, whatever the method: one word on every row. */
 export const WITHDRAWAL_DONE = "Completed";
-const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: WITHDRAWAL_DONE, failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
+const ASKED_STATUS = { requested: AWAITING_REVIEW, paying: "Processing", paid: WITHDRAWAL_DONE, failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
 export const ADDED_TO_BALANCE = "Added to your balance";
 export const ON_HOLD = "On hold";
+
+/**
+ * An open withdrawal's word, for its Transactions row and its block on the
+ * card alike (R2m2), so the two never say two states for one withdrawal: the
+ * server's `word` for it (factory_balance().withdrawals), else its own status.
+ */
+export function openWithdrawalWord(word, status = null) {
+  if (word === "waiting") return AWAITING_REVIEW;
+  if (word === "on_hold") return ON_HOLD;
+  if (word === "on_its_way") return "Processing";
+  return status === "requested" ? AWAITING_REVIEW : "Processing";
+}
 export const REFUNDED = "Refunded";
 /**
  * Funded, then refunded to the brand (a refund or a lost dispute): it stays on
@@ -652,7 +664,7 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
           : own?.status === "failed" ? failedWithdrawalNote(w.back_cents ?? own.back_cents, w.amount_cents)
           : poolFee != null ? `Fee ${money(poolFee)}, taken from it`
           : null,
-        status: w.word === "waiting" ? AWAITING_REVIEW : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
+        status: moving ? openWithdrawalWord(w.word, own?.status)
           : paid ? WITHDRAWAL_DONE : ASKED_STATUS[own?.status] ?? "Failed",
         failed: w.word === "returned",
         // What it still holds: less the part that went back to the brand since (its "refunded" part).
