@@ -25,7 +25,7 @@ export default async function handler(request, response) {
 
   const { action, withdrawalId, provider: asked, cnyConfirmed } = jsonBody(request);
   // "Check again" on a Stripe withdrawal from the factory's one balance
-  // (the board's "Needs checking" tab): settles what Stripe did, never sends.
+  // (the board's "Review needed" tab): settles what Stripe did, never sends.
   if (action === "check_stripe") {
     if (!/^[0-9a-f-]{36}$/i.test(String(withdrawalId ?? ""))) return reply(response, 400, { error: "That withdrawal isn't on the board any more. Reload the page." });
     let stripe;

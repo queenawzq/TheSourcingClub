@@ -87,7 +87,7 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   const w = world();
   w.caller = { rpc: async () => ({ data: null, error: { code: "22023", hint: "withdrawal_owes_tsc", message: "the factory owes TSC $500.00", details: "$500.00" } }) };
   await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), (failure) => failure instanceof PayoutFailure
-    && failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.");
+    && failure.message === "The factory owes TSC $500.00 (To recover, in Review needed). This withdrawal waits until the factory's earnings cover it. You can still decline it.");
   assert.equal(w.paid.length, 0, "nothing paid while the factory owes TSC");
   const { owesTscSentence } = await import("../api/_withdrawals.js");
   const { owesTscSentence: boardSentence } = await import("../src/lib/domain/withdrawals.js").catch(() => ({}));
@@ -915,14 +915,14 @@ for (const [why, row] of [
   let n = 0;
   const owed = (over = {}) => ({ payment_id: `p${++n}`, state: "confirmed", release_requested_at: "2026-11-01", order_status: "active",
     stripe_payment_intent_id: `pi_${n}`, factory_stripe_ready: false, payout_method: "paypal", ...over });
-  const fake = ({ rows = [], attempts = [], withdrawals = [], pool = [], disputed = [], stuck = [], fail = null } = {}) => ({
+  const fake = ({ rows = [], attempts = [], withdrawals = [], pool = [], disputed = [], stuck = [], recover = [], returned = [], refund_failed = [], fail = null } = {}) => ({
     rpc: async (name) => {
       if (fail === "throw") throw new Error("offline");
       if (fail === name) return { data: null, error: { message: "down" } };
       if (name === "admin_payment_board") return { data: rows, error: null };
       if (name === "admin_provider_attempts") return { data: attempts, error: null };
       if (name === "admin_withdrawals") return { data: { withdrawals, pool_payment_ids: pool }, error: null };
-      if (name === "admin_balance_attention") return { data: { disputed, stuck }, error: null };
+      if (name === "admin_balance_attention") return { data: { disputed, stuck, recover, returned, refund_failed }, error: null };
       throw new Error(`unexpected ${name}`);
     },
   });
@@ -950,14 +950,18 @@ for (const [why, row] of [
     "a cancelled order's refund Stripe refused is under Failed");
   assert.equal(await hrefFor({ ...all, rows: [wiseMoving] }), `${BOARD}?tab=processing`, "else Processing");
   assert.equal(await hrefFor({ ...all, rows: [] }), `${BOARD}?tab=withdrawals`, "else Withdrawals");
-  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], disputed: [{}] }), `${BOARD}?tab=needs_checking`,
-    "else Needs checking (a finished withdrawal is not waiting)");
+  assert.equal(await hrefFor({ withdrawals: [{ status: "paid" }, { status: "cancelled" }], disputed: [{}] }), `${BOARD}?tab=review_needed`,
+    "else Review needed (a finished withdrawal is not waiting)");
   assert.equal(await hrefFor({}), BOARD, "nothing waiting: the board");
+  // W10: every list the overview counts opens Review needed, not only disputed and stuck.
+  for (const list of ["recover", "returned", "refund_failed"]) {
+    assert.equal(await hrefFor({ [list]: [{}] }), `${BOARD}?tab=review_needed`, `W10: ${list} opens Review needed`);
+  }
   // Owed money waiting in a balance is no queue of staff's.
   const waiting = owed();
   assert.equal(countedByOverview(waiting), false);
   assert.equal(await hrefFor({ rows: [waiting] }), BOARD, "owed money in a balance: the board");
-  assert.equal(await hrefFor({ rows: [paypalFailed], attempts, pool: [paypalFailed.payment_id], stuck: [{}] }), `${BOARD}?tab=needs_checking`,
+  assert.equal(await hrefFor({ rows: [paypalFailed], attempts, pool: [paypalFailed.payment_id], stuck: [{}] }), `${BOARD}?tab=review_needed`,
     "a step in a withdrawal's balance is not counted under Failed");
 
   // A PayPal payout that failed, and the factory changed its details since:
@@ -2681,8 +2685,8 @@ for (const [why, row] of [
   assert.ok(form.includes("onRefused?.();") && card.includes("onRefused={() => { read.reload(); onMethodsChanged?.(); }}"), "a refusal re-reads the balance and the methods");
   // Stripe: a double click asks once; the minimum is said before asking.
   assert.ok(card.includes("if (withdrawing.current || busy") && card.includes("withdrawing.current = false;"), "one Stripe withdrawal per click burst");
-  assert.ok(card.includes("disabled={busy || Boolean(error) || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max) || Boolean(stripeMinimumProblem)}") && card.includes("minimumWithdrawalSentence(leastLocal, local)"),
-    "Stripe's minimum is checked in the dialog, in the server's sentence; after a refusal, or over what is left, Withdraw is off (round 27)");
+  assert.ok(card.includes("disabled={busy || Boolean(error) || !(withdrawal.amount > 0) || (withdrawal.max != null && withdrawal.amount > withdrawal.max) || Boolean(stripeMinimumProblem)}") && card.includes("minimumWithdrawalSentence(leastUsd, \"USD\")"),
+    "Stripe's minimum is checked in the dialog, in US dollars as the form asks (W5); after a refusal, or over what is left, Withdraw is off (round 27)");
   assert.equal(card.split("setError(null);").length - 1 >= 3 && card.includes("else { setError(null); setWithdrawal((was) => ({ ...was, destination: value })); }"), true,
     "changing the amount or the method turns it back on, as PayPal's dialog does");
   const { stripeMinimumWithdrawal, minimumWithdrawalSentence } = await import("../src/shared/withdrawal-fees.mjs");

@@ -28,7 +28,7 @@ import { byCreated, readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { can } from "../../lib/domain/org.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
-import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
+import { payoutFeeSentence, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
@@ -90,7 +90,7 @@ function RowPlaceholders({ className, cells, label }) {
 
 const PAYOUT_STATUS = {
   // A withdrawal from the factory's Stripe balance that reached its bank.
-  paid: "Paid out to your bank",
+  paid: "Completed",
   // Left for the bank: an older Stripe payout says Processing in both states.
   pending: "Processing",
   in_transit: "Processing",
@@ -158,6 +158,15 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     return ["saved", ...INVITE_NOT_EMAILED].includes(invite) ? inviteNotice({ emailed: false, reason: invite }) : null;
   });
   const [client, setClient] = useState("All clients");
+  // The factory's country: a PayPal fee is domestic or international by it,
+  // as the server works it out (api/_withdrawals.js factoryCountry).
+  const [factoryCountry, setFactoryCountry] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("factory_profiles").select("country_code").eq("org_id", org.id).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setFactoryCountry(data?.country_code ?? ""); });
+    return () => { cancelled = true; };
+  }, [org.id]);
   const [transactionType, setTransactionType] = useState("all");
   // The bank accounts staff pay where Stripe cannot (use-manual-payouts.js).
   const payouts = useManualPayouts(org.id);
@@ -400,6 +409,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     if (w.destination_label) return [w.destination_label, w.destination_bank].filter(Boolean).join(" · ");
     return payoutDestination(w, stripeBalance);
   };
+  // A PayPal withdrawal's fee while it is on its way, worked out as the
+  // Withdraw dialog and the server do; a quoted fee (Wise) only once paid.
+  const withdrawingFee = (w) => {
+    // Not until the country is read: a US factory never sees the international fee first.
+    if (factoryCountry == null || w.provider !== "paypal" || !(Number(w.amount_cents) > 0)) return null;
+    return withdrawalFee({ provider: "paypal", amountCents: Number(w.amount_cents), currency: "USD", country: factoryCountry }).feeCents ?? null;
+  };
   const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
     if (client === "All clients") return [row];
     const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
@@ -452,7 +468,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     }),
     // Withdrawals span clients, so they are listed under All clients only:
     // from the server's own list (the card's lines read the same one).
-    ...(client !== "All clients" ? [] : serverWithdrawalRows(serverList, { pool: poolById, stripe: stripeById, methodName: stripeMethodName }))
+    ...(client !== "All clients" ? [] : serverWithdrawalRows(serverList, { pool: poolById, stripe: stripeById, methodName: stripeMethodName, feeFor: withdrawingFee }))
       .map((row) => (row.arrives ? { ...row, meta: [row.meta, dateLabel(row.arrives)].filter(Boolean).join(" · ") } : row)),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,

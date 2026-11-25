@@ -226,7 +226,10 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (milestone.kind === "progress_only") return posted ? "Update posted" : "Nothing posted yet";
     if (isFactory) {
-      if (!posted) return `Nothing posted yet${held}`;
+      // Its payment's word ("Awaiting approval") would read as approval of
+      // nothing: until the factory posts, the step says only that, unless part
+      // of its money went back to the brand.
+      if (!posted) return held && paymentRefund(payment).factory > 0 ? `Nothing posted yet${held}` : "Nothing posted yet";
       // Funded, the payment's word already says it: one, not the same thing twice.
       return held ? money : "Awaiting the brand's approval";
     }

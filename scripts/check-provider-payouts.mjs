@@ -817,7 +817,7 @@ assert(!/account_number/.test(read("api/_wise.js")), "the Wise module doesn't na
   // The database's refusals are said to staff in words, the amount owed named.
   const refusedWith = (hint, details = null) => paypalPay({ paypal: {}, caller: { rpc: async () => ({ data: null, error: { hint, details } }) }, db: {}, paymentId: "p1", changedAt: "t" });
   await assert.rejects(refusedWith("payout_owes_tsc", "$500.00"),
-    (failure) => failure.message === "The factory owes TSC $500.00 (To recover, in Needs checking). Nothing is paid until that is covered.", "R32: owes TSC");
+    (failure) => failure.message === "The factory owes TSC $500.00 (To recover, in Review needed). Nothing is paid until that is covered.", "R32: owes TSC");
   await assert.rejects(refusedWith("payout_disputed"), (failure) => failure.message === "The brand disputed this payment. It waits until the dispute is settled.");
   await assert.rejects(refusedWith("payout_refunded"), (failure) => failure.message === "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.");
   // R33 (M2): no method to withdraw to: said as it is.

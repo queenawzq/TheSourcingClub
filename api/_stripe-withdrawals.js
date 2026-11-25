@@ -320,7 +320,11 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
       fee = stripeWithdrawalFee({ amountMinor: amount, currency, country, localPerUsd });
       if (fee.refused) return fee.refused;
       if (amount - fee.feeLocalEstimate < stripeMinimumPayout(currency)) {
-        return minimumWithdrawalSentence(stripeMinimumWithdrawal({ currency, country, localPerUsd }), currency);
+        const least = stripeMinimumWithdrawal({ currency, country, localPerUsd });
+        // Asked in US dollars (usd_cents): said in US dollars, as the form asks.
+        return row.usd_cents != null && currency !== "usd" && Number(localPerUsd) > 0
+          ? minimumWithdrawalSentence(Math.ceil(least / Number(localPerUsd)), "USD")
+          : minimumWithdrawalSentence(least, currency);
       }
       return null;
     };
@@ -379,8 +383,12 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
     const { stripeMinimumPayout, stripeMinimumWithdrawal, minimumWithdrawalSentence } = await feeModule();
     if (payoutAmount < stripeMinimumPayout(currency)) {
       // The fee as Stripe converted it left less than its estimate: the same answer as before any reversal.
+      // Asked in US dollars (usd_cents): said in US dollars, as the form asks.
+      const rate = Number(row.fee_local_minor) / Number(row.fee_cents) || 1;
+      const leastLocal = Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: rate }));
       const reason = payoutAmount <= 0 ? CANNOT_PROCESS
-        : minimumWithdrawalSentence(Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: Number(row.fee_local_minor) / Number(row.fee_cents) || 1 })), currency);
+        : row.usd_cents != null && currency !== "usd" ? minimumWithdrawalSentence(Math.ceil(leastLocal / rate), "USD")
+        : minimumWithdrawalSentence(leastLocal, currency);
       await giveBack(stripe, db, row, Number(row.fee_cents), reason, { takeBack: true });
       throw new PayoutMethodRefusal(reason);
     }
@@ -529,7 +537,7 @@ export function checkedSentence({ sent, returned, unsure }) {
 }
 
 /**
- * Staff's "Check again" on a Stripe withdrawal from the "Needs checking"
+ * Staff's "Check again" on a Stripe withdrawal from the "Review needed"
  * tab: a withdrawal stopped half-way is carried on or settled
  * (settleAbandoned), then its parts Stripe was asked for are settled as
  * staff may (settleAttempted). Never makes a second transfer.

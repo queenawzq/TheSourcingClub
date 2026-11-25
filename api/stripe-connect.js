@@ -171,7 +171,7 @@ export default async function handler(request, response) {
         // TSC collects the company's details (in Stripe's embedded form) and
         // carries its losses, so TSC can change its payout accounts on TSC's
         // own page; Express accounts made before 2026-10-30 cannot.
-        const account = await stripe.accounts.create({
+        const base = {
           controller: MANAGED_CONTROLLER,
           country: code,
           email: auth?.user?.email ?? undefined,
@@ -179,7 +179,24 @@ export default async function handler(request, response) {
           business_profile: { name: org.name },
           metadata: { org_id: orgId },
           settings: { payouts: { schedule: { interval: "manual" } } },
-        });
+        };
+        // What the company already told TSC (its website), so Stripe's form
+        // does not ask for it again (TSC collects the requirements here).
+        const known = await knownCompanyDetails(db, orgId);
+        // A detail Stripe will not take (a website it refuses, say) must never
+        // stop the setup: it is left out, and the form asks for it as before.
+        const tries = [...(known.businessProfile.url ? [{ ...base, business_profile: { ...base.business_profile, ...known.businessProfile } }] : []), base];
+        let account;
+        for (const [index, params] of tries.entries()) {
+          try {
+            account = await stripe.accounts.create(params);
+            break;
+          } catch (failure) {
+            // Only a refusal of the prefilled detail is retried without it.
+            if (failure?.type !== "StripeInvalidRequestError" || !String(failure?.param ?? "").startsWith("business_profile") || index === tries.length - 1) throw failure;
+            logStripeFailure("stripe-connect prefill", failure, { orgId });
+          }
+        }
         await saveConnectAccount(db, orgId, account);
         accountId = account.id;
       }
@@ -319,6 +336,23 @@ export default async function handler(request, response) {
 const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_to, fee_cents, receives_minor, receives_currency, reason, back_cents, created_at, paid_at, updated_at";
 
 /**
+ * The company's own website for a new payout account, as saved on its TSC
+ * profile, so Stripe's form does not ask for it again. Its name is sent as
+ * the business name already. The address and legal name cannot be sent:
+ * Stripe takes them only with the business type (company or individual),
+ * which the form asks and TSC does not know. Never throws.
+ */
+async function knownCompanyDetails(db, orgId) {
+  try {
+    const { data: profile } = await db.from("factory_profiles").select("website_url").eq("org_id", orgId).maybeSingle();
+    const website = String(profile?.website_url ?? "").trim();
+    return { businessProfile: /^https?:\/\/[^\s.]+\.[^\s]+$/i.test(website) ? { url: website } : {} };
+  } catch {
+    return { businessProfile: {} };
+  }
+}
+
+/**
  * The factory's balance, read one way by every member (the Payments page's
  * one read, src/app/order/use-factory-balance.js):
  *
@@ -454,6 +488,12 @@ async function readBalance({ stripe, db, caller, orgId, owner, load = false, res
     if (!owner) return reply(response, 200, answer);
     const [allocation, methods, onTheirWay] = ownerReads;
     const migration = await upgradeReadiness(stripe, upgrade);
+    // A payout a withdrawal made is listed from the company's own record
+    // (factory_balance().withdrawals): Stripe's copy of it would be a second
+    // row, at Stripe's converted amount. Read after Stripe's list, so a
+    // payout Stripe lists has been recorded by now.
+    const recorded = await db.from("stripe_withdrawals").select("payout_id").eq("org_id", orgId).not("payout_id", "is", null);
+    const recordedIds = new Set((recorded.data ?? []).map((row) => row.payout_id));
     return reply(response, 200, {
       ...answer,
       displayFx, recovery,
@@ -461,7 +501,7 @@ async function readBalance({ stripe, db, caller, orgId, owner, load = false, res
       defaultCurrency: account.default_currency,
       available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
       pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
-      payouts: allocation.payouts,
+      payouts: allocation.payouts.filter((payout) => !recordedIds.has(payout.id)),
       pendingEarnings: allocation.pending,
       // Withdrawals not yet at the bank, and which account each is going to:
       // that account cannot be removed until its money arrives.

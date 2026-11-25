@@ -79,7 +79,7 @@
 .payout-status-failed, .payout-status-canceled, .payout-status-cancelled, .payout-status-declined, .payout-status-refunded,
 .payout-status-reversed-by-the-brand\'s-bank, .payout-status-order-cancelled { background: #fff0ed; color: #b93824 !important; }
 .payout-status-processing, .payout-status-payment-processing, .payout-status-sent, .payout-status-to-be-sent,
-.payout-status-on-its-way, .payout-status-pending, .payout-status-on-hold, .payout-status-waiting,
+.payout-status-on-its-way, .payout-status-pending, .payout-status-on-hold, .payout-status-waiting, .payout-status-awaiting-review,
 .payout-status-awaiting-approval { background: #eaf2ff; color: var(--blue) !important; }
 .brand-transaction-view { display: flex; align-items: center; justify-self: end; gap: 12px; color: var(--text); text-decoration: none; }
 .brand-transaction-view strong { font-size: 15px; }

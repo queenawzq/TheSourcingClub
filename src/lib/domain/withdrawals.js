@@ -19,7 +19,7 @@ const REFUSALS = {
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
 };
 /** Staff's words when a withdrawal waits on money the factory owes TSC (api/_withdrawals.js says the same). */
-export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.`;
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Review needed). This withdrawal waits until the factory's earnings cover it. You can still decline it.`;
 const said = (error) => new Error(error?.hint === "withdrawal_owes_tsc" ? owesTscSentence(error.details)
   : REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.");
 
@@ -70,7 +70,7 @@ export async function adminWithdrawals() {
 export const previewWithdrawal =(id, cnyConfirmed = false) => call({ action: "preview", withdrawalId: id, cnyConfirmed });
 export const approveWithdrawal = (id, cnyConfirmed = false) => call({ action: "approve", withdrawalId: id, cnyConfirmed });
 export const syncWithdrawals = (provider) => call({ action: "sync", provider });
-/** Staff's "Check again" on a Stripe withdrawal under "Needs checking": { sentence, sent, returned, unsure }. */
+/** Staff's "Check again" on a Stripe withdrawal under "Review needed": { sentence, sent, returned, unsure }. */
 export const checkStripeWithdrawal = (id) => call({ action: "check_stripe", withdrawalId: id });
 
 export async function declineWithdrawal(id, reason) {
