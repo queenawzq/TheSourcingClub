@@ -1213,7 +1213,7 @@ await deliverMessage(must(await brand.client.from("messages").insert({
 }).select("id").single(), "order message"), "deliver the order message");
 
 // A received non-English message with a known English rendering, so testers
-// can exercise Translate to English / Show Original without a model key.
+// can exercise Translate to English / See original without a model key.
 await deliverMessage(must(await admin.from("messages").insert({
   thread_id: orderThread?.id ?? orderThread, sender_org_id: factoryOrg.id, sender_user_id: factory.id,
   body: "袖口按照新的尺寸表做好了，请确认。", body_lang: "zh",

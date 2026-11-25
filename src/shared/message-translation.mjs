@@ -9,7 +9,7 @@ export function englishTranslation(message, { own = false } = {}) {
       translation: message.body_translated,
       language: "en",
       showAltLabel: "Translate to English",
-      hideAltLabel: "Show Original",
+      hideAltLabel: "See original",
     } : {}),
   };
 }
