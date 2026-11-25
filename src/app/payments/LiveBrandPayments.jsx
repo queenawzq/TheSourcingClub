@@ -21,7 +21,7 @@ import { can } from "../../lib/domain/org.js";
 import { listPaymentsForOrders, listStepCharges } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
-import { brandPaymentRefunds } from "../../lib/domain/payment-reviews.js";
+import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
@@ -58,7 +58,12 @@ export default function LiveBrandPayments({ org }) {
         DISCOUNTS_USABLE ? listDiscountCodes(org.id) : [],
         DISCOUNTS_USABLE ? savingsFor(org.id) : null,
       ]);
-      return { loaded: { orders, payments, stepCharges, refunds }, codes, savings };
+      // Which payments are under a chargeback, per order that holds money
+      // (order_pause); a failed read leaves the payment's own word.
+      const holding = [...new Set(payments.filter((payment) => ["confirmed", "released"].includes(payment.state)).map((payment) => payment.order_id))];
+      const pauses = await Promise.all(holding.map((id) => orderPause(id).catch(() => null)));
+      const disputedIds = new Set(pauses.flatMap((pause) => pause?.disputed_payment_ids ?? []));
+      return { loaded: { orders, payments, stepCharges, refunds, disputedIds }, codes, savings };
     })().then(
       (loaded) => !cancelled && setState({ ...loaded, error: null }),
       (error) => !cancelled && setState({ loaded: null, codes: [], savings: null, error }),
