@@ -140,6 +140,8 @@ as $$
            'paused', true,
            'step_title', (array_agg(coalesce(m.title, o.order_number) order by v.created_at))[1],
            'order_number', (array_agg(o.order_number order by v.created_at))[1],
+           -- T2 Y1: the first review's cause, so the card line says it: 'dispute' | 'refund'.
+           'cause', (array_agg(v.cause order by v.created_at))[1],
            'since', min(v.created_at),
            'count', count(*)) end
     from public.payment_reviews v
