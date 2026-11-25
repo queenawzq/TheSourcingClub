@@ -383,8 +383,12 @@ async function carryOut({ stripe, db, row, country, requestId, destination, tran
     const { stripeMinimumPayout, stripeMinimumWithdrawal, minimumWithdrawalSentence } = await feeModule();
     if (payoutAmount < stripeMinimumPayout(currency)) {
       // The fee as Stripe converted it left less than its estimate: the same answer as before any reversal.
+      // Asked in US dollars (usd_cents): said in US dollars, as the form asks.
+      const rate = Number(row.fee_local_minor) / Number(row.fee_cents) || 1;
+      const leastLocal = Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: rate }));
       const reason = payoutAmount <= 0 ? CANNOT_PROCESS
-        : minimumWithdrawalSentence(Math.max(amount + 1, stripeMinimumWithdrawal({ currency, country, localPerUsd: Number(row.fee_local_minor) / Number(row.fee_cents) || 1 })), currency);
+        : row.usd_cents != null && currency !== "usd" ? minimumWithdrawalSentence(Math.ceil(leastLocal / rate), "USD")
+        : minimumWithdrawalSentence(leastLocal, currency);
       await giveBack(stripe, db, row, Number(row.fee_cents), reason, { takeBack: true });
       throw new PayoutMethodRefusal(reason);
     }
