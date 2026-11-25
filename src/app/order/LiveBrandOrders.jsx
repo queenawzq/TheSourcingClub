@@ -24,7 +24,7 @@ export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
   const tabStore = useOrderTabs(org, user);
   // Cancelling has no design: the card menu's item and the reason dialog are
   // live only. The list reloads itself through the item (cancelActionFor).
-  const cancelStore = useOrderCancel({ onViewOrder });
+  const cancelStore = useOrderCancel({ onViewOrder, isFactory: false });
   const { navigate } = useRouter();
   const [reordering, setReordering] = useState(false);
   const [reorderError, setReorderError] = useState(null);

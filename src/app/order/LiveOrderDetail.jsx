@@ -187,7 +187,8 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
       if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
       if (!payment.release_requested_at) return "Funded: held by TSC";
       // One balance: approved money waits in the factory's balance until it withdraws.
-      return kind === "payment_only" ? "Funded: added to the factory's balance" : "Approved: added to the factory's balance";
+      // Funded, as Payments says it, until the factory withdraws it (Paid).
+      return "Funded: added to the factory's balance";
     case "released":
       // The factory's word, as on Payments: a Stripe transfer is in its balance.
       return isFactory ? factoryWord(payment) : "Paid";
@@ -435,7 +436,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   // Cancelling has no design: the banner, the dialog and the side panel's
   // "Cancel order" are live only (CancelNotice, CancelOrderDialog).
-  const cancel = useOrderCancel({ onChanged: load });
+  const cancel = useOrderCancel({ onChanged: load, isFactory, payments: milestones.map((milestone) => milestone.payment).filter(Boolean) });
 
   // The parts that do not change as the order moves: the request's files, the
   // other company's location, and the snapshot's term labels. Each one is
@@ -613,10 +614,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...reminder,
       // Discussion remains open after approval, including completed orders.
       // A factory's post is an update (Add update); a brand's is a comment.
+      // A deposit or balance (payment-only) has no work to post on, done or not.
       canComment: (running || order.status === "completed")
         && (!isFactory || viewer.canUpdate)
-        && (milestone.state === "complete" || (milestone.kind !== "payment_only"
-          && (milestone.state === "active" || milestone.state === "submitted"))),
+        && milestone.kind !== "payment_only"
+        && ["complete", "active", "submitted"].includes(milestone.state),
       // Keep the factory's next action visible on every work/approval step,
       // just as the brand sees its future milestone CTAs. Pending buttons are
       // disabled until sequencing opens the step; payment-only rows need no
@@ -704,7 +706,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     ? () => cancel.propose({ id: order.id, title: header.title, counterparty: other })
     : null;
   const cancelBanner = (
-    <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
+    <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel}
+      payments={milestones.map((milestone) => milestone.payment).filter(Boolean)} />
   );
 
   const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;
@@ -820,8 +823,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           orderId, milestoneId: milestone.id, orgId: org.id, reason: body, files,
         }))}
         onRemind={remind}
-        onManageMilestones={viewer.canSetSteps ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
-        manageMilestonesLocked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
+        // A cancelled or completed order has no steps left to change.
+        onManageMilestones={viewer.canSetSteps && running ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
+        manageMilestonesLocked={viewer.canSetSteps || !running ? "" : permissionHint(org, "rfqFlow")}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}

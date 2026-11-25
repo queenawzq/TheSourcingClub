@@ -448,6 +448,7 @@ export const factoryMainZhText = {
   "Helpful reminder": "提示",
   "Factories should quote exact units and exact lead time here. MOQ only belongs on profile/search, not on a response to a known order quantity.": "这里应填写准确件数和准确交期。MOQ 更适合放在工厂资料或搜索页，不适合用于已知订单数量的报价回复。",
   "Track confirmed production orders, sample approvals, milestones, messages, and shared files.": "跟踪已确认生产订单、样品审批、里程碑、消息和共享文件。",
+  "Track confirmed production orders, sample approvals, production steps, messages, and shared files.": "跟踪已确认生产订单、样品审批、生产步骤、消息和共享文件。",
   "Search production orders": "搜索生产订单",
   "Order name, ID, or brand...": "订单名称、编号或品牌...",
   "Factory": "工厂",
@@ -1288,6 +1289,7 @@ export const factoryMainZhText = {
   "Vendor should source all materials and components": "供应商需采购全部面辅料和部件",
   "Brand will supply all materials": "品牌提供全部面辅料",
   "No production orders yet.": "暂无生产订单。",
+  "No active orders.": "暂无进行中的订单。",
   "Bulk production": "大货生产",
   "Final balance": "尾款",
   "Deposit": "定金",
@@ -6636,7 +6638,7 @@ export function FactoryProjectsPage({
         <header className="rfqs-header projects-header">
           <div>
             <h1>Production orders</h1>
-            <p>Track confirmed production orders, sample approvals, milestones, messages, and shared files.</p>
+            <p>{live ? "Track confirmed production orders, sample approvals, production steps, messages, and shared files." : "Track confirmed production orders, sample approvals, milestones, messages, and shared files."}</p>
           </div>
         </header>
 
@@ -6802,7 +6804,7 @@ export function FactoryProjectsPage({
                 ? "No cancelled orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
-                : live ? "No production orders yet." : "No production orders yet. One appears here when a brand awards you a quote."}
+                : live ? (orderRows.length ? "No active orders." : "No production orders yet.") : "No production orders yet. One appears here when a brand awards you a quote."}
             </p>
           ) : (
             ordersForTab.map((project) => (
@@ -10676,7 +10678,7 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
         <CloseIconButton className="factory-update-close" label={isZh ? "关闭添加更新" : "Close add update"} onClick={onClose} />
         <header>
           <h2 id="factory-update-title">{isZh ? `添加${milestoneTitle}更新` : `Add ${milestoneTitle} update`}</h2>
-          <p>{isZh ? `分享进度照片和简短说明，供 ${brand} 在审批此里程碑前查看。` : `Share progress photos and a short note for ${brand} to review before this milestone is approved.`}</p>
+          <p>{isZh ? `分享进度照片和简短说明，供 ${brand} 在审批此${live ? "步骤" : "里程碑"}前查看。` : `Share progress photos and a short note for ${brand} to review before this ${live ? "step" : "milestone"} is approved.`}</p>
         </header>
 
         <label className="factory-update-note">

@@ -97,7 +97,7 @@ const ZH_SAMPLES = [
   { kind: "quote_received", title: 'Ningbo Knit sent a quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
   { kind: "quote_received", title: 'Ningbo Knit sent a revised quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
   { kind: "quote_withdrawn", title: 'Ningbo Knit withdrew its quote on "Organic tees"', body: "It no longer appears in your comparison." },
-  { kind: "order_created", title: "Production order TSC-1042 is ready", body: "Ningbo Knit accepted. Review the production steps drafted from their quote, then confirm them to start." },
+  { kind: "order_created", title: "Production order TSC-1042 is ready", body: "You accepted Ningbo Knit's quote. Review the production steps, then confirm them to start." },
   { kind: "order_cancelled", title: "TSC-1042 was cancelled", body: "Brand changed plans", typed: true },
   { kind: "rfq_cancelled", title: 'Maison Rue cancelled "Organic tees"', body: "The brand is no longer taking quotes on this request." },
   { kind: "rfq_matched", title: 'New request that matches you: "Organic tees"', body: "Maison Rue is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: "2026-11-20T15:59:00Z" } },
@@ -373,7 +373,8 @@ async function formatters() {
     expect("brand payments: due row", payments.rows?.[0]?.date, "Oct 26, 2026");
     // Round 36: main's words and split. TSC holds approved money (and a
     // funded deposit) until the factory withdraws it, so it is Held; Paid is
-    // what was paid out. A funded deposit reads Funded.
+    // what was paid out. A funded deposit and an approved step read Funded,
+    // the word for what Held counts (flow check W7).
     const oneBalance = brandPaymentsView({
       orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
       payments: [
@@ -383,7 +384,16 @@ async function formatters() {
         { id: "out", order_id: "o", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
       ],
     });
-    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Approved,out:Paid,wait:Funded");
+    expect("brand payments: date order", brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
+      payments: [
+        { id: "a", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "A", due_on: "2026-11-28" } },
+        { id: "b", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "B", due_on: "2026-12-09" } },
+        { id: "c", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-24T10:00:00Z", order_milestones: { title: "C" } },
+        { id: "d", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-25T10:00:00Z", released_at: "2026-11-30T10:00:00Z", order_milestones: { title: "D" } },
+      ],
+    }).rows.map((row) => row.id).join(","), "a,b,d,c");
+    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Funded,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");
     // Refunds (20261121200000): a partial one nets the figure; a full one
@@ -400,6 +410,18 @@ async function formatters() {
       "full:Refunded:$0.00,lost:Reversed by your bank:$0.00,part:Funded:$53.50");
     expect("brand payments: Held, net", refunds.metrics.find(([name]) => name === "Held")?.[1], "$53.50");
     expect("brand payments: Paid, net", refunds.metrics.find(([name]) => name === "Paid")?.[1], "$0.00");
+
+    // Cancelling (flow check E4): refunds already made count, so no money
+    // sentence claims more than is still there.
+    {
+      const { cancelMoneyLines } = await load("/src/app/order/cancel-money.mjs");
+      const paidOutThenRefunded = { state: "released", release_requested_at: "2026-11-20T10:00:00Z", refunded_at: "2026-11-21T10:00:00Z", amount_cents: 100000, charged_cents: 107000, charge_cents: 107000, refunded_cents: 107000, factory_refund_cents: 100000, currency: "USD" };
+      const halfRefunded = { state: "confirmed", amount_cents: 100000, charged_cents: 107000, charge_cents: 107000, refunded_cents: 53500, factory_refund_cents: 50000, currency: "USD" };
+      expect("cancel: refunded after payout, brand", cancelMoneyLines([paidOutThenRefunded], { isFactory: false, counterparty: "F", cancelled: true }).join(" "), "$1,070.00 refunded to you.");
+      expect("cancel: refunded after payout, factory", cancelMoneyLines([paidOutThenRefunded], { isFactory: true, counterparty: "B", cancelled: true }).join(" "), "$1,000.00 refunded to B.");
+      expect("cancel: half refunded, brand", cancelMoneyLines([halfRefunded], { isFactory: false, counterparty: "F" }).join(" "), "$535.00 refunded to you. $535.00 paid for steps not yet released is refunded to you.");
+      expect("cancel: half refunded, factory", cancelMoneyLines([halfRefunded], { isFactory: true, counterparty: "B" }).join(" "), "$500.00 refunded to B. $500.00 for steps not yet released is refunded to B.");
+    }
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",
