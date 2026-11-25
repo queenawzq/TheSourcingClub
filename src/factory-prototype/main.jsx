@@ -9050,7 +9050,8 @@ function OnboardingVerification({
         onDeleteDocument={onDeleteRegistration}
         requiredMessage={live ? (isZh ? "请上传文件后继续。" : "Upload a file to continue.") : ""}
       />
-      {registration && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
+      {registration?.documentOnly && registration.inUseText && <small className="factory-onboarding-warning" role="status">{registration.inUseText}</small>}
+      {registration && !registration.documentOnly && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
       {content.photosTitle && (
         <OnboardingAssetUploadCard
           title={content.photosTitle}

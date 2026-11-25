@@ -801,7 +801,8 @@ body {
 
 /* The factory's registration number is already another company's on TSC
    (verification v2): one line under the field, never a refusal. */
-.factory-onboarding-field .factory-onboarding-warning { display: block; color: var(--danger); margin-top: 4px; }
+.factory-onboarding-field .factory-onboarding-warning,
+.verification-step > .factory-onboarding-warning { display: block; color: var(--danger); margin-top: 4px; }
 
 /* Settings → Basic information: a factory person's language (SettingsScreen's
    live `onLanguageChange`), drawn like the fields beside it. */
