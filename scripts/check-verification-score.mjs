@@ -129,6 +129,9 @@ console.log("Hong Kong (Nov 25)");
   }, { timeZone: "UTC" });
   const addr = w.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
   check(addr.verdict.startsWith("Same as the licence") && addr.score === SCORES.address.same, `identical addresses match (${addr.verdict}, ${addr.score})`);
+  // Nov 25: compared with the registry's address only (no licence read), it never says "the licence".
+  const registryOnly = addressCheck({ owner: { level: "high", details: { comparisons: [{ between: ["registry", "typed"], verdict: "match", differs: [] }] } }, siteSignal: null, typedAddress: address });
+  check(registryOnly.verdict === "Same as the registry", `an address matched only against the registry says so (${registryOnly.verdict})`);
   const owner = addressOwnerCheck({ typed: address, license: address, registry: "", typedFrom: "production" });
   check(owner.level === "high" && compareAddresses(address, `${address}.`).verdict === "match", `the address check itself says identical text is the same address (${owner.level})`);
   check(compareAddresses("Merter, Güngören, Istanbul", "Merter, Güngören, Istanbul").verdict !== "match", "an identical area with no number is still only an area");
