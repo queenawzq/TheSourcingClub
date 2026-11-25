@@ -135,7 +135,7 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
         <div className="payout-pending-details">
           <span className="payout-pending-label" data-testid="withdrawal-open-word">{wordOf(row)}</span>
           <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row) - feeOf(row), row.currency)}</span>
-          {feeOf(row) > 0 ? <span className="payout-pending-destination">{`Fee ${formatMoney(feeOf(row), row.currency)}, taken from it`}</span> : null}
+          {feeOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-fee">{`Fee ${formatMoney(feeOf(row), row.currency)}, taken from it`}</span> : null}
           {/* The brand's bank took part of it back (refund_cause "reversed"): the row's words for it. */}
           {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{reversed instanceof Set && reversed.has(row.id)
             ? reversedByBankLine(formatMoney(refundedOf(row), row.currency)) : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
