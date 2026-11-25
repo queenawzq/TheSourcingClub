@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { EMAIL_LOGO_URL } from "./_email-assets.js";
+import { emailTransport } from "./_notification-sender.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 // Loaded with import(), not a static import: Vercel compiles api/*.js to
 // CommonJS, and a static import of this .mjs becomes a require() that
@@ -38,7 +39,11 @@ export default async function handler(request, response) {
   const from = process.env.RESEND_FROM_EMAIL;
   const authorization = request.headers.authorization;
 
-  if (!supabaseUrl || !anonKey || !serviceKey || !resendKey || !from) {
+  // Resend, as always, when it is set up. Only without it, on a local copy (never on Vercel), the shared
+  // transport's Mailpit takes the same message, so the email can be read at http://127.0.0.1:54324.
+  const local = resendKey && from ? null : emailTransport();
+  const mailpit = local?.name === "mailpit" ? local : null;
+  if (!supabaseUrl || !anonKey || !serviceKey || (!(resendKey && from) && !mailpit)) {
     response.status(503).json({ sent: 0, error: "onboarding email is not configured on the server" });
     return;
   }
@@ -121,17 +126,22 @@ export default async function handler(request, response) {
         // nothing: the email makes no $50 promise.
         reward: false,
       });
-      const delivery = await fetch(RESEND_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": `onboarding-${row.org_id}-${row.recipient_user_id}-${row.submitted_at}`,
-        },
-        body: JSON.stringify({ from, to: [row.recipient_email], reply_to: REPLY_TO, ...message }),
-      });
-      const payload = await delivery.json().catch(() => ({}));
-      if (!delivery.ok) throw new Error(payload.message || `email provider returned ${delivery.status}`);
+      let payload;
+      if (mailpit) {
+        payload = { id: await mailpit.send({ id: `onboarding-${row.org_id}-${row.recipient_user_id}`, recipient_email: row.recipient_email, recipient_name: row.recipient_name ?? null }, message) };
+      } else {
+        const delivery = await fetch(RESEND_ENDPOINT, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": `onboarding-${row.org_id}-${row.recipient_user_id}-${row.submitted_at}`,
+          },
+          body: JSON.stringify({ from, to: [row.recipient_email], reply_to: REPLY_TO, ...message }),
+        });
+        payload = await delivery.json().catch(() => ({}));
+        if (!delivery.ok) throw new Error(payload.message || `email provider returned ${delivery.status}`);
+      }
 
       await rowKey(
         service
