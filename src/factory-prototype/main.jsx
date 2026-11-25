@@ -1472,7 +1472,76 @@ export const factoryMainZhText = {
   "e.g. 7–10 days": "例如 7–10 天",
   "e.g. 1 revision": "例如 1 次修改",
   "Choose a quote validity date": "选择报价有效期",
-  "Your quote is a draft and has not been sent yet.": "你的报价是草稿，尚未发送。"
+  "Your quote is a draft and has not been sent yet.": "你的报价是草稿，尚未发送。",
+  // The profile's edit dialogs, the trading company's profile and the badge's words.
+  "Edit overview": "编辑概览",
+  "Update the factory details brands see at the top of this profile.": "更新品牌在资料顶部看到的工厂信息。",
+  "Edit production fit": "编辑生产匹配",
+  "Update the production tags brands use to find and evaluate this factory.": "更新品牌用来查找和评估工厂的生产标签。",
+  "Edit client references": "编辑客户参考",
+  "Add or update the brand references shown on the public profile.": "添加或更新公开资料中显示的品牌参考。",
+  "Edit profile images": "编辑资料图片",
+  "Upload or replace the profile image used on this profile.": "上传或替换资料中使用的头像图片。",
+  "Manage walkthrough": "管理巡视视频",
+  "Update the verified production-floor walkthrough and covered areas.": "更新已验证的生产车间巡视视频和拍摄区域。",
+  "Update sample images": "更新样品图片",
+  "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit.": "添加样衣、开发案例和成品图片，展示工厂最擅长的生产类型。",
+  "Manage verification documents": "管理验证文件",
+  "Upload certificates and registration documents for profile review.": "上传证书和营业执照，用于资料审核。",
+  "Edit company overview": "编辑公司概览",
+  "Update the company details brands see at the top of this profile.": "更新品牌在资料顶部看到的公司信息。",
+  "Edit supplier network": "编辑供应商网络",
+  "Update the production programs, categories and regions your partner network covers.": "更新合作工厂网络覆盖的生产合作模式、品类和地区。",
+  "Edit services and oversight": "编辑服务与监督",
+  "Update what your team manages directly across development and production.": "更新团队在开发和生产中直接负责的工作。",
+  "Edit commercial terms": "编辑商务条件",
+  "Keep MOQ, lead time, order value and partner factory details current.": "请及时更新 MOQ、交期、订单金额和合作工厂信息。",
+  "Only an owner can change the name.": "只有所有者可以修改名称。",
+  "Company overview": "公司概览",
+  "Company name": "公司名称",
+  "Team size": "团队人数",
+  "Languages": "支持语言",
+  "Languages supported": "支持语言",
+  "Headquarters": "总部",
+  "Production programs": "生产合作模式",
+  "Production programs supported": "支持的生产合作模式",
+  "Products sourced": "采购产品",
+  "Sourcing regions": "采购地区",
+  "Core services": "核心服务",
+  "Product development": "产品开发",
+  "Quality and compliance": "质量与合规",
+  "Quality & compliance": "质量与合规",
+  "Primary destination markets": "主要销售市场",
+  "Other capabilities": "其他能力",
+  "Typical MOQ": "常规最低起订量",
+  "Typical minimum order": "常规最低起订量",
+  "Typical order value": "常规订单金额",
+  "Number of active partner factories": "活跃合作工厂数量",
+  "Supported Incoterms": "支持的国际贸易术语",
+  "Typical payment terms": "常规付款条件",
+  "Partner factories": "合作工厂",
+  "Incoterms": "国际贸易术语",
+  "Active factories": "活跃工厂",
+  "Primary markets": "主要市场",
+  "None selected": "未选择",
+  "No sourcing work added yet.": "暂无采购项目。",
+  "Laser cutting": "激光裁剪",
+  "Official registry checked": "已核验官方登记信息",
+  "Registration document checked": "已核验营业执照",
+  "Approved by TSC": "已通过 TSC 审核",
+  "Verification pending": "待验证",
+  "One brand name per line.": "每行填写一个品牌名称。",
+  "Business registration certificate": "营业执照 / 公司注册文件",
+  "View": "查看",
+  "Add certifications you hold": "添加你持有的认证",
+  "Add certification": "添加认证",
+  "Type certification name, e.g. WRAP, SEDEX, ISO 9001": "输入认证名称，例如 WRAP、SEDEX、ISO 9001",
+  "+ Add video": "+ 添加视频",
+  "+ Add image": "+ 添加图片",
+  "Add video": "添加视频",
+  "Add image": "添加图片",
+  "Edit video": "编辑视频",
+  "Edit image": "编辑图片",
 };
 
 // The profile's completion note lists these ("Add your factory details and
@@ -3479,6 +3548,8 @@ export function TradingCompanyProfilePage({ language = "en", onViewCompletion, l
 
   return (
     <main className={`factory-profile-page trading-company-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
+      {/* Live, the page's own labels in the person's language, as on the factory's profile. */}
+      {live && <FactoryMainLanguageLayer language={language} scope=".trading-company-profile-page" keep={live.ownWords} />}
       <div className="factory-profile-shell">
         <ProfileOwnerBar
           ariaLabel={text("Trading company profile view", "贸易公司资料视图")}
@@ -4991,7 +5062,9 @@ function ProfileCapacityEditor({ form, onChange, months, language = "en" }) {
 
         <div className="capacity-brand-preview onboarding-capacity-preview">
           <span>BRANDS WILL SEE</span>
-          <strong>{`${selectedCategory.label} · ${monthNames[0]} start · roughly ${pieceSummary} pieces that month`}</strong>
+          <strong>{language === "zh"
+            ? `${selectedCategory.labelZh} · ${translateFactoryMainText(monthNames[0])} 可开始 · 当月约 ${pieceSummary} 件`
+            : `${selectedCategory.label} · ${monthNames[0]} start · roughly ${pieceSummary} pieces that month`}</strong>
           <p>{previewFormula}</p>
         </div>
       </section>
