@@ -342,7 +342,7 @@ select ok((select disputed_at is null and dispute_lost_cents = 53500 and dispute
              from public.order_payments where id = pg_temp.pay(5)),
   'recorded as the disputed amount gone back; the hold ends; the fee kept; the factory''s earning kept for the review');
 select is(pg_temp.told(pg_temp.org(3), pg_temp.pay(5)),
-  'Withdrawals paused | A brand requested a refund for "R17 bulk deposit" on R17 request 3 (R17-3), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'Withdrawals paused | A brand disputed a card payment for "R17 bulk deposit" on R17 request 3 (R17-3), so our team is reviewing it. Withdrawals are paused until the review is done.',
   'the factory is told only that withdrawals are paused: no hold notice, no "owe TSC"');
 select is((select title || ' | ' || body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(5)
               and kind = 'payment_refunded'),
