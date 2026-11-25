@@ -129,6 +129,12 @@ console.log("Hong Kong (Nov 25)");
   }, { timeZone: "UTC" });
   const addr = w.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
   check(addr.verdict.startsWith("Same as the licence") && addr.score === SCORES.address.same, `identical addresses match (${addr.verdict}, ${addr.score})`);
+  // Nov 25: a check recorded for the first licence, the company then uploading one with another number.
+  const recheck = registryCheck({
+    detail: { registration: { country: "CN", number: "91510802MAK30JGA1A" }, current: { id: "c", source: "gsxt", result: "found", checked_at: "2026-11-24T10:00:00Z", details: { form: 2, outcome: "found", site: "GSXT", name: "广元盛远国际贸易有限公司", number: "91510802MAK30JGA1A" } }, checks: [{ id: "c" }] },
+    country: "CN", title: "广元盛远国际贸易有限公司", timeZone: "UTC", documentDiffers: "number", typedAddress: "",
+  });
+  check(/licence shows another number/.test(recheck.verdict) && !/number match/.test(recheck.registry?.summary ?? ""), `a check on the old licence's number no longer says it matches (${recheck.verdict} / ${recheck.registry?.summary})`);
   // Nov 25: compared with the registry's address only (no licence read), it never says "the licence".
   const registryOnly = addressCheck({ owner: { level: "high", details: { comparisons: [{ between: ["registry", "typed"], verdict: "match", differs: [] }] } }, siteSignal: null, typedAddress: address });
   check(registryOnly.verdict === "Same as the registry", `an address matched only against the registry says so (${registryOnly.verdict})`);

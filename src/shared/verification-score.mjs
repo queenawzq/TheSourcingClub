@@ -16,7 +16,7 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
+import { companyNameKey, registrationNumberProblem, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
 // The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
@@ -375,13 +375,22 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   if (current && current.details?.form === 2) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const by = byWords(person.checkedBy, current.checked_at, timeZone);
-    const asSaved = siteRecord(current.details ?? {}, form.profile);
+    const recorded = siteRecord(current.details ?? {}, form.profile);
+    // The licence now shows another number or name than the one checked (a new upload, Nov 25): the check no longer
+    // says that one matches.
+    const asSaved = documentDiffers && recorded.result === "found"
+      ? { ...recorded, compared: { ...recorded.compared, [documentDiffers === "number" ? "number" : "name"]: false } }
+      : recorded;
     // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
     const saved = addressConfirmed
       ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
       : asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
     out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
+    if (documentDiffers && saved.result === "found") {
+      const where = saved.site || "the site";
+      out = { ...out, verdict: `Found on ${where}; the licence shows another ${documentDiffers === "number" ? "number" : "name"}`, short: `found on ${where}` };
+    }
     if (detail.renamedSinceCheck && saved.result === "found") {
       out = { score: null, verdict: "Renamed since the check", registry: { ...out.registry, for: current.details?.titleAtCheck ?? current.details?.nameAtCheck ?? null } };
     }
@@ -1048,8 +1057,13 @@ export function scoreVerification(input, { timeZone } = {}) {
   // Staff's own result on the address, for the address now typed (Nov 25).
   const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
     .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
+  // The registry is the document's country: a mainland licence (an 18-character credit code that passes its check)
+  // is checked on China's registry, whatever the address (Nov 25: a Hong Kong office's Sichuan licence was sent to
+  // the Hong Kong Companies Registry).
+  const registryCountry = country !== "CN" && readValues.registrationNumber && registrationNumberProblem("CN", readValues.registrationNumber) === null
+    ? "CN" : country;
   const registry = withReason(registryCheck({
-    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
+    detail, country: registryCountry, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
   // Company information's inputs, read here: the address check is in this group (Nov 25).
