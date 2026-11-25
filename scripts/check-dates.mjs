@@ -392,7 +392,7 @@ async function formatters() {
         { id: "c", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-24T10:00:00Z", order_milestones: { title: "C" } },
         { id: "d", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-25T10:00:00Z", released_at: "2026-11-30T10:00:00Z", order_milestones: { title: "D" } },
       ],
-    }).rows.map((row) => row.id).join(","), "b,a,d,c");
+    }).rows.map((row) => row.id).join(","), "a,b,d,c");
     expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Funded,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");

@@ -17,8 +17,8 @@
  * payments yet, so its paying steps count at what order_step_charges says
  * they will charge (the database knows the rates; JavaScript does not).
  * The list shows what has happened or is owed now: what is owed comes first,
- * then the rest, each by the date its row shows, newest first. A step not
- * reached yet counts only in "Remaining".
+ * soonest due first, then the rest newest first, each by the date its row
+ * shows. A step not reached yet counts only in "Remaining".
  */
 import { plainCardReason } from "../../shared/card-words.mjs";
 import { chargedCents } from "../../lib/domain/payment.js";
@@ -90,12 +90,12 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
 
   const rows = listed
     .filter((payment) => paymentStatusWord(payment, byOrder.get(payment.order_id)))
-    // What is owed first, then everything by the date its row shows, newest
-    // first, so the dates read in order down the list.
+    // What is owed first, soonest due on top; then the rest newest first,
+    // each by the date its row shows.
     .sort((a, b) => {
       const owed = Number(OWED.has(b.state)) - Number(OWED.has(a.state));
       if (owed) return owed;
-      return (shownTime(b) - shownTime(a)) || String(a.id).localeCompare(String(b.id));
+      return (OWED.has(a.state) ? shownTime(a) - shownTime(b) : shownTime(b) - shownTime(a)) || String(a.id).localeCompare(String(b.id));
     })
     .map((payment) => {
       const order = byOrder.get(payment.order_id);
