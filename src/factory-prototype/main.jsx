@@ -8166,7 +8166,8 @@ export function FactoryOnboarding({
       <header className="factory-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
         <div className="factory-onboarding-topbar-actions">
-          <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+          {/* A decided profile with nothing left to do (declined) is not a step in a flow. */}
+          {isLast && completion && !completion.onCta ? null : <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>}
           <button className="onboarding-logout-button" type="button" onClick={onLogout}>{language === "zh" ? "退出登录" : "Log out"}</button>
         </div>
       </header>
@@ -8649,6 +8650,19 @@ function FactoryOnboardingStep({
       noneSelected: isChinese ? "未选择" : "None selected",
       noneAdded: isChinese ? "未添加" : "None added",
       pending: isChinese ? "待补充" : "pending",
+      verified: isChinese ? "已验证" : "verified",
+      expired: isChinese ? "已过期" : "expired",
+      notAccepted: isChinese ? "未通过" : "not accepted",
+    };
+    // Live: staff's decision on a certificate is what the factory reads (Nov 25: "GOTS pending" after staff found it expired).
+    const certificateStatus = (cert) => {
+      if (cert.status === "verified") return reviewStatus.verified;
+      if (cert.status === "rejected") {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        return cert.expiresAt && String(cert.expiresAt) < today ? reviewStatus.expired : reviewStatus.notAccepted;
+      }
+      return cert.fileName ? reviewStatus.uploaded : reviewStatus.pending;
     };
     const listSeparator = isChinese ? "；" : "; ";
     // The drawn rows are an example profile. Live, each row reads what this
@@ -8706,7 +8720,7 @@ function FactoryOnboardingStep({
       }
       if (english === "Certifications") {
         return certifications?.length
-          ? certifications.map((cert) => `${cert.name} ${cert.fileName ? reviewStatus.uploaded : reviewStatus.pending}`).join(listSeparator)
+          ? certifications.map((cert) => `${cert.name} ${certificateStatus(cert)}`).join(listSeparator)
           : reviewStatus.noneAdded;
       }
       if (english === "Client references") {

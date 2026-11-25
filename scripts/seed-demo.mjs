@@ -874,11 +874,13 @@ const CURRENT_TERMS = Object.fromEntries(
       address: "Flat B, 9/F, Kowloon Bay Industrial Centre, 15 Wang Hoi Road, Kowloon Bay, Kowloon", founded: "2022-08-11", scope: "Garment manufacturing and export",
       intro: "Sampling room in Hong Kong with production partners in Guangdong.", employees: 18, signer: "Chan Ka Wai" },
   ];
-  // The location under the name says the country, as onboarding's does.
+  // The location under the name is "City, Country", as the server derives it from the address: never the
+  // street, which brands must not read (Nov 25: Browse showed Pennine's full address).
   const COUNTRY_NAMES = { ES: "Spain", GB: "United Kingdom", IT: "Italy", VN: "Vietnam", IN: "India", BD: "Bangladesh", US: "United States", HK: "Hong Kong" };
+  const CITIES = { verifyEs: "Elche", verifyGb: "Leicester", verifyIt: "Albino", verifyVn: "Hanoi", verifyIn: "Tiruppur", verifyBd: "Gazipur", verifyUs: "Hickory", verifyHk: "Kowloon" };
   for (const c of countryCases) {
     const v = await verifyOrg(c.key, {
-      legal_name: c.legal, country_code: c.country, location: `${c.address}, ${COUNTRY_NAMES[c.country]}`, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
+      legal_name: c.legal, country_code: c.country, location: `${CITIES[c.key]}, ${COUNTRY_NAMES[c.country]}`, founded_year: Number(c.founded.slice(0, 4)), employee_count: c.employees,
       intro: c.intro, signer: c.signer,
     }, { address: c.address, registration: { country: c.country, number: c.number } });
     const file = await upload(v, "business_registration", c.file, { ...doc(c.file), createdAt: day(-1) });

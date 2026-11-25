@@ -19,7 +19,7 @@ export async function loadCertifications(orgId, certificationTerms = []) {
   const rows = unwrap(
     await supabase
       .from("factory_certifications")
-      .select("id, term_id, status, document:documents (id, kind, bucket, storage_path, file_name, status)")
+      .select("id, term_id, status, expires_at, document:documents (id, kind, bucket, storage_path, file_name, status)")
       .eq("org_id", orgId)
       .order("created_at"),
     "load your certifications",
@@ -28,7 +28,7 @@ export async function loadCertifications(orgId, certificationTerms = []) {
     .map((row) => {
       const term = certificationTerms.find((item) => item.id === row.term_id);
       return term
-        ? { id: row.id, termId: row.term_id, name: termLabel(term), status: row.status, fileName: row.document?.file_name ?? "", document: row.document }
+        ? { id: row.id, termId: row.term_id, name: termLabel(term), status: row.status, expiresAt: row.expires_at ?? null, fileName: row.document?.file_name ?? "", document: row.document }
         : null;
     })
     .filter(Boolean);

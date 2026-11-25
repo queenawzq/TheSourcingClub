@@ -302,7 +302,7 @@ export function toRfqRow(rfq) {
     shortDate(rfq.publishedAt ?? rfq.createdAt),
     // A request open to all vendors is quoted by vendors nobody invited, so
     // "0 vendors" beside its quotes read as a miscount.
-    openToAll ? "Open to all vendors" : `${rfq.invitedCount} vendors`,
+    openToAll ? "Open to all vendors" : `${rfq.invitedCount} ${rfq.invitedCount === 1 ? "vendor" : "vendors"}`,
     status,
     status === "Quotes received" ? "success" : tone,
   ], {
@@ -310,7 +310,7 @@ export function toRfqRow(rfq) {
     // The request timeline's line; the design's says "N vendors invited".
     invitedEvent: openToAll
       ? `Published to all vendors${rfq.invitedCount ? `, ${rfq.invitedCount} invited by name` : ""}`
-      : `${rfq.invitedCount} vendors invited to quote`,
+      : `${rfq.invitedCount} ${rfq.invitedCount === 1 ? "vendor" : "vendors"} invited to quote`,
   });
 }
 
@@ -431,6 +431,8 @@ export function createAdminAdapter({ user, signOut }) {
         return decideReview(orgId, decision, note ?? null, null, tier ?? null);
       },
       suggestReviewRequest,
+      // The verification queue arrives oldest first (admin.js queueOrder); its sort button says so.
+      verificationQueueOrder: "oldest",
       resendReviewEmails,
       reviewEmailStatus,
       // The detail screens' data, read when one opens. The row is a queue

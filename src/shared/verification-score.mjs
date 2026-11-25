@@ -16,7 +16,7 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
+import { companyNameKey, registrationNumberProblem, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
 // The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
@@ -174,6 +174,11 @@ const MONTH_DAY = { month: "short", day: "numeric" };
 export function dayWords(iso, timeZone) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-US", { ...MONTH_DAY, ...(timeZone ? { timeZone } : {}) });
+}
+/** A date-only value with its year ("Mar 31, 2025"): a validity date can be years away or past (Nov 25: "Valid until Mar 31"). */
+export function dateWithYear(day) {
+  if (!day) return "";
+  return new Date(`${String(day).slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 export function stampWords(iso, timeZone) {
   if (!iso) return "";
@@ -356,7 +361,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       number: String(prefill?.number || reg?.number || ""),
       address: String(prefill?.address || typedAddress || ""),
     },
-    profile: { name: String(title ?? ""), number: String(reg?.number ?? ""), address: String(typedAddress ?? ""), country: country ?? null },
+    // A number staff saved from their own registry check is not the company's to compare with (Nov 25: "number
+    // matches" against the number staff typed).
+    profile: { name: String(title ?? ""), number: reg?.source === "staff" ? "" : String(reg?.number ?? ""), address: String(typedAddress ?? ""), country: country ?? null },
   };
   const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", ...fields, form });
   const current = detail?.current ?? null;
@@ -368,13 +375,22 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   if (current && current.details?.form === 2) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const by = byWords(person.checkedBy, current.checked_at, timeZone);
-    const asSaved = siteRecord(current.details ?? {}, form.profile);
+    const recorded = siteRecord(current.details ?? {}, form.profile);
+    // The licence now shows another number or name than the one checked (a new upload, Nov 25): the check no longer
+    // says that one matches.
+    const asSaved = documentDiffers && recorded.result === "found"
+      ? { ...recorded, compared: { ...recorded.compared, [documentDiffers === "number" ? "number" : "name"]: false } }
+      : recorded;
     // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
     const saved = addressConfirmed
       ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
       : asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
     out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
+    if (documentDiffers && saved.result === "found") {
+      const where = saved.site || "the site";
+      out = { ...out, verdict: `Found on ${where}; the licence shows another ${documentDiffers === "number" ? "number" : "name"}`, short: `found on ${where}` };
+    }
     if (detail.renamedSinceCheck && saved.result === "found") {
       out = { score: null, verdict: "Renamed since the check", registry: { ...out.registry, for: current.details?.titleAtCheck ?? current.details?.nameAtCheck ?? null } };
     }
@@ -711,18 +727,22 @@ export function addressCheck({ owner, siteSignal, typedAddress }) {
     ?? comparisons.find((c) => c.verdict === "differs");
   const part = differing?.differs?.[0]?.part;
   const against = differing && differing.between.includes("license") ? "the licence" : "the registry";
+  // What the typed address was compared with: the licence when it was read, else the registry (Nov 25: "Same as the
+  // licence" was said of a licence never read, from staff's registry address).
+  const source = comparisons.length && !comparisons.some((c) => c.between?.includes("license")) && comparisons.some((c) => c.between?.includes("registry"))
+    ? "registry" : "licence";
   let score = null;
   let verdict = "Not checked yet";
   const level = owner?.level ?? "unknown";
-  if (level === "high") { score = SCORES.address.same; verdict = "Same as the licence"; }
+  if (level === "high") { score = SCORES.address.same; verdict = `Same as the ${source}`; }
   else if (level === "medium") {
     score = SCORES.address.partDiffers;
     verdict = part ? `${PART_WORDS[part] ?? "Part"} differs from ${against}`
-      : comparisons.some((c) => c.verdict === "near") ? "Nearly the same as the licence" : "Only the area matches the licence";
+      : comparisons.some((c) => c.verdict === "near") ? `Nearly the same as the ${source}` : `Only the area matches the ${source}`;
   } else if (level === "low") {
     score = SCORES.address.elsewhere;
     verdict = differing && !differing.between.includes("typed") ? "Licence and registry addresses differ"
-      : part ? `${PART_WORDS[part] ?? "Address"} differs from ${against}` : "Not the licence's address";
+      : part ? `${PART_WORDS[part] ?? "Address"} differs from ${against}` : `Not the ${source}'s address`;
   }
   const d = siteSignal?.details ?? {};
   const kind = siteSignal?.result;
@@ -740,7 +760,7 @@ export function addressCheck({ owner, siteSignal, typedAddress }) {
     capWith(SCORES.address.siteCap, "An office, not a factory site", SCORES.address.mapOther);
   } else if (kind === "industrial") {
     if (score == null) { score = SCORES.address.mapIndustrial; verdict = "In an industrial area"; }
-    else if (level === "high") verdict = "Same as the licence, in an industrial area";
+    else if (level === "high") verdict = `Same as the ${source}, in an industrial area`;
   }
   return { ...base, score, verdict, short: score != null && score >= 75 ? verdict.toLowerCase() : null, canReason: Boolean(typedAddress || siteSignal || owner), ...(lookup ? { lookup } : {}) };
 }
@@ -950,7 +970,7 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
     number_unread: licence ? ["business_registration", "licence", "Approve needs: a clearer licence"]
       : ["business_registration", "registry", "Approve needs: a registry check with their registration number"],
-    trading_only: ["company_information", "scope", "Approve needs: a reason here"],
+    trading_only: ["company_information", "scope", "Approve needs: record a check here"],
   }[problem];
   return row ? { group: row[0], check: row[1], words: row[2] } : null;
 }
@@ -1037,8 +1057,13 @@ export function scoreVerification(input, { timeZone } = {}) {
   // Staff's own result on the address, for the address now typed (Nov 25).
   const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
     .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
+  // The registry is the document's country: a mainland licence (an 18-character credit code that passes its check)
+  // is checked on China's registry, whatever the address (Nov 25: a Hong Kong office's Sichuan licence was sent to
+  // the Hong Kong Companies Registry).
+  const registryCountry = country !== "CN" && readValues.registrationNumber && registrationNumberProblem("CN", readValues.registrationNumber) === null
+    ? "CN" : country;
   const registry = withReason(registryCheck({
-    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
+    detail, country: registryCountry, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
   // Company information's inputs, read here: the address check is in this group (Nov 25).
@@ -1142,12 +1167,12 @@ export function scoreVerification(input, { timeZone } = {}) {
       why: certChecks.length > 1 ? certChecks.filter((c) => c !== certWeak).map((c) => `${c.label}: ${c.verdict}`).join(". ").concat(".") : "",
       checking: false,
       evidence: {
-        kind: "certificate", name: certWithFile.label, number: certificateNumber(certWithFile.id, signals), valid: certWithFile.expiresAt ? dayWords(`${String(certWithFile.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(certWithFile.id, signals),
+        kind: "certificate", name: certWithFile.label, number: certificateNumber(certWithFile.id, signals), valid: dateWithYear(certWithFile.expiresAt), holder: certificateHolder(certWithFile.id, signals),
         file: certWithFile.document ? { id: certWithFile.document.id, name: certWithFile.document.name, bucket: certWithFile.document.bucket, path: certWithFile.document.path, mimeType: certWithFile.document.mimeType ?? null } : null,
         // Each certificate's own card and fields: the modal shows one tab per certificate (Nov 13).
         certificates: certs.map((c) => ({
           id: c.id, label: c.label, file: c.document ? { id: c.document.id, name: c.document.name, bucket: c.document.bucket, path: c.document.path, mimeType: c.document.mimeType ?? null } : null,
-          number: certificateNumber(c.id, signals), valid: c.expiresAt ? dayWords(`${String(c.expiresAt).slice(0, 10)}T12:00:00Z`, "UTC") : "", holder: certificateHolder(c.id, signals),
+          number: certificateNumber(c.id, signals), valid: dateWithYear(c.expiresAt), holder: certificateHolder(c.id, signals),
           fields: certFields(c, signals, title),
         })),
       },

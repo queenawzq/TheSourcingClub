@@ -129,6 +129,15 @@ console.log("Hong Kong (Nov 25)");
   }, { timeZone: "UTC" });
   const addr = w.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
   check(addr.verdict.startsWith("Same as the licence") && addr.score === SCORES.address.same, `identical addresses match (${addr.verdict}, ${addr.score})`);
+  // Nov 25: a check recorded for the first licence, the company then uploading one with another number.
+  const recheck = registryCheck({
+    detail: { registration: { country: "CN", number: "91510802MAK30JGA1A" }, current: { id: "c", source: "gsxt", result: "found", checked_at: "2026-11-24T10:00:00Z", details: { form: 2, outcome: "found", site: "GSXT", name: "广元盛远国际贸易有限公司", number: "91510802MAK30JGA1A" } }, checks: [{ id: "c" }] },
+    country: "CN", title: "广元盛远国际贸易有限公司", timeZone: "UTC", documentDiffers: "number", typedAddress: "",
+  });
+  check(/licence shows another number/.test(recheck.verdict) && !/number match/.test(recheck.registry?.summary ?? ""), `a check on the old licence's number no longer says it matches (${recheck.verdict} / ${recheck.registry?.summary})`);
+  // Nov 25: compared with the registry's address only (no licence read), it never says "the licence".
+  const registryOnly = addressCheck({ owner: { level: "high", details: { comparisons: [{ between: ["registry", "typed"], verdict: "match", differs: [] }] } }, siteSignal: null, typedAddress: address });
+  check(registryOnly.verdict === "Same as the registry", `an address matched only against the registry says so (${registryOnly.verdict})`);
   const owner = addressOwnerCheck({ typed: address, license: address, registry: "", typedFrom: "production" });
   check(owner.level === "high" && compareAddresses(address, `${address}.`).verdict === "match", `the address check itself says identical text is the same address (${owner.level})`);
   check(compareAddresses("Merter, Güngören, Istanbul", "Merter, Güngören, Istanbul").verdict !== "match", "an identical area with no number is still only an area");
@@ -270,7 +279,7 @@ console.log("brands (Nov 13)");
   check(P.scoreOverall(a.groups) === Math.round(((Math.round(83 * 0.7 + 100 * 0.3)) * 50 + 100 * 30) / 80), `unregistered overall from company information 50 + evidence 30 (${P.scoreOverall(a.groups)})`);
   check(!a.facts.find((f) => f.key === "registration").ok && a.facts.find((f) => f.key === "registration").ok !== false && a.facts.find((f) => f.key === "terms").value === "Ava Brooks, Nov 11", "facts: registration missing is information, not a gap; terms signer and day");
   const b = of("registered");
-  check(P.groupWeight(b.groups[0]) === 20 && P.scoreGroup(b.groups[0]) === 80 && b.groups[2].verdict === "Only 2 files uploaded", `a registered brand: registration counts 20 (${P.scoreOverall(b.groups)})`);
+  check(P.groupWeight(b.groups[0]) === 0 && P.scoreGroup(b.groups[0]) == null && b.groups[0].verdict === "Uploaded, not reviewed yet" && b.groups[2].verdict === "Only 2 files uploaded", `a brand's registration nobody has reviewed is shown, not counted (Nov 25: an unrelated certificate scored 80%) (${P.scoreOverall(b.groups)})`);
   const c = of("nothing");
   check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Flagged" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Flagged (${c.groups[1].verdict})`);
   check(a.groups.every((g) => g.reasons === false && g.rerunnable === false), "brand rows have no reasons and no Run again");

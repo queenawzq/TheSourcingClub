@@ -329,12 +329,16 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
   );
 }
 
-function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, onOpenQuote, matchingPanel = null }) {
+function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, onOpenQuote, matchingPanel = null, profileOrder = "newest" }) {
   const [verificationTab, setVerificationTab] = useState("Active");
   const [rfqTab, setRfqTab] = useState("All");
   const [quoteTab, setQuoteTab] = useState("All");
   const [profileType, setProfileType] = useState("All profile types");
   const [searchTerm, setSearchTerm] = useState("");
+  // The rows arrive in one order (the live queue: oldest first; RFQs and quotes: newest first); the button says which and turns it.
+  const arrivesNewest = kind !== "Verification" || profileOrder === "newest";
+  const [newestShown, setNewestShown] = useState(arrivesNewest);
+  const inOrder = (rows) => (newestShown === arrivesNewest ? rows : [...rows].reverse());
   const isProfiles = kind === "Verification";
   const baseProfiles = profiles;
   const verificationTabs = ["Active", "Approved", "Needs information", "Declined"];
@@ -350,14 +354,14 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
     || (tab === "With quotes" && rfq[5] === "Quotes received")
     || (tab === "Needs attention" && rfq[5] === "Needs review");
   const rfqTabCounts = Object.fromEntries(rfqTabs.map((tab) => [tab, rfqRows.filter((rfq) => matchesRfqTab(rfq, tab)).length]));
-  const filteredRfqs = rfqRows.filter((rfq) => matchesRfqTab(rfq, rfqTab) && (!normalizedSearch || rfq.slice(0, 3).join(" ").toLowerCase().includes(normalizedSearch)));
+  const filteredRfqs = inOrder(rfqRows).filter((rfq) => matchesRfqTab(rfq, rfqTab) && (!normalizedSearch || rfq.slice(0, 3).join(" ").toLowerCase().includes(normalizedSearch)));
   const matchesQuoteTab = (quote, tab) => tab === "All"
     || quote[6] === tab
     || (tab === "Needs attention" && ["Needs clarification", "Revision requested"].includes(quote[6]))
     || (tab === "Closed" && quote[6] === "Declined");
   const quoteTabCounts = Object.fromEntries(quoteTabs.map((tab) => [tab, quoteRows.filter((quote) => matchesQuoteTab(quote, tab)).length]));
-  const filteredQuotes = quoteRows.filter((quote) => matchesQuoteTab(quote, quoteTab) && (!normalizedSearch || quote.slice(0, 4).join(" ").toLowerCase().includes(normalizedSearch)));
-  const filteredProfiles = baseProfiles.filter((profile) => {
+  const filteredQuotes = inOrder(quoteRows).filter((quote) => matchesQuoteTab(quote, quoteTab) && (!normalizedSearch || quote.slice(0, 4).join(" ").toLowerCase().includes(normalizedSearch)));
+  const filteredProfiles = inOrder(baseProfiles).filter((profile) => {
     const matchesType = kind !== "Verification" || profileType === "All profile types"
       || (profileType === "Brands" && profile.entityType === "Brand")
       || (profileType === "Factories" && profile.entityType === "Factory")
@@ -389,7 +393,7 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
             </select>
           </label>
         ) : null}
-        <button className="secondary-btn" type="button">Newest first</button>
+        <button className="secondary-btn" type="button" onClick={() => setNewestShown((shown) => !shown)}>{newestShown ? "Newest first" : "Oldest first"}</button>
       </div>
       {kind === "Verification" && (
         <nav className="rfqs-tabs admin-verification-tabs" aria-label="Verification status">
@@ -419,7 +423,7 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
         </nav>
       )}
       {isProfiles ? (
-        <Panel title={`${filteredProfiles.length} profiles`} subtitle="Select a profile to inspect all evidence and checks.">
+        <Panel title={`${filteredProfiles.length} ${filteredProfiles.length === 1 ? "profile" : "profiles"}`} subtitle="Select a profile to inspect all evidence and checks.">
           {filteredProfiles.length > 0
             ? filteredProfiles.map((profile) => <VerificationRow profile={profile} onReview={onReview} key={profile.id} />)
             : <div className="admin-empty-state"><strong>No profiles in this view</strong><p>Try another status or profile type.</p></div>}
@@ -889,7 +893,7 @@ function AiSuggestionsPanel({ orgId }) {
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
       {result && (
         <>
-          <p className="admin-assist-meta">Asked {asked}{result.model ? ` · ${result.model}` : ""}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
+          <p className="admin-assist-meta">Asked {asked}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
           {result.findings?.length ? (
             <div className="admin-check-list">
               {result.findings.map((finding, index) => (
@@ -1219,7 +1223,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const brandScore = useMemo(() => {
     if (isVendor || profile?.verification || !actions.verificationScore || !profile?.checks) return null;
     const owner = (submission?.members ?? []).find((member) => member.role === "owner") ?? submission?.members?.[0] ?? null;
-    return brandVerification({ checks: profile.checks, documents: documents ?? [], submittedBy: owner, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    return brandVerification({ checks: profile.checks, documents: documents ?? [], submittedBy: owner, termsAcceptedAt: submission?.terms?.acceptedAt ?? null, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
   }, [isVendor, profile, actions.verificationScore, submission, documents]);
   const verification = profile?.verification ?? live?.data ?? brandScore;
   const showsScore = Boolean(profile?.verification || live || brandScore);
@@ -1451,7 +1455,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               )}
               {approved ? isVendor && (
                 <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0 || approvalTier === currentTier} title={approveBlocks.join("\n") || undefined} onClick={() => { const tier = approvalTier; Promise.resolve(onDecision(profile.id, "Approved", null, tier)).then((done) => { if (done) setChangedTier(tier); }); }}>
-                  Change badge to {tierWord}
+                  {approvalTier === currentTier ? `Current badge: ${tierWord}` : `Change badge to ${tierWord}`}
                 </button>
               ) : (
               <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0} title={approveBlocks.join("\n") || undefined} onClick={() => {
@@ -2429,7 +2433,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
-      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
+      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} profileOrder={actions.verificationQueueOrder ?? "newest"} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel || actions.verificationScore ? reloadQueue : null} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}

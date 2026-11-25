@@ -9,7 +9,7 @@
  * never scored as a failure.
  *
  * Groups (weights are a decision for Queena to confirm):
- *   Business registration  20, only when a document is uploaded; else shown, not counted
+ *   Business registration  20, only once staff have decided on an upload (or it is empty); else shown, not counted
  *   Company information    50  company details 70 + terms 30
  *   Brand evidence         30  logo, product images and brand direction
  *
@@ -58,7 +58,9 @@ function registrationCheck(row) {
   if (row.result === "Rejected") return { ...base, score: BRAND_SCORES.registration.rejected, verdict: "Rejected by staff" };
   if (row.result === "Verified") return { ...base, score: BRAND_SCORES.registration.accepted, verdict: "Accepted by staff" };
   if (Number(row.value) === 0) return { ...base, score: BRAND_SCORES.registration.empty, verdict: "The file is empty" };
-  return { ...base, score: BRAND_SCORES.registration.uploaded, verdict: "Uploaded, not reviewed yet" };
+  // Nobody has read it yet, so it supports nothing: no score until staff accept it (Nov 25: an unrelated
+  // certificate scored 80%).
+  return { ...base, score: null, verdict: "Uploaded, not reviewed yet" };
 }
 
 function detailsCheck(row) {
@@ -70,11 +72,13 @@ function detailsCheck(row) {
   return { ...base, score, verdict: gaps ? `Missing: ${gaps}` : "Not complete", gaps };
 }
 
-function termsCheck(row, timeZone) {
+function termsCheck(row, timeZone, acceptedAt = null) {
   const base = { key: "terms", label: "Terms", weight: 30 };
   if (!row || row.result !== "Clear") return { ...base, score: BRAND_SCORES.terms.missing, verdict: "Not signed" };
   const signed = /Signed "([^"]*)" on (\d{1,2} \w{3} \d{4})/.exec(row.detail);
-  const words = [signed?.[1], day(signed?.[2], timeZone)].filter(Boolean).join(", ");
+  // The database writes the day in UTC; the signing time, when known, is read in the reader's zone (Nov 25: a
+  // brand signing on the evening of Nov 24 in New York read "Nov 25").
+  const words = [signed?.[1], day(acceptedAt ?? signed?.[2], timeZone)].filter(Boolean).join(", ");
   return { ...base, score: BRAND_SCORES.terms.signed, verdict: words ? `Signed by ${words}` : "Signed", signedWords: words };
 }
 
@@ -126,10 +130,10 @@ export function brandRequestGaps(checks, documents = []) {
  * `checks`: the `[label, result, value, detail]` rows. `documents`: the
  * company's files (`admin_org_documents()` rows), or none on the queue.
  */
-export function brandVerification({ checks, documents = [], submittedBy = null, timeZone } = {}) {
+export function brandVerification({ checks, documents = [], submittedBy = null, termsAcceptedAt = null, timeZone } = {}) {
   const registration = registrationCheck(tuple(checks, "Business registration"));
   const details = detailsCheck(tuple(checks, "Company details"));
-  const terms = termsCheck(tuple(checks, "Terms accepted"), timeZone);
+  const terms = termsCheck(tuple(checks, "Terms accepted"), timeZone, termsAcceptedAt);
   const files = (documents ?? []).filter(Boolean);
   const evidence = evidenceCheck(tuple(checks, "Brand evidence"), files.filter((d) => EVIDENCE_KINDS.has(d.kind)));
 
@@ -144,7 +148,9 @@ export function brandVerification({ checks, documents = [], submittedBy = null, 
     ...shared,
     key: "business_registration",
     label: "Business registration",
-    weight: registration.missing ? 0 : BRAND_WEIGHTS.business_registration,
+    // Optional for a brand, and counted only once staff have decided on it: an upload nobody has read neither helps
+    // nor costs (Nov 25).
+    weight: registration.missing || registration.score == null ? 0 : BRAND_WEIGHTS.business_registration,
     tip: "The brand's registration document. Optional for brands: it counts only when uploaded.",
     verdict: registration.verdict,
     why: "",

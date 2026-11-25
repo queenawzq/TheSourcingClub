@@ -195,7 +195,7 @@ function marked(shown, other, parts = null) {
     const pieces = parts.filter((part) => part && shown.includes(part));
     if (pieces.length) {
       const pattern = new RegExp(`(${pieces.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-      return shown.split(pattern).map((piece, index) => (pieces.includes(piece) ? <mark key={index}>{piece}</mark> : piece));
+      return joinMarks(shown.split(pattern).map((piece) => ({ text: piece, mark: pieces.includes(piece) })));
     }
   }
   const isCode = !/\s/.test(shown) && !/\s/.test(other) && shown.length === other.length;
@@ -205,7 +205,22 @@ function marked(shown, other, parts = null) {
   const words = new Set(other.split(/[\s,]+/).filter(Boolean).map(foldWord));
   // A street-type abbreviation ("Mah." for Mahallesi, "Cad.", "No.") is how an address is written, not a difference.
   const isAbbreviation = (part) => /^(mah|mh|cad|cd|sok|sk|blv|bulv|no|apt|rd|st|ave|bldg|av|r|tv|est)\.$/i.test(part);
-  return shown.split(/([\s,]+)/).map((part, index) => (/^[\s,]*$/.test(part) || words.has(foldWord(part)) || isAbbreviation(part) ? part : <mark key={index}>{part}</mark>));
+  return joinMarks(shown.split(/([\s,]+)/).map((part) => ({ text: part, mark: !(/^[\s,]*$/.test(part) || words.has(foldWord(part)) || isAbbreviation(part)) })));
+}
+
+/**
+ * Neighbouring marked pieces are one mark, the spaces between included: an address that differs from its third word
+ * on read as a row of separately boxed words (Nov 25, a Turkish tax plate).
+ */
+function joinMarks(pieces) {
+  const out = [];
+  for (let i = 0; i < pieces.length; i += 1) {
+    if (!pieces[i].mark) { if (pieces[i].text) out.push(pieces[i].text); continue; }
+    let run = pieces[i].text;
+    while (i + 2 < pieces.length && /^[\s,]+$/.test(pieces[i + 1].text) && pieces[i + 2].mark) { run += pieces[i + 1].text + pieces[i + 2].text; i += 2; }
+    out.push(<mark key={i}>{run}</mark>);
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ card */

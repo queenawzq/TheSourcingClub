@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { EMAIL_LOGO_URL } from "./_email-assets.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { messageFor, resubmissionAlertMessage } from "./_review-decision-sender.js";
+import { emailTransport } from "./_notification-sender.js";
 
 /**
  * Send one of the product's emails to the signed-in admin, filled with sample
@@ -144,6 +145,11 @@ function review(decision, locale, name, note) {
 }
 
 export default async function handler(request, response) {
+  // GET: whether test emails land in the local Mailpit (never on Vercel), where any address can be read.
+  if (request.method === "GET") {
+    response.status(200).json({ mailpit: emailTransport()?.name === "mailpit" });
+    return;
+  }
   if (request.method !== "POST") {
     response.status(405).json({ sent: false, error: "method not allowed" });
     return;
@@ -153,8 +159,10 @@ export default async function handler(request, response) {
   const resendKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
   const authorization = request.headers.authorization;
+  // Locally, with no provider, the same emails go to Mailpit (api/_notification-sender.js), example.com included.
+  const mailpit = !(resendKey && from) && emailTransport()?.name === "mailpit" ? emailTransport() : null;
 
-  if (!supabaseUrl || !anonKey || !resendKey || !from) {
+  if (!supabaseUrl || !anonKey || (!(resendKey && from) && !mailpit)) {
     response.status(503).json({ sent: false, error: "email is not configured on the server" });
     return;
   }
@@ -188,7 +196,7 @@ export default async function handler(request, response) {
   // and the provider refuses it with a message meant for developers. Say so
   // plainly before trying.
   const { reservedEmailNotice } = await import("../src/shared/reserved-email.mjs");
-  const reserved = reservedEmailNotice(to);
+  const reserved = mailpit ? null : reservedEmailNotice(to);
   if (reserved) {
     response.status(422).json({ sent: false, error: reserved });
     return;
@@ -196,6 +204,16 @@ export default async function handler(request, response) {
 
   const name = auth.user.user_metadata?.full_name || auth.user.user_metadata?.name || "";
   const message = await build(locale === "zh" ? "zh" : "en", name);
+  if (mailpit) {
+    try {
+      await mailpit.send({ id: `test-${template}-${Date.now()}`, recipient_email: to, recipient_name: name }, { ...message, subject: `[Test] ${message.subject}` });
+      response.status(200).json({ sent: true, to, error: null });
+    } catch (error) {
+      console.error("send-test-email: Mailpit refused", error?.message);
+      response.status(502).json({ sent: false, error: "The email service could not be reached, so nothing was sent. Try again in a minute." });
+    }
+    return;
+  }
 
   try {
     const delivery = await fetch(RESEND_ENDPOINT, {
