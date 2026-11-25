@@ -514,7 +514,9 @@ export function addressOwnerCheck({ typed, license, registry, typedFrom = "locat
   } else if (comparisons.some((c) => c.verdict === "match") && !comparisons.some((c) => c.verdict === "partial" && c.between.includes("license") && c.note !== "scripts")) {
     level = "high";
     for (const c of comparisons.filter((c) => c.verdict === "match")) {
-      const what = c.note === "identical" ? "address" : c.same.includes("number") || c.same.includes("postcode") ? "street and number" : "street and building";
+      // Only the parts that matched: a match on the street and the floor is not "the same building" (review d3).
+      const what = c.note === "identical" ? "address" : c.same.includes("number") || c.same.includes("postcode") ? "street and number"
+        : `street and ${["building", "floor", "room"].filter((part) => c.same.includes(part)).join(" and ")}`;
       reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} give the same ${what}`);
     }
   } else if (comparisons.some((c) => c.verdict === "partial")) {

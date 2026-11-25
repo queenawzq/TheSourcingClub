@@ -169,6 +169,7 @@ await check("CN: the English translation of a licence address is the same addres
   const owner = addressOwnerCheck({ license: HEFEI_LICENCE, typed: HEFEI_ENGLISH, registry: "", typedFrom: "production", typedCity: "Hefei" });
   assert.equal(owner.level, "high");
   assert.deepEqual(owner.details.comparisons[0].same, ["city", "district", "town", "road", "floor"]);
+  assert.ok(owner.reasons.some((reason) => /give the same street and floor$/.test(reason)), JSON.stringify(owner.reasons));
 });
 await check("CN: the same translation on another floor is a difference below the city", () => {
   const owner = addressOwnerCheck({ license: HEFEI_LICENCE, typed: HEFEI_ENGLISH.replace("4th Floor", "6th Floor"), registry: "", typedFrom: "production" });
