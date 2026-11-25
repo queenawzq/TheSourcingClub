@@ -160,4 +160,4 @@ export const refundBrand = (reviewId, cents, note) => factoryPays(reviewId, cent
 export const unpauseBrand = () => Promise.reject(new Error("Unpause the brand from its account in Users."));
 
 /** Staff: close a staff refund that failed after it was made (refunded the brand another way). The note is required. */
-export const closeStaffRefundFailure = (staffRefundId, note) => staffCall("close_staff_refund_failure", { target_refund: staffRefundId, note });
+export const closeStaffRefundFailure = (staffRefundId, note, refundedCents) => staffCall("close_staff_refund_failure", { target_refund: staffRefundId, note, refunded_cents: refundedCents });

@@ -104,6 +104,8 @@ function ResolveDialog({ row, onClose, onDone }) {
   const over = cents != null && cents > most;
   const factoryCents = cents != null && !over ? cents : most;
   const rest = Math.max(0, back - factoryCents);
+  // T2 A5: another open dispute keeps the brand paused whatever is decided here.
+  const unpauseWords = row.brand_stays_paused ? "brand stays paused (another dispute is open)" : "brand unpaused";
   const ready = fault && note.trim() && (fault !== "factory_at_fault" || (cents != null && !over));
 
   async function confirm() {
@@ -124,6 +126,7 @@ function ResolveDialog({ row, onClose, onDone }) {
     <StaffDialog eyebrow={`${row.order_number}${row.milestone_title ? ` · ${row.milestone_title}` : ""}`} title={`Resolve ${moneyIn(back, currency)}`}
                  labelId="payment-resolve-title" working={working} onCancel={onClose}>
       <p className="admin-modal-line">{refund ? "Refunded in Stripe after approval." : "The bank ruled for the brand."}</p>
+      {!refund && row.dispute_reason_words ? <p className="admin-modal-line" data-testid="resolve-dispute-reason">{`Reason: ${row.dispute_reason_words}`}</p> : null}
       <fieldset className="admin-tier-picker payment-who-pays">
         <legend>Who was at fault?</legend>
         {refund ? (
@@ -136,11 +139,11 @@ function ResolveDialog({ row, onClose, onDone }) {
         ) : (
           <>
             <Choice name="fault" value="factory_at_fault" chosen={fault} onChoose={setFault} title="Factory"
-                    line={`${moneyIn(factoryCents, currency)} from the factory's balance · brand unpaused`} />
+                    line={`${moneyIn(factoryCents, currency)} from the factory's balance · ${unpauseWords}`} />
             <Choice name="fault" value="brand_at_fault" chosen={fault} onChoose={setFault} title="Brand"
                     line={`TSC absorbs ${moneyIn(back, currency)} · brand stays paused`} />
             <Choice name="fault" value="no_fault" chosen={fault} onChoose={setFault} title="No one"
-                    line={`TSC absorbs ${moneyIn(back, currency)} · brand unpaused`} />
+                    line={`TSC absorbs ${moneyIn(back, currency)} · ${unpauseWords}`} />
           </>
         )}
       </fieldset>
@@ -176,14 +179,19 @@ function ResolveDialog({ row, onClose, onDone }) {
 
 /** Close a failed staff refund: staff refunded the brand another way. The note stays with staff. */
 function CloseRefundDialog({ row, onClose, onDone }) {
+  const failed = Number(row.amount_cents) || 0;
   const [note, setNote] = useState("");
+  // "Refunded another way" (T2 R3): recorded as a refund line, so the brand's figures follow. 0 up to the failed amount.
+  const [amount, setAmount] = useState(typed(failed));
+  const cents = centsFrom(amount);
+  const amountOk = cents != null && cents <= failed;
   const [working, setWorking] = useState(false);
   const [problem, setProblem] = useState(null);
   async function confirm() {
     setWorking(true);
     setProblem(null);
     try {
-      await reviews.closeStaffRefundFailure(row.id, note.trim());
+      await reviews.closeStaffRefundFailure(row.id, note.trim(), cents);
       onDone(`${row.order_number}: refund closed. The brand is told.`);
     } catch (failure) {
       setProblem(failure.message);
@@ -197,6 +205,13 @@ function CloseRefundDialog({ row, onClose, onDone }) {
                  working={working} onCancel={onClose}>
       <p className="admin-modal-line">Close it once the brand has been refunded another way.</p>
       <label className="factory-onboarding-field">
+        <span>Refunded another way (USD)</span>
+        <input inputMode="decimal" value={amount} data-testid="close-refund-amount" onChange={(event) => setAmount(event.target.value)} />
+      </label>
+      <p className="admin-assist-meta">{`Up to ${moneyIn(failed, row.currency)}`}</p>
+      {cents == null ? <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
+        : !amountOk ? <p className="admin-error" role="alert">{`You can enter up to ${moneyIn(failed, row.currency)}.`}</p> : null}
+      <label className="factory-onboarding-field">
         <span>Note for the brand *</span>
         <textarea placeholder="How the brand was refunded" value={note} maxLength={500} data-testid="close-refund-note"
                   onChange={(event) => setNote(event.target.value)} />
@@ -204,7 +219,7 @@ function CloseRefundDialog({ row, onClose, onDone }) {
       {problem ? <p className="admin-error" role="alert">{problem}</p> : null}
       <footer>
         <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
-        <button className="primary-btn" type="button" disabled={working || !note.trim()} data-testid="close-refund-confirm" onClick={confirm}>Close</button>
+        <button className="primary-btn" type="button" disabled={working || !note.trim() || !amountOk} data-testid="close-refund-confirm" onClick={confirm}>Close</button>
       </footer>
     </StaffDialog>
   );
@@ -220,12 +235,12 @@ function ReviewRow({ row, onChanged, onHeard, withActions = true }) {
     <tr data-testid="payment-review" data-review={row.id} data-kind={row.kind ?? "review"}>
       <td>
         <strong>{row.brand_name}</strong>
-        {row.brand_paused ? <span className="admin-pill admin-pill--paused" data-testid="review-brand-paused">Paused</span> : null}
+        {(row.pauses_brand ?? row.brand_paused) ? <span className="admin-pill admin-pill--paused" data-testid="review-brand-paused">Paused</span> : null}
         {" → "}<strong>{row.factory_name}</strong>
       </td>
       <td>{row.order_number}{row.milestone_title ? <span className="admin-sub">{row.milestone_title}</span> : null}</td>
       <td><strong>{moneyIn(row.amount_cents, row.currency)}</strong></td>
-      <td>{reasonOf(row)}</td>
+      <td>{reasonOf(row)}{!isRefund(row) && row.dispute_reason_words ? <span className="admin-sub" data-testid="review-dispute-reason">{row.dispute_reason_words}</span> : null}</td>
       <td className="payment-review-progress-cell">
         <Progress row={row} />
         <p className={`payment-review-line${row.step === 3 ? " done" : ""}`} data-testid="review-line">
