@@ -49,7 +49,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
       <DataProvider adapter={adapter} key={version}>
         <RfqsScreen
           goTo={goTo}
-          onViewQuotes={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
+          onViewQuotes={(rfq) => navigate(rfq?.path ?? "/rfqs")}
           onEditRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/edit` : "/rfqs")}
           onInviteVendors={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/invite` : "/rfqs")}
           onArchiveRfq={(rfq) => setConfirming(rfq)}

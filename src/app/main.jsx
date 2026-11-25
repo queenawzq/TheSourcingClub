@@ -1563,7 +1563,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
               goTo={(next) => navigateFromPrototype(next, navigate)}
               // The designed cards carry ids; the screen keys do not, which is
               // why "View quote" used to land back on the list it came from.
-              onViewRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
+              onViewRfq={(rfq) => navigate(rfq?.path ?? (rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs"))}
               onViewProject={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
             />
           </main>
