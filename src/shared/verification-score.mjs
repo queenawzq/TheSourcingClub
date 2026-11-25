@@ -950,7 +950,7 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
     number_unread: licence ? "Number not read: ask for a clearer licence" : "No registration number: record a registry check with it",
-    trading_only: "Factory or trader: add a reason first",
+    trading_only: "Factory or trader: record a check first",
   }[problem] ?? "Not ready to approve";
 }
 
