@@ -1,4 +1,4 @@
-import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
+import { listLinks, listTermsByKind, termLabel, withLinkedCustomTerms } from "../../lib/domain/taxonomy.js";
 
 const TAG_KINDS = ["product_category", "certification", "service", "region"];
 
@@ -6,7 +6,8 @@ const TAG_KINDS = ["product_category", "certification", "service", "region"];
 export async function loadRequestTagMetadata(rfqs) {
   const requests = rfqs.filter(Boolean);
   const [terms, linked] = await Promise.all([
-    listTermsByKind(TAG_KINDS),
+    // With the categories a brand typed itself, in its words.
+    listTermsByKind(TAG_KINDS).then((list) => withLinkedCustomTerms(list, "rfq", requests.map((rfq) => rfq.id))),
     Promise.all(requests.map(async (rfq) => [rfq.id, await listLinks("rfq", rfq.id)])),
   ]);
   const linkedByRfq = new Map(linked);

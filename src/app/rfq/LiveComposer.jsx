@@ -30,7 +30,7 @@ import { supabase } from "../../lib/supabase.js";
 import { readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
-import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel, withLinkedCustomTerms } from "../../lib/domain/taxonomy.js";
 import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -539,8 +539,8 @@ export default function LiveComposer({ org, rfqId }) {
       // pair, so score the vendors actually being shown and sort by it.
       const assessments = matchingV2 ? await assessFactories("rfq", draftId, (rows ?? []).map(row=>row.org_id)) : new Map();
       const scores = matchingV2 ? new Map([...assessments].map(([id,m])=>[id,m?.score ?? null])) : await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
-      const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
       const vendorIds = (rows ?? []).map((row) => row.org_id);
+      const vendorTerms = await withLinkedCustomTerms(await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]), "factory_profile", vendorIds);
       // In id batches, a page at a time: past ~195 vendors one `in` list was
       // longer than the address allows (read-pages.js).
       const links = await readByIds(vendorIds, (batch) => supabase.from("taxonomy_links")
