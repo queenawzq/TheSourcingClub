@@ -146,7 +146,7 @@ delete from public.credit_ledger where org_id='b9900000-0000-0000-0000-000000000
 set local role authenticated;
 select throws_ok($$insert into public.rfq_invitations(rfq_id,factory_org_id) values('f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000002')$$,'22023',null,'provisional invitation requires explicit acknowledgement');
 select lives_ok($$insert into public.rfq_invitations(rfq_id,factory_org_id,matching_acknowledged) values('f9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000002',true)$$,'acknowledged provisional invitation allowed');
-update public.rfq_invitations set matching_acknowledged=false where rfq_id='f9900000-0000-0000-0000-000000000002';
+select throws_ok($$update public.rfq_invitations set matching_acknowledged=false where rfq_id='f9900000-0000-0000-0000-000000000002'$$,'42501',null,'no signed-in user may write an invitation acknowledgement (20261125600000)');
 select ok((select matching_acknowledged from public.rfq_invitations where rfq_id='f9900000-0000-0000-0000-000000000002'),'brand RLS prevents editing an invitation acknowledgement');
 select is((select count(*)::integer from public.factory_matches_v2('rfq','f9900000-0000-0000-0000-000000000002',array['b9900000-0000-0000-0000-000000000002'::uuid])),1,'batch API returns request assessment');
 select is((select count(*)::integer from public.documents where id='d9900000-0000-0000-0000-000000000001'),0,'brand cannot read private capability evidence file');

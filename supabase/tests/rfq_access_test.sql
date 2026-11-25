@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(35);
+select plan(36);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -439,29 +439,41 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Admin allowlist (migration 024)
+-- No sign-up makes anyone staff (20261124700000). "Confirm email" is off, so a
+-- new account's address proves nothing; the old allowlist (024) is not read.
 -- ---------------------------------------------------------------------------
 
 reset role;
 
+insert into public.admin_emails (email, note)
+values ('pgtap-allowlisted@example.com', 'pgtap: listed, must grant nothing');
+
+create temp table staff_before on commit drop as
+  select user_id from public.platform_admins;
+
 insert into auth.users (id, email) values
-  ('c0000000-0000-0000-0000-0000000000a1', 'john@hexagontechnologies.io');
+  ('c0000000-0000-0000-0000-0000000000a1', 'pgtap-allowlisted@example.com'),
+  ('c0000000-0000-0000-0000-0000000000a2', 'pgtap-not-listed@example.com');
 
 select is(
   (select count(*)::int from public.platform_admins
      where user_id = 'c0000000-0000-0000-0000-0000000000a1'),
-  1,
-  'an allowlisted address becomes a platform admin on first sign-in'
+  0,
+  'signing up with an address on admin_emails does not make the account staff'
 );
 
-insert into auth.users (id, email) values
-  ('c0000000-0000-0000-0000-0000000000a2', 'someone-else@example.com');
+select is(
+  (select count(*)::int from public.platform_admins pa
+     where not exists (select 1 from staff_before b where b.user_id = pa.user_id)),
+  0,
+  'no sign-up adds a platform_admins row'
+);
 
 select is(
-  (select count(*)::int from public.platform_admins
-     where user_id = 'c0000000-0000-0000-0000-0000000000a2'),
-  0,
-  'an address NOT on the allowlist does not become an admin'
+  (select count(*)::int from public.user_profiles
+     where id in ('c0000000-0000-0000-0000-0000000000a1', 'c0000000-0000-0000-0000-0000000000a2')),
+  2,
+  'signing up still creates the profile'
 );
 
 select * from finish();

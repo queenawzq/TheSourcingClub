@@ -466,6 +466,13 @@ a company-level verdict and a file-level one cannot contradict each other.
   Queena, Nov 7); reveals of an account number are still recorded. A Wise or
   PayPal payout underway sits under Processing, which names each row's
   provider.
+- **Signing up never makes anyone staff** (`20261124700000`). "Confirm email"
+  is off, so a new account's address proves nothing: the old allowlist
+  (`admin_emails`) made whoever registered a listed address first an admin.
+  Staff are added on purpose, `platform_admins` by user id, after the person
+  has an account. `admin_emails` remains and grants nothing. Anything else
+  that trusts a sign-up's address has the same flaw: joining a team by
+  invitation does, until it asks for a code emailed to that address (#151).
 - **Every function on this surface is `security definer` and has no policy
   behind it.** The `is_platform_admin()` test is the first statement in each,
   before any `select` — checking afterwards leaks existence through `P0002`
@@ -600,6 +607,12 @@ the form behind it only saves.
   shortfall because the screen offers to buy more. The unique index from
   migration 005 makes the charge idempotent per quote; a revision is a new
   quote row and therefore a new charge, which is intended.
+- **A vendor answers its invitation, it never moves it** (`20261125600000`).
+  Signed-in users may update only `status` and `viewed_at` on
+  `rfq_invitations`; which request and which vendor are the brand's, set when
+  it invites. Any `rfq_invitations` row makes `can_see_rfq()` true, so a
+  writable `rfq_id` let a vendor invite itself to another brand's private
+  request and tech pack.
 - **A factory creates a quote only as a plain draft** (`20261125700000`).
   `quotes_factory_insert` requires status `draft`, version 1, no sent or
   decided time and no `supersedes_quote_id`; before it, a factory could insert
