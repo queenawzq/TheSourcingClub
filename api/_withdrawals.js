@@ -35,7 +35,7 @@ const DB_WORDS = {
   withdrawal_owes_tsc: (error) => owesTscSentence(error.details ?? error.detail),
 };
 /** Staff's words when a withdrawal waits on money the factory owes TSC (also the board's row). */
-export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Needs checking). This withdrawal waits until the factory's earnings cover it. You can still decline it.`;
+export const owesTscSentence = (amount) => `The factory owes TSC ${amount || "money"} (To recover, in Review needed). This withdrawal waits until the factory's earnings cover it. You can still decline it.`;
 const refusalFrom = (error) => {
   const words = DB_WORDS[error.hint];
   return new PayoutFailure("database", (typeof words === "function" ? words(error) : words) ?? "That couldn't be done. Reload the page and try again.", { detail: error.hint ?? error.code ?? null });

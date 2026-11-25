@@ -467,7 +467,7 @@ export async function overviewMetrics() {
  * paymentsQueueHref(): where "Payments owed" opens, the board's tab that holds
  * what it counts, by the board's own rule (countedQueue,
  * src/shared/payments-board-sections.mjs): Payout owed, else Failed, else
- * Processing, else Withdrawals (waiting or being paid), else Needs checking.
+ * Processing, else Withdrawals (waiting or being paid), else Review needed.
  * Never throws: the plain board is the fallback.
  */
 export async function paymentsQueueHref() {
@@ -487,7 +487,8 @@ export async function paymentsQueueHref() {
     if (queue === "failed") return `${board}?tab=failed`;
     if (queue === "clearing") return `${board}?tab=processing`;
     if ((asked.data?.withdrawals ?? []).some((w) => ["requested", "paying"].includes(w.status))) return `${board}?tab=withdrawals`;
-    if ((attention.data?.disputed?.length ?? 0) + (attention.data?.stuck?.length ?? 0) > 0) return `${board}?tab=needs_checking`;
+    // Every list the overview counts (admin_overview_metrics), not only two of them.
+    if (["disputed", "stuck", "recover", "returned", "refund_failed"].some((list) => (attention.data?.[list]?.length ?? 0) > 0)) return `${board}?tab=review_needed`;
     return board;
   } catch {
     return board;

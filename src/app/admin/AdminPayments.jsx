@@ -931,10 +931,10 @@ function AttentionSection({ attention, onChanged }) {
   }
   return (
     <section className="payments-queue" data-section="attention">
-      <h2>Needs checking ({count})</h2>
+      <h2>Review needed ({count})</h2>
       {attention.error ? <p className="admin-error">{attention.error.message}</p> : null}
       {attention.error ? null : count === 0 ? (
-        <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">Nothing needs checking.</p></div>
+        <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">Nothing needs review.</p></div>
       ) : (
         <div className="admin-scroll">
           <table>
@@ -1054,7 +1054,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     try {
       const asked = new URLSearchParams(window.location.search).get("tab");
       // The tab's words, as a link may say them.
-      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
+      return { needs_checking: "attention", "needs-checking": "attention", review_needed: "attention", payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
     } catch {
       return null;
     }
@@ -1069,7 +1069,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   if (withdrawals) sections.withdrawals = withdrawals.withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   if (attention) sections.attention = [...attention.disputed, ...attention.stuck, ...(attention.recover ?? []), ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
-  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
+  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Review needed"]] : [])];
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
