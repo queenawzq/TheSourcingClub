@@ -3467,6 +3467,9 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   // A live signup starts blank. The design's pre-picked examples are there to
   // show the prototype populated, not to answer on a real brand's behalf.
   const isLive = optionsByLabel !== undefined;
+  // Live, the Role box's "Stakeholder" prefill is never saved, so it is not
+  // shown back either: the profile and Settings know nothing of it.
+  const shownRole = (role) => (isLive && String(role ?? "").trim() === "Stakeholder" ? "" : role);
   // Each decision maker's name, email and role, as the card published them
   // (the email list alone loses who they are).
   const stakeholderDetails = (() => {
@@ -3509,7 +3512,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     }
     const empty = isLive ? "Not added yet" : drawn;
     if (isLive && label === "Decision makers" && stakeholderDetails?.length) {
-      return stakeholderDetails.map((person) => [person.name || person.email, person.role].filter(Boolean).join(" · ")).join(", ");
+      return stakeholderDetails.map((person) => [person.name || person.email, shownRole(person.role)].filter(Boolean).join(" · ")).join(", ");
     }
     const actual = valueFor(REVIEW_ALIAS[label] ?? label);
     if (actual === undefined || actual === null) return empty;
@@ -3669,7 +3672,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
                   <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
                   <div>
                     <strong>{stakeholder.name || "Stakeholder"}</strong>
-                    <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
+                    <p>{isLive ? [shownRole(stakeholder.role), stakeholder.email].filter(Boolean).join(" · ") : <>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</>}</p>
                   </div>
                   <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
                 </article>
