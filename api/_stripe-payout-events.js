@@ -38,16 +38,21 @@ export async function tellPayoutEvent(db, event) {
   // import(), not import: Vercel loads api/ as CommonJS (check:api-load).
   const { payoutAmountWords, payoutFailureSentence } = await import("../src/shared/payout-failure-words.mjs");
   const amount = payoutAmountWords(payout.amount, payout.currency);
+  // The factory asked in US dollars: the bell says the dollars it asked for
+  // (less the fee, as its row does), and what its bank receives in the
+  // payout's own currency.
+  const entered = String(payout.currency ?? "").toLowerCase() === "usd" ? null : await enteredUsd(db, payout);
+  const paidWords = entered == null ? amount : payoutAmountWords(entered, "USD");
   // What the bell already said about this payout (each notice carries its
   // id): a "paid out" that arrives after its failure is not said.
   const said = payout.id ? await saidAboutPayout(db, known.data.org_id, payout.id) : new Set();
   if (event.type === "payout.paid" && said.has("failed")) return false;
   const notice = event.type === "payout.paid"
-    ? { kind: "funds_released", title: `${amount} paid out to your bank`, body: "Withdrawn from your balance." }
+    ? { kind: "funds_released", title: `${paidWords} paid out to your bank`, body: entered == null ? "Withdrawn from your balance." : `Withdrawn from your balance. Your bank receives ${amount}.` }
     : {
       kind: "payout_method_changed",
       title: "A withdrawal did not go through",
-      body: `Your withdrawal of ${amount} did not go through. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
+      body: `Your withdrawal of ${paidWords} did not go through. ${payoutFailureSentence("stripe", payout.failure_code)} The money is back in your balance.`,
     };
   const outcome = event.type === "payout.paid" ? "paid" : "failed";
   // Once per payout and outcome (its key, 20261121410000).
@@ -57,6 +62,22 @@ export async function tellPayoutEvent(db, event) {
   }, { onConflict: "org_id,dedupe_key", ignoreDuplicates: true });
   if (error) throw new Error(error.message);
   return true;
+}
+
+/**
+ * The US cents a withdrawal took from the balance, less its fee (what its row
+ * shows), for the payout it made; null when no withdrawal recorded it. Never throws.
+ */
+async function enteredUsd(db, payout) {
+  try {
+    const rowId = payout.metadata?.stripe_withdrawal_id;
+    const query = db.from("stripe_withdrawals").select("usd_cents, fee_cents");
+    const { data, error } = await (/^[0-9a-f-]{36}$/i.test(rowId ?? "") ? query.eq("id", rowId) : query.eq("payout_id", payout.id)).maybeSingle();
+    if (error || data?.usd_cents == null) return null;
+    return Number(data.usd_cents) - Number(data.fee_cents ?? 0);
+  } catch {
+    return null;
+  }
 }
 
 /** "paid" and/or "failed": the notices this company was already sent about this payout, by their keys. Never throws. */

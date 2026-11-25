@@ -383,6 +383,7 @@ const SENTENCES = [
   [/^Check your withdrawal method, then withdraw again\.$/, () => "请检查你的提现方式，然后重新提现。"],
   [/^Sent by bank transfer to (.+)\.$/, (to) => `已通过银行转账转入 ${bank(to)}。`],
   [/^Sent to (.+)\.$/, (to) => `已转入 ${bank(to)}。`],
+  [amountRe("^Your bank receives AMT\\.$"), (amount) => `你的银行收到 ${amount}。`],
   [amountRe("^Payout fee AMT is taken from this payment: you receive AMT\\.$"), (fee, receives) => `提现手续费 ${fee} 从该笔款项中扣除：你收到 ${receives}。`],
   [amountRe("^Your payment of AMT is waiting\\.$"), (amount) => `你的一笔 ${amount} 款项正在等待处理。`],
   [amountRe("^Your payment of AMT did not go through\\.$"), (amount) => `你的一笔 ${amount} 款项未成功。`],
