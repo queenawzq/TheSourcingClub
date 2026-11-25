@@ -198,7 +198,7 @@ const LATEST_SITE_ADDRESS = async (asServer, orgId) => {
 };
 
 /** Runs one group. Never throws: `{ ok, code?, source?, ran }`. */
-export async function runGroup({ orgId, group, fields, edits, asServer, requestedBy, subjectId = null, steps = STEPS, rules, budgetMs = RERUN_BUDGET_MS }) {
+export async function runGroup({ orgId, group, fields, edits, asServer, requestedBy, subjectId = null, steps = STEPS, rules, budgetMs = RERUN_BUDGET_MS, addressOnly = false }) {
   const ran = {};
   const started = Date.now();
   const left = () => Math.max(1000, budgetMs - (Date.now() - started));
@@ -224,7 +224,8 @@ export async function runGroup({ orgId, group, fields, edits, asServer, requeste
     const { runPhotoCheck } = await steps.photoCheck();
     await Promise.all([
       timed("address", assist.runAddressCheck({ orgId, asServer, requestedBy, siteAddress, keepIfFailed: true, extraDetails: { rerunBy: requestedBy, rerunAt: new Date().toISOString() } }).then(addressOutcome), "map_unreachable"),
-      timed("photos", runPhotoCheck({ orgId, asServer, requestedBy }).then((answer) => (answer?.available === false ? { ran: false, code: "photos_failed" } : { ran: true })), "photos_failed"),
+      // Staff editing the address (Nov 24) re-checks the address only: the photos' findings stay as they are.
+      addressOnly ? null : timed("photos", runPhotoCheck({ orgId, asServer, requestedBy }).then((answer) => (answer?.available === false ? { ran: false, code: "photos_failed" } : { ran: true })), "photos_failed"),
     ]);
   } else if (group === "certification") {
     await timed("certificate", certificateStep({ orgId, asServer, requestedBy, fields, edits, subjectId }), "failed");
@@ -336,7 +337,7 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
   if (staffError) return fail(response, 401, "signed_out", rules);
   if (staff !== true) return fail(response, 403, "not_staff", rules);
 
-  const { orgId, group, fields = {}, subjectId = null } = bodyOf(request);
+  const { orgId, group, fields = {}, subjectId = null, addressOnly = false } = bodyOf(request);
   if (typeof orgId !== "string" || !UUID.test(orgId) || (subjectId != null && !UUID.test(String(subjectId)))) return fail(response, 400, "bad_request", rules);
   const checked = rules.checkFields(group, fields);
   if (checked.code) return fail(response, 400, checked.code, rules, checked.field ? { field: checked.field } : {});
@@ -370,7 +371,7 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       if (error) return fail(response, 200, error.code === "42501" ? "not_staff" : "save_failed", rules);
     }
 
-    const result = await runGroup({ orgId, group, fields: checked.fields, edits, asServer, requestedBy, subjectId, rules, steps });
+    const result = await runGroup({ orgId, group, fields: checked.fields, edits, asServer, requestedBy, subjectId, rules, steps, addressOnly: addressOnly === true && group === "company_information" });
     let outOfDate = null;
     if (group !== "certification") {
       const assist = await steps.registryAssist();

@@ -108,6 +108,28 @@ export function normaliseRegistrationNumber(country, value) {
   return text;
 }
 
+// The EU's VAT prefixes (Greece writes EL): a VAT number is the prefix and the national number.
+const EU_VAT_PREFIX = Object.fromEntries(["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "HR", "HU", "IE", "IT", "LT", "LU",
+  "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"].map((code) => [code, code]).concat([["GR", "EL"]]));
+
+/**
+ * Two ways of writing the same registration number, by the country's own rule, never by guessing:
+ * - Hong Kong: the 8-digit Business Registration number is the start of the certificate's full number
+ *   (71234567 and 71234567-000-11-25-6);
+ * - the EU: a VAT number is the country's prefix and the national number (ESB12345678 and B12345678).
+ * China's old 15-digit registration number cannot be derived from the 18-character code, so it never matches.
+ */
+export function sameRegistrationNumber(country, a, b) {
+  const x = normaliseRegistrationNumber(country, a);
+  const y = normaliseRegistrationNumber(country, b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (country === "HK") return /^\d{8}$/.test(short) && /^\d{9,}$/.test(long) && long.startsWith(short);
+  const prefix = EU_VAT_PREFIX[country];
+  return Boolean(prefix) && long === prefix + short;
+}
+
 export function usccCheckChar(first17) {
   let sum = 0;
   for (let i = 0; i < 17; i += 1) sum += USCC_CHARS.indexOf(first17[i]) * USCC_WEIGHTS[i];
@@ -259,11 +281,12 @@ const enc = encodeURIComponent;
 export const REGISTRY_SOURCES = {
   CN: [
     { ...DOCUMENT_SOURCE, label: "Uploaded business licence" },
+    // The official register (fix round, Nov 24): the one prefilled.
+    { key: "gsxt", label: "GSXT (needs a mainland connection)", url: () => "https://www.gsxt.gov.cn/", copy: "number", seen: ["name", "address"] },
     // QCC's free search answers from outside China (tested Nov 8). A
     // commercial copy of the registry: a brand reads its check as
     // "Registration document", not "Official registry".
     { key: "qcc", label: "QCC (commercial copy of the registry)", action: "Look up on QCC", url: () => "https://www.qcckyc.com/free-company-search", copy: "number", seen: ["name", "address", "startDate", "industry"] },
-    { key: "gsxt", label: "GSXT (needs a mainland connection)", url: () => "https://www.gsxt.gov.cn/", seen: ["name", "address"] },
     { key: "permit", label: "National pollutant permit site", url: () => "https://permit.mee.gov.cn/perxxgkinfo/syssb/xkgg/xkgg!licenseInformation.action", seen: ["name", "address"] },
   ],
   TR: [
@@ -277,16 +300,48 @@ export const REGISTRY_SOURCES = {
     { ...DOCUMENT_SOURCE, label: "Uploaded tax registration letter" },
   ],
   PT: [
-    { key: "vies", label: "EU VIES tax number check", url: () => "https://ec.europa.eu/taxation_customs/vies/", seen: ["name", "address"] },
+    // The company register's own publications (Ministry of Justice), searched by NIPC: the one prefilled.
+    { key: "acts", label: "Published company acts", url: () => "https://publicacoes.mj.pt/Pesquisa.aspx", copy: "number", seen: ["name"] },
     // The certidão answers only Portuguese connections (tested Nov 8): staff
     // read the PDF the factory uploaded, or one opened with the access code.
     { key: "certidao", label: "Permanent certificate (certidão, with the access code)", url: null, copy: "accessCode", seen: ["name", "address"] },
-    { key: "acts", label: "Published company acts", url: () => "https://publicacoes.mj.pt/Pesquisa.aspx", copy: "number", seen: ["name"] },
+    { key: "vies", label: "EU VIES tax number check", url: () => "https://ec.europa.eu/taxation_customs/vies/", seen: ["name", "address"] },
     DOCUMENT_SOURCE,
   ],
   VN: [
     DOCUMENT_SOURCE,
     { key: "national", label: "National Business Registration Portal", url: () => "https://dangkykinhdoanh.gov.vn/vn/Pages/Trangchu.aspx", copy: "number", seen: ["name", "address"] },
+    { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
+  ],
+  // Each country's official company register (fix round, Nov 24).
+  GB: [
+    { key: "companies_house", label: "Companies House", url: (reg, title) => `https://find-and-update.company-information.service.gov.uk/search/companies?q=${enc(reg?.number || title || "")}`, copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  ES: [
+    { key: "rmc", label: "Registro Mercantil Central", url: () => "https://www.rmc.es/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  IT: [
+    { key: "registro_imprese", label: "Registro Imprese (chambers of commerce)", url: () => "https://www.registroimprese.it/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  IN: [
+    { key: "mca", label: "MCA company master data", url: () => "https://www.mca.gov.in/content/mca/global/en/mca/master-data/MDS.html", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  BD: [
+    { key: "rjsc", label: "RJSC (Registrar of Joint Stock Companies)", url: () => "https://roc.gov.bd/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  HK: [
+    { key: "hk_cr", label: "Companies Registry (e-Search)", url: () => "https://www.e-services.cr.gov.hk/", copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
+  ],
+  // No national register: each state's Secretary of State keeps its own.
+  US: [
+    { key: "state_register", label: "State business register (Secretary of State)", url: null, copy: "number", seen: ["name", "address"] },
+    DOCUMENT_SOURCE,
     { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
   ],
 };
@@ -302,6 +357,48 @@ const LEGACY_SOURCES = [
   { key: "edevlet", label: "e-Devlet barcode check" },
 ];
 
+// The US has no national register: each state's Secretary of State keeps its own (fix round 2, Nov 24).
+const US_STATE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware",
+  DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
+  PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
+// Each state's own business search, where its page was checked (Nov 24); another state is named, not linked.
+const US_STATE_SEARCH = {
+  AL: "https://arc-sos.state.al.us/CGI/CORPNAME.MBR/INPUT",
+  CA: "https://bizfileonline.sos.ca.gov/search/business",
+  CO: "https://www.coloradosos.gov/biz/BusinessEntityCriteriaExt.do",
+  DE: "https://icis.corp.delaware.gov/ecorp/entitysearch/NameSearch.aspx",
+  FL: "https://search.sunbiz.org/Inquiry/CorporationSearch/ByName",
+  GA: "https://ecorp.sos.ga.gov/BusinessSearch",
+  MA: "https://corp.sec.state.ma.us/corpweb/corpsearch/corpsearch.aspx",
+  MN: "https://mblsportal.sos.mn.gov/Business/Search",
+  NC: "https://www.sosnc.gov/online_services/search/by_title/_Business_Registration",
+  NJ: "https://www.njportal.com/DOR/BusinessNameSearch/",
+  NV: "https://esos.nv.gov/EntitySearch/OnlineEntitySearch",
+  NY: "https://apps.dos.ny.gov/publicInquiry/",
+  OR: "https://sos.oregon.gov/business/pages/find.aspx",
+  SC: "https://businessfilings.sc.gov/BusinessFiling/Entity/Search",
+  TN: "https://tncab.tnsos.gov/business-entity-search",
+  TX: "https://www.sos.state.tx.us/corp/sosda/index.shtml",
+  VA: "https://cis.scc.virginia.gov/EntitySearch/Index",
+  WA: "https://ccfs.sos.wa.gov/",
+};
+
+/** The US state an address is in ("Hickory, NC 28601" or "…, North Carolina"), with its business search if known; else null. */
+export function usStateFrom(address) {
+  const text = String(address ?? "");
+  const code = text.match(/(?:^|[\s,])([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/)?.[1]
+    ?? text.match(/,\s*([A-Z]{2})\s*(?:,|$)/)?.[1]
+    ?? Object.entries(US_STATE_NAMES).find(([, name]) => new RegExp(`\\b${name}\\b`, "i").test(text))?.[0];
+  if (!code || !US_STATE_NAMES[code]) return null;
+  return { code, name: US_STATE_NAMES[code], url: US_STATE_SEARCH[code] ?? null };
+}
+
 export function registrySources(country) {
   return REGISTRY_SOURCES[country] ?? OTHER_SOURCES;
 }
@@ -312,7 +409,8 @@ export function registrySourceUrl(source, registration, title) {
 }
 
 /** An official source (the brand reads "Official registry"); the same list as registry_source_is_official(). */
-export const OFFICIAL_SOURCES = new Set(["vies", "gib", "gsxt", "certidao", "acts", "permit", "national"]);
+export const OFFICIAL_SOURCES = new Set(["vies", "gib", "gsxt", "certidao", "acts", "permit", "national",
+  "companies_house", "rmc", "registro_imprese", "mca", "rjsc", "hk_cr", "state_register"]);
 
 export const REGISTRY_RESULTS = [
   { key: "found", label: "Found, matches" },

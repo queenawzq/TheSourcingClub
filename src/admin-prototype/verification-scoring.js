@@ -3,11 +3,14 @@
  * the prototype's mock and the live review page. Pure functions only: no
  * data, so importing it never brings the mock profiles into the live app.
  *
- * Overall = Business registration 60 + Company information 40. Certification
+ * Business registration 75 (licence, registry, address) + Company information 25 (factory or trader,
+ * photos); the overall keeps the split from before the address moved (Nov 25). Certification
  * evidence is shown but not counted. A check not done yet scores 0 and says
  * so, so an unchecked registry never looks like a passed one.
  */
-export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
+import { overallByShares, siteRecord, siteSummary, siteVerdict } from "../shared/verification-score.mjs";
+
+export const GROUP_WEIGHTS = { business_registration: 75, company_information: 25 };
 
 /**
  * How much a group counts: its own `weight` when it carries one (a brand's groups, Nov 13), else the
@@ -30,6 +33,8 @@ export function scoreGroup(group) {
 }
 
 export function scoreOverall(groups) {
+  const byShares = overallByShares(groups, groupWeight, scoreGroup);
+  if (byShares !== undefined) return byShares;
   let sum = 0;
   let weight = 0;
   let scored = false;
@@ -44,11 +49,14 @@ export function scoreOverall(groups) {
   return weight && scored ? Math.round(sum / weight) : null;
 }
 
-/** The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence. */
+/**
+ * The lowest counted check that has been done: the overall line names it. A check not done yet is a to-do, not evidence,
+ * and a check at 75 or above is never named the weakest: a full match is not a weakness (fix round, Nov 24).
+ */
 export function weakestCheck(groups) {
   return groups
     .filter((group) => groupWeight(group))
-    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null).map((check) => ({ ...check, group: group.label })))
+    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null && check.score < 75).map((check) => ({ ...check, group: group.label })))
     .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0];
 }
 
@@ -119,7 +127,6 @@ export function photoCheck(photos) {
 export const RECORD_RESULTS = {
   registry: [
     { key: "found", label: "Found" },
-    { key: "name_differs", label: "Name differs" },
     { key: "not_found", label: "Not found" },
     { key: "could_not_check", label: "Couldn't check" },
   ],
@@ -132,7 +139,20 @@ export const RECORD_RESULTS = {
 };
 
 /** What a staff record does to a registry or certificate check. */
-export function recordedCheck(check, { result, reference, name, reason }) {
+export function recordedCheck(check, record) {
+  // The one form (Nov 24): worded and scored as the live page words a saved record.
+  if (record.site != null) {
+    const isCert = check.kind === "certificate";
+    const profile = check.registry.form?.profile ?? {};
+    const saved = siteRecord({ outcome: record.result, site: record.site, ...record.seen, note: record.note, reference: record.link, proof: record.proof }, isCert ? null : profile);
+    const scores = isCert ? { found: 92, nameDiffers: 92, expired: 15, notFound: 5 } : { found: 90, nameDiffers: 60, notFound: 5 };
+    const words = siteVerdict(saved, scores);
+    return {
+      ...check, counts: undefined, score: words.score, verdict: words.verdict, blocks: null,
+      registry: { ...check.registry, ...saved, ...(isCert ? { holder: record.seen?.holder ?? "" } : {}), source: saved.site, by: "You, just now", for: null, summary: siteSummary(saved, "You, just now"), form: check.registry.form },
+    };
+  }
+  const { result, reference, name, reason } = record;
   const source = check.registry.source;
   const outcome = check.kind === "certificate"
     ? {
@@ -162,8 +182,8 @@ export function withReason(check, text) {
 }
 
 export const GROUP_TIPS = {
-  business_registration: "The licence and the official registry: is this a registered company? Counts for 60% of the score.",
-  company_information: "Factory or trader, and whether the address and photos are its own. Counts for 40% of the score.",
+  business_registration: "The licence, the official registry and the address: is this a registered company, and is the address its own? Counts for 75% of the score.",
+  company_information: "Factory or trader, and whether the photos are its own. Counts for 25% of the score.",
   certification: "Whether each certificate is real and current. Not part of the score.",
 };
 

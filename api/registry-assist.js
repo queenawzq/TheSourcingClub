@@ -240,13 +240,14 @@ export function nearlySameCjk(a, b, key = (text) => String(text ?? "").normalize
  * valid, no number read at all, or a name one character off on a CJK name.
  * Unsure is "look at it", never "differs".
  */
-export function compareDocument(extracted, { country, number, title } = {}, { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem }) {
+export function compareDocument(extracted, { country, number, title } = {}, { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber }) {
   const differences = [];
   const unsure = [];
   const docNumber = normaliseRegistrationNumber(country, extracted?.registrationNumber ?? "");
   const typed = normaliseRegistrationNumber(country, number ?? "");
   const problem = (value) => (registrationNumberProblem && country ? registrationNumberProblem(country, value) : null);
-  if (docNumber && typed && docNumber !== typed) {
+  // The same number written another way by the country's rule (a Hong Kong certificate's full number) is no difference.
+  if (docNumber && typed && docNumber !== typed && !(sameRegistrationNumber && sameRegistrationNumber(country, docNumber, typed))) {
     const docProblem = problem(docNumber);
     if (docProblem && !problem(typed)) unsure.push({ field: "number", document: extracted.registrationNumber, typed: number, reason: docProblem === "check_digit" ? "The number read fails its check digit" : "The number read has the wrong length or characters" });
     else differences.push({ field: "number", document: extracted.registrationNumber, typed: number });
@@ -548,7 +549,7 @@ export async function runAddressCheck({ orgId, asServer, requestedBy = null, fet
     const { detail, signals } = await addressInputs(asServer, orgId);
     const details = { ...(await addressAnswer({ detail, signals, fetchImpl, callModelImpl, siteAddress })), ...(extraDetails ?? {}) };
     // Run again: the map not answering is no new answer, so the last address check stands.
-    if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address")) return { available: true, kept: true, ...details };
+    if (keepIfFailed && details.lookupFailed && (signals ?? []).some((s) => s.kind === "address" && s.automatic)) return { available: true, kept: true, ...details };
     // Run again on an unchanged address that answers less specifically keeps the earlier answer (fix round 2).
     if (keepIfFailed) {
       const previous = (signals ?? []).find((s) => s.kind === "address" && s.automatic)?.details ?? null;

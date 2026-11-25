@@ -24,7 +24,11 @@ const CHROME = process.env.CHROME_PATH
   ?? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => fs.existsSync(p));
 if (!CHROME) throw new Error("No Chrome found; set CHROME_PATH.");
 
+// `node scripts/make-demo-verification-docs.mjs gb-certificate.png …` renders only the files named.
+const ONLY = process.argv.slice(2);
+
 function render(name, html, size) {
+  if (ONLY.length && !ONLY.includes(name)) return;
   const file = path.join(SCRATCH, `${name}.html`);
   fs.writeFileSync(file, html);
   execFileSync(CHROME, [
@@ -130,6 +134,30 @@ function portugalCertidao(d) {
   </div></body></html>`;
 }
 
+/* ------------------------------------------------------------ other countries: one plain extract */
+
+// A plain register extract or certificate of incorporation, in the country's own words (fix round, Nov 24:
+// demo factories from eight more countries). No emblem, no seal: a demo fixture, not an official form.
+function registerExtract(d) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  body{margin:0;background:#fff;font-family:Georgia,"Times New Roman",serif;color:#111}
+  .sheet{position:relative;width:1100px;height:1300px;box-sizing:border-box;border:2px solid #444;padding:70px 80px}
+  .hdr{text-align:center;border-bottom:2px solid #444;padding-bottom:18px;margin-bottom:34px}
+  .hdr small{display:block;font-size:20px;letter-spacing:2px;text-transform:uppercase;color:#333}
+  .hdr h1{font-size:38px;margin:14px 0 6px}
+  .hdr p{margin:0;font-size:20px;color:#333}
+  table{width:100%;border-collapse:collapse;font-size:23px}
+  td{border-bottom:1px solid #bbb;padding:14px 10px;vertical-align:top}td.k{width:360px;color:#333}
+  .body{font-size:22px;line-height:1.6;margin-top:34px}
+  .foot{position:absolute;left:80px;right:80px;bottom:60px;font-size:18px;color:#444;display:flex;justify-content:space-between}
+  </style></head><body><div class="sheet">
+  <div class="hdr"><small>${d.authority}</small><h1>${d.title}</h1>${d.subtitle ? `<p>${d.subtitle}</p>` : ""}</div>
+  <table>${d.rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join("")}</table>
+  ${d.body ? `<div class="body">${d.body}</div>` : ""}
+  <div class="foot"><span>${d.issued}</span><span>${d.reference ?? ""}</span></div>
+  </div></body></html>`;
+}
+
 /* ------------------------------------------------------------ certificates */
 
 function certificate(d) {
@@ -201,5 +229,58 @@ render("pt-certificate-gots.png", certificate({
   address: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", scope: "Cutting, sewing and packing of organic cotton jackets and overshirts",
   issued: "2026-08-31", valid: "2027-08-31", issuer: "Northern Textile Certification",
 }), "1400,990");
+
+// The waiting-for-review factories of eight more countries (seed: "eight more countries").
+render("es-nota-simple.png", registerExtract({
+  authority: "Registro Mercantil de Alicante", title: "Nota simple informativa", subtitle: "Información mercantil de sociedad",
+  rows: [["Denominación social", "CONFECCIONES LEVANTE, S.L."], ["CIF", "<b>B54839216</b>"], ["Domicilio social", "Calle Severo Ochoa 18, Polígono Industrial Carrús, 03205 Elche, Alicante"],
+    ["Fecha de constitución", "12/05/2011"], ["Objeto social", "Confección de prendas de vestir exteriores; fabricación de prendas de punto"], ["Inscripción", "Tomo 3482, Folio 117, Hoja A-128734"]],
+  issued: "Expedida el 03/11/2026", reference: "Ref. NS-2026-118423",
+}), "1100,1300");
+render("gb-certificate.png", registerExtract({
+  authority: "Companies House", title: "Certificate of Incorporation of a Private Limited Company", subtitle: "Company Number <b>14827365</b>",
+  rows: [["Company name", "PENNINE KNITWEAR LTD"], ["Company number", "<b>14827365</b>"], ["Registered office", "Unit 4, Abbey Meadows Mills, Abbey Lane, Leicester LE4 5DQ"],
+    ["Incorporated on", "18 April 2023"], ["Type", "Private company limited by shares"], ["Nature of business (SIC)", "14390 Manufacture of other knitted and crocheted apparel"]],
+  body: "The Registrar of Companies for England and Wales hereby certifies that PENNINE KNITWEAR LTD is this day incorporated under the Companies Act 2006 as a private company, that the company is limited by shares, and the situation of its registered office is in England and Wales.",
+  issued: "Given at Companies House, Cardiff, on 18 April 2023",
+}), "1100,1300");
+render("it-visura.png", registerExtract({
+  authority: "Camera di Commercio di Bergamo · Registro delle Imprese", title: "Visura ordinaria società di capitale", subtitle: "Informazioni presenti nel Registro delle Imprese",
+  rows: [["Denominazione", "MAGLIFICIO VAL SERIANA S.R.L."], ["Codice fiscale e n. iscrizione", "<b>04812730165</b>"], ["Numero REA", "BG - 489217"],
+    ["Sede legale", "Via Provinciale 62, 24021 Albino (BG)"], ["Data di costituzione", "09/02/2009"], ["Attività", "Fabbricazione di articoli di maglieria (ATECO 14.39)"]],
+  issued: "Documento n. T 512847301 estratto il 05/11/2026",
+}), "1100,1300");
+render("vn-dkkd.png", registerExtract({
+  authority: "Sở Kế hoạch và Đầu tư Thành phố Hà Nội · Phòng Đăng ký kinh doanh", title: "Giấy chứng nhận đăng ký doanh nghiệp", subtitle: "Công ty trách nhiệm hữu hạn hai thành viên trở lên",
+  rows: [["Tên công ty", "CÔNG TY TNHH MAY MẶC SÔNG HỒNG"], ["Tên viết bằng tiếng nước ngoài", "SONG HONG GARMENT COMPANY LIMITED"], ["Mã số doanh nghiệp", "<b>0108472915</b>"],
+    ["Địa chỉ trụ sở chính", "Lô CN3, Khu công nghiệp Quang Minh, Huyện Mê Linh, Hà Nội"], ["Đăng ký lần đầu", "ngày 14 tháng 09 năm 2018"], ["Ngành nghề", "1410 May trang phục (trừ trang phục từ da lông thú)"]],
+  issued: "Đăng ký thay đổi lần thứ 3: ngày 22 tháng 03 năm 2025",
+}), "1100,1300");
+render("in-incorporation.png", registerExtract({
+  authority: "Government of India · Ministry of Corporate Affairs · Registrar of Companies, Chennai", title: "Certificate of Incorporation", subtitle: "[Pursuant to sub-section (2) of section 7 of the Companies Act, 2013]",
+  rows: [["Company name", "TIRUPPUR KNIT EXPORTS PRIVATE LIMITED"], ["Corporate Identity Number (CIN)", "<b>U18101TZ2015PTC021847</b>"], ["Registered office", "14/2 Kangeyam Road, Veerapandi, Tiruppur, Tamil Nadu 641605"],
+    ["Date of incorporation", "21 July 2015"], ["Class", "Private company limited by shares"], ["Main activity", "Manufacture of knitted and crocheted apparel"]],
+  issued: "Given under my hand at Chennai this 21st day of July 2015", reference: "SRN G21847315",
+}), "1100,1300");
+render("bd-incorporation.png", registerExtract({
+  authority: "Office of the Registrar of Joint Stock Companies and Firms, Dhaka", title: "Certificate of Incorporation", subtitle: "Under the Companies Act, 1994 (Act XVIII of 1994)",
+  rows: [["Company name", "MEGHNA APPARELS LIMITED"], ["Registration No.", "<b>C-148273/2018</b>"], ["Registered office", "Plot 27, BSCIC Industrial Estate, Konabari, Gazipur 1751"],
+    ["Date of incorporation", "6 March 2018"], ["Type", "Private company limited by shares"], ["Main activity", "Manufacture of woven and knit readymade garments"]],
+  issued: "Given under my hand at Dhaka on 6 March 2018",
+}), "1100,1300");
+render("us-certificate.png", registerExtract({
+  authority: "State of North Carolina · Department of the Secretary of State", title: "Certificate of Organization", subtitle: "Limited Liability Company",
+  rows: [["Company name", "CAROLINA CUT &amp; SEW LLC"], ["SOSID", "<b>2214587</b>"], ["Principal office", "1180 Highland Ave NE, Hickory, NC 28601"],
+    ["Date formed", "October 3, 2019"], ["Status", "Current-Active"], ["Business", "Cut and sew apparel contractor"]],
+  body: "I, the Secretary of State of the State of North Carolina, do hereby certify that the Articles of Organization of CAROLINA CUT &amp; SEW LLC were filed in this office as provided by law.",
+  issued: "Filed October 3, 2019",
+}), "1100,1300");
+render("hk-incorporation.png", registerExtract({
+  authority: "Companies Registry · 公司註冊處", title: "Certificate of Incorporation · 公司註冊證明書", subtitle: "Company No. 公司編號 <b>3184276</b>",
+  rows: [["Company name", "KOWLOON BAY GARMENTS LIMITED<br>九龍灣製衣有限公司"], ["Company No.", "<b>3184276</b>"], ["Registered office", "Flat B, 9/F, Kowloon Bay Industrial Centre, 15 Wang Hoi Road, Kowloon Bay, Kowloon"],
+    ["Date of incorporation", "11 August 2022"], ["Type", "Private company limited by shares"], ["Business", "Garment manufacturing and export"]],
+  body: "I hereby certify that KOWLOON BAY GARMENTS LIMITED is this day incorporated in Hong Kong under the Companies Ordinance (Chapter 622 of the Laws of Hong Kong), and that this company is limited.",
+  issued: "Issued by the Registrar of Companies, 11 August 2022",
+}), "1100,1300");
 
 fs.rmSync(SCRATCH, { recursive: true, force: true });

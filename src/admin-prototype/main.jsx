@@ -7,6 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
+import { CompanyOverride } from "./CompanyOverride.jsx";
 import { verificationMockProfiles } from "./verification-mock.js";
 import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
 import { suggestedApprovalMessage } from "../shared/approval-message.mjs";
@@ -1207,6 +1208,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // found it), re-read whenever the registry panel records a check.
   const [registryChanged, setRegistryChanged] = useState(0);
   const [approveBlock, setApproveBlock] = useState(null);
+  // Live only: Approve waits for the company's signed terms, brand or vendor.
+  const [termsBlock, setTermsBlock] = useState(null);
   const live = useLiveVerification(profile?.id, Boolean(isVendor && !profile?.verification && actions.verificationScore && profile?.id), () => {
     setRegistryChanged((n) => n + 1);
     onRegistryChange?.();
@@ -1225,7 +1228,18 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     actions.approvalBlock(profile.id).then((reason) => { if (!cancelled) setApproveBlock(reason); }, () => {});
     return () => { cancelled = true; };
   }, [actions, isVendor, profile?.id, registryChanged]);
-  const deleteLabel = isVendor ? "factory" : "brand";
+  useEffect(() => {
+    setTermsBlock(null);
+    if (!actions.termsBlock || !profile?.id) return undefined;
+    let cancelled = false;
+    actions.termsBlock(profile.id).then((reason) => { if (!cancelled) setTermsBlock(reason); }, () => {});
+    return () => { cancelled = true; };
+  }, [actions, profile?.id]);
+  // One reason for the registry block, the pop-up's (fix round, Nov 24): the score's words, once it is read.
+  const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
+  // The address the company typed, from the Address block (Nov 25: no longer a line in Review details).
+  const savedAddress = verification?.groups?.flatMap((group) => group.checks ?? []).find((check) => check.edit)?.edit.value ?? "";
+  const deleteLabel = profile?.entityType === "Trading company" ? "trading company" : isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
     (document) => document.kind === "walkthrough" && document.status !== "rejected" && Number(document.size_bytes) > 0,
@@ -1284,7 +1298,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
       <div className="admin-review-shell">
         <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to verification queue</button>
         <header className="admin-review-header">
-          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{profile.name}</h1><p>{profile.location} · Submitted {profile.submitted}</p></div></div>
+          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{profile.name}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · Submitted {profile.submitted}</p></div></div>
           <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
         </header>
 
@@ -1378,10 +1392,20 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               </>)}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
+              {/* Live only: Change type, and who changed what. Edit address is in the Address block (Nov 25). */}
+              {isVendor && actions.updateCompanyProfile && (
+                <CompanyOverride
+                  orgId={profile.id}
+                  entityType={profile.entityType}
+                  actions={actions}
+                  refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
+                  onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}
+                />
+              )}
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
-              <h2>Complete this review</h2>
+              <h2>{profile.status === "Approved" ? "Review complete" : "Complete this review"}</h2>
               {isVendor && (
                 <fieldset className="admin-tier-picker">
                   <legend>Assign marketplace badge</legend>
@@ -1425,11 +1449,11 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 </fieldset>
               )}
               {approved ? isVendor && (
-                <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock) || approvalTier === currentTier} title={approveBlock || undefined} onClick={() => { const tier = approvalTier; Promise.resolve(onDecision(profile.id, "Approved", null, tier)).then((done) => { if (done) setChangedTier(tier); }); }}>
+                <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0 || approvalTier === currentTier} title={approveBlocks.join("\n") || undefined} onClick={() => { const tier = approvalTier; Promise.resolve(onDecision(profile.id, "Approved", null, tier)).then((done) => { if (done) setChangedTier(tier); }); }}>
                   Change badge to {tierWord}
                 </button>
               ) : (
-              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => {
+              <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0} title={approveBlocks.join("\n") || undefined} onClick={() => {
                 // Staff's edits stay while they reopen it; another company starts from its own suggestion
                 // (chosen again once the submission, with the country and languages, has loaded).
                 if (approveNoteFor !== profile.id) { setApproveNote(suggestedApprovalMessage(profile.entityType, { countryCode: submission?.profile?.country_code, locales: (submission?.members ?? []).map((member) => member.locale) })); setApproveNoteFor(submission ? profile.id : null); }
@@ -1438,7 +1462,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 {approveLabel}
               </button>
               )}
-              {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}
+              {approveBlocks.map((block) => <p key={block} className="admin-approve-block" role="note">{block}</p>)}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
@@ -1478,7 +1502,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <div><strong>Message to applicant</strong><span>Optional. Sent with the approval email and notification. Start a line with "-" to make a bullet.</span></div>
             </div>
             <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={approveNote} onChange={(event) => setApproveNote(event.target.value)} /></label>
-            <footer><button className="secondary-btn" type="button" onClick={() => setApproveOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => {
+            <footer><button className="secondary-btn" type="button" onClick={() => setApproveOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0} title={approveBlocks.join("\n") || undefined} onClick={() => {
               setApproveOpen(false);
               // Sent: the next opening starts from the suggestion again. A failed send keeps the draft.
               Promise.resolve(onDecision(profile.id, "Approved", approveNote.trim() || null, isVendor ? approvalTier : null)).then((sent) => { if (sent) setApproveNoteFor(null); });
@@ -2142,7 +2166,11 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const actions = useActions();
   const viewer = useViewer();
 
-  const profiles = queue ?? [];
+  // A re-read that fails (after a record on the review page) keeps the last queue on screen: the
+  // workspace only blanks when the first read fails, never under an open dialog (Nov 24 testers).
+  const lastQueue = useRef(null);
+  if (queue) lastQueue.current = queue;
+  const profiles = queue ?? lastQueue.current ?? [];
   const rfqList = rfqRows ?? [];
   const quoteList = quoteRows ?? [];
   const users = userRows ?? [];
@@ -2150,7 +2178,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const metrics = metricRow ?? {};
   // Only the first read blanks the workspace: a refresh after a record keeps the review page (and its open modal) on screen.
   const loading = (queueLoading && !queue) || rfqsLoading || quotesLoading || usersLoading;
-  const loadError = queueError || rfqsError || quotesError || usersError;
+  const loadError = (queueError && !lastQueue.current) || rfqsError || quotesError || usersError;
 
   const query = new URLSearchParams(window.location.search);
   const requested = query.get("screen") || "overview";
