@@ -248,7 +248,7 @@ select is((select row(pauses_factory, state)::text from public.payment_reviews w
   row(true, 'decide')::text, 'the review pauses the factory, for staff to decide');
 select is(public.factory_paused(pg_temp.org('e2')), true, 'F2 is paused');
 select is(pg_temp.told(pg_temp.org('e2'), 'Withdrawals paused'),
-  'A brand requested a refund for "PR24X bulk two" on PR24X request 2 (PR24X-2), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'A brand disputed a card payment for "PR24X bulk two" on PR24X request 2 (PR24X-2), so our team is reviewing it. Withdrawals are paused until the review is done.',
   'and told once');
 
 select * from finish();

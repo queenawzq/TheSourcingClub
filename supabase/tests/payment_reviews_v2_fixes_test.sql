@@ -290,7 +290,7 @@ select is(public.brand_paused('c27b0000-0000-0000-0000-0000000000b1'), true, 'th
 select is(public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), false, 'the factory can withdraw again, nothing taken');
 select is((select b ->> 'reason' || ' · ' || (b ->> 'order_number') from jsonb_array_elements(pg_temp.paused_brands()) b
             where (b ->> 'org_id')::uuid = 'c27b0000-0000-0000-0000-0000000000b1'), 'Brand at fault · TSC-927001', 'Users: Brand at fault');
-select ok(pg_temp.told('e1', 'Withdrawals resumed') like '%"PR27 lab dip" is done. You can withdraw your balance again.', 'the factory is told, without the note');
+select ok(pg_temp.told('e1', 'Withdrawals resumed') like '%"PR27 lab dip" on % is done. You can withdraw your balance again.', 'the factory is told, without the note');
 -- A refund made in Stripe has no brand at fault.
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_amount(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', 1715)')$$,
   'another refund of the deposit in Stripe''s dashboard');

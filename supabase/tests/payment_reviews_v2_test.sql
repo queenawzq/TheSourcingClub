@@ -219,7 +219,7 @@ select is(public.factory_paused(pg_temp.org('e1')), false, 'nobody paused');
 select is(pg_temp.told(pg_temp.org('b1'), 'Your payment for "PR25 deposit" was refunded'),
   '$107.00 was refunded to your card. Note from our team: Late sample, agreed with the factory.', 'the brand is told, with the reason');
 select is(pg_temp.told(pg_temp.org('e1'), 'Refund for "PR25 deposit"'),
-  '$100.00 for "PR25 deposit" on PR25 request 1 (TSC-925001) was returned to the brand from your balance. Note from our team: Late sample, agreed with the factory.',
+  '$100.00 was taken from your balance for the brand''s refund of "PR25 deposit" on PR25 request 1 (TSC-925001). Note from our team: Late sample, agreed with the factory.',
   'the factory is told what left its balance');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_staff_refund(%L, ''re_pgtap_pr25_1'', ''succeeded'')', (select j ->> 'staff_refund_id' from c1))),
   'the webhook says it again');

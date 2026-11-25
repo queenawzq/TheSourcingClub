@@ -68,7 +68,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_review_
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''b40f0011-0000-0000-0000-000000000000'', ''ch_pgtap_r40_11'', ''card'', ''Visa ending in 0259'', 53500)')$$,
   'the disputed charge is recorded as funded');
 select is(pg_temp.told('b40f0011-0000-0000-0000-000000000000'),
-  'Payment for "R40 fit sample" under review: Our team is reviewing this payment before it goes to your balance.',
+  'Payment for "R40 fit sample" disputed: A brand disputed a card payment for "R40 fit sample" on R40 request (R40-1), so our team is reviewing it.',
   'the factory is told it is on hold, and nothing says it is added on approval');
 
 -- Approval says the hold again, once.
@@ -85,7 +85,7 @@ delete from public.notifications where subject_id = 'b40f0011-0000-0000-0000-000
    and (data ->> 'approved')::boolean;
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''b40f0011-0000-0000-0000-000000000000'', false)')$$, 'won before approval');
 select is(pg_temp.told('b40f0011-0000-0000-0000-000000000000'),
-  'Payment for "R40 fit sample" under review: Our team is reviewing this payment before it goes to your balance.',
+  'Payment for "R40 fit sample" disputed: A brand disputed a card payment for "R40 fit sample" on R40 request (R40-1), so our team is reviewing it.',
   'the win is not told per step any more (20261124100000: no "Hold lifted")');
 
 -- Funded first: the usual notice; a dispute before approval is not told

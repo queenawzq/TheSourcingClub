@@ -87,7 +87,7 @@ create function pg_temp.close(r uuid, note text) returns void language plpgsql a
 begin
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.close_staff_refund_failure(r, note);
+  perform public.close_staff_refund_failure(r, note, 0);
   reset role;
 end;
 $f$;
@@ -107,7 +107,7 @@ $f$;
 -- ===========================================================================
 select pg_temp.act_as('01');
 set local role authenticated;
-select throws_ok($$select public.close_staff_refund_failure(gen_random_uuid(), 'x')$$, '42501', null, 'a factory cannot close a staff refund');
+select throws_ok($$select public.close_staff_refund_failure(gen_random_uuid(), 'x', 0)$$, '42501', null, 'a factory cannot close a staff refund');
 select throws_ok($$select public.brand_payment_refunds('c28b0000-0000-0000-0000-0000000000b1')$$, '42501', null, 'nor read the brand''s refunds');
 reset role;
 select pg_temp.act_as('04');
@@ -169,7 +169,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_review_
   'an inquiry on the lab dip''s charge');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c28f0002-0000-0000-0000-000000000001'', true)')$$, 'its step on hold');
 select lives_ok($$select pg_temp.fund(2)$$, 'funded');
-select is(pg_temp.told('e1', 'Payment for "PR28 lab dip" under review'), 0, 'the factory hears nothing of an inquiry');
+select is(pg_temp.told('e1', 'Payment for "PR28 lab dip" disputed'), 0, 'the factory hears nothing of an inquiry');
 select is(pg_temp.told('e1', 'Payment held for "PR28 lab dip"'), 1, 'but that the money is held, as usual');
 select is(pg_temp.told('b1', 'Your payment for "PR28 lab dip" is funded'), 1, 'and the brand that it is funded');
 
@@ -181,7 +181,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_review_
 select lives_ok($$select pg_temp.fund(3)$$, 'recorded as funded');
 select is(pg_temp.told('b1', 'Your payment for "PR28 trims" is funded'), 0, 'the brand is not told it is funded');
 select is(pg_temp.told('e1', 'Payment held for "PR28 trims"'), 0, 'nor the factory that it is held');
-select is(pg_temp.told('e1', 'Payment for "PR28 trims" under review'), 1, 'the factory is told it is under review');
+select is(pg_temp.told('e1', 'Payment for "PR28 trims" disputed'), 1, 'the factory is told it is under review');
 select lives_ok($$select pg_temp.fund(4)$$, 'the bulk funded');
 select is(pg_temp.told('b1', 'Your payment for "PR28 bulk" is funded'), 1, 'told funded');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c28f0004-0000-0000-0000-000000000001'', ''dp_pgtap_pr28_4'', ''needs_response'', 10700, now() + interval ''7 days'', 1500)')$$,

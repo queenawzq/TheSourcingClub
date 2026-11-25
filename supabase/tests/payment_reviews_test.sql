@@ -196,10 +196,10 @@ select ok(public.factory_paused(pg_temp.org('e1')) and public.brand_paused(pg_te
 select is(pg_temp.bal('e1', '01') - 'review' - 'rows', (select f1 from pr24_before) - 'review' - 'rows', 'no figure changed');
 select is(pg_temp.bal('e1', '01') -> 'review' ->> 'step_title', 'PR24 deposit', 'the card names the step');
 select is(pg_temp.told(pg_temp.org('e1'), 'Withdrawals paused'),
-  'A brand requested a refund for "PR24 deposit" on PR24 request 1 (PR24-1), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'A brand disputed a card payment for "PR24 deposit" on PR24 request 1 (PR24-1), so our team is reviewing it. Withdrawals are paused until the review is done.',
   'the factory is told, without blame');
 select is(pg_temp.told(pg_temp.org('b1'), 'Account under review'),
-  'A payment for "PR24 deposit" on PR24 request 1 (PR24-1) was disputed with your bank. Until our review is done, you can only message vendors.',
+  'A payment for "PR24 deposit" on PR24 request 1 (PR24-1) was disputed with your bank. Until our review is done, you can''t fund or approve steps or accept quotes. You can still message vendors.',
   'the brand is told what it can still do');
 select is(public.factory_paused(pg_temp.org('e2')), false, 'another factory is not paused');
 
@@ -353,7 +353,7 @@ select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal('e1', '01') -> 
 select is(public.factory_paused(pg_temp.org('e1')), false, 'the factory can withdraw again');
 select is(public.brand_paused(pg_temp.org('b1')), false, 'the factory paying lets the brand use its account again');
 select is(pg_temp.told(pg_temp.org('e1'), 'Payment review complete'),
-  '$50.00 for "PR24 deposit" on PR24 request 1 (PR24-1) was returned to the brand. You can withdraw the rest of your balance. Note from our team: The sample did not arrive.',
+  '$50.00 was taken from your balance for the brand''s refund of "PR24 deposit" on PR24 request 1 (PR24-1). You can withdraw the rest of your balance. Note from our team: The sample did not arrive.',
   'the factory is told what was returned, on which order, and the note');
 select is(pg_temp.told(pg_temp.org('b1'), 'Account review complete'), 'You can fund steps, approve steps and accept quotes again.',
   'the brand is told what it can do again');
@@ -405,7 +405,7 @@ select lives_ok(format($$select public.decide_payment_review(%L, 'no_fault', nul
 reset role;
 select is(pg_temp.avail('e2', '04'), (select before from pr24_f2), 'nothing taken');
 select is(public.factory_paused(pg_temp.org('e2')), false, 'F2 unpaused');
-select is(pg_temp.told(pg_temp.org('e2'), 'Withdrawals resumed'), 'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again.',
+select is(pg_temp.told(pg_temp.org('e2'), 'Withdrawals resumed'), 'The review of the payment for "PR24 deposit two" on PR24 request 2 (PR24-2) is done. You can withdraw your balance again.',
   'F2 is told, without the note (staff only)');
 select is((select x ->> 'step' || ' ' || (x ->> 'reason') || ' ' || (x ->> 'step_line') from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'refund')),
   '3 refunded_in_stripe No fault · TSC absorbed $53.50', 'and the row is done: not the factory');
@@ -437,7 +437,7 @@ select lives_ok(format($$select public.decide_payment_review(%L, 'no_fault', nul
 reset role;
 select is(public.factory_paused(pg_temp.org('e3')), true, 'still paused by the other');
 select is(pg_temp.told(pg_temp.org('e3'), 'Payment review complete'),
-  'The review of the payment for "PR24 sample three" is done. Withdrawals stay paused while another payment is reviewed.', 'and told so');
+  'The review of the payment for "PR24 sample three" on PR24 request 3 (PR24-3) is done. Withdrawals stay paused while another payment is reviewed.', 'and told so');
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 46000, 'too much')$$, pg_temp.review(5, 'dispute')),
@@ -471,7 +471,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_review_
   'it becomes a chargeback');
 select ok(public.factory_paused(pg_temp.org('e2')) and public.brand_paused(pg_temp.org('b2')), 'now both are paused');
 select is((select body from public.notifications where dedupe_key = 'payment_review_brand:' || pg_temp.by_ref('dp_pgtap_pr24_3')),
-  'A payment for "PR24 deposit two" on PR24 request 2 (PR24-2) was disputed with your bank. Until our review is done, you can only message vendors.',
+  'A payment for "PR24 deposit two" on PR24 request 2 (PR24-2) was disputed with your bank. Until our review is done, you can''t fund or approve steps or accept quotes. You can still message vendors.',
   'the brand is told then');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', true)')$$, 'its charge is disputed');
 select is(public.review_returnable_cents(pg_temp.org('e2')), 0::bigint, 'a step on hold is never offered to take from');
@@ -480,7 +480,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_review_
 select is((select state from public.payment_reviews where stripe_ref = 'dp_pgtap_pr24_3'), 'resumed', 'resumed with no staff action');
 select is(public.factory_paused(pg_temp.org('e2')), false, 'F2 can withdraw again by itself');
 select is((select body from public.notifications where dedupe_key = 'payment_review_done:' || pg_temp.by_ref('dp_pgtap_pr24_3')),
-  'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again.', 'and is told');
+  'The review of the payment for "PR24 deposit two" on PR24 request 2 (PR24-2) is done. You can withdraw your balance again.', 'and is told');
 select is(public.brand_paused(pg_temp.org('b2')), true, 'the brand that disputed stays paused');
 select is((select concat_ws(' | ', x ->> 'step', x ->> 'step_line', (x -> 'actions')::text, x ->> 'open', x ->> 'brand_paused') from jsonb_array_elements(pg_temp.board()) x
             where (x ->> 'id')::uuid = pg_temp.by_ref('dp_pgtap_pr24_3')),
