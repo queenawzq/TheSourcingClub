@@ -19,12 +19,17 @@ import { stripeDashboardUrl } from "../../lib/domain/stripe.js";
 const moneyIn = (cents, currency = "USD") => formatMoney(Number(cents) || 0, currency || "USD");
 // In the reader's own zone.
 const day = (value) => (value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
-const isRefund = (row) => row.reason === "refunded_in_stripe" || row.reason === "staff_refund_failed";
-const REASON = { card_dispute: "Card dispute", inquiry: "Inquiry", refunded_in_stripe: "Refund", staff_refund_failed: "Refund failed" };
+// A staff refund that failed after it was made is its own row (kind "staff_refund").
+const isStaffRefund = (row) => row.kind === "staff_refund";
+const isRefund = (row) => row.reason === "refunded_in_stripe" || isStaffRefund(row);
+const REASON = { card_dispute: "Card dispute", inquiry: "Inquiry", refunded_in_stripe: "Refund" };
+const reasonOf = (row) => (isStaffRefund(row) ? "Refund failed" : REASON[row.reason] ?? "Card dispute");
 
 /** The one line under the bar: the server's words, then the date in the reader's zone. */
 function lineFor(row) {
-  const line = row.step_line ?? "";
+  // An open failed staff refund: "Refund failed · <Stripe's reason in words>" (its first sentence; the row is narrow).
+  const failure = isStaffRefund(row) && Number(row.step) < 3 ? String(row.failure ?? "").split(/(?<=\.)\s/)[0] : "";
+  const line = [row.step_line ?? "", failure].filter(Boolean).join(" · ");
   const date = day(row.step_date);
   if (!date) return line;
   // The date never breaks inside itself ("Dec" / "4").
@@ -173,7 +178,7 @@ function CloseRefundDialog({ row, onClose, onDone }) {
     setWorking(true);
     setProblem(null);
     try {
-      await reviews.closeFailedStaffRefund(row.staff_refund_id ?? row.id, note.trim());
+      await reviews.closeStaffRefundFailure(row.id, note.trim());
       onDone();
     } catch (failure) {
       setProblem(failure.message);
@@ -207,7 +212,7 @@ function ReviewRow({ row, onChanged, withActions = true }) {
   const acts = row.actions ?? [];
   const canResolve = acts.includes("decide");
   return (
-    <tr data-testid="payment-review" data-review={row.id}>
+    <tr data-testid="payment-review" data-review={row.id} data-kind={row.kind ?? "review"}>
       <td>
         <strong>{row.brand_name}</strong>
         {row.brand_paused ? <span className="admin-pill admin-pill--paused" data-testid="review-brand-paused">Paused</span> : null}
@@ -215,12 +220,12 @@ function ReviewRow({ row, onChanged, withActions = true }) {
       </td>
       <td>{row.order_number}{row.milestone_title ? <span className="admin-sub">{row.milestone_title}</span> : null}</td>
       <td><strong>{moneyIn(row.amount_cents, row.currency)}</strong></td>
-      <td>{REASON[row.reason] ?? "Card dispute"}</td>
+      <td>{reasonOf(row)}</td>
       <td className="payment-review-progress-cell">
         <Progress row={row} />
         <p className={`payment-review-line${row.step === 3 ? " done" : ""}`} data-testid="review-line">
           {lineFor(row)}
-          {row.flag ? <span className="admin-pill admin-pill--rejected" data-testid="review-refund-failed">{row.flag}</span> : null}
+          {row.flag && !isStaffRefund(row) ? <span className="admin-pill admin-pill--rejected" data-testid="review-refund-failed">{row.flag}</span> : null}
           {row.step === 1 && row.stripe_payment_intent_id ? (
             <a href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)} target="_blank" rel="noreferrer">Open in Stripe</a>
           ) : null}
@@ -258,7 +263,7 @@ function ReviewTable({ rows, onChanged, withActions = true }) {
             {withActions ? <th className="payments-action-heading"><span className="admin-visually-hidden">Actions</span></th> : null}
           </tr>
         </thead>
-        <tbody>{rows.map((row) => <ReviewRow key={row.id} row={row} onChanged={onChanged} withActions={withActions} />)}</tbody>
+        <tbody>{rows.map((row) => <ReviewRow key={`${row.kind ?? "review"}-${row.id}`} row={row} onChanged={onChanged} withActions={withActions} />)}</tbody>
       </table>
     </div>
   );
