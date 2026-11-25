@@ -2086,7 +2086,7 @@ const onboardingCopy = {
         title: "添加工厂背景",
         intro: "补充工厂介绍、生产优势和合作方式，帮助品牌更快判断是否匹配。",
         brandLabel: "工厂介绍",
-        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送 RFQ 前需要了解的信息。",
+        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送询价前需要了解的信息。",
         logoTitle: "工厂 Logo",
         logoHelper: "上传工厂 logo、字标或图标。",
         logoAccept: "SVG、PNG 或 JPG",
@@ -9108,7 +9108,7 @@ function OnboardingBrandContext({ content, language, values = {}, documents = {}
           name="factory-logo"
           fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg"
           multiple={false}
-          uploadMoreLabel={language === "zh" ? "上传更多" : "Upload more"}
+          uploadMoreLabel={language === "zh" ? "替换" : "Replace"}
           uploadedLabel={language === "zh" ? "已上传" : "Uploaded"}
           deleteLabel={language === "zh" ? "删除" : "Delete"}
           documents={documents["factory-logo"] ?? []}
