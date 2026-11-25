@@ -223,8 +223,12 @@ export function fieldsFromBrief(brief, categoryTerms, otherTerms = {}) {
   if (!text) return {};
   const samples = clauses(text).find((clause) => /\bsamples?\b/i.test(clause)) ?? "";
 
+  const category = productTypeFrom(text, categoryTerms);
   return {
-    category: productTypeFrom(text, categoryTerms),
+    // A request is saved under its product when the brand names it nothing
+    // else, so the card shows that name rather than an empty field.
+    title: category,
+    category,
     certifications: labelsIn(text, otherTerms.certification),
     regions: labelsIn(text, otherTerms.region),
     quantity: quantityLine(quantityFrom(text), colourCountFrom(text), namedSplitsFrom(text)),
