@@ -62,12 +62,14 @@ function centsFrom(text) {
   if (!/^\d+(\.\d{1,2})?$/.test(value)) return null;
   return Math.round(Number(value) * 100);
 }
+/** "TSC absorbs the rest": named the service fee when the factory gives back its whole part (T2 A11). */
+export const restLine = (rest, currency, isFee) => `TSC absorbs the rest (${moneyIn(rest, currency)}${isFee ? ", the service fee" : ""})`;
 const typed = (cents) => (Number(cents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** The design's dialog frame ("Request more information"), shared by Resolve and Refund. */
 export function StaffDialog({ eyebrow, title, labelId, working, onCancel, children }) {
   return createPortal(
-    <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onCancel()}>
+    <div className="approve-fund-modal-layer staff-dialog-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onCancel()}>
       <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby={labelId}>
         <button className="settings-drawer-close" type="button" aria-label="Close" disabled={working} onClick={onCancel}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
         <header><div>{eyebrow ? <span>{eyebrow}</span> : null}<h2 id={labelId}>{title}</h2></div></header>
@@ -109,7 +111,8 @@ function ResolveDialog({ row, onClose, onDone }) {
     setProblem(null);
     try {
       await reviews.resolveReview(row.id, fault, fault === "factory_at_fault" ? cents : null, note.trim());
-      onDone();
+      onDone(`${row.order_number}: resolved. ${{ factory_at_fault: `${moneyIn(cents, currency)} from the factory's balance.`,
+        brand_at_fault: `TSC absorbed ${moneyIn(back, currency)}.`, no_fault: `TSC absorbed ${moneyIn(back, currency)}.` }[fault]}`);
     } catch (failure) {
       setProblem(failure.message);
     } finally {
@@ -153,7 +156,7 @@ function ResolveDialog({ row, onClose, onDone }) {
           ) : cents == null ? (
             <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
           ) : rest > 0 ? (
-            <p className="payment-rest-line">{`TSC absorbs the rest (${moneyIn(rest, currency)})`}</p>
+            <p className="payment-rest-line">{restLine(rest, currency, factoryCents === Number(row.factory_part_cents))}</p>
           ) : null}
         </>
       ) : null}
@@ -181,7 +184,7 @@ function CloseRefundDialog({ row, onClose, onDone }) {
     setProblem(null);
     try {
       await reviews.closeStaffRefundFailure(row.id, note.trim());
-      onDone();
+      onDone(`${row.order_number}: refund closed. The brand is told.`);
     } catch (failure) {
       setProblem(failure.message);
     } finally {
@@ -207,7 +210,7 @@ function CloseRefundDialog({ row, onClose, onDone }) {
   );
 }
 
-function ReviewRow({ row, onChanged, withActions = true }) {
+function ReviewRow({ row, onChanged, onHeard, withActions = true }) {
   const [resolving, setResolving] = useState(false);
   const [refunding, setRefunding] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -242,20 +245,24 @@ function ReviewRow({ row, onChanged, withActions = true }) {
         {acts.includes("close") ? (
           <button type="button" className="admin-reject" data-testid="review-close-refund" onClick={() => setClosing(true)}>Close</button>
         ) : null}
-        {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={() => { setResolving(false); onChanged?.(); }} /> : null}
+        {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={(heard) => { setResolving(false); onHeard?.(heard); onChanged?.(); }} /> : null}
         {refunding ? (
           <RefundDialog payment={{ payment_id: row.payment_id, step_title: row.milestone_title }} orderNumber={row.order_number}
                         currency={row.currency ?? "USD"} initialCents={row.amount_cents}
-                        onClose={() => setRefunding(false)} onDone={() => { setRefunding(false); onChanged?.(); }} />
+                        onClose={() => setRefunding(false)} onDone={(result) => {
+                          setRefunding(false);
+                          onHeard?.(result?.status === "pending" ? `${row.order_number}: refund pending.` : `${row.order_number}: refunded ${moneyIn(result?.amountCents, row.currency)}.`);
+                          onChanged?.();
+                        }} />
         ) : null}
-        {closing ? <CloseRefundDialog row={row} onClose={() => setClosing(false)} onDone={() => { setClosing(false); onChanged?.(); }} /> : null}
+        {closing ? <CloseRefundDialog row={row} onClose={() => setClosing(false)} onDone={(heard) => { setClosing(false); onHeard?.(heard); onChanged?.(); }} /> : null}
       </td> : null}
     </tr>
   );
 }
 
 /** Done rows have nothing to act on, so their table has no actions column. */
-function ReviewTable({ rows, onChanged, withActions = true }) {
+function ReviewTable({ rows, onChanged, onHeard, withActions = true }) {
   return (
     <div className="admin-scroll">
       <table className="payment-reviews-table">
@@ -265,7 +272,7 @@ function ReviewTable({ rows, onChanged, withActions = true }) {
             {withActions ? <th className="payments-action-heading"><span className="admin-visually-hidden">Actions</span></th> : null}
           </tr>
         </thead>
-        <tbody>{rows.map((row) => <ReviewRow key={`${row.kind ?? "review"}-${row.id}`} row={row} onChanged={onChanged} withActions={withActions} />)}</tbody>
+        <tbody>{rows.map((row) => <ReviewRow key={`${row.kind ?? "review"}-${row.id}`} row={row} onChanged={onChanged} onHeard={onHeard} withActions={withActions} />)}</tbody>
       </table>
     </div>
   );
@@ -278,13 +285,16 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
   const open = reviewsInProgress(reviews);
   const counted = (reviews ?? []).filter((row) => row.open).length;
   const done = (reviews ?? []).filter((row) => !row.open && Number(row.step) >= 3);
+  // What the last action did, since its row leaves the list (T2 A11).
+  const [heard, setHeard] = useState(null);
   return (
     <section className="payments-queue" data-section="payment-reviews">
       <h2>Payment reviews ({counted})</h2>
+      {heard ? <p className="admin-sub" role="status" data-testid="review-done">{heard}</p> : null}
       {error ? <p className="admin-error">{error.message}</p> : null}
       {error ? null : open.length === 0 ? (
         <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">No payment is under review.</p></div>
-      ) : <ReviewTable rows={open} onChanged={onChanged} />}
+      ) : <ReviewTable rows={open} onChanged={onChanged} onHeard={setHeard} />}
       {!error && done.length > 0 ? (
         <details className="admin-views-fold" data-testid="payment-reviews-done">
           <summary>Done ({done.length})</summary>

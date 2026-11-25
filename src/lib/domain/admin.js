@@ -453,6 +453,9 @@ export async function overviewMetrics() {
   if (!rows?.length) throw new Error("The marketplace overview couldn't be loaded.");
   const row = rows[0];
   const paymentsHref = await paymentsQueueHref();
+  // The link names the tab it opens (T2 A8), in the board's own words.
+  const tab = new URL(paymentsHref, "http://x").searchParams.get("tab");
+  const paymentsTab = { needs_checking: "Review needed", failed: "Failed", processing: "Processing", withdrawals: "Withdrawals" }[tab] ?? "Payout owed";
 
   return {
     profilesAwaitingReview: row.profiles_awaiting_review ?? 0,
@@ -462,6 +465,7 @@ export async function overviewMetrics() {
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
     // The payments board is the app's, not the console's.
     paymentsHref,
+    paymentsLinkLabel: `Open ${paymentsTab}`,
   };
 }
 

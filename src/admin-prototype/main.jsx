@@ -319,7 +319,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, 
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments owed" value={metricsError ? "—" : metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
+          <MetricCard label="Payments owed" value={metricsError ? "—" : metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel={metrics.paymentsLinkLabel ?? "Open payments"} />
         </div>
 
         <section className="admin-overview-grid">
@@ -1805,7 +1805,7 @@ function PausedBrandsPanel({ rows, users, onUnpause }) {
       <header><div><h2>{rows.length} paused brand{rows.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
       {rows.length > 0 ? (
         <div className="admin-table-wrap">
-          <table className="admin-table admin-users-table">
+          <table className="admin-table admin-users-table admin-paused-brands-table">
             <thead><tr><th>Brand</th><th>User type</th><th>Reason</th><th>Paused</th><th>Status</th><th>Access</th></tr></thead>
             <tbody>
               {rows.map((brand) => (
@@ -1813,7 +1813,7 @@ function PausedBrandsPanel({ rows, users, onUnpause }) {
                   <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
                   <td><StatusPill tone="info">Brand</StatusPill></td>
                   <td className="admin-user-reason">{String(brand.reason ?? "").split(" · ").map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}<span className="admin-user-reason-part">{part}</span></React.Fragment>)}</td>
-                  <td>{brand.since}</td>
+                  <td><span className="admin-cell-label">Paused since </span>{brand.since}</td>
                   <td><StatusPill tone="warning">Paused</StatusPill></td>
                   <td><button className="secondary-btn admin-user-access-button enable" type="button" aria-label={`Unpause ${brand.name}`} onClick={() => onUnpause(brand)}>Unpause</button></td>
                 </tr>
