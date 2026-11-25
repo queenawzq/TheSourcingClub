@@ -2,8 +2,8 @@
  * The brand's Payments page, on the designed `BillingScreen`.
  *
  * Payments: the brand's own order payments and where each stands (Due,
- * Payment processing, Failed, Funded, Approved, Paid; Sent only for an old
- * bank-wire claim) with the design's four figures (brand-payments-view.js). A row opens
+ * Payment processing, Failed, Funded, Disputed, Approved, Paid; Sent only for
+ * an old bank-wire claim), each refund on its own row (Refunded), with the design's four figures (brand-payments-view.js). A row opens
  * its transaction page; a due one opens the Fund screen on its order for an
  * owner, who alone may pay (begin_payment_checkout). A member's due row opens
  * the transaction page, which says so up front.
@@ -21,6 +21,7 @@ import { can } from "../../lib/domain/org.js";
 import { listPaymentsForOrders, listStepCharges } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
+import { brandPaymentRefunds } from "../../lib/domain/payment-reviews.js";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
@@ -49,13 +50,15 @@ export default function LiveBrandPayments({ org }) {
       // Only the orders this brand placed: a person in both a brand and a
       // factory org gets the active org's side.
       const orders = (await listOrders(org.id)).filter((order) => order.brand_org_id === org.id);
-      const [payments, stepCharges, codes, savings] = await Promise.all([
+      const [payments, stepCharges, refunds, codes, savings] = await Promise.all([
         listPaymentsForOrders(orders.map((order) => order.id)),
         listStepCharges(orders.map((order) => order.id)),
+        // A failed read leaves the payments as they are, without refund rows.
+        brandPaymentRefunds(org.id).catch(() => []),
         DISCOUNTS_USABLE ? listDiscountCodes(org.id) : [],
         DISCOUNTS_USABLE ? savingsFor(org.id) : null,
       ]);
-      return { loaded: { orders, payments, stepCharges }, codes, savings };
+      return { loaded: { orders, payments, stepCharges, refunds }, codes, savings };
     })().then(
       (loaded) => !cancelled && setState({ ...loaded, error: null }),
       (error) => !cancelled && setState({ loaded: null, codes: [], savings: null, error }),
@@ -95,9 +98,9 @@ export default function LiveBrandPayments({ org }) {
             // A due payment has no transaction to show yet: it opens the Fund
             // screen, for an owner. A member cannot pay, so its row opens the
             // transaction page, which says who can.
-            const path = row.state === "due" && can(org, "releaseFunds")
+            const path = row.state === "due" && !row.refund && can(org, "releaseFunds")
               ? `/orders/${row.orderId}/payments/${row.id}`
-              : `/payments/${row.orderId}/${row.id}`;
+              : `/payments/${row.orderId}/${row.paymentId ?? row.id}`;
             return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
           }),
           empty: "No payment transactions yet.",

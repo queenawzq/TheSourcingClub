@@ -32,6 +32,9 @@ import { paymentRefund, refundPendingWord } from "../order/payment-summary.mjs";
  * or balance has nothing to approve, so it stays Funded.
  */
 export function paymentStatusWord(payment, order) {
+  // A held payment staff refunded in full goes back to be funded again: its
+  // refund is a row of its own, and the payment reads Due, never Failed.
+  if (refundedInFull(payment)) return PAYMENT_STATUS.due;
   // Held money that went back when the order was cancelled.
   if (payment.state === "cancelled" && payment.refunded_at) return "Refunded";
   // All of it went back after it was the factory's (refunded by TSC, or the
@@ -45,6 +48,14 @@ export function paymentStatusWord(payment, order) {
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
+
+/**
+ * A payment set back after a full refund, recorded the old way (failed, with
+ * the refund in failure_reason): §13 sets it back to due instead. Known only
+ * from the refunds read (brand_payment_refunds) on the payment's own row.
+ */
+export const refundedInFull = (payment) => payment?.state === "failed" && Boolean(payment.refunded_at)
+  && (payment.refunds ?? []).some((refund) => String(refund.refunded_at) >= String(payment.failed_at ?? payment.refunded_at).slice(0, 19));
 
 /** The design's status word for each payment state that is listed. */
 export const PAYMENT_STATUS = {
@@ -81,11 +92,13 @@ const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payme
  * listPaymentsForOrders() for those orders, stepCharges: listStepCharges()
  * for them, vendor: the filter's choice.
  */
-export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
+export function brandPaymentsView({ orders, payments, stepCharges = [], refunds = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
   const byOrder = new Map(orders.map((order) => [order.id, order]));
   // `nameOf`: the vendor's name as the brand reads it (English where it has one).
   const vendorOf = (order) => nameOf(order) ?? "Factory";
-  const listed = payments.filter((payment) => byOrder.has(payment.order_id));
+  const refundsOf = (id) => refunds.filter((refund) => refund.payment_id === id);
+  const listed = payments.filter((payment) => byOrder.has(payment.order_id))
+    .map((payment) => (refundsOf(payment.id).length ? { ...payment, refunds: refundsOf(payment.id) } : payment));
 
   const rows = listed
     .filter((payment) => paymentStatusWord(payment, byOrder.get(payment.order_id)))
@@ -103,12 +116,41 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
         title: payment.order_milestones?.title || "Payment",
         client: vendorOf(order),
         date: day(payment.state === "due" ? (payment.order_milestones?.due_on ?? payment.due_at ?? movedAt(payment)) : movedAt(payment)),
-        meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,
+        meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason && !refundedInFull(payment) ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,
         status: paymentStatusWord(payment, order),
         state: payment.state,
         amount: formatMoney(netCharged(payment), payment.currency),
       };
     });
+  // Each refund that went through is its own row (brand_payment_refunds), by
+  // its own date, among the rest: the payment's row keeps what it still holds.
+  const refundRows = refunds
+    .filter((refund) => byOrder.has(refund.order_id))
+    .map((refund) => {
+      const order = byOrder.get(refund.order_id);
+      return {
+        id: `refund-${refund.id ?? `${refund.payment_id}-${refund.refunded_at}`}`,
+        paymentId: refund.payment_id,
+        orderId: refund.order_id,
+        title: refund.step_title || "Payment",
+        client: vendorOf(order),
+        date: day(refund.refunded_at),
+        meta: order.rfqs?.title || order.order_number,
+        status: "Refunded",
+        state: "refunded",
+        refund: true,
+        at: refund.refunded_at,
+        amount: formatMoney(Number(refund.amount_cents) || 0, refund.currency),
+      };
+    });
+  if (refundRows.length) {
+    const owedCount = rows.filter((row) => OWED.has(row.state)).length;
+    const rest = [...rows.slice(owedCount).map((row) => ({ row, at: movedAt(listed.find((payment) => payment.id === row.id) ?? {}) })),
+      ...refundRows.map((row) => ({ row, at: row.at }))]
+      .sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")))
+      .map(({ row }) => row);
+    rows.splice(owedCount, rows.length - owedCount, ...rest);
+  }
   const vendors = [...new Set(rows.map((row) => row.client))];
 
   // The filter BillingScreen applies to the rows, applied to the figures.

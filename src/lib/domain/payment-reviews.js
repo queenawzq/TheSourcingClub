@@ -20,6 +20,16 @@ export async function orderPause(orderId) {
   return unwrap(await supabase.rpc("order_pause", { target_order: orderId }), "read this order's status");
 }
 
+/**
+ * The brand's refunds that went through, one row each (§13): payment_id,
+ * order_id, step title, amount_cents, currency, refunded_at, kind
+ * (staff | stripe_dashboard | cancellation), note. Brand members only.
+ * Includes refunds on a payment that was later set back to due.
+ */
+export async function brandPaymentRefunds(orgId) {
+  return unwrap(await supabase.rpc("brand_payment_refunds", { target_org: orgId }), "load your refunds") ?? [];
+}
+
 /** Staff: every review, with its three-step bar (`step`, `step_line`, `step_date`, `reason`, `flag`); `open` = counted. */
 export async function paymentReviewBoard() {
   return unwrap(await supabase.rpc("payment_review_board"), "load payment reviews") ?? [];
