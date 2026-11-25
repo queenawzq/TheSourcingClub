@@ -509,11 +509,24 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
     }
 
+    // "Add your own" chips become the company's own terms where the kind
+    // allows it, as on the profile editor; otherwise they would be dropped.
+    let knownTerms = terms;
     for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
       const chosen = submitted[factoryFieldName(label)];
       if (chosen === undefined) continue;
-      links.push({ kind, termIds: termsFor(kind, chosen) });
+      const termIds = termsFor(kind, chosen);
+      if (CUSTOM_KINDS.has(kind)) {
+        const known = new Set((knownTerms[kind] ?? []).flatMap((term) => [termLabel(term, "en"), termLabel(term, "zh")]));
+        for (const custom of chosen.filter((item) => !known.has(item))) {
+          const term = await addCustomTerm(org.id, kind, custom);
+          knownTerms = { ...knownTerms, [kind]: [...(knownTerms[kind] ?? []), term] };
+          termIds.push(term.id);
+        }
+      }
+      links.push({ kind, termIds });
     }
+    if (knownTerms !== terms) setTerms(knownTerms);
 
     // The business registration is what an admin reviews, and reviewing it is
     // what unlocks quoting. It goes to the private bucket, reachable only by a
