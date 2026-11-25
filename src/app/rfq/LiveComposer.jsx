@@ -150,6 +150,18 @@ export function quoteDeadlineFrom(text, now = new Date()) {
   return { value: endOf(day).toISOString() };
 }
 
+/**
+ * The brand's typed line when it still says what is stored, else the stored
+ * value in the card's words: "Bulk by April 2027" comes back as typed, and a
+ * line that no longer matches (edited elsewhere) gives way to the record.
+ */
+function typedOr(typed, stillTrue, stored) {
+  const line = String(typed ?? "").trim();
+  return line && stillTrue(line) ? line : stored;
+}
+
+const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
+
 const firstNumber = (text) => {
   const match = String(text ?? "").match(/\d[\d,]*/);
   return match ? Number(match[0].replace(/,/g, "")) : null;
@@ -239,9 +251,13 @@ export default function LiveComposer({ org, rfqId }) {
           quantity: resumedQuantityLine(row.quantity_total, splits),
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
-          timeline: monthLine(row.target_delivery_month),
+          timeline: typedOr(row.timeline_text, (typed) => deliveryMonthFrom(typed) === row.target_delivery_month, monthLine(row.target_delivery_month)),
           price: priceLine(row.target_unit_price_min_cents, row.target_unit_price_max_cents),
-          category: linkedLabels(linked, byKind.product_category),
+          category: typedOr(
+            row.product_type ?? fieldsFromBrief(row.brief, byKind.product_category, byKind).category,
+            (typed) => sameIds(categoryTermIds(typed, byKind.product_category), linked.filter((id) => byKind.product_category?.some((term) => term.id === id))),
+            linkedLabels(linked, byKind.product_category),
+          ),
           certifications: linkedLabels(linked, byKind.certification),
           services: linkedLabels(linked, byKind.service),
           regions: linkedLabels(linked, byKind.region),
@@ -419,6 +435,9 @@ export default function LiveComposer({ org, rfqId }) {
         quantity_total: firstNumber(values.quantity),
         material_notes: values.material?.trim() || null,
         sample_notes: values.samples?.trim() || null,
+        // The brand's own words, read back on resume (see typedOr).
+        timeline_text: values.timeline?.trim() || null,
+        product_type: values.category?.trim() || null,
         sourcing_details: values.sourcingDetails?.trim() || null,
         additional_details: values.additionalDetails?.trim() || null,
         target_delivery_month: deliveryMonthFrom(values.timeline),
