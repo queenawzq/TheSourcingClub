@@ -125,14 +125,26 @@ async function recordRegistryFound(page, reference) {
   await waitFor(page, ".vr-modal .vr-sub", 15000);
   const opened = await page.evaluate(() => {
     const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
+    // The verification form on main (#149): "Record check", or "Edit" once a person recorded one.
+    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record check|Edit)$/.test(b.textContent.trim()));
     button?.click();
     return Boolean(button);
   });
   if (!opened) return null;
   await waitFor(page, ".vr-modal .vr-record", 10000);
-  // "Found" is the form's first answer and already chosen.
-  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  // Where it was checked (kept when already filled), what it showed (nothing is
+  // chosen at first: Found), and the link to the registry page.
+  const site = page.locator(".vr-modal .vr-record .vr-field input").first();
+  if (!(await site.inputValue()).trim()) await site.fill("Official registry");
+  await page.evaluate(() => document.querySelector(".vr-modal .vr-record input[type='radio'][value='found']")?.click());
+  await page.evaluate((text) => {
+    const label = [...document.querySelectorAll(".vr-modal .vr-record label")].find((item) => item.textContent.trim() === "Link (optional)");
+    const input = label && document.getElementById(label.htmlFor);
+    if (!input) return;
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    set.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, reference);
   await clickButton(page, "save check");
   const text = await within(page, () => page.evaluate(() => {
     if (document.querySelector(".vr-modal .vr-record")) return null;
