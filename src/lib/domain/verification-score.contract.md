@@ -153,8 +153,7 @@ number_needs_staff). Run again (C) owns re-reading.
 | `name_differs`, `document_differs` | Registry: Name differs + reason |
 | `duplicate` | Explain under the shared number |
 | `trading_only` | Factory or trader: Add reason |
-| `number_check_digit_fails`, `number_needs_staff` | Edit the number field (staff number) |
-| `number_unread` | Ask for a clearer licence (Request more information) |
+| `number_check_digit_fails`, `number_needs_staff`, `number_unread` | Registry check: Found, with the number the registry shows (it becomes the staff number) |
 
 ## Scores (approved Nov 12)
 

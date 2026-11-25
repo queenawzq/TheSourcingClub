@@ -35,7 +35,12 @@ const cases = [
   ["CN", "91330100MA2B7C4D3F", null],
   ["CN", "９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ", null],
   ["CN", "91330100MA2B7C4D31", "check_digit"],
-  ["CN", "330100000012345", "old_number"],
+  // The old 15-digit registration number (注册号, before 2015), with its MOD 11,10 check digit (Nov 25).
+  ["CN", "370900200020864", null],
+  ["CN", "3709 0020 0020 864", null],
+  ["CN", "370900200020865", "check_digit"],
+  ["CN", "330100000012345", "check_digit"],
+  ["CN", "37090020002086", "format"],
   ["CN", "9133O100MA2B7C4D3F", "format"],
   ["CN", "91350100M000100I43", "format"],
   ["PT", "501964843", null],

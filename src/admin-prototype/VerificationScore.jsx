@@ -648,7 +648,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
         return (
           <div className={`vr-field${differs[key] ? " is-differs" : ""}`} key={key}>
             <label htmlFor={`${ids.site}-${key}`}>{label}</label>
-            <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={seen[key]} spellCheck={false} onChange={(event) => setSeen((current) => ({ ...current, [key]: event.target.value }))} />
+            <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={seen[key]} spellCheck={false} onFocus={multiline ? undefined : selectAll} onChange={(event) => setSeen((current) => ({ ...current, [key]: event.target.value }))} />
             {differs[key] && <p className="vr-compare is-typed"><span>Profile:</span> {marked(other, seen[key])}</p>}
           </div>
         );
