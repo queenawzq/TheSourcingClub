@@ -10410,7 +10410,12 @@ export function QuotesScreen({
                         <td>{details.shipping}</td>
                         <td>{details.capacityWindow}</td>
                         <td>{details.total}</td>
-                        <td>{factory.fitType ? <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span> : "—"}</td>
+                        <td>
+                          {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
+                          {/* Live: the card's own figure, so the two never disagree. */}
+                          {factory.fitPercent && `${factory.fitType ? " " : ""}${factory.fitPercent}`}
+                          {!factory.fitType && !factory.fitPercent && "—"}
+                        </td>
                         <td>{factory.factoryNote}</td>
                       </tr>
                     );
