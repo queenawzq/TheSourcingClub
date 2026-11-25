@@ -180,21 +180,23 @@ export default async function handler(request, response) {
           metadata: { org_id: orgId },
           settings: { payouts: { schedule: { interval: "manual" } } },
         };
-        // What the company already told TSC (its website), so Stripe's form
-        // does not ask for it again (TSC collects the requirements here).
+        // What the company already told TSC (its website, what it makes), so
+        // Stripe's form does not ask for it again (TSC collects the requirements here).
         const known = await knownCompanyDetails(db, orgId);
         // A detail Stripe will not take (a website it refuses, say) must never
         // stop the setup: it is left out, and the form asks for it as before.
-        const tries = [...(known.businessProfile.url ? [{ ...base, business_profile: { ...base.business_profile, ...known.businessProfile } }] : []), base];
+        const attempts = prefillAttempts(base, known.businessProfile);
         let account;
-        for (const [index, params] of tries.entries()) {
+        for (let params = attempts.first; ;) {
           try {
             account = await stripe.accounts.create(params);
             break;
           } catch (failure) {
-            // Only a refusal of the prefilled detail is retried without it.
-            if (failure?.type !== "StripeInvalidRequestError" || !String(failure?.param ?? "").startsWith("business_profile") || index === tries.length - 1) throw failure;
+            // Only a refusal of a prefilled detail is retried without it.
+            const next = attempts.after(params, failure);
+            if (!next) throw failure;
             logStripeFailure("stripe-connect prefill", failure, { orgId });
+            params = next;
           }
         }
         await saveConnectAccount(db, orgId, account);
@@ -344,12 +346,62 @@ const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_t
  */
 async function knownCompanyDetails(db, orgId) {
   try {
-    const { data: profile } = await db.from("factory_profiles").select("website_url").eq("org_id", orgId).maybeSingle();
-    const website = String(profile?.website_url ?? "").trim();
-    return { businessProfile: /^https?:\/\/[^\s.]+\.[^\s]+$/i.test(website) ? { url: website } : {} };
+    const [{ data: profile }, { data: links }] = await Promise.all([
+      db.from("factory_profiles").select("website_url, intro").eq("org_id", orgId).maybeSingle(),
+      db.from("taxonomy_links").select("taxonomy_terms (kind, label_en)")
+        .eq("org_id", orgId).eq("subject_type", "factory_profile"),
+    ]);
+    const categories = (links ?? []).map((link) => link.taxonomy_terms)
+      .filter((term) => term?.kind === "product_category" && term.label_en).map((term) => term.label_en);
+    return { businessProfile: stripeBusinessProfile({ website: profile?.website_url, intro: profile?.intro, categories }) };
   } catch {
     return { businessProfile: {} };
   }
+}
+
+/**
+ * What the company told TSC, in Stripe's business_profile words, so Stripe's
+ * form does not ask again (flow check W4, R2m5): its website; what it sells
+ * (its own intro, else the categories it makes); and the industry, clothing
+ * (MCC 5137, uniforms and commercial clothing), since every company that is
+ * paid on TSC makes garments for brands. Only what it has: an empty field is
+ * left for the form.
+ */
+export function stripeBusinessProfile({ website = "", intro = "", categories = [] } = {}) {
+  const profile = {};
+  const url = String(website ?? "").trim();
+  if (/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(url)) profile.url = url;
+  const about = String(intro ?? "").replace(/\s+/g, " ").trim();
+  const made = [...new Set(categories.map((label) => String(label).trim()).filter(Boolean))];
+  const description = about || (made.length ? `Apparel manufacturing: ${made.join(", ")}.` : "");
+  if (description) profile.product_description = description.slice(0, 500);
+  profile.mcc = "5137";
+  return profile;
+}
+
+/**
+ * The account's parameters to try in turn: with everything known, then
+ * without each detail Stripe refuses (its error names the field), then with
+ * none of it. A refusal of anything else is not retried.
+ */
+export function prefillAttempts(base, known = {}) {
+  const fields = Object.keys(known);
+  return {
+    first: fields.length ? { ...base, business_profile: { ...base.business_profile, ...known } } : base,
+    // The next parameters after `failure`, or null when it is not a refusal of the prefill.
+    after(params, failure) {
+      const param = String(failure?.param ?? "");
+      if (failure?.type !== "StripeInvalidRequestError" || !param.startsWith("business_profile")) return null;
+      const field = /^business_profile\[([a-z_]+)\]/.exec(param)?.[1];
+      const left = { ...params.business_profile };
+      if (field && fields.includes(field) && field in left) {
+        delete left[field];
+        return fields.some((key) => key in left) ? { ...params, business_profile: left } : base;
+      }
+      // Not one field of ours: once more with none of it, then give up.
+      return params === base ? null : base;
+    },
+  };
 }
 
 /**
