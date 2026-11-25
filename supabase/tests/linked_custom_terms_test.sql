@@ -212,13 +212,15 @@ select lives_ok(
              'c2000000-0000-0000-0000-000000000009', 'b2000000-0000-0000-0000-0000000000f3') $$,
   'a company tags its own profile with its own term'
 );
+reset role;
+
+-- As the superuser (authenticated has no UPDATE grant), so the trigger is what refuses.
 select throws_ok(
   $$ update public.taxonomy_links set subject_id = 'b2000000-0000-0000-0000-0000000000f1'
       where subject_type = 'factory_profile' and subject_id = 'b2000000-0000-0000-0000-0000000000f3'
         and term_id = 'c2000000-0000-0000-0000-000000000009' $$,
   '42501', null, 'a company cannot move its tag onto another company''s profile'
 );
-reset role;
 
 select * from finish();
 rollback;
