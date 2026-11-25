@@ -55,6 +55,7 @@ const ZH_SAMPLES = [
   { kind: "team_member_left", title: "Li Wei left Ningbo Knit", body: "Everything they worked on stays with the company. The invitation they sent was withdrawn." },
   { kind: "team_member_removed", title: "Li Wei no longer has access to Ningbo Knit", body: "Everything they worked on stays with the company. The 2 invitations they sent were withdrawn." },
   { kind: "order_activated", title: "TSC-1042 is under way", body: "The brand confirmed the production steps. The first step is open." },
+  { kind: "order_activated", title: "TSC-1042 is under way", body: "You confirmed the production steps. The first step is open." },
   { kind: "credits_adjusted", title: "TSC added 100 credits", body: "Goodwill for the delay", typed: true },
   { kind: "credits_adjusted", title: "TSC removed 25 credits", body: "Refunded quote", typed: true },
   { kind: "verification_approved", title: "Your profile is verified", body: "" },
@@ -95,6 +96,7 @@ const ZH_SAMPLES = [
   { kind: "quote_accepted", title: "Your quote was accepted", body: "" },
   { kind: "quote_declined", title: "Your quote was not selected", body: '"Organic tees" was awarded to another factory. Thank you for quoting.' },
   { kind: "quote_received", title: 'Ningbo Knit sent a quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
+  { kind: "quote_received", title: 'Ningbo Knit sent a quote on "Organic tees"', body: "" },
   { kind: "quote_received", title: 'Ningbo Knit sent a revised quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
   { kind: "quote_withdrawn", title: 'Ningbo Knit withdrew its quote on "Organic tees"', body: "It no longer appears in your comparison." },
   { kind: "order_created", title: "Production order TSC-1042 is ready", body: "You accepted Ningbo Knit's quote. Review the production steps, then confirm them to start." },
@@ -105,7 +107,7 @@ const ZH_SAMPLES = [
   { kind: "rfq_invited", title: 'Maison Rue invited you to quote on "Organic tees"', body: "Quotes close Nov 20.", data: { quote_deadline: "2026-11-20T15:59:00Z" } },
   { kind: "rfq_invited", title: 'A brand invited you to quote on "Organic tees"', body: "Open the request to read the brief and send a quote." },
   { kind: "cancellation_proposed", title: "TSC-1042 has been proposed for cancellation", body: "Delays", typed: true },
-  { kind: "cancellation_declined", title: "TSC-1042: Maison Rue wants to keep the order", body: "We still need it", typed: true },
+  { kind: "cancellation_declined", title: "TSC-1042: Maison Rue wants to keep the order", body: "The order continues." },
   { kind: "cancellation_withdrawn", title: "TSC-1042: cancellation withdrawn", body: "Maison Rue withdrew its proposal to cancel. The order carries on." },
   { kind: "payment_confirmed", title: "Payment confirmed on TSC-1042", body: '$1,200.00 has arrived for "Deposit". You can start this work.' },
   { kind: "payment_confirmed", title: "Your payment on TSC-1042 was confirmed", body: "$1,284.00 received. The factory has been told to begin." },
@@ -392,7 +394,7 @@ async function formatters() {
         { id: "c", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-24T10:00:00Z", order_milestones: { title: "C" } },
         { id: "d", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-25T10:00:00Z", released_at: "2026-11-30T10:00:00Z", order_milestones: { title: "D" } },
       ],
-    }).rows.map((row) => row.id).join(","), "a,b,d,c");
+    }).rows.map((row) => row.id).join(","), "a,b,c,d"); // R2m11: d's date is when the brand funded it, not the factory's withdrawal (released_at)
     expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Funded,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");

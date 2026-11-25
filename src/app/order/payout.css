@@ -400,12 +400,18 @@
 .payout-withdrawal-status-row .payout-pending-destination { grid-column: 2; grid-row: 1 / span 2; }
 /* The part refunded since it was asked: a row of its own under the amount. */
 .payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-refunded"] { grid-column: 1; grid-row: 3; }
+/* The fee taken from it (R2m2), under the amount like its Transactions row; a refunded part then goes below it. */
+.payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-fee"] { grid-column: 1; grid-row: 3; }
+.payout-withdrawal-status-row .payout-pending-details:has([data-testid="withdrawal-fee"]) [data-testid="withdrawal-refunded"] { grid-row: 4; }
 /* Several pending rows: the same space above and below each divider. */
 .payout-withdrawal-status-row .payout-pending-withdrawal + .payout-pending-withdrawal { margin-top: 16px; }
 @media (max-width: 600px) {
   .payout-withdrawal-status-row .payout-pending-details { grid-template-columns: minmax(0, 1fr); }
   .payout-withdrawal-status-row .payout-pending-destination { grid-column: 1; grid-row: 3; }
   .payout-withdrawal-status-row .payout-pending-destination[data-testid="withdrawal-refunded"] { grid-row: 4; }
+  .payout-withdrawal-status-row .payout-pending-details:has([data-testid="withdrawal-fee"]) .payout-pending-destination { grid-row: 4; }
+  .payout-withdrawal-status-row .payout-pending-details:has([data-testid="withdrawal-fee"]) [data-testid="withdrawal-fee"] { grid-row: 3; }
+  .payout-withdrawal-status-row .payout-pending-details:has([data-testid="withdrawal-fee"]) [data-testid="withdrawal-refunded"] { grid-row: 5; }
 }
 
 /* Choosing which waiting withdrawals to cancel (CancelWithdrawalsForm). */

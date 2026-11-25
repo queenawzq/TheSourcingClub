@@ -218,11 +218,11 @@ select ok(
 select is(pg_temp.p14_notes('de000000-0000-0000-0000-0000000000f1', 'cancellation_declined'), 1::bigint,
   'the factory is told the brand kept the order');
 select ok(
-  (select title like '%P14 Brand wants to keep the order' and body = 'Fabric unavailable'
+  (select title like '%P14 Brand wants to keep the order' and body = 'The order continues.' and body not like '%Fabric unavailable%'
      from public.notifications
     where org_id = 'de000000-0000-0000-0000-0000000000f1' and kind = 'cancellation_declined'
       and order_id = (select id from p14 where name = 'order')),
-  'with who kept it, and its own reason read back'
+  'with who kept it; the proposer''s reason is never read back as the other side''s words (R2m7)'
 );
 
 -- ---------------------------------------------------------------------------

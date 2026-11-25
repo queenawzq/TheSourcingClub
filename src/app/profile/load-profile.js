@@ -16,7 +16,7 @@ import { BRAND_KINDS } from "../../lib/domain/brand-profile-fields.js";
 import { can, listMembers } from "../../lib/domain/org.js";
 import { brandProfileForFactory, listRfqs, listSavedBrands } from "../../lib/domain/rfq.js";
 import { listThreads } from "../../lib/domain/message.js";
-import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
+import { listLinks, listTermsByKind, termLabel, withLinkedCustomTerms } from "../../lib/domain/taxonomy.js";
 import { getCapacity } from "../../lib/domain/capacity-store.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { loadCertifications } from "../../lib/domain/certifications.js";
@@ -119,9 +119,12 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck, certificateChecked] = await Promise.all([
-    listTermsByKind(KINDS),
-    getSelectedTerms("factory_profile", vendorOrgId),
+  const [terms, linkedIds, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck, certificateChecked] = await Promise.all([
+    // With the styles and services the vendor typed itself, in its words.
+    listTermsByKind(KINDS).then((list) => withLinkedCustomTerms(list, "factory_profile", [vendorOrgId])),
+    // The link ids, grouped by the terms above: getSelectedTerms() joins the
+    // term, which hides the ones the vendor typed itself.
+    listLinks("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
     references(vendorOrgId, "load this vendor's references"),
     // Link each claim to its previewable certificate.
@@ -138,6 +141,12 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     certificateChecks(vendorOrgId),
   ]);
   const certificationTerms = terms.certification ?? [];
+  const selected = {};
+  const termKind = new Map(Object.values(terms).flat().map((term) => [term.id, term.kind]));
+  for (const id of linkedIds) {
+    const kind = termKind.get(id);
+    if (kind) (selected[kind] ||= []).push(id);
+  }
 
   return {
     orgName: profile.orgs?.name ?? "",
@@ -268,7 +277,10 @@ export async function loadVendorDirectory(brandOrg) {
       .order("created_at").order("id"), "load vendors' images"),
   ]);
 
-  const termKind = new Map(Object.values(terms).flat().map((term) => [term.id, term.kind]));
+  // The filters' options stay the platform's terms; each vendor's card also
+  // shows the terms it typed itself, in its own words.
+  const shownTerms = await withLinkedCustomTerms(terms, "factory_profile", ids);
+  const termKind = new Map(Object.values(shownTerms).flat().map((term) => [term.id, term.kind]));
   const linksBy = groupBy(links, "subject_id");
   const monthsBy = groupBy(months, "org_id");
   const claimsBy = groupBy(claims, "org_id");
@@ -295,7 +307,7 @@ export async function loadVendorDirectory(brandOrg) {
       orgId: profile.org_id,
       orgName: profile.orgs?.name ?? "",
       profile,
-      terms,
+      terms: shownTerms,
       selected,
       capacity: {
         capacity: capacityBy.get(profile.org_id) ?? null,
@@ -346,7 +358,7 @@ export async function loadOwnBrandProfile(org) {
     listDocuments(org.id, "product_image"),
     listDocuments(org.id, "business_registration"),
     listMembers(org.id),
-    supabase.from("org_invitations").select("id, email, role, created_at").eq("org_id", org.id).eq("status", "pending").order("created_at")
+    supabase.from("org_invitations").select("id, email, role, invited_name, title, created_at").eq("org_id", org.id).eq("status", "pending").order("created_at")
       .then((result) => unwrap(result, "load your invitations")),
     listRfqs(org.id),
     listOrders(org.id),

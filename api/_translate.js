@@ -63,7 +63,8 @@ Rules:
 - Translate what was written. Do not soften, expand, summarise or add pleasantries.
 - Keep every number, measurement, size code, colour name and date exactly as written.
 - Industry terms keep their trade meaning: lab dip, strike-off, PP sample, fit sample, tech pack, MOQ, GSM, incoterm, EXW, FOB.
-- If the message is already partly in the target language, translate only the parts that are not.
+- Machines by their trade names: 套口机 Linking machine, 绷缝机 Flatlock machine, 包缝机 / 锁边机 Overlock machine, 电脑横机 Computerized flat knitting machine.
+${context === "company name" ? "" : '- Text with any Chinese, Japanese or Korean characters is not English, however short ("1 次修改" is Chinese: "1 revision").\n'}- If the message is already partly in the target language, translate only the parts that are not.
 
 Message:
 """

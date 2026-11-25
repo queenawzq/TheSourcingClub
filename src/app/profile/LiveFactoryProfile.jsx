@@ -219,7 +219,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
   const language = getUiLanguage();
   const isTrading = parts.profile?.vendor_kind === "trading_company";
   const verified = parts.profile?.verification_status === "verified";
-  const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts, new Date(), language);
+  const view = isTrading ? tradingProfileView(parts, new Date(), language) : factoryProfileView(parts, new Date(), language);
   const editors = isTrading ? TRADING_EDITORS : SAVED_EDITORS;
 
   if (page === "completion") return <Completion org={org} view={view} verified={verified} editors={editors} isTrading={isTrading} language={language} />;
@@ -256,8 +256,10 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
           matchingPanel: <><MatchingProfile org={org} subjectType="factory_profile" /><EvidenceReview org={org} /></>,
           ...view,
           ...dialogs,
-          form: tradingProfileEditForm(parts),
+          form: tradingProfileEditForm(parts, language),
           options: tradingProfileEditOptions(parts.terms),
+          // The company's own words: Chinese translates the page's labels, never these.
+          ownWords: ownWords(parts),
         }}
       />
     );
@@ -274,7 +276,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
           matchingPanel: <><MatchingProfile org={org} subjectType="factory_profile" /><EvidenceReview org={org} /></>,
         ...view,
         ...dialogs,
-        form: factoryProfileEditForm(parts),
+        form: factoryProfileEditForm(parts, new Date(), language),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
         // The capacity dialog's category list in the person's language.

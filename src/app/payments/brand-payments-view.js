@@ -69,9 +69,14 @@ const sum = (items, pick) => items.reduce((total, item) => total + Number(pick(i
 /** What the brand paid for a funded step, less what went back to it (a refund, a lost dispute). */
 const netCharged = (payment) => Math.max(0, chargedCents(payment) - (["confirmed", "released"].includes(payment.state) ? paymentRefund(payment).brand : 0));
 
-/** When the payment last moved, which is the date its row shows. */
-const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
-  ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
+/**
+ * When the brand's payment last moved, which is the date its row shows. Not
+ * released_at, the factory's withdrawal (Round 36), which the brand neither
+ * sees nor makes: a step funded first was listed as newest once the factory
+ * withdrew it (R2m11). It stays a fallback for a row with nothing else.
+ */
+const movedAt = (payment) => payment.refunded_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
+  ?? payment.sent_at ?? payment.due_at ?? payment.released_at ?? payment.created_at;
 
 /** The date a row shows: a due payment its step's due day, the rest when it last moved. */
 const shownAt = (payment) => (payment.state === "due" ? (payment.order_milestones?.due_on ?? payment.due_at ?? movedAt(payment)) : movedAt(payment));

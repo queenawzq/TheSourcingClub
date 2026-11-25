@@ -30,7 +30,7 @@ import { supabase } from "../../lib/supabase.js";
 import { readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
-import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel, withLinkedCustomTerms } from "../../lib/domain/taxonomy.js";
 import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -150,6 +150,18 @@ export function quoteDeadlineFrom(text, now = new Date()) {
   return { value: endOf(day).toISOString() };
 }
 
+/**
+ * The brand's typed line when it still says what is stored, else the stored
+ * value in the card's words: "Bulk by April 2027" comes back as typed, and a
+ * line that no longer matches (edited elsewhere) gives way to the record.
+ */
+function typedOr(typed, stillTrue, stored) {
+  const line = String(typed ?? "").trim();
+  return line && stillTrue(line) ? line : stored;
+}
+
+const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
+
 const firstNumber = (text) => {
   const match = String(text ?? "").match(/\d[\d,]*/);
   return match ? Number(match[0].replace(/,/g, "")) : null;
@@ -239,9 +251,13 @@ export default function LiveComposer({ org, rfqId }) {
           quantity: resumedQuantityLine(row.quantity_total, splits),
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
-          timeline: monthLine(row.target_delivery_month),
+          timeline: typedOr(row.timeline_text, (typed) => deliveryMonthFrom(typed) === row.target_delivery_month, monthLine(row.target_delivery_month)),
           price: priceLine(row.target_unit_price_min_cents, row.target_unit_price_max_cents),
-          category: linkedLabels(linked, byKind.product_category),
+          category: typedOr(
+            row.product_type ?? fieldsFromBrief(row.brief, byKind.product_category, byKind).category,
+            (typed) => sameIds(categoryTermIds(typed, byKind.product_category), linked.filter((id) => byKind.product_category?.some((term) => term.id === id))),
+            linkedLabels(linked, byKind.product_category),
+          ),
           certifications: linkedLabels(linked, byKind.certification),
           services: linkedLabels(linked, byKind.service),
           regions: linkedLabels(linked, byKind.region),
@@ -256,6 +272,9 @@ export default function LiveComposer({ org, rfqId }) {
         // is most likely past, so the brief must not fill it back in.
         const fromBrief = fieldsFromBrief(row.brief, byKind.product_category, byKind);
         if (row.reorder_of_order_id) delete fromBrief.timeline;
+        // Details is saved as its own field: blank on a saved draft is the
+        // brand's choice, not a gap for the brief to fill.
+        delete fromBrief.sourcingDetails;
         setValues((current) => fillBlanks(current, fromBrief));
         setSaveState("saved");
 
@@ -419,6 +438,9 @@ export default function LiveComposer({ org, rfqId }) {
         quantity_total: firstNumber(values.quantity),
         material_notes: values.material?.trim() || null,
         sample_notes: values.samples?.trim() || null,
+        // The brand's own words, read back on resume (see typedOr).
+        timeline_text: values.timeline?.trim() || null,
+        product_type: values.category?.trim() || null,
         sourcing_details: values.sourcingDetails?.trim() || null,
         additional_details: values.additionalDetails?.trim() || null,
         target_delivery_month: deliveryMonthFrom(values.timeline),
@@ -539,8 +561,8 @@ export default function LiveComposer({ org, rfqId }) {
       // pair, so score the vendors actually being shown and sort by it.
       const assessments = matchingV2 ? await assessFactories("rfq", draftId, (rows ?? []).map(row=>row.org_id)) : new Map();
       const scores = matchingV2 ? new Map([...assessments].map(([id,m])=>[id,m?.score ?? null])) : await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
-      const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
       const vendorIds = (rows ?? []).map((row) => row.org_id);
+      const vendorTerms = await withLinkedCustomTerms(await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]), "factory_profile", vendorIds);
       // In id batches, a page at a time: past ~195 vendors one `in` list was
       // longer than the address allows (read-pages.js).
       const links = await readByIds(vendorIds, (batch) => supabase.from("taxonomy_links")

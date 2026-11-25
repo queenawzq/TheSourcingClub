@@ -26,6 +26,7 @@ import {
   brandProfileForFactory,
   brandSummary,
   getQuestions,
+  getColourSplits,
   getRfq,
   isRequestSaved,
   lastBrandView,
@@ -62,6 +63,7 @@ import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
+import { requestQuantity, requestSamples } from "./request-facts.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -119,6 +121,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const waitingForChinese = useChineseContent({ rfqIds: [rfqId], brandOrgIds: [rfq?.brand_org_id] });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [colourSplits, setColourSplits] = useState([]);
   // "revise" or "withdraw" while the vendor is being asked; a sent quote is
   // changed only after they have read what it costs.
   const [asking, setAsking] = useState(null);
@@ -136,11 +139,14 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       org?.id ? getLatestQuote(rfqId, org.id) : null,
       listTermsByKind(["sourcing_responsibility", "certification", "service"]),
       listLinks("rfq", rfqId),
+      // The brand's colour split, shown beside the quantity it adds up to.
+      getColourSplits(rfqId).catch(() => []),
     ])
-      .then(([request, asked, quote, terms, linkedTermIds]) => {
+      .then(([request, asked, quote, terms, linkedTermIds, splits]) => {
         if (cancelled) return;
         setLoaded(true);
         setRfq(request);
+        setColourSplits(splits ?? []);
         setQuestions(asked ?? []);
         setMyQuote(quote ?? null);
         const selected = terms.sourcing_responsibility?.find(
@@ -275,8 +281,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     posted: rfq.published_at ? `Posted ${DAY.format(new Date(rfq.published_at))}` : "",
     quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
     budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency),
-    quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
-    samples: rfq.requires_sample ? "Sample required" : "No sample",
+    quantity: requestQuantity(rfq.quantity_total, colourSplits),
+    samples: requestSamples(rfq),
     specialty: rfq.brief ?? rfq.material_notes ?? "",
     questions: questions.map((question) => question.prompt),
     // A claim about the brand, so only when the brand summary says so.

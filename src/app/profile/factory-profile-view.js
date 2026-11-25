@@ -264,7 +264,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
       todo: t("a walkthrough video", "工厂介绍视频"),
       ...(walkthrough
         ? complete(t("The walkthrough video is on your profile.", "工厂介绍视频已在你的资料中。"), walkthrough.status === "verified" ? "Verified" : "Complete")
-        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加巡视视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加巡视视频"))),
+        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的生产车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加工厂介绍视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加工厂介绍视频"))),
     },
     {
       // Named after the certificate when only one needs a file, as the
@@ -297,7 +297,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
   return checks.map((check) => ({ ...check, done: check.tone !== "missing" }));
 }
 
-export function profileStatus(checks, language = "en") {
+export function profileStatus(checks, language = "en", { trading = false } = {}) {
   const done = checks.filter((check) => check.done).length;
   const percent = Math.round((done / checks.length) * 100);
   const missing = checks.filter((check) => !check.done).map((check) => check.todo);
@@ -306,7 +306,8 @@ export function profileStatus(checks, language = "en") {
       percent,
       note: missing.length
         ? `请添加${missing.slice(0, 2).join("、")}${missing.length > 2 ? "等" : ""}，完善资料。`
-        : "品牌关注的信息均已填写。请及时更新月度产能。",
+        // A trading company keeps no monthly capacity: the design's own line for it.
+        : trading ? "请及时更新供应商覆盖、合规检查和采购服务信息。" : "品牌关注的信息均已填写。请及时更新月度产能。",
     };
   }
   const list = missing.length > 2
@@ -316,7 +317,7 @@ export function profileStatus(checks, language = "en") {
     percent,
     note: missing.length
       ? `Add ${list} to strengthen this profile.`
-      : "Everything brands look for is filled in. Keep monthly capacity current.",
+      : trading ? "Keep supplier coverage, compliance checks, and sourcing services current." : "Everything brands look for is filled in. Keep monthly capacity current.",
   };
 }
 
@@ -337,11 +338,14 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   );
   const registration = registrationWord(parts);
   const number = parts.registrationNumber;
+  // The certifications the factory claims; the registration rows above them
+  // are not certificates, so the completion check reads only these.
+  const claimed = parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) }));
   const certifications = [
     { name: "Business registration", status: registration },
     // Read-only: the number given on the verification step.
     ...(number ? [{ name: "Registration number", status: number.number ?? "None (sole proprietor)" }] : []),
-    ...parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) })),
+    ...claimed,
   ];
   const references = parts.references.map((reference) => reference.title);
   const samples = parts.samples.map((sample) => ({ title: sample.title, meta: sample.caption ?? "", src: sample.src }));
@@ -385,7 +389,7 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   };
 
   const checks = factoryProfileChecks(
-    { profile, selected, capacity, references, samples, registration, walkthrough: parts.walkthrough, certificates: certifications.slice(1) },
+    { profile, selected, capacity, references, samples, registration, walkthrough: parts.walkthrough, certificates: claimed },
     now,
     language,
   );
@@ -436,7 +440,10 @@ export function factoryProfileEditOptions(terms) {
  * fields the design's dialog uses. Numbers are written the way the profile
  * shows them ("150 units / style"); saving reads the first number back.
  */
-export function factoryProfileEditForm(parts, now = new Date()) {
+export function factoryProfileEditForm(parts, now = new Date(), language = "en") {
+  // In the person's language: "200 件 / 款" and "40-55 天" read and save as
+  // "200 units / style" and "40-55 days" do (the first number, or the range).
+  const zh = language === "zh";
   const { orgName, profile, terms, selected, capacity: capacityState, references = [] } = parts;
   const text = (value) => (value == null ? "" : String(value));
   const withUnit = (value, unit) => (value == null ? "" : `${value} ${unit}`);
@@ -459,9 +466,9 @@ export function factoryProfileEditForm(parts, now = new Date()) {
     website: text(profile?.website_url),
     employees: text(profile?.employee_count),
     intro: text(profile?.intro),
-    moq: withUnit(profile?.moq, "units / style"),
-    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max),
-    sampleLeadTime: daysText(profile?.sample_lead_days, profile?.sample_lead_days_max),
+    moq: withUnit(profile?.moq, zh ? "件 / 款" : "units / style"),
+    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days"),
+    sampleLeadTime: daysText(profile?.sample_lead_days, profile?.sample_lead_days_max, zh ? "天" : "days"),
     // The dialog shows a category whatever is saved, falling back to wovens
     // as the design does; starting there means what is shown is what saves.
     capacityCategoryKey: category?.slug ?? "wovens",

@@ -33,7 +33,7 @@ import {
   setSampleLines,
   submitQuote,
 } from "../../lib/domain/quote.js";
-import { brandSummary, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { brandSummary, getColourSplits, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { downloadDocuments, getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange, toCents } from "../../lib/money.js";
@@ -44,6 +44,7 @@ import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
 import { fetchApi } from "../../lib/supabase.js";
 import { acceptModelWindow, windowNeedsReading, windowUnits } from "../../lib/domain/capacity-window.mjs";
+import { requestQuantity, requestSamples } from "../rfq/request-facts.js";
 
 const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
@@ -262,20 +263,23 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   // nothing is sent at this step.
   const [readingWindow, setReadingWindow] = useState(false);
   const [error, setError] = useState(null);
+  const [colourSplits, setColourSplits] = useState([]);
   const [draftState, setDraftState] = useState(null);
 
   const kinds = useMemo(() => KINDS, []);
 
   const load = useCallback(async () => {
     try {
-      const [request, vocab, asked, scores, documents, linkedTermIds] = await Promise.all([
+      const [request, vocab, asked, scores, documents, linkedTermIds, splits] = await Promise.all([
         getRfq(rfqId),
         listTermsByKind(kinds),
         getQuestions(rfqId),
         matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
         getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
         listLinks("rfq", rfqId),
+        getColourSplits(rfqId).catch(() => []),
       ]);
+      setColourSplits(splits ?? []);
       const brand = request.brand_org_id ? await brandSummary(request.brand_org_id).catch(() => null) : null;
       setRfq({ ...request, paymentVerified: Boolean(brand?.payment_verified) });
       setTerms(vocab);
@@ -464,6 +468,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     }
   }
 
+  // A quantity in the person's language: "200 件" is read back as 200, as
+  // "200 units" is.
+  const unitsWord = getUiLanguage() === "zh" ? "件" : "units";
+
   return (
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
@@ -472,7 +480,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
-        quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
+        quantity: unitsWord === "件"
+          ? requestQuantity(rfq.quantity_total, colourSplits).replace(/ units\b/, " 件")
+          : requestQuantity(rfq.quantity_total, colourSplits),
         specialty: rfq.brief ?? "",
         images: requestDocuments.images,
         tags: [],
@@ -487,7 +497,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           rfq.target_unit_price_max_cents,
           rfq.currency,
         ),
-        samples: rfq.requires_sample ? "Sample required" : "No sample",
+        samples: requestSamples(rfq),
         quoteDue: "",
         fitTone: fit?.tone ?? "",
         // Absent, the card prints "undefined" beside the brand name.
@@ -516,9 +526,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           ? `${formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)} / unit`
           : "",
         quantity: quote.production_quantity
-          ? `${quote.production_quantity} units`
+          ? `${quote.production_quantity} ${unitsWord}`
           : rfq.quantity_total
-            ? `${rfq.quantity_total} units`
+            ? `${rfq.quantity_total} ${unitsWord}`
             : "",
         leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days),
         // Every field the vendor has not filled is blank, never the design's

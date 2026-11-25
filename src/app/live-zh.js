@@ -45,7 +45,7 @@ const PROFILE_TODO = [
   ["your factory details", "工厂详情"],
   ["your production fit", "生产匹配"],
   ["capacity and terms", "产能与条款"],
-  ["a walkthrough video", "工厂巡视视频"],
+  ["a walkthrough video", "工厂介绍视频"],
 ];
 function profileTodo(list) {
   let rest = list.replace(/ and more$/, "");
@@ -110,6 +110,11 @@ const PATTERNS = [
   [/^This payment of (\S+) is too small to send\. The fee is (\S+)\.$/, (m) => `该笔款项 ${m[1]} 金额过低，无法发送。手续费为 ${m[2]}。`],
   // Stripe's smallest payout (minimumWithdrawalSentence): the dialog's check and the server's refusal.
   [/^The minimum withdrawal is (\S+)\.$/, (m) => `最低提现金额为 ${m[1]}。`],
+  // A bank in another currency, in the Withdraw dialog (bankReceivesAboutLine).
+  [/^Your bank receives about ([A-Z]{3} [\d,]+\.\d\d)\.$/, (m) => `你的银行约收到 ${m[1]}。`],
+  // A withdrawal's arrival day, beside where it went (PayoutDetails arrivalLabel).
+  [new RegExp(`^Arrives ${MON} (\\d{1,2}), (\\d{4})$`), (m) => `预计 ${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日到账`],
+  [new RegExp(`^Arrived ${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日已到账`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
@@ -135,6 +140,8 @@ const PATTERNS = [
   [/^(\d+) weeks? ago$/, (m) => `${m[1]} 周前`],
   [new RegExp(`^${MON} roughly ([\\d,.-]+) pieces$`), (m) => `${MONTHS[m[1]]} 月约 ${m[2]} 件`],
   [/^([\d,]+) units?$/, (m) => `${m[1]} 件`],
+  // A request's even colour split (quantityLine): "2 colors, 200 each".
+  [/^(\d+) colors(?:, ([\d,]+) each)?$/, (m) => (m[2] ? `${m[1]} 个颜色，每色 ${m[2]} 件` : `${m[1]} 个颜色`)],
   [/^([\d,]+)\s*[-–]\s*([\d,]+) units$/, (m) => `${m[1]}–${m[2]} 件`],
   [/^(\d+) days?$/, (m) => `${m[1]} 天`],
   [/^(\d+)\s*[-–]\s*(\d+) days$/, (m) => `${m[1]}–${m[2]} 天`],

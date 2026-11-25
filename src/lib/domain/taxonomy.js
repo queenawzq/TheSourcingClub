@@ -51,6 +51,26 @@ export async function listTermsByKind(kinds) {
   }, {});
 }
 
+/**
+ * `terms` (listTermsByKind) plus the terms other companies typed for
+ * themselves and linked to these subjects, which the read policy hides from
+ * everyone but their own company. For showing a profile or a request, never
+ * for an option list: those stay the platform's terms and the reader's own.
+ */
+export async function withLinkedCustomTerms(terms, subjectType, subjectIds) {
+  const ids = [...new Set((subjectIds ?? []).filter(Boolean))];
+  if (!ids.length) return terms;
+  const { data, error } = await supabase.rpc("linked_custom_terms", { p_subject_type: subjectType, p_subject_ids: ids });
+  // A failed read leaves the platform's terms: the page still loads.
+  if (error || !data?.length) return terms;
+  const merged = Object.fromEntries(Object.entries(terms ?? {}).map(([kind, list]) => [kind, [...list]]));
+  for (const term of data) {
+    const list = (merged[term.kind] ||= []);
+    if (!list.some((known) => known.id === term.id)) list.push(term);
+  }
+  return merged;
+}
+
 /** The label for a term in the viewer's language, falling back to English. */
 export function termLabel(term, locale = "en") {
   if (!term) return "";

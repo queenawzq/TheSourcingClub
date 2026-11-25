@@ -172,7 +172,7 @@ export function AuthScreen({
           <header className="auth-card-header">
             <span className="auth-account-pill">{staff ? "For platform staff" : copy?.accountPill ?? (isFactory ? "For vendors" : "For brands")}</span>
             <h2>{invitation ? (isSignup ? (isZh ? `加入 ${invitation.company}` : `Join ${invitation.company}`) : (isZh ? `登录以加入 ${invitation.company}` : `Log in to join ${invitation.company}`)) : staff ? "Admin sign-in" : copy ? (isSignup ? copy.signupTitle : copy.loginTitle) : (isSignup ? `Create your ${audienceLabel} account` : "Welcome back")}</h2>
-            <p>{invitation ? (isSignup ? (isZh ? "设置密码即可加入，之后用此邮箱登录。" : "Create a password to join. You'll log in with this address.") : (isZh ? "登录您的账户即可加入。" : "Log in to your account to join.")) : staff ? "Sign in with your staff account to open the operations workspace." : copy ? (isSignup ? copy.signupIntro : copy.loginIntro) : (isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`)}</p>
+            <p>{invitation ? (isSignup ? (isZh ? "设置密码即可加入，之后用此邮箱登录。" : "Create a password to join. You'll log in with this address.") : (isZh ? "登录你的账户即可加入。" : "Log in to your account to join.")) : staff ? "Sign in with your staff account to open the operations workspace." : copy ? (isSignup ? copy.signupIntro : copy.loginIntro) : (isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`)}</p>
           </header>
 
           {googleEnabled && (

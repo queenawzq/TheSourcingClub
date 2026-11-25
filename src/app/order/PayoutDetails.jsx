@@ -35,7 +35,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows, WITHDRAWAL_DONE } from "./payment-summary.mjs";
 import { useFactoryBalance } from "./use-factory-balance.js";
 import { withdrawalsFrom } from "./balance-reader.mjs";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
@@ -51,6 +51,10 @@ const dateLabel = (value) => value
 const stripeDateLabel = (value) => value
   ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
   : "Date pending";
+
+// A withdrawal's second date is the day it reaches the bank, said as such
+// (its first, in the date column, is the day it was asked for).
+const arrivalLabel = (day, arrived) => `${arrived ? "Arrived" : "Arrives"} ${day}`;
 
 /** "Bank account ····6789", from the methods Stripe lists; nothing for one since removed. */
 const payoutDestination = (payout, balance) => {
@@ -428,7 +432,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     ...visibleEarnings.filter((row) => stepRowCents(row, perPayment) !== null).map((row) => ({
       id: `earning-${row.id}`,
       type: "earning",
-      date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
+      // When it was earned: added to the balance (approved, or a funded
+      // payment-only step), else funded. Never released_at, which is the
+      // withdrawal that paid it out and would list an older step as newest.
+      date: row.release_requested_at || row.confirmed_at || row.sent_at || row.due_at || row.released_at || row.created_at,
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       note: [
@@ -469,7 +476,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     // Withdrawals span clients, so they are listed under All clients only:
     // from the server's own list (the card's lines read the same one).
     ...(client !== "All clients" ? [] : serverWithdrawalRows(serverList, { pool: poolById, stripe: stripeById, methodName: stripeMethodName, feeFor: withdrawingFee }))
-      .map((row) => (row.arrives ? { ...row, meta: [row.meta, dateLabel(row.arrives)].filter(Boolean).join(" · ") } : row)),
+      .map((row) => (row.arrives ? { ...row, meta: [row.meta, arrivalLabel(dateLabel(row.arrives), row.status === WITHDRAWAL_DONE)].filter(Boolean).join(" · ") } : row)),
     ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,
       type: "withdrawal",
@@ -480,7 +487,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       type: "withdrawal",
       date: row.created ? new Date(row.created * 1000).toISOString() : null,
       title: "Bank transfer",
-      meta: [payoutDestination(row, stripeBalance), row.arrival_date ? stripeDateLabel(row.arrival_date) : null].filter(Boolean).join(" · "),
+      meta: [payoutDestination(row, stripeBalance), row.arrival_date ? arrivalLabel(stripeDateLabel(row.arrival_date), row.status === "paid" && row.arrival_date * 1000 <= Date.now()) : null].filter(Boolean).join(" · "),
       // Paid by Stripe once it leaves; at the bank only from its arrival day.
       status: row.status === "paid" && row.arrival_date && row.arrival_date * 1000 > Date.now() ? "Processing" : PAYOUT_STATUS[row.status] || row.status,
       // Why the bank did not take it; Stripe puts the money back in the balance.
@@ -571,6 +578,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
             onItsWayCents={onItsWayCents}
+            withdrawalFeeFor={withdrawingFee}
           />}
           <label className="payments-client-filter">
             <span>Filter by client</span>
