@@ -25,12 +25,32 @@ const BRAND_COLUMNS = `
 const FACTORY_COLUMNS = `
   org_id, legal_name, website_url, location, country_code, nearest_port,
   founded_year, registration_date, employee_count, registered_capital, intro,
-  moq, typical_lead_days, sample_lead_days, equipment_notes, vendor_kind,
+  moq, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max,
+  equipment_notes, vendor_kind,
   languages_supported, typical_order_value_band, partner_factory_count,
   supported_incoterms, typical_payment_terms,
   verification_status, trust_tier, published_at,
   onboarding_completed_at, created_at, updated_at
 `;
+
+/**
+ * A number of days as typed: "45-60 天" is { min: 45, max: 60 }, "40 days" is
+ * { min: 40, max: null }. Onboarding and the profile editor both read lead
+ * times through this, so a range typed in either is kept whole.
+ */
+export function dayRange(text) {
+  const numbers = String(text ?? "").match(/\d+/g)?.map(Number) ?? [];
+  if (!numbers.length) return { min: null, max: null };
+  const [low, high] = numbers;
+  if (high == null || high === low) return { min: low, max: null };
+  return { min: Math.min(low, high), max: Math.max(low, high) };
+}
+
+/** A saved lead time back in words: "45-60 days", "40 days", or "". */
+export function daysText(min, max, unit = "days") {
+  if (min == null || min === "") return "";
+  return max != null && Number(max) > Number(min) ? `${min}-${max} ${unit}` : `${min} ${unit}`;
+}
 
 /**
  * The first number in a free-text answer: "30-45 days" is 30, and

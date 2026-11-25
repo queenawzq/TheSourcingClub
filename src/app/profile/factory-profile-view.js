@@ -7,6 +7,7 @@
  * nothing records (a rating, reviews, a response time) it is left out or said
  * plainly, never filled with an example.
  */
+import { daysText } from "../../lib/domain/profile.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { equipmentList, titleFromFileName } from "../../shared/profile-translation.mjs";
 import {
@@ -93,8 +94,8 @@ function capacityRowsFor(profile, capacityState, terms, now) {
 
   return [
     ["MOQ", profile?.moq != null ? `${count(profile.moq)} units / style` : NOT_GIVEN],
-    ["Typical lead time", profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : NOT_GIVEN],
-    ["Typical sample lead time", profile?.sample_lead_days != null ? `${profile.sample_lead_days} days` : NOT_GIVEN],
+    ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max) || NOT_GIVEN],
+    ["Typical sample lead time", daysText(profile?.sample_lead_days, profile?.sample_lead_days_max) || NOT_GIVEN],
     ["Capacity category", category ? termLabel(category) : NOT_GIVEN],
     ["Line-hours", hours ? `${capacity.input_mode === "hours" ? "" : "~"}${count(hours)} hours / month` : NOT_GIVEN],
     [
@@ -315,7 +316,7 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const perBrand = live.reduce((tally, order) => tally.set(order.brand_org_id, (tally.get(order.brand_org_id) ?? 0) + 1), new Map());
   const projects = projectCards(orders);
   const verified = profile?.verification_status === "verified";
-  const leadTime = profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : NOT_GIVEN;
+  const leadTime = daysText(profile?.typical_lead_days, profile?.typical_lead_days_max) || NOT_GIVEN;
 
   const data = {
     name,
@@ -425,8 +426,8 @@ export function factoryProfileEditForm(parts, now = new Date()) {
     employees: text(profile?.employee_count),
     intro: text(profile?.intro),
     moq: withUnit(profile?.moq, "units / style"),
-    leadTime: withUnit(profile?.typical_lead_days, "days"),
-    sampleLeadTime: withUnit(profile?.sample_lead_days, "days"),
+    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max),
+    sampleLeadTime: daysText(profile?.sample_lead_days, profile?.sample_lead_days_max),
     // The dialog shows a category whatever is saved, falling back to wovens
     // as the design does; starting there means what is shown is what saves.
     capacityCategoryKey: category?.slug ?? "wovens",
