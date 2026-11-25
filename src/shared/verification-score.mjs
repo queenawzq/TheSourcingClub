@@ -994,12 +994,14 @@ export function renamedWhy(registry, title) {
   return `${source} was checked for “${was}”; ${change}.`;
 }
 
-function groupVerdict(checks, good, { title } = {}) {
+function groupVerdict(checks, good, { title, named = false } = {}) {
   const counted = checks.filter((c) => c.weight);
   const renamed = counted.find((c) => c.verdict === "Renamed since the check");
   if (renamed) return { verdict: "Renamed since the registry check", lead: renamed, explain: renamedWhy(renamed.registry, title) };
   const weak = counted.filter((c) => c.score != null && c.score < 75).sort((a, b) => a.score - b.score)[0];
-  if (weak) return { verdict: weak.verdict, lead: weak };
+  // `named`: a group of unlike checks says which one it is ("Photos: none of the 2 is their own"), so the photos'
+  // result never reads as the company's details (flow check R2S6). "Factory: …" / "Not a factory: …" name themselves.
+  if (weak) return { verdict: named && !(weak.key === "scope" && /^(Not a )?[Ff]actory:|^Trading company:/.test(weak.verdict)) ? `${weak.label}: ${lowerFirst(weak.verdict)}` : weak.verdict, lead: weak };
   const open = counted.find((c) => c.score == null);
   if (open) return { verdict: `${open.label}: ${lowerFirst(open.verdict)}`, lead: open };
   return { verdict: good(), lead: null };
@@ -1136,7 +1138,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const tiles = photoTiles({ photos: extra.photos, signals, photoCheck, timeZone });
   const photos = withReason(photosCheck(tiles));
   const ciChecks = [scope, photos];
-  const ciVerdict = groupVerdict(ciChecks, () => (scope.staff || scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`));
+  const ciVerdict = groupVerdict(ciChecks, () => (scope.staff || scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`), { named: true });
   // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
   const ciStamp = [photoCheck?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
