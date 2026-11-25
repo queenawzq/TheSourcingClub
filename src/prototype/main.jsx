@@ -8084,7 +8084,10 @@ export function ProjectsScreen({
   tabStore = null,
   // Live only: cancelling (src/app/order/useOrderCancel.jsx). The design
   // draws no cancel item, so the prototype passes nothing and shows none.
-  cancelStore = null
+  cancelStore = null,
+  // Optional order extensions, shared by the local dispute preview.
+  renderOrderMenu = null,
+  renderOrderNotice = null
 }) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
@@ -8396,6 +8399,8 @@ export function ProjectsScreen({
               setSelectedReorderProject={setSelectedReorderProject}
               onReorder={onReorder}
               reorderLocked={reorderLocked}
+              renderOrderMenu={renderOrderMenu}
+              renderOrderNotice={renderOrderNotice}
               key={project.id ?? project.title}
             />
           ))
@@ -8406,7 +8411,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null, reorderLocked = "" }) {
+function ProjectListCard({ renderOrderMenu = null, renderOrderNotice = null, project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null, reorderLocked = "" }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -8473,6 +8478,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                     {cancelAction.label}
                   </button>
                 )}
+                {renderOrderMenu?.(project, close)}
               </>
             )}
           </OrderCardMenu>
@@ -8505,6 +8511,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           )}
         </div>
       </div>
+      {renderOrderNotice?.(project)}
     </article>
   );
 }
@@ -8565,6 +8572,7 @@ export function ProjectDetailScreen({
   // proposed (or once the order is cancelled), and the order-level menu.
   banner = null,
   onCancelOrder = null,
+  renderOrderMenu = null,
 }) {
   const milestoneList = liveMilestones ?? projectDetailMilestones;
   const isLive = Boolean(liveMilestones);
@@ -8591,17 +8599,22 @@ export function ProjectDetailScreen({
           <h1>{order?.title ?? "Organic cotton woven shirt production"}</h1>
           <p>{order?.subtitle ?? "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
         </div>
-        {onCancelOrder && (
+        {(onCancelOrder || renderOrderMenu) && (
           <OrderCardMenu customTabs={[]} onToggleTab={() => {}}>
             {(close) => (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onCancelOrder();
-                }}
-              >Cancel order</button>
+              <>
+                {onCancelOrder && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      onCancelOrder();
+                    }}
+                  >Cancel order</button>
+                )}
+                {renderOrderMenu?.(order, close)}
+              </>
             )}
           </OrderCardMenu>
         )}
