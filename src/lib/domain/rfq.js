@@ -345,7 +345,7 @@ export async function listSavedRequests(orgId) {
   return unwrap(
     await supabase
       .from("saved_rfqs")
-      .select("rfq_id, created_at, rfqs (id, title, brief, quantity_total, quote_deadline, target_unit_price_min_cents, target_unit_price_max_cents, requires_sample, status, published_at, orgs!rfqs_brand_org_id_fkey (id, name))")
+      .select("rfq_id, created_at, rfqs (id, title, brief, quantity_total, quote_deadline, target_unit_price_min_cents, target_unit_price_max_cents, requires_sample, sample_notes, status, published_at, orgs!rfqs_brand_org_id_fkey (id, name))")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false }),
     "load your saved requests",
