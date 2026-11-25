@@ -373,7 +373,8 @@ async function formatters() {
     expect("brand payments: due row", payments.rows?.[0]?.date, "Oct 26, 2026");
     // Round 36: main's words and split. TSC holds approved money (and a
     // funded deposit) until the factory withdraws it, so it is Held; Paid is
-    // what was paid out. A funded deposit reads Funded.
+    // what was paid out. A funded deposit and an approved step read Funded,
+    // the word for what Held counts (flow check W7).
     const oneBalance = brandPaymentsView({
       orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
       payments: [
@@ -392,7 +393,7 @@ async function formatters() {
         { id: "d", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-25T10:00:00Z", released_at: "2026-11-30T10:00:00Z", order_milestones: { title: "D" } },
       ],
     }).rows.map((row) => row.id).join(","), "b,a,d,c");
-    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Approved,out:Paid,wait:Funded");
+    expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Funded,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");
     // Refunds (20261121200000): a partial one nets the figure; a full one

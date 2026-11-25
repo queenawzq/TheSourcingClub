@@ -27,9 +27,10 @@ import { dateFrom } from "../../lib/dates.js";
 import { paymentRefund, refundPendingWord } from "../order/payment-summary.mjs";
 
 /**
- * One word for where a payment stands, on the list and its details page. A
- * paid step the brand has approved reads Approved until it is paid; a deposit
- * or balance has nothing to approve, so it stays Funded.
+ * One word for where a payment stands, on the list and its details page.
+ * Money TSC still holds reads Funded, as the Held figure counts it: an
+ * approved step and a funded deposit or balance alike, until the factory
+ * withdraws it and it reads Paid.
  */
 export function paymentStatusWord(payment, order) {
   // Held money that went back when the order was cancelled.
@@ -40,7 +41,6 @@ export function paymentStatusWord(payment, order) {
     return paymentRefund(payment).refunded > 0 ? "Refunded" : "Reversed by your bank";
   }
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
-  if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
 

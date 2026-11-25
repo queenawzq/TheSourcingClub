@@ -187,7 +187,8 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
       if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
       if (!payment.release_requested_at) return "Funded: held by TSC";
       // One balance: approved money waits in the factory's balance until it withdraws.
-      return kind === "payment_only" ? "Funded: added to the factory's balance" : "Approved: added to the factory's balance";
+      // Funded, as Payments says it, until the factory withdraws it (Paid).
+      return "Funded: added to the factory's balance";
     case "released":
       // The factory's word, as on Payments: a Stripe transfer is in its balance.
       return isFactory ? factoryWord(payment) : "Paid";
