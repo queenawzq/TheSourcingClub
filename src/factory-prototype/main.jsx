@@ -849,7 +849,7 @@ export const factoryMainZhText = {
   "Order activity": "订单动态",
   "‹ Back to production orders": "‹ 返回生产订单",
   "order total": "订单总额",
-  "funded": "资金已托管",
+  "funded": "品牌已付",
   "remaining": "剩余金额",
   "next payment": "下一笔付款",
   "Overview": "概览",
@@ -1542,6 +1542,22 @@ export const factoryMainZhText = {
   "Add image": "添加图片",
   "Edit video": "编辑视频",
   "Edit image": "编辑图片",
+  // Cancelling an order (live only: CancelOrderDialog, CancelNotice, the card menu, the activity).
+  "Cancel order": "取消订单",
+  "Accept cancellation": "接受取消",
+  "Keep order": "保留订单",
+  "Go back": "返回",
+  "Reason": "原因",
+  "Propose cancellation": "提议取消",
+  "Sending…": "正在发送…",
+  "No reason given": "未填写原因",
+  "This closes the order for both sides and cannot be undone.": "订单将对双方关闭，且无法撤销。",
+  "You proposed cancelling this order": "你已提议取消此订单",
+  "This order was cancelled": "此订单已取消",
+  "Withdraw cancellation": "撤回取消提议",
+  "Review cancellation": "查看取消提议",
+  "Order cancelled": "订单已取消",
+  "Order completed": "订单已完成",
 };
 
 // The profile's completion note lists these ("Add your factory details and

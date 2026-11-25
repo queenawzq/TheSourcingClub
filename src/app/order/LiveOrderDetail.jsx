@@ -319,7 +319,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [order, setOrder] = useState(null);
   // The factory reads the request's words in Chinese when it reads Chinese.
   // Held until the Chinese is in (at most 3 s): no English for a moment first.
-  const waitingForChinese = useChineseContent(isFactory ? { rfqIds: [order?.rfq_id], brandOrgIds: [order?.brand_org_id] } : {});
+  const waitingForChinese = useChineseContent(isFactory ? { rfqIds: [order?.rfq_id], brandOrgIds: [order?.brand_org_id], orderIds: [orderId] } : {});
   // The brand reads what the factory typed (quote, step updates, location) in English.
   useEnglishContent({ orderIds: [orderId] }, { enabled: !isFactory });
   // The brand reads the vendor's name in English where it has one (vendor-names.jsx).

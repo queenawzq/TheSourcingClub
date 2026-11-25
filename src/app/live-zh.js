@@ -197,6 +197,24 @@ const PATTERNS = [
   [/^Complete these required fields before reviewing: (.+)\.$/, (m, inner) => `审核前请填写这些必填项：${m[1].split(", ").map((field) => inner(field)).join("、")}。`],
   [/^Message (.+)\.\.\.$/, (m) => `给 ${m[1]} 发消息...`],
   [/^Now: (.+)$/, (m, inner) => `当前：${inner(m[1])}`],
+  // Cancelling an order: the dialog, the banner and the activity (names kept as written).
+  [/^Cancel (.+) as (.+) proposed\?$/, (m, inner) => `按 ${m[2]} 的提议取消「${inner(m[1])}」？`],
+  [/^Cancel (.+)\?$/, (m, inner) => `取消「${inner(m[1])}」？`],
+  [/^(.+) proposed cancelling this order$/, (m) => `${m[1]} 已提议取消此订单`],
+  [/^(.+)'s reason$/, (m) => `${m[1]} 的原因`],
+  // The same label when the name is its own text node ("{other}'s reason").
+  [/^'s reason$/, () => " 的原因"],
+  // A date after a heading in its own text node (" · Nov 25" on the cancel banner).
+  [/^· (.+)$/, (m, inner) => `· ${inner(m[1])}`],
+  [/^(.+) sees this\.$/, (m) => `${m[1]} 会看到此内容。`],
+  [/^You proposed cancelling$/, () => "你已提议取消"],
+  [/^(.+) proposed cancelling$/, (m) => `${m[1]} 已提议取消`],
+  [/^You kept the order$/, () => "你已保留订单"],
+  [/^(.+) kept the order$/, (m) => `${m[1]} 已保留订单`],
+  [/^You withdrew the proposal$/, () => "你已撤回提议"],
+  [/^(.+) withdrew the proposal$/, (m) => `${m[1]} 已撤回提议`],
+  [/^The payment for (.+) was refunded to the brand after it was paid out$/, (m, inner) => `「${inner(m[1])}」的款项在支付后已退还给品牌`],
+  [/^The payment for (.+) was refunded to the brand$/, (m, inner) => `「${inner(m[1])}」的款项已退还给品牌`],
   [PROPOSED, (m) => `${m[1]} 提议取消：${m[2]}`, { free: true }],
   [YOU_PROPOSED, (m) => `你提议取消：${m[1]}`, { free: true }],
   [/^(.+) confirmed the production steps$/, (m) => `${m[1]} 已确认生产步骤`],
@@ -275,7 +293,7 @@ const PATTERNS = [
 export function chineseText(text, { terms, content = () => null } = {}) {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return null;
-  const direct = content(trimmed) ?? wholeEntry(trimmed, terms);
+  const direct = wholeEntry(trimmed, terms) ?? content(trimmed);
   if (direct) return direct;
   const inner = (part) => chineseText(part, { terms, content }) ?? part;
   // "Maple Row Studio · Quote due Nov 24 · Sample before bulk": each part on

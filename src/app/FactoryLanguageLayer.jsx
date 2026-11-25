@@ -123,10 +123,15 @@ export default function FactoryLanguageLayer({ language }) {
       if (element?.parentElement?.matches(".schedule-calendar-weekdays") && /^[MTWFS]$/.test(trimmed)) {
         return "一二三四五六日"[[...element.parentElement.children].indexOf(element)] ?? value;
       }
+      // The cancel banner's "Withdraw" takes back a proposal: not 提现 (withdrawing money).
+      if (trimmed === "Withdraw" && element?.closest(".order-cancel-notice")) return value.replace(trimmed, "撤回提议");
       // A conversation's preview is the message as written, as its thread
       // shows it first (翻译成中文 is in the thread).
       if (element?.closest(".message-thread-card em")) return value;
-      const server = contentFor(trimmed);
+      // The design's own Chinese for its own words first: a generated step
+      // description the server also translates ("Factory prepares this
+      // sample…") keeps the dictionary's wording.
+      const server = wholeEntry(trimmed, terms ?? undefined) ? null : contentFor(trimmed);
       if (server) {
         if (node) contentNodes.add(node);
         return value.replace(trimmed, server);
