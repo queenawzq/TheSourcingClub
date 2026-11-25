@@ -135,6 +135,7 @@ const companyGap = (fields) => ({ label: "Company details", result: "Review", de
 const DUPLICATE = { label: "Duplicate company signal", result: "Review", detail: "Shares a legal name or website domain with at least one other company on the platform." };
 // Nov 12: the score card's weak sub-checks become what the company can do, never the registry.
 check("the score card's unreadable licence asks for the original", /original business registration certificate/.test(asked("Licence", "Can't be read", "Business registration") ?? ""));
+check("a registration that could not be read is asked for again (Nov 25: an empty file was left out)", /original business registration certificate/.test(asked("Registration document", "Couldn't read the document", "Business registration") ?? ""));
 check("but never the registry, which is staff's to check", asked("Official registry", "Not checked yet", "Business registration") === null);
 check("weak photos ask for their own", /own facility/.test(asked("Photos", "None of the 4 is their own", "Company information") ?? ""));
 check("an expired certificate asks for the current one", /current certificate for GOTS/.test(asked("GOTS", "Expired on the issuer's list", "Certification evidence") ?? ""));
