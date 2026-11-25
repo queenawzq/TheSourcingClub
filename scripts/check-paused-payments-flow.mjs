@@ -504,15 +504,15 @@ const TEXT = {
   }),
   fResumed: (step, num) => ({
     title: "Withdrawals resumed",
-    body: `The review of the payment for "${step}" on ${num} is done. Your balance is unchanged. You can withdraw your balance again.`,
+    body: `The review of the payment for "${step}" on ${num} is done. You can withdraw your balance again.`,
     zhTitle: "提现已恢复",
-    zhBody: `${num} 中“${step}”的付款审核已完成。你的余额没有变化。你可以再次提现余额。`,
+    zhBody: `${num} 中“${step}”的付款审核已完成。你可以再次提现余额。`,
   }),
   fStillPaused: (step, num) => ({
     title: "Payment review complete",
-    body: `The review of the payment for "${step}" on ${num} is done. Your balance is unchanged. Withdrawals stay paused while another payment is reviewed.`,
+    body: `The review of the payment for "${step}" on ${num} is done. Withdrawals stay paused while another payment is reviewed.`,
     zhTitle: "付款审核已完成",
-    zhBody: `${num} 中“${step}”的付款审核已完成。你的余额没有变化。另一笔付款仍在审核中，提现继续暂停。`,
+    zhBody: `${num} 中“${step}”的付款审核已完成。另一笔付款仍在审核中，提现继续暂停。`,
   }),
   fTaken: (amount, step, num, note) => ({
     title: "Payment review complete",

@@ -383,12 +383,12 @@ declare
   still_paused boolean := public.factory_paused(v.factory_org_id);
   num text := (select order_number from public.production_orders where id = v.order_id);
 begin
-  -- T2 A3: the order and the outcome (nothing left its balance). Never
-  -- "nothing was taken" (src/app/order/AGENTS.md).
+  -- T2 A3: names the order. Nothing left its balance, and that is not said
+  -- (src/app/order/AGENTS.md; John and Queena, Nov 23).
   insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
   values (v.factory_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
           case when still_paused then 'Payment review complete' else 'Withdrawals resumed' end,
-          format('The review of the payment for "%s" on %s is done. Your balance is unchanged.', step, num)
+          format('The review of the payment for "%s" on %s is done.', step, num)
           || case when still_paused then ' Withdrawals stay paused while another payment is reviewed.'
                   else ' You can withdraw your balance again.' end
           || case when nullif(btrim(coalesce(note, '')), '') is not null then ' Note from our team: ' || btrim(note) else '' end,

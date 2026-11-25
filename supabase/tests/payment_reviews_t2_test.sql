@@ -191,8 +191,8 @@ select pg_temp.lost(2, 'dp_pgtap_pr31_2');
 select lives_ok($$select pg_temp.decide(pg_temp.review(2, 'dp_pgtap_pr31_2'), 'no_fault', null, 'Stolen card.')$$,
   'no fault on P2');
 select is(pg_temp.body('e1', 'Payment review complete', 2),
-  'The review of the payment for "PR31 step 2" on PR31 request (TSC-931001) is done. Your balance is unchanged. Withdrawals stay paused while another payment is reviewed.',
-  'A3: the order, and the balance unchanged');
+  'The review of the payment for "PR31 step 2" on PR31 request (TSC-931001) is done. Withdrawals stay paused while another payment is reviewed.',
+  'A3: the order');
 select lives_ok($$select pg_temp.decide(pg_temp.review(1, 'dp_pgtap_pr31_1'), 'factory_at_fault', 3250, 'The goods did not arrive.')$$,
   'factory at fault on P1, $32.50');
 select is(pg_temp.body('e1', 'Payment review complete', 1),

@@ -261,7 +261,6 @@ const SENTENCES = [
   [/^A brand disputed a card payment for "(.+)" on (.+), so our team is reviewing it\.$/,
     (step, order) => `品牌方对 ${order} 中${quoted(step)}的银行卡付款提出了争议，我们的团队正在审核。`],
   [/^The review of the payment for "(.+)" on (.+) is done\.$/, (step, order) => `${order} 中${quoted(step)}的付款审核已完成。`],
-  [/^Your balance is unchanged\.$/, () => "你的余额没有变化。"],
   [amountRe('^AMT was taken from your balance for the brand\'s refund of "(.+)" on (.+)\\.$'),
     (amount, step, order) => `已从你的余额中扣除 ${amount}，用于 ${order} 中${quoted(step)}向品牌的退款。`],
   [/^Until our review is done, you can't fund or approve steps or accept quotes\.$/, () => "在我们的审核完成前，你无法为步骤付款、批准步骤或接受报价。"],
