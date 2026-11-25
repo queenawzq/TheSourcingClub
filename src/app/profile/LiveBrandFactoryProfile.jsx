@@ -184,7 +184,7 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
           quoteLocked,
           // A conversation belongs to a request or an order, so without one
           // the contact card's way in is a request.
-          contact: message ? { label: "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote, quoteLocked },
+          contact: message ? { label: isTrading ? "Message trading company" : "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote, quoteLocked },
         }}
       />
       {preview && <div className="approve-fund-modal-layer">

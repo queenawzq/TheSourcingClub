@@ -5208,9 +5208,9 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
           <div className="factory-profile-actions">
             {view.save ? (
               <button className="secondary-btn" type="button" aria-pressed={view.save.saved} disabled={view.save.busy} onClick={view.save.onToggle}>
-                {view.save.saved ? "Saved" : "Save factory"}
+                {view.save.saved ? "Saved" : view.saveLabel ?? "Save factory"}
               </button>
-            ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
+            ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>{view.saveLabel ?? "Save factory"}</button>}
             {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
             {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote} disabled={Boolean(view.quoteLocked) || undefined} title={view.quoteLocked || undefined}>Request quote</button>}
           </div>
@@ -5220,7 +5220,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
           <section className="factory-profile-main">
             {live?.matchPanel}
             <ProfilePerformanceCard
-              eyebrow="Factory performance"
+              eyebrow={view.performanceEyebrow ?? "Factory performance"}
               primary={view.performance.primary}
               primaryLabel={view.performance.primaryLabel}
               metrics={view.performance.metrics}
@@ -5259,7 +5259,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
 
           <aside className="factory-profile-side">
             <section className="factory-profile-card factory-profile-contact-card">
-              <h2>Contact factory</h2>
+              <h2>{view.contactTitle ?? "Contact factory"}</h2>
               <div className="factory-profile-contact-row">
                 <div className="factory-avatar">{view.initials}</div>
                 <div>
@@ -10506,7 +10506,8 @@ export function QuoteDetailScreen({
         { stage: "Extra revision", cost: "$65 each", timing: "Adds 5-7 days", includes: "Shipping not included" }
       ];
   const vendorNotes = live
-    ? [live.notes, ...(live.answers ?? []).map((answer) => `${answer.question} — ${answer.answer}`)].filter(Boolean)
+    // Each part of the vendor's notes is its own paragraph (describeQuote joins them with a blank line).
+    ? [...String(live.notes ?? "").split(/\n{2,}/), ...(live.answers ?? []).map((answer) => `${answer.question} — ${answer.answer}`)].filter(Boolean)
     : ["Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."];
   const requestRows = live
     ? [

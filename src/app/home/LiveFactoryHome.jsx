@@ -14,7 +14,8 @@
 import React, { useEffect, useState } from "react";
 import { FactoryCapacityDrawer, FactoryDashboardPage } from "../../factory-prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
-import { listOpenRfqs } from "../../lib/domain/rfq.js";
+import { listOpenRfqs, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { isFit } from "../rfq/match-fit.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { FACTORY_CREDIT_NOTE, FACTORY_INVITE_INTRO, creditBalance, sendInvite } from "../../lib/domain/credits.js";
@@ -220,8 +221,16 @@ export default function LiveFactoryHome({ org, profile }) {
       capacityCard(org.id),
       hasEverQuoted(org.id),
     ])
-      .then(([snapshot, rfqs, orders, quotesSent, credits, capacity, everQuoted]) => {
-        if (!cancelled) setState({ snapshot, rfqs, orders, quotesSent, credits, capacity, everQuoted });
+      .then(async ([snapshot, rfqs, orders, quotesSent, credits, capacity, everQuoted]) => {
+        // The panel lists requests matched to this vendor: scored as Browse
+        // scores them (match_score_rfq), best first, and only those Browse
+        // calls a fit. An unscored request is not called a match.
+        const scored = await Promise.all(rfqs.map(async (rfq) => [
+          rfq,
+          (await matchScoresForRfq(rfq.id, [org.id]).catch(() => new Map())).get(org.id) ?? null,
+        ]));
+        const matched = scored.filter(([, score]) => isFit(score)).sort((a, b) => b[1] - a[1]).map(([rfq]) => rfq);
+        if (!cancelled) setState({ snapshot, rfqs, matched, orders, quotesSent, credits, capacity, everQuoted });
       })
       .catch((failure) => {
         if (cancelled) return;
@@ -269,7 +278,7 @@ export default function LiveFactoryHome({ org, profile }) {
     );
   }
 
-  const { snapshot, rfqs, orders, quotesSent, credits, capacity } = state;
+  const { snapshot, rfqs, matched, orders, quotesSent, credits, capacity } = state;
   // The design opens the profile from here, for either kind of vendor.
   const profilePath = "/profile";
   const activeOrders = orders.filter((order) => order.status === "active");
@@ -370,7 +379,7 @@ export default function LiveFactoryHome({ org, profile }) {
       orgName={org.name}
       creditBalance={credits ?? 0}
       unreadCount={n(unreadNotifications)}
-      rfqs={rfqs.map(toDashboardRfq)}
+      rfqs={matched.map(toDashboardRfq)}
       projects={activeOrders.map((order) => {
         const card = toProjectCard(order, true);
         return { ...card, brand: card.factory, initials: initialsOf(card.factory), images: card.image ? [{ src: card.image }] : [] };

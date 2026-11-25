@@ -342,31 +342,31 @@
         {
           "slug": "full-package",
           "label_en": "Full package",
-          "label_zh": null,
+          "label_zh": "全包生产",
           "sort": 1
         },
         {
           "slug": "cmt",
           "label_en": "CMT",
-          "label_zh": null,
+          "label_zh": "CMT / 来料加工",
           "sort": 2
         },
         {
           "slug": "pattern-making",
           "label_en": "Pattern making",
-          "label_zh": null,
+          "label_zh": "制版",
           "sort": 3
         },
         {
           "slug": "sample-development",
           "label_en": "Sample development",
-          "label_zh": null,
+          "label_zh": "样衣开发",
           "sort": 4
         },
         {
           "slug": "fabric-sourcing",
           "label_en": "Fabric sourcing",
-          "label_zh": null,
+          "label_zh": "面料采购",
           "sort": 5
         }
       ]
@@ -504,37 +504,37 @@
         {
           "slug": "organic-poplin-shirts",
           "label_en": "Organic poplin shirts",
-          "label_zh": null,
+          "label_zh": "有机府绸衬衫",
           "sort": 9
         },
         {
           "slug": "low-moq-woven-tops",
           "label_en": "Low-MOQ woven tops",
-          "label_zh": null,
+          "label_zh": "低起订量梭织上衣",
           "sort": 10
         },
         {
           "slug": "small-batch-production",
           "label_en": "Small-batch production",
-          "label_zh": null,
+          "label_zh": "小批量生产",
           "sort": 11
         },
         {
           "slug": "fit-sample-support",
           "label_en": "Fit sample support",
-          "label_zh": null,
+          "label_zh": "试身样支持",
           "sort": 12
         },
         {
           "slug": "yarn-sourcing",
           "label_en": "Yarn sourcing",
-          "label_zh": null,
+          "label_zh": "纱线采购",
           "sort": 13
         },
         {
           "slug": "embroidery-print",
           "label_en": "Embroidery / print",
-          "label_zh": null,
+          "label_zh": "刺绣 / 印花",
           "sort": 14
         }
       ]
@@ -642,19 +642,19 @@
         {
           "slug": "under-30-days",
           "label_en": "Under 30 days",
-          "label_zh": null,
+          "label_zh": "30 天以内",
           "sort": 1
         },
         {
           "slug": "30-45-days",
           "label_en": "30-45 days",
-          "label_zh": null,
+          "label_zh": "30-45 天",
           "sort": 2
         },
         {
           "slug": "45-plus-days",
           "label_en": "45+ days",
-          "label_zh": null,
+          "label_zh": "45 天以上",
           "sort": 3
         }
       ]
@@ -989,7 +989,7 @@
         {
           "slug": "10k-plus-spent",
           "label_en": "$10k+ spent",
-          "label_zh": null,
+          "label_zh": "已消费 $10k+",
           "sort": 3
         },
         {

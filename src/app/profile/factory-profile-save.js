@@ -7,7 +7,7 @@
  * dialog saves only its own section: a save never touches a field or chip
  * group that dialog doesn't show.
  */
-import { addressPatch, firstNumber, saveFactoryProfile, structureAddress } from "../../lib/domain/profile.js";
+import { addressPatch, dayRange, firstNumber, saveFactoryProfile, structureAddress } from "../../lib/domain/profile.js";
 import { CUSTOM_KINDS, addCustomTerm, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
@@ -17,6 +17,11 @@ import { TRADING_CHIP_KINDS, TRADING_SECTIONS } from "./trading-profile-view.js"
 
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 const textOrNull = (value) => String(value ?? "").trim() || null;
+/** A lead time as typed, both ends kept: "45-60 days" saves 45 and 60. */
+const leadDays = (column, value) => {
+  const { min, max } = dayRange(value);
+  return { [column]: min, [`${column}_max`]: max };
+};
 
 /**
  * The name is the owner's, and only worth a call when it changed: a member's
@@ -99,8 +104,8 @@ async function saveCapacityAndTerms(org, form, terms, hadCapacity, now) {
 
   await saveFactoryProfile(org.id, {
     moq: firstNumber(form.moq),
-    typical_lead_days: firstNumber(form.leadTime),
-    sample_lead_days: firstNumber(form.sampleLeadTime),
+    ...leadDays("typical_lead_days", form.leadTime),
+    ...leadDays("sample_lead_days", form.sampleLeadTime),
   });
   if (!figure) return;
 
@@ -157,7 +162,7 @@ async function saveTradingSection(org, editor, form, terms, parts) {
   if (editor === "commercial") {
     return saveFactoryProfile(org.id, {
       moq: firstNumber(form.moq),
-      typical_lead_days: firstNumber(form.leadTime),
+      ...leadDays("typical_lead_days", form.leadTime),
       typical_order_value_band: textOrNull(form.orderValue),
       partner_factory_count: firstNumber(form.partnerFactories),
       supported_incoterms: textOrNull(form.incoterms),

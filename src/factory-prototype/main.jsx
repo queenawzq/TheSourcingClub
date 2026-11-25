@@ -436,6 +436,17 @@ export const factoryMainZhText = {
   "View RFQ": "查看询价",
   "Edit quote": "编辑报价",
   "‹ Back to RFQs": "‹ 返回询价",
+  "‹ Back to Dashboard": "‹ 返回控制台",
+  "‹ Back to Saved": "‹ 返回收藏",
+  "Enter stage": "填写阶段",
+  "Enter cost": "填写费用",
+  "Enter timing": "填写周期",
+  "Enter includes": "填写包含内容",
+  "Call details": "通话详情",
+  "Pick a date": "选择日期",
+  "Duration": "时长",
+  "30 minutes": "30 分钟",
+  "Time zone": "时区",
   "‹ Back to view request": "‹ 返回查看需求",
   "Requested quantity": "需求数量",
   "300 units · 3 colors": "300 件 · 3 个颜色",
@@ -744,6 +755,16 @@ export const factoryMainZhText = {
   "Shortlist starts after Jul 24": "7 月 24 日后开始筛选",
   "Add fit sample update": "添加试身样更新",
   "Line-hours available per month": "每月可用产线工时",
+  "Units available per month": "每月可生产件数",
+  "Units": "件数",
+  "Hours": "工时",
+  "units / month": "件 / 月",
+  "Edit capacity and terms": "编辑产能与合作条件",
+  "Keep MOQ, lead time, booking level, and capacity estimates current.": "请及时更新 MOQ、交期、接单状态和产能估算。",
+  "Minimum order quantity": "最低起订量",
+  "Location not given": "未填写所在地",
+  "No sample images yet.": "暂无样品图片。",
+  "No client references yet.": "暂无客户参考。",
   "Category": "品类",
   "Wovens — your registered specialization": "梭织 — 你注册的专长",
   "hours / month": "小时 / 月",
@@ -1102,6 +1123,8 @@ export const factoryMainZhText = {
   "Aug mostly open; Sep partly booked": "8 月较空；9 月部分已订",
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
+  "‹ Back to profile": "‹ 返回资料",
+  "Nothing to add. Keep monthly capacity current.": "暂无需补充。请及时更新月度产能。",
   "Completed": "已完成",
   "Failed": "失败",
   "Available": "可用方式",
@@ -1467,6 +1490,8 @@ const PROFILE_TODO_ZH = [
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 const factoryMainZhReplacements = [
+  // The capacity dialog's estimate line, before "N units" below takes part of it.
+  [/^([\d,]+) units \/ month × (\d+)%-(\d+)% free$/, "$1 件 / 月 × $2%-$3% 可接单"],
   [/Current status:/g, "当前状态："],
   [/(\d+) day avg\. response/g, "平均 $1 天回复"],
   [/Best Fit/g, "最佳匹配"],
@@ -4005,7 +4030,7 @@ const profileCompletionIconMap = {
  * description, action: { label, onClick } | null }`. Without it the page
  * shows the design's example, unchanged.
  */
-export function FactoryProfileCompletionPage({ onBack, live = null }) {
+export function FactoryProfileCompletionPage({ onBack, live = null, language = "en" }) {
   const checks = live ? live.checks : profileCompletionChecks;
   const completeCount = checks.filter((item) => item.tone === "complete").length;
   const progressCount = checks.filter((item) => item.tone === "progress").length;
@@ -4013,6 +4038,8 @@ export function FactoryProfileCompletionPage({ onBack, live = null }) {
 
   return (
     <main className="factory-profile-page factory-profile-completion-page">
+      {/* Live, the page's own labels in the person's language, as on the profile. */}
+      {live && <FactoryMainLanguageLayer language={language} scope=".factory-profile-completion-page" />}
       <div className="factory-profile-shell">
         <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
 
@@ -4346,7 +4373,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
         )}
 
         {editor === "capacity" && (
-          <ProfileCapacityEditor form={form} onChange={updateField} months={live?.months} />
+          <ProfileCapacityEditor form={form} onChange={updateField} months={live?.months} language={live?.language} />
         )}
 
         {editor === "references" && (
@@ -4862,7 +4889,7 @@ function ProfileEditField({ label, value, onChange, lockedReason = "", placehold
 }
 
 /** `months`, live: the next three months from today, in place of the design's Aug-Oct. */
-function ProfileCapacityEditor({ form, onChange, months }) {
+function ProfileCapacityEditor({ form, onChange, months, language = "en" }) {
   const monthNames = months ?? ["Aug", "Sep", "Oct"];
   const selectedCategory = FACTORY_CAPACITY_CATEGORIES.find((category) => category.key === form.capacityCategoryKey) || FACTORY_CAPACITY_CATEGORIES[1];
   const availableHours = Number.parseInt(form.lineHoursInput || "0", 10) || 0;
@@ -4901,7 +4928,7 @@ function ProfileCapacityEditor({ form, onChange, months }) {
             <label className="capacity-select-field onboarding-capacity-select">
               <select value={form.capacityCategoryKey} onChange={(event) => onChange("capacityCategoryKey", event.target.value)} aria-label="Select category">
                 {FACTORY_CAPACITY_CATEGORIES.map((category) => (
-                  <option value={category.key} key={category.key}>{category.label}</option>
+                  <option value={category.key} key={category.key}>{language === "zh" ? category.labelZh : category.label}</option>
                 ))}
               </select>
             </label>
@@ -8431,7 +8458,7 @@ function FactoryOnboardingStep({
   }
 
   if (stepType === "capacity") {
-    return <OnboardingCapacitySetup content={content} language={language} live={isLive} values={values} />;
+    return <OnboardingCapacitySetup content={content} language={language} live={isLive} values={values} nameAt={(index) => nameAt("fields", index)} />;
   }
 
   if (stepType === "chipsBalanced") {
@@ -8654,6 +8681,14 @@ function FactoryOnboardingStep({
     const reviewValue = (sectionIndex, rowIndex, drawn) => {
       if (!isLive) return drawn;
       const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
+      if (english === "Reference style") {
+        // The chosen category's own reference, as the capacity step shows it.
+        const category = FACTORY_CAPACITY_CATEGORIES.find((item) => item.key === values?.["capacity-category"]);
+        if (!category) return reviewStatus.notAdded;
+        return isChinese
+          ? `${category.referenceStyleZh} · 约 ${category.minutesPerPiece} 分钟 / 件`
+          : `${category.referenceStyle} · ~${category.minutesPerPiece} min/pc`;
+      }
       if (staticRows.has(english)) return drawn;
       if (english === "Business registration") {
         const fileStatus = registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
@@ -9088,7 +9123,7 @@ function OnboardingBrandContext({ content, language, values = {}, documents = {}
           name="factory-logo"
           fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg"
           multiple={false}
-          uploadMoreLabel={language === "zh" ? "上传更多" : "Upload more"}
+          uploadMoreLabel={language === "zh" ? "替换" : "Replace"}
           uploadedLabel={language === "zh" ? "已上传" : "Uploaded"}
           deleteLabel={language === "zh" ? "删除" : "Delete"}
           documents={documents["factory-logo"] ?? []}
@@ -9152,6 +9187,14 @@ function OnboardingAssetUploadCard({
       setBusyId(null);
     }
   }
+
+  // Live: a chosen file that is now stored leaves the "chosen" list, so a
+  // card that stays on screen after Next does not list it twice.
+  useEffect(() => {
+    const stored = files.filter((item) => documents.some((doc) => doc.file_name === item.name && (doc.size_bytes == null || Number(doc.size_bytes) === item.file.size)));
+    if (stored.length) publish(files.filter((item) => !stored.includes(item)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents]);
 
   const hasFiles = documents.length > 0 || files.length > 0;
 
@@ -9310,14 +9353,19 @@ function OnboardingField({ label, placeholder, required = false, language = "en"
   );
 }
 
-function OnboardingCapacitySetup({ content, language, live = false, values = {} }) {
+function OnboardingCapacitySetup({ content, language, live = false, values = {}, nameAt }) {
   const [lineHours, setLineHours] = useState(live ? values?.["capacity-line-hours"] ?? "" : "2400");
   const [capacityUnits, setCapacityUnits] = useState(live ? values?.["capacity-units"] ?? "" : "7200");
   const [capacityInputMode, setCapacityInputMode] = useState(values?.["capacity-input-mode"] ?? "units");
   const [selectedCategory, setSelectedCategory] = useState(values?.["capacity-category"] ?? (live ? "" : "wovens"));
   const [monthOffset, setMonthOffset] = useState(0);
   // Nothing is marked until the vendor marks it, prototype or not.
-  const [monthSelections, setMonthSelections] = useState(values?.["capacity-months"] ?? {});
+  // Live, a saved calendar comes back as the JSON its hidden input sent.
+  const [monthSelections, setMonthSelections] = useState(() => {
+    const saved = values?.["capacity-months"];
+    if (typeof saved !== "string") return saved ?? {};
+    try { const parsed = JSON.parse(saved); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch { return {}; }
+  });
   // The drawn months are an example; a live vendor marks up the real next six.
   const months = live
     ? Array.from({ length: 6 }, (_, index) => {
@@ -9369,9 +9417,12 @@ function OnboardingCapacitySetup({ content, language, live = false, values = {} 
   return (
     <div className="onboarding-capacity-setup">
       <div className="factory-onboarding-form-grid">
-        {content.fields.map(([label, placeholder, required]) => (
-          <OnboardingField label={label} placeholder={placeholder} required={required} defaultValue={values?.[factoryFieldName(label)]} key={label} />
-        ))}
+        {/* Keyed by the English label, as on every other step: the Chinese
+            labels have no Latin letters to make a name from. */}
+        {content.fields.map(([label, placeholder, required], index) => {
+          const name = nameAt?.(index) ?? factoryFieldName(label);
+          return <OnboardingField label={label} placeholder={placeholder} required={required} name={name} defaultValue={values?.[name]} key={label} />;
+        })}
       </div>
 
       <section className="onboarding-capacity-panel">

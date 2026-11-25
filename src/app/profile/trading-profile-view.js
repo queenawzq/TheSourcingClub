@@ -9,6 +9,7 @@
  * this page shows. What nothing records (a rating, verified partner counts)
  * is left out.
  */
+import { daysText } from "../../lib/domain/profile.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import {
   chipLabels,
@@ -225,7 +226,7 @@ export function tradingProfileView(parts, now = new Date()) {
     ],
     commercialRows: [
       ["Typical MOQ", profile?.moq != null ? `${count(profile.moq)} units / style` : NOT_GIVEN],
-      ["Typical lead time", profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : NOT_GIVEN],
+      ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max) || NOT_GIVEN],
       ["Typical order value", profile?.typical_order_value_band || NOT_GIVEN],
       ["Partner factories", profile?.partner_factory_count != null ? `${count(profile.partner_factory_count)} active` : NOT_GIVEN],
       ["Incoterms", profile?.supported_incoterms || NOT_GIVEN],
@@ -272,7 +273,7 @@ export function tradingProfileEditForm(parts) {
     marketLevel: chips.marketLevel.slice(0, 1),
     otherCapabilities: equipmentList(profile?.equipment_notes),
     moq: profile?.moq != null ? `${profile.moq} units / style` : "",
-    leadTime: profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : "",
+    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max),
     orderValue: text(profile?.typical_order_value_band),
     partnerFactories: text(profile?.partner_factory_count),
     incoterms: text(profile?.supported_incoterms),

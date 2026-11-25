@@ -20,8 +20,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
-import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { addressPatch, completeOnboarding, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { CUSTOM_KINDS, addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { addressPatch, completeOnboarding, dayRange, daysText, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
 import { constraintInWords, constraintName } from "../../shared/constraint-words.mjs";
@@ -102,6 +102,9 @@ const COLUMN_FOR_LABEL = {
 /** The one address's label on each copy of the flow. */
 const ADDRESS_LABELS = { factory: "Factory Address", trading: "Company Address" };
 const typedAddressIn = (fields) => fields[factoryFieldName(ADDRESS_LABELS.factory)] ?? fields[factoryFieldName(ADDRESS_LABELS.trading)];
+
+/** Lead times: a range keeps its high end in `<column>_max`. */
+const RANGE_COLUMNS = new Set(["typical_lead_days", "sample_lead_days"]);
 
 const NUMERIC_COLUMNS = new Set([
   "founded_year", "employee_count", "moq", "typical_lead_days",
@@ -233,6 +236,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // The country the registration number was saved under, or the profile's.
   const [savedCountry, setSavedCountry] = useState(null);
   const [numberInUse, setNumberInUse] = useState(false);
+  // The registration number the factory was told is already in use; Next
+  // again with the same number goes on (staff check it).
+  const [numberWarned, setNumberWarned] = useState(null);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -295,7 +301,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (logos?.length) restored["uploaded-logo"] = String(logos.length);
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
-          if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
+          if (RANGE_COLUMNS.has(column)) {
+            const range = daysText(profile[column], profile[`${column}_max`], language === "zh" ? "天" : "days");
+            if (range) restored[factoryFieldName(label)] = range;
+          } else if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
         }
         const address = savedAddress?.data?.address;
         if (address) {
@@ -407,7 +416,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       uploadLabel: copy.upload?.[lang] ?? null,
       soleUploadLabel: copy.soleUpload?.[lang] ?? null,
       // Saved, and already another company's on TSC: said, never refused.
-      inUseText: numberInUse ? (lang === "zh" ? "该号码已被 The Sourcing Club 上的另一家公司使用" : "Already used by another company on The Sourcing Club") : "",
+      inUseText: numberInUse ? (lang === "zh" ? "该号码已被 The Sourcing Club 上的另一家公司使用。请核对号码后继续。" : "Already used by another company on The Sourcing Club. Check the number before you continue.") : "",
       check: (value) => {
         const problem = registrationNumberProblem(registrationCountry, value);
         return { error: registrationProblemText(registrationCountry, problem, lang), confirmable: problem === "check_digit" };
@@ -488,7 +497,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const raw = submitted[factoryFieldName(label)];
       if (raw === undefined) continue;
       const trimmed = typeof raw === "string" ? raw.trim() : raw;
-      if (trimmed === "") {
+      if (RANGE_COLUMNS.has(column)) {
+        // "45-60 天" keeps both ends (dayRange, as the profile editor reads it).
+        const { min, max } = dayRange(trimmed);
+        patch[column] = min;
+        patch[`${column}_max`] = max;
+      } else if (trimmed === "") {
         patch[column] = null;
       } else if (NUMERIC_COLUMNS.has(column)) {
         // "30-45 days" and "e.g. 120" both arrive as free text in the design.
@@ -498,11 +512,24 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
     }
 
+    // "Add your own" chips become the company's own terms where the kind
+    // allows it, as on the profile editor; otherwise they would be dropped.
+    let knownTerms = terms;
     for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
       const chosen = submitted[factoryFieldName(label)];
       if (chosen === undefined) continue;
-      links.push({ kind, termIds: termsFor(kind, chosen) });
+      const termIds = termsFor(kind, chosen);
+      if (CUSTOM_KINDS.has(kind)) {
+        const known = new Set((knownTerms[kind] ?? []).flatMap((term) => [termLabel(term, "en"), termLabel(term, "zh")]));
+        for (const custom of chosen.filter((item) => !known.has(item))) {
+          const term = await addCustomTerm(org.id, kind, custom);
+          knownTerms = { ...knownTerms, [kind]: [...(knownTerms[kind] ?? []), term] };
+          termIds.push(term.id);
+        }
+      }
+      links.push({ kind, termIds });
     }
+    if (knownTerms !== terms) setTerms(knownTerms);
 
     // The business registration is what an admin reviews, and reviewing it is
     // what unlocks quoting. It goes to the private bucket, reachable only by a
@@ -684,6 +711,18 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         answers[factoryFieldName(ADDRESS_LABELS.trading)] = address;
       }
       setValues((current) => ({ ...current, ...answers }));
+
+      // A number already used by another company is said at its field, once,
+      // before the factory moves on.
+      const typedNumber = String(submitted["registration-number"] ?? "").trim();
+      if (typedNumber && submitted["registration-none"] !== true && typedNumber !== numberWarned) {
+        const inUse = await registrationInUse(org.id).catch(() => false);
+        setNumberInUse(inUse);
+        if (inUse) {
+          setNumberWarned(typedNumber);
+          return;
+        }
+      }
 
       if (submitted.signature && !termsAcceptance) {
         // The exact version on screen, so the record says what was agreed to.

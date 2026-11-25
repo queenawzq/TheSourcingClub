@@ -25,12 +25,35 @@ const BRAND_COLUMNS = `
 const FACTORY_COLUMNS = `
   org_id, legal_name, website_url, location, country_code, nearest_port,
   founded_year, registration_date, employee_count, registered_capital, intro,
-  moq, typical_lead_days, sample_lead_days, equipment_notes, vendor_kind,
+  moq, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max,
+  equipment_notes, vendor_kind,
   languages_supported, typical_order_value_band, partner_factory_count,
   supported_incoterms, typical_payment_terms,
   verification_status, trust_tier, published_at,
   onboarding_completed_at, created_at, updated_at
 `;
+
+/**
+ * A number of days as typed: "45-60 天" is { min: 45, max: 60 }, "40 days" is
+ * { min: 40, max: null }. Onboarding and the profile editor both read lead
+ * times through this, so a range typed in either is kept whole.
+ */
+export function dayRange(text) {
+  // A range only when two numbers are joined ("45-60", "45 to 60", "45至60"):
+  // "35 天，样品 7 天" is 35, not 7-35.
+  const joined = String(text ?? "").match(/(\d+)\s*(?:-|–|—|~|～|to|至|到)\s*(\d+)/);
+  if (joined) {
+    const [a, b] = [Number(joined[1]), Number(joined[2])];
+    return a === b ? { min: a, max: null } : { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+  return { min: firstNumber(text), max: null };
+}
+
+/** A saved lead time back in words: "45-60 days", "40 days", or "". */
+export function daysText(min, max, unit = "days") {
+  if (min == null || min === "") return "";
+  return max != null && Number(max) > Number(min) ? `${min}-${max} ${unit}` : `${min} ${unit}`;
+}
 
 /**
  * The first number in a free-text answer: "30-45 days" is 30, and

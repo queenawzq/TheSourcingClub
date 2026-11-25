@@ -111,7 +111,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   const profile = unwrap(
     await supabase
       .from("factory_profiles")
-      .select("org_id, legal_name, website_url, location, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, sample_lead_days, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs (name)")
+      .select("org_id, legal_name, website_url, location, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs (name)")
       .eq("org_id", vendorOrgId)
       .not("published_at", "is", null)
       .maybeSingle(),
@@ -173,7 +173,7 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   const [rows, brandTerms] = await Promise.all([
     readEveryPage(() => supabase
       .from("factory_profiles")
-      .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
+      .select("org_id, location, moq, typical_lead_days, typical_lead_days_max, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
       .not("published_at", "is", null)
       // Recommended means verified: an unverified vendor can be found and
       // read (Browse), but cannot quote, so it is not put forward here.
@@ -215,7 +215,7 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   }));
 }
 
-const VENDOR_COLUMNS = "org_id, legal_name, website_url, location, country_code, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, sample_lead_days, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs!inner (name)";
+const VENDOR_COLUMNS = "org_id, legal_name, website_url, location, country_code, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs!inner (name)";
 
 /** Rows grouped by one of their columns. */
 const groupBy = (rows, key) => rows.reduce((grouped, row) => {

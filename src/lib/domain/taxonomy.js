@@ -58,16 +58,29 @@ export function termLabel(term, locale = "en") {
   return term.label_en;
 }
 
+/** A short, stable hex digest of a label (FNV-1a), for a slug. */
+function labelHash(text) {
+  let hash = 0x811c9dc5;
+  for (const char of text) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 /**
  * Add a term this org invented. Only permitted for kinds flagged
  * allows_custom; the database rejects anything else.
  */
 export async function addCustomTerm(orgId, kind, label) {
+  // A label with no Latin letters or digits ("羊毛开衫") still needs a slug the
+  // database accepts: one made from the label itself, so the same label gives
+  // the same slug.
   const slug = label
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "") || `custom-${labelHash(label.trim())}`;
 
   return unwrap(
     await supabase

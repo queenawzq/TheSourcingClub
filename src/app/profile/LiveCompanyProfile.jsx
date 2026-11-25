@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ProfileCardHeader, ProfileDetailPair, ProfileOwnerBar } from "../../shared/ProfileShell.jsx";
-import { saveBrandProfile, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { daysText, saveBrandProfile, saveFactoryProfile } from "../../lib/domain/profile.js";
 import "./live-company-profile.css";
 
 const present = (value, fallback = "Not added yet") => {
@@ -203,8 +203,8 @@ export default function LiveCompanyProfile({ org, profile, user, isFactory, onOp
   const operatingRows = isFactory
     ? [
         ["Minimum order quantity", liveProfile?.moq],
-        ["Typical lead time", liveProfile?.typical_lead_days ? `${liveProfile.typical_lead_days} days` : null],
-        ["Sample lead time", liveProfile?.sample_lead_days ? `${liveProfile.sample_lead_days} days` : null],
+        ["Typical lead time", daysText(liveProfile?.typical_lead_days, liveProfile?.typical_lead_days_max) || null],
+        ["Sample lead time", daysText(liveProfile?.sample_lead_days, liveProfile?.sample_lead_days_max) || null],
         ["Typical order value", liveProfile?.typical_order_value_band],
         ["Partner factories", liveProfile?.partner_factory_count],
         ["Supported Incoterms", liveProfile?.supported_incoterms],

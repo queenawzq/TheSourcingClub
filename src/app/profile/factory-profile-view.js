@@ -7,6 +7,7 @@
  * nothing records (a rating, reviews, a response time) it is left out or said
  * plainly, never filled with an example.
  */
+import { daysText } from "../../lib/domain/profile.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { equipmentList, titleFromFileName } from "../../shared/profile-translation.mjs";
 import {
@@ -77,7 +78,8 @@ export function chipLabels(kind, selected, terms, language = "en") {
   return (terms?.[kind] ?? []).filter((term) => ids.has(term.id)).map((term) => termLabel(term, language));
 }
 
-function capacityRowsFor(profile, capacityState, terms, now) {
+function capacityRowsFor(profile, capacityState, terms, now, language = "en") {
+  const zh = language === "zh";
   const { capacity, months = {} } = capacityState ?? {};
   const category = (terms?.capacity_category ?? []).find((term) => term.id === capacity?.category_term_id);
   const minutes = minutesPerPieceFor(category);
@@ -86,27 +88,32 @@ function capacityRowsFor(profile, capacityState, terms, now) {
   const currentLevel = months[monthKey(current)];
   const range = capacity && currentLevel ? availableRange(capacity, currentLevel, minutes) : null;
   const hours = capacity ? estimatedHours(capacity, minutes) : null;
+  // The person's language: Chinese months and levels are the capacity step's own words.
+  const monthWord = (month) => (zh ? `${month.getUTCMonth() + 1} 月` : shortMonth(month));
   const booked = window
     .filter((month) => months[monthKey(month)])
     .slice(0, 2)
-    .map((month) => `${shortMonth(month)} ${CAPACITY_LEVELS[months[monthKey(month)]].labelEn.toLowerCase()}`);
+    .map((month) => {
+      const level = CAPACITY_LEVELS[months[monthKey(month)]];
+      return zh ? `${monthWord(month)}${level.labelZh}` : `${shortMonth(month)} ${level.labelEn.toLowerCase()}`;
+    });
+  const pieces = range ? (range.min === range.max ? count(range.max) : `${count(range.min)}-${count(range.max)}`) : "";
+  const reference = zh ? category?.extra?.reference_style_zh ?? category?.extra?.reference_style_en : category?.extra?.reference_style_en;
 
   return [
-    ["MOQ", profile?.moq != null ? `${count(profile.moq)} units / style` : NOT_GIVEN],
-    ["Typical lead time", profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : NOT_GIVEN],
-    ["Typical sample lead time", profile?.sample_lead_days != null ? `${profile.sample_lead_days} days` : NOT_GIVEN],
-    ["Capacity category", category ? termLabel(category) : NOT_GIVEN],
-    ["Line-hours", hours ? `${capacity.input_mode === "hours" ? "" : "~"}${count(hours)} hours / month` : NOT_GIVEN],
+    ["MOQ", profile?.moq != null ? (zh ? `${count(profile.moq)} 件 / 款` : `${count(profile.moq)} units / style`) : NOT_GIVEN],
+    ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days") || NOT_GIVEN],
+    ["Typical sample lead time", daysText(profile?.sample_lead_days, profile?.sample_lead_days_max, zh ? "天" : "days") || NOT_GIVEN],
+    ["Capacity category", category ? termLabel(category, language) : NOT_GIVEN],
+    ["Line-hours", hours ? `${capacity.input_mode === "hours" ? "" : "~"}${count(hours)} ${zh ? "小时 / 月" : "hours / month"}` : NOT_GIVEN],
     [
       "Estimated capacity",
-      range
-        ? `${shortMonth(current)} roughly ${range.min === range.max ? count(range.max) : `${count(range.min)}-${count(range.max)}`} pieces`
-        : NOT_GIVEN,
+      range ? (zh ? `${monthWord(current)}约 ${pieces} 件` : `${shortMonth(current)} roughly ${pieces} pieces`) : NOT_GIVEN,
     ],
-    ["Booking level", booked.length ? booked.join("; ") : NOT_GIVEN],
+    ["Booking level", booked.length ? booked.join(zh ? "；" : "; ") : NOT_GIVEN],
     [
       "Reference style",
-      category?.extra?.reference_style_en ? `${category.extra.reference_style_en} · ~${minutes} min/pc` : NOT_GIVEN,
+      reference ? (zh ? `${reference} · 约 ${minutes} 分钟 / 件` : `${reference} · ~${minutes} min/pc`) : NOT_GIVEN,
     ],
   ];
 }
@@ -150,33 +157,39 @@ const listWords = (items) =>
  * registration, certificates, a reviewed walkthrough); everything else the
  * factory fills in is "Complete".
  */
-export function factoryProfileChecks(parts, now = new Date()) {
+export function factoryProfileChecks(parts, now = new Date(), language = "en") {
   const { profile, selected, capacity, references, samples, registration, walkthrough, certificates = [] } = parts;
+  // Chinese for a factory that chose it: the same facts, in the words of the
+  // onboarding and profile dictionary (factoryMainZhText).
+  const zh = language === "zh";
+  const t = (en, chinese) => (zh ? chinese : en);
+  const list = (items) => (zh ? items.join("、") : listWords(items));
   const has = (kind) => (selected?.[kind]?.length ?? 0) > 0;
   const current = capacityWindow(1, now)[0];
-  const monthName = current.toLocaleString("en", { month: "long", timeZone: "UTC" });
-  const complete = (description, status = "Complete") => ({ tone: "complete", status, description });
-  const inReview = (description) => ({ tone: "progress", status: "In review", description });
-  const missing = (description, action, suggestion) => ({ tone: "missing", status: "Needs attention", description, action, suggestion });
+  const monthName = zh ? `${current.getUTCMonth() + 1} 月` : current.toLocaleString("en", { month: "long", timeZone: "UTC" });
+  const complete = (description, status = "Complete") => ({ tone: "complete", status: t(status, status === "Verified" ? "已验证" : "已完成"), description });
+  const inReview = (description) => ({ tone: "progress", status: t("In review", "审核中"), description });
+  const missing = (description, action, suggestion) => ({ tone: "missing", status: t("Needs attention", "需要处理"), description, action, suggestion });
 
   const identityGaps = [
     // Brands read the location the address gives (src/shared/company-address.mjs).
-    ["factory address", profile?.production_address || profile?.location],
-    ["nearest port", profile?.nearest_port],
-    ["year founded", profile?.founded_year],
-    ["employee count", profile?.employee_count],
+    [t("factory address", "工厂地址"), profile?.production_address || profile?.location],
+    [t("nearest port", "最近港口"), profile?.nearest_port],
+    [t("year founded", "成立年份"), profile?.founded_year],
+    [t("employee count", "员工人数"), profile?.employee_count],
   ].filter(([, value]) => value == null || value === "").map(([label]) => label);
+  const addressMissing = !(profile?.production_address || profile?.location);
 
   const productionGaps = [
-    ["manufacturing model", has("manufacturing_model")],
-    ["production type", has("production_type")],
-    ["product categories", has("product_category")],
+    [t("manufacturing model", "生产合作模式"), has("manufacturing_model")],
+    [t("production type", "生产类型"), has("production_type")],
+    [t("product categories", "产品品类"), has("product_category")],
   ].filter(([, given]) => !given).map(([label]) => label);
 
   const capacityGaps = [
     ["MOQ", profile?.moq != null],
-    ["lead time", profile?.typical_lead_days != null],
-    ["monthly capacity", Boolean(capacity?.capacity)],
+    [t("lead time", "交期"), profile?.typical_lead_days != null],
+    [t("monthly capacity", "月产能"), Boolean(capacity?.capacity)],
   ].filter(([, given]) => !given).map(([label]) => label);
 
   const noFile = certificates.filter((cert) => cert.status === "Not uploaded" || cert.status === "Rejected").map((cert) => cert.name);
@@ -185,96 +198,117 @@ export function factoryProfileChecks(parts, now = new Date()) {
   const checks = [
     {
       key: "identity",
-      title: "Factory identity",
-      todo: "your factory details",
+      title: t("Factory identity", "工厂信息"),
+      todo: t("your factory details", "工厂信息"),
       ...(identityGaps.length
         // Brands never see the address itself (only its city and country), so
         // a missing one is said as what to do.
-        ? missing(identityGaps.includes("factory address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Factory name, address, nearest port, year founded and employee count are complete.")),
+        ? missing(
+          addressMissing ? t(`Add your ${list(identityGaps)}.`, `请添加${list(identityGaps)}。`) : t(`Brands can't see your ${list(identityGaps)} yet.`, `品牌暂时看不到你的${list(identityGaps)}。`),
+          { label: t("Update overview", "更新概览"), editor: "overview" },
+          t(`Add your ${list(identityGaps)}`, `添加${list(identityGaps)}`),
+        )
+        : complete(t("Factory name, address, nearest port, year founded and employee count are complete.", "工厂名称、地址、最近港口、成立年份和员工人数均已完整。"))),
     },
     {
       key: "production",
-      title: "Production fit",
-      todo: "your production fit",
+      title: t("Production fit", "生产匹配"),
+      todo: t("your production fit", "生产匹配"),
       ...(productionGaps.length
-        ? missing(`Add your ${listWords(productionGaps)} so brands can find this factory.`, { label: "Update production fit", editor: "production" }, `Add your ${listWords(productionGaps)}`)
-        : complete("Manufacturing model, production type and product categories are filled in, with the makes, specialties, services, markets, tools and equipment you chose.")),
+        ? missing(t(`Add your ${list(productionGaps)} so brands can find this factory.`, `请添加${list(productionGaps)}，方便品牌找到你的工厂。`), { label: t("Update production fit", "更新生产匹配"), editor: "production" }, t(`Add your ${list(productionGaps)}`, `添加${list(productionGaps)}`))
+        : complete(t("Manufacturing model, production type and product categories are filled in, with the makes, specialties, services, markets, tools and equipment you chose.", "生产合作模式、生产类型和产品品类均已填写，并包含你选择的款式、专长、服务、市场、工具和设备。"))),
     },
     {
       key: "capacity",
-      title: "Capacity and terms",
-      todo: "capacity and terms",
+      title: t("Capacity and terms", "产能与合作条件"),
+      todo: t("capacity and terms", "产能与合作条件"),
       ...(capacityGaps.length
-        ? missing(`Add your ${listWords(capacityGaps)} so brands know what you can take on.`, { label: "Update capacity", editor: "capacity" }, `Add your ${listWords(capacityGaps)}`)
-        : complete("MOQ, lead times, capacity category and estimated monthly capacity are visible to brands.")),
+        ? missing(t(`Add your ${list(capacityGaps)} so brands know what you can take on.`, `请添加${list(capacityGaps)}，让品牌了解你能承接的订单。`), { label: t("Update capacity", "更新产能"), editor: "capacity" }, t(`Add your ${list(capacityGaps)}`, `添加${list(capacityGaps)}`))
+        : complete(t("MOQ, lead times, capacity category and estimated monthly capacity are visible to brands.", "MOQ、交期、产能品类和月度估算产能均对品牌可见。"))),
     },
     {
       key: "proof",
-      title: "Client proof",
-      todo: "client references and sample images",
+      title: t("Client proof", "客户证明"),
+      todo: t("client references and sample images", "客户参考和样品图片"),
       ...(references.length === 0
-        ? missing("Add the brands you have worked with, so new brands can see who trusts this factory.", { label: "Add references", editor: "references" }, "Add client references")
+        ? missing(t("Add the brands you have worked with, so new brands can see who trusts this factory.", "请添加合作过的品牌，让新品牌了解哪些品牌信任你的工厂。"), { label: t("Add references", "添加客户参考"), editor: "references" }, t("Add client references", "添加客户参考"))
         : samples.length === 0
-          ? missing("Client references are in. Add images of samples you have developed.", { label: "Add sample images", editor: "samples" }, "Add sample images")
-          : complete(`${references.length} client reference${references.length === 1 ? "" : "s"} and ${samples.length} sample image${samples.length === 1 ? "" : "s"} support buyer trust.`)),
+          ? missing(t("Client references are in. Add images of samples you have developed.", "客户参考已添加。请添加你开发过的样品图片。"), { label: t("Add sample images", "添加样品图片"), editor: "samples" }, t("Add sample images", "添加样品图片"))
+          : complete(t(
+            `${references.length} client reference${references.length === 1 ? "" : "s"} and ${samples.length} sample image${samples.length === 1 ? "" : "s"} support buyer trust.`,
+            `${references.length} 个客户参考和 ${samples.length} 张样品图片可增强买家信任。`,
+          ))),
     },
     {
       // As in the design, this row is the review state of every document:
       // the registration, plus certificates uploaded and waiting for TSC.
       key: "registration",
-      title: "Verification documents",
-      todo: "your business registration",
+      title: t("Verification documents", "验证文件"),
+      todo: t("your business registration", "营业执照"),
       ...(registration === "Rejected"
-        ? missing("Your business registration wasn't accepted. Upload a new one to open quoting.", { label: "Upload registration", editor: "verification" }, "Upload a new business registration")
+        ? missing(t("Your business registration wasn't accepted. Upload a new one to open quoting.", "你的营业执照未通过审核。请重新上传以开通报价。"), { label: t("Upload registration", "上传营业执照"), editor: "verification" }, t("Upload a new business registration", "重新上传营业执照"))
         : registration !== "Verified" && registration !== "Uploaded"
-          ? missing("Upload your business registration. Quoting opens once TSC has verified it.", { label: "Upload registration", editor: "verification" }, "Upload your business registration")
+          ? missing(t("Upload your business registration. Quoting opens once TSC has verified it.", "请上传营业执照。TSC 验证后即可报价。"), { label: t("Upload registration", "上传营业执照"), editor: "verification" }, t("Upload your business registration", "上传营业执照"))
           : registration === "Uploaded"
-            ? inReview(`Your business registration is uploaded${waiting.length ? `, and so ${waiting.length === 1 ? "is" : "are"} ${listWords(waiting)}` : ""}. TSC is reviewing ${waiting.length ? "them" : "it"}; quoting opens once the registration is approved.`)
+            ? inReview(t(
+              `Your business registration is uploaded${waiting.length ? `, and so ${waiting.length === 1 ? "is" : "are"} ${listWords(waiting)}` : ""}. TSC is reviewing ${waiting.length ? "them" : "it"}; quoting opens once the registration is approved.`,
+              `营业执照${waiting.length ? `和${list(waiting)}` : ""}已上传，TSC 正在审核；营业执照通过后即可报价。`,
+            ))
             : waiting.length
-              ? inReview(`Your business registration is verified. ${listWords(waiting)} ${waiting.length === 1 ? "is" : "are"} uploaded and waiting for TSC's review.`)
-              : complete("Your business registration is verified, so you can quote on matching RFQs.", "Verified")),
+              ? inReview(t(`Your business registration is verified. ${listWords(waiting)} ${waiting.length === 1 ? "is" : "are"} uploaded and waiting for TSC's review.`, `营业执照已验证。${list(waiting)}已上传，等待 TSC 审核。`))
+              : complete(t("Your business registration is verified, so you can quote on matching RFQs.", "营业执照已验证，你可以对匹配的询价报价。"), "Verified")),
     },
     {
       key: "walkthrough",
-      title: "Factory walkthrough",
-      todo: "a walkthrough video",
+      title: t("Factory walkthrough", "工厂介绍视频"),
+      todo: t("a walkthrough video", "工厂介绍视频"),
       ...(walkthrough
-        ? complete("The walkthrough video is on your profile.", walkthrough.status === "verified" ? "Verified" : "Complete")
-        : missing("Add a short production-floor walkthrough so brands can see the factory before they contact you.", { label: "Add walkthrough", editor: "walkthrough" }, "Add a walkthrough video")),
+        ? complete(t("The walkthrough video is on your profile.", "工厂介绍视频已在你的资料中。"), walkthrough.status === "verified" ? "Verified" : "Complete")
+        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加巡视视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加巡视视频"))),
     },
     {
       // Named after the certificate when only one needs a file, as the
       // design's "GOTS certificate" row is.
       key: "certificates",
-      title: noFile.length === 1 ? `${noFile[0]} certificate` : "Certificate files",
-      todo: "the missing certificate files",
+      title: noFile.length === 1 ? t(`${noFile[0]} certificate`, `${noFile[0]} 证书`) : t("Certificate files", "证书文件"),
+      todo: t("the missing certificate files", "缺少的证书文件"),
       ...(noFile.length
         ? missing(
-          `${listWords(noFile)} ${noFile.length === 1 ? "has" : "have"} no accepted certificate file. Upload the certificate, or remove the certification if it is not currently held.`,
-          { label: "Upload certificate", editor: "verification" },
-          `Upload ${listWords(noFile)} certificate${noFile.length === 1 ? "" : "s"}`,
+          t(
+            `${listWords(noFile)} ${noFile.length === 1 ? "has" : "have"} no accepted certificate file. Upload the certificate, or remove the certification if it is not currently held.`,
+            `${list(noFile)}还没有通过的证书文件。请上传证书；如目前未持有该认证，请将其移除。`,
+          ),
+          { label: t("Upload certificate", "上传证书"), editor: "verification" },
+          t(`Upload ${listWords(noFile)} certificate${noFile.length === 1 ? "" : "s"}`, `上传${list(noFile)}证书`),
         )
         : certificates.length
-          ? complete(`Every certification you claim has its certificate file: ${listWords(certificates.map((cert) => cert.name))}.`)
-          : complete("No certifications claimed. Add any you hold under Verification.")),
+          ? complete(t(`Every certification you claim has its certificate file: ${listWords(certificates.map((cert) => cert.name))}.`, `你填写的每项认证都已有证书文件：${list(certificates.map((cert) => cert.name))}。`))
+          : complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"))),
     },
     {
       key: "freshness",
-      title: "Monthly capacity freshness",
-      todo: "this month's capacity",
+      title: t("Monthly capacity freshness", "月度产能更新"),
+      todo: t("this month's capacity", "本月产能"),
       ...(capacity?.months?.[monthKey(current)]
-        ? complete(`${monthName} capacity is set, so RFQ matches use your current availability.`)
-        : missing(`${monthName} has no booking level yet. Add it to improve RFQ matching confidence.`, { label: "Update capacity", editor: "capacity" }, `Add ${monthName} available capacity`)),
+        ? complete(t(`${monthName} capacity is set, so RFQ matches use your current availability.`, `${monthName}产能已设置，询价匹配会使用你当前的可用产能。`))
+        : missing(t(`${monthName} has no booking level yet. Add it to improve RFQ matching confidence.`, `${monthName}尚未设置接单状态。添加后可提高询价匹配的准确度。`), { label: t("Update capacity", "更新产能"), editor: "capacity" }, t(`Add ${monthName} available capacity`, `添加${monthName}可用产能`))),
     },
   ];
   return checks.map((check) => ({ ...check, done: check.tone !== "missing" }));
 }
 
-export function profileStatus(checks) {
+export function profileStatus(checks, language = "en") {
   const done = checks.filter((check) => check.done).length;
   const percent = Math.round((done / checks.length) * 100);
   const missing = checks.filter((check) => !check.done).map((check) => check.todo);
+  if (language === "zh") {
+    return {
+      percent,
+      note: missing.length
+        ? `请添加${missing.slice(0, 2).join("、")}${missing.length > 2 ? "等" : ""}，完善资料。`
+        : "品牌关注的信息均已填写。请及时更新月度产能。",
+    };
+  }
   const list = missing.length > 2
     ? `${missing.slice(0, 2).join(", ")} and more`
     : missing.join(" and ");
@@ -315,7 +349,7 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const perBrand = live.reduce((tally, order) => tally.set(order.brand_org_id, (tally.get(order.brand_org_id) ?? 0) + 1), new Map());
   const projects = projectCards(orders);
   const verified = profile?.verification_status === "verified";
-  const leadTime = profile?.typical_lead_days != null ? `${profile.typical_lead_days} days` : NOT_GIVEN;
+  const leadTime = daysText(profile?.typical_lead_days, profile?.typical_lead_days_max) || NOT_GIVEN;
 
   const data = {
     name,
@@ -353,21 +387,22 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const checks = factoryProfileChecks(
     { profile, selected, capacity, references, samples, registration, walkthrough: parts.walkthrough, certificates: certifications.slice(1) },
     now,
+    language,
   );
 
   return {
     data,
-    capacityRows: capacityRowsFor(profile, capacity, terms, now),
+    capacityRows: capacityRowsFor(profile, capacity, terms, now, language),
     heroLine: [
       profile?.location,
       profile?.nearest_port,
       profile?.employee_count != null ? (language === "zh" ? `${count(profile.employee_count)} 名员工` : `${count(profile.employee_count)} employees`) : null,
-    ].filter(Boolean).join(" · ") || "Location not given",
+    ].filter(Boolean).join(" · ") || (language === "zh" ? "未填写所在地" : "Location not given"),
     initials: initialsOf(name),
     logoUrl: parts.logoUrl ?? null,
     verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
     performance: { primary: "New", primaryLabel: "No brand reviews yet" },
-    status: profileStatus(checks),
+    status: profileStatus(checks, language),
     walkthrough: parts.walkthrough
       ? {
         url: parts.walkthrough.url,
@@ -425,8 +460,8 @@ export function factoryProfileEditForm(parts, now = new Date()) {
     employees: text(profile?.employee_count),
     intro: text(profile?.intro),
     moq: withUnit(profile?.moq, "units / style"),
-    leadTime: withUnit(profile?.typical_lead_days, "days"),
-    sampleLeadTime: withUnit(profile?.sample_lead_days, "days"),
+    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max),
+    sampleLeadTime: daysText(profile?.sample_lead_days, profile?.sample_lead_days_max),
     // The dialog shows a category whatever is saved, falling back to wovens
     // as the design does; starting there means what is shown is what saves.
     capacityCategoryKey: category?.slug ?? "wovens",
