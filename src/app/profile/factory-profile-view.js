@@ -337,11 +337,14 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   );
   const registration = registrationWord(parts);
   const number = parts.registrationNumber;
+  // The certifications the factory claims; the registration rows above them
+  // are not certificates, so the completion check reads only these.
+  const claimed = parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) }));
   const certifications = [
     { name: "Business registration", status: registration },
     // Read-only: the number given on the verification step.
     ...(number ? [{ name: "Registration number", status: number.number ?? "None (sole proprietor)" }] : []),
-    ...parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) })),
+    ...claimed,
   ];
   const references = parts.references.map((reference) => reference.title);
   const samples = parts.samples.map((sample) => ({ title: sample.title, meta: sample.caption ?? "", src: sample.src }));
@@ -385,7 +388,7 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   };
 
   const checks = factoryProfileChecks(
-    { profile, selected, capacity, references, samples, registration, walkthrough: parts.walkthrough, certificates: certifications.slice(1) },
+    { profile, selected, capacity, references, samples, registration, walkthrough: parts.walkthrough, certificates: claimed },
     now,
     language,
   );
