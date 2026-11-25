@@ -228,8 +228,8 @@ select is((select count(*) from public.notifications where subject_id = pg_temp.
 
 -- Refunded in full before approval: as before, back to Due; the brand pays again.
 select lives_ok($$select pg_temp.refund(2, 5350)$$, 'the lab dip''s charge is refunded in full');
-select ok((select state = 'failed' and refunded_cents = 0 and factory_refund_cents = 0 and stripe_payment_intent_id is null
-                  and failure_reason = 'The payment was refunded.'
+select ok((select state = 'due' and refunded_cents = 0 and factory_refund_cents = 0 and stripe_payment_intent_id is null
+                  and failure_reason is null
              from public.order_payments where id = pg_temp.pay(2)),
   'back to be paid again: the next charge starts with nothing refunded');
 select matches((select body from public.notifications where org_id = 'c17b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(2)),

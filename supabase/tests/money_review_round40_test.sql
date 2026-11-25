@@ -62,7 +62,9 @@ create function pg_temp.told(payment uuid) returns text language sql as $f$
    where org_id = 'b40b0000-0000-0000-0000-0000000000e1' and subject_type = 'payment' and subject_id = payment;
 $f$;
 
--- Disputed at funding.
+-- Disputed at funding: the server records the chargeback's review first (applyDispute).
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''b40f0011-0000-0000-0000-000000000000'', ''du_pgtap_r40_11'', ''needs_response'', 53500, now() + interval ''7 days'', null)')$$,
+  'the chargeback''s review is recorded');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_funded(''b40f0011-0000-0000-0000-000000000000'', ''ch_pgtap_r40_11'', ''card'', ''Visa ending in 0259'', 53500)')$$,
   'the disputed charge is recorded as funded');
 select is(pg_temp.told('b40f0011-0000-0000-0000-000000000000'),
@@ -73,8 +75,9 @@ select is(pg_temp.told('b40f0011-0000-0000-0000-000000000000'),
 update public.order_payments set release_requested_at = now() where id = 'b40f0011-0000-0000-0000-000000000000';
 select lives_ok($$select public.tell_payment_hold(p, true) from public.order_payments p where p.id = 'b40f0011-0000-0000-0000-000000000000'$$, 'approving tells the hold');
 select lives_ok($$select public.tell_payment_hold(p, true) from public.order_payments p where p.id = 'b40f0011-0000-0000-0000-000000000000'$$, 'twice');
-select is((select count(*)::int from public.notifications where subject_id = 'b40f0011-0000-0000-0000-000000000000' and kind = 'payment_disputed'),
-  1, 'once at funding; approval tells no per-step hold any more (20261124100000: tell_payment_hold does nothing)');
+select is((select count(*)::int from public.notifications where subject_id = 'b40f0011-0000-0000-0000-000000000000' and kind = 'payment_disputed'
+             and org_id = 'b40b0000-0000-0000-0000-0000000000e1'),
+  1, 'the factory, once at funding; approval tells no per-step hold any more (20261124100000: tell_payment_hold does nothing)');
 
 -- Won before approval: the hold told at funding is lifted in words.
 update public.order_payments set release_requested_at = null where id = 'b40f0011-0000-0000-0000-000000000000';

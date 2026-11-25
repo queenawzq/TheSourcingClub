@@ -788,7 +788,10 @@ export async function applyDispute({ db, paymentId, dispute }) {
 export function disputeState(charge, dispute) {
   if (!charge?.disputed) return null;
   if (dispute?.status === "lost") return "lost";
-  return dispute && ["won", "warning_closed"].includes(dispute.status) ? null : "open";
+  // An inquiry holds nothing a brand or factory reads (20261125100000, T1):
+  // only a chargeback puts the step on hold. Staff see the inquiry on the board.
+  if (String(dispute?.status ?? "").startsWith("warning_")) return null;
+  return dispute && ["won", "prevented"].includes(dispute.status) ? null : "open";
 }
 
 /**
@@ -1179,4 +1182,36 @@ export async function saveConnectAccount(db, orgId, account) {
 /** Answer with a status and a JSON body, the same shape on Vercel and in dev. */
 export function reply(response, status, body) {
   response.status(status).json(body);
+}
+
+/**
+ * The cards a brand disputed a charge with, while that dispute still pauses
+ * it (20261125100000, T1 #9): the Fund page never offers them again until
+ * staff unpause the brand. Read from Stripe by each dispute's charge. Best
+ * effort: a failed read offers every card (the brand is paused anyway).
+ */
+export async function disputedCardsFor({ stripe, db, orgId }) {
+  const found = { ids: new Set(), fingerprints: new Set() };
+  try {
+    const { data: reviews } = await db.from("payment_reviews").select("stripe_ref")
+      .eq("brand_org_id", orgId).eq("cause", "dispute").is("brand_unpaused_at", null)
+      .not("state", "in", "(inquiry,inquiry_closed)");
+    for (const { stripe_ref: disputeId } of reviews ?? []) {
+      if (!disputeId) continue;
+      try {
+        const dispute = await stripe.disputes.retrieve(disputeId);
+        const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+        if (!chargeId) continue;
+        const charge = await stripe.charges.retrieve(chargeId);
+        if (typeof charge.payment_method === "string") found.ids.add(charge.payment_method);
+        const fingerprint = charge.payment_method_details?.card?.fingerprint;
+        if (fingerprint) found.fingerprints.add(fingerprint);
+      } catch (failure) {
+        logStripeFailure("disputed-cards", failure, { orgId });
+      }
+    }
+  } catch (failure) {
+    logStripeFailure("disputed-cards", failure, { orgId });
+  }
+  return found;
 }

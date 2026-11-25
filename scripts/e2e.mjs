@@ -3981,6 +3981,12 @@ async function main() {
     const confirmTitle = await page.locator("#test-data-title").innerText();
     check(/^Delete \d+ compan/.test(confirmTitle), `deleting asks first ("${confirmTitle}")`);
     await record(page, "Confirm", "nothing is deleted until staff confirm");
+    // On a stack testers share, nothing is deleted (E2E_KEEP_TEST_DATA=1):
+    // other runs' companies are what they are looking at.
+    if (process.env.E2E_KEEP_TEST_DATA) {
+      await page.locator(".admin-testdata-modal .secondary-btn, [aria-labelledby='test-data-title'] .secondary-btn").first().click().catch(() => {});
+      console.log("  (E2E_KEEP_TEST_DATA: the delete itself is skipped on a shared stack)");
+    } else {
     await clickButton(page, "delete test data");
     await waitFor(page, ".admin-testdata [role=status]", 60000);
     const purgeResult = await page.locator(".admin-testdata [role=status]").innerText();
@@ -3993,6 +3999,7 @@ async function main() {
     const demoNames = ["Demo Brand", "Demo Factory", "Ningbo Loomworks", "Atlas Knit Studio", "Fresh Thread Studio", "Kowloon Sourcing Partners"];
     const { count: demoLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("name", demoNames);
     check(demoLeft === demoNames.length, `the demo companies are untouched (${demoLeft} of ${demoNames.length})`);
+    }
 
     // ================= CREDITS =================
     // The factory's credits come from the database: 500 when verified, minus

@@ -632,13 +632,13 @@ select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 
 select is(
   (select row(state::text, stripe_payment_intent_id is null, charged_cents is null, refunded_at is not null)::text
      from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
-  row('failed', true, true, true)::text,
-  'refunded on an active order: failed, its intent let go so a new one can be made');
+  row('due', true, true, true)::text,
+  'refunded on an active order: Due (never Failed), its intent let go so a new one can be made');
 select is((select failure_reason from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
-  'The amount changed while you were paying. You were refunded; please pay again.', 'with the reason the brand reads');
+  null, 'no failure reason: it was refunded, not failed (the brand reads why in its notice)');
 select is(
   (select count(*) from public.payment_events
-    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and to_state = 'failed' and note like '%pi_p18_d1%'),
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and to_state = 'due' and note like '%pi_p18_d1%'),
   1::bigint, 'the refund is in the payment''s history, naming the intent');
 select is(pg_temp.p18_notes('18b00000-0000-0000-0000-00000000000b', 'payment_refunded', 'order_d'), 1::bigint,
   'the brand is told it was refunded');
@@ -671,7 +671,7 @@ select public.post_milestone_update(pg_temp.p18_step('order_d', 'Fit sample'), '
 reset role;
 
 select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 'The payment was refunded.');
-select is(pg_temp.p18_state('order_d', 'Fit sample'), 'failed', 'held money refunded in Stripe goes back to failed');
+select is(pg_temp.p18_state('order_d', 'Fit sample'), 'due', 'held money refunded in Stripe goes back to Due');
 select is(pg_temp.p18_notes('18b00000-0000-0000-0000-0000000000f1', 'payment_refunded', 'order_d'), 1::bigint,
   'and the factory, which was told it was held, is told it is not');
 
@@ -688,12 +688,14 @@ select is((select failure_reason from public.order_payments where id = pg_temp.p
   'Your card has insufficient funds.', 'a repeated decline shows its own reason');
 select is(
   (select count(*) from public.payment_events
-    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state = 'failed' and to_state = 'failed'),
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state in ('due', 'failed') and to_state = 'failed'
+      and created_at = now()),
   1::bigint, 'with one line in the history');
 select public.record_payment_failed(pg_temp.p18_pay('order_d', 'Fit sample'), 'Your card has insufficient funds.');
 select is(
   (select count(*) from public.payment_events
-    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state = 'failed' and to_state = 'failed'),
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state in ('due', 'failed') and to_state = 'failed'
+      and created_at = now()),
   1::bigint, 'and the same answer again adds none');
 
 -- Paid again, approved, paid out; then refunded after the payout.

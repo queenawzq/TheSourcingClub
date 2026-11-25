@@ -27,6 +27,8 @@ export async function paymentReviewBoard() {
 
 const REFUSALS = {
   review_decision: "Choose who was at fault.",
+  staff_refund_not_open: "This refund isn't waiting on staff any more. Reload the page.",
+  staff_refund_close_note: "Add a note.",
   review_no_brand: "A refund made in Stripe has no brand at fault. Choose Factory or Not the factory.",
   review_not_ready: "The bank hasn't decided yet. You can decide once it has.",
   brand_not_paused: "This brand isn't paused. Reload the page.",
@@ -146,3 +148,11 @@ export const payFactory = (reviewId, note) => tscPays(reviewId, note);
 export const refundBrand = (reviewId, cents, note) => factoryPays(reviewId, cents, note);
 /** @deprecated unpause from the brand's account: unpauseBrandOrg */
 export const unpauseBrand = () => Promise.reject(new Error("Unpause the brand from its account in Users."));
+
+/** Staff: close a staff refund that failed after it was made (refunded the brand another way). The note is required. */
+export const closeStaffRefundFailure = (staffRefundId, note) => staffCall("close_staff_refund_failure", { target_refund: staffRefundId, note });
+
+/** The brand's own refunds, one line each: [{ id, payment_id, order_number, step_title, amount_cents, refunded_at, note }]. Members only. */
+export async function brandPaymentRefunds(orgId) {
+  return unwrap(await supabase.rpc("brand_payment_refunds", { target_org: orgId }), "load your refunds") ?? [];
+}

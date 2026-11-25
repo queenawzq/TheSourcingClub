@@ -202,9 +202,9 @@ $f$;
 -- (record_payment_refunded with the reason), and the brand was sent back to pay.
 select lives_ok($$select pg_temp.as_server(format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(11), 'pi_pgtap_r22_11',
   'The amount changed while you were paying. You were refunded; please pay again.'))$$, 'TSC refunds an extra payment (the amount changed)');
-select is((pg_temp.p(11)).state::text, 'failed', 'the brand is sent back to pay');
+select is((pg_temp.p(11)).state::text, 'due', 'the brand is sent back to pay (Due, never Failed)');
 select lives_ok($$select pg_temp.failed(11, 10700, 0, 10700, 0)$$, 'that refund fails in Stripe');
-select is(row((pg_temp.p(11)).state::text, (pg_temp.p(11)).stripe_payment_intent_id), row('failed'::text, null::text),
+select is(row((pg_temp.p(11)).state::text, (pg_temp.p(11)).stripe_payment_intent_id), row('due'::text, null::text),
   'the step is never funded with it: its amount is not the step''s');
 select is((pg_temp.staff_rows(11) -> 0 ->> 'cause') || ' ' || (pg_temp.staff_rows(11) -> 0 ->> 'amount_cents'), 'stray 10700', 'staff refund it again');
 select is((select count(*)::int from public.notifications where subject_id = pg_temp.pay(11) and title like 'Refund for%'), 0, 'nobody else is told');
