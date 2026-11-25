@@ -105,14 +105,22 @@ check("Test emails sends the sample for a request", /needs_information", locale,
 
 const suggest = await import("../api/suggest-review-request.js");
 const ITEMS = ["Upload your licence (Verification)."];
-const answer = await suggest.shapeSuggestion("Hello,\n\nNearly there.\n\n1. A list it was told not to write\n\nWe look forward to it.\n\nWarm regards,\nThe Sourcing Club", ITEMS);
-check("the list is ours; the greeting, its list and the sign-off go", answer === "Nearly there.\n\n- Upload your licence (Verification).\n\nWe look forward to it.", answer);
+const answer = await suggest.shapeSuggestion("Hello,\n\nTwo items are open.\n\n1. A list it was told not to write\n\nWe look forward to it.\n\nWarm regards,\nThe Sourcing Club", ITEMS);
+check("the list is ours; the greeting, its list and the sign-off go", answer === "Two items are open.\n\n- Upload your licence (Verification).\n\nWe look forward to it.", answer);
+// Flow check R2S5: the company named again, thanks for patience and "nearly through" fall back to our words.
+const padded = await suggest.shapeSuggestion("Thank you for your patience while we continue reviewing your Sourcing Club profile for Dongguan Tuosheng Apparel; we are nearly through the verification process and only a few items remain.\n\nWe look forward to receiving these.", ITEMS, "Dongguan Tuosheng Apparel");
+check("a summary naming the company or padding with progress falls back", padded.startsWith("We need a few more details to finish reviewing your profile."), padded);
+const named = await suggest.shapeSuggestion("We need two items from Acme Knit to finish the review.\n\nWe look forward to receiving these.", ITEMS, "Acme Knit");
+check("a summary naming the company falls back", named.startsWith("We need a few more details"), named);
 check("a missing summary and close are filled", (await suggest.shapeSuggestion("- Licence", ITEMS)) === "We need a few more details to finish reviewing your profile.\n\n- Upload your licence (Verification).\n\nWe look forward to receiving these.");
 const summaryKept = await suggest.shapeSuggestion("Hi team, your licence could not be read.\n\nThanks for this.", ITEMS);
 check("a summary that starts with Hi stays", summaryKept.startsWith("Hi team, your licence could not be read."), summaryKept);
 
 // F15: a company under review sees only its onboarding steps, so nothing else may be asked.
 const asked = (label, result, detail, type = "Factory") => suggest.requestItem({ label, result, detail }, type);
+// Flow check R2S2: a licence another company uploaded first is asked for, never "staff check these".
+const duplicateLicence = suggest.requestItems([{ label: "Licence", result: "Same licence uploaded by another company first", detail: "Business registration" }], "Factory");
+check("a licence that is another company's is asked for", /own company's business registration certificate/.test(duplicateLicence.items[0] ?? "") && !duplicateLicence.notAsked.length, duplicateLicence);
 for (const [why, item] of [
   ["a member address on the domain", asked("Contact domain", "Review", "No member address uses acme.com.")],
   ["a public-provider address", asked("Contact domain", "Review", "Every member address uses a public email provider, so nothing corroborates acme.com.")],
