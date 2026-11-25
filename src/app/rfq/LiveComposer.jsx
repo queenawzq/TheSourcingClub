@@ -272,6 +272,9 @@ export default function LiveComposer({ org, rfqId }) {
         // is most likely past, so the brief must not fill it back in.
         const fromBrief = fieldsFromBrief(row.brief, byKind.product_category, byKind);
         if (row.reorder_of_order_id) delete fromBrief.timeline;
+        // Details is saved as its own field: blank on a saved draft is the
+        // brand's choice, not a gap for the brief to fill.
+        delete fromBrief.sourcingDetails;
         setValues((current) => fillBlanks(current, fromBrief));
         setSaveState("saved");
 

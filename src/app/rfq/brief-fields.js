@@ -80,13 +80,28 @@ function namedSplitsFrom(text) {
  * Who sources the materials, in the review card's choice keys: "Factory
  * sources fabric and trims" → full. Anything less plain is left to the brand.
  */
+const BRAND_SUPPLIES = /\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i;
+const VENDOR_SOURCES = /\b(?:factory|vendor|supplier)\s+(?:to\s+|should\s+|will\s+)?sources?\b/i;
+
 function sourcingFrom(text) {
-  const brand = /\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i.test(text);
-  const clause = text.split(/[.;!?\n]/).find((part) => /\b(?:factory|vendor|supplier)\s+(?:to\s+|should\s+|will\s+)?sources?\b/i.test(part));
+  const brand = BRAND_SUPPLIES.test(text);
+  const clause = text.split(/[.;!?\n]/).find((part) => VENDOR_SOURCES.test(part));
   // "The factory sources fabric; we provide labels." is the mixed case.
   if (brand && clause) return "partial";
   if (brand) return "brand-provided";
   return clause && !/\b(?:some|partly|partially|except|but)\b/i.test(clause) ? "full" : "";
+}
+
+/**
+ * The brief's own sentences on who sources what, for the sourcing card's
+ * Details: "The factory sources fabric; we provide labels."
+ */
+function sourcingDetailsFrom(text) {
+  const sentences = text.match(/[^.!?\n]+[.!?]?/g) ?? [];
+  return sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => BRAND_SUPPLIES.test(sentence) || VENDOR_SOURCES.test(sentence))
+    .join(" ");
 }
 
 /**
@@ -255,6 +270,7 @@ export function fieldsFromBrief(brief, categoryTerms, otherTerms = {}) {
     timeline: timelineFrom(text),
     price: priceFrom(text),
     sourcing: sourcingFrom(text),
+    sourcingDetails: sourcingDetailsFrom(text),
   };
 }
 
