@@ -272,6 +272,19 @@ check("the same number written two ways, by the country's rule (Nov 25)", () => 
   const sql = readFileSync("supabase/migrations/20261124370000_registration_numbers_same.sql", "utf8");
   assert.ok(/country = 'HK' and short ~ '\^\\d\{8\}\$'/.test(sql) && /'GR' and long = 'EL' \|\| short/.test(sql));
 });
+check("an English name in the pinyin of the licence's Chinese name is the same name (R3t3)", () => {
+  const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };
+  const same = (title, legalName) => compareDocument({ registrationNumber: "", legalName }, { country: "CN", number: "", title }, helpers).differences.length === 0;
+  assert.equal(same("Shandong Tianyuan Garment", "山东天源服装股份有限公司"), true);
+  assert.equal(same("Hefei Liansheng Apparel", "合肥联晟服饰有限责任公司"), true);
+  assert.equal(same("Tianyuan Garment Co., Ltd.", "山东天源服装股份有限公司"), true);
+  assert.equal(same("Dongguan Humen Huamei Garment Factory", "东莞市虎门镇华美服装厂"), true);
+  // Another trade name, a trade word the licence doesn't carry, or no trade name at all: still differs.
+  assert.equal(same("Shandong Tianfu Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Shandong Tianyuan Knitwear", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Shandong Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Wenzhou Senzhonghua Apparel", "温州森神华服饰有限公司"), false);
+});
 check("public licences: a misread number or one CJK character is unsure, not differs", () => {
   const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };
   // 19 characters read for an 18-character code.
