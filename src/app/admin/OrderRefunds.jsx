@@ -31,6 +31,8 @@ function statusWord(payment) {
 }
 // Shorter than the dialog's sentences: they sit beside a disabled button.
 const ROW_REFUSAL = { ...REFUND_REFUSALS, staff_refund_processing: "Still processing." };
+/** A staff refund's own flag ("Refund succeeded after a failure"), once per payment. */
+const refundFlags = (refunds) => [...new Set((refunds ?? []).map((refund) => refund.flag).filter(Boolean))];
 const charged = (payment) => !["due", "not_due"].includes(payment.state) && Number(payment.charged_cents) > 0;
 
 /** The factory's share of a refund, as the database computes it, capped at what it can give back. */
@@ -163,7 +165,10 @@ function PaymentRow({ payment, order, onRefund }) {
     <tr data-payment={payment.payment_id}>
       <td><strong>{payment.step_title ?? "Payment"}</strong></td>
       <td>{shown ? moneyIn(payment.charged_cents, order.currency) : "—"}</td>
-      <td>{Number(payment.refunded_cents) > 0 ? moneyIn(payment.refunded_cents, order.currency) : "—"}</td>
+      <td>
+        {Number(payment.refunded_cents) > 0 ? moneyIn(payment.refunded_cents, order.currency) : "—"}
+        {refundFlags(payment.staff_refunds).map((flag) => <span key={flag} className="admin-sub" data-testid="staff-refund-flag">{flag}</span>)}
+      </td>
       <td><span className="payment-review-status">{statusWord(payment)}</span></td>
       <td className="admin-actions">
         {refusal === "staff_refund_not_charged" || !shown ? null : (
@@ -191,6 +196,7 @@ export function HeldRefund({ row, info, onRefunded }) {
   return (
     <>
       {heard ? <span className="admin-sub admin-row-message" role="status" data-testid="refund-done">{heard}</span> : null}
+      {refundFlags(info.staff_refunds).map((flag) => <span key={flag} className="admin-sub admin-row-message" data-testid="staff-refund-flag">{flag}</span>)}
       {refusal ? <span className="admin-sub admin-row-message">{ROW_REFUSAL[refusal] ?? REFUND_REFUSALS.staff_refund_over}</span> : null}
       <button type="button" className="admin-reject" disabled={Boolean(refusal)} data-testid="staff-refund" onClick={() => setOpen(true)}>Refund…</button>
       {open ? (
