@@ -143,6 +143,51 @@ await check("CN: a typed city whose characters are in the licence at another lev
   const c = compareAddresses("浙江省嘉兴市桐乡市濮院镇工业路8号", "8 Gongye Road, Puyuan Town, Tongxiang, Zhejiang");
   assert.ok(!c.differs.some((d) => d.part === "city"), JSON.stringify(c.differs));
 });
+// Round 3 (R3t2, R3t4, R3t6).
+const HEFEI_LICENCE = "合肥市新站区瑶海工业园区纬二路北合肥雷神数控科技有限公司科研楼4楼";
+const HEFEI_ENGLISH = "4th Floor, Research Building, Hefei Leishen CNC Technology Co., North of Weier Road, Yaohai Industrial Park, Xinzhan District, Hefei, Anhui, China";
+await check("CN: a licence printing only its province and county, against another province, is low on the province (R3t2)", () => {
+  const owner = addressOwnerCheck({ license: "山东宁阳环城科技产业园", typed: "18 Gongye Road, Humen Town, Dongguan, Guangdong, China", registry: "", typedFrom: "production", typedCity: "Dongguan" });
+  assert.equal(owner.level, "low");
+  assert.equal(owner.details.comparisons[0].differs[0].part, "province");
+});
+await check("CN: the typed city's province is compared when the typed address names no province (R3t2)", () => {
+  const c = compareAddresses("山东宁阳环城科技产业园", "18 Gongye Road, Humen Town, Dongguan, China");
+  assert.deepEqual(c.differs.map((d) => d.part), ["province"]);
+});
+await check("CN: a province-only licence in the typed city's own province is not a difference", () => {
+  const c = compareAddresses("广东虎门镇工业路8号", "8 Gongye Road, Humen Town, Dongguan, China");
+  assert.ok(!c.differs.length, JSON.stringify(c.differs));
+  assert.ok(c.same.includes("province"));
+});
+await check("CN: Shanxi typed for 陕西 is not another province", () => {
+  const c = compareAddresses("陕西西安工业路8号", "8 Gongye Road, Xi'an, Shanxi, China");
+  assert.ok(!c.differs.some((d) => d.part === "province"), JSON.stringify(c.differs));
+});
+await check("CN: the English translation of a licence address is the same address (R3t4)", () => {
+  assert.deepEqual(parseAddress(HEFEI_LICENCE).parts, { city: "合肥", district: "新站", town: "瑶海", road: "纬二" });
+  const owner = addressOwnerCheck({ license: HEFEI_LICENCE, typed: HEFEI_ENGLISH, registry: "", typedFrom: "production", typedCity: "Hefei" });
+  assert.equal(owner.level, "high");
+  assert.deepEqual(owner.details.comparisons[0].same, ["city", "district", "town", "road", "floor"]);
+});
+await check("CN: the same translation on another floor is a difference below the city", () => {
+  const owner = addressOwnerCheck({ license: HEFEI_LICENCE, typed: HEFEI_ENGLISH.replace("4th Floor", "6th Floor"), registry: "", typedFrom: "production" });
+  assert.equal(owner.level, "medium");
+  assert.deepEqual(owner.details.comparisons[0].differs.map((d) => d.part), ["floor"]);
+});
+await check("CN: the same translation in another district of Hefei differs on the district", () => {
+  const c = compareAddresses(HEFEI_LICENCE, HEFEI_ENGLISH.replace("Xinzhan District", "Shushan District").replace("Yaohai Industrial Park", "Gaoxin Industrial Park"));
+  assert.notEqual(c.verdict, "match");
+});
+await check("CN: the licence text with its province in front is the same address (R3t6)", () => {
+  const c = compareAddresses(HEFEI_LICENCE, `安徽省${HEFEI_LICENCE}`);
+  assert.equal(c.verdict, "match");
+  assert.equal(addressOwnerCheck({ license: HEFEI_LICENCE, typed: `中国安徽省${HEFEI_LICENCE}`, registry: "", typedFrom: "staff" }).level, "high");
+});
+await check("CN: another province in front of the same text is not the same address", () => {
+  const c = compareAddresses(`安徽省${HEFEI_LICENCE}`, `江苏省${HEFEI_LICENCE}`);
+  assert.notEqual(c.verdict, "match");
+});
 await check("CN: the city from the structured parts is used when the text names none", () => {
   const owner = addressOwnerCheck({ license: "桐乡市濮院镇毛衫城工业园区内", typed: "Room 101, No. 76 Yingfeng 7th Street", registry: "", typedFrom: "production", typedCity: "Dongguan" });
   assert.equal(owner.level, "low");

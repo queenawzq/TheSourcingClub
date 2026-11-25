@@ -717,7 +717,7 @@ export function scopeCheck({ reading, level, country, vendorKind = null }) {
   };
 }
 
-const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", room: "Room", postcode: "Postcode" };
+const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", floor: "Floor", room: "Room", postcode: "Postcode" };
 
 export function addressCheck({ owner, siteSignal, typedAddress }) {
   const base = { key: "address", label: "Address", weight: 15, reasonKey: "address" };
