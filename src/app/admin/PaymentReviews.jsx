@@ -26,7 +26,8 @@ function lineFor(row) {
   const line = row.step_line ?? "";
   const date = day(row.step_date);
   if (!date) return line;
-  return Number(row.step) === 3 ? `${line} · ${date}` : `${line} ${date}`;
+  // The date never breaks inside itself ("Dec" / "4").
+  return <>{line}{Number(row.step) === 3 ? " · " : " "}<span className="payment-review-nowrap">{date}</span></>;
 }
 
 function Progress({ row }) {
