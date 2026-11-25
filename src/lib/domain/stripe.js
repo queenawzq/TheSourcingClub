@@ -56,6 +56,13 @@ async function call(route, body) {
 /** The client secret for the Payment Element, plus the step, fee and total. */
 export const startCheckout = (paymentId) => call("stripe-checkout", { paymentId });
 
+/**
+ * Before confirming: may the brand pay with this card (a PaymentMethod id,
+ * saved or just created)? Throws Error("This card can't be used. Use another
+ * card.") for a card it charged back (T2 R1); resolves { ok: true } otherwise.
+ */
+export const checkFundingCard = (paymentId, paymentMethodId) => call("stripe-checkout", { paymentId, paymentMethodId });
+
 /** Read the payment back from Stripe now (after confirming, or while clearing). */
 export const syncPayment = (paymentId) => call("stripe-sync", { paymentId });
 
