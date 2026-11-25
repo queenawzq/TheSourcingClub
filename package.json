@@ -44,6 +44,7 @@
     "check:payout-routing": "node scripts/check-payout-routing.mjs",
     "check:provider-payouts": "node scripts/check-provider-payouts.mjs",
     "check:stripe-withdrawals": "node scripts/check-stripe-withdrawals.mjs",
+    "check:paused-flow": "node scripts/check-paused-payments-flow.mjs",
     "check:payout-webhooks": "node scripts/check-payout-webhooks.mjs",
     "check:sb-fallback": "node scripts/check-sb-fallback.mjs",
     "check:message-sweep": "node scripts/check-message-sweep.mjs",
