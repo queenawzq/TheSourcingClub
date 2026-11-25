@@ -29,6 +29,7 @@ import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
 import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { useAuth } from "../../lib/auth.jsx";
 import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import {
   addCertification as claimCertification,
@@ -200,6 +201,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
   const uploads = useUploadOnce(step);
+  const { refreshOrgs } = useAuth();
 
   // Already signed? Looked up by the version on screen, once it has loaded, so
   // a returning company sees its read-only signature rather than a blank one.
@@ -661,6 +663,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     }
 
     await saveFactoryProfile(org.id, patch);
+    // The name typed here is the company's name, as on the profile's own edit
+    // (rename_factory, owners only): staff, brands and emails read orgs.name.
+    if (patch.legal_name && org.role === "owner" && patch.legal_name !== String(org.name ?? "").trim()) {
+      unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: patch.legal_name }), "save the company name");
+      await refreshOrgs?.().catch(() => {});
+    }
     if (addressChanged) structureAddress(org.id);
     // After the profile save, so the checks read the address just typed.
     if (evidenceUploaded) startVerification(org.id);
