@@ -31,21 +31,12 @@ import { readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel, withLinkedCustomTerms } from "../../lib/domain/taxonomy.js";
-import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
-import { toCents } from "../../lib/money.js";
+import { linkedLabels, monthLine, priceRange, quantityLine as resumedQuantityLine, resumedPrice, sourcingChoice, termIdsNamed, typedOr } from "./resume-fields.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useVendorNames } from "../vendor-names.jsx";
 import { useEnglishContent } from "../content-translation.js";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
-
-/** "$18-$24" → 1800 / 2400. Unreadable text stores nothing rather than a guess. */
-function priceRange(text) {
-  const numbers = String(text ?? "").match(/\d+(?:\.\d+)?/g);
-  if (!numbers?.length) return { target_unit_price_min_cents: null, target_unit_price_max_cents: null };
-  const [low, high = low] = numbers;
-  return { target_unit_price_min_cents: toCents(low), target_unit_price_max_cents: toCents(high) };
-}
 
 /**
  * "300 units total · 3 colors, 100 each" → three rows of 100.
@@ -150,16 +141,6 @@ export function quoteDeadlineFrom(text, now = new Date()) {
   return { value: endOf(day).toISOString() };
 }
 
-/**
- * The brand's typed line when it still says what is stored, else the stored
- * value in the card's words: "Bulk by April 2027" comes back as typed, and a
- * line that no longer matches (edited elsewhere) gives way to the record.
- */
-function typedOr(typed, stillTrue, stored) {
-  const line = String(typed ?? "").trim();
-  return line && stillTrue(line) ? line : stored;
-}
-
 const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
 
 const firstNumber = (text) => {
@@ -245,6 +226,7 @@ export default function LiveComposer({ org, rfqId }) {
     Promise.all([getRfq(rfqId), listLinks("rfq", rfqId), getColourSplits(rfqId), getQuestions(rfqId), listTermsByKind(kinds)])
       .then(async ([row, linked, splits, questions, byKind]) => {
         if (!row) return;
+        const linkedOf = (termsOfKind) => linked.filter((id) => (termsOfKind ?? []).some((term) => term.id === id));
         setFreeText(row.brief ?? "");
         setValues({
           title: row.title ?? "",
@@ -252,15 +234,15 @@ export default function LiveComposer({ org, rfqId }) {
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
           timeline: typedOr(row.timeline_text, (typed) => deliveryMonthFrom(typed) === row.target_delivery_month, monthLine(row.target_delivery_month)),
-          price: priceLine(row.target_unit_price_min_cents, row.target_unit_price_max_cents),
+          price: resumedPrice(row),
           category: typedOr(
             row.product_type ?? fieldsFromBrief(row.brief, byKind.product_category, byKind).category,
             (typed) => sameIds(categoryTermIds(typed, byKind.product_category), linked.filter((id) => byKind.product_category?.some((term) => term.id === id))),
             linkedLabels(linked, byKind.product_category),
           ),
-          certifications: linkedLabels(linked, byKind.certification),
+          certifications: typedOr(row.certifications_text, (typed) => sameIds(termIdsNamed(typed, byKind.certification), linkedOf(byKind.certification)), linkedLabels(linked, byKind.certification)),
           services: linkedLabels(linked, byKind.service),
-          regions: linkedLabels(linked, byKind.region),
+          regions: typedOr(row.regions_text, (typed) => sameIds(termIdsNamed(typed, byKind.region), linkedOf(byKind.region)), linkedLabels(linked, byKind.region)),
           sourcing: sourcingChoice(row.sourcing_responsibility_term_id, byKind.sourcing_responsibility, SOURCING_SLUG),
           sourcingDetails: row.sourcing_details ?? "",
           additionalDetails: row.additional_details ?? "",
@@ -441,6 +423,9 @@ export default function LiveComposer({ org, rfqId }) {
         // The brand's own words, read back on resume (see typedOr).
         timeline_text: values.timeline?.trim() || null,
         product_type: values.category?.trim() || null,
+        price_text: values.price?.trim() || null,
+        regions_text: values.regions?.trim() || null,
+        certifications_text: values.certifications?.trim() || null,
         sourcing_details: values.sourcingDetails?.trim() || null,
         additional_details: values.additionalDetails?.trim() || null,
         target_delivery_month: deliveryMonthFrom(values.timeline),
@@ -479,7 +464,7 @@ export default function LiveComposer({ org, rfqId }) {
         : availableTerms
           .filter((term) => kind === "service"
             ? String(typed).split(",").some((label) => label.trim().toLowerCase() === termLabel(term).toLowerCase())
-            : mentionsLabel(typed, termLabel(term)))
+            : termIdsNamed(typed, [term]).length > 0)
           .map((term) => term.id);
       await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
     }

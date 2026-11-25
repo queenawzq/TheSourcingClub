@@ -8,7 +8,11 @@
  * extra details were saved as nothing. Each helper here is the inverse of one
  * parser in LiveComposer.jsx.
  */
-import { termLabel } from "../../lib/domain/taxonomy.js";
+import { toCents } from "../../lib/money.js";
+
+// English, as the card is written (taxonomy.js termLabel); kept here so these
+// helpers run without the browser client (npm run check:request-fields).
+const termLabel = (term) => term?.label_en ?? "";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -33,6 +37,18 @@ export function mentionsLabel(typed, label) {
   return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(String(typed ?? "").toLowerCase());
 }
 
+/**
+ * The terms a typed line names, by label or by a shorter name the taxonomy
+ * knows it by: "OEKO-TEX" (the field's own example, and the term's alias)
+ * names OEKO-TEX Standard 100, as the brief parser already read it.
+ */
+export function termIdsNamed(typed, terms) {
+  return (terms ?? [])
+    .filter((term) => [termLabel(term), termLabel(term)?.split(/\s+standard\b/i)[0], ...(term.aliases ?? [])]
+      .some((name) => mentionsLabel(typed, name)))
+    .map((term) => term.id);
+}
+
 /** The card's sourcing choice for a stored term: the inverse of SOURCING_SLUG. */
 export function sourcingChoice(termId, sourcingTerms, slugByChoice) {
   const slug = (sourcingTerms ?? []).find((term) => term.id === termId)?.slug;
@@ -55,6 +71,33 @@ export function monthLine(date) {
   const [year, month] = String(date ?? "").split("-").map(Number);
   if (!year || !month) return "";
   return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+/**
+ * The brand's typed line when it still says what is stored, else the stored
+ * value in the card's words: "Bulk by April 2027" comes back as typed, and a
+ * line that no longer matches (edited elsewhere) gives way to the record.
+ */
+export function typedOr(typed, stillTrue, stored) {
+  const line = String(typed ?? "").trim();
+  return line && stillTrue(line) ? line : stored;
+}
+
+/** "$18-$24" → 1800 / 2400. Unreadable text stores nothing rather than a guess. */
+export function priceRange(text) {
+  const numbers = String(text ?? "").match(/\d+(?:\.\d+)?/g);
+  if (!numbers?.length) return { target_unit_price_min_cents: null, target_unit_price_max_cents: null };
+  const [low, high = low] = numbers;
+  return { target_unit_price_min_cents: toCents(low), target_unit_price_max_cents: toCents(high) };
+}
+
+/** The price as typed ("$18-$22 per unit FOB") while it still reads as the stored cents. */
+export function resumedPrice(row) {
+  return typedOr(row?.price_text, (typed) => {
+    const read = priceRange(typed);
+    return read.target_unit_price_min_cents === (row.target_unit_price_min_cents ?? null)
+      && read.target_unit_price_max_cents === (row.target_unit_price_max_cents ?? null);
+  }, priceLine(row?.target_unit_price_min_cents, row?.target_unit_price_max_cents));
 }
 
 /** Stored cents back in the words priceRange() reads: "$12", "$12.50", "$18–$24". */

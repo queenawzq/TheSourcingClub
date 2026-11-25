@@ -13,7 +13,7 @@ import { readEveryPage } from "../read-pages.js";
 const RFQ_COLUMNS = `
   id, brand_org_id, title, brief, status, visibility,
   quantity_total, material_notes, sourcing_responsibility_term_id,
-  sourcing_details, timeline_text, product_type,
+  sourcing_details, timeline_text, product_type, price_text, regions_text, certifications_text,
   target_delivery_month, requires_sample, sample_notes,
   target_unit_price_min_cents, target_unit_price_max_cents, currency,
   quote_deadline, additional_details,
