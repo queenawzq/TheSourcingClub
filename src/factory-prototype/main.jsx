@@ -8649,6 +8649,14 @@ function FactoryOnboardingStep({
     const reviewValue = (sectionIndex, rowIndex, drawn) => {
       if (!isLive) return drawn;
       const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
+      if (english === "Reference style") {
+        // The chosen category's own reference, as the capacity step shows it.
+        const category = FACTORY_CAPACITY_CATEGORIES.find((item) => item.key === values?.["capacity-category"]);
+        if (!category) return reviewStatus.notAdded;
+        return isChinese
+          ? `${category.referenceStyleZh} · 约 ${category.minutesPerPiece} 分钟 / 件`
+          : `${category.referenceStyle} · ~${category.minutesPerPiece} min/pc`;
+      }
       if (staticRows.has(english)) return drawn;
       if (english === "Business registration") {
         const fileStatus = registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
