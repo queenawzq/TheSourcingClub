@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { EmailSignInCodeInput, useCodeResendCountdown } from "../../shared/EmailSignInCode.jsx";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../../lib/auth.jsx";
 import { isConfigured, keepChoice } from "../../lib/supabase.js";
@@ -38,6 +39,7 @@ function AdminLogin() {
   const [recovery, setRecovery] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [codeFor, setCodeFor] = useState("");
+  const { seconds, startCountdown } = useCodeResendCountdown();
   const [accessState, setAccessState] = useState("idle");
   const [localError, setLocalError] = useState("");
   // "Keep me signed in", held here so the demo admin button below the form
@@ -112,7 +114,10 @@ function AdminLogin() {
 
   async function submitEmailCode(event) {
     const form = event.currentTarget.closest("form");
-    const email = String(new FormData(form).get("email") ?? "").trim();
+    await sendCode(String(new FormData(form).get("email") ?? "").trim());
+  }
+
+  async function sendCode(email) {
     clearError();
     setLocalError("");
     if (!email.includes("@")) {
@@ -120,9 +125,10 @@ function AdminLogin() {
       return;
     }
     setBusy(true);
-    const sent = await sendEmailCode(email, { createUser: false, keepSignedIn });
+    const { sent, retryAfter } = await sendEmailCode(email, { createUser: false, keepSignedIn });
     setBusy(false);
-    if (sent) setCodeFor(email);
+    if (retryAfter) startCountdown(retryAfter);
+    if (sent || retryAfter) setCodeFor(email);
   }
 
   async function submitCode(event) {
@@ -215,10 +221,13 @@ function AdminLogin() {
             <form className="admin-login-form" onSubmit={submitCode}>
               <label>
                 <span>Six-digit code</span>
-                <input type="text" name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="123456" required autoFocus />
+                <EmailSignInCodeInput />
               </label>
               {(localError || error) && <p className="admin-login-message error" role="alert">{localError || error.message}</p>}
               <button className="admin-login-submit" type="submit" disabled={busy}>{busy ? "Checking…" : "Continue"}</button>
+              <button className="admin-login-text-button" type="button" disabled={busy || seconds > 0} onClick={() => sendCode(codeFor)}>
+                {seconds ? `Resend code in ${seconds}s` : "Resend code"}
+              </button>
               <button className="admin-login-text-button" type="button" onClick={() => { setCodeFor(""); clearError(); }}>Back to password sign-in</button>
             </form>
           ) : resetting ? (

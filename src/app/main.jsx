@@ -11,6 +11,7 @@
  * than being half-linked from here.
  */
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { EmailSignInCodeInput, useCodeResendCountdown } from "../shared/EmailSignInCode.jsx";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, lastCompanyKind, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
@@ -178,6 +179,7 @@ function SignIn({ invitation = null }) {
   const [resetFor, setResetFor] = useState(null);
   // The address a sign-in code was emailed to, and so the code-entry screen.
   const [codeFor, setCodeFor] = useState(null);
+  const { seconds, startCountdown } = useCodeResendCountdown();
   // "Keep me logged in", held here rather than inside the form: the demo
   // buttons and the emailed-code sign-in sit outside it and must follow the
   // same box. It starts as this tab's saved choice.
@@ -266,9 +268,10 @@ function SignIn({ invitation = null }) {
   async function sendCode(email) {
     setBusy(true);
     setNotice(null);
-    const ok = await sendEmailCode(email, { createUser: false, keepSignedIn });
+    const { sent, retryAfter } = await sendEmailCode(email, { createUser: false, keepSignedIn });
     setBusy(false);
-    if (ok) {
+    if (retryAfter) startCountdown(retryAfter);
+    if (sent || retryAfter) {
       setResetFor(null);
       setCodeFor(email);
     }
@@ -302,17 +305,15 @@ function SignIn({ invitation = null }) {
 
           <label className="field">
             <span>Six-digit code</span>
-            <input
-              name="code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              placeholder="123456"
-            />
+            <EmailSignInCodeInput />
           </label>
 
           <button type="submit" className="primary-btn" disabled={busy}>
             {busy ? "Checking…" : "Log in"}
+          </button>
+
+          <button type="button" className="quiet-btn" disabled={busy || seconds > 0} onClick={() => sendCode(codeFor)}>
+            {seconds ? `Resend code in ${seconds}s` : "Resend code"}
           </button>
 
           <button
