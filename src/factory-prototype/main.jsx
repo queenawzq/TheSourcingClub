@@ -636,6 +636,7 @@ export const factoryMainZhText = {
   "Request tags": "需求标签",
   "No reference image uploaded": "未上传参考图片",
   "Review the written brief, request tags, and attached tech pack in details.": "请在详情中查看文字简介、需求标签和附件 tech pack。",
+  "Review the written brief and request tags in details.": "请在详情中查看文字简介和需求标签。",
   "Fashion brand": "时尚品牌",
   "Contemporary brand": "当代品牌",
   "Outerwear brand": "外套品牌",
@@ -6363,7 +6364,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
           ) : (
             <div className="factory-request-visual-placeholder">
               <strong>{tx("No reference image uploaded")}</strong>
-              <span>{tx("Review the written brief, request tags, and attached tech pack in details.")}</span>
+              <span>{tx(rfq.files && !rfq.files.length ? "Review the written brief and request tags in details." : "Review the written brief, request tags, and attached tech pack in details.")}</span>
             </div>
           )}
           {hasGallery && supportImages.slice(0, 2).map((image) => (
@@ -9848,7 +9849,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           ) : (
             <div className="factory-request-visual-placeholder">
               <strong>No reference image uploaded</strong>
-              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+              <span>{project.files && !project.files.length ? "Review the written brief and request tags in details." : "Review the written brief, request tags, and attached tech pack in details."}</span>
             </div>
           )}
           {hasGallery && supportImages.slice(0, 2).map((image) => (
@@ -11089,7 +11090,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
           ) : (
             <div className="factory-request-visual-placeholder">
               <strong>No reference image uploaded</strong>
-              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+              <span>{requestFiles.length ? "Review the written brief, request tags, and attached tech pack in details." : "Review the written brief and request tags in details."}</span>
             </div>
           )}
           {hasGallery && supportImages.slice(0, 2).map((image) => (

@@ -10026,7 +10026,9 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
  * nobody was hand-picked: "sent to 0 selected vendors" is not what happened
  * to a request every matching vendor can see.
  */
-export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false, liveLine = null }) {
+export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false, liveLine = null, hasDeadline = true, hasAttachments = true }) {
+  // Live passes what the request really has, so no sentence names a missing deadline or file.
+  const untilDeadline = hasDeadline ? " before the deadline" : "";
   const vendorCount = selectedFactories.length;
   const sentTo = openToAll
     ? vendorCount
@@ -10040,15 +10042,15 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
         <span className="success-mark">✓</span>
         <div className="success-copy">
           <h2>Your quote request is live</h2>
-          {liveLine ? <p>{liveLine} Vendors can review the request, ask questions, and submit quotes before the deadline.</p> : <p>
+          {liveLine ? <p>{liveLine} Vendors can review the request, ask questions, and submit quotes{untilDeadline}.</p> : <p>
             {sentTo ?? <>We sent the brief to {vendorCount} selected {vendorCount === 1 ? "vendor" : "vendors"}.</>} They can review the request,
-            ask questions, and submit quotes before the deadline.
+            ask questions, and submit quotes{untilDeadline}.
           </p>}
         </div>
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <ul className="success-next-list">
-            <li>Vendors review your brief, attachments, and sourcing responsibilities.</li>
+            <li>{hasAttachments ? "Vendors review your brief, attachments, and sourcing responsibilities." : "Vendors review your brief and sourcing responsibilities."}</li>
             <li>You will see responses, questions, and quote status updates on the quotes page.</li>
             <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
           </ul>

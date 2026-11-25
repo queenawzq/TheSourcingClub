@@ -191,6 +191,8 @@ export default function LiveBrowse({ org, profile }) {
       tags: requestTags(rfq, tagMetadata.get(rfq.id)),
       capacity: [],
       images: requestDocuments.get(rfq.id)?.images ?? [],
+      // Only so the no-image note names a tech pack when there is one.
+      files: (requestDocuments.get(rfq.id)?.files ?? []).map((file) => file.file_name),
       fitTone: fit.tone,
       trust: "",
       paymentVerified: paymentVerified.get(rfq.brand_org_id) ?? false,

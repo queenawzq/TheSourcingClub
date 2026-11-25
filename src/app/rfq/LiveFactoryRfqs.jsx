@@ -64,7 +64,7 @@ function dueLabel(deadline, now = new Date()) {
 }
 
 /** One request, in the shape the designed card reads. */
-function toCard(rfq, quote, images = [], tagMetadata = {}) {
+function toCard(rfq, quote, images = [], tagMetadata = {}, files = []) {
   const statusKey = quote?.status ?? "invited";
   // Only cards still waiting on the vendor count down. A submitted card keeps
   // its label: the design routes its button on the words "Quote submitted".
@@ -89,6 +89,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}) {
     trust: "",
     tags: requestTags(rfq, tagMetadata),
     images,
+    files: files.map((file) => file.file_name),
     facts: [
       ["Quantity", rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : "—"],
       ["Samples", rfq.requires_sample ? "Sample required" : "No sample"],
@@ -135,7 +136,7 @@ export default function LiveFactoryRfqs({ org }) {
         const byTab = { active: [], drafts: [], invited: [], closed: [] };
 
         for (const quote of quotes) {
-          const card = toCard(quote.rfqs, quote, presentations.get(quote.rfq_id)?.images ?? [], tagMetadata.get(quote.rfq_id));
+          const card = toCard(quote.rfqs, quote, presentations.get(quote.rfq_id)?.images ?? [], tagMetadata.get(quote.rfq_id), presentations.get(quote.rfq_id)?.files ?? []);
           if (closedRfq(quote.rfqs) || ["accepted", "declined", "withdrawn"].includes(quote.status)) byTab.closed.push(card);
           else if (quote.status === "draft") byTab.drafts.push(card);
           else byTab.active.push(card);
@@ -143,7 +144,7 @@ export default function LiveFactoryRfqs({ org }) {
         for (const invitation of invitations) {
           if (quotedRfqIds.has(invitation.rfq_id) || !invitation.rfqs) continue;
           (closedRfq(invitation.rfqs) ? byTab.closed : byTab.invited).push(
-            toCard(invitation.rfqs, null, presentations.get(invitation.rfq_id)?.images ?? [], tagMetadata.get(invitation.rfq_id)),
+            toCard(invitation.rfqs, null, presentations.get(invitation.rfq_id)?.images ?? [], tagMetadata.get(invitation.rfq_id), presentations.get(invitation.rfq_id)?.files ?? []),
           );
         }
         setTabs(byTab);

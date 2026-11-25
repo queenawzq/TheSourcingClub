@@ -76,6 +76,13 @@ function namedColourSplitsFrom(text) {
   return splits.map(([, colour, quantity]) => ({ colour, quantity: Number(quantity.replace(/,/g, "")) }));
 }
 
+/** ["the brief", "attachments", "questions"] → "the brief, attachments, and questions". */
+function listWords(items) {
+  const words = items.filter(Boolean);
+  if (words.length < 3) return words.join(" and ");
+  return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
+}
+
 /** The design's four choices, onto the three the taxonomy has. */
 const SOURCING_SLUG = {
   full: "factory-sources",
@@ -641,6 +648,8 @@ export default function LiveComposer({ org, rfqId }) {
       <FlowShell
         screen="inviteSuccess"
         canBack={false}
+        // Names only what the request has: no "attachments" on one without files.
+        heading={{ description: `Vendors have ${listWords(["the brief", files.length ? "attachments" : null, values.vendorQuestions?.trim() ? "questions" : null])} they need to decide whether to quote.` }}
         // Nothing to review yet: the page's own button goes to the dashboard.
         primaryLabel=""
         // The request as it was saved, not the design's example shirt.
@@ -656,6 +665,8 @@ export default function LiveComposer({ org, rfqId }) {
         <InviteSuccessScreen
           selectedFactories={invited}
           openToAll={openToAll}
+          hasDeadline={Boolean(values.deadline?.trim())}
+          hasAttachments={files.length > 0}
           liveLine={`Sent to ${invited.length} vendor${invited.length === 1 ? "" : "s"}${openToAll ? ", and open to all vendors" : ""}.`}
           goTo={(next) => navigate(next === "quotes" ? `/rfqs/${draftId}/quotes` : "/")}
         />
