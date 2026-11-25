@@ -415,6 +415,10 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(earningStatus(disputed), DISPUTED);
   assert.equal(earningStatus(disputed, null, new Map([["d1", new Set(["pending"])]])), DISPUTED);
   assert.equal(earningStatus(pay("d2", 500, "confirmed", { disputed_at: "2026-11-20T00:00:00Z" })), DISPUTED, "not approved yet: Disputed, not Awaiting approval");
+  // §14: a step not approved under a chargeback is out of Awaiting approval, still in Total.
+  const withDispute = summaryFrom({ awaiting_cents: 1000, disputed_cents: 6500, available_cents: 0, pending_cents: 0, processing_cents: 0, paid_out_cents: 0 });
+  assert.equal(withDispute.approval, 1000, "Awaiting approval leaves the disputed step out");
+  assert.equal(withDispute.total, 7500, "Total earnings keeps it");
   assert.equal(owedClearingNote(disputed, new Map([["d1", new Set(["pending"])]])), null, "no date for held money");
   // M4: a step all withdrawn reads Paid, whichever road took it.
   const sentByStripe = pay("s1", 6500, "released", { ...APPROVED, stripe_transfer_id: "tr_1", released_note: "Withdrawn", payment_takes: [{ status: "sent" }] });

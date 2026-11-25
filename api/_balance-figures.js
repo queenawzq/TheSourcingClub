@@ -65,6 +65,8 @@ export function balanceFigures(tsc, stripe, displayFx) {
   const base = {
     currency: "USD",
     awaiting_cents: n(tsc?.awaiting_cents),
+    // Steps not approved under an open chargeback (§14): in the total, in no card.
+    disputed_cents: n(tsc?.disputed_cents),
     available_cents: n(tsc?.available_cents),
     pending_cents: n(tsc?.pending_cents),
     processing_cents: n(tsc?.processing_cents),
@@ -132,7 +134,7 @@ export function balanceFigures(tsc, stripe, displayFx) {
     ...figures,
     // Only when false: logged by the server (a clamp with every amount in US$).
     ...(suspect ? { consistent: false } : {}),
-    total_cents: figures.awaiting_cents + figures.available_cents + figures.pending_cents + figures.processing_cents + figures.paid_out_cents,
+    total_cents: figures.awaiting_cents + figures.disputed_cents + figures.available_cents + figures.pending_cents + figures.processing_cents + figures.paid_out_cents,
     tsc: tsc ?? null,
     stripe: known ? parts : null,
   };

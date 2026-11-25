@@ -72,7 +72,8 @@ export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.
  *
  * The four figures over the Transactions list, in US$ cents. Total earnings
  * is the server's figures added up, never worked out on its own: the four,
- * plus withdrawals in progress (processing_cents), which are in no card.
+ * plus withdrawals in progress (processing_cents) and steps under an open
+ * chargeback (disputed_cents), which are in no card.
  * Undefined (each) until the figures answer.
  */
 export function summaryFrom(figures) {
@@ -83,7 +84,9 @@ export function summaryFrom(figures) {
   const pending = n(figures.pending_cents);
   const processing = n(figures.processing_cents);
   const paid = n(figures.paid_out_cents);
-  return { total: approval + available + pending + processing + paid, approval, available, pending, processing, paid };
+  // Steps not approved under an open chargeback (§14): in Total, in no card of their own.
+  const disputed = n(figures.disputed_cents);
+  return { total: approval + disputed + available + pending + processing + paid, approval, available, pending, processing, paid };
 }
 
 /**
