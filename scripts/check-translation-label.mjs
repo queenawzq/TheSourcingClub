@@ -11,7 +11,7 @@
  * real CSS and sources, with no browser; it runs in the build.
  */
 import { readFileSync } from "node:fs";
-import { CARD, CARD_STOP, HEADER_ROW, NO_LABEL, SELF_TRANSLATING, cardFor, labelAnchors } from "../src/app/translation-card.mjs";
+import { CARD, CARD_STOP, HEADER_ROW, NO_LABEL, SELF_TRANSLATING, cardFor, labelAnchors, labelPlace } from "../src/app/translation-card.mjs";
 
 let failures = 0;
 let checks = 0;
@@ -149,6 +149,40 @@ const translatedIn = (root) => order.filter((node) => node.translated && root.co
   check(labelAnchors([later, earlier]).get(card) === earlier, "the label goes by the card's first translated text");
 }
 
+{ // Compare quotes: a table in a dialog. One label per vendor's row, inside its first cell, never a cell of its own.
+  const vendorCell = el("td", el("strong"), t("span"));
+  const shipping = el("td"); shipping.translated = true;
+  const notes = el("td"); notes.translated = true;
+  const translatedRow = el("tr", vendorCell, el("td"), shipping, el("td"), notes);
+  const englishRow = el("tr", el("td", el("strong"), el("span")), el("td"));
+  const table = el("table.quote-compare-table", el("thead", el("tr", el("th"), el("th"))), el("tbody", translatedRow, englishRow));
+  const root = page(el("section.brand-profile-modal.quote-compare-modal", el("div.quote-compare-table-wrap", table)));
+  root.attrs = { role: "dialog" };
+  const anchors = labelAnchors(translatedIn(root));
+  check(anchors.size === 1 && anchors.has(translatedRow), `compare: one label for the translated vendor's row, none for the other (got ${anchors.size})`);
+  const place = labelPlace(anchors.get(translatedRow), translatedRow);
+  check(place.into === vendorCell, "compare: the label goes inside the row's vendor cell, not after a cell");
+  // Even when the row's first translated text sits in a later cell.
+  const onlyShipping = el("td"); onlyShipping.translated = true;
+  const firstCell = el("td", el("strong"));
+  const row = el("tr", firstCell, onlyShipping);
+  page(el("section.quote-compare-modal", el("table", el("tbody", row))));
+  check(labelPlace(labelAnchors([onlyShipping]).get(row), row).into === firstCell, "compare: a translated shipping cell still labels the row in its first cell");
+}
+
+{ // A card holding a table (an order summary): the label sits above the table, never in a cell.
+  const cell = el("td"); cell.translated = true;
+  const table = el("table", el("tbody", el("tr", cell, el("td"))));
+  const card = el("section.card.fund-summary-card", el("h2"), table);
+  page(el("main", card));
+  const anchor = labelAnchors([cell]).get(card);
+  check(labelPlace(anchor, card).before === table, "a card's table: the label goes just above the table");
+  const text = t("p");
+  const plain = el("section.card", text);
+  page(el("main", plain));
+  check(labelPlace(labelAnchors([text]).get(plain), plain).after === text, "outside a table the label goes after the text, as before");
+}
+
 { // Text in no card at all keeps a label of its own, beside it.
   const lone = t("p");
   page(el("main", el("div", lone)));
@@ -160,6 +194,7 @@ check(CARD && CARD_STOP && HEADER_ROW && NO_LABEL && SELF_TRANSLATING, "the sele
 // ---- The sources: one placement rule, used ----
 const layer = readFileSync(new URL("../src/app/BrandEnglishLayer.jsx", import.meta.url), "utf8");
 check(/labelAnchors\(/.test(layer), "BrandEnglishLayer places labels through labelAnchors (one per card)");
+check(/labelPlace\(anchor, card\)/.test(layer), "BrandEnglishLayer places each label through labelPlace (never as a table cell)");
 check(!/addControl\s*\(\s*element\s*\)/.test(layer), "BrandEnglishLayer adds no label per translated element");
 check(/translatesItself\(element\)/.test(layer), "BrandEnglishLayer leaves self-translating cards alone, also before their own label is on screen");
 check(/stopPropagation\(\)/.test(layer), "\"See original\" inside a clickable card does not open the card");

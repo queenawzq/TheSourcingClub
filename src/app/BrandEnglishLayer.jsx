@@ -17,7 +17,7 @@
 import { useEffect } from "react";
 import { contentTranslations, useContentTranslations } from "./content-translation.js";
 import { needsEnglish } from "../shared/profile-translation.mjs";
-import { cardFor, labelAnchors, translatesItself } from "./translation-card.mjs";
+import { cardFor, labelAnchors, labelPlace, translatesItself } from "./translation-card.mjs";
 import "./profile/profile.css";
 
 const LEAVE_ALONE = "script, style, input, textarea, select, [contenteditable], [contenteditable] *, .message-bubble, .message-thread-card em, .profile-translation-controls";
@@ -83,7 +83,12 @@ export default function BrandEnglishLayer() {
           entry.label.textContent = LABEL.english;
           entry.button.textContent = BUTTON.english;
         }
-        if (anchor.nextSibling !== entry.control) anchor.after(entry.control);
+        const place = labelPlace(anchor, card);
+        if (place.into) {
+          if (place.into.lastChild !== entry.control) place.into.append(entry.control);
+        } else if (place.before) {
+          if (place.before.previousSibling !== entry.control) place.before.before(entry.control);
+        } else if (anchor.nextSibling !== entry.control) anchor.after(entry.control);
       }
     };
     const setTitle = (element, title) => {

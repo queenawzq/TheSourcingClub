@@ -1,5 +1,8 @@
 import { quantityLine } from "./resume-fields.js";
 
+/** Longer words than this would overflow the card's one-line tag. */
+const TAG_LENGTH = 32;
+
 /**
  * A request's quantity and samples in the brand's own words, for every
  * screen a vendor reads them on.
@@ -22,6 +25,18 @@ export function requestQuantity(total, splits = []) {
   return quantityLine(total ?? null, rows.length >= 2 ? rows : [], "units");
 }
 
+/**
+ * The quantity on a list card, from a row that embeds its split
+ * (`rfq_colour_splits`, see LIST_SPLITS in rfq.js). The whole line when it
+ * fits the card's one-line tag, else the count of colours: "500 units · 2 colors".
+ */
+export function requestQuantityTag(rfq) {
+  const splits = [...(rfq?.rfq_colour_splits ?? [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  const line = requestQuantity(rfq?.quantity_total, splits);
+  if (line.length <= TAG_LENGTH || !line.includes(" · ")) return line;
+  return `${line.split(" · ")[0]} · ${splits.length} colors`;
+}
+
 /** The sample plan as the brand wrote it, else whether one is required. */
 export function requestSamples(rfq) {
   const notes = rfq?.sample_notes?.trim();
@@ -29,8 +44,6 @@ export function requestSamples(rfq) {
   return rfq?.requires_sample ? "Sample required" : "No sample";
 }
 
-/** Longer words than this would overflow the card's one-line tag. */
-const TAG_LENGTH = 32;
 
 /** The short card tag: the brand's sample words when they fit, else the design's tag. */
 export function requestSampleTag(rfq) {

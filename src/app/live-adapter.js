@@ -17,7 +17,7 @@ import { formatMoney, formatRange } from "../lib/money.js";
 import { dateFrom } from "../lib/dates.js";
 import React from "react";
 import { LiveVendorName, vendorNameText } from "./vendor-names.jsx";
-import { requestSampleTag } from "./rfq/request-facts.js";
+import { requestQuantityTag, requestSampleTag } from "./rfq/request-facts.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -216,7 +216,7 @@ export function toRfqCard(rfq, messageCount = 0) {
     : "";
 
   const tags = [
-    rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : null,
+    requestQuantityTag(rfq) || null,
     formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents) !== "—"
       ? formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents)
       : null,

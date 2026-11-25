@@ -62,6 +62,12 @@ values
    'P13 trousers', 'One hundred linen trousers.', 'open', 'open_to_all', 100,
    null, null, null, true, null, null, null, null, null);
 
+-- The brand's own words beside the parsed values (20261124607100, 20261124612100).
+update public.rfqs
+   set product_type = 'Womenswear / linen shirts', timeline_text = '8 weeks after PP approval',
+       price_text = '$18-$24 per unit FOB', regions_text = 'China, Vietnam', certifications_text = 'GOTS, OEKO-TEX'
+ where id = 'ed000000-0000-0000-0000-000000000001';
+
 insert into public.rfq_colour_splits (rfq_id, colour, quantity, sort) values
   ('ed000000-0000-0000-0000-000000000001', 'Sand', 100, 0),
   ('ed000000-0000-0000-0000-000000000001', 'Navy', 100, 1);
@@ -135,13 +141,13 @@ select is(
 select is(
   (select row(brief, quantity_total, material_notes, sourcing_responsibility_term_id, requires_sample,
               sample_notes, target_unit_price_min_cents, target_unit_price_max_cents, currency,
-              additional_details)::text
+              additional_details, product_type, timeline_text, price_text, regions_text, certifications_text)::text
      from public.rfqs where id = (select id from p13 where name = 'copy')),
   (select row(brief, quantity_total, material_notes, sourcing_responsibility_term_id, requires_sample,
               sample_notes, target_unit_price_min_cents, target_unit_price_max_cents, currency,
-              additional_details)::text
+              additional_details, product_type, timeline_text, price_text, regions_text, certifications_text)::text
      from public.rfqs where id = 'ed000000-0000-0000-0000-000000000001'),
-  'what the brand asked for is copied as it was'
+  'what the brand asked for is copied as it was, in the words it typed'
 );
 
 select is(

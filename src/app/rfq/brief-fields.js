@@ -76,6 +76,53 @@ function namedSplitsFrom(text) {
   return splits.length >= 2 && splits.length <= 24 ? splits : [];
 }
 
+// Commas that end a clause, not the one in "1,000".
+const COMMA = /,(?!\d{3}\b)/;
+const NAMED_QUANTITY = /^([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)?)\s+(\d{1,3}(?:,\d{3})+|\d+)$/;
+// A bare list is read as colours only when every name is one: "men 150 and
+// women 150", "cotton 150 and polyester 150" or "US 100 and EU 200" are not.
+// An unknown word leaves the line as "N units", never a wrong split.
+const COLOUR_WORD = new RegExp(`^(?:(?:light|dark|pale|deep|bright|dusty|washed|heather)\\s+)?(?:${[
+  "black", "white", "grey", "gray", "red", "blue", "green", "yellow", "orange", "pink", "purple", "brown", "beige",
+  "navy", "sage", "ecru", "oatmeal", "heather", "charcoal", "khaki", "olive", "stone", "sand", "ivory", "cream",
+  "rust", "burgundy", "camel", "taupe", "mauve", "teal", "natural", "indigo", "denim", "tan", "chocolate", "coffee",
+  "mocha", "maroon", "wine", "plum", "lilac", "lavender", "mint", "forest", "emerald", "mustard", "coral", "peach",
+  "blush", "rose", "fuchsia", "magenta", "turquoise", "aqua", "sky", "cobalt", "royal", "silver", "gold", "bone",
+  "nude", "off-white", "offwhite", "slate", "graphite", "ash", "smoke", "pebble", "clay", "terracotta", "brick",
+  "cinnamon", "caramel", "toffee", "biscuit", "latte", "vanilla", "lemon", "lime", "moss", "pine", "bottle",
+  "petrol", "steel", "ink", "jet", "onyx", "ochre",
+].join("|")})$`, "i");
+
+/**
+ * "sage 150 and ecru 250" → Sage 150, Ecru 250, without the word "colours":
+ * a clause that is nothing but two or more name-and-number pairs, read only
+ * when they add up to the request's total (quantityLineFrom checks).
+ */
+function listedSplitsFrom(text, total) {
+  const pair = (part) => {
+    const match = part.match(NAMED_QUANTITY);
+    if (!match || !COLOUR_WORD.test(match[1].trim())) return null;
+    return { colour: capitalise(match[1].trim().toLowerCase()), quantity: Number(match[2].replace(/,/g, "")) };
+  };
+  for (const sentence of text.split(/(?<!\d)[.;!?](?!\d)|\n/)) {
+    // Runs of clauses that are nothing but colour pairs: "sage 150 and ecru
+    // 250", "black 100, white 200".
+    let run = [];
+    const runs = [];
+    for (const clause of sentence.split(COMMA)) {
+      const pairs = clause.trim().replace(/[.!?]+$/, "").split(/\s*(?:\band\b|&)\s*/i).filter(Boolean).map(pair);
+      if (pairs.length && pairs.every(Boolean)) run.push(...pairs);
+      else { runs.push(run); run = []; }
+    }
+    runs.push(run);
+    const found = runs.find((splits) => splits.length >= 2 && splits.length <= 24
+      && splits.every((split) => split.quantity > 0)
+      && splits.reduce((acc, split) => acc + split.quantity, 0) === total);
+    if (found) return found;
+  }
+  return [];
+}
+
 /**
  * Who sources the materials, in the review card's choice keys: "Factory
  * sources fabric and trims" → full. Anything less plain is left to the brand.
@@ -105,10 +152,22 @@ function sourcingFrom(text) {
  */
 function sourcingDetailsFrom(text) {
   const sentences = text.match(/(?:[^.!?\n]|(?<=\d)\.(?=\d))+[.!?]?/g) ?? [];
+  const aboutSourcing = (part) => VENDOR_SOURCES.test(part) || part.split(/;/).some(brandSupplies);
   return sentences
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => VENDOR_SOURCES.test(sentence)
-      || sentence.split(/;/).some(brandSupplies))
+    .map((sentence) => {
+      // Only the part of the sentence that says who sources what: in "400
+      // linen shirts, sage 150 and ecru 250, factory sources fabric; we
+      // provide labels." that is the last clause, not the shirts. The run
+      // from the first such clause to the last keeps "fabric, trims, zips".
+      const clauses = sentence.trim().split(COMMA);
+      const first = clauses.findIndex(aboutSourcing);
+      if (first < 0) return "";
+      const last = clauses.length - 1 - [...clauses].reverse().findIndex(aboutSourcing);
+      const run = clauses.slice(first, last + 1).join(",").trim().replace(/[.!?]?$/, "");
+      const end = sentence.trim().match(/[.!?]$/)?.[0] ?? (last === clauses.length - 1 ? "" : ".");
+      return capitalise(run) + end;
+    })
+    .filter(Boolean)
     .join(" ");
 }
 
@@ -124,6 +183,9 @@ function quantityLineFrom(text) {
     const sum = named.reduce((acc, split) => acc + split.quantity, 0);
     if (!total || total === sum || named.some((split) => split.quantity === total)) return quantityLine(sum, null, named);
   }
+  // A bare list ("sage 150 and ecru 250") only when it is the total, split.
+  const listed = total ? listedSplitsFrom(text, total) : [];
+  if (listed.length) return quantityLine(total, null, listed);
   return quantityLine(total, colourCountFrom(text));
 }
 

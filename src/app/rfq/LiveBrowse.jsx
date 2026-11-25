@@ -39,7 +39,7 @@ import {
 import "../browse/browse.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
-import { requestSamples } from "./request-facts.js";
+import { requestQuantityTag, requestSamples } from "./request-facts.js";
 
 const FILTER_KINDS = ["product_category", "price_point", "quantity_band", "region", "client_trust_band", "timeline_band", "certification", "sourcing_region"];
 
@@ -186,7 +186,7 @@ export default function LiveBrowse({ org, profile }) {
       fitLabel: fit.label,
       quoteDue: rfq.quote_deadline ? new Date(rfq.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
       budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency),
-      quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
+      quantity: requestQuantityTag(rfq),
       samples: requestSamples(rfq),
       specialty: rfq.brief ?? rfq.material_notes ?? "",
       tags: requestTags(rfq, tagMetadata.get(rfq.id)),

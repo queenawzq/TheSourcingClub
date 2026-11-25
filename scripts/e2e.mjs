@@ -4190,6 +4190,11 @@ async function main() {
 
     await page.locator('.review-brief-stack [name="title"]').first().fill(privateTitle);
     await page.locator('.review-brief-stack [name="quantity"]').first().fill("120 units total");
+    // The starred fields: a request is not sent with any of them blank.
+    await page.locator('.review-brief-stack [name="category"]').first().fill("Womenswear");
+    await page.locator('.review-brief-stack [name="material"]').first().fill("Cotton poplin");
+    await page.locator('.review-brief-stack [name="timeline"]').first().fill("Bulk by June 2027");
+    await page.locator('.review-brief-stack [name="samples"]').first().fill("One fit sample");
     await page.locator(".bottom-bar .primary-btn").first().click();
     await waitFor(page, ".invite-results", 30000);
 
