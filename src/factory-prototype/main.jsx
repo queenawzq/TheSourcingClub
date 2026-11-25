@@ -11353,7 +11353,7 @@ function FactoryQuoteReminder({ companyType = "factory" }) {
       <section className="factory-submit-reminder">
         <h2>Helpful reminder</h2>
         <p>
-          {companyType === "trading" ? "Trading companies should confirm exact units and lead time with the assigned partner factory. MOQ belongs on the company profile or supplier-network record," : "Factories should quote exact units and exact lead time here. MOQ only belongs on profile/search,"}
+          {companyType === "trading" ? "Trading companies should confirm exact units and lead time with the assigned partner factory. MOQ belongs on the company profile or supplier-network record," : "Factories should quote exact units and exact lead time here. MOQ only belongs on profile/search,"}{" "}
           not on a response to a known order quantity.
         </p>
       </section>
