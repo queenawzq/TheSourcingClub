@@ -807,9 +807,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           : undefined}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
-        // The brand is paused by a card dispute (only a chargeback pauses a brand): one
-        // line under the timeline's title, like the brand's, in the word the step uses.
-        timelineNotice={onHold && order.status !== "cancelled" ? "The brand disputed a card payment. It can't fund or approve steps until our review is done." : ""}
+        // The brand is paused by a payment review: one line under the timeline's title, like the brand's.
+        timelineNotice={onHold && order.status !== "cancelled" ? "This order is on hold while our team reviews a payment." : ""}
       />
       {stepPopup}
       {cancel.dialog}

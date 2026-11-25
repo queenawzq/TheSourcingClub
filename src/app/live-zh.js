@@ -183,7 +183,6 @@ const PATTERNS = [
   [/^Withdrawals are paused while a payment is reviewed\.$/, () => "付款审核期间，提现已暂停。"],
   // The factory's order page while the brand is paused by a payment review (hand-written).
   [/^This order is on hold while our team reviews a payment\.$/, () => "我们的团队正在审核一笔付款，此订单暂时搁置。"],
-  [/^The brand disputed a card payment\. It can't fund or approve steps until our review is done\.$/, () => "品牌方对一笔银行卡付款提出了争议。在我们的审核完成前，品牌方无法为步骤付款或审批。"],
   // A step whose card payment the brand disputed with its bank.
   [/^Disputed$/, () => "付款争议中"],
   [/^Payment for (.+) reversed by the brand's bank$/, (m, inner) => `${inner(m[1])} 的付款已被品牌的银行撤回`],
