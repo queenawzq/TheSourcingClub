@@ -74,6 +74,8 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
   // price, and are in the total above.
   const additionalPerUnit = quote.additionalMaterialPerUnitCents ?? 0;
   const quantity = quote.production_quantity ? `${quote.production_quantity} units` : "";
+  const profile = quote.orgs?.factory_profiles;
+  const trading = (Array.isArray(profile) ? profile[0] : profile)?.vendor_kind === "trading_company";
 
   return {
     id: quote.id,
@@ -101,8 +103,9 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
     samplePlan: samplePlanOf(quote),
     validUntil: validUntilOf(quote),
     notes: [
-      quote.sourcing_includes ? `Factory includes: ${quote.sourcing_includes}` : "",
-      quote.factory_response ? `Factory response: ${quote.factory_response}` : "",
+      // The quote form's own labels, which follow the kind of vendor.
+      quote.sourcing_includes ? `${trading ? "Supplier network includes" : "Factory includes"}: ${quote.sourcing_includes}` : "",
+      quote.factory_response ? `${trading ? "Trading company response" : "Factory response"}: ${quote.factory_response}` : "",
       quote.factory_notes ?? "",
     ].filter(Boolean).join("\n\n"),
     materialCosts: (quote.materialLines ?? []).map((line) => ({
