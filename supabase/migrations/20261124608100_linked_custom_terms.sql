@@ -10,8 +10,10 @@
 -- and another company's terms must not appear in anyone's pickers. Instead,
 -- this returns the custom terms linked to subjects whose links the caller may
 -- already read, by the same rules as the link policies:
---   factory_profile: a published profile, or the caller's own;
---   rfq: a request the caller can see (can_see_rfq).
+--   factory_profile: a published profile, or the caller's own, linked by
+--     that company to its own profile;
+--   rfq: a request the caller can see (can_see_rfq), with its brand's terms.
+-- The term must belong to the company that made the link.
 -- Labels are returned as the company typed them; nothing is translated.
 -- ============================================================================
 
@@ -36,17 +38,21 @@ as $$
   from public.taxonomy_links l
   join public.taxonomy_terms t on t.id = l.term_id
   where t.org_id is not null
+    -- The term belongs to the company that linked it.
+    and t.org_id = l.org_id
     and l.subject_type = p_subject_type
     and l.subject_id = any (p_subject_ids)
     and (
-      (p_subject_type = 'factory_profile' and (
+      -- A profile link is the company's own profile.
+      (p_subject_type = 'factory_profile' and l.subject_id = l.org_id and (
         l.org_id in (select public.current_org_ids())
         or exists (
           select 1 from public.factory_profiles f
           where f.org_id = l.org_id and f.published_at is not null
         )
       ))
-      or (p_subject_type = 'rfq' and public.can_see_rfq(l.subject_id))
+      -- A request's term is its brand's.
+      or (p_subject_type = 'rfq' and t.org_id = public.rfq_brand_org(l.subject_id) and public.can_see_rfq(l.subject_id))
       or public.is_platform_admin()
     );
 $$;
