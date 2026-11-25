@@ -467,7 +467,7 @@ async function expectNoNotice(orgId, test, what) {
 }
 // A review's notices. Not the funding notice of a charge disputed in the same
 // second ("Payment for "…" under review"): it replaces "Payment held".
-const isReviewNotice = (n) => n.kind === "payment_disputed" && !/^Payment for ".*" under review$/.test(n.title);
+const isReviewNotice = (n) => n.kind === "payment_disputed" && !/^Payment for ".*" (under review|disputed)$/.test(n.title);
 async function tryWithdraw(c, amount) {
   const { factory } = await people();
   const { data, error } = await factory.client.rpc("request_withdrawal", { target_org: c.factoryOrg.id, amount, target_account: c.account.id });
@@ -485,41 +485,48 @@ async function stepInfo(order, payment) {
   return { step: m.title, num: o.order_number, label: title ? `${title} (${o.order_number})` : o.order_number };
 }
 const TEXT = {
+  // A refund made outside the app (T2 Y1: a card dispute has its own words).
   fPaused: (step, num) => ({
     title: "Withdrawals paused",
     body: `A brand requested a refund for "${step}" on ${num}, so our team is reviewing the payment. Withdrawals are paused until the review is done.`,
     zhTitle: "提现已暂停",
     zhBody: `品牌方就 ${num} 中的“${step}”申请了退款，我们的团队正在审核这笔付款。审核完成前，提现已暂停。`,
   }),
+  fDisputePaused: (step, num) => ({
+    title: "Withdrawals paused",
+    body: `A brand disputed a card payment for "${step}" on ${num}, so our team is reviewing it. Withdrawals are paused until the review is done.`,
+    zhTitle: "提现已暂停",
+    zhBody: `品牌方对 ${num} 中“${step}”的银行卡付款提出了争议，我们的团队正在审核。审核完成前，提现已暂停。`,
+  }),
   bPaused: (step, num) => ({
     title: "Account under review",
-    body: `A payment for "${step}" on ${num} was disputed with your bank. Until our review is done, you can only message vendors.`,
+    body: `A payment for "${step}" on ${num} was disputed with your bank. Until our review is done, you can't fund or approve steps or accept quotes. You can still message vendors.`,
   }),
-  fResumed: (step) => ({
+  fResumed: (step, num) => ({
     title: "Withdrawals resumed",
-    body: `The review of the payment for "${step}" is done. You can withdraw your balance again.`,
+    body: `The review of the payment for "${step}" on ${num} is done. Your balance is unchanged. You can withdraw your balance again.`,
     zhTitle: "提现已恢复",
-    zhBody: `“${step}”的付款审核已完成。你可以再次提现余额。`,
+    zhBody: `${num} 中“${step}”的付款审核已完成。你的余额没有变化。你可以再次提现余额。`,
   }),
-  fStillPaused: (step) => ({
+  fStillPaused: (step, num) => ({
     title: "Payment review complete",
-    body: `The review of the payment for "${step}" is done. Withdrawals stay paused while another payment is reviewed.`,
+    body: `The review of the payment for "${step}" on ${num} is done. Your balance is unchanged. Withdrawals stay paused while another payment is reviewed.`,
     zhTitle: "付款审核已完成",
-    zhBody: `“${step}”的付款审核已完成。另一笔付款仍在审核中，提现继续暂停。`,
+    zhBody: `${num} 中“${step}”的付款审核已完成。你的余额没有变化。另一笔付款仍在审核中，提现继续暂停。`,
   }),
   fTaken: (amount, step, num, note) => ({
     title: "Payment review complete",
-    body: `${money(amount)} for "${step}" on ${num} was returned to the brand. You can withdraw the rest of your balance. Note from our team: ${note}`,
+    body: `${money(amount)} was taken from your balance for the brand's refund of "${step}" on ${num}. You can withdraw the rest of your balance. Note from our team: ${note}`,
     zhTitle: "付款审核已完成",
-    zhBody: `${num} 中“${step}”的 ${money(amount)} 已退回品牌。你可以提现余额中的其余部分。我们团队的备注：${note}`,
+    zhBody: `已从你的余额中扣除 ${money(amount)}，用于 ${num} 中“${step}”向品牌的退款。你可以提现余额中的其余部分。我们团队的备注：${note}`,
   }),
   bUnpaused: () => ({ title: "Account review complete", body: "You can fund steps, approve steps and accept quotes again." }),
   bRefunded: (step, amount, note) => ({ title: `Your payment for "${step}" was refunded`, body: `${money(amount)} was refunded to your card. Note from our team: ${note}`, startsWith: true }),
   fRefunded: (amount, step, num, note) => ({
     title: `Refund for "${step}"`,
-    body: `${money(amount)} for "${step}" on ${num} was returned to the brand from your balance. Note from our team: ${note}`,
+    body: `${money(amount)} was taken from your balance for the brand's refund of "${step}" on ${num}. Note from our team: ${note}`,
     zhTitle: `“${step}”的退款`,
-    zhBody: `${num} 中“${step}”的 ${money(amount)} 已从你的余额退回品牌。我们团队的备注：${note}`,
+    zhBody: `已从你的余额中扣除 ${money(amount)}，用于 ${num} 中“${step}”向品牌的退款。我们团队的备注：${note}`,
   }),
   bRefundFailed: (step, amount) => ({ title: `Refund for "${step}" didn't go through`, body: `Your ${money(amount)} refund didn't go through. That amount stays on this order.` }),
   fRefundFailed: (step, num, amount) => ({ title: `Refund for "${step}" didn't go through`, body: `The refund to the brand didn't go through. Your earnings from ${num} went back up by ${money(amount)}.` }),
@@ -576,7 +583,7 @@ async function disputedApprovedStep(label) {
   expectEq([now.factory.step_title, now.factory.order_number, now.factory.count], [info.step, info.num, 1], "the factory's card line");
   const { factory, brand } = await people();
   expectEq(must(await factory.client.rpc("order_pause", { target_order: A.id }), "order_pause").on_hold, true, "the factory's order page: on hold");
-  await expectNotice(c.factoryOrg.id, TEXT.fPaused(info.step, info.label), "factory told");
+  await expectNotice(c.factoryOrg.id, TEXT.fDisputePaused(info.step, info.label), "factory told");
   await expectNotice(c.brandOrg.id, TEXT.bPaused(info.step, info.label), "brand told");
   step("staff board: at the bank");
   const row = await boardRow(v.id);
@@ -608,7 +615,7 @@ const SCENARIOS = {
     await reviewIn(pA.id, "resumed", "review resumed by itself");
     const row = await boardRow(v.id);
     expectRow(row, { step: 3, step_line: "Bank ruled for TSC", actions: [], open: false, factory_paused: false, brand_paused: true }, "won");
-    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step), "factory told it can withdraw");
+    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step, info.label), "factory told it can withdraw");
     await expectPaused(c, { brand: true, factory: false }, "after the win");
     expectEq(await tryWithdraw(c, 1000), null, "the factory withdraws again with no staff action");
     expectEq(Number((await balanceOf(c, "balance after the win")).total_cents), Number(before.total_cents), "balance after the win");
@@ -659,7 +666,7 @@ const SCENARIOS = {
     must(await resolve(v.id, "brand_at_fault", null, "Chargeback filed after receiving the goods."), "resolve brand at fault");
     const row = await boardRow(v.id);
     expectRow(row, { step: 3, state: "brand_at_fault", returned_cents: 0, step_line: `Brand at fault · TSC absorbed ${money(lost.amount_cents)} · PP Staff`, brand_paused: true }, "resolved");
-    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step), "factory resumed, nothing taken");
+    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step, info.label), "factory resumed, nothing taken");
     await expectPaused(c, { brand: true, factory: false }, "brand at fault");
     expectEq(Number((await balanceOf(c, "balance after Resolve")).total_cents), Number(before.total_cents), "nothing taken from the factory");
     const paused = await pausedBrandRow(c.brandOrg.id);
@@ -679,7 +686,7 @@ const SCENARIOS = {
     must(await resolve(v.id, "no_fault", null, "Stolen card, confirmed by the bank."), "resolve no fault");
     const row = await boardRow(v.id);
     expectRow(row, { step: 3, state: "no_fault", step_line: `No fault · TSC absorbed ${money(lost.amount_cents)} · PP Staff`, brand_paused: false }, "resolved");
-    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step), "factory resumed");
+    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step, info.label), "factory resumed");
     await expectNotice(c.brandOrg.id, TEXT.bUnpaused(), "brand unpaused");
     await expectPaused(c, { brand: false, factory: false }, "no fault");
     expectEq(Number((await balanceOf(c, "balance after Resolve")).total_cents), Number(before.total_cents), "nothing taken from the factory");
@@ -1074,12 +1081,12 @@ const SCENARIOS = {
     await reviewIn(pA.id, "resumed");
     await expectPaused(c, { brand: true, factory: true }, "one review left");
     const info = await stepInfo(A, pA);
-    await expectNotice(c.factoryOrg.id, TEXT.fStillPaused(info.step), "factory told it stays paused");
+    await expectNotice(c.factoryOrg.id, TEXT.fStillPaused(info.step, info.label), "factory told it stays paused");
     step("B won: resumed");
     await bankRules(paidB.intentId, true);
     await reviewIn(pB.id, "resumed");
     await expectPaused(c, { brand: true, factory: false }, "both done");
-    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step), "factory told it can withdraw");
+    await expectNotice(c.factoryOrg.id, TEXT.fResumed(info.step, info.label), "factory told it can withdraw");
     step("a second dispute on A's payment (recorded as the webhook records one; Stripe's test mode can't open it)");
     const second = `du_pp_second_${STAMP}_${run}`;
     must(await admin.rpc("record_payment_review_dispute", { target_payment: pA.id, dispute_id: second, status: "needs_response", amount_cents: 2000, due_by: new Date(Date.now() + 7 * 864e5).toISOString(), fee_cents: 1500 }), "second dispute");

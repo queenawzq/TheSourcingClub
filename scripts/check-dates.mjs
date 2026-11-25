@@ -118,6 +118,14 @@ const ZH_SAMPLES = [
   // Payment reviews (20261124100000).
   { kind: "payment_disputed", title: "Withdrawals paused", body: 'A brand requested a refund for "Deposit" on TSC-1042, so our team is reviewing the payment. Withdrawals are paused until the review is done.' },
   { kind: "payment_disputed", title: "Account under review", body: 'A payment for "Deposit" on TSC-1042 was disputed with your bank. Until our review is done, you can only message vendors.' },
+  // T2: the true cause, the order and the outcome (20261125100000).
+  { kind: "payment_disputed", title: "Withdrawals paused", body: 'A brand disputed a card payment for "Deposit" on TSC-1042, so our team is reviewing it. Withdrawals are paused until the review is done.' },
+  { kind: "payment_disputed", title: 'Payment for "Fit sample" disputed', body: 'A brand disputed a card payment for "Fit sample" on TSC-000456, so our team is reviewing it.' },
+  { kind: "payment_disputed", title: "Account under review", body: 'A payment for "Deposit" on TSC-1042 was disputed with your bank. Until our review is done, you can\'t fund or approve steps or accept quotes. You can still message vendors.' },
+  { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" on TSC-000457 is done. Your balance is unchanged. You can withdraw your balance again.' },
+  { kind: "payment_disputed", title: "Payment review complete", body: 'The review of the payment for "Fit sample" on TSC-000457 is done. Your balance is unchanged. Withdrawals stay paused while another payment is reviewed.' },
+  { kind: "payment_disputed", title: "Payment review complete", body: '$32.50 was taken from your balance for the brand\'s refund of "Fit sample" on TSC-000459. You can withdraw the rest of your balance. Note from our team: The goods did not arrive.' },
+  { kind: "payment_refunded", title: 'Refund for "Fit sample"', body: '$65.00 was taken from your balance for the brand\'s refund of "Fit sample" on TSC-000019. Note from our team: Late sample.' },
   { kind: "payment_disputed", title: "Payment review complete", body: '$900.00 for "Fit sample" was returned to the brand. You can withdraw the rest of your balance.' },
   { kind: "payment_disputed", title: "Payment review complete", body: '$900.00 for "Fit sample" was returned to the brand. Withdrawals stay paused while another payment is reviewed. Note from our team: The goods did not arrive.' },
   { kind: "payment_disputed", title: "Payment review complete", body: 'The review of the payment for "Fit sample" is done. Withdrawals stay paused while another payment is reviewed.' },

@@ -2,7 +2,7 @@
 // a fake Stripe and database. Never refunds twice, never replays an old
 // failure, and treats an unknown outcome as unknown.
 import assert from "node:assert/strict";
-import { disputedCardsFor, makeStaffRefund, staffRefundFailure } from "../api/_stripe.js";
+import { cardDisputedByBrand, DISPUTED_CARD, disputedCardsFor, makeStaffRefund, staffRefundFailure } from "../api/_stripe.js";
 
 const claim = (over = {}) => ({
   staff_refund_id: "sr-1", payment_id: "pay-1", order_id: "ord-1", intent: "pi_1", charge: "ch_1",
@@ -117,6 +117,11 @@ assert.equal(staffRefundFailure({ code: "charge_disputed" }), "The bank is decid
 assert.equal(staffRefundFailure({ refundStatus: "failed", refundFailureReason: "expired_or_canceled_card" }),
   "Stripe refused the refund: the card was closed. Nothing was refunded, and the factory's balance is unchanged.");
 assert.equal(staffRefundFailure({ refundStatus: "failed" }), "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.");
+// T2 A7: Stripe's reason in words, and what to do next.
+assert.equal(staffRefundFailure({ code: "resource_missing" }), "Stripe has no record of this payment, so nothing was refunded. Refund the brand another way.");
+assert.equal(staffRefundFailure({ code: "charge_already_refunded" }), "Stripe has already refunded this payment in full. Nothing more was refunded.");
+assert.equal(staffRefundFailure({ code: "amount_too_large" }), "That is more than Stripe still holds of this payment. Nothing was refunded. Refund a smaller amount.");
+assert.equal(staffRefundFailure({ code: "something_new" }), "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged. Open the payment in Stripe to see why.");
 
 // 9. A card with any chargeback (open or lost) is never offered again, paused
 // or not; an inquiry's card and one the bank ruled for TSC are (Round 2 #9b).
@@ -145,5 +150,14 @@ assert.equal(staffRefundFailure({ refundStatus: "failed" }), "Stripe refused the
   const found = await disputedCardsFor({ stripe, db, orgId: "b1" });
   assert.deepEqual([...found.ids].sort(), ["pm_dp_lost", "pm_dp_lost_unpaused", "pm_dp_open_unpaused"]);
   assert.deepEqual([...found.fingerprints].sort(), ["fp_dp_lost", "fp_dp_lost_unpaused", "fp_dp_open_unpaused"]);
+  // T2 R1: the same card typed in again (a new id, the same fingerprint) is refused before it is charged.
+  const methods = { pm_new_copy: "fp_dp_lost", pm_clean: "fp_clean", pm_inquiry_card: "fp_dp_inquiry" };
+  const withMethods = { ...stripe, paymentMethods: { retrieve: async (id) => ({ id, card: { fingerprint: methods[id] } }) } };
+  assert.equal(await cardDisputedByBrand({ stripe: withMethods, db, orgId: "b1", paymentMethodId: "pm_new_copy" }), true);
+  assert.equal(await cardDisputedByBrand({ stripe: withMethods, db, orgId: "b1", paymentMethodId: "pm_dp_open_unpaused" }), true);
+  assert.equal(await cardDisputedByBrand({ stripe: withMethods, db, orgId: "b1", paymentMethodId: "pm_clean" }), false);
+  assert.equal(await cardDisputedByBrand({ stripe: withMethods, db, orgId: "b1", paymentMethodId: "pm_inquiry_card" }), false);
+  assert.equal(await cardDisputedByBrand({ stripe: withMethods, db, orgId: "b2", paymentMethodId: "pm_new_copy" }), false, "another brand's chargeback");
+  assert.equal(DISPUTED_CARD, "This card can't be used. Use another card.");
 }
-console.log("staff refunds: made once, found again by its id, a new key on a retry, an unknown outcome kept, refusals in our words, disputed cards never offered again");
+console.log("staff refunds: made once, found again by its id, a new key on a retry, an unknown outcome kept, refusals in our words, disputed cards never offered again or charged");

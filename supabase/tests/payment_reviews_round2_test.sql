@@ -84,7 +84,7 @@ create function pg_temp.close(r uuid, note text) returns void language plpgsql a
 begin
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.close_staff_refund_failure(r, note);
+  perform public.close_staff_refund_failure(r, note, 0);
   reset role;
 end;
 $f$;
