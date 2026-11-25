@@ -892,7 +892,7 @@ function AiSuggestionsPanel({ orgId }) {
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
       {result && (
         <>
-          <p className="admin-assist-meta">Asked {asked}{result.model ? ` · ${result.model}` : ""}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
+          <p className="admin-assist-meta">Asked {asked}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
           {result.findings?.length ? (
             <div className="admin-check-list">
               {result.findings.map((finding, index) => (
