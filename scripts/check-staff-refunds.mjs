@@ -2,7 +2,7 @@
 // a fake Stripe and database. Never refunds twice, never replays an old
 // failure, and treats an unknown outcome as unknown.
 import assert from "node:assert/strict";
-import { makeStaffRefund, staffRefundFailure } from "../api/_stripe.js";
+import { disputedCardsFor, makeStaffRefund, staffRefundFailure } from "../api/_stripe.js";
 
 const claim = (over = {}) => ({
   staff_refund_id: "sr-1", payment_id: "pay-1", order_id: "ord-1", intent: "pi_1", charge: "ch_1",
@@ -117,4 +117,33 @@ assert.equal(staffRefundFailure({ code: "charge_disputed" }), "The bank is decid
 assert.equal(staffRefundFailure({ refundStatus: "failed", refundFailureReason: "expired_or_canceled_card" }),
   "Stripe refused the refund: the card was closed. Nothing was refunded, and the factory's balance is unchanged.");
 assert.equal(staffRefundFailure({ refundStatus: "failed" }), "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.");
-console.log("staff refunds: made once, found again by its id, a new key on a retry, an unknown outcome kept, refusals in our words");
+
+// 9. A card with any chargeback (open or lost) is never offered again, paused
+// or not; an inquiry's card and one the bank ruled for TSC are (Round 2 #9b).
+{
+  const reviews = [
+    { brand_org_id: "b1", cause: "dispute", state: "open", brand_unpaused_at: "2026-11-25", stripe_ref: "dp_open_unpaused" },
+    { brand_org_id: "b1", cause: "dispute", state: "brand_at_fault", brand_unpaused_at: null, stripe_ref: "dp_lost" },
+    { brand_org_id: "b1", cause: "dispute", state: "no_fault", brand_unpaused_at: "2026-11-25", stripe_ref: "dp_lost_unpaused" },
+    { brand_org_id: "b1", cause: "dispute", state: "resumed", brand_unpaused_at: null, stripe_ref: "dp_won" },
+    { brand_org_id: "b1", cause: "dispute", state: "inquiry", brand_unpaused_at: null, stripe_ref: "dp_inquiry" },
+    { brand_org_id: "b1", cause: "stripe_refund", state: "decide", brand_unpaused_at: null, stripe_ref: null },
+    { brand_org_id: "b2", cause: "dispute", state: "open", brand_unpaused_at: null, stripe_ref: "dp_other_brand" },
+  ];
+  const query = (rows) => ({
+    select: () => query(rows),
+    eq: (column, value) => query(rows.filter((row) => row[column] === value)),
+    is: (column, value) => query(rows.filter((row) => row[column] === value)),
+    not: (column, op, list) => query(rows.filter((row) => !list.slice(1, -1).split(",").includes(row[column]))),
+    then: (resolve) => resolve({ data: rows, error: null }),
+  });
+  const db = { from: () => query(reviews) };
+  const stripe = {
+    disputes: { retrieve: async (id) => ({ charge: `ch_${id}` }) },
+    charges: { retrieve: async (id) => ({ payment_method: `pm_${id.slice(3)}`, payment_method_details: { card: { fingerprint: `fp_${id.slice(3)}` } } }) },
+  };
+  const found = await disputedCardsFor({ stripe, db, orgId: "b1" });
+  assert.deepEqual([...found.ids].sort(), ["pm_dp_lost", "pm_dp_lost_unpaused", "pm_dp_open_unpaused"]);
+  assert.deepEqual([...found.fingerprints].sort(), ["fp_dp_lost", "fp_dp_lost_unpaused", "fp_dp_open_unpaused"]);
+}
+console.log("staff refunds: made once, found again by its id, a new key on a retry, an unknown outcome kept, refusals in our words, disputed cards never offered again");

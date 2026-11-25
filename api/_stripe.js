@@ -1185,17 +1185,19 @@ export function reply(response, status, body) {
 }
 
 /**
- * The cards a brand disputed a charge with, while that dispute still pauses
- * it (20261125100000, T1 #9): the Fund page never offers them again until
- * staff unpause the brand. Read from Stripe by each dispute's charge. Best
- * effort: a failed read offers every card (the brand is paused anyway).
+ * The cards a brand disputed a charge with (20261125100000, T1 #9, Round 2
+ * #9b): any chargeback, open or lost, paused or not. The Fund page never
+ * offers them again; the brand can add another card. Read from Stripe by each
+ * dispute's charge. Best effort: a card whose read fails is still offered.
  */
 export async function disputedCardsFor({ stripe, db, orgId }) {
   const found = { ids: new Set(), fingerprints: new Set() };
   try {
+    // Any chargeback, open or lost, whether or not the brand is paused
+    // (Round 2 #9b); not an inquiry, not one the bank ruled for TSC.
     const { data: reviews } = await db.from("payment_reviews").select("stripe_ref")
-      .eq("brand_org_id", orgId).eq("cause", "dispute").is("brand_unpaused_at", null)
-      .not("state", "in", "(inquiry,inquiry_closed)");
+      .eq("brand_org_id", orgId).eq("cause", "dispute")
+      .not("state", "in", "(inquiry,inquiry_closed,resumed)");
     for (const { stripe_ref: disputeId } of reviews ?? []) {
       if (!disputeId) continue;
       try {
