@@ -73,7 +73,9 @@ function namedColourSplitsFrom(text) {
   if (!list) return [];
   const splits = list.split(",").map((part) => part.trim().match(/^([A-Za-z][A-Za-z -]*?)\s+(\d{1,3}(?:,\d{3})+|\d+)$/));
   if (splits.length < 2 || splits.length > 24 || splits.some((match) => !match)) return [];
-  return splits.map(([, colour, quantity]) => ({ colour, quantity: Number(quantity.replace(/,/g, "")) }));
+  const rows = splits.map(([, colour, quantity]) => ({ colour, quantity: Number(quantity.replace(/,/g, "")) }));
+  // Rows that do not add up to the total beside them are not saved.
+  return rows.reduce((sum, row) => sum + row.quantity, 0) === firstNumber(text) ? rows : [];
 }
 
 /** ["the brief", "attachments", "questions"] → "the brief, attachments, and questions". */

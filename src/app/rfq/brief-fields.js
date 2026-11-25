@@ -81,9 +81,27 @@ function namedSplitsFrom(text) {
  * sources fabric and trims" → full. Anything less plain is left to the brand.
  */
 function sourcingFrom(text) {
-  if (/\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i.test(text)) return "brand-provided";
+  const brand = /\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i.test(text);
   const clause = text.split(/[.;!?\n]/).find((part) => /\b(?:factory|vendor|supplier)\s+(?:to\s+|should\s+|will\s+)?sources?\b/i.test(part));
+  // "The factory sources fabric; we provide labels." is the mixed case.
+  if (brand && clause) return "partial";
+  if (brand) return "brand-provided";
   return clause && !/\b(?:some|partly|partially|except|but)\b/i.test(clause) ? "full" : "";
+}
+
+/**
+ * The quantity line. Named colours are kept only when they agree with the
+ * total (or there is no other total, or the first split number was read as
+ * the total): "500 shirts (sage 200, ecru 200)" keeps the 500 and no names.
+ */
+function quantityLineFrom(text) {
+  const named = namedSplitsFrom(text);
+  const total = quantityFrom(text);
+  if (named.length) {
+    const sum = named.reduce((acc, split) => acc + split.quantity, 0);
+    if (!total || total === sum || named.some((split) => split.quantity === total)) return quantityLine(sum, null, named);
+  }
+  return quantityLine(total, colourCountFrom(text));
 }
 
 function colourCountFrom(text) {
@@ -231,7 +249,7 @@ export function fieldsFromBrief(brief, categoryTerms, otherTerms = {}) {
     category,
     certifications: labelsIn(text, otherTerms.certification),
     regions: labelsIn(text, otherTerms.region),
-    quantity: quantityLine(quantityFrom(text), colourCountFrom(text), namedSplitsFrom(text)),
+    quantity: quantityLineFrom(text),
     material: materialFrom(text),
     samples: capitalise(samples),
     timeline: timelineFrom(text),
