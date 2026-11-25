@@ -863,7 +863,8 @@ body {
 
 /* Paused payments (payment reviews): the approved mock-ups' only new rules. */
 /* "On hold" in the warning tier, on earnings and withdrawal rows alike (was blue). */
-.billing-status.payout-status-on-hold { background: #fff7e8; color: #a76500 !important; }
+.billing-status.payout-status-on-hold,
+.billing-status.payout-status-disputed { background: #fff7e8; color: #a76500 !important; }
 /* The factory's review line: plain text in the danger colour, the card's balance-line size. No fill, no border. */
 .live-payout-method-card p.payout-review-line { color: var(--danger); }
 /* One line at the top of the production timeline: the brand paused, or the factory's order on hold. */

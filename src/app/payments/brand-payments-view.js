@@ -7,7 +7,8 @@
  * anything that went back to it, the same as each row and the Fund screen:
  *   Paid         paid out to the factory
  *   Held         held by TSC now, not yet paid out (approved money stays
- *                with TSC until the factory withdraws it)
+ *                with TSC until the factory withdraws it); a charge under
+ *                a chargeback is Disputed and in neither Held nor Paid
  *   Due now      due or failed on open orders, as the dashboard's figure
  *   Remaining    what is still to pay on open orders
  * The figures follow the vendor filter, as the factory's earnings figures
@@ -171,8 +172,9 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], refunds 
 
   return {
     metrics: [
-      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released"), netCharged))],
-      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed"), netCharged))],
+      // A charge under a chargeback is Disputed: in neither figure while the bank decides.
+      ["Paid", formatMoney(sum(scoped.filter((payment) => payment.state === "released" && !payment.disputed), netCharged))],
+      ["Held", formatMoney(sum(scoped.filter((payment) => payment.state === "confirmed" && !payment.disputed), netCharged))],
       ["Due now", formatMoney(sum(unpaid.filter((payment) => OWED.has(payment.state)), chargedCents)), "highlight"],
       ["Remaining", formatMoney(remaining)],
     ],
