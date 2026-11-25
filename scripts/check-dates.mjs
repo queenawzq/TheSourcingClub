@@ -135,6 +135,7 @@ const ZH_SAMPLES = [
   { kind: "payment_refunded", title: 'Refund for "Fit sample"', body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand from your balance. Note from our team: Late sample.' },
   { kind: "payment_refunded", title: 'Your payment for "Fit sample" was refunded', body: "$68.25 was refunded to your card. Note from our team: Late sample." },
   { kind: "payment_refunded", title: 'Refund for "Fit sample" didn\'t go through', body: "Your $68.25 refund didn't go through. That amount stays on this order." },
+  { kind: "payment_refunded", title: 'Refund for "Fit sample"', body: "Update on your $20.00 refund. Note from our team: We refunded you by bank transfer, reference 4471." },
   // A refund that failed after Refund brand; a lost dispute told to a paused brand (20261124100100).
   { kind: "payment_refunded", title: 'Refund for "Deposit" didn\'t go through', body: "The refund to the brand didn't go through. Your earnings from TSC-1042 went back up by $40.00. Withdrawals are paused while our team reviews the payment again." },
   { kind: "payment_refunded", title: 'Your bank reversed your payment for "Deposit"', body: "$107.00 went back to your card." },

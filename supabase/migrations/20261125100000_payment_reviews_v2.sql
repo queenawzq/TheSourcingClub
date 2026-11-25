@@ -882,7 +882,7 @@ begin
           'open', public.payment_review_needs_staff(v),
           'actions', case when v.state = 'decide' then '["decide"]'::jsonb else '[]'::jsonb end,
           'amount_cents', v.amount_cents, 'currency', v.currency,
-          'charged_cents', coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents),
+          'charged_cents', public.payment_charged_display_cents(p),
           'step_cents', public.payment_factory_base_cents(p),
           'factory_part_cents', public.payment_review_factory_part(v),
           'returnable_cents', public.review_returnable_cents(v.factory_org_id),
@@ -1143,6 +1143,17 @@ begin
   update public.staff_refunds set closed_at = now(), closed_by = auth.uid(), close_note = said, updated_at = now()
    where id = s.id
   returning * into s;
+  -- The note goes to the brand (Round 2 #10).
+  insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, dedupe_key)
+  select s.brand_org_id, 'payment_refunded', 'payment', s.payment_id, s.order_id,
+         format('Refund for "%s"', coalesce(m.title, o.order_number)),
+         format('Update on your %s refund. Note from our team: %s', public.format_money(s.amount_cents, s.currency), said),
+         'staff_refund_closed:' || s.id
+    from public.production_orders o
+    left join public.order_payments p on p.id = s.payment_id
+    left join public.order_milestones m on m.id = p.milestone_id
+   where o.id = s.order_id
+  on conflict (org_id, dedupe_key) do nothing;
   return s;
 end;
 $$;
@@ -1363,7 +1374,10 @@ as $$
            'tsc_cents', s.amount_cents - s.factory_cents, 'payer', s.payer, 'note', s.note,
            'status', s.status, 'stripe_status', s.stripe_status, 'failure', s.failure,
            'flag', case when s.recovered_at is not null then 'Refund succeeded after a failure' end,
-           'created_at', s.created_at, 'by_name', (select u.full_name from public.user_profiles u where u.id = s.created_by))
+           'created_at', s.created_at, 'by_name', (select u.full_name from public.user_profiles u where u.id = s.created_by),
+           -- Closed after a failure (Round 2 #10): when, by whom, the note the brand got.
+           'closed_at', s.closed_at, 'close_note', s.close_note,
+           'closed_by_name', (select u.full_name from public.user_profiles u where u.id = s.closed_by))
          order by s.created_at desc), '[]'::jsonb)
     from public.staff_refunds s where s.payment_id = target_payment;
 $$;
@@ -1397,7 +1411,7 @@ begin
     'factory_name', (select name from public.orgs where id = o.factory_org_id),
     'state', p.state,
     'approved_step', p.release_requested_at is not null or p.state = 'released',
-    'charged_cents', coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents),
+    'charged_cents', public.payment_charged_display_cents(p),
     'refunded_cents', public.payment_refunded_display_cents(p),
     'refundable_cents', public.staff_refundable_cents(p),
     'step_cents', p.amount_cents,
@@ -1471,7 +1485,7 @@ begin
       select jsonb_agg(jsonb_build_object(
                'payment_id', p.id, 'step_title', m.title, 'state', p.state,
                'approved_step', p.release_requested_at is not null or p.state = 'released',
-               'charged_cents', coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents),
+               'charged_cents', public.payment_charged_display_cents(p),
                'refunded_cents', public.payment_refunded_display_cents(p),
                'refundable_cents', public.staff_refundable_cents(p),
                'refund_refusal', public.staff_refund_refusal(p),
@@ -3400,3 +3414,451 @@ $$;
 revoke all on function public.backfill_old_refunds() from public, anon, authenticated;
 
 select public.backfill_old_refunds();
+
+-- ---------------------------------------------------------------------------
+-- 15. Tester fixes, round 2 (20261125100000).
+-- ---------------------------------------------------------------------------
+-- #2b. A payment a refund sent back to pay no longer names its charge; the
+-- refund ledger still does. What was charged then: the lines of the last
+-- refunded charge, while the payment has not been charged again.
+create or replace function public.payment_reset_charge_cents(p public.order_payments)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with last_line as (
+    select l.payment_intent from public.payment_refund_lines l
+     where l.payment_id = p.id and l.payment_intent is not null
+     order by l.refunded_at desc limit 1
+  )
+  select sum(l.amount_cents)::bigint
+    from public.payment_refund_lines l, last_line
+   where p.state in ('due', 'failed', 'not_due', 'processing') and p.refunded_at is not null and p.charged_cents is null
+     and l.payment_id = p.id and l.payment_intent = last_line.payment_intent
+     and last_line.payment_intent is distinct from p.stripe_payment_intent_id;
+$$;
+revoke all on function public.payment_reset_charge_cents(public.order_payments) from public, anon, authenticated;
+grant execute on function public.payment_reset_charge_cents(public.order_payments) to service_role;
+
+-- Charged, as staff read it: the charge, else the one refunded, else the step's.
+create or replace function public.payment_charged_display_cents(p public.order_payments)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(p.charged_cents, p.amount_received_cents, public.payment_reset_charge_cents(p), p.amount_cents);
+$$;
+revoke all on function public.payment_charged_display_cents(public.order_payments) from public, anon, authenticated;
+grant execute on function public.payment_charged_display_cents(public.order_payments) to service_role;
+
+-- Refunded, as staff read it, from the ledger: a payment sent back to pay
+-- shows the refund of its last charge; a cancelled order's, its cancellation.
+create or replace function public.payment_refunded_display_cents(p public.order_payments)
+returns bigint
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select case
+    when public.payment_reset_charge_cents(p) is not null then public.payment_reset_charge_cents(p)
+    when p.state = 'cancelled' and p.refunded_at is not null then
+      p.refunded_cents + p.dispute_lost_cents
+      + coalesce((select sum(l.amount_cents) from public.payment_refund_lines l
+                   where l.payment_id = p.id and l.kind = 'cancellation'
+                     and l.payment_intent is not distinct from p.stripe_payment_intent_id), 0)
+    else p.refunded_cents + p.dispute_lost_cents
+  end::bigint;
+$$;
+revoke all on function public.payment_refunded_display_cents(public.order_payments) from public, anon, authenticated;
+grant execute on function public.payment_refunded_display_cents(public.order_payments) to service_role;
+
+-- #4b. A step not approved whose charge the bank is deciding: its own figure,
+-- Disputed (disputed_cents and rows with figure 'disputed'), not Awaiting
+-- approval. In Total. factory_balance (20261124100000) with that change.
+CREATE OR REPLACE FUNCTION public.factory_balance(target_org uuid, target_client uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  r record;
+  stripe_on_way bigint := 0;
+  fw public.factory_withdrawals;
+  out_withdrawals jsonb := '[]'::jsonb;
+  fees bigint;
+  rest bigint;
+  out_rows jsonb := '[]'::jsonb;
+  awaiting bigint := 0;
+  owed_cleared bigint := 0;
+  owed_clearing bigint := 0;
+  owed_moving bigint := 0;
+  stripe_released bigint := 0;
+  other_released bigint := 0;
+  taken_open bigint := 0;
+  taken_paid bigint := 0;
+  stripe_fees bigint := 0;
+  disputed bigint := 0;
+  -- Held for a step not approved, its charge disputed (Round 2 #4b).
+  disputed_held bigint := 0;
+  next_at timestamptz;
+  available bigint;
+  pending bigint;
+  processing bigint;
+  paid_out bigint;
+  debt bigint := 0;
+  refunded_total bigint := 0;
+  refund_part bigint;
+begin
+  if not (public.is_org_member(target_org) or public.is_platform_admin()) then
+    raise exception 'not a member of this company' using errcode = '42501';
+  end if;
+
+  -- What a provider kept of a withdrawal it returned (paid or still being
+  -- sent) counts like a fee: the factory bears it (20261121385000).
+  select coalesce(sum(w.fee_cents) filter (where w.status = 'paid'), 0)
+         + coalesce(sum(w.kept_cents) filter (where w.status = 'failed'), 0)
+    into fees
+    from public.factory_withdrawals w
+   where w.org_id = target_org and w.currency = 'USD';
+  -- Stripe's payout fee, taken by reversal when the factory withdrew to its
+  -- bank (api/_stripe-withdrawals.js), in US cents; a fee given back is not
+  -- counted. The same rule the owner's card used to apply on its own.
+  select coalesce(sum(s.fee_cents), 0) into stripe_fees
+    from public.stripe_withdrawals s
+   where s.org_id = target_org and s.state in ('fee_taken', 'paid_out') and s.fee_cents is not null;
+
+  -- Payment by payment (the old pool was turned into takes, 20261121350000).
+  for r in
+    select p, o.status as order_status,
+           public.payment_factory_cents(p) as factory_cents,
+           public.payment_factory_base_cents(p) as base_cents,
+           (select x.status from public.provider_payouts x where x.payment_id = p.id
+             order by x.created_at desc limit 1) as attempt_status,
+           -- Held by a withdrawal, less any part refunded since (that part is
+           -- in no figure: its row reads Refunded, below).
+           coalesce((select sum(t.amount_cents - public.take_refunded_cents(t)) from public.payment_takes t
+                      where t.payment_id = p.id and t.status = 'held' and t.road = 'stripe'), 0)::bigint as held_stripe,
+           coalesce((select sum(t.amount_cents - public.take_refunded_cents(t)) from public.payment_takes t
+                      where t.payment_id = p.id and t.status = 'held' and t.road = 'pool'), 0)::bigint as held_pool,
+           coalesce((select sum(t.amount_cents) from public.payment_takes t
+                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'stripe'), 0)::bigint as sent_stripe,
+           -- The part of that whose Stripe payout is still on its way to the
+           -- bank (the same test as the withdrawals' 'on_its_way' below).
+           coalesce((select sum(t.amount_cents) from public.payment_takes t
+                       join public.stripe_withdrawals s on s.id = t.stripe_withdrawal_id
+                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'stripe'
+                        and s.state = 'paid_out' and coalesce(s.payout_status, 'pending') not in ('failed', 'canceled')
+                        and (s.payout_arrives_on > (now() at time zone 'utc')::date
+                             or (s.payout_arrives_on is null and coalesce(s.payout_status, 'pending') in ('pending', 'in_transit')))), 0)::bigint as sent_stripe_on_way,
+           coalesce((select sum(t.amount_cents) from public.payment_takes t
+                      where t.payment_id = p.id and t.status = 'sent' and t.road = 'pool'), 0)::bigint as sent_pool
+      from public.order_payments p
+      join public.production_orders o on o.id = p.order_id
+     where o.factory_org_id = target_org and p.currency = 'USD'
+       and p.state in ('confirmed', 'released')
+       and (target_client is null or o.brand_org_id = target_client)
+       and not (p.state = 'confirmed' and p.release_requested_at is null and o.status = 'cancelled')
+  loop
+    -- Refunded to the brand, or a dispute lost, since it was funded: dated
+    -- rows of their own, below zero; the step's own row is left as it was.
+    -- The figures already count the step at what the factory now earns.
+    if r.base_cents > r.factory_cents then
+      -- Returned to the brand by staff after a payment review (20261124100000).
+      if (r.p).taken_back_cents > 0 then
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'refunded',
+          'amount_cents', -least((r.p).taken_back_cents, r.base_cents - r.factory_cents), 'stripe', false, 'cause', 'returned',
+          'at', (select max(v.decided_at) from public.payment_reviews v
+                  where v.factory_org_id = target_org and v.decision = 'refund_brand')));
+      end if;
+      refund_part := least(r.base_cents, coalesce(round(((r.p).refunded_cents)::numeric * (r.p).amount_cents
+                       / nullif(coalesce((r.p).charged_cents, (r.p).amount_received_cents, (r.p).amount_cents), 0))::bigint, 0));
+      refund_part := least(refund_part, r.base_cents - r.factory_cents - least((r.p).taken_back_cents, r.base_cents - r.factory_cents));
+      refunded_total := refunded_total + (r.base_cents - r.factory_cents);
+      if refund_part > 0 then
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'refunded',
+          'amount_cents', -refund_part, 'stripe', false, 'cause', 'refund', 'at', (r.p).refund_amount_at));
+      end if;
+      if r.base_cents - r.factory_cents - refund_part - least((r.p).taken_back_cents, r.base_cents - r.factory_cents) > 0 then
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'refunded',
+          'amount_cents', -(r.base_cents - r.factory_cents - refund_part - least((r.p).taken_back_cents, r.base_cents - r.factory_cents)), 'stripe', false, 'cause', 'dispute_lost',
+          'at', (r.p).dispute_lost_at));
+      end if;
+    end if;
+    -- What withdrawals took.
+    if r.held_stripe > 0 then
+      taken_open := taken_open + r.held_stripe;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'processing',
+        'amount_cents', r.held_stripe, 'stripe', true, 'taken', true));
+    end if;
+    if r.held_pool > 0 then
+      taken_open := taken_open + r.held_pool;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'processing',
+        'amount_cents', r.held_pool, 'stripe', false, 'taken', true));
+    end if;
+    if r.sent_stripe > 0 then
+      stripe_released := stripe_released + r.sent_stripe;
+      -- Still on its way to the bank: the row says so (its row word "On its
+      -- way"); the figures are unchanged (Processing counts the payout below).
+      if r.sent_stripe - r.sent_stripe_on_way > 0 then
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'paid_out',
+          'amount_cents', r.sent_stripe - r.sent_stripe_on_way, 'stripe', true, 'taken', true));
+      end if;
+      if r.sent_stripe_on_way > 0 then
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'on_its_way',
+          'amount_cents', r.sent_stripe_on_way, 'stripe', true, 'taken', true));
+      end if;
+    end if;
+    if r.sent_pool > 0 then
+      taken_paid := taken_paid + r.sent_pool;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'paid_out',
+        'amount_cents', r.sent_pool, 'stripe', false, 'taken', true));
+    end if;
+    rest := r.factory_cents - r.held_stripe - r.held_pool - r.sent_stripe - r.sent_pool;
+
+    if (r.p).state = 'released' then
+      -- Released by withdrawals: their takes said it all. Released the old
+      -- way (a transfer or a payout per step): the whole step.
+      -- (A step withdrawals released whose parts all came back sent nothing.)
+      if r.held_stripe + r.held_pool + r.sent_stripe + r.sent_pool = 0
+         and not ((r.p).released_note = 'Withdrawn'
+                  and exists (select 1 from public.payment_takes t where t.payment_id = (r.p).id and t.status = 'returned')) then
+        -- What was sent then: Paid out never falls when it is refunded later
+        -- (that part is owed to TSC, below).
+        if (r.p).stripe_transfer_id is not null then
+          stripe_released := stripe_released + r.base_cents;
+        else
+          other_released := other_released + r.base_cents;
+        end if;
+        out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'paid_out',
+          'amount_cents', r.base_cents, 'stripe', (r.p).stripe_transfer_id is not null));
+      end if;
+    elsif (r.p).release_requested_at is null and (r.p).disputed_at is not null then
+      -- A chargeback the bank is deciding: Disputed, not Awaiting approval.
+      disputed_held := disputed_held + r.factory_cents;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'disputed',
+        'amount_cents', r.factory_cents, 'stripe', false, 'held', true, 'held_reason', 'disputed'));
+    elsif (r.p).release_requested_at is null then
+      awaiting := awaiting + r.factory_cents;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'awaiting',
+        'amount_cents', r.factory_cents, 'stripe', false));
+    elsif rest <= 0 then
+      null;
+    -- Moving, or staff's to settle: an earlier version's Stripe release, a
+    -- claim, a Wise / PayPal payout per step under way, or a disputed charge.
+    elsif (r.p).stripe_release_started or (r.p).release_claimed_at is not null
+          or r.attempt_status = 'processing' or (r.p).disputed_at is not null then
+      owed_moving := owed_moving + rest;
+      -- A disputed charge's step is held: never "available on" any date.
+      if (r.p).disputed_at is not null then
+        disputed := disputed + rest;
+      end if;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', case when (r.p).disputed_at is not null then 'pending' else 'processing' end,
+        'amount_cents', rest, 'stripe', false, 'held', (r.p).disputed_at is not null,
+        'held_reason', case when (r.p).disputed_at is not null then 'disputed' end));
+    elsif public.payment_cleared(r.p) then
+      owed_cleared := owed_cleared + rest;
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'available',
+        'amount_cents', rest, 'stripe', false));
+    else
+      owed_clearing := owed_clearing + rest;
+      next_at := least(coalesce(next_at, public.payment_clears_at(r.p)), public.payment_clears_at(r.p));
+      out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', (r.p).id, 'figure', 'pending',
+        'amount_cents', rest, 'stripe', false, 'clears_at', public.payment_clears_at(r.p)));
+    end if;
+  end loop;
+
+  -- An old pool step refunded in full after a withdrawal took it, reset to be
+  -- paid again (20261121350000): what was sent stays Paid out, and is owed to
+  -- TSC (factory_debt_cents, below) until the brand pays the step again.
+  for r in
+    select p.id, p.refunded_at, sum(t.amount_cents)::bigint as sent
+      from public.payment_takes t
+      join public.order_payments p on p.id = t.payment_id
+      join public.production_orders o on o.id = p.order_id
+     where o.factory_org_id = target_org and p.currency = 'USD' and t.status = 'sent'
+       and p.state not in ('confirmed', 'released')
+       and (target_client is null or o.brand_org_id = target_client)
+     group by p.id, p.refunded_at
+  loop
+    taken_paid := taken_paid + r.sent;
+    refunded_total := refunded_total + r.sent;
+    out_rows := out_rows || jsonb_build_array(
+      jsonb_build_object('payment_id', r.id, 'figure', 'paid_out', 'amount_cents', r.sent, 'stripe', false, 'taken', true),
+      jsonb_build_object('payment_id', r.id, 'figure', 'refunded', 'amount_cents', -r.sent, 'stripe', false,
+                         'cause', 'refund', 'at', r.refunded_at));
+  end loop;
+
+  -- A part a waiting withdrawal holds on a step refunded since (in full the
+  -- old way, or in part: take_refunded_cents): that money went back to the
+  -- brand, so it is in no figure (not earnings, never "on hold"); its row
+  -- reads Refunded. Cancelling or declining the withdrawal gives back only
+  -- the rest.
+  for r in
+    select t.payment_id, public.take_refunded_cents(t) as amount_cents, t.road
+      from public.payment_takes t
+      join public.order_payments p on p.id = t.payment_id
+      join public.production_orders o on o.id = p.order_id
+     where t.org_id = target_org and t.status = 'held' and p.currency = 'USD'
+       and (target_client is null or o.brand_org_id = target_client)
+  loop
+    continue when r.amount_cents <= 0;
+    out_rows := out_rows || jsonb_build_array(jsonb_build_object('payment_id', r.payment_id, 'figure', 'refunded',
+      'amount_cents', r.amount_cents, 'stripe', r.road = 'stripe', 'taken', true, 'refunded', true));
+  end loop;
+
+  -- Money that had already left TSC when it was refunded: owed to TSC,
+  -- taken off Available (which can go below zero). Paid out is unchanged.
+  debt := public.factory_debt_cents(target_org, target_client);
+
+  if target_client is not null then
+    fees := 0;
+    stripe_fees := 0;
+  end if;
+  -- Every withdrawal, as the factory's list shows it, in the US dollars it
+  -- took from the balance (a Stripe one: the amount asked less its fee, never
+  -- a re-conversion of the payout). A Stripe payout is on its way (Pending)
+  -- until its arrival day, then Paid out; withdrawals span clients, so a
+  -- client's view has none.
+  if target_client is null then
+    for r in
+      select s.id, s.state, s.payout_status, s.payout_arrives_on, s.destination_label, s.created_at, s.fee_cents,
+             case when s.usd_cents is not null then s.usd_cents - coalesce(s.fee_cents, 0)
+                  when upper(s.currency) = 'USD' then s.amount_minor - coalesce(s.fee_cents, 0) end as net_cents,
+             s.payout_minor, s.currency
+        from public.stripe_withdrawals s
+       where s.org_id = target_org and s.state in ('paid_out', 'refused', 'fee_returned')
+    loop
+      out_withdrawals := out_withdrawals || jsonb_build_array(jsonb_build_object(
+        'id', r.id, 'road', 'stripe', 'created_at', r.created_at, 'to', r.destination_label,
+        'amount_cents', r.net_cents, 'fee_cents', r.fee_cents,
+        'receives_minor', r.payout_minor, 'receives_currency', upper(r.currency),
+        'arrives_on', r.payout_arrives_on,
+        'word', case
+          when r.state <> 'paid_out' or r.payout_status in ('failed', 'canceled') then 'returned'
+          when r.payout_arrives_on > (now() at time zone 'utc')::date
+               or (r.payout_arrives_on is null and coalesce(r.payout_status, 'pending') in ('pending', 'in_transit'))
+            then 'on_its_way'
+          else 'paid' end));
+      if r.state = 'paid_out' and coalesce(r.payout_status, 'pending') not in ('failed', 'canceled')
+         and (r.payout_arrives_on > (now() at time zone 'utc')::date
+              or (r.payout_arrives_on is null and coalesce(r.payout_status, 'pending') in ('pending', 'in_transit'))) then
+        stripe_on_way := stripe_on_way + coalesce(r.net_cents, 0);
+      end if;
+    end loop;
+    for fw in
+      select w.* from public.factory_withdrawals w where w.org_id = target_org and w.currency = 'USD'
+    loop
+      out_withdrawals := out_withdrawals || jsonb_build_array(jsonb_build_object(
+        'id', fw.id, 'road', 'pool', 'provider', fw.provider, 'created_at', fw.created_at, 'to', fw.paid_to,
+        'amount_cents', fw.amount_cents, 'fee_cents', fw.fee_cents,
+        'receives_minor', fw.receives_minor, 'receives_currency', fw.receives_currency,
+        -- A failed one: what came back to the balance (the rest went to the
+        -- brand), for the card's line (20261121290000).
+        -- As kept when it failed (20261121300000), never recomputed.
+        'back_cents', case when fw.status = 'failed' then fw.back_cents end,
+        -- Returned or failed: what the provider kept (20261121385000).
+        'kept_cents', case when fw.status = 'failed' then fw.kept_cents end,
+        -- What sent its refunded part back to the brand: 'reversed' when the
+        -- brand's bank took part of it (a lost dispute), else 'refunded'
+        -- (20261121260000). Null when nothing went back.
+        'refund_cause', case
+          when fw.status not in ('requested', 'paying') or public.withdrawal_refunded_cents(fw) <= 0 then null
+          when exists (select 1 from public.payment_takes k join public.order_payments p on p.id = k.payment_id
+                        where k.factory_withdrawal_id = fw.id and k.status = 'held' and p.dispute_lost_cents > 0
+                          and public.take_refunded_cents(k) > 0)
+            then 'reversed'
+          else 'refunded' end,
+        'word', case
+          when fw.status = 'requested' then case when public.withdrawal_covered(fw) then 'waiting' else 'on_hold' end
+          when fw.status = 'paying' then 'on_its_way'
+          when fw.status = 'paid' then 'paid'
+          else 'returned' end,
+        -- A waiting request part of which is on a step disputed since: that
+        -- part is on hold; on a step refunded since: that part is refunded
+        -- (gone back to the brand, in no figure); the rest still waiting.
+        -- Other states: one part, the whole amount.
+        'parts', case
+          -- Being sent, part of which went back to the brand since (a refund or
+          -- a lost dispute): what it still holds, and that part (20261121280000).
+          when fw.status = 'paying' and public.withdrawal_refunded_cents(fw) > 0 then
+            (case when fw.amount_cents - public.withdrawal_refunded_cents(fw) > 0
+                  then jsonb_build_array(jsonb_build_object('word', 'on_its_way', 'amount_cents', fw.amount_cents - public.withdrawal_refunded_cents(fw)))
+                  else '[]'::jsonb end)
+            || jsonb_build_array(jsonb_build_object('word', 'refunded', 'amount_cents', public.withdrawal_refunded_cents(fw)))
+          when fw.status = 'requested' and public.withdrawal_on_hold_cents(fw) > 0 then
+            (case when fw.amount_cents - public.withdrawal_on_hold_cents(fw) > 0
+                  then jsonb_build_array(jsonb_build_object('word', 'waiting', 'amount_cents', fw.amount_cents - public.withdrawal_on_hold_cents(fw)))
+                  else '[]'::jsonb end)
+            || (case when public.withdrawal_on_hold_cents(fw) - public.withdrawal_refunded_cents(fw) > 0
+                  then jsonb_build_array(jsonb_build_object('word', 'on_hold', 'amount_cents', public.withdrawal_on_hold_cents(fw) - public.withdrawal_refunded_cents(fw)))
+                  else '[]'::jsonb end)
+            || (case when public.withdrawal_refunded_cents(fw) > 0
+                  then jsonb_build_array(jsonb_build_object('word', 'refunded', 'amount_cents', public.withdrawal_refunded_cents(fw)))
+                  else '[]'::jsonb end)
+          else jsonb_build_array(jsonb_build_object('word', case
+            when fw.status = 'requested' then case when public.withdrawal_covered(fw) then 'waiting' else 'on_hold' end
+            when fw.status = 'paying' then 'on_its_way'
+            when fw.status = 'paid' then 'paid'
+            else 'returned' end, 'amount_cents', fw.amount_cents)) end));
+    end loop;
+  end if;
+
+  available := owed_cleared - debt;
+  -- Pending: earnings not yet available (card payments clearing, disputed
+  -- steps). Processing: withdrawals asked for or being sent (and old
+  -- step-by-step payouts under way): no longer earnings to wait for.
+  pending := owed_clearing + disputed;
+  processing := (owed_moving - disputed) + taken_open + stripe_on_way;
+  paid_out := stripe_released + other_released + taken_paid - fees - stripe_fees - stripe_on_way;
+
+  return jsonb_build_object(
+    'currency', 'USD',
+    'client', target_client,
+    'awaiting_cents', awaiting,
+    -- Held for steps not approved whose charge the bank is deciding: in Total,
+    -- in no other figure.
+    'disputed_cents', disputed_held,
+    'available_cents', available,
+    'pending_cents', pending,
+    'processing_cents', processing,
+    'paid_out_cents', paid_out,
+    'owed_to_tsc_cents', debt,
+    -- What its earnings do not cover: the card's "You owe TSC" line; gone
+    -- once they do (20261121380000).
+    'uncovered_debt_cents', case when target_client is null then public.factory_debt_uncovered_cents(target_org)
+                                 else least(debt, public.factory_debt_uncovered_cents(target_org)) end,
+    'refunded_cents', refunded_total,
+    'total_cents', awaiting + disputed_held + available + pending + processing + paid_out,
+    'has_method', public.factory_can_withdraw(target_org),
+    -- The one rule for "Add a withdrawal method": the notices' own
+    -- (factory_has_no_saved_method), read by the card and the order page
+    -- (20261121380000).
+    'no_saved_method', public.factory_has_no_saved_method(target_org),
+    'next_cleared_at', next_at,
+    'parts', jsonb_build_object(
+      'owed_cleared_cents', owed_cleared,
+      'owed_clearing_cents', owed_clearing,
+      'owed_moving_cents', owed_moving,
+      'taken_open_cents', taken_open,
+      'taken_paid_cents', taken_paid,
+      'withdrawal_fees_cents', fees,
+      'stripe_withdrawal_fees_cents', stripe_fees,
+      'disputed_cents', disputed,
+      'stripe_on_way_cents', stripe_on_way,
+      'stripe_released_cents', stripe_released,
+      'other_released_cents', other_released,
+      'owed_to_tsc_cents', debt),
+    -- Withdrawals paused while a payment is reviewed (20261124100000): the
+    -- card's line names the step of the oldest open review.
+    'review', public.factory_review_summary(target_org),
+    'rows', out_rows,
+    'withdrawals', out_withdrawals
+  );
+end;
+$function$;
