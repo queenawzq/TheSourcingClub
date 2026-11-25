@@ -75,7 +75,7 @@ const DB_WORDS = {
   cny_statement: "Confirm the contract and invoice statement first.",
   payout_not_processing: "Nothing is under way for this payment. Reload the board.",
   // The rules every withdrawal follows (20261121340000).
-  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).",
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
   payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",

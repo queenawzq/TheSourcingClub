@@ -37,7 +37,7 @@ const REFUSALS = {
   review_own_company: "You belong to this brand, so someone else on the staff must decide.",
   payout_own_company: "You belong to this factory, so someone else on the staff must decide.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must decide.",
-  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).",
 };
 const said = (error) => {
   const detail = error?.details ?? error?.detail;
