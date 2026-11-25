@@ -160,7 +160,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [client, setClient] = useState("All clients");
   // The factory's country: a PayPal fee is domestic or international by it,
   // as the server works it out (api/_withdrawals.js factoryCountry).
-  const [factoryCountry, setFactoryCountry] = useState("");
+  const [factoryCountry, setFactoryCountry] = useState(null);
   useEffect(() => {
     let cancelled = false;
     supabase.from("factory_profiles").select("country_code").eq("org_id", org.id).maybeSingle()
@@ -412,7 +412,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // A PayPal withdrawal's fee while it is on its way, worked out as the
   // Withdraw dialog and the server do; a quoted fee (Wise) only once paid.
   const withdrawingFee = (w) => {
-    if (w.provider !== "paypal" || !(Number(w.amount_cents) > 0)) return null;
+    // Not until the country is read: a US factory never sees the international fee first.
+    if (factoryCountry == null || w.provider !== "paypal" || !(Number(w.amount_cents) > 0)) return null;
     return withdrawalFee({ provider: "paypal", amountCents: Number(w.amount_cents), currency: "USD", country: factoryCountry }).feeCents ?? null;
   };
   const payoutTransactions = (stripeBalance?.payouts ?? []).filter((row) => !recorded.has(row.id)).flatMap((row) => {
