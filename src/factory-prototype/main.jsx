@@ -1287,6 +1287,7 @@ export const factoryMainZhText = {
   "Vendor should source all materials and components": "供应商需采购全部面辅料和部件",
   "Brand will supply all materials": "品牌提供全部面辅料",
   "No production orders yet.": "暂无生产订单。",
+  "No active orders.": "暂无进行中的订单。",
   "Bulk production": "大货生产",
   "Final balance": "尾款",
   "Deposit": "定金",
@@ -6801,7 +6802,7 @@ export function FactoryProjectsPage({
                 ? "No cancelled orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
-                : live ? "No production orders yet." : "No production orders yet. One appears here when a brand awards you a quote."}
+                : live ? (orderRows.length ? "No active orders." : "No production orders yet.") : "No production orders yet. One appears here when a brand awards you a quote."}
             </p>
           ) : (
             ordersForTab.map((project) => (

@@ -123,9 +123,9 @@ export function OrderCardMenu({ customTabs = [], isFiled = null, onToggleTab = n
   const close = () => setMenuOpen(false);
   // Live, a company with no tabs of its own would get an empty "Add to" panel.
   const showAddTo = !onToggleTab || customTabs.length > 0;
-  if (!showAddTo && !children) {
-    return <button className="rfq-more" type="button" aria-label="More order actions">...</button>;
-  }
+  // Nothing to offer (live: no tabs of its own, and nothing this order
+  // allows): no button, rather than one that opens nothing.
+  if (!showAddTo && !children) return null;
 
   return (
     <div className="project-overflow" ref={menuRef}>
