@@ -22,12 +22,35 @@ export const NO_LABEL = ".accepted-factory, .project-factory-panel";
 export const HEADER_ROW = ".quote-factory-top, .marketplace-factory-top, .quote-detail-summary-top, .invite-factory-top";
 export const SELF_TRANSLATING = ".marketplace-factory-card, .saved-factory-card, .directory-factory-card, .home-recommended-invite-card, .factory-profile-page, .brand-factory-public-profile";
 
-/** The card a translated text belongs to; the element itself when it sits in no card. */
+/**
+ * The card a translated text belongs to; the element itself when it sits in no
+ * card. A table row in no card (Compare quotes, in its dialog) is the card:
+ * one label per vendor's row, not one per cell.
+ */
 export function cardFor(element) {
+  let row = null;
   for (let at = element; at && !at.matches(CARD_STOP); at = at.parentElement) {
     if (at.matches(CARD)) return at;
+    if (!row && at.matches("tr")) row = at;
   }
-  return element;
+  return row ?? element;
+}
+
+/**
+ * Where a card's label goes, from its anchor (labelAnchors). Never as a table
+ * part of its own: a label placed after a cell became an extra cell, and every
+ * figure after it sat under the wrong heading. A row's label goes inside the
+ * row's first cell (the vendor's); a card holding a table has its label just
+ * above the table, never squeezed into a cell.
+ *   { after: element } | { into: cell } | { before: table }
+ */
+export function labelPlace(anchor, card) {
+  const table = anchor.closest("table");
+  if (!table) return { after: anchor };
+  if (card !== anchor && !table.contains(card) && card.contains(table)) return { before: table };
+  const row = card.matches("tr") ? card : anchor.closest("tr");
+  const cell = row?.querySelector("td, th");
+  return cell ? { into: cell } : { before: table };
 }
 
 /** Translated, but drawn without a label (the rail's vendor card). */
