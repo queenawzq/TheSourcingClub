@@ -108,7 +108,7 @@ begin
   select id into v from public.payment_reviews where payment_id = pg_temp.pay(n) and cause = 'refund' and state = 'decide';
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.decide_payment_review(v, 'factory_pays', cents, 'pgTAP decision');
+  perform public.decide_payment_review(v, 'factory_at_fault', cents, 'pgTAP decision');
   reset role;
 end;
 $f$;
@@ -207,7 +207,7 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_
   'the first ($10) fails');
 select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(1)), 464::bigint, 'only its $9 comes back');
 select is((select string_agg(state || ' ' || returned_cents, ', ' order by state) from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund'),
-  'decide 0, factory_paid 450', 'its review reopens; the other keeps its decision');
+  'decide 0, factory_at_fault 450', 'its review reopens; the other keeps its decision');
 select is((select review_id from public.payment_review_refunds where stripe_refund_id = 're_pgtap_pr27_a'),
           (select id from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund' and state = 'decide'), 'the reopened one is the failed refund''s own');
 create function pg_temp.tsc_pays(n int) returns void language plpgsql as $f$
@@ -216,7 +216,7 @@ begin
   select id into v from public.payment_reviews where payment_id = pg_temp.pay(n) and cause = 'refund' and state = 'decide';
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.decide_payment_review(v, 'tsc_pays', null, 'pgTAP');
+  perform public.decide_payment_review(v, 'no_fault', null, 'pgTAP');
   reset role;
 end;
 $f$;
@@ -254,6 +254,55 @@ select throws_ok($$select public.mark_payment_sent('c27f0005-0000-0000-0000-0000
 reset role;
 
 -- ===========================================================================
+-- W2c. Who was at fault.
+-- ===========================================================================
+create function pg_temp.resolve(review uuid, fault text, cents bigint) returns void language plpgsql as $f$
+begin
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  perform public.decide_payment_review(review, fault, cents, 'pgTAP resolve');
+  reset role;
+end;
+$f$;
+create function pg_temp.paused_brands() returns jsonb language plpgsql as $f$
+declare j jsonb;
+begin
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  j := public.admin_paused_brands();
+  reset role;
+  return j;
+end;
+$f$;
+select is((select b ->> 'reason' || ' · ' || (b ->> 'order_number') from jsonb_array_elements(pg_temp.paused_brands()) b
+            where (b ->> 'org_id')::uuid = 'c27b0000-0000-0000-0000-0000000000b1'), 'Bank ruling pending · TSC-927001', 'Users: why the brand is paused');
+select ok((select b ->> 'owner_email' = 'pgtap-pr27-03@example.com' from jsonb_array_elements(pg_temp.paused_brands()) b
+            where (b ->> 'org_id')::uuid = 'c27b0000-0000-0000-0000-0000000000b1'), 'with its owner''s email');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c27f0004-0000-0000-0000-000000000001'', ''dp_pgtap_pr27_4'', ''lost'', 10700, null, 1500)')$$,
+  'the bank rules for the brand on the lab dip');
+select is((select b ->> 'reason' from jsonb_array_elements(pg_temp.paused_brands()) b
+            where (b ->> 'org_id')::uuid = 'c27b0000-0000-0000-0000-0000000000b1'), 'Bank ruled for the brand', 'Users follows the ruling');
+select lives_ok(format($$select pg_temp.resolve(%L, 'brand_at_fault', null)$$, (select id from public.payment_reviews where stripe_ref = 'dp_pgtap_pr27_4')),
+  'staff: the brand was at fault');
+select is((select state from public.payment_reviews where stripe_ref = 'dp_pgtap_pr27_4'), 'brand_at_fault', 'resolved');
+select is(public.brand_paused('c27b0000-0000-0000-0000-0000000000b1'), true, 'the brand stays paused');
+select is(public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), false, 'the factory can withdraw again, nothing taken');
+select is((select b ->> 'reason' || ' · ' || (b ->> 'order_number') from jsonb_array_elements(pg_temp.paused_brands()) b
+            where (b ->> 'org_id')::uuid = 'c27b0000-0000-0000-0000-0000000000b1'), 'Brand at fault · TSC-927001', 'Users: Brand at fault');
+select ok(pg_temp.told('e1', 'Withdrawals resumed') like '%"PR27 lab dip" is done. You can withdraw your balance again.', 'the factory is told, without the note');
+-- A refund made in Stripe has no brand at fault.
+select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_amount(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', 1715)')$$,
+  'another refund of the deposit in Stripe''s dashboard');
+select throws_ok(format($$select pg_temp.resolve(%L, 'brand_at_fault', null)$$,
+                        (select id from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund' and state = 'decide')),
+  '22023', 'a refund made in Stripe has no brand at fault', 'refused on a refund row');
+select lives_ok(format($$select pg_temp.resolve(%L, 'no_fault', null)$$,
+                        (select id from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund' and state = 'decide')),
+  'not the factory: TSC absorbs it');
+select throws_ok(format($$select pg_temp.resolve(%L, 'tsc_pays', null)$$, (select id from public.payment_reviews where stripe_ref = 'dp_pgtap_pr27_4')),
+  '22023', 'choose who was at fault', 'the old names are gone');
+
+-- ===========================================================================
 -- X2-1. A paused brand's money is recorded, its payment-only step held.
 -- ===========================================================================
 create temp table intents on commit drop as select * from public.paused_brand_open_intents('c27b0000-0000-0000-0000-0000000000b1');
@@ -275,6 +324,38 @@ select ok((select release_requested_at is not null from public.order_payments wh
 select is((select state::text from public.order_milestones where id = pg_temp.step(3)), 'complete', 'and its step completes');
 select is(pg_temp.told('e1', '$100.00 added to your balance'), '$100.00 added to your balance for "PR27 second deposit" on PR27 request (TSC-927001).',
   'the factory is told');
+
+-- ===========================================================================
+-- W2c. No fault on a dispute: TSC absorbs it and the brand is unpaused.
+-- ===========================================================================
+select lives_ok($$select pg_temp.approve(6)$$, 'the unpaused brand approves the trims');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c27f0006-0000-0000-0000-000000000001'', ''dp_pgtap_pr27_6'', ''needs_response'', 10700, now() + interval ''7 days'', 1500)')$$,
+  'a stolen card disputes the trims');
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c27f0006-0000-0000-0000-000000000001'', ''dp_pgtap_pr27_6'', ''lost'', 10700, null, 1500)')$$,
+  'the bank rules for the cardholder');
+select ok(public.brand_paused('c27b0000-0000-0000-0000-0000000000b1') and public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), 'both paused');
+select lives_ok(format($$select pg_temp.resolve(%L, 'no_fault', null)$$, (select id from public.payment_reviews where stripe_ref = 'dp_pgtap_pr27_6')),
+  'staff: no one was at fault');
+select ok(not public.brand_paused('c27b0000-0000-0000-0000-0000000000b1') and not public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'),
+  'both can carry on');
+select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(6)), 0::bigint, 'nothing taken from the factory');
+select ok(pg_temp.told('b1', 'Account review complete') is not null, 'the brand is told');
+
+-- A staff refund may take less than the factory's share.
+create function pg_temp.claim_part(cents bigint, factory bigint) returns uuid language plpgsql as $f$
+declare j jsonb;
+begin
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  j := public.claim_staff_refund(pg_temp.pay(1), cents, 'factory', 'pgTAP part', factory);
+  reset role;
+  return (j ->> 'staff_refund_id')::uuid;
+end;
+$f$;
+select throws_ok($$select pg_temp.claim_part(1000, 1000)$$, '22023', 'You can take up to $9.34 from the factory''s balance.',
+  'never more than the factory''s share');
+select lives_ok($$select pg_temp.claim_part(1000, 500)$$, 'half of it from the factory''s balance');
+select is((select factory_cents from public.staff_refunds where payment_id = pg_temp.pay(1) and status = 'claimed'), 500::bigint, 'TSC pays the rest');
 
 -- ===========================================================================
 -- X2-4. A Stripe refund is staff's only if it matches its claim.

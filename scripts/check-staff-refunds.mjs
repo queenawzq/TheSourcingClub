@@ -105,4 +105,7 @@ const names = (db) => db.calls.map(([name]) => name);
   assert.equal(stripe.created.length, 0);
 }
 assert.equal(staffRefundFailure({ code: "charge_disputed" }), "The bank is deciding this payment.");
+assert.equal(staffRefundFailure({ refundStatus: "failed", refundFailureReason: "expired_or_canceled_card" }),
+  "Stripe refused the refund: the card was closed. Nothing was refunded, and the factory's balance is unchanged.");
+assert.equal(staffRefundFailure({ refundStatus: "failed" }), "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.");
 console.log("staff refunds: made once, found again by its id, a new key on a retry, an unknown outcome kept, refusals in our words");

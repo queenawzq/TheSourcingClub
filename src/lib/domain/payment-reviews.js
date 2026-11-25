@@ -26,7 +26,8 @@ export async function paymentReviewBoard() {
 }
 
 const REFUSALS = {
-  review_decision: "Choose who pays.",
+  review_decision: "Choose who was at fault.",
+  review_no_brand: "A refund made in Stripe has no brand at fault. Choose Factory or Not the factory.",
   review_not_ready: "The bank hasn't decided yet. You can decide once it has.",
   brand_not_paused: "This brand isn't paused. Reload the page.",
   unpause_factory_side: "Your company has orders with this brand, so someone else on the staff must decide.",
@@ -56,14 +57,19 @@ async function staffCall(name, args) {
   return data;
 }
 
-/** The factory pays: take `cents` (0 up to the row's factory_max_cents) from its balance, TSC the rest; the brand can use its account again. The note goes to the factory. */
-export const factoryPays = (reviewId, cents, note) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "factory_pays", amount_cents: cents ?? null, note,
+/**
+ * Resolve a review: who was at fault.
+ * - "factory_at_fault": `cents` (0 up to the row's factory_max_cents) from its balance, TSC absorbs the rest; the brand is unpaused. The note goes to the factory.
+ * - "brand_at_fault": TSC absorbs it; the brand stays paused (disputes only).
+ * - "no_fault": TSC absorbs it; the brand is unpaused (a refund row's "Not the factory").
+ */
+export const resolveReview = (reviewId, fault, cents, note) => staffCall("decide_payment_review", {
+  target_review: reviewId, decision: fault, amount_cents: fault === "factory_at_fault" ? cents ?? null : null, note,
 });
-/** TSC pays: nothing taken; the brand stays paused. The note stays with staff. */
-export const tscPays = (reviewId, note) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "tsc_pays", amount_cents: null, note,
-});
+/** @deprecated use resolveReview(id, "factory_at_fault", cents, note) */
+export const factoryPays = (reviewId, cents, note) => resolveReview(reviewId, "factory_at_fault", cents, note);
+/** @deprecated use resolveReview(id, "brand_at_fault", null, note) */
+export const tscPays = (reviewId, note) => resolveReview(reviewId, "brand_at_fault", null, note);
 /** Staff, on the brand's account: lift every pause of this brand. Resolves to { org_id, lifted }. */
 export const unpauseBrandOrg = (orgId) => staffCall("unpause_brand_org", { target_org: orgId });
 /** Staff: the brands paused now, [{ org_id, name, since, reviews }], for Users' "Paused" filter and count. */
@@ -122,11 +128,13 @@ async function refundCall(body) {
 }
 
 /**
- * Staff refund a brand: { paymentId, amountCents, payer: "factory" | "tsc" | null, note }.
+ * Staff refund a brand: { paymentId, amountCents, payer: "factory" | "tsc" | null, note, factoryCents }.
+ * factoryCents (optional, payer "factory"): less than the factory's share; TSC pays the rest.
  * Resolves to { status: "refunded" | "pending", amountCents, factoryCents, tscCents };
  * throws Error(sentence) with .hint (and .staffRefundId when Stripe couldn't be reached).
  */
-export const staffRefund = ({ paymentId, amountCents, payer = null, note }) => refundCall({ paymentId, amountCents, payer, note });
+export const staffRefund = ({ paymentId, amountCents, payer = null, note, factoryCents = null }) =>
+  refundCall({ paymentId, amountCents, payer, note, factoryCents });
 /** Check again on a refund Stripe couldn't be asked about: the same claim, never refunded twice. */
 export const checkStaffRefund = (staffRefundId) => refundCall({ staffRefundId });
 

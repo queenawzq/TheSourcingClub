@@ -177,7 +177,7 @@ select is(pg_temp.open_count(), 1, 'one open review');
 -- ===========================================================================
 select pg_temp.act_as('02');
 set local role authenticated;
-select lives_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 4000, 'Refunded for the late sample.')$$, pg_temp.review(1, 'refund')),
+select lives_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 4000, 'Refunded for the late sample.')$$, pg_temp.review(1, 'refund')),
   'the factory pays: $40 from F1''s balance');
 reset role;
 select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(1)), 4000::bigint, 'taken from the reviewed deposit');
@@ -202,7 +202,7 @@ select is((select count(*)::int from jsonb_array_elements(pg_temp.board()) x whe
 select is(pg_temp.open_count(), 1, 'counted once');
 select pg_temp.act_as('02');
 set local role authenticated;
-select lives_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, 'TSC bears it.')$$, pg_temp.review(1, 'refund')), 'staff decide again: TSC pays');
+select lives_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, 'TSC bears it.')$$, pg_temp.review(1, 'refund')), 'staff decide again: TSC pays');
 reset role;
 select is(public.factory_paused(pg_temp.org('e1')), false, 'F1 unpaused');
 
@@ -226,7 +226,7 @@ select is((select state::text from public.order_payments where id = pg_temp.pay(
 select is((select state from public.payment_reviews where id = pg_temp.review(3, 'dispute')), 'closed',
   'lost before approval: nothing to decide, the review closes (20261125100000)');
 select is((select x ->> 'step' || ' ' || (x ->> 'step_line') || ' ' || (x ->> 'open') from jsonb_array_elements(pg_temp.board()) x
-            where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), '3 Bank decided for the brand false', 'done on the board, not counted');
+            where (x ->> 'id')::uuid = pg_temp.review(3, 'dispute')), '3 Bank ruled for the brand · step not approved false', 'done on the board, not counted');
 select is(public.brand_paused(pg_temp.org('b2')), true, 'the brand stays paused');
 select is(pg_temp.told(pg_temp.org('b2'), 'Your bank reversed your payment for "PR24X fit two"'), '$107.00 went back to your card.',
   'the paused brand is not told to pay again');

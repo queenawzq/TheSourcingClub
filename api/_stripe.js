@@ -458,8 +458,17 @@ export function staffRefundFailure(failure) {
   if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
     return "Stripe refused TSC's key. Nothing was refunded.";
   }
-  if (failure?.refundStatus) return "The refund failed. Nothing was refunded.";
-  return "Stripe refused the refund. Nothing was refunded.";
+  const why = REFUND_FAILURE_WORDS[failure?.refundFailureReason];
+  if (failure?.refundStatus || why) return `Stripe refused the refund${why ? `: ${why}` : ""}. Nothing was refunded, and the factory's balance is unchanged.`;
+  return "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.";
+}
+
+/** A refund's failure_reason, in words staff read (never Stripe's message). */
+const REFUND_FAILURE_WORDS = {
+  expired_or_canceled_card: "the card was closed",
+  lost_or_stolen_card: "the card was reported lost or stolen",
+  declined: "the card's bank declined it",
+  merchant_request: "it was cancelled",
 }
 
 /**
@@ -481,6 +490,7 @@ async function recordStaffRefundFromStripe(db, refund) {
   if (["failed", "canceled"].includes(refund.status)) {
     const failure = new Error(`refund ${refund.status}`);
     failure.refundStatus = refund.status;
+    failure.refundFailureReason = refund.failure_reason ?? null;
     return rpc(db, "record_staff_refund_failed", { target_refund: id, reason: staffRefundFailure(failure) });
   }
   return rpc(db, "record_staff_refund", { target_refund: id, stripe_refund: refund.id, refund_status: refund.status });
@@ -533,6 +543,7 @@ export async function makeStaffRefund({ stripe, db, claim, renew = false }) {
     if (!["succeeded", "pending"].includes(refund.status)) {
       const failure = new Error(`refund ${refund.status}`);
       failure.refundStatus = refund.status;
+      failure.refundFailureReason = refund.failure_reason ?? null;
       throw failure;
     }
   } catch (failure) {
