@@ -112,6 +112,8 @@ const padded = await suggest.shapeSuggestion("Thank you for your patience while 
 check("a summary naming the company or padding with progress falls back", padded.startsWith("We need a few more details to finish reviewing your profile."), padded);
 const named = await suggest.shapeSuggestion("We need two items from Acme Knit to finish the review.\n\nWe look forward to receiving these.", ITEMS, "Acme Knit");
 check("a summary naming the company falls back", named.startsWith("We need a few more details"), named);
+const shortName = await suggest.shapeSuggestion("We need the knitwear details below to complete the review.\n\nWe look forward to receiving these.", ITEMS, "Knit");
+check("a short company name inside another word is not the company", shortName.startsWith("We need the knitwear details"), shortName);
 check("a missing summary and close are filled", (await suggest.shapeSuggestion("- Licence", ITEMS)) === "We need a few more details to finish reviewing your profile.\n\n- Upload your licence (Verification).\n\nWe look forward to receiving these.");
 const summaryKept = await suggest.shapeSuggestion("Hi team, your licence could not be read.\n\nThanks for this.", ITEMS);
 check("a summary that starts with Hi stays", summaryKept.startsWith("Hi team, your licence could not be read."), summaryKept);

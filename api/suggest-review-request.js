@@ -180,7 +180,7 @@ function promptFor({ companyName, entityType, items }) {
   return `Draft an email note from The Sourcing Club operations team asking an applicant for missing profile-verification information.
 
 Company: ${companyName || "Applicant"}
-Profile type: ${entityType || "Company"}
+Profile type: ${(entityType || "company").toLowerCase()}
 What the company needs to do, each with the section of its profile it does it in:
 ${items.map((item) => `- ${item}`).join("\n")}
 
@@ -214,7 +214,10 @@ export async function shapeSuggestion(message, items, companyName = "") {
   const sentences = parseReviewNote(message)
     .flatMap((block) => block.lines ?? [])
     .filter((line) => !GREETING.test(line) && !SIGN_OFF.test(line) && !UNREACHABLE.test(line));
-  const plain = (line) => Boolean(line) && !(name.length > 2 && line.toLowerCase().includes(name)) && !FILLER.test(line);
+  // The name as whole words: "Tex" names the company, "text" does not.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namesCompany = (line) => name.length > 2 && new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(line);
+  const plain = (line) => Boolean(line) && !namesCompany(line) && !FILLER.test(line);
   const summary = plain(sentences[0]) ? sentences[0] : DEFAULT_SUMMARY;
   const last = sentences.length > 1 ? sentences[sentences.length - 1] : "";
   const close = plain(last) ? last : DEFAULT_CLOSE;
