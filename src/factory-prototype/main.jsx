@@ -8707,8 +8707,10 @@ function FactoryOnboardingStep({
       if (english === "Business registration") {
         const fileStatus = registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
         // Live: the registration number typed on the verification step.
+        // Live, right after a new licence: "Reading your licence…" until that file's own number and warning are known.
+        if (values?.["registration-reading"]) return `${fileStatus}${listSeparator}${values["registration-reading"]}`;
         const inUse = values?.["registration-in-use"] ? `${listSeparator}${values["registration-in-use"]}` : "";
-        return values?.["registration-number"] ? `${values["registration-number"]}${listSeparator}${fileStatus}${inUse}` : fileStatus;
+        return values?.["registration-number"] ? `${values["registration-number"]}${listSeparator}${fileStatus}${inUse}` : `${fileStatus}${inUse}`;
       }
       if (english === "Walkthrough video") return walkthroughDocuments.length ? reviewStatus.uploaded : reviewStatus.notAdded;
       if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? reviewStatus.uploaded : reviewStatus.notUploaded;
