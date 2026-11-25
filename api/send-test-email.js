@@ -40,8 +40,8 @@ const SAMPLE_NOTE = "This is a sample note from a reviewer. In a real email it i
 // friendly close. The sample shows it, so a test can check the bullets.
 // `check:review-email` pins that both parse into a list.
 export const SAMPLE_REQUEST = {
-  en: "Your profile is nearly complete, but a few items are still missing.\n\n- A current business registration certificate showing your legal name\n- Your company website, added under Factory details\n- A short walkthrough video of your production floor\n\nWe look forward to receiving these.",
-  zh: "你的资料已基本完成，但还缺少以下几项。\n\n- 最新的营业执照，需显示公司法定名称\n- 公司网站，请填写在工厂详情中\n- 一段生产车间的短视频\n\n期待收到你的资料。",
+  en: "We need the items below to complete the review of your profile.\n\n- A current business registration certificate showing your legal name\n- Your company website, added under Factory details\n- A short walkthrough video of your production floor\n\nWe look forward to receiving these.",
+  zh: "我们需要以下资料来完成你的资料审核。\n\n- 最新的营业执照，需显示公司法定名称\n- 公司网站，请填写在工厂详情中\n- 一段生产车间的短视频\n\n期待收到你的资料。",
 };
 
 const TEMPLATES = {
@@ -60,11 +60,11 @@ const TEMPLATES = {
   "review-resubmitted": () => resubmissionAlertMessage({ orgId: "00000000-0000-4000-8000-000000000000", orgName: "Sample Factory Ltd.", orgType: "factory", note: SAMPLE_NOTE }, { appUrl: appUrl() }),
   "notification": (locale, name) => sampleNotification(locale, name),
   "notification-payout-change": (locale, name) => samplePayoutChange(locale, name),
-  "team-invite": (locale, name) => sampleTeamInvite(name),
+  "team-invite": (locale, name, email) => sampleTeamInvite(name, email),
 };
 
 // A teammate's invitation, with sample permissions.
-async function sampleTeamInvite(name) {
+async function sampleTeamInvite(name, email) {
   const { teamInviteEmail } = await import("../scripts/generate-notification-email.mjs");
   const app = appUrl();
   return teamInviteEmail({
@@ -74,7 +74,8 @@ async function sampleTeamInvite(name) {
     inviteeName: name,
     title: "Production lead",
     permissions: ["approve", "rfqFlow"],
-    email: "you@example.com",
+    // The address it is sent to: the invitation names the address to log in with (R3t9).
+    email: email || "you@example.com",
     expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
   }, {
     appUrl: app,
@@ -203,7 +204,7 @@ export default async function handler(request, response) {
   }
 
   const name = auth.user.user_metadata?.full_name || auth.user.user_metadata?.name || "";
-  const message = await build(locale === "zh" ? "zh" : "en", name);
+  const message = await build(locale === "zh" ? "zh" : "en", name, to);
   if (mailpit) {
     try {
       await mailpit.send({ id: `test-${template}-${Date.now()}`, recipient_email: to, recipient_name: name }, { ...message, subject: `[Test] ${message.subject}` });
