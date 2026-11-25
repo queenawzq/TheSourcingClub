@@ -25,7 +25,7 @@ const BRAND_COLUMNS = `
 const FACTORY_COLUMNS = `
   org_id, legal_name, website_url, location, country_code, nearest_port,
   founded_year, registration_date, employee_count, registered_capital, intro,
-  moq, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max,
+  moq, moq_max, typical_lead_days, typical_lead_days_max, sample_lead_days, sample_lead_days_max,
   equipment_notes, vendor_kind,
   languages_supported, typical_order_value_band, partner_factory_count,
   supported_incoterms, typical_payment_terms,
@@ -47,6 +47,18 @@ export function dayRange(text) {
     return a === b ? { min: a, max: null } : { min: Math.min(a, b), max: Math.max(a, b) };
   }
   return { min: firstNumber(text), max: null };
+}
+
+/** A quantity as typed, both ends kept: "100-200 件" is 100-200, "1,200" is 1200. */
+export function countRange(text) {
+  return dayRange(String(text ?? "").replace(/(\d),(?=\d{3}(?!\d))/g, "$1"));
+}
+
+/** A saved quantity back in figures: "100-200", "1,200", or "". */
+export function countText(min, max) {
+  if (min == null || min === "") return "";
+  const figure = (value) => Number(value).toLocaleString("en");
+  return max != null && Number(max) > Number(min) ? `${figure(min)}-${figure(max)}` : figure(min);
 }
 
 /** A saved lead time back in words: "45-60 days", "40 days", or "". */

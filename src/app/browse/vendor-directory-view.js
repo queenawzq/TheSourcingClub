@@ -9,7 +9,7 @@
  * never the design's example lists. What nothing records (a match score, a
  * rating, another brand's order count) is left out rather than invented.
  */
-import { daysText } from "../../lib/domain/profile.js";
+import { countText, daysText } from "../../lib/domain/profile.js";
 import { availableRange, capacityWindow, minutesPerPieceFor, monthKey, monthlyUnits } from "../../lib/domain/capacity.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { brandFactoryView } from "../profile/brand-factory-view.js";
@@ -119,7 +119,7 @@ export function vendorCard(parts, now = new Date()) {
 
   const stats = isTrading
     ? [
-      ["Network MOQ", moq != null ? `${count(moq)}/style` : NOT_GIVEN],
+      ["Network MOQ", moq != null ? `${countText(moq, profile?.moq_max)}/style` : NOT_GIVEN],
       ["Regions", regions.slice(0, 2).join(" + ") || NOT_GIVEN],
       ["Lead time", daysText(lead, profile?.typical_lead_days_max) || NOT_GIVEN],
       ["Partners", profile?.partner_factory_count != null ? `${count(profile.partner_factory_count)} factories` : NOT_GIVEN],
@@ -156,7 +156,7 @@ export function vendorCard(parts, now = new Date()) {
     tags: [
       ...labels("production_type").slice(0, 1),
       given(priceLevel) ? priceLevel : null,
-      moq != null ? `MOQ ${count(moq)}` : null,
+      moq != null ? `MOQ ${countText(moq, profile?.moq_max)}` : null,
       lead != null ? `${daysText(lead, profile?.typical_lead_days_max, "day")} lead` : null,
       ...certifications.slice(0, 2),
     ].filter(Boolean),

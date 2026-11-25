@@ -470,7 +470,7 @@ const SUBMISSION_LABELS = {
   founded_year: "Year founded", employee_count: "Team size", intro: "About",
   moq: "Minimum order quantity", typical_lead_days: "Bulk lead time (days)",
   sample_lead_days: "Sample lead time (days)", equipment_notes: "Key machines or equipment",
-  typical_lead_days_max: "Bulk lead time, up to (days)", sample_lead_days_max: "Sample lead time, up to (days)",
+  moq_max: "Minimum order quantity, up to", typical_lead_days_max: "Bulk lead time, up to (days)", sample_lead_days_max: "Sample lead time, up to (days)",
   vendor_kind: "Company type", business_email: "Business email",
   brand_category: "Brand category", annual_revenue_band: "Annual revenue",
   pieces_per_year_band: "Pieces per year", order_size_band: "Order size per style",

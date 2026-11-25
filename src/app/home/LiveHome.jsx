@@ -16,7 +16,7 @@
  * rail is empty when nothing is waiting. That is the one behaviour the
  * prototype cannot have and the product cannot do without.
  */
-import { daysText } from "../../lib/domain/profile.js";
+import { countText, daysText } from "../../lib/domain/profile.js";
 import React, { useEffect, useMemo, useState } from "react";
 import { HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
@@ -65,7 +65,7 @@ function toRecommendedCard(vendor, navigate, quoteLocked = "") {
     rating: "",
     orders: "",
     stats: [
-      ["MOQ", vendor.moq ? `${vendor.moq}/style` : "—"],
+      ["MOQ", vendor.moq ? `${countText(vendor.moq, vendor.moq_max)}/style` : "—"],
       ["Lead time", daysText(vendor.typical_lead_days, vendor.typical_lead_days_max) || "—"],
       ["Type", vendor.vendor_kind === "trading_company" ? "Trading company" : "Factory"],
       ["Status", vendor.verification_status === "verified" ? "Verified" : "Unverified"],

@@ -21,7 +21,7 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
 import { CUSTOM_KINDS, addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { addressPatch, completeOnboarding, dayRange, daysText, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { addressPatch, completeOnboarding, countRange, countText, dayRange, daysText, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
 import { constraintInWords, constraintName } from "../../shared/constraint-words.mjs";
@@ -106,6 +106,8 @@ const typedAddressIn = (fields) => fields[factoryFieldName(ADDRESS_LABELS.factor
 
 /** Lead times: a range keeps its high end in `<column>_max`. */
 const RANGE_COLUMNS = new Set(["typical_lead_days", "sample_lead_days"]);
+/** The minimum order too: "100-200 件 / 款" keeps 200 in `moq_max`. */
+const COUNT_RANGE_COLUMNS = new Set(["moq"]);
 
 const NUMERIC_COLUMNS = new Set([
   "founded_year", "employee_count", "moq", "typical_lead_days",
@@ -347,6 +349,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           if (RANGE_COLUMNS.has(column)) {
             const range = daysText(profile[column], profile[`${column}_max`], language === "zh" ? "天" : "days");
             if (range) restored[factoryFieldName(label)] = range;
+          } else if (COUNT_RANGE_COLUMNS.has(column)) {
+            const range = countText(profile[column], profile[`${column}_max`]);
+            if (range) restored[factoryFieldName(label)] = range;
           } else if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
         }
         const address = savedAddress?.data?.address;
@@ -554,6 +559,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       if (RANGE_COLUMNS.has(column)) {
         // "45-60 天" keeps both ends (dayRange, as the profile editor reads it).
         const { min, max } = dayRange(trimmed);
+        patch[column] = min;
+        patch[`${column}_max`] = max;
+      } else if (COUNT_RANGE_COLUMNS.has(column)) {
+        const { min, max } = countRange(trimmed);
         patch[column] = min;
         patch[`${column}_max`] = max;
       } else if (trimmed === "") {

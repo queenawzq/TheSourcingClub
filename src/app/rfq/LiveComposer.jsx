@@ -1,4 +1,4 @@
-import { daysText } from "../../lib/domain/profile.js";
+import { countText, daysText } from "../../lib/domain/profile.js";
 import { deliveryMonthFrom } from "./delivery-month.mjs";
 import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
 import FactoryMatch, { plainReason } from "../matching/FactoryMatch.jsx";
@@ -549,7 +549,7 @@ export default function LiveComposer({ org, rfqId }) {
       const rows = await readEveryPage(
         () => supabase
           .from("factory_profiles")
-          .select("org_id, location, moq, typical_lead_days, typical_lead_days_max, verification_status, trust_tier, intro, vendor_kind, orgs!inner (id, name)")
+          .select("org_id, location, moq, moq_max, typical_lead_days, typical_lead_days_max, verification_status, trust_tier, intro, vendor_kind, orgs!inner (id, name)")
           .not("published_at", "is", null)
           .eq("verification_status", "verified")
           .eq("orgs.is_demo", false)
@@ -744,14 +744,14 @@ export default function LiveComposer({ org, rfqId }) {
       fitSummary: vendor.intro ?? "",
       factoryNote: "",
       lead: daysText(vendor.typical_lead_days, vendor.typical_lead_days_max),
-      quoteQuantity: vendor.moq ? `MOQ ${vendor.moq}` : "",
+      quoteQuantity: vendor.moq ? `MOQ ${countText(vendor.moq, vendor.moq_max)}` : "",
       materialCosts: [],
       samples: [],
       // The card renders a stats grid and a product strip. Both come from the
       // vendor's own profile; an empty list renders an empty strip, which is
       // honest, where an absent one crashes the card.
       stats: [
-        ["MOQ", vendor.moq ? `${vendor.moq}/style` : "—"],
+        ["MOQ", vendor.moq ? `${countText(vendor.moq, vendor.moq_max)}/style` : "—"],
         ["Lead time", daysText(vendor.typical_lead_days, vendor.typical_lead_days_max) || "—"],
         ["Location", vendor.location ?? "—"],
         ["Status", vendor.verification_status === "verified" ? "Verified" : "Unverified"],
