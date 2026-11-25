@@ -364,6 +364,11 @@ async function pay(payment, method, { record = false } = {}) {
     }), "record the payment");
   }
   await waitFor(async () => ["confirmed", "released"].includes((await paymentRow(payment.id)).state), `payment ${payment.id} funded`);
+  // Its webhooks are held by this run; a review already here was recorded by
+  // another `stripe listen` forwarding to a dev server on this database.
+  if (record && (await admin.from("payment_reviews").select("id").eq("payment_id", payment.id)).data?.length) {
+    throw new Check(`a webhook outside this run recorded ${payment.id}'s dispute: is another \`stripe listen\` forwarding to a dev server on this database?`);
+  }
   return { intentId, charge: intent.latest_charge, charged: intent.amount_received };
 }
 
