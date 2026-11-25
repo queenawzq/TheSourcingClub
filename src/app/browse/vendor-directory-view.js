@@ -284,6 +284,13 @@ export function moqScale(cards) {
   };
 }
 
+/** A country code's English name, for a country the taxonomy does not list. */
+const COUNTRY_NAMES = { HK: "Hong Kong", MO: "Macau", TW: "Taiwan" };
+function countryName(code) {
+  if (COUNTRY_NAMES[code]) return COUNTRY_NAMES[code];
+  try { return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code; } catch { return code; }
+}
+
 /**
  * The filter panel for one tab: each group's options from the taxonomy (the
  * platform's own terms, not ones a single company added), the countries and
@@ -298,9 +305,15 @@ export function filterPanel(terms, cards, tab = "factories", now = new Date()) {
       options: platform(group.kind).map((term) => ({ id: term.id, label: termLabel(term) })),
     })),
     priceLevels: platform("market_level").map((term) => ({ id: term.id, label: priceChip(termLabel(term)) })),
-    countries: platform("country")
-      .filter((term) => countriesInUse.has(term.extra?.code))
-      .map((term) => ({ id: term.extra.code, label: termLabel(term) })),
+    // Every country a listed vendor is in (R3g5): the taxonomy's name where it
+    // has one, else the country's own English name (Hong Kong has no term).
+    countries: [...countriesInUse]
+      .map((code) => {
+        const term = platform("country").find((candidate) => candidate.extra?.code === code);
+        return { id: code, label: term ? termLabel(term) : countryName(code), sort: term?.sort ?? Number.MAX_SAFE_INTEGER };
+      })
+      .sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label))
+      .map(({ id, label }) => ({ id, label })),
     certifications: platform("certification").map((term) => ({ id: term.id, label: termLabel(term) })),
     leadTimes: LEAD_TIMES.map(({ key, label }) => ({ id: key, label })),
     tiers: TRUST_TIERS.map(({ key, label, icon }) => ({ id: key, label, icon })),
