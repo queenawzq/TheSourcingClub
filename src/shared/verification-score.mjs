@@ -717,7 +717,7 @@ export function scopeCheck({ reading, level, country, vendorKind = null }) {
   };
 }
 
-const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", postcode: "Postcode" };
+const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", room: "Room", postcode: "Postcode" };
 
 export function addressCheck({ owner, siteSignal, typedAddress }) {
   const base = { key: "address", label: "Address", weight: 15, reasonKey: "address" };
@@ -725,7 +725,10 @@ export function addressCheck({ owner, siteSignal, typedAddress }) {
   const comparisons = owner?.details?.comparisons ?? [];
   const differing = comparisons.find((c) => c.verdict === "differs" && c.between.includes("license"))
     ?? comparisons.find((c) => c.verdict === "differs");
-  const part = differing?.differs?.[0]?.part;
+  // The biggest difference names the verdict: another province, city or (Chinese) town before a street.
+  const major = (differing?.differs ?? []).find((d) => ["province", "city"].includes(d.part) || d.place);
+  const part = (major ?? differing?.differs?.[0])?.part;
+  const partWord = major?.part === "town" ? "Town" : PART_WORDS[part];
   const against = differing && differing.between.includes("license") ? "the licence" : "the registry";
   // What the typed address was compared with: the licence when it was read, else the registry (Nov 25: "Same as the
   // licence" was said of a licence never read, from staff's registry address).
@@ -737,12 +740,12 @@ export function addressCheck({ owner, siteSignal, typedAddress }) {
   if (level === "high") { score = SCORES.address.same; verdict = `Same as the ${source}`; }
   else if (level === "medium") {
     score = SCORES.address.partDiffers;
-    verdict = part ? `${PART_WORDS[part] ?? "Part"} differs from ${against}`
+    verdict = part ? `${partWord ?? "Part"} differs from ${against}`
       : comparisons.some((c) => c.verdict === "near") ? `Nearly the same as the ${source}` : `Only the area matches the ${source}`;
   } else if (level === "low") {
     score = SCORES.address.elsewhere;
     verdict = differing && !differing.between.includes("typed") ? "Licence and registry addresses differ"
-      : part ? `${PART_WORDS[part] ?? "Address"} differs from ${against}` : `Not the ${source}'s address`;
+      : part ? `${partWord ?? "Address"} differs from ${against}` : `Not the ${source}'s address`;
   }
   const d = siteSignal?.details ?? {};
   const kind = siteSignal?.result;
