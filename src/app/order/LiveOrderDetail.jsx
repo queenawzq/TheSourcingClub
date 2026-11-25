@@ -613,10 +613,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...reminder,
       // Discussion remains open after approval, including completed orders.
       // A factory's post is an update (Add update); a brand's is a comment.
+      // A deposit or balance (payment-only) has no work to post on, done or not.
       canComment: (running || order.status === "completed")
         && (!isFactory || viewer.canUpdate)
-        && (milestone.state === "complete" || (milestone.kind !== "payment_only"
-          && (milestone.state === "active" || milestone.state === "submitted"))),
+        && milestone.kind !== "payment_only"
+        && ["complete", "active", "submitted"].includes(milestone.state),
       // Keep the factory's next action visible on every work/approval step,
       // just as the brand sees its future milestone CTAs. Pending buttons are
       // disabled until sequencing opens the step; payment-only rows need no
@@ -821,8 +822,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           orderId, milestoneId: milestone.id, orgId: org.id, reason: body, files,
         }))}
         onRemind={remind}
-        onManageMilestones={viewer.canSetSteps ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
-        manageMilestonesLocked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
+        // A cancelled or completed order has no steps left to change.
+        onManageMilestones={viewer.canSetSteps && running ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
+        manageMilestonesLocked={viewer.canSetSteps || !running ? "" : permissionHint(org, "rfqFlow")}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}
