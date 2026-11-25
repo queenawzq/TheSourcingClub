@@ -48,13 +48,16 @@ export function brandFactoryView(parts, now = new Date()) {
   const monthly = units ? `${count(units)} units/month` : NOT_GIVEN;
   const bulkLead = given(data.leadTime) ? data.leadTime : NOT_GIVEN;
   const verified = profile?.verification_status === "verified";
+  const partners = profile?.partner_factory_count != null ? `${count(profile.partner_factory_count)} factories` : NOT_GIVEN;
 
   return {
     name: data.name,
     initials: own.initials,
     logoUrl: own.logoUrl,
     verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
-    verifiedLabel: verified ? `${profile?.trust_tier ?? "basic"} factory` : "",
+    verifiedLabel: verified ? `${profile?.trust_tier ?? "basic"} ${isTrading ? "trading company" : "factory"}` : "",
+    // A trading company is not a factory (its own page's words, trading-profile-view.js).
+    ...(isTrading ? { performanceEyebrow: "Company performance", contactTitle: "Contact company", saveLabel: "Save company" } : {}),
     heroLine: `${location} · ${specialty}`,
     tags: data.categories.slice(0, 4),
     performance: {
@@ -63,7 +66,7 @@ export function brandFactoryView(parts, now = new Date()) {
       // can't count another brand's orders, so the first is left out.
       metrics: [
         { label: "MOQ", value: moq },
-        { label: "Capacity", value: capacityUnits },
+        isTrading ? { label: "Partners", value: partners } : { label: "Capacity", value: capacityUnits },
       ],
     },
     intro: data.intro,
@@ -88,7 +91,7 @@ export function brandFactoryView(parts, now = new Date()) {
       ["Price point", data.marketLevel || NOT_GIVEN],
       ["Bulk lead", bulkLead],
       ["Sample lead", row("Typical sample lead time")],
-      ["Capacity", monthly],
+      isTrading ? ["Partner factories", partners] : ["Capacity", monthly],
       ["Availability", row("Booking level")],
     ],
     trust: [

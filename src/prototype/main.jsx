@@ -5175,9 +5175,9 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
           <div className="factory-profile-actions">
             {view.save ? (
               <button className="secondary-btn" type="button" aria-pressed={view.save.saved} disabled={view.save.busy} onClick={view.save.onToggle}>
-                {view.save.saved ? "Saved" : "Save factory"}
+                {view.save.saved ? "Saved" : view.saveLabel ?? "Save factory"}
               </button>
-            ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
+            ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>{view.saveLabel ?? "Save factory"}</button>}
             {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
             {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote} disabled={Boolean(view.quoteLocked) || undefined} title={view.quoteLocked || undefined}>Request quote</button>}
           </div>
@@ -5187,7 +5187,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
           <section className="factory-profile-main">
             {live?.matchPanel}
             <ProfilePerformanceCard
-              eyebrow="Factory performance"
+              eyebrow={view.performanceEyebrow ?? "Factory performance"}
               primary={view.performance.primary}
               primaryLabel={view.performance.primaryLabel}
               metrics={view.performance.metrics}
@@ -5226,7 +5226,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
 
           <aside className="factory-profile-side">
             <section className="factory-profile-card factory-profile-contact-card">
-              <h2>Contact factory</h2>
+              <h2>{view.contactTitle ?? "Contact factory"}</h2>
               <div className="factory-profile-contact-row">
                 <div className="factory-avatar">{view.initials}</div>
                 <div>
