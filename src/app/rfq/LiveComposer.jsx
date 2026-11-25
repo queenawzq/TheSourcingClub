@@ -70,6 +70,20 @@ function namedColourSplitsFrom(text) {
   return rows.reduce((sum, row) => sum + row.quantity, 0) === firstNumber(text) ? rows : [];
 }
 
+/** The review card's starred fields, by name, as their labels read. */
+const REQUIRED_FIELDS = [
+  ["category", "Product category"],
+  ["quantity", "Quantity"],
+  ["material", "Material"],
+  ["timeline", "Target timeline"],
+  ["samples", "Sample requirement"],
+];
+
+/** The labels of the starred fields still blank. */
+export function missingRequired(values) {
+  return REQUIRED_FIELDS.filter(([name]) => !String(values?.[name] ?? "").trim()).map(([, label]) => label);
+}
+
 /** ["the brief", "attachments", "questions"] → "the brief, attachments, and questions". */
 function listWords(items) {
   const words = items.filter(Boolean);
@@ -530,6 +544,15 @@ export default function LiveComposer({ org, rfqId }) {
       await saveMatching();
       setMatchingAcknowledged(false);
       setSaveState("saved");
+
+      // The starred fields are what a vendor quotes against: saved as they
+      // are, but not sent to anyone until they are filled.
+      const missing = missingRequired(values);
+      if (missing.length) {
+        window.requestAnimationFrame(() => document.querySelector(".composer-error")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+        setError(new Error(`Add ${listWords(missing.map((label) => label.toLowerCase()))} before inviting vendors.`));
+        return;
+      }
 
       const rows = await readEveryPage(
         () => supabase
