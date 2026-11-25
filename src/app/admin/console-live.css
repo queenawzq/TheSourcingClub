@@ -293,3 +293,7 @@
 .admin-review-modal .admin-error { margin: 0; }
 .admin-overview-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
 .admin-overview-error .admin-error { margin: 0; }
+
+/* Unpause beside Disable on a paused brand's user row. */
+.admin-user-unpause { margin-left: 8px; }
+@media (max-width: 760px) { .admin-user-unpause { margin: 8px 0 0; } }
