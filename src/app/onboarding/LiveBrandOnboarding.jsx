@@ -30,7 +30,7 @@ import { reviewCompletion } from "./review-completion.js";
 import { useUploadOnce } from "./upload-once.js";
 import { useOnboardingStep } from "./onboarding-step.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
-import { inviteMember } from "../../lib/domain/org.js";
+import { inviteMember, listMembers } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import {
   CATEGORY_KIND,
@@ -74,6 +74,16 @@ const MAKE_STEP = 3;
 
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
+
+/** The trust card's decision makers, by email: { name, role } as typed. */
+function detailsByEmail(json) {
+  try {
+    const list = JSON.parse(json || "[]");
+    return new Map((Array.isArray(list) ? list : []).map((person) => [String(person?.email ?? "").trim().toLowerCase(), person]));
+  } catch {
+    return new Map();
+  }
+}
 
 export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, review = null }) {
   // A brand still onboarding resumes at its saved step after a refresh, and
@@ -122,7 +132,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
           listTermsByKind(kinds),
           getSelectedTerms("brand_profile", org.id),
           supabase.from("brand_profiles").select("*").eq("org_id", org.id).maybeSingle(),
-          supabase.from("org_invitations").select("email, role").eq("org_id", org.id).order("created_at"),
+          supabase.from("org_invitations").select("email, role, invited_name, title").eq("org_id", org.id).eq("status", "pending").order("created_at"),
           ...Object.keys(UPLOADED_FLAG).map((kind) => listDocuments(org.id, kind)),
         ]);
         if (cancelled) return;
@@ -132,7 +142,14 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         const profile = existing.data ?? {};
         const restored = {};
         const invitedEmails = (invitations.data ?? []).map((row) => row.email);
-        if (invitedEmails.length) restored[onboardingFieldName("Decision makers")] = invitedEmails;
+        if (invitedEmails.length) {
+          restored[onboardingFieldName("Decision makers")] = invitedEmails;
+          restored[onboardingFieldName("Decision makers detail")] = JSON.stringify((invitations.data ?? []).map((row) => ({
+            name: row.invited_name ?? row.email.split("@")[0],
+            email: row.email,
+            role: row.title ?? "Stakeholder",
+          })));
+        }
         const byField = {};
         Object.entries(UPLOADED_FLAG).forEach(([kind, flag], index) => {
           if (uploaded[index]?.length) restored[flag] = String(uploaded[index].length);
@@ -292,14 +309,30 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       }
 
       // Leaving and returning to this card re-submits the whole list, so only
-      // addresses without an invitation yet are invited.
+      // addresses without an invitation yet are invited. Someone already on
+      // the team (the founder listing herself) is a decision maker already,
+      // and is not invited.
       const stakeholders = submitted[onboardingFieldName("Decision makers")];
       if (stakeholders?.length) {
-        const { data: invited } = await supabase.from("org_invitations").select("email").eq("org_id", org.id);
-        const already = new Set((invited ?? []).map((row) => row.email));
+        const [{ data: invited }, members] = await Promise.all([
+          supabase.from("org_invitations").select("email").eq("org_id", org.id).eq("status", "pending"),
+          listMembers(org.id),
+        ]);
+        const already = new Set([
+          ...(invited ?? []).map((row) => row.email.toLowerCase()),
+          ...members.map((member) => member.user_profiles?.email?.toLowerCase()).filter(Boolean),
+          String(user?.email ?? "").toLowerCase(),
+        ]);
+        const details = detailsByEmail(submitted[onboardingFieldName("Decision makers detail")]);
         for (const email of stakeholders) {
           const address = String(email).trim().toLowerCase();
-          if (address.includes("@") && !already.has(address)) await inviteMember(org.id, address);
+          if (!address.includes("@") || already.has(address)) continue;
+          const person = details.get(address);
+          await inviteMember(org.id, address, {
+            name: person?.name?.trim().slice(0, 120) || null,
+            title: person?.role?.trim().slice(0, 60) || null,
+          });
+          already.add(address);
         }
       }
 
@@ -402,6 +435,10 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
+      stakeholderNote="They will be invited to join your team."
+      // No discount can be used at payment yet (DISCOUNTS_USABLE in
+      // LiveHome), and a brand invite earns nothing yet.
+      discountOffer={false}
       notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language="en" /> : null}
       completion={reviewCompletion(review, {
         language: "en",
