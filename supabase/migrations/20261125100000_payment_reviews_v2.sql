@@ -3311,3 +3311,92 @@ begin
   return p;
 end;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 14. Old rows read like new ones (20261125100000, after T1).
+-- ---------------------------------------------------------------------------
+-- Payments recorded before this migration: (a) their refunds become lines on
+-- the brand's Payments, (b) a payment a refund left as 'failed' reads Due,
+-- with no failure reason. A lost dispute stays failed ("Reversed by your
+-- bank"), and so does a declined card. A refund note always ends in
+-- "(Stripe pi_…)"; a card's failure never does. Safe to run again.
+create or replace function public.backfill_old_refunds()
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  refund_note constant text := '\(Stripe (pi_[A-Za-z0-9_]+)\)$';
+begin
+  -- (a1) Refunds still on the payment (partial, after approval, made in
+  -- Stripe): the part no line covers yet.
+  insert into public.payment_refund_lines (payment_id, order_id, brand_org_id, kind, amount_cents, currency, payment_intent, refunded_at)
+  select p.id, o.id, o.brand_org_id, 'stripe_dashboard', p.refunded_cents - coalesce(l.cents, 0), p.currency,
+         p.stripe_payment_intent_id, coalesce(p.refund_amount_at, p.refunded_at, p.updated_at)
+    from public.order_payments p
+    join public.production_orders o on o.id = p.order_id
+    left join lateral (select sum(x.amount_cents) cents from public.payment_refund_lines x
+                        where x.payment_id = p.id and x.kind <> 'cancellation'
+                          and x.payment_intent is not distinct from p.stripe_payment_intent_id) l on true
+   where p.refunded_cents > coalesce(l.cents, 0);
+
+  -- (a2) A cancelled order's payment refunded in full: the rest of the charge.
+  insert into public.payment_refund_lines (payment_id, order_id, brand_org_id, kind, amount_cents, currency, payment_intent, refunded_at)
+  select p.id, o.id, o.brand_org_id, 'cancellation',
+         coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents) - p.refunded_cents - p.dispute_lost_cents - coalesce(l.cents, 0),
+         p.currency, p.stripe_payment_intent_id, p.refunded_at
+    from public.order_payments p
+    join public.production_orders o on o.id = p.order_id
+    left join lateral (select sum(x.amount_cents) cents from public.payment_refund_lines x
+                        where x.payment_id = p.id and x.kind = 'cancellation'
+                          and x.payment_intent is not distinct from p.stripe_payment_intent_id) l on true
+   where p.state = 'cancelled' and p.refunded_at is not null and p.stripe_payment_intent_id is not null
+     and coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents) - p.refunded_cents - p.dispute_lost_cents - coalesce(l.cents, 0) > 0;
+
+  -- (a3) A full refund that sent the payment back to pay: the payment no
+  -- longer names that charge, so its event does. The charge is the step's
+  -- (its amount and fee are fixed). Not a staff refund (it has its line),
+  -- not one that failed and funded the step again.
+  insert into public.payment_refund_lines (payment_id, order_id, brand_org_id, kind, amount_cents, currency, payment_intent, refunded_at)
+  select p.id, o.id, o.brand_org_id,
+         case when e.cause in ('cancelled_order', 'order_cancelled') or e.to_state = 'cancelled' then 'cancellation'
+              when e.cause = 'stripe_refund' then 'stripe_dashboard' else 'automatic' end,
+         public.charge_cents(p), p.currency, e.intent, e.created_at
+    from (select ev.*, coalesce(ev.stripe_ref, substring(ev.note from refund_note)) intent
+            from public.payment_events ev
+           where ev.note ~ refund_note and ev.from_state is distinct from ev.to_state
+             and ev.to_state in ('failed', 'due', 'not_due')
+             and coalesce(ev.cause, '') not in ('dispute_lost', 'staff_refund')
+             and ev.note not like 'Dispute lost%') e
+    join public.order_payments p on p.id = e.payment_id
+    join public.production_orders o on o.id = p.order_id
+   where p.stripe_payment_intent_id is distinct from e.intent
+     and public.charge_cents(p) > 0
+     and not exists (select 1 from public.payment_refund_lines x where x.payment_id = p.id and x.payment_intent = e.intent)
+     and not exists (select 1 from public.payment_events later
+                      where later.payment_id = p.id and later.to_state = 'confirmed'
+                        and later.stripe_ref = e.intent and later.created_at > e.created_at);
+
+  -- (b) A payment a refund left as 'failed': Due, as a refund leaves it now.
+  -- Its last change of state says why it failed.
+  with last_change as (
+    select distinct on (ev.payment_id) ev.payment_id, ev.to_state, ev.note, ev.cause
+      from public.payment_events ev
+     where ev.from_state is distinct from ev.to_state
+     order by ev.payment_id, ev.created_at desc, ev.id desc
+  ), moved as (
+    update public.order_payments p
+       set state = 'due', failure_reason = null, failed_at = null
+      from last_change e
+     where e.payment_id = p.id and p.state = 'failed' and e.to_state = 'failed'
+       and e.note ~ refund_note and coalesce(e.cause, '') <> 'dispute_lost' and e.note not like 'Dispute lost%'
+    returning p.id
+  )
+  insert into public.payment_events (payment_id, from_state, to_state, actor_kind, note)
+  select id, 'failed', 'due', 'system', 'A refunded payment is due again, not failed.' from moved;
+end;
+$$;
+revoke all on function public.backfill_old_refunds() from public, anon, authenticated;
+
+select public.backfill_old_refunds();
