@@ -56,8 +56,8 @@ export function brandFactoryView(parts, now = new Date()) {
     logoUrl: own.logoUrl,
     verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
     verifiedLabel: verified ? `${profile?.trust_tier ?? "basic"} ${isTrading ? "trading company" : "factory"}` : "",
-    // A trading company is not a factory (its own page's words, trading-profile-view.js).
-    ...(isTrading ? { performanceEyebrow: "Company performance", contactTitle: "Contact company", saveLabel: "Save company" } : {}),
+    // A trading company is not a factory: the design's words for one (TradingCompanyProfilePage).
+    ...(isTrading ? { performanceEyebrow: "Sourcing performance", contactTitle: "Contact trading company", saveLabel: "Save trading company" } : {}),
     heroLine: `${location} · ${specialty}`,
     tags: data.categories.slice(0, 4),
     performance: {
