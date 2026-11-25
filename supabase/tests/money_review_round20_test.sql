@@ -221,7 +221,7 @@ select is(row((select title || ' | ' || body from public.notifications where org
 select lives_ok($$select pg_temp.lost(12, 5000)$$, '$50 of the $107 fit sample charge is lost in a dispute before approval');
 select is((pg_temp.p(12)).state::text, 'confirmed', 'the step stays funded with the rest');
 select lives_ok($$select pg_temp.refund(12, 5700)$$, 'staff refund the other $57');
-select is((pg_temp.p(12)).state::text, 'failed', 'everything went back: the brand pays again');
+select is((pg_temp.p(12)).state::text, 'due', 'everything went back: the brand pays again (Due, never Failed)');
 select is(row((pg_temp.p(12)).dispute_lost_cents, (pg_temp.p(12)).dispute_lost_at, (pg_temp.p(12)).dispute_fee_cents, (pg_temp.p(12)).refunded_cents, (pg_temp.p(12)).factory_refund_cents),
   row(0::bigint, null::timestamptz, null::bigint, 0::bigint, 0::bigint), 'and the old charge''s loss is cleared with its refund');
 select ok(exists (select 1 from public.notifications where org_id = 'b20b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(12)
@@ -247,7 +247,7 @@ select is(row((select body from public.notifications where subject_id = current_
 -- Pre-existing: a full refund before approval that fails later.
 -- ===========================================================================
 select lives_ok($$select pg_temp.refund(31, 10700)$$, 'the trims charge is refunded in full before approval');
-select is((pg_temp.p(31)).state::text, 'failed', 'the brand is sent back to pay');
+select is((pg_temp.p(31)).state::text, 'due', 'the brand is sent back to pay (Due, never Failed)');
 select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700, 0, 10700, 0, null)')$$,
   'Stripe says that refund failed, before the brand paid again');
 select is(row((pg_temp.p(31)).state::text, (pg_temp.p(31)).stripe_payment_intent_id, (pg_temp.p(31)).charged_cents),

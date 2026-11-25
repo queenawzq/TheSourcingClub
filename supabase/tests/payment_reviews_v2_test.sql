@@ -272,7 +272,7 @@ select is((select count(*)::int from public.payment_reviews where payment_id = p
 create temp table c6 on commit drop as select pg_temp.claim(2, 9630, null, 'Sample cancelled.') as j;
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_staff_refund(%L, ''re_pgtap_pr25_6'', ''succeeded'')', (select j ->> 'staff_refund_id' from c6))),
   'all the rest');
-select is((select state::text from public.order_payments where id = pg_temp.pay(2)), 'failed', 'the step waits for the brand''s payment again');
+select is((select state::text from public.order_payments where id = pg_temp.pay(2)), 'due', 'the step waits for the brand''s payment again (Due)');
 select is((select reset_payment from public.staff_refunds where id = (select (j ->> 'staff_refund_id')::uuid from c6)), true, 'marked as a full refund');
 
 -- ===========================================================================

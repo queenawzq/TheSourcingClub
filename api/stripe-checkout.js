@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused, disputedCardsFor } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -41,7 +41,12 @@ export default async function handler(request, response) {
   try {
     const customer = await customerFor({ stripe, db, orgId: checkout.brand_org_id });
     const savedMethods = await stripe.paymentMethods.list({ customer, type: "card", limit: 20 });
-    const savedCards = savedMethods.data.map((method) => ({
+    // A card the brand disputed a charge with is not offered while that
+    // dispute pauses it (20261125100000, T1 #9).
+    const disputed = await disputedCardsFor({ stripe, db, orgId: checkout.brand_org_id });
+    const savedCards = savedMethods.data
+      .filter((method) => !disputed.ids.has(method.id) && !disputed.fingerprints.has(method.card?.fingerprint))
+      .map((method) => ({
       id: method.id,
       brand: (method.card?.display_brand ?? method.card?.brand ?? "Card")
         .replace(/_/g, " ")
