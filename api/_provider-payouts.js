@@ -1,4 +1,5 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
+import { pausedPayoutRefusal } from "./_paused.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { callerClient, checkCharge, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
@@ -526,6 +527,21 @@ const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "curr
 export function payoutRoute({ provider, build, label, settings }) {
   return async function handler(request, response) {
     if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
+
+    // A paused factory: said first, before whether the provider is set up
+    // here (20261125100000). Staff only, so the answer says nothing to others.
+    {
+      const { action: asked, paymentId: askedPayment } = jsonBody(request);
+      const early = serviceClient();
+      const caller0 = callerClient(request);
+      if (early && caller0 && (asked === "pay" || asked === "preview") && askedPayment) {
+        const staff0 = await caller0.rpc("is_platform_admin");
+        if (!staff0.error && staff0.data === true) {
+          const paused = await pausedPayoutRefusal(early, { paymentId: askedPayment });
+          if (paused) return reply(response, 409, { error: paused, kind: "payment_under_review" });
+        }
+      }
+    }
 
     let client;
     try {

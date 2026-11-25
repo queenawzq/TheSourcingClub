@@ -1,4 +1,5 @@
 import { logStripeFailure, payoutSentenceForStaff } from "./_stripe-errors.js";
+import { pausedPayoutRefusal } from "./_paused.js";
 import { callerClient, jsonBody, reply, serviceClient, settleRelease, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
@@ -14,6 +15,20 @@ import { callerClient, jsonBody, reply, serviceClient, settleRelease, stripeFrom
  */
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
+
+  // A paused factory: said first, before whether Stripe is set up here (20261125100000).
+  {
+    const early = serviceClient();
+    const caller0 = callerClient(request);
+    const { paymentId: askedPayment } = jsonBody(request);
+    if (early && caller0 && askedPayment) {
+      const staff0 = await caller0.rpc("is_platform_admin");
+      if (!staff0.error && staff0.data === true) {
+        const paused = await pausedPayoutRefusal(early, { paymentId: askedPayment });
+        if (paused) return reply(response, 409, { released: false, reason: paused, kind: "payment_under_review" });
+      }
+    }
+  }
 
   let stripe;
   try {
