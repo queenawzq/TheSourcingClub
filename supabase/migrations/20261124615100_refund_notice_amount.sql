@@ -2,9 +2,10 @@
 -- which step. It said only "TSC-000463 was cancelled. You were refunded.",
 -- while the order page says "$65.20 refunded to you." (report3-g R3g14).
 -- The figure is the order page's: what the brand paid for the step, fees
--- included, less what already went back to it. Otherwise unchanged from
--- 20261121340000; the reason kept on the payment and its event is the
--- server's, as before.
+-- included, less what already went back to it; with nothing left to give
+-- back it keeps "You were refunded". Otherwise unchanged from
+-- 20261121410000 (notify_once); the reason kept on the payment and its
+-- event is the server's, as before.
 CREATE OR REPLACE FUNCTION public.record_payment_refunded(target_payment uuid, payment_intent text, reason text, cause text DEFAULT NULL::text)
  RETURNS order_payments
  LANGUAGE plpgsql
@@ -79,7 +80,9 @@ begin
 
   select * into m from public.order_milestones where id = p.milestone_id;
   -- '$86.82 for "Fit sample" was refunded to you', where it said 'You were refunded'.
-  back_words := format('%s for "%s" was refunded to you', public.format_money(back, p.currency), coalesce(m.title, o.order_number));
+  back_words := case when back > 0
+    then format('%s for "%s" was refunded to you', public.format_money(back, p.currency), coalesce(m.title, o.order_number))
+    else 'You were refunded' end;
 
   insert into public.notifications
     (org_id, kind, subject_type, subject_id, order_id, title, body)

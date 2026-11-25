@@ -591,7 +591,7 @@ export function zhNotificationBody(notification, ctx = {}) {
 }
 
 /** Kinds whose body is what a person wrote (or a call's title), not ours. */
-const TYPED_BODY_KINDS = /^(verification_(approved|declined|needs_information)|matching_evidence_[a-z_]+|cancellation_(proposed|declined)|order_cancelled|milestone_update|milestone_dispute|milestone_approved|message_rejected|payment_rejected|credits_adjusted|rfq_cancelled|call_[a-z]+|message)$/;
+export const TYPED_BODY_KINDS = /^(verification_(approved|declined|needs_information)|matching_evidence_[a-z_]+|cancellation_(proposed|declined)|order_cancelled|milestone_update|milestone_dispute|milestone_approved|message_rejected|payment_rejected|credits_adjusted|rfq_cancelled|call_[a-z]+|message)$/;
 
 /**
  * The names the database gives the steps it generates, in the design's

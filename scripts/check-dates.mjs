@@ -343,6 +343,13 @@ async function formatters() {
     // An email names a generated step as the factory's order page does (fix m3).
     const { factoryMainZhText } = await load("/src/factory-prototype/main.jsx");
     for (const [en, zh] of Object.entries(GENERATED_STEPS_ZH)) expect(`step name in emails: ${en}`, zh, factoryMainZhText[en]);
+    // Names are swapped only where the database writes a name, never inside our sentences (review m3).
+    const { swapNames } = await load("/api/_email-words.js");
+    const names = new Map([["Review", "审核"], ["Linen vest", "亚麻背心"], ["Bulk deposit", "大货定金"], ["试身样", "Fit sample"]]);
+    expect("email names: a word in our sentence", swapNames("Review the production steps, then confirm them.", names), "Review the production steps, then confirm them.");
+    expect("email names: quoted", swapNames('Your payment for "试身样" is funded', names), 'Your payment for "Fit sample" is funded');
+    expect("email names: the order's title", swapNames("Linen vest (TSC-000541) is under way", names), "亚麻背心 (TSC-000541) is under way");
+    expect("email names: for … on …", swapNames("Fix M3 Linen funded $80.00 for Bulk deposit on Linen vest.", names), "Fix M3 Linen funded $80.00 for 大货定金 on 亚麻背心.");
 
     // The activity line for a funded deposit (payment-only step): added to the
     // balance, never "held by TSC"; a paid step stays held until approved.

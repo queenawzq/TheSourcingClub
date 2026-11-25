@@ -111,9 +111,11 @@ export function emailTransport() {
 
 /**
  * Claims one batch and sends it.
+ * `translateMisses: false` names steps and requests from the translation
+ * cache only, with no model call (the Stripe webhook answers Stripe first).
  * @returns {{ sent, skipped, failed, more }} or throws when the queue can't be read
  */
-export async function sendDueNotificationEmails(service, request, mail = transport()) {
+export async function sendDueNotificationEmails(service, request, mail = transport(), { translateMisses = true } = {}) {
   const { data: rows, error: claimError } = await service.rpc("claim_notification_emails", { max_rows: BATCH });
   if (claimError) throw new Error("the email queue could not be read");
 
@@ -122,7 +124,7 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
   let readable = rows ?? [];
   try {
     const { inReadersWords } = await import("./_email-words.js");
-    readable = await inReadersWords(service, readable);
+    readable = await inReadersWords(service, readable, { translateMisses });
   } catch {
     // The emails still go, with the words as typed.
   }
