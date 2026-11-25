@@ -16,7 +16,7 @@ import { DEMO_LOGINS, DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 import { brandVerification } from "../src/shared/brand-verification.mjs";
 import * as prototypeScoring from "../src/admin-prototype/verification-scoring.js";
 import { compareAddresses, addressOwnerCheck } from "../api/_address.js";
-import { addressCheck } from "../src/shared/verification-score.mjs";
+import { addressCheck, siteDifferences } from "../src/shared/verification-score.mjs";
 import { dropContradictedPhotoFindings } from "../api/admin-review-assist.js";
 
 let failed = 0;
@@ -37,7 +37,17 @@ check(photosCheck([]).score === null, "no photos: no score");
 const group = { key: "business_registration", label: "Business registration", checks: [{ key: "licence", weight: 30, score: 40 }, { key: "registry", weight: 30, score: null, verdict: "Not checked yet" }] };
 check(scoreGroup(group) === 20, "an unchecked check counts as 0");
 check(weakestCheck([group])?.key === "licence", "an unchecked check is not the weakest");
-check(scoreOverall([{ ...group, checks: [{ weight: 1, score: 100 }] }, { key: "company_information", checks: [{ weight: 1, score: 50 }] }, { key: "certification", checks: [{ score: 0 }] }]) === 80, "overall 60/40, certification not counted");
+check(scoreOverall([{ ...group, checks: [{ weight: 1, score: 100 }] }, { key: "company_information", checks: [{ weight: 1, score: 50 }] }, { key: "certification", checks: [{ score: 0 }] }]) === 88, "groups 75/25, certification not counted");
+// The address is in Business registration (Nov 25), but the overall keeps the old split: licence + registry 60,
+// factory or trader + address + photos 40, each rounded as before (72, where 75/25 by group would say 73).
+{
+  const moved = [
+    { key: "business_registration", checks: [{ key: "licence", weight: 30, score: 100 }, { key: "registry", weight: 30, score: 100 }, { key: "address", weight: 15, score: 0 }] },
+    { key: "company_information", checks: [{ key: "scope", weight: 10, score: 50 }, { key: "photos", weight: 15, score: 50 }] },
+    { key: "certification", checks: [{ score: 0 }] },
+  ];
+  check(scoreOverall(moved) === 72 && prototypeScoring.scoreOverall(moved) === 72, `the overall keeps the 60/40 split from before the address moved (${scoreOverall(moved)}, card ${prototypeScoring.scoreOverall(moved)})`);
+}
 check(namesPartlyMatch("Têxteis Douro, Lda", "Têxteis Douro – Confecções, Lda"), "a name cut short partly matches");
 check(!namesPartlyMatch("EDP, S.A.", "Fiação do Vale, Lda"), "another company's name does not");
 check(SCORES.registry.found === 90 && SCORES.registry.nameDiffers === 60 && SCORES.registry.notFound === 5 && SCORES.certificate.expired === 15, "approved registry and certificate points");
@@ -53,6 +63,82 @@ check(empty.overall === null && empty.standing.word === "Not checked" && empty.t
   const longer = licenceCheck({ reading: { details: { extracted: { legalName: "Têxteis Douro – Confecções, Lda", registrationNumber: "513284974" } } }, files: [{ id: "f" }], registration: {}, country: "PT", title: "Têxteis Douro" });
   check(longer.score === SCORES.licence.clean, `the full legal name against a short title is not cut short (${longer.verdict})`);
   check(renamedWhy({ source: "GİB", for: "Merter Tekstil Ltd. Şti." }, "Merter Tekstil Toptan Ticaret Ltd. Şti.") === "GİB was checked for “Merter Tekstil Ltd. Şti.”; the name is now longer.", "a rename's why says what was checked and what changed");
+}
+console.log("staff's own result (Nov 25)");
+{
+  const address = "55 Renmin Road, Haidian, Beijing";
+  const base = { detail: { title: "杭州钱江服装有限公司", productionAddress: address, registration: { country: "CN", number: "91330109MA2B3K7Q4L" } }, extra: { registrationFiles: [{ id: "f" }], signals: [
+    { kind: "document_reading", subjectId: "f", automatic: true, checkedAt: "2026-11-10T10:00:00Z", details: { fileId: "f", extracted: { legalName: "杭州钱江服装有限公司", registrationNumber: "91330109MA2B3K7Q4L", address: "杭州市萧山区江东三路18号" }, edited: true, tradingScope: { trading: true, quote: "批发" } } },
+  ] }, rules: {} };
+  const withSignals = (more) => scoreVerification({ ...base, extra: { ...base.extra, signals: [...more, ...base.extra.signals] } }, { timeZone: "UTC" });
+  const find = (v, key) => v.groups.flatMap((g) => g.checks).find((c) => c.key === key);
+  const before = withSignals([]);
+  const after = withSignals([
+    { kind: "licence", subjectId: "f", automatic: false, result: "original", note: "Saw the original", checkedBy: "Maya", checkedAt: "2026-11-12T10:00:00Z" },
+    { kind: "scope", automatic: false, result: "factory", note: "Sewing lines seen on site", checkedBy: "Maya", checkedAt: "2026-11-12T10:00:00Z" },
+    { kind: "address", automatic: false, result: "problem", note: "A shop front", details: { address }, checkedBy: "Maya", checkedAt: "2026-11-12T10:00:00Z" },
+  ]);
+  const lic = find(after, "licence");
+  check(find(before, "licence").score === SCORES.licence.edited && lic.score === SCORES.licence.clean && lic.verdict === "Original, by staff" && lic.staff.by === "Maya, Nov 12",
+    `staff's "Original" replaces the reading's ${find(before, "licence").verdict} (${lic.score}, ${lic.staff?.by})`);
+  check(find(after, "scope").score === SCORES.scope.making && find(after, "scope").verdict === "Factory, by staff",
+    `staff's "Factory" scores as a factory (${find(after, "scope").score}, ${find(after, "scope").verdict})`);
+  check(find(after, "address").score === SCORES.address.elsewhere && find(after, "address").verdict === "Problem found by staff", `staff's address problem scores ${find(after, "address").score}`);
+  const moved = scoreVerification({ ...base, detail: { ...base.detail, productionAddress: "1 Other Road, Beijing" }, extra: { ...base.extra, signals: [
+    { kind: "address", automatic: false, result: "problem", note: "A shop front", details: { address }, checkedAt: "2026-11-12T10:00:00Z" }, ...base.extra.signals] } }, { timeZone: "UTC" });
+  check(!find(moved, "address").staff, "a staff result on an address no longer typed does not count");
+  const newFile = scoreVerification({ ...base, extra: { ...base.extra, registrationFiles: [{ id: "g" }, { id: "f" }], signals: [
+    { kind: "licence", subjectId: "f", automatic: false, result: "original", note: "x", checkedAt: "2026-11-12T10:00:00Z" }, ...base.extra.signals] } }, { timeZone: "UTC" });
+  check(!find(newFile, "licence").staff, "a staff result on an earlier licence file does not count");
+  const couldnt = withSignals([{ kind: "licence", subjectId: "f", automatic: false, result: "could_not_check", note: "x", checkedAt: "2026-11-12T10:00:00Z" }]);
+  check(find(couldnt, "licence").score === find(before, "licence").score && find(couldnt, "licence").verdict === "Staff couldn't check", "Couldn't check keeps the automatic score");
+  const trader = scoreVerification({ ...base, profile: { vendorKind: "trading_company" }, extra: { ...base.extra, signals: [{ kind: "scope", automatic: false, result: "factory", note: "x", checkedAt: "2026-11-12T10:00:00Z" }, ...base.extra.signals] } }, { timeZone: "UTC" });
+  check(find(trader, "scope").score === SCORES.scope.trading, "a trading company judged a factory scores as a mismatch");
+}
+{
+  // Staff confirmed the current address: a registry check's address difference no longer counts (Nov 25 tester).
+  const current = { id: "x", source: "gib", result: "found", details: { form: 2, outcome: "found", site: "GİB", name: "A Tekstil", number: "6230418795", address: "Izmir, Türkiye" } };
+  const reg = (addressConfirmed) => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current, checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, Izmir", addressConfirmed });
+  check(reg(false).score === 60 && /address differs/.test(reg(false).registry.summary), `an address the registry shows differently flags (${reg(false).registry.summary})`);
+  check(reg(true).score === 90 && !/address/.test(reg(true).registry.summary), `once staff confirm the address, it is settled (${reg(true).score}, ${reg(true).registry.summary})`);
+}
+console.log("Hong Kong (Nov 25)");
+{
+  const address = "Unit 1205, 12/F, Tower 2, Harbour Centre, 8 Hok Cheung Street, Hung Hom, Kowloon, Hong Kong";
+  const v = scoreVerification({
+    detail: { title: "Harbour Line Trading Limited", productionAddress: address, registration: { country: "HK", number: "71234567" } },
+    extra: { registrationFiles: [{ id: "f" }], signals: [
+      { kind: "document_reading", subjectId: "f", automatic: true, checkedAt: "2026-11-24T10:00:00Z", details: { fileId: "f", numberAtReading: "71234567",
+        extracted: { legalName: "Harbour Line Trading Limited", registrationNumber: "71234567-000-11-25-6", address },
+        differences: [{ field: "number", document: "71234567-000-11-25-6", typed: "71234567" }] } },
+    ] },
+    rules: { approvalProblem: null },
+  }, { timeZone: "UTC" });
+  const find = (key) => v.groups.flatMap((g) => g.checks).find((c) => c.key === key);
+  check(find("licence").score === SCORES.licence.clean && !v.groups[0].fields.find((f) => f.key === "number")?.typed,
+    `the certificate's full number is the typed BR number (${find("licence").verdict})`);
+  // The address check stored before the fix said "only the area matches" on identical text.
+  const stored = { kind: "address", automatic: true, checkedAt: "2026-11-24T10:00:00Z", result: "industrial", details: { checks: [
+    { key: "address_owner", level: "medium", reasons: [], details: { comparisons: [{ between: ["license", "typed"], verdict: "partial", same: ["city"], differs: [] }] } },
+  ] } };
+  const w = scoreVerification({
+    detail: { title: "Harbour Line Trading Limited", productionAddress: address, registration: { country: "HK", number: "71234567" } },
+    extra: { registrationFiles: [{ id: "f" }], signals: [stored,
+      { kind: "document_reading", subjectId: "f", automatic: true, checkedAt: "2026-11-24T10:00:00Z", details: { fileId: "f", numberAtReading: "71234567", extracted: { legalName: "Harbour Line Trading Limited", registrationNumber: "71234567", address } } }] },
+    rules: { approvalProblem: null },
+  }, { timeZone: "UTC" });
+  const addr = w.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
+  check(addr.verdict.startsWith("Same as the licence") && addr.score === SCORES.address.same, `identical addresses match (${addr.verdict}, ${addr.score})`);
+  const owner = addressOwnerCheck({ typed: address, license: address, registry: "", typedFrom: "production" });
+  check(owner.level === "high" && compareAddresses(address, `${address}.`).verdict === "match", `the address check itself says identical text is the same address (${owner.level})`);
+  check(compareAddresses("Merter, Güngören, Istanbul", "Merter, Güngören, Istanbul").verdict !== "match", "an identical area with no number is still only an area");
+  check(!siteDifferences({ number: "71234567-000-11-25-6" }, { number: "71234567", country: "HK" }).number
+    && siteDifferences({ number: "71234568-000-11-25-6" }, { number: "71234567", country: "HK" }).number, "the registry's full certificate number is the company's BR number");
+  // The proof stays on the row after an explanation, which is a check of its own with no files.
+  const reg = registryCheck({ detail: { registration: { country: "HK", number: "71234567" },
+    current: { id: "y", source: "hk_cr", result: "found", details: { name: "Harbour Line Trading Limited", nameDiffersConfirmed: true, reason: "x" } },
+    checks: [{ id: "y", details: {} }, { id: "x", details: { form: 2, outcome: "found", proof: [{ path: "p/1.png", name: "registry-check.png" }] } }] }, country: "HK", title: "Harbour Line Trading Limited" });
+  check(reg.registry.proof?.[0]?.name === "registry-check.png", `the explained check keeps its proof (${reg.registry.proof?.length ?? 0} file)`);
 }
 console.log("fix round 2");
 {
@@ -234,13 +320,14 @@ if (process.argv.includes("--seeded")) {
       const g = (x) => prototypeScoring.scoreGroup(x.groups[0]);
       check(g(cc) >= g(nf) && prototypeScoring.scoreOverall(cc.groups) >= prototypeScoring.scoreOverall(nf.groups),
         `Hangzhou, as the card draws it: Couldn't check ${g(cc)}/${prototypeScoring.scoreOverall(cc.groups)} vs Not found ${g(nf)}/${prototypeScoring.scoreOverall(nf.groups)}`);
-      const addr = v.groups[1].checks.find((c) => c.key === "address");
+      const addr = v.groups[0].checks.find((c) => c.key === "address");
+      check(!v.groups[1].checks.some((c) => c.key === "address") && !v.facts.some((f) => f.key === "address"), "Hangzhou: the address is only in Business registration (Nov 25)");
       check(addr.verdict.startsWith("Same as the licence") && v.weakest?.key !== "address", `Hangzhou address: ${addr.verdict} ${addr.score}; weakest ${v.weakest?.label}`);
     }
     if (key === "verifyCnCopy") {
-      const addr = v.groups[1].checks.find((c) => c.key === "address");
-      const site = v.groups[1].fields.find((f) => f.key === "siteAddress");
-      check(addr.verdict === "Building differs from the licence" && (site?.licenceParts ?? []).join() === "3栋", `Guangzhou address: ${addr.verdict}; boxed ${(site?.licenceParts ?? []).join()}`);
+      const addr = v.groups[0].checks.find((c) => c.key === "address");
+      const site = addr.lines?.find((line) => line.key === "licence");
+      check(addr.verdict === "Building differs from the licence" && (site?.parts ?? []).join() === "3栋" && addr.lines[0].key === "typed", `Guangzhou address: ${addr.verdict}; boxed ${(site?.parts ?? []).join()}`);
       const registry = v.groups[0].checks.find((c) => c.key === "registry");
       check(!/match/.test(registry.verdict), `Guangzhou registry row: ${registry.verdict}`);
     }

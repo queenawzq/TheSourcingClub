@@ -160,7 +160,8 @@ export function factoryProfileChecks(parts, now = new Date()) {
   const missing = (description, action, suggestion) => ({ tone: "missing", status: "Needs attention", description, action, suggestion });
 
   const identityGaps = [
-    ["location", profile?.location],
+    // Brands read the location the address gives (src/shared/company-address.mjs).
+    ["factory address", profile?.production_address || profile?.location],
     ["nearest port", profile?.nearest_port],
     ["year founded", profile?.founded_year],
     ["employee count", profile?.employee_count],
@@ -187,8 +188,10 @@ export function factoryProfileChecks(parts, now = new Date()) {
       title: "Factory identity",
       todo: "your factory details",
       ...(identityGaps.length
-        ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Factory name, location, nearest port, year founded and employee count are complete.")),
+        // Brands never see the address itself (only its city and country), so
+        // a missing one is said as what to do.
+        ? missing(identityGaps.includes("factory address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "overview" }, `Add your ${listWords(identityGaps)}`)
+        : complete("Factory name, address, nearest port, year founded and employee count are complete.")),
     },
     {
       key: "production",
@@ -317,6 +320,8 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const data = {
     name,
     location: profile?.location || NOT_GIVEN,
+    // The full address: the factory's own page only, never a brand's.
+    address: profile?.production_address || profile?.location || NOT_GIVEN,
     nearestPort: profile?.nearest_port || NOT_GIVEN,
     founded: profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN,
     website: profile?.website_url || NOT_GIVEN,
@@ -413,7 +418,7 @@ export function factoryProfileEditForm(parts, now = new Date()) {
 
   return {
     name: orgName || profile?.legal_name || "",
-    location: text(profile?.location),
+    address: text(profile?.production_address),
     nearestPort: text(profile?.nearest_port),
     founded: text(profile?.founded_year),
     website: text(profile?.website_url),

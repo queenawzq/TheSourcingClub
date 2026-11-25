@@ -21,8 +21,10 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { addressPatch, completeOnboarding, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
+import { constraintInWords, constraintName } from "../../shared/constraint-words.mjs";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
 import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
@@ -42,18 +44,20 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
-/** Index of the designed "You're all set" card, the last of the eleven. */
-const LAST_STEP = 10;
-
-/** Index of the designed profile review card. */
-const REVIEW_STEP = 8;
-
-/** Index of the designed terms card. */
-const TERMS_STEP = 9;
+/**
+ * Where the designed cards sit: "You're all set" (the last), the profile review and the terms.
+ * A trading company's copy has one card fewer (no walkthrough), so its cards sit one earlier;
+ * staff can change a company's type after it finished (Nov 24), so this follows the type.
+ */
+const STEPS = {
+  factory: { LAST_STEP: 10, REVIEW_STEP: 8, TERMS_STEP: 9 },
+  trading: { LAST_STEP: 9, REVIEW_STEP: 7, TERMS_STEP: 8 },
+};
+export const onboardingSteps = (companyType) => STEPS[companyType === "trading" ? "trading" : "factory"];
 
 /**
  * Designed English label → factory_profiles column.
@@ -71,8 +75,8 @@ const COLUMN_FOR_LABEL = {
   "Factory Name": "legal_name",
   "Year Founded": "founded_year",
   "Website URL": "website_url",
-  "Factory Location": "location",
-  "Production Address": "production_address",
+  // One address (Factory Address / Company Address): saved apart, by
+  // addressPatch, since a brand must read only its city and country.
   "Nearest Port": "nearest_port",
   "Total Employees": "employee_count",
   "About the factory": "intro",
@@ -84,7 +88,6 @@ const COLUMN_FOR_LABEL = {
   // Trading-company copy. Six of these share a column with the factory
   // question they mirror; the rest arrived with migration 20260920000500.
   "Company Name": "legal_name",
-  "Headquarters / primary sourcing office": "location",
   "Team size": "employee_count",
   "About the trading company": "intro",
   "Languages supported": "languages_supported",
@@ -95,6 +98,10 @@ const COLUMN_FOR_LABEL = {
   "Supported Incoterms": "supported_incoterms",
   "Typical payment terms": "typical_payment_terms",
 };
+
+/** The one address's label on each copy of the flow. */
+const ADDRESS_LABELS = { factory: "Factory Address", trading: "Company Address" };
+const typedAddressIn = (fields) => fields[factoryFieldName(ADDRESS_LABELS.factory)] ?? fields[factoryFieldName(ADDRESS_LABELS.trading)];
 
 const NUMERIC_COLUMNS = new Set([
   "founded_year", "employee_count", "moq", "typical_lead_days",
@@ -154,6 +161,7 @@ function startVerification(orgId) {
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
+  const initial = onboardingSteps(initialCompanyType);
   // Asked for more information, the factory lands on its profile summary
   // (Queena, Nov 9): no card in between.
   const askedForMore = review?.state === "needs_information";
@@ -161,11 +169,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // its dots reach every step it has been to (onboarding-step.js).
   const [step, setStep, furthestStep, forgetStepsAhead] = useOnboardingStep(
     org.id,
-    askedForMore && initialStep >= LAST_STEP ? REVIEW_STEP : initialStep,
-    { lastStep: LAST_STEP, resume: initialStep === 0 },
+    askedForMore && initialStep >= initial.LAST_STEP ? initial.REVIEW_STEP : Math.min(initialStep, initial.LAST_STEP),
+    { lastStep: initial.LAST_STEP, resume: initialStep === 0 },
   );
   // True while answering staff's request, until the profile is sent back.
-  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= LAST_STEP);
+  const [resubmitting, setResubmitting] = useState(askedForMore && initialStep >= initial.LAST_STEP);
   // The staff request this mount has just answered (resubmit.mjs).
   const [answered, setAnswered] = useState(null);
   // A request that arrives while the finish card is open opens the summary too.
@@ -181,6 +189,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
+  const { LAST_STEP, REVIEW_STEP, TERMS_STEP } = onboardingSteps(companyType);
   // The language chosen at sign-up carries on here.
   // The person's language: the sign-up page's, or their saved one when a
   // company already onboarded is sent back here (src/lib/ui-language.js).
@@ -201,6 +210,20 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     return () => { cancelled = true; };
   }, [org.id, signable.doc]);
   const [busy, setBusy] = useState(false);
+  // The address the company was asked to complete (no city or country read);
+  // Next again with the same words goes on.
+  const [addressAsked, setAddressAsked] = useState(null);
+  useEffect(() => setAddressAsked(null), [step]);
+  // A refused value in the page's language, not the database's words.
+  // The year is said at its own field, not by the buttons.
+  const inWords = (problem) => {
+    const raw = problem?.cause ?? problem;
+    const words = constraintInWords(raw, language === "zh" ? "zh" : "en");
+    if (!words) return problem;
+    const said = new Error(words);
+    if (/founded_year_check$/.test(constraintName(raw) ?? "")) said.field = factoryFieldName("Year Founded");
+    return said;
+  };
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
   const [registrationFileName, setRegistrationFileName] = useState("");
@@ -227,7 +250,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs, photos, savedAddress] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -238,6 +261,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
           listDocuments(org.id, "factory_photo"),
+          supabase.from("factory_production_addresses").select("address").eq("org_id", org.id).maybeSingle(),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
         if (savedRegistration?.number) {
@@ -272,6 +296,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (samples?.length) restored["uploaded-samples"] = String(samples.length);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
+        }
+        const address = savedAddress?.data?.address;
+        if (address) {
+          restored[factoryFieldName(ADDRESS_LABELS.factory)] = address;
+          restored[factoryFieldName(ADDRESS_LABELS.trading)] = address;
         }
         // The company typed its name at signup: start from it.
         if (!profile.legal_name && org.name) {
@@ -352,14 +381,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     [terms, language],
   );
 
-  /** The country read out of the typed location (see countryCodeFrom in profile.js). */
-  const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
 
-  // The registration number's country: from the location typed on step 2
+  // The registration number's country: from the address typed on step 2
   // (either kind of vendor), else what was saved. Decides the field's name,
   // hint and check digit.
-  const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
-  const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
+  const typedAddress = typedAddressIn(values);
+  const registrationCountry = (typedAddress ? addressPatch(typedAddress, "").patch.country_code : null) ?? savedCountry;
   const registrationField = useMemo(() => {
     // China types no number: it is read off the licence.
     if (numberFromDocument(registrationCountry)) return null;
@@ -562,15 +589,19 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       if (registrationCountry) patch.country_code = registrationCountry;
     }
 
-    // Either kind of vendor's location; "Turkey" and Chinese-only locations
-    // too, which the taxonomy's labels ("Türkiye", "China") don't match.
-    const location = submitted[factoryFieldName("Factory Location")] ?? submitted[factoryFieldName("Headquarters / primary sourcing office")];
-    if (location !== undefined) {
-      const code = registrationCountryFrom(location, countryCodeFrom(location));
-      if (code) patch.country_code = code;
+    // Either kind of vendor's one address. The full address is the company's
+    // and staff's; a brand reads only location, the country until the server
+    // splits the address into "City, Country" (structureAddress, not waited on).
+    const typed = typedAddressIn(submitted);
+    let addressChanged = false;
+    if (typed !== undefined) {
+      const { patch: addressColumns, changed } = addressPatch(typed, typedAddressIn(values), savedCountry);
+      Object.assign(patch, addressColumns);
+      addressChanged = changed;
     }
 
     await saveFactoryProfile(org.id, patch);
+    if (addressChanged) structureAddress(org.id);
     // After the profile save, so the checks read the address just typed.
     if (evidenceUploaded) startVerification(org.id);
 
@@ -629,6 +660,15 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
    */
   async function next(submitted = {}, target = null) {
     if (busy) return;
+    const askAbout = String(typedAddressIn(submitted) ?? "").trim();
+    if (addressMissesPlace(askAbout)) {
+      if (addressAsked !== askAbout) {
+        setAddressAsked(askAbout);
+        return;
+      }
+    } else if (addressAsked !== null) {
+      setAddressAsked(null);
+    }
     setBusy(true);
     setError(null);
 
@@ -636,6 +676,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
       const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, ...answers } = submitted;
+      // One address on either copy of the flow: a vendor that switches between
+      // factory and trading company finds it already filled in.
+      const address = typedAddressIn(submitted);
+      if (address !== undefined) {
+        answers[factoryFieldName(ADDRESS_LABELS.factory)] = address;
+        answers[factoryFieldName(ADDRESS_LABELS.trading)] = address;
+      }
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature && !termsAcceptance) {
@@ -669,11 +716,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const answering = resubmitting || review?.state === "needs_information";
       if (step === REVIEW_STEP && answering && termsAcceptance) {
         // Terms already signed: confirming the summary sends it back to staff
-        // and stays on the summary, with no page after it.
+        // and opens the finish card, as a reload would.
         await resubmitForReview(org.id);
         setAnswered(review);
         startVerification(org.id);
         setResubmitting(false);
+        setStep(LAST_STEP);
         onComplete();
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
@@ -702,7 +750,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setStep((current) => current + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (saveError) {
-      setError(saveError);
+      setError(inWords(saveError));
     } finally {
       setBusy(false);
     }
@@ -720,7 +768,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       await persist(partial);
       await onSignOut?.();
     } catch (saveError) {
-      setError(saveError);
+      setError(inWords(saveError));
       setBusy(false);
     }
   }
@@ -769,7 +817,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       values={values}
       termsAcceptance={termsAcceptance}
       busy={busy}
-      error={error ?? (step === TERMS_STEP ? signable.error : null)}
+      error={(error?.field ? null : error) ?? (step === TERMS_STEP ? signable.error : null)}
       terms={signable.sections}
       fullTerms={signable.full}
       certificationOptions={certificationOptions}
@@ -779,6 +827,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
       registration={registrationField}
+      fieldNotices={addressAsked === null && !error?.field ? null : {
+        ...(addressAsked === null ? {} : {
+          [factoryFieldName(ADDRESS_LABELS.factory)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+          [factoryFieldName(ADDRESS_LABELS.trading)]: ADDRESS_PLACE_NOTICE[language === "zh" ? "zh" : "en"],
+        }),
+        ...(error?.field ? { [error.field]: error.message } : {}),
+      }}
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
@@ -786,7 +841,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       // is not the only copy: an address that cannot receive it (Nov 13)
       // otherwise left the factory with no sign of the request.
       notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
-      completion={reviewCompletion(review, {
+      // The request just answered is not shown again while the review re-reads.
+      completion={reviewCompletion(review === answered ? null : review, {
         language: language,
         onUpdate: () => {
           setResubmitting(true);

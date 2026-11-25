@@ -2,9 +2,10 @@
  * Mock data for the Nov 12 staff verification review design (mock only).
  *
  * One scoring system, as Queena asked on Nov 11: every row is a percentage.
- * A group's score is the weighted mean of its checks; the overall score is
- * Business registration 60 + Company information 40. Certification evidence
- * is shown but not counted: many real factories hold none.
+ * A group's score is the weighted mean of its checks: Business registration is
+ * licence 30, registry 30 and address 15 (Nov 25), Company information factory
+ * or trader 10 and photos 15. Certification evidence is shown but not counted:
+ * many real factories hold none.
  *
  * A check that has not been done scores 0 and says so, so an unchecked
  * registry can never look like a passed one.
@@ -17,6 +18,7 @@
 
 import { scoreOverall, withPhotoCheck } from "./verification-scoring.js";
 import { brandVerification } from "../shared/brand-verification.mjs";
+import { siteOptions, siteRecord, siteSummary } from "../shared/verification-score.mjs";
 
 export * from "./verification-scoring.js";
 
@@ -27,7 +29,37 @@ const PHOTO = {
   floor: "/assets/factory-header.png",
 };
 
-/* ---------- (a) China, original licence, QCC recorded ---------- */
+/**
+ * The one record form's data (Nov 24): the country's usual sites, the values as the document shows
+ * them (the form's prefill) and the company's own (what the page compares with).
+ */
+function siteForm(country, prefill, profile, defaultSite) {
+  return { sites: siteOptions(country, {}, profile.name), defaultSite, prefill, profile };
+}
+function certForm(site, href, prefill) {
+  return { sites: [{ key: "issuer", name: site, label: site, href }], defaultSite: site, prefill };
+}
+const CN_PROFILE = { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou, Zhejiang 杭州市萧山区江东三路18号" };
+const CN_SAVED = siteRecord({
+  outcome: "found", site: "GSXT", name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "浙江省杭州市萧山区江东三路18号",
+  proof: [{ path: "mock-gsxt-1", name: "gsxt-record.png", type: "image/png", url: PHOTO.floor }, { path: "mock-gsxt-2", name: "gsxt-annual-report.png", type: "image/png", url: PHOTO.line }],
+}, CN_PROFILE);
+/** The Address check in Business registration (Nov 25): each version of the address on its own line, Open map, Edit address. */
+function addressCheck({ score, verdict, typed, licence = null, registry = null, label = "Factory address" }) {
+  return {
+    key: "address", label: "Address", weight: 15, score, verdict,
+    lookup: { label: "Open map", href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(typed)}` },
+    lines: [
+      { key: "typed", label: "Typed", value: typed },
+      ...(licence ? [{ key: "licence", label: licence[0], value: licence[1], ...(licence[2] ? { parts: licence[2] } : {}) }] : []),
+      ...(registry ? [{ key: "registry", label: "Registry", value: registry }] : []),
+    ],
+    edit: { label, value: typed },
+  };
+}
+const TR_PROFILE = { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" };
+
+/* ---------- (a) China, original licence, GSXT recorded ---------- */
 const chinaOriginal = {
   id: "verify-cn-original",
   initials: "QJ",
@@ -49,7 +81,6 @@ const chinaOriginal = {
       { label: "Terms signed", value: "Zhang Wei, Nov 9", ok: true },
       { label: "Registration uploaded", value: "business-licence.jpg", ok: true },
       { label: "Company details", value: "Complete", ok: true },
-      { label: "Address", value: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou" },
       { label: "Company age", value: "11 years (licence: Apr 2015)" },
       { label: "Submitted by", value: "Zhang Wei · zhang@qjgarment.cn" },
     ],
@@ -57,8 +88,8 @@ const chinaOriginal = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Original licence, found on QCC",
-        why: "Every field on the licence is readable and matches the QCC record staff checked.",
+        verdict: "Original licence, found on GSXT",
+        why: "Every field on the licence is readable and matches the GSXT record staff checked.",
         evidence: { kind: "licence", variant: "cn", file: "business-licence.jpg" },
         readAt: "Read Nov 11, 10:42",
         fields: [
@@ -72,24 +103,22 @@ const chinaOriginal = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 98, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 10", result: "found", reference: "qcc.com/firm/7a1c…", name: "杭州钱江服装有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 90, verdict: "Found on GSXT, name, number and address match", registry: { ...CN_SAVED, source: "GSXT", by: "Maya Chen, Nov 10", reference: "", summary: siteSummary(CN_SAVED, "Maya Chen, Nov 10"), form: siteForm("CN", { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "杭州市萧山区江东三路18号" }, CN_PROFILE, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
+          addressCheck({ score: 90, verdict: "Same as the licence, in an industrial area", typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", licence: ["Licence", "杭州市萧山区江东三路18号"], registry: CN_SAVED.address }),
         ],
       },
       {
         key: "company_information",
         label: "Company information",
         verdict: "Factory: licence includes manufacturing",
-        why: "The licence lists garment manufacturing, the address is the licence's, and the photos are their own.",
+        why: "The licence lists garment manufacturing, and the photos are their own.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.floor, result: "own" }, { src: PHOTO.line, result: "own" }, { src: PHOTO.knit, result: "own" }, { src: PHOTO.denim, result: "unchecked" },
         ] },
         readAt: "Checked Nov 11, 10:44",
-        fields: [
-          { key: "siteAddress", label: "Factory address", value: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", wide: true },
-        ],
+        fields: [],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: licence includes manufacturing (服装制造)" },
-          { key: "address", label: "Address", weight: 15, score: 90, verdict: "Same as the licence, in an industrial area", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=18%20Jiangdong%203rd%20Road%2C%20Xiaoshan%2C%20Hangzhou" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
       },
@@ -106,7 +135,7 @@ const chinaOriginal = {
           { key: "holder", label: "Holder", value: "Hangzhou Qianjiang Garment Co., Ltd.", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
+          { key: "certificate", label: "OEKO-TEX Standard 100", kind: "certificate", score: 92, verdict: "Found on the issuer's list, valid to Mar 2027", registry: { source: "Issuer's list", by: "Maya Chen, Nov 10", result: "found", reference: "", form: certForm("OEKO-TEX label check", "https://www.oeko-tex.com/en/label-check", { number: "SH025 187429", holder: "Hangzhou Qianjiang Garment Co., Ltd." }) }, lookup: { label: "Open issuer's list", href: "https://www.oeko-tex.com/en/label-check" } },
         ],
       },
     ],
@@ -135,7 +164,6 @@ const chinaCopy = {
       { label: "Terms signed", value: "Li Na, Nov 10", ok: true },
       { label: "Registration uploaded", value: "licence-copy.jpg", ok: true },
       { label: "Company details", value: "Complete", ok: true },
-      { label: "Address", value: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" },
       { label: "Company age", value: "8 years (licence: Jun 2018)" },
       { label: "Submitted by", value: "Li Na · lina@yxapparel.com" },
     ],
@@ -147,6 +175,9 @@ const chinaCopy = {
         why: "The image is stamped “仅供认证使用” (for verification use only). Ask for a photo of the original.",
         evidence: { kind: "licence", variant: "cn-copy", file: "licence-copy.jpg" },
         readAt: "Read Nov 12, 08:15",
+        // A licence nobody had read yet: it reads by itself when the page opens (Nov 24).
+        checkingMs: 2000,
+        checkingWords: "Reading the document…",
         fields: [
           { key: "number", label: "Registration number", value: "91440111MA59C2RX8L", copy: true, typed: "91440111MA59C2RX8J" },
           { key: "established", label: "Established", value: "2018-06-02" },
@@ -158,24 +189,22 @@ const chinaCopy = {
         ],
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 40, verdict: "Copy, not the original licence" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司" }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "Found on QCC, name and number match", registry: { source: "QCC", by: "Maya Chen, Nov 12", result: "found", reference: "qcc.com/firm/c93e…", name: "广州越秀服饰有限公司", form: siteForm("CN", { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "广州市白云区黄埔路112号5栋" }, { name: "广州越秀服饰有限公司", number: "91440111MA59C2RX8L", address: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou" }, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91440111MA59C2RX8L", copy: "91440111MA59C2RX8L" } },
+          addressCheck({ score: 70, verdict: "Building differs from the licence", typed: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", licence: ["Licence", "广州市白云区黄浦路112号3栋", ["3栋"]] }),
         ],
       },
       {
         key: "company_information",
         label: "Company information",
-        verdict: "Factory, at a different building from the licence",
-        why: "The licence lists knitwear manufacturing; the factory address is Building 5, the licence says Building 3.",
+        verdict: "Factory: licence includes manufacturing",
+        why: "The licence lists knitwear manufacturing.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.knit, result: "own" }, { src: PHOTO.floor, result: "own" }, { src: PHOTO.line, result: "unchecked" },
         ] },
         readAt: "Checked Nov 12, 08:16",
-        fields: [
-          { key: "siteAddress", label: "Factory address", value: "Building 5, 112 Huangpu Road, Baiyun, Guangzhou", wide: true, licence: "Building 3, 112 Huangpu Road, Baiyun, Guangzhou" },
-        ],
+        fields: [],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: licence includes manufacturing (针织服装制造)" },
-          { key: "address", label: "Address", weight: 15, score: 70, verdict: "Building differs from the licence", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=112%20Huangpu%20Road%2C%20Baiyun%2C%20Guangzhou" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
       },
@@ -215,7 +244,6 @@ const turkeyTrader = {
       { label: "Terms signed", value: "Emre Yılmaz, Nov 11", ok: true },
       { label: "Registration uploaded", value: "vergi-levhasi.pdf", ok: true },
       { label: "Company details", value: "Website and team size only", ok: false },
-      { label: "Address", value: "Merter, Güngören, Istanbul" },
       { label: "Company age", value: "Not on the tax plate" },
       { label: "Submitted by", value: "Emre Yılmaz · emre@mertertekstil.com" },
     ],
@@ -238,7 +266,8 @@ const turkeyTrader = {
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti." }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti.", form: siteForm("TR", { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" }, TR_PROFILE, "GİB") }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
+          addressCheck({ score: 30, verdict: "District only, no street or building", typed: "Merter, Güngören, Istanbul", licence: ["Tax plate", "Merter Mah., Güngören, İstanbul"] }),
         ],
       },
       {
@@ -253,12 +282,9 @@ const turkeyTrader = {
           { src: PHOTO.knit, result: "own", flag: "office" },
         ] },
         readAt: "Checked Nov 11, 16:03",
-        fields: [
-          { key: "siteAddress", label: "Factory address", value: "Merter, Güngören, Istanbul", wide: true },
-        ],
+        fields: [],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 10, verdict: "Not a factory: wholesale trade only" },
-          { key: "address", label: "Address", weight: 15, score: 30, verdict: "District only, no street or building", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Merter%2C%20G%C3%BCng%C3%B6ren%2C%20Istanbul" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
       },
@@ -278,12 +304,14 @@ const turkeyTrader = {
 
 /* ---------- (d) Portugal, EU VIES ---------- */
 const PT_FULL_NAME = "Têxteis Douro – Confecções, Lda";
+const PT_ADDRESS = addressCheck({ score: 55, verdict: "Looks like a home, not a factory site", typed: "Rua da Igreja 214, Arcozelo, Barcelos", licence: ["Registration certificate", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"] });
 const PT_IMPROVED = {
   verdict: "Registered: name and VAT number match EU VIES",
   why: "The current certificate and EU VIES agree on the full legal name.",
   checks: [
     { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read, matches the registry", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
     { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "EU VIES: VAT number valid, name matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
+    PT_ADDRESS,
   ],
 };
 
@@ -308,7 +336,6 @@ const portugalFactory = {
       { label: "Terms signed", value: "Rui Ferreira, Nov 10", ok: true },
       { label: "Registration uploaded", value: "certidao-permanente.pdf", ok: true },
       { label: "Company details", value: "Complete", ok: true },
-      { label: "Address", value: "Rua da Igreja 214, Arcozelo, Barcelos" },
       { label: "Company age", value: "14 years (certificate: Mar 2012)" },
       { label: "Submitted by", value: "Rui Ferreira · rui@texteisdouro.pt" },
     ],
@@ -336,6 +363,7 @@ const portugalFactory = {
         checks: [
           { key: "licence", label: "Registration certificate", weight: 30, score: 70, verdict: "Read; legal name looks cut short", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
           { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 80, verdict: "EU VIES: VAT number valid, name partly matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
+          PT_ADDRESS,
         ],
         // Run again reads the current upload (or takes the corrected name) and asks EU VIES again.
         rerun: (values, group) => (group.stale || /confec/i.test(values.legalName ?? "")
@@ -345,22 +373,17 @@ const portugalFactory = {
       {
         key: "company_information",
         label: "Company information",
-        verdict: "Factory, but the address looks like a home",
-        why: "The activity code is garment making. The address matches the certificate but sits in a residential street.",
+        verdict: "Factory: manufacturing activity code (CAE 14130)",
+        why: "The activity code is garment making.",
         evidence: { kind: "photos", photos: [
           { src: PHOTO.line, result: "own" }, { src: PHOTO.floor, result: "unchecked" }, { src: PHOTO.denim, result: "unchecked" },
         ] },
         readAt: "Checked Nov 11, 14:21",
-        fields: [
-          { key: "siteAddress", label: "Factory address", value: "Rua da Igreja 214, Arcozelo, Barcelos", wide: true },
-        ],
+        fields: [],
         checks: [
           { key: "scope", label: "Factory or trader", weight: 10, score: 100, verdict: "Factory: manufacturing activity code (CAE 14130)" },
-          { key: "address", label: "Address", weight: 15, score: 55, verdict: "Looks like a home, not a factory site", lookup: { label: "Open map", href: "https://www.google.com/maps/search/?api=1&query=Rua%20da%20Igreja%20214%2C%20Arcozelo%2C%20Barcelos" } },
           { key: "photos", label: "Photos", weight: 15 },
         ],
-        // The map finds the street only with its postcode: a failed run says so.
-        rerun: (values) => (/\d{4}-\d{3}/.test(values.siteAddress ?? "") ? null : { error: "Address not found on the map. Add the postcode." }),
       },
       {
         key: "certification",
@@ -376,7 +399,7 @@ const portugalFactory = {
           { key: "holder", label: "Holder", value: "Têxteis Douro – Confecções, Lda", wide: true },
         ],
         checks: [
-          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "" }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
+          { key: "certificate", label: "GOTS", kind: "certificate", score: 72, verdict: "Valid, but the scope doesn't cover cut-and-sew", registry: { source: "Issuer's list", by: "Leo Park, Nov 11", result: "found", reference: "", form: certForm("GOTS certified suppliers", "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers", { number: "CU 1048211", holder: "Têxteis Douro – Confecções, Lda" }) }, lookup: { label: "Open issuer's list", href: "https://global-standard.org/find-suppliers-shops-and-inputs/certified-suppliers" }, reason: { text: "Dyeing is subcontracted; cut-and-sew is done in their own unit (seen on the video call).", by: "Leo Park, Nov 11" } },
         ],
       },
     ],
@@ -427,4 +450,26 @@ const newBrand = {
   }),
 };
 
-export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, portugalFactory, newBrand].map(withScore);
+/* ---------- (c2) The same wholesaler, typed as a trading company (Nov 24): its trading licence is what it is ---------- */
+const turkeyTradingCompany = {
+  ...turkeyTrader,
+  id: "verify-tr-trading",
+  initials: "MS",
+  name: "Merter Sourcing",
+  entityType: "Trading company",
+  summary: "Sources denim and woven trousers from partner mills for European brands.",
+  verification: {
+    ...turkeyTrader.verification,
+    groups: turkeyTrader.verification.groups.map((group) => (group.key === "business_registration" ? {
+      ...group,
+      checks: group.checks.map((check) => (check.edit ? { ...check, edit: { ...check.edit, label: "Company address" } } : check)),
+    } : group.key !== "company_information" ? group : {
+      ...group,
+      verdict: "Trading company: trading licence",
+      why: "The tax plate shows wholesale of clothing, which is what a trading company does.",
+      checks: group.checks.map((check) => (check.key === "scope" ? { ...check, score: 100, verdict: "Trading company: trading licence" } : check)),
+    })),
+  },
+};
+
+export const verificationMockProfiles = [chinaOriginal, chinaCopy, turkeyTrader, turkeyTradingCompany, portugalFactory, newBrand].map(withScore);

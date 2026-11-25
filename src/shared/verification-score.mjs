@@ -16,10 +16,30 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources } from "./registration-number.mjs";
+import { companyNameKey, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
-export const GROUP_WEIGHTS = { business_registration: 60, company_information: 40 };
+// The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
+// Company information is factory or trader 10 + photos 15.
+export const GROUP_WEIGHTS = { business_registration: 75, company_information: 25 };
+
+/**
+ * The overall keeps the split it had before the address moved (registration 60: licence and registry;
+ * company 40: factory or trader, address and photos), rounded as it was, so the move changed no company's score.
+ */
+const OVERALL_SHARES = { licence: "registration", registry: "registration", scope: "company", address: "company", photos: "company" };
+const SHARE_WEIGHTS = { registration: 60, company: 40 };
+
+/** A vendor's overall, from its checks' old split; undefined when the groups are not a vendor's (a brand's). */
+export function overallByShares(groups, isCounted, groupScore) {
+  const counted = (groups ?? []).filter(isCounted);
+  const checks = counted.flatMap((group) => (group.checks ?? []).filter((check) => check.weight));
+  if (!counted.length || counted.some((group) => group.weight != null) || !checks.every((check) => OVERALL_SHARES[check.key])) return undefined;
+  if (!checks.some((check) => check.score != null)) return null;
+  const sum = Object.entries(SHARE_WEIGHTS)
+    .reduce((total, [share, weight]) => total + (groupScore({ checks: checks.filter((check) => OVERALL_SHARES[check.key] === share) }) ?? 0) * weight, 0);
+  return Math.round(sum / 100);
+}
 
 export const SCORES = {
   licence: { clean: 95, taxPlate: 70, partial: 70, differs: 50, edited: 40, copy: 40, sample: 10, unreadable: 10, otherCompanyFirst: 5 },
@@ -28,9 +48,43 @@ export const SCORES = {
   address: { same: 90, partDiffers: 70, elsewhere: 15, siteCap: 55, districtCap: 30, mapIndustrial: 60, mapOther: 40 },
   photo: { own: 100, unchecked: 50, could_not: 50, elsewhere: 0 },
   photoFlag: { stock: 10, office: 40, tsc: 0 },
-  certificate: { found: 90, expired: 15, not_found: 5 },
+  certificate: { found: 90, holderDiffers: 60, expired: 15, not_found: 5 },
   reasonFloor: 60,
 };
+
+/* ------------------------------------------------------- staff's own result */
+
+/** What a check staff decided themselves says (Nov 25): address, factory or trader, licence. */
+export const OVERRIDE_WORDS = {
+  address: { confirmed: "Confirmed by staff", problem: "Problem found by staff", could_not_check: "Staff couldn't check" },
+  scope: { factory: "Factory, by staff", trading_company: "Trading company, by staff", could_not_tell: "Staff couldn't tell" },
+  licence: { original: "Original, by staff", problem: "Problem found by staff", could_not_check: "Staff couldn't check" },
+};
+
+/**
+ * A check with staff's own result in place of the automatic one. Confirmed / original score as a clean
+ * automatic result; a problem as the lowest (an address elsewhere, an unreadable licence); factory or trader
+ * scores 100 when it is what the profile says the company is, else as a trading licence. "Couldn't check" /
+ * "Couldn't tell" keeps the automatic score. A reason written before is replaced by staff's note.
+ */
+export function overrideCheck(check, record, { vendorKind = null } = {}) {
+  const trading = vendorKind === "trading_company";
+  const scores = {
+    address: { confirmed: SCORES.address.same, problem: SCORES.address.elsewhere },
+    scope: { factory: trading ? SCORES.scope.trading : SCORES.scope.making, trading_company: trading ? SCORES.scope.making : SCORES.scope.trading },
+    licence: { original: SCORES.licence.clean, problem: SCORES.licence.unreadable },
+  };
+  const automatic = check.automatic ?? { score: check.score, verdict: check.verdict };
+  const { reason, ...rest } = check;
+  return {
+    ...rest,
+    score: scores[check.key]?.[record.result] ?? automatic.score ?? null,
+    verdict: OVERRIDE_WORDS[check.key]?.[record.result] ?? check.verdict,
+    short: null,
+    automatic,
+    staff: { result: record.result, note: record.note ?? "", by: record.by ?? "" },
+  };
+}
 
 /* ------------------------------------------------------------ arithmetic */
 
@@ -48,6 +102,8 @@ export function scoreGroup(group) {
 }
 
 export function scoreOverall(groups) {
+  const byShares = overallByShares(groups, (group) => GROUP_WEIGHTS[group.key], scoreGroup);
+  if (byShares !== undefined) return byShares;
   let sum = 0;
   let weight = 0;
   let scored = false;
@@ -65,9 +121,10 @@ export function scoreOverall(groups) {
 
 /** The lowest counted check that has a score: a check not done yet is a to-do, not evidence. */
 export function weakestCheck(groups) {
+  // A check at 75 or above is never named the weakest: a full match is not a weakness (fix round, Nov 24).
   return groups
     .filter((group) => GROUP_WEIGHTS[group.key])
-    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null).map((check) => ({ ...check, group: group.label })))
+    .flatMap((group) => group.checks.filter((check) => check.weight && check.score != null && check.score < 75).map((check) => ({ ...check, group: group.label })))
     .sort((a, b) => a.score - b.score)[0] ?? null;
 }
 
@@ -138,8 +195,14 @@ const SHORT_SOURCE = {
   qcc: "QCC", gib: "GİB", vies: "EU VIES", gsxt: "GSXT", certidao: "the certidão", acts: "the published acts",
   permit: "the permit site", national: "the national portal", other: "OpenCorporates", document: "the document",
   gazette: "the Trade Registry Gazette", edevlet: "e-Devlet",
+  companies_house: "Companies House", rmc: "Registro Mercantil", registro_imprese: "Registro Imprese", mca: "MCA",
+  rjsc: "RJSC", hk_cr: "the Companies Registry", state_register: "the state business register",
 };
-const DEFAULT_SOURCE = { CN: "qcc", TR: "gib", PT: "vies", VN: "national" };
+// Each country's official company register (fix round, Nov 24): never a commercial copy or a VAT list.
+const DEFAULT_SOURCE = {
+  CN: "gsxt", TR: "gib", PT: "acts", VN: "national", GB: "companies_house", ES: "rmc", IT: "registro_imprese",
+  IN: "mca", BD: "rjsc", HK: "hk_cr", US: "state_register",
+};
 export const sourceWords = (key) => SHORT_SOURCE[key] ?? key ?? "the registry";
 
 function defaultSource(country) {
@@ -147,7 +210,11 @@ function defaultSource(country) {
 }
 
 /** "Open QCC" with the link and what to copy, for the registry sub-row. */
-function registryLookup(country, sourceKey, registration, title) {
+function registryLookup(country, sourceKey, registration, title, address = "") {
+  if (country === "US" && (sourceKey === "state_register" || sourceKey === "site")) {
+    const state = stateSite(address);
+    if (state.href) return { label: `Open ${state.name}`, href: state.href, ...(registration?.number ? { copy: registration.number } : {}) };
+  }
   const source = registrySources(country).find((s) => s.key === sourceKey)
     ?? registrySources(country).find((s) => s.key !== "document" && typeof s.url === "function");
   if (!source || typeof source.url !== "function") return null;
@@ -244,7 +311,8 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   for (const line of d.differences ?? []) {
     const what = line.field === "number" ? "Number" : "Name";
     if (line.nearly) add(SCORES.licence.partial, `Read; ${what.toLowerCase()} nearly matches`);
-    else if (line.field !== "number" && namesPartlyMatch(line.document, line.typed ?? title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
+    // A bilingual licence's names are joined with " / " (Nov 25): any one of them may be the shorter one.
+    else if (line.field !== "number" && String(line.document ?? "").split(" / ").some((name) => namesPartlyMatch(name.trim(), line.typed ?? title))) add(SCORES.licence.partial, "Read; legal name looks cut short");
     else add(SCORES.licence.differs, `${what} differs from what they typed`);
   }
   const numberNotRead = !String(x.registrationNumber ?? "").trim()
@@ -271,19 +339,46 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
-export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null }) {
+export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "", addressConfirmed = false }) {
   const reg = detail?.registration ?? null;
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
   const base = { key: "registry", label: "Official registry", kind: "registry", weight: 30, reasonKey: "registry" };
-  const lookup = reg?.number ? registryLookup(country, sourceKey, reg, title) : null;
-  const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", ...fields });
-  if (!reg) return { ...base, score: null, verdict: "No registration number yet", canReason: false, registry: record({}) };
-  if (!reg.number && !reg.noCompanyNumber) return { ...base, score: null, verdict: "Number not read yet", canReason: true, registry: record({}), ...(lookup ? { lookup } : {}) };
-  const current = detail.current ?? null;
-  const checks = (detail.checks ?? []).filter((c) => !c.numberChecked || c.numberChecked === reg.number);
+  const lookup = reg?.number ? registryLookup(country, sourceKey, reg, title, typedAddress) : null;
+  // The one form (Nov 24): where staff checked, prefilled with the country's usual registry, and the
+  // name, number and address as the document shows them; the company's own values to compare with.
+  const form = {
+    sites: siteOptions(country, reg, title, typedAddress),
+    defaultSite: country === "US" ? stateSite(typedAddress).name
+      : DEFAULT_SOURCE[country] ? capital(sourceWords(DEFAULT_SOURCE[country]).replace(/^the /, "")) : "",
+    prefill: {
+      name: String(prefill?.name || title || ""),
+      number: String(prefill?.number || reg?.number || ""),
+      address: String(prefill?.address || typedAddress || ""),
+    },
+    profile: { name: String(title ?? ""), number: String(reg?.number ?? ""), address: String(typedAddress ?? ""), country: country ?? null },
+  };
+  const record = (fields) => ({ source: sourceWords(sourceKey).replace(/^the /, ""), sourceKey, by: "", result: null, reference: "", name: title ?? "", ...fields, form });
+  const current = detail?.current ?? null;
+  // A check saved before the company has a number still counts (the stuck save, Nov 24).
+  if (!reg && !current) return { ...base, score: null, verdict: "No registration number yet", canReason: false, registry: record({}) };
+  if (reg && !reg.number && !reg.noCompanyNumber && !current) return { ...base, score: null, verdict: "Number not read yet", canReason: true, registry: record({}), ...(lookup ? { lookup } : {}) };
+  const checks = (detail.checks ?? []).filter((c) => !c.numberChecked || c.numberChecked === (reg?.number ?? null));
   let out;
-  if (current) {
+  if (current && current.details?.form === 2) {
+    const person = checks.find((c) => c.id === current.id) ?? {};
+    const by = byWords(person.checkedBy, current.checked_at, timeZone);
+    const asSaved = siteRecord(current.details ?? {}, form.profile);
+    // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
+    const saved = addressConfirmed
+      ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
+      : asSaved;
+    const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
+    out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
+    if (detail.renamedSinceCheck && saved.result === "found") {
+      out = { score: null, verdict: "Renamed since the check", registry: { ...out.registry, for: current.details?.titleAtCheck ?? current.details?.nameAtCheck ?? null } };
+    }
+  } else if (current) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const cd = current.details ?? {};
     const src = sourceWords(current.source);
@@ -293,6 +388,12 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       source: src.replace(/^the /, ""), sourceKey: current.source, by, result: outcome === "mismatch" ? "not_found" : outcome,
       reference: cd.reference ?? "", name: (detail.renamedSinceCheck ? title : cd.name ?? title) ?? "",
       ...(cd.reason ? { reason: String(cd.reason) } : {}),
+      // An explanation is saved as a check of its own, with no files: the proof of the check it explains stays
+      // on the row (Nov 25), from the latest person's check on this number that has some.
+      ...(!current.automatic && !(Array.isArray(cd.proof) && cd.proof.length) ? (() => {
+        const earlier = checks.find((c) => c.id !== current.id && !c.automatic && Array.isArray(c.details?.proof) && c.details.proof.length);
+        return earlier ? { proof: earlier.details.proof } : {};
+      })() : {}),
     });
     if (detail.renamedSinceCheck) {
       out = { score: null, verdict: "Renamed since the check", registry: { ...registry, for: cd.titleAtCheck ?? cd.nameAtCheck ?? null } };
@@ -349,7 +450,174 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   }
   // The reason typed with "Name differs" stays on the row afterwards (grey, who and when).
   const recorded = out.registry?.reason && current ? { text: out.registry.reason, by: out.registry.by, at: current.checked_at ?? null, recorded: true } : null;
-  return { ...base, ...out, canReason: true, ...(recorded ? { reason: recorded } : {}), ...(lookup ? { lookup } : {}) };
+  // A shared number to explain: offered on this row too, for a company whose number field is not shown (nothing read).
+  const sharedWith = (detail.duplicates ?? []).map((o) => o.name).join(", ");
+  const shared = sharedWith && !detail.duplicateExplained ? { duplicate: { with: sharedWith } } : {};
+  // Said on the row whether or not a number field shows it (fix round, Nov 24), with the saved explanation.
+  const explained = detail.duplicateExplained && typeof detail.duplicateExplained === "object" ? detail.duplicateExplained : null;
+  const sharedNumber = sharedWith ? { sharedNumber: { with: sharedWith, ...(explained?.note ? { explained: { text: String(explained.note), by: byWords(explained.reviewedBy, explained.reviewedAt, timeZone) } } : {}) } } : {};
+  return { ...base, ...out, canReason: true, ...shared, ...sharedNumber, ...(recorded ? { reason: recorded } : {}), ...(lookup ? { lookup } : {}) };
+}
+
+/* ------------------------------------------------------------ the one form (Nov 24) */
+
+const DEFAULT_SITE_SKIP = new Set(["document"]);
+
+/** The sites a country's registry check usually goes to: short name, key and link. */
+export function siteOptions(country, registration, title, address = "") {
+  return registrySources(country)
+    .filter((source) => !DEFAULT_SITE_SKIP.has(source.key))
+    .map((source) => {
+      if (source.key === "state_register") return stateSite(address, source);
+      let href = null;
+      try { href = typeof source.url === "function" ? source.url(registration ?? {}, title) : null; } catch { href = null; }
+      return { key: source.key, name: capital(sourceWords(source.key).replace(/^the /, "")), label: source.label ?? sourceWords(source.key), href };
+    });
+}
+
+/** A US company's register: its state's business search, read from the address; else where to look, said in the field. */
+function stateSite(address, source) {
+  const state = usStateFrom(address);
+  const name = state ? `${state.name} business search` : "The company's state business register";
+  return { key: "state_register", name, label: state ? `${state.name} Secretary of State` : source?.label ?? "State business register (Secretary of State)", href: state?.url ?? null };
+}
+
+/** The key a typed site is saved under: a known one by its name, else "site". */
+export function siteKeyFor(site, sites) {
+  const typed = String(site ?? "").trim().toLowerCase();
+  const known = (sites ?? []).find((s) => s.name.toLowerCase() === typed || s.key === typed);
+  return known?.key ?? "site";
+}
+
+const plainNumber = (value) => String(value ?? "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+const plainAddress = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[\s,.;:()（）、，。'"’\-–/#]+/g, "");
+
+function bigrams(text) {
+  const out = new Map();
+  for (let i = 0; i < text.length - 1; i += 1) {
+    const pair = text.slice(i, i + 2);
+    out.set(pair, (out.get(pair) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** Same address, written differently: one holds the other, or most character pairs are shared. */
+export function addressesMatch(a, b) {
+  // One in Chinese, the other in English: not comparable word for word, so never a difference (Nov 24 tester).
+  const hasHan = (text) => /\p{Script=Han}/u.test(String(text ?? ""));
+  const latin = (text) => /[A-Za-z]{3}/.test(String(text ?? "").replace(/\p{Script=Han}/gu, ""));
+  if (hasHan(a) !== hasHan(b) && !(hasHan(a) && latin(a) && latin(b)) && !(hasHan(b) && latin(b) && latin(a))) return true;
+  // Both carry Chinese: the Chinese parts (with their numbers) are what to compare, whatever English sits beside them.
+  const han = (text) => String(text ?? "").normalize("NFKC").replace(/[^\p{Script=Han}0-9]/gu, "");
+  const hx = han(a);
+  const hy = han(b);
+  if (/\p{Script=Han}{4}/u.test(hx) && /\p{Script=Han}{4}/u.test(hy)) return addressesMatch.plain(hx, hy);
+  return addressesMatch.plain(plainAddress(a), plainAddress(b));
+}
+addressesMatch.plain = (x, y) => {
+  if (!x || !y) return true;
+  if (x === y || x.includes(y) || y.includes(x)) return true;
+  const bx = bigrams(x);
+  const by = bigrams(y);
+  let shared = 0;
+  for (const [pair, n] of bx) shared += Math.min(n, by.get(pair) ?? 0);
+  const total = Math.max(1, x.length - 1 + y.length - 1);
+  return (2 * shared) / total >= 0.6;
+};
+
+/** Both in Chinese or both not: a Chinese name and its English one are not compared. */
+const sameScript = (a, b) => /\p{Script=Han}/u.test(String(a)) === /\p{Script=Han}/u.test(String(b));
+const bothHan = (a, b) => /\p{Script=Han}{4}/u.test(String(a)) && /\p{Script=Han}{4}/u.test(String(b));
+
+/** What differs between what the site shows and the company's own profile. Blank on either side never differs. */
+export function siteDifferences(seen, profile) {
+  const name = String(seen?.name ?? "").trim();
+  const number = plainNumber(seen?.number);
+  const address = String(seen?.address ?? "").trim();
+  return {
+    name: Boolean(name && profile?.name && sameScript(name, profile.name) && companyNameKey(name) !== companyNameKey(profile.name) && !namesPartlyMatch(name, profile.name)),
+    // The same number written another way by the country's rule (a Hong Kong certificate's full number) does not differ.
+    number: Boolean(number && plainNumber(profile?.number) && number !== plainNumber(profile.number)
+      && !(profile?.country && sameRegistrationNumber(profile.country, seen.number, profile.number))),
+    address: Boolean(address && profile?.address && !addressesMatch(address, profile.address)),
+  };
+}
+
+/**
+ * A certificate's holder against the names it should carry (the company's, the one read off the certificate; a
+ * bilingual "中文 · English" name is either): it differs only when it matches none written in its own script.
+ */
+export function holderDiffersFrom(holder, names) {
+  const all = (names ?? []).flatMap((n) => String(n ?? "").split(/\s+·\s+/)).map((n) => n.trim()).filter(Boolean);
+  return String(holder ?? "").split(/\s+·\s+/).map((part) => part.trim()).filter(Boolean).some((part) => {
+    const comparable = all.filter((n) => sameScript(n, part));
+    return comparable.length > 0 && !comparable.some((n) => !siteDifferences({ name: part }, { name: n }).name);
+  });
+}
+
+/** The name a differing holder is shown against: the first one in its own script. */
+export function holderCompareName(holder, names) {
+  const h = String(holder ?? "").trim();
+  return (names ?? []).flatMap((n) => String(n ?? "").split(/\s+·\s+/)).map((n) => n.trim()).find((n) => n && sameScript(n, h)) ?? "";
+}
+
+/** A saved form-2 record, in the screen's words. */
+export function siteRecord(details, profile) {
+  const seen = { name: details.name ?? "", number: details.number ?? "", address: details.address ?? "" };
+  return {
+    // A record saved on the one form (its own key: `form` is the form's options).
+    version: 2,
+    site: String(details.site ?? "").trim(),
+    result: details.outcome ?? null,
+    ...seen,
+    note: details.note ?? "",
+    reference: details.reference ?? details.link ?? "",
+    proof: Array.isArray(details.proof) ? details.proof : [],
+    differs: details.outcome === "found" ? siteDifferences(seen, profile) : { name: false, number: false, address: false },
+    // Only what was really compared is said to match: a Chinese value and an English one are not compared.
+    compared: {
+      name: Boolean(seen.name && profile?.name && sameScript(seen.name, profile.name)),
+      number: Boolean(plainNumber(seen.number) && plainNumber(profile?.number)),
+      address: Boolean(seen.address && profile?.address && (sameScript(seen.address, profile.address) || bothHan(seen.address, profile.address))),
+    },
+  };
+}
+
+const listWords = (items) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+
+/** "name and number match" / "address differs". */
+export function matchWords(saved) {
+  const keys = ["name", "number", "address"];
+  const differ = keys.filter((k) => saved.differs?.[k]);
+  if (differ.length) return `${listWords(differ)} ${differ.length === 1 ? "differs" : "differ"} from the profile`;
+  const same = keys.filter((k) => saved.compared?.[k]);
+  if (!same.length) return "";
+  return `${listWords(same)} ${same.length === 1 ? "matches" : "match"}`;
+}
+
+/** Score and verdict of a form-2 record: Found 90, Found with a difference 60, Not found 5, Couldn't check none. */
+export function siteVerdict(saved, scores) {
+  const where = saved.site || "the site";
+  if (saved.result === "found") {
+    const words = matchWords(saved);
+    const differs = Object.values(saved.differs ?? {}).some(Boolean);
+    return { score: differs ? scores.nameDiffers : scores.found, verdict: `Found on ${where}${words ? `, ${words}` : ""}`, short: `found on ${where}${differs ? `, ${words}` : ""}` };
+  }
+  if (saved.result === "expired") return { score: scores.expired, verdict: `Expired on ${where}` };
+  if (saved.result === "not_found") return { score: scores.notFound ?? scores.not_found, verdict: `Not found on ${where}` };
+  return { score: null, counts: scores.notFound ?? null, verdict: `Couldn't check ${where}` };
+}
+
+/** "Found on GSXT · name and number match · 2 files · Maya, Nov 24". */
+export function siteSummary(saved, by, extra = "") {
+  const where = saved.site || "the site";
+  const lead = saved.result === "found" ? `Found on ${where}` : saved.result === "expired" ? `Expired on ${where}`
+    : saved.result === "not_found" ? `Not found on ${where}` : `Couldn't check ${where}`;
+  const files = saved.proof?.length ? `${saved.proof.length} ${saved.proof.length === 1 ? "file" : "files"}` : "";
+  const note = String(saved.note ?? "").trim();
+  // Every outcome's note is on its line, Found's too (fix round 2, Nov 24).
+  const middle = saved.result === "found" ? [matchWords(saved), note] : [note];
+  return [lead, ...middle, extra, files, by].filter(Boolean).join(" · ");
 }
 
 const NUMBER_LABEL = { CN: "Registration number", TR: "Tax number (VKN)", PT: "NIPC (company number)" };
@@ -376,7 +644,7 @@ function registrationFields({ reading, detail, country, timeZone, documentDiffer
   if (country === "TR") push({ key: "letterNumber", label: "Letter number", value: reg.registrationLetterNumber ?? "", copy: true });
   if (country === "TR") push({ key: "taxOffice", label: "Tax office", value: x.taxOffice ?? "" });
   push({ key: "established", label: country === "PT" ? "Registered" : "Established", value: reading?.details?.foundedOn ?? x.foundingDate ?? x.issueDate ?? "" });
-  push({ key: "legalName", label: "Legal name", value: x.legalName ?? "", editable: true, always: Boolean(reading), ...(typedOf("name") ? { typed: String(typedOf("name")) } : {}), ...(country === "TR" ? { wide: true } : {}) });
+  push({ key: "legalName", label: "Legal name", value: x.legalName ?? "", editable: true, always: Boolean(reading), ...(typedOf("name") ? { typed: String(typedOf("name")), ...(documentDiffers === "name" ? { explainTyped: "Why the typed name differs from the licence" } : {}) } : {}), ...(country === "TR" ? { wide: true } : {}) });
   push({ key: "representative", label: "Legal representative", value: x.legalRepresentative ?? "" });
   push({ key: "legalNameEnglish", label: "Name in English", value: x.legalNameEnglish ?? "", wide: true });
   const codes = (x.activityCodes ?? []).join(" · ");
@@ -400,7 +668,7 @@ function scopeField({ reading, country }) {
 
 /* ------------------------------------------------------------ company information */
 
-export function scopeCheck({ reading, level, country }) {
+export function scopeCheck({ reading, level, country, vendorKind = null }) {
   const base = { key: "scope", label: "Factory or trader", weight: 10, reasonKey: "scope" };
   const scope = reading?.details?.tradingScope;
   if (!reading) return { ...base, score: null, verdict: "Licence not read yet", canReason: false };
@@ -408,6 +676,10 @@ export function scopeCheck({ reading, level, country }) {
   const quote = scope.quote ? ` (${scope.quote})` : "";
   // Nov 13 (Queena): the verdict says plainly whether it is a factory, then the evidence.
   // `formerVerdict`: the words before Nov 13, so a reason written for them keeps holding.
+  // A trading company with a trading licence is what it says it is (Nov 24): full score, nothing to explain.
+  if ((level?.level === "low" || scope.trading) && vendorKind === "trading_company") {
+    return { ...base, score: SCORES.scope.making, canReason: true, short: "trading licence", verdict: `Trading company: trading licence${quote}` };
+  }
   if (level?.level === "low" || scope.trading) {
     const coded = country === "TR" || country === "PT";
     // "Wholesale" only when the licence says so: its words, or every activity code a wholesale one (46…).
@@ -533,7 +805,7 @@ export function photosCheck(tiles) {
 
 const monthYear = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }) : "");
 
-export function certificateChecks({ certificates, signals, now, timeZone }) {
+export function certificateChecks({ certificates, signals, now, timeZone, title = "" }) {
   const today = String(now ?? new Date().toISOString()).slice(0, 10);
   return (certificates ?? []).map((cert) => {
     // Staff's record on the issuer's list decides; Run again's automatic reading (result "read") only
@@ -552,12 +824,34 @@ export function certificateChecks({ certificates, signals, now, timeZone }) {
     else if (result === "expired") { score = SCORES.certificate.expired; verdict = "Expired on the issuer's list"; }
     else if (result === "not_found") { score = SCORES.certificate.not_found; verdict = "Not on the issuer's list"; }
     else if (result === "could_not_check") verdict = "Couldn't check the issuer's list";
+    // The one form (Nov 24): where staff checked, what it showed, the proof.
+    const saved = mark?.details?.form === 2 ? siteRecord({ ...mark.details, outcome: result, reference: mark.details.link }, null) : null;
+    // Found under another holder: marked and scored like a registry name that differs (fix round, Nov 24).
+    const holderNames = [title, read?.details?.holder];
+    const holderDiffers = Boolean(saved && result === "found" && holderDiffersFrom(mark.details.holder, holderNames));
+    if (saved) {
+      const words = siteVerdict(saved, { found: SCORES.certificate.found, nameDiffers: SCORES.certificate.found, expired: SCORES.certificate.expired, notFound: SCORES.certificate.not_found });
+      score = holderDiffers ? SCORES.certificate.holderDiffers : words.score;
+      verdict = result === "found" && expiresAt && !expiredByDate ? `${words.verdict}, valid to ${monthYear(expiresAt)}` : words.verdict;
+      if (holderDiffers) verdict = `${verdict}; holder differs from the company`;
+    }
     if (score == null && read?.details?.holderMatches === false) verdict = "Holder differs from the company";
     if (expiredByDate && (score == null || score > SCORES.certificate.expired)) { score = SCORES.certificate.expired; verdict = `Expired ${monthYear(expiresAt)}`; }
+    const by = mark ? byWords(mark.checkedBy, mark.checkedAt, timeZone) : "";
+    const siteName = lookupDef.label ?? "";
     return {
       key: `certificate:${cert.id}`, label: cert.label, kind: "certificate", subjectId: cert.id, reasonKey: "certificate", canReason: true,
       score, verdict,
-      registry: { source: "Issuer's list", sourceKey: "issuer", by: mark ? byWords(mark.checkedBy, mark.checkedAt, timeZone) : "", result, reference: mark?.details?.link ?? "" },
+      registry: {
+        source: saved?.site || "Issuer's list", sourceKey: "issuer", by, result, reference: mark?.details?.link ?? "",
+        ...(saved ? { ...saved, holder: mark.details.holder ?? "", summary: siteSummary(saved, by, holderDiffers ? "holder differs from the company" : "") } : {}),
+        form: {
+          sites: siteName ? [{ key: "issuer", name: siteName, label: siteName, href }] : [],
+          defaultSite: siteName,
+          prefill: { number, holder: certificateHolder(cert.id, signals) },
+          holderNames,
+        },
+      },
       ...(href ? { lookup: { label: "Open issuer's list", href, ...(number ? { copy: number } : {}) } } : {}),
       checkedAt: mark?.checkedAt ?? read?.checkedAt ?? null,
     };
@@ -612,23 +906,27 @@ function differingField(detail, reading) {
 }
 
 /** What Approve waits for, named by where it is done on the new screen. */
-export function approvalBlockWords(problem, detail, reading = null) {
+export function approvalBlockWords(problem, detail, reading = null, { licence = true } = {}) {
   if (!problem) return null;
-  const src = sourceWords(detail?.current?.source ?? defaultSource(detail?.registration?.country ?? detail?.countryCode));
+  const auto = !detail?.current ? (detail?.checks ?? []).find((c) => c.automatic) : null;
+  const src = String(detail?.current?.details?.site ?? "").trim() || sourceWords(detail?.current?.source ?? defaultSource(detail?.registration?.country ?? detail?.countryCode));
   const field = differingField(detail, reading);
   return {
-    no_check: !detail?.current ? "Registry: record a check first"
-      : detail.current.result === "could_not_check" ? `Registry: couldn't check ${src}, record a check that finds them`
+    no_check: !detail?.current ? (auto?.result === "registered"
+      ? `Registry: ${sourceWords(auto.source)} doesn't show this exact name, record a check`
+      : "Registry: record a check first")
+      : detail.current.result === "could_not_check" ? `Registry: couldn't check ${src}, add a note or record a check that finds them`
         : detail.current.result !== "found" ? `Registry: the last check on ${src} found no match` : "Registry: record a check first",
     renamed: "Registry: renamed since the check, check it again",
-    name_differs: "Registry: name differs, record Name differs with a reason",
+    name_differs: "Registry: name differs, record the check again",
     document_differs: field === "number"
-      ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and Run again"
-      : "Registry: the name on the licence differs from what they typed, record Name differs with a reason",
+      ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and save"
+      // What clears it (Nov 25): an explanation, or a registry check showing the licence's name (or theirs).
+      : "Registry name: the licence's name differs from what they typed. Explain it on the Typed: line, or record a check with the name the registry shows",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
-    number_unread: "Number not read: ask for a clearer licence",
+    number_unread: licence ? "Number not read: ask for a clearer licence" : "No registration number: record a registry check with it",
     trading_only: "Factory or trader: add a reason first",
   }[problem] ?? "Not ready to approve";
 }
@@ -637,20 +935,21 @@ export function approvalBlockWords(problem, detail, reading = null) {
  * The same block, short, on the modal row where it is cleared (fix round 2):
  * `{ group, check, words }`.
  */
-export function approvalBlockRow(problem, detail, reading = null) {
+export function approvalBlockRow(problem, detail, reading = null, { licence = true } = {}) {
   if (!problem) return null;
   const field = differingField(detail, reading);
   const row = {
     no_check: ["business_registration", "registry", detail?.current && detail.current.result !== "found" ? "Approve needs: a registry record that finds them" : "Approve needs: record a registry check"],
     renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
-    name_differs: ["business_registration", "registry", "Approve needs: record Name differs with a reason"],
+    name_differs: ["business_registration", "registry", "Approve needs: record the registry check again"],
     document_differs: ["business_registration", "registry", field === "number"
-      ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and Run again"
-      : "Approve needs: record the name difference (Update check, Name differs, with a reason)"],
+      ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and save"
+      : "Approve needs: the name differs from the licence. Explain it on the Typed: line, or record a check with the name the registry shows"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
     number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
-    number_unread: ["business_registration", "licence", "Approve needs: a clearer licence"],
+    number_unread: licence ? ["business_registration", "licence", "Approve needs: a clearer licence"]
+      : ["business_registration", "registry", "Approve needs: a registry check with their registration number"],
     trading_only: ["company_information", "scope", "Approve needs: a reason here"],
   }[problem];
   return row ? { group: row[0], check: row[1], words: row[2] } : null;
@@ -694,7 +993,12 @@ export function scoreVerification(input, { timeZone } = {}) {
   const country = detail.registration?.country ?? detail.countryCode ?? input?.profile?.countryCode ?? null;
   const title = detail.title ?? input?.profile?.legalName ?? input?.profile?.name ?? "";
   const files = extra.registrationFiles ?? [];
-  const reading = latest(signals, "document_reading");
+  const read = latest(signals, "document_reading");
+  // A number the licence writes another way by the country's rule (a Hong Kong certificate's full number) is no
+  // difference, also on a reading stored before the rule (Nov 25).
+  const reading = read && (read.details?.differences ?? []).some((line) => line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))
+    ? { ...read, details: { ...read.details, differences: read.details.differences.filter((line) => !(line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))) } }
+    : read;
   const reasons = reasonsByKey(input ?? {}, timeZone);
   const photoCheck = input?.photoCheck ?? null;
 
@@ -720,10 +1024,58 @@ export function scoreVerification(input, { timeZone } = {}) {
   const clean = (check) => Object.fromEntries(Object.entries(check).filter(([k]) => !["short", "trading", "checkedAt", "formerVerdict"].includes(k)));
 
   // Business registration
-  const licence = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
+  const licenceRecord = files[0] ? (signals ?? []).filter((s) => s.kind === "licence" && !s.automatic && s.subjectId === files[0].id)
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
+  const licenceAuto = withReason(licenceCheck({ reading, files, registration: detail.registration, country, title, licenseCopyLow }));
+  const licence = licenceRecord
+    ? { ...overrideCheck(licenceAuto, { result: licenceRecord.result, note: licenceRecord.note ?? "", by: byWords(licenceRecord.checkedBy, licenceRecord.checkedAt, timeZone) }), fileId: files[0].id }
+    // `fileId`, not `subjectId`: a licence reason is saved without a subject.
+    : { ...licenceAuto, ...(files[0] ? { fileId: files[0].id } : { canOverride: false }) };
   const documentDiffers = (input?.rules?.approvalProblem ?? detail.approvalProblem) === "document_differs" ? differingField(detail, reading) : null;
-  const registry = withReason(registryCheck({ detail, country, title, readName: reading?.details?.extracted?.legalName ?? null, timeZone, documentDiffers }));
-  const brChecks = [licence, registry];
+  const typedAddress = String(detail.productionAddress ?? "").trim() || String(detail.location ?? "").trim();
+  const readValues = reading?.details?.extracted ?? {};
+  // Staff's own result on the address, for the address now typed (Nov 25).
+  const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
+  const registry = withReason(registryCheck({
+    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
+    prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
+  }));
+  // Company information's inputs, read here: the address check is in this group (Nov 25).
+  const siteSignal = signals.find((s) => s.kind === "address" && s.automatic) ?? null;
+  // Staff's own result on a check (Nov 25): the newest, for this licence file / this address.
+  const vendorKind = input?.profile?.vendorKind ?? null;
+  const staffRecord = (kind, fits = () => true) => signals.filter((s) => s.kind === kind && !s.automatic && fits(s))
+    .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null;
+  const withStaff = (check, record) => (record
+    ? overrideCheck(check, { result: record.result, note: record.note ?? "", by: byWords(record.checkedBy, record.checkedAt, timeZone) }, { vendorKind })
+    : check);
+  const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
+  // The typed address and the licence's, the same text with a street or building number in it, are the same
+  // address in any language, also for a result stored before the address check knew it (Nov 25: an English Hong
+  // Kong address parsed to its city only scored "Only the area matches").
+  const sameText = Boolean(typedAddress && licenceAddress) && /\d/.test(typedAddress) && plainAddress(typedAddress) === plainAddress(licenceAddress);
+  const ownerStored = level.address_owner;
+  // Only a result the address check stored is corrected: one that never ran stays "Not checked yet".
+  const owner = sameText && ownerStored && ownerStored.level === "medium" && !(ownerStored.details?.comparisons ?? []).some((c) => c.verdict === "differs")
+    ? { ...ownerStored, level: "high" } : ownerStored;
+  const address = withStaff(withReason(addressCheck({ owner, siteSignal, typedAddress })), addressRecord);
+  if (!typedAddress) address.canOverride = false;
+  const registryAddress = registry.registry?.result === "found" ? String(registry.registry.address ?? "").trim() : "";
+  const licenceDiffers = Boolean(licenceAddress) && address.score != null && address.score < SCORES.address.same && owner?.level !== "high";
+  // Each version of the address, one per line: what the company typed, the licence's, the registry's.
+  address.lines = [
+    typedAddress ? { key: "typed", label: "Typed", value: typedAddress } : null,
+    licenceAddress ? {
+      key: "licence", label: licence.label, value: licenceAddress,
+      // The parts the address check found differing, on the licence's side: only those are marked ("3栋", not the whole line).
+      ...(licenceDiffers ? { parts: (owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
+        .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)) } : {}),
+    } : null,
+    registryAddress ? { key: "registry", label: "Registry", value: registryAddress, ...(registry.registry?.differs?.address ? { differs: true } : {}) } : null,
+  ].filter(Boolean);
+  address.edit = { label: input?.profile?.vendorKind === "trading_company" ? "Company address" : "Factory address", value: typedAddress };
+  const brChecks = [licence, registry, address];
   const brVerdict = groupVerdict(brChecks, () => `${licence.short ?? licence.verdict}, ${registry.short ?? lowerFirst(registry.verdict)}`, { title });
   const staleWords = (() => {
     if (!reading) return null;
@@ -752,17 +1104,13 @@ export function scoreVerification(input, { timeZone } = {}) {
   };
 
   // Company information
-  const typedAddress = String(detail.productionAddress ?? "").trim() || String(detail.location ?? "").trim();
-  const siteSignal = signals.find((s) => s.kind === "address" && s.automatic) ?? latest(signals, "address") ?? null;
-  const scope = withReason(scopeCheck({ reading, level: level.trading_scope, country }));
-  const address = withReason(addressCheck({ owner: level.address_owner, siteSignal, typedAddress }));
+  const scope = withStaff(withReason(scopeCheck({ reading, level: level.trading_scope, country, vendorKind })), staffRecord("scope"));
   const tiles = photoTiles({ photos: extra.photos, signals, photoCheck, timeZone });
   const photos = withReason(photosCheck(tiles));
-  const ciChecks = [scope, address, photos];
-  const ciVerdict = groupVerdict(ciChecks, () => `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`);
-  const licenceAddress = String(reading?.details?.extracted?.address ?? "").trim();
+  const ciChecks = [scope, photos];
+  const ciVerdict = groupVerdict(ciChecks, () => (scope.staff || scope.verdict.startsWith("Trading company:") ? scope.verdict : `Factory: ${scope.short ?? lowerFirst(scope.verdict)}`));
   // Factory or trader is read off the licence, so a new reading (Run again on the licence) is a new check here too.
-  const ciStamp = [photoCheck?.checkedAt, siteSignal?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
+  const ciStamp = [photoCheck?.checkedAt, reading?.checkedAt].filter(Boolean).sort().at(-1) ?? null;
   const company = {
     key: "company_information",
     label: "Company information",
@@ -774,23 +1122,14 @@ export function scoreVerification(input, { timeZone } = {}) {
     readAt: ciStamp ? `Checked ${stampWords(ciStamp, timeZone)}` : "",
     readAtIso: ciStamp,
     stale: null,
-    fields: [
-      ...(typedAddress ? [{
-        key: "siteAddress", label: "Factory address", value: typedAddress, wide: true, editable: true,
-        ...(licenceAddress && address.score != null && address.score < SCORES.address.same && level.address_owner?.level !== "high" ? {
-          licence: licenceAddress,
-          // The parts the address check found differing, on the licence's side: only those are boxed ("3栋", not the whole line).
-          licenceParts: (level.address_owner?.details?.comparisons ?? []).filter((c) => c.between?.[0] === "license" && c.verdict === "differs")
-            .flatMap((c) => (c.differs ?? []).map((d) => String(d.a ?? "").trim()).filter(Boolean)),
-        } : {}),
-      }] : []),
-    ],
+    // The address is in Business registration (Nov 25).
+    fields: [],
     checks: ciChecks.map(clean),
   };
 
   // Certification evidence (shown, not counted)
   const certs = extra.certificates ?? [];
-  const certChecks = certificateChecks({ certificates: certs, signals, now, timeZone }).map(withReason);
+  const certChecks = certificateChecks({ certificates: certs, signals, now, timeZone, title }).map(withReason);
   const certScored = certChecks.filter((c) => c.score != null).sort((a, b) => a.score - b.score);
   const certWeak = certScored[0] ?? certChecks[0] ?? null;
   const certWithFile = certs.find((c) => c.document) ?? certs[0] ?? null;
@@ -827,7 +1166,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   // A trading licence explained for another verdict: Approve waits for a new reason again.
   const approvalProblem = input?.rules?.approvalProblem ?? detail.approvalProblem
     ?? (scope.trading && scope.reason?.earlier ? "trading_only" : null);
-  const blockRow = approvalBlockRow(approvalProblem, detail, reading);
+  const blockRow = approvalBlockRow(approvalProblem, detail, reading, { licence: files.length > 0 });
   const groups = [business, company, certification].map((group) => {
     const score = scoreGroup(group);
     const checks = blockRow && blockRow.group === group.key
@@ -844,8 +1183,8 @@ export function scoreVerification(input, { timeZone } = {}) {
     tier: tierFor(overall),
     weakest: weakest ? { key: weakest.key, label: weakest.label, group: weakest.group, score: weakest.score, verdict: weakest.verdict } : null,
     approvalProblem,
-    approvalBlock: approvalBlockWords(approvalProblem, detail, reading),
-    facts: factsFrom({ input, reading, files, typedAddress, timeZone, country, licenceLabel: licence.label }),
+    approvalBlock: approvalBlockWords(approvalProblem, detail, reading, { licence: files.length > 0 }),
+    facts: factsFrom({ input, reading, files, timeZone, country, licenceLabel: licence.label }),
     groups,
   };
 }
@@ -854,7 +1193,7 @@ export function scoreVerification(input, { timeZone } = {}) {
 
 const DETAIL_FIELDS = [["legalName", "legal name"], ["website", "website"], ["location", "location"], ["employees", "team size"], ["foundedYear", "year founded"], ["intro", "introduction"]];
 
-function factsFrom({ input, reading, files, typedAddress, timeZone, country, licenceLabel }) {
+function factsFrom({ input, reading, files, timeZone, country, licenceLabel }) {
   const facts = [];
   const terms = input?.terms;
   const signer = terms?.signedBy && terms.signature && companyNameKey(terms.signedBy) !== companyNameKey(terms.signature)
@@ -873,7 +1212,6 @@ function factsFrom({ input, reading, files, typedAddress, timeZone, country, lic
     key: "details", label: "Company details", ok: complete,
     value: complete ? "Complete" : listed.length ? `${capital(listed.length > 1 ? `${listed.slice(0, -1).join(", ")} and ${listed.at(-1)}` : listed[0])} only` : "Not filled in",
   });
-  if (typedAddress) facts.push({ key: "address", label: "Address", value: typedAddress });
   const founded = reading?.details?.foundedOn ?? null;
   const where = licenceLabel === "Tax plate" ? "the tax plate" : country === "PT" ? "the certificate" : "the licence";
   if (founded) {

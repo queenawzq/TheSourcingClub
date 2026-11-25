@@ -489,9 +489,20 @@ function SetNewPassword({ onDone }) {
 /**
  * /app.html?invite=<id>, the button in a team invitation's email. The id says
  * who was invited to what, so the form never asks for a company or a side.
+ *
+ * Only at the app's root: that is the one address the email has ever linked
+ * to. Pages inside the app use `invite` for their own things (the composer's
+ * `/rfqs/new?invite=<vendor id>`, the credits tab's `?invite=sent`), and a
+ * refresh there must not be read as a team invitation.
  */
+function teamInviteId(location = window.location) {
+  const inside = location.pathname.replace(/^\/app\.html/, "");
+  if (inside !== "" && inside !== "/") return null;
+  return new URLSearchParams(location.search).get("invite");
+}
+
 function useInviteLink() {
-  const [id, setId] = useState(() => new URLSearchParams(window.location.search).get("invite"));
+  const [id, setId] = useState(() => teamInviteId());
   // undefined while asking; null when the id is unknown; "failed" to try again.
   const [preview, setPreview] = useState(undefined);
   const [attempt, setAttempt] = useState(0);
@@ -1088,7 +1099,8 @@ function Shell() {
         onComplete={loadProfile}
         onSignOut={signOut}
         review={review}
-        initialStep={isFactory ? 10 : 9}
+        // The finish card: a trading company's copy has one card fewer than a factory's.
+        initialStep={isFactory ? (profile.vendor_kind === "trading_company" ? 9 : 10) : 9}
         initialCompanyType={profile.vendor_kind === "trading_company" ? "trading" : "factory"}
       />
     );

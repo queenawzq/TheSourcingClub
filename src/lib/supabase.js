@@ -12,6 +12,7 @@ import { noteServerDate } from "./server-clock.js";
 import { createSessionStorage } from "./session-storage.mjs";
 import { createRoute, proxyPathFor } from "./supabase-route.mjs";
 import { AUTH_MESSAGES, isNoAnswer } from "../shared/auth-messages.mjs";
+import { constraintInWords, pageLanguage } from "../shared/constraint-words.mjs";
 import { fillOlderBrowsers } from "./older-browsers.mjs";
 import { isSignInLinkLanding, linkCannotFinishHere, restoreReturn, withoutLinkError } from "./return-after-link.mjs";
 
@@ -273,7 +274,7 @@ export function unwrap({ data, error }, context) {
       ? AUTH_MESSAGES.no_connection[globalThis.navigator?.languages?.some((language) => /^zh\b/i.test(language)) ? "zh" : "en"]()
       // A brand under review: the database's own sentence, whole (20261124100000).
       : error.hint === "brand_under_review" ? error.message
-      : context ? `${context}: ${error.message}` : error.message;
+      : constraintInWords(error, pageLanguage()) ?? (context ? `${context}: ${error.message}` : error.message);
     const wrapped = new Error(message);
     wrapped.noAnswer = noAnswer;
     wrapped.cause = error;

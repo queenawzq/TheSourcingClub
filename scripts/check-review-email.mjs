@@ -6,7 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { accountApprovedEmail, declinedEmail, needsInformationEmail } from "./generate-account-approved-email.mjs";
-import { noteHasList, parseReviewNote, reviewNoteHtml } from "../src/shared/review-note.mjs";
+import { noteHasList, parseReviewNote, reviewNoteHtml, reviewNoteText } from "../src/shared/review-note.mjs";
 
 let failures = 0;
 const check = (name, ok, detail = "") => {
@@ -63,6 +63,36 @@ check("the decline in Chinese", declinedEmail({ ...options, locale: "zh" }).subj
 
 const approved = accountApprovedEmail({ ...options, note: "" });
 check("an approval with no note has no note box", !approved.html.includes("A note from our team"));
+
+// The approval pop-up's suggested messages: each reaches the email as typed, in its own box.
+// Chinese follows the English only for a vendor likely to read it; a brand's is English.
+// The bell draws text only: "- " lines read as the bullets the pop-ups promise, nothing else changes.
+check("bell text: dashes become bullets", reviewNoteText("Welcome.\n\n- Add photos\n- Add capacity") === "Welcome.\n\n• Add photos\n• Add capacity");
+check("bell text: numbered stays numbered", reviewNoteText("1. One\n2. Two") === "1. One\n2. Two");
+check("bell text: a sentence is unchanged", reviewNoteText("Order 30 - 40 units.") === "Order 30 - 40 units.");
+check("bell text: empty is empty", reviewNoteText(null) === "");
+const { suggestedApprovalMessage, readsChinese } = await import("../src/shared/approval-message.mjs");
+const hasChinese = (text) => /[\u4e00-\u9fff]/.test(text);
+for (const [reader, expected] of [
+  [{ countryCode: "CN" }, true], [{ countryCode: "hk" }, true], [{ countryCode: "TW" }, true], [{ countryCode: "MO" }, true],
+  [{ countryCode: "TR" }, false], [{ countryCode: "PT", locales: ["en"] }, false], [{}, false],
+  [{ countryCode: "GB", locales: ["en", "zh"] }, true], [{ countryCode: null, locales: ["zh-CN"] }, true],
+]) check(`reads Chinese: ${JSON.stringify(reader)}`, readsChinese(reader) === expected);
+for (const type of ["Brand", "Factory", "Trading company"]) {
+  for (const reader of [{ countryCode: "CN" }, { countryCode: "TR" }]) {
+    const message = suggestedApprovalMessage(type, reader);
+    const label = `${type} (${reader.countryCode})`;
+    check(`${label}'s suggested message has no "TSC"`, !/\bTSC\b/.test(message));
+    check(`${label}'s suggested message has Chinese only for a vendor in China`, hasChinese(message) === (type !== "Brand" && reader.countryCode === "CN"));
+    for (const locale of ["en", "zh"]) {
+      const email = accountApprovedEmail({ ...options, locale, note: message });
+      const first = message.split("\n\n")[0];
+      check(`${label}'s message is in the ${locale} approval email`, email.html.includes(first.replaceAll("'", "&#039;")) && email.text.includes(first));
+    }
+  }
+}
+check("the brand's message works in the bell too (no \"this email\")", !/this email/i.test(suggestedApprovalMessage("Brand")));
+check("Test emails sends the factory's suggested message, with Chinese in the 中文 sample", /"review-approved-message"[\s\S]{0,400}suggestedApprovalMessage\("Factory", \{ countryCode: locale === "zh" \? "CN" : null \}\)/.test(readFileSync(new URL("../api/send-test-email.js", import.meta.url), "utf8")));
 
 // Test emails: its sample is parsed from the file, so importing it needs no keys.
 const testEmails = readFileSync(new URL("../api/send-test-email.js", import.meta.url), "utf8");

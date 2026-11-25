@@ -3398,7 +3398,7 @@ process.exit(failures ? 1 : 0);
 /**
  * Approving a factory needs staff's "found" registry check on its current
  * number (20261108600000). A number written with the server key, then the
- * check as staff, the way a reviewer would.
+ * check as staff, the way a reviewer would; and the company's signed terms.
  */
 async function registryChecked(staffClient, orgId) {
   const { error: numberError } = await admin.from("company_registrations")
@@ -3408,4 +3408,13 @@ async function registryChecked(staffClient, orgId) {
     target_org: orgId, source: "document", result: "found", note: "Smoke: the document shows this number and name",
   });
   if (error) fail("staff record a registry check", error);
+  // Approve also waits for the signed terms (20261124310000): signed by the owner, as onboarding does.
+  const { data: owner } = await admin.from("org_members").select("user_id").eq("org_id", orgId).eq("role", "owner").limit(1).maybeSingle();
+  const { data: terms } = await admin.from("legal_documents").select("id, kind, version")
+    .eq("kind", "terms_factory").order("version", { ascending: false }).limit(1).single();
+  const { error: termsError } = await admin.from("terms_acceptances").upsert({
+    org_id: orgId, terms_version: `${terms.kind} v${terms.version}`, legal_document_id: terms.id,
+    signature: "Smoke owner", accepted_by: owner?.user_id,
+  }, { onConflict: "org_id,terms_version", ignoreDuplicates: true });
+  if (termsError) fail("the factory signs the terms", termsError);
 }

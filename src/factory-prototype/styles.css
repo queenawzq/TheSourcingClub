@@ -11595,3 +11595,8 @@ button.sort-button {
     min-width: 0;
   }
 }
+
+/* A line drawn under a field without an error (live: an address with no city or country). */
+.factory-onboarding-validation-message[data-shown="true"] {
+  display: flex !important;
+}

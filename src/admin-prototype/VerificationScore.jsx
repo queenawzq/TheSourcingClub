@@ -6,7 +6,7 @@
  * (Queena, Nov 11). The card shows a score and a one-line verdict per row;
  * everything else lives in the row's modal: the checks behind the score, what
  * was read from the document as editable fields, the file itself, and one
- * action, Run again.
+ * action, Save changes.
  *
  * One component, two data sources. The prototype passes a mock profile and
  * the card keeps its edits in local state (`mockActions`). The live review
@@ -22,6 +22,8 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
+import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } from "../shared/verification-score.mjs";
+import { AddressDialog } from "./CompanyOverride.jsx";
 import "./verification-score.css";
 
 function useCountUp(value, duration = 700) {
@@ -215,16 +217,25 @@ const byMe = "You, just now";
  * as the database would. Same signatures as the live ones, so the modal
  * cannot tell them apart.
  */
-function mockActions(setGroups, groupsRef) {
+function mockActions(setGroups, groupsRef, entityType = null) {
   const change = (groupKey, update) => setGroups((current) => current.map((group) => (group.key === groupKey ? update(group) : group)));
   const changeCheck = (groupKey, next) => change(groupKey, (group) => ({
     ...group,
     // A registry check staff record becomes the group's verdict: the header must not keep saying "not checked" or "renamed".
     ...(next.key === "registry" && next.registry?.by === byMe ? { verdict: next.verdict, why: "" } : {}),
+    // So does staff's own decision on what the company is: the heading must not keep the automatic "Not a factory".
+    ...(next.key === "scope" && next.staff?.by === byMe ? { verdict: next.verdict, why: next.staff.note } : {}),
     checks: group.checks.map((item) => (item.key === next.key ? next : item)),
   }));
   return {
     recordCheck: async (groupKey, check, record) => changeCheck(groupKey, recordedCheck(check, record)),
+    // Proof files stay in this browser: a link to the file itself.
+    uploadProof: async (file) => {
+      const url = URL.createObjectURL(file);
+      return { path: url, name: file.name, type: file.type, url };
+    },
+    removeProof: (path) => { try { URL.revokeObjectURL(path); } catch { /* not a blob link */ } },
+    proofUrl: async (file) => file.url ?? null,
     saveReason: async (groupKey, check, text) => changeCheck(groupKey, withReason(check, text)),
     recordPhoto: async (groupKey, index, record) => change(groupKey, (group) => withPhotoCheck({
       ...group,
@@ -234,6 +245,17 @@ function mockActions(setGroups, groupsRef) {
       ...group,
       fields: group.fields.map((item) => (item.key === field.key ? { ...item, duplicate: { ...item.duplicate, explained: { text, by: byMe } } } : item)),
     })),
+    // A check decided by staff: scored as the live page scores it (overrideCheck).
+    recordOverride: async (groupKey, check, { result, note }) => changeCheck(groupKey, overrideCheck(check, { result, note, by: byMe }, { vendorKind: entityType === "Trading company" ? "trading_company" : null })),
+    // Edit address: the typed line changes; the address check is not run again in the prototype.
+    saveAddress: async (address) => setGroups((current) => current.map((group) => ({
+      ...group,
+      checks: group.checks.map((check) => (!check.edit ? check : {
+        ...check,
+        edit: { ...check.edit, value: address },
+        lines: [{ key: "typed", label: "Typed", value: address }, ...(check.lines ?? []).filter((line) => line.key !== "typed")],
+      })),
+    }))),
     runAgain: (groupKey, values) => new Promise((resolve) => {
       window.setTimeout(() => {
         const group = groupsRef.current.find((item) => item.key === groupKey);
@@ -285,7 +307,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
   const localRef = useRef(localGroups);
   localRef.current = localGroups;
   const groups = (liveActions ? verification?.groups : localGroups) ?? [];
-  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef), [liveActions]);
+  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef, profile?.entityType ?? null), [liveActions, profile?.entityType]);
   const [openKey, setOpenKey] = useState(() => new URLSearchParams(window.location.search).get("check"));
   // Automatic checks still running when the page opens (the mock's timers, or the database saying so);
   // Run again adds its group while it runs.
@@ -349,7 +371,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
         </div>
         <p className="vr-overall-line">
           {/* "Factory: …" / "Not a factory: …" names its check already, so it stands alone. */}
-          {weakest ? <><span>Weakest:</span> {/^(Not a )?[Ff]actory:/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
+          {weakest ? <><span>Weakest:</span> {/^((Not a )?[Ff]actory|Trading company):/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
         </p>
         {counted.length > 0 && (
           <div className="vr-weightbar" role="img" aria-label={counted.map((group) => `${group.label} ${scoreGroup(group) ?? 0}%`).join(", ")}>
@@ -391,7 +413,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 <div className="vr-row-copy">
                   <span className="vr-row-title">{group.label}{groupTip(group) && <InfoTip text={groupTip(group)} label={group.label} />}</span>
                   {busy
-                    ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />Checking…</span>
+                    ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />{group.checkingWords ?? "Checking…"}</span>
                     : failed
                       ? <span className="vr-row-verdict vr-tier-low"><i aria-hidden="true" />{group.error}</span>
                       : <span className={`vr-row-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" />{group.verdict || "Nothing submitted"}</span>}
@@ -422,8 +444,6 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
 }
 
 /* ------------------------------------------------------------ sub-checks */
-
-const sameName = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
 function ReasonForm({ initial = "", label = "Reason", saveLabel = "Save reason", onSave, onDone }) {
   const [text, setText] = useState(initial);
@@ -463,95 +483,252 @@ function Segmented({ options, value, onChange, name, label }) {
   );
 }
 
-function RecordForm({ check, legalName, onSave, onDone }) {
+/** A proof file: opens in a new tab (a signed link, minted on click, live). */
+function ProofChip({ file, onOpen, onRemove }) {
+  const [failed, setFailed] = useState(false);
+  const open = async (event) => {
+    event.preventDefault();
+    const tab = window.open("about:blank", "_blank");
+    const href = file.url ?? await Promise.resolve(onOpen?.(file)).catch(() => null);
+    if (href && tab) { tab.opener = null; tab.location.href = href; }
+    else { tab?.close(); setFailed(true); }
+  };
+  return (
+    <span className="vr-proof-chip">
+      <a href={file.url ?? "#"} onClick={open} title={failed ? "Couldn't open the file" : file.name}>{file.name}</a>
+      {onRemove && (
+        <button type="button" aria-label={`Remove ${file.name}`} onClick={() => onRemove(file)}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+        </button>
+      )}
+    </span>
+  );
+}
+
+// A prefilled value is selected on focus, so what is typed replaces it rather than joining its end.
+const selectAll = (event) => event.target.select();
+
+const SEEN_FIELDS = {
+  registry: [["name", "Company name"], ["number", "Registration number"], ["address", "Address", true]],
+  certificate: [["number", "Certificate number"], ["holder", "Holder"]],
+};
+
+/**
+ * The one record form (Nov 24): where staff checked, what it showed, the values as the site shows them
+ * (prefilled from the document), proof files and a link or note. The page compares the values itself.
+ */
+function RecordForm({ check, onSave, onDone, actions }) {
   const registry = check.registry;
   const isCert = check.kind === "certificate";
-  const ids = { name: useId(), reason: useId(), reference: useId(), source: useId() };
-  // Where the check was made: the country's main source unless staff pick another (QCC fails, GSXT works).
-  const sources = !isCert && registry.sources?.length > 1 ? registry.sources : null;
-  const [sourceKey, setSourceKey] = useState(registry.sourceKey ?? sources?.[0]?.key ?? null);
-  const sourceLabel = sources?.find((item) => item.key === sourceKey)?.label ?? registry.source;
-  // Staff's own earlier answer is the starting point; an automatic check's is not theirs to repeat.
-  const [result, setResult] = useState(registry.result && !registry.for && registry.by !== "Checked automatically" ? registry.result : "found");
-  const [name, setName] = useState(isCert ? "" : (registry.result === "name_differs" ? registry.name : legalName) ?? "");
-  const [reference, setReference] = useState(registry.reference ?? "");
-  const [reason, setReason] = useState(registry.reason ?? "");
+  const form = registry.form ?? { sites: [], defaultSite: registry.source ?? "", prefill: {}, profile: {} };
+  const ids = { site: useId(), list: useId(), note: useId(), link: useId(), files: useId() };
+  const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
+  const earlier = savedByPerson && registry.version === 2 ? registry : null;
+  // An earlier record's site; never the generic "Issuer's list" of a record made before the form.
+  const [site, setSite] = useState(earlier?.site || (savedByPerson && !isCert ? registry.source : "") || form.defaultSite || "");
+  // A first record starts with nothing chosen: staff pick what the site showed (Nov 24 tester).
+  const initialResult = savedByPerson ? (registry.result === "name_differs" ? "found" : registry.result) : null;
+  const [result, setResult] = useState(initialResult);
+  const fieldsFor = SEEN_FIELDS[isCert ? "certificate" : "registry"];
+  const [seen, setSeen] = useState(() => Object.fromEntries(fieldsFor.map(([key]) => [key, String((earlier && earlier[key]) || (savedByPerson && key === "name" ? registry.name : "") || form.prefill?.[key] || "")])));
+  // One note per outcome (fix round, Nov 24): a note written for Not found never rides along into Found.
+  const [notes, setNotes] = useState(() => (initialResult ? { [initialResult]: earlier?.note ?? registry.reason ?? "" } : {}));
+  const note = (result && notes[result]) || "";
+  const setNote = (text) => setNotes((current) => ({ ...current, [result]: text }));
+  // Only a person's own earlier link; never an automatic answer's reference (a VAT id is not a link).
+  const [link, setLink] = useState(savedByPerson ? registry.reference ?? "" : "");
+  // Proof files belong to their outcome too (fix round 2): a Found record's screenshots never ride into Couldn't check.
+  // Files added before an outcome is chosen go with the first one chosen.
+  const [proofs, setProofs] = useState(() => ({ [initialResult ?? ""]: earlier?.proof ?? [] }));
+  const proof = proofs[result ?? ""] ?? [];
+  const setProof = (update) => {
+    const bucket = result ?? "";
+    setProofs((current) => ({ ...current, [bucket]: update(current[bucket] ?? []) }));
+  };
+  const chooseResult = (next) => {
+    if (result == null) setProofs((current) => (current[""]?.length && !current[next]?.length ? { ...current, [next]: current[""], "": [] } : current));
+    setResult(next);
+  };
+  const [added] = useState(() => new Set());
+  const [upload, setUpload] = useState({ busy: 0, error: "" });
   const [save, run] = useSave();
-  const showsName = !isCert && (result === "found" || result === "name_differs");
-  const needsReason = result === "name_differs";
+  const known = form.sites?.find((item) => item.name.toLowerCase() === site.trim().toLowerCase()) ?? null;
+  const showsSeen = result === "found";
+  const needsNote = result === "not_found" || result === "could_not_check";
+  // A note is optional on Found and Expired, required on Not found and Couldn't check.
+  const showsNote = Boolean(result);
+  const differs = isCert ? { holder: holderDiffersFrom(seen.holder, form.holderNames) } : siteDifferences(seen, form.profile);
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy;
 
-  // Typing a name the registry shows differently is "Name differs"; typing it back is "Found".
-  const changeName = (value) => {
-    setName(value);
-    if (!legalName) return;
-    if (!sameName(value, legalName) && result === "found") setResult("name_differs");
-    if (sameName(value, legalName) && result === "name_differs") setResult("found");
+  const addFiles = async (list) => {
+    const files = [...(list ?? [])];
+    if (!files.length) return;
+    setUpload((current) => ({ busy: current.busy + files.length, error: "" }));
+    for (const file of files) {
+      try {
+        const saved = await actions.uploadProof(file);
+        added.add(saved.path);
+        setProof((current) => [...current, saved]);
+      } catch (error) {
+        setUpload((current) => ({ ...current, error: error?.message || "Couldn't upload the file" }));
+      } finally {
+        setUpload((current) => ({ ...current, busy: current.busy - 1 }));
+      }
+    }
+  };
+  const removeFile = (file) => {
+    setProof((current) => current.filter((item) => item.path !== file.path));
+    // Only a file added in this form goes for good; a saved one stays with the earlier record.
+    if (added.has(file.path)) actions.removeProof?.(file.path);
+  };
+  const cancel = () => {
+    added.forEach((path) => actions.removeProof?.(path));
+    onDone();
   };
 
   const submit = async (event) => {
     event.preventDefault();
-    if ((needsReason && !reason.trim()) || save.busy) return;
+    if (!ready || save.busy) return;
     const { ok } = await run(() => onSave({
-      result, reference: reference.trim(), name: showsName ? name.trim() : "", reason: needsReason ? reason.trim() : "", ...(sourceKey ? { source: sourceKey } : {}),
+      site: site.trim(),
+      siteKey: known?.key ?? "site",
+      result,
+      // An address left as prefilled was never read off the registry: it is not recorded, so it claims no match
+      // and flags no difference later (Nov 25 tester). Name and number keep their prefill: staff compare those.
+      seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])
+        .filter(([key, value]) => isCert || key !== "address" || value !== String(form.prefill?.address ?? "").trim())) : {},
+      note: note.trim(),
+      link: link.trim(),
+      proof,
     }));
-    if (ok) onDone();
+    if (!ok) return;
+    // Files added under another outcome and not saved with this one go for good.
+    added.forEach((path) => { if (!proof.some((file) => file.path === path)) actions.removeProof?.(path); });
+    onDone();
   };
 
   return (
     <form className="vr-record" onSubmit={submit}>
-      {sources && (
-        <div className="vr-field">
-          <label htmlFor={ids.source}>Checked on</label>
-          <select id={ids.source} value={sourceKey ?? ""} onChange={(event) => setSourceKey(event.target.value)}>
-            {sources.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
-          </select>
+      <div className="vr-field">
+        <label htmlFor={ids.site}>Where you checked</label>
+        <div className="vr-input has-open">
+          <input id={ids.site} list={ids.list} value={site} spellCheck={false} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onFocus={selectAll} onChange={(event) => setSite(event.target.value)} />
+          {known?.href && <LookupAction lookup={{ label: "Open", href: known.href }} />}
         </div>
-      )}
+        {form.sites?.length > 0 && <datalist id={ids.list}>{form.sites.map((item) => <option value={item.name} key={item.key}>{item.label}</option>)}</datalist>}
+      </div>
       <Segmented
         options={RECORD_RESULTS[isCert ? "certificate" : "registry"]}
         value={result}
-        onChange={setResult}
+        onChange={chooseResult}
         name={`record-${check.key}`}
-        label={`What ${isCert ? "the issuer's list" : sourceLabel} showed`}
+        label="What it showed"
       />
-      {showsName && (
-        <div className={`vr-field${needsReason ? " is-differs" : ""}`}>
-          <label htmlFor={ids.name}>Name on {sourceLabel}</label>
-          <input id={ids.name} value={name} spellCheck={false} onChange={(event) => changeName(event.target.value)} />
-        </div>
-      )}
-      {needsReason && (
+      {showsSeen && fieldsFor.map(([key, label, multiline]) => {
+        const Control = multiline ? "textarea" : "input";
+        const other = isCert ? holderCompareName(seen[key], form.holderNames) : form.profile?.[key] ?? "";
+        return (
+          <div className={`vr-field${differs[key] ? " is-differs" : ""}`} key={key}>
+            <label htmlFor={`${ids.site}-${key}`}>{label}</label>
+            <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={seen[key]} spellCheck={false} onChange={(event) => setSeen((current) => ({ ...current, [key]: event.target.value }))} />
+            {differs[key] && <p className="vr-compare is-typed"><span>Profile:</span> {marked(other, seen[key])}</p>}
+          </div>
+        );
+      })}
+      {showsNote && (
         <div className="vr-field">
-          <label htmlFor={ids.reason}>Reason</label>
-          <textarea id={ids.reason} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <label htmlFor={ids.note}>{needsNote ? "Note" : "Note (optional)"}</label>
+          <textarea id={ids.note} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
         </div>
       )}
       <div className="vr-field">
-        <label htmlFor={ids.reference}>Link or reference</label>
-        <input id={ids.reference} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={`${isCert ? "Issuer's list" : sourceLabel} page link`} />
+        <span className="vr-field-label" id={ids.files}>Proof</span>
+        <div className="vr-proof" aria-labelledby={ids.files}>
+          {proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} onRemove={removeFile} key={file.path} />)}
+          <label className="vr-text-action vr-proof-add">
+            {upload.busy ? <><Spinner ink />Uploading…</> : "Add screenshots or PDFs"}
+            <input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+          </label>
+        </div>
+        {upload.error && <p className="vr-save-error" role="alert">{upload.error}</p>}
+      </div>
+      <div className="vr-field">
+        <label htmlFor={ids.link}>Link (optional)</label>
+        <input id={ids.link} value={link} spellCheck={false} onFocus={selectAll} onChange={(event) => setLink(event.target.value)} />
       </div>
       <SaveError text={save.error} />
       <div className="vr-record-actions">
-        <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
-        <button className="primary-btn compact-btn" type="submit" disabled={(needsReason && !reason.trim()) || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
+        <button className="secondary-btn compact-btn" type="button" onClick={cancel}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
       </div>
     </form>
   );
 }
 
-function SubCheck({ check, groupKey, legalName, canReason, actions }) {
+// The checks staff can decide themselves (Nov 25). The address: the whole check, not only whose address it is
+// (a home or an office at the right address is a problem too). Factory or trader: what the company is.
+const OVERRIDE_RESULTS = {
+  address: [{ key: "confirmed", label: "Confirmed" }, { key: "problem", label: "Problem found" }, { key: "could_not_check", label: "Couldn't check" }],
+  scope: [{ key: "factory", label: "Factory" }, { key: "trading_company", label: "Trading company" }, { key: "could_not_tell", label: "Couldn't tell" }],
+  licence: [{ key: "original", label: "Original" }, { key: "problem", label: "Problem found" }, { key: "could_not_check", label: "Couldn't check" }],
+};
+
+/** A check decided by staff: one of its results, and what they saw. */
+function OverrideForm({ check, onSave, onDone }) {
+  const [result, setResult] = useState(check.staff?.result ?? null);
+  const [note, setNote] = useState(check.staff?.note ?? "");
+  const [save, run] = useSave();
+  const id = useId();
+  const ready = Boolean(result && note.trim());
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready || save.busy) return;
+    const { ok } = await run(() => onSave({ result, note: note.trim() }));
+    if (ok) onDone();
+  };
+  return (
+    <form className="vr-record" onSubmit={submit}>
+      <Segmented options={OVERRIDE_RESULTS[check.key]} value={result} onChange={setResult} name={`override-${id}`} label="What you found" />
+      <div className="vr-field">
+        <label htmlFor={id}>Note</label>
+        <textarea id={id} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
+      </div>
+      <SaveError text={save.error} />
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save check"}</button>
+      </div>
+    </form>
+  );
+}
+
+function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false }) {
   const [mode, setMode] = useState(null);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
   const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
   const close = () => setMode(null);
+  const canEditAddress = Boolean(check.edit && actions.saveAddress);
+  // Staff decide the address, factory-or-trader and licence checks themselves (Nov 25).
+  const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
+  // A check staff record by hand has its own note: no separate reason (Nov 25).
+  const canReason = canReasonGiven && !canOverride && !canRecord;
+  const typedLine = check.lines?.find((line) => line.key === "typed")?.value ?? "";
   return (
-    <li className={`vr-sub${mode ? " is-open" : ""}`}>
+    <li className={`vr-sub${mode && mode !== "address" ? " is-open" : ""}`}>
       <div className="vr-sub-line">
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
-          <span>{check.verdict}</span>
-          {registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {/* A saved record's one line says it all (Nov 24); a renamed company keeps its verdict above it. */}
+          {(!registry?.summary || registry.for) && <span>{check.verdict}</span>}
+          {registry?.summary
+            ? (registry.for ? <small className="vr-sub-summary">{registry.summary}, for “{registry.for}”</small> : <span>{registry.summary}</span>)
+            : registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+          {check.sharedNumber && !numberShown && <small>Same registration number as {check.sharedNumber.with}</small>}
+          {registry?.proof?.length > 0 && !mode && (
+            <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
+          )}
+          {check.staff?.by && <small>Checked by staff · {check.staff.by}</small>}
           {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
         </div>
         <div className="vr-sub-score">
@@ -559,20 +736,39 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           <Meter value={check.score} />
         </div>
       </div>
+      {check.lines?.length > 0 && (
+        // The address, each version on its own line (Nov 25); the licence's and the registry's mark what differs.
+        <div className="vr-sub-lines">
+          {check.lines.map((line) => (
+            <p className={`vr-compare${line.key === "typed" ? "" : " is-licence"}`} key={line.key}>
+              <span>{line.label}:</span> {line.parts ? marked(line.value, typedLine, line.parts) : line.differs ? marked(line.value, typedLine, []) : line.value}
+            </p>
+          ))}
+        </div>
+      )}
+      {check.staff?.note && mode !== "override" && <p className="vr-sub-note"><span>{check.staff.note}</span></p>}
+      {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
+        <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
+      )}
       {check.reason && mode !== "reason" && (
         <p className={`vr-sub-note${check.reason.earlier ? " is-earlier" : ""}`}>
           <span>{check.reason.text}</span>
           <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
         </p>
       )}
-      {!mode && (canRecord || check.lookup || canReason) && (
+      {!mode && (canRecord || check.lookup || canReason || check.duplicate || canEditAddress || canOverride) && (
         <div className="vr-sub-actions">
           {canRecord && (
             <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
-              {registry.result && registry.by !== "Checked automatically" ? "Update check" : `Record ${registry.source} check`}
+              {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit" : "Record check"}
             </button>
           )}
           {check.lookup && <LookupAction lookup={check.lookup} />}
+          {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
+          {canEditAddress && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
+          {check.duplicate && !numberShown && actions.explainField && (
+            <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
+          )}
           {canReason && (
             <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
               {check.reason && !check.reason.earlier ? "Edit reason" : "Add reason"}
@@ -580,7 +776,14 @@ function SubCheck({ check, groupKey, legalName, canReason, actions }) {
           )}
         </div>
       )}
-      {mode === "record" && <RecordForm check={check} legalName={legalName} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
+      {mode === "override" && <OverrideForm check={check} onSave={(record) => actions.recordOverride(groupKey, check, record)} onDone={close} />}
+      {mode === "address" && (
+        <AddressDialog label={check.edit.label} address={check.edit.value} onSave={actions.saveAddress} onClose={close} />
+      )}
+      {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
+      {mode === "shared" && (
+        <ReasonForm label={`Why ${check.duplicate.with} has the same number`} saveLabel="Save" onSave={(text) => actions.explainField(groupKey, { key: "number" }, text)} onDone={close} />
+      )}
       {mode === "reason" && (
         <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
       )}
@@ -669,16 +872,17 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle", from: null });
   const score = group.checking || group.error ? null : scoreGroup(group);
-  // Run again reads what was uploaded: a file with no reading yet has no fields, and is exactly what it is for.
-  const canRun = group.rerunnable !== false && (fields.length > 0 || (group.evidence?.kind ?? "none") !== "none");
-  // A brand's groups have nowhere to keep a reason (`reasons: false`).
-  const canReason = group.reasons !== false && group.evidence?.kind !== "none";
+  // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
+  const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
+  const canRun = group.rerunnable !== false && fields.length > 0;
+  // A brand's groups have nowhere to keep a reason (`reasons: false`); otherwise each check says (`canReason`).
+  const canReason = group.reasons !== false;
   // A new reading (Run again, or a teammate's) replaces the fields; staff's own unsaved edits are only replaced by it.
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
 
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-dialog-over")) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -686,8 +890,8 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   // The other counted groups' scores before a run: a licence edit (the business scope) can move Company information.
   const otherScores = () => Object.fromEntries((groups ?? []).filter((g) => g.key !== group.key && groupWeight(g)).map((g) => [g.key, scoreGroup(g)]));
   const runAgain = async () => {
+    if (!edited.length) return;
     const from = score;
-    const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
     otherBefore.current = otherScores();
     setRun({ state: "running", from });
     onRunning(true);
@@ -695,7 +899,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     try {
       outcome = await actions.runAgain(group.key, values, edited, cert?.id ?? null);
     } catch (error) {
-      outcome = { error: error?.message || "Couldn't run again" };
+      outcome = { error: error?.message || "Couldn't save. Try again." };
     }
     onRunning(false);
     setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done", from });
@@ -730,15 +934,17 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     ? (groups ?? []).filter((g) => g.key in otherBefore.current && scoreGroup(g) != null && scoreGroup(g) !== otherBefore.current[g.key])
       .map((g) => `${g.label} ${otherBefore.current[g.key] ?? 0}% to ${scoreGroup(g)}%`)
     : [];
-  const status = run.state === "running" ? { text: "Checking again…" }
+  const status = run.state === "running" ? { text: "Saving…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
-      : run.state === "done" ? { text: [to == null ? "Read again" : to === run.from ? `Same result: ${to}%` : `Score updated: ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
+      : run.state === "done" ? { text: [to == null || to === run.from ? "Saved" : `Saved. Score ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
+        : group.checking && group.checkingWords ? { text: group.checkingWords }
         : group.error ? { text: group.error, tone: "error" }
           : group.stale ? { text: group.stale, tone: "stale" }
             : { text: group.readAt ?? "" };
 
   return (
-    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    // A click beside the pop-up closes it, unless a form is open in it: typed words are never lost that way (Nov 24 tester).
+    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(".vr-record") && onClose()}>
       <section className="vr-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className="vr-modal-head">
           <div className="vr-modal-title">
@@ -770,7 +976,8 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                       check={check}
                       groupKey={group.key}
                       legalName={values.legalName}
-                      canReason={canReason}
+                      canReason={canReason && check.canReason !== false}
+                      numberShown={fields.some((field) => field.key === "number" && field.duplicate)}
                       actions={actions}
                       key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}
                     />
@@ -815,10 +1022,10 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
             {status.text}
           </p>
           <button className="secondary-btn" type="button" onClick={onClose}>Close</button>
-          {canRun && (
+          {canRun && (edited.length > 0 || run.state === "running") && (
             <button className="primary-btn vr-run" type="button" disabled={run.state === "running"} onClick={runAgain}>
               {run.state === "running" && <Spinner />}
-              {run.state === "running" ? "Running" : "Run again"}
+              {run.state === "running" ? "Saving" : "Save changes"}
             </button>
           )}
         </footer>

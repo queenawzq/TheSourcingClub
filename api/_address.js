@@ -255,6 +255,10 @@ export function compareAddresses(rawA, rawB) {
   const a = parseAddress(rawA);
   const b = parseAddress(rawB);
   if (a.script === "none" || b.script === "none") return { verdict: "unknown", same: [], differs: [], note: "missing" };
+  // The same text, to the punctuation, with a street or building number in it: the same address, in any
+  // language, whatever the parser could split (an English Hong Kong address yields only its city). Without a
+  // number ("Merter, Güngören, Istanbul") it is only an area, compared as before.
+  if (fold(rawA) === fold(rawB) && /\d/.test(fold(rawA))) return { verdict: "match", same: ["address"], differs: [], note: "identical" };
   const same = [];
   const differs = [];
   if (a.script !== b.script) {

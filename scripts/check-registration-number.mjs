@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
-  REGISTRATION_COUNTRIES, registrationNumberProblem, usccCheckChar, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
+  REGISTRATION_COUNTRIES, registrationNumberProblem, sameRegistrationNumber, usccCheckChar, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
 } from "../src/shared/registration-number.mjs";
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
@@ -94,7 +94,8 @@ check("dead links are gone: gov.pt certificate, Gazette title search, e-Devlet b
   assert.ok(!urls.some((url) => /gov\.pt\/servicos|ticaretsicil|belge-dogrulama/.test(url)));
 });
 check("official sources: the same list as registry_source_is_official()", () => {
-  assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "gib", "gsxt", "national", "permit", "vies"]);
+  assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "companies_house", "gib", "gsxt", "hk_cr", "mca", "national", "permit",
+    "registro_imprese", "rjsc", "rmc", "state_register", "vies"]);
 });
 check("trading scope: trade words with no making word are flagged, quoting the words", () => {
   assert.deepEqual(tradingScope("纺织品、服装的批发、零售；货物进出口"), { trading: true, read: true, recognised: true, quote: "进出口, 批发, 零售" });
@@ -245,6 +246,26 @@ check("v3.1 B2: a reading stores nothing about authorisation without an upload",
   assert.ok(/function authorisationFrom\(\{ file, fields, failure \}[^)]*\) \{\s*if \(!file\) return null;/.test(source));
   assert.ok(/\.\.\.\(authorisation \? \{ authorisation \} : \{\}\)/.test(source));
   assert.ok(/carried\?\.details\?\.fileId/.test(source));
+});
+check("the same number written two ways, by the country's rule (Nov 25)", () => {
+  // Hong Kong: the 8-digit BR number is the start of the certificate's full number.
+  assert.equal(sameRegistrationNumber("HK", "71234567", "71234567-000-11-25-6"), true);
+  assert.equal(sameRegistrationNumber("HK", "71234568", "71234567-000-11-25-6"), false);
+  assert.equal(sameRegistrationNumber("HK", "7123456", "71234567000"), false);
+  // An EU VAT number is the country's prefix and the national number; Greece writes EL.
+  assert.equal(sameRegistrationNumber("ES", "B12345678", "ES B12345678"), true);
+  assert.equal(sameRegistrationNumber("IT", "12345678901", "IT12345678901"), true);
+  assert.equal(sameRegistrationNumber("GR", "094014201", "EL094014201"), true);
+  assert.equal(sameRegistrationNumber("ES", "B12345678", "FRB12345678"), false);
+  // Not the EU: a UK company number is not its VAT number. China's old number is not derivable from the code.
+  assert.equal(sameRegistrationNumber("GB", "12345678", "GB12345678"), false);
+  assert.equal(sameRegistrationNumber("CN", "91330109MA2B3K7Q4L", "330100000012345"), false);
+  const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber };
+  const seen = compareDocument({ registrationNumber: "71234567-000-11-25-6", legalName: "Harbour Line Trading Limited" }, { country: "HK", number: "71234567", title: "Harbour Line Trading Limited" }, helpers);
+  assert.deepEqual([seen.differences.length, seen.unsure.length], [0, 0]);
+  // The database's copy agrees.
+  const sql = readFileSync("supabase/migrations/20261124370000_registration_numbers_same.sql", "utf8");
+  assert.ok(/country = 'HK' and short ~ '\^\\d\{8\}\$'/.test(sql) && /'GR' and long = 'EL' \|\| short/.test(sql));
 });
 check("public licences: a misread number or one CJK character is unsure, not differs", () => {
   const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };

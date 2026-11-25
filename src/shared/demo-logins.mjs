@@ -38,6 +38,9 @@ export const DEMO_LOGINS = {
   secondFactory: { role: "Factory two", name: "Ningbo Loomworks", email: "demo-factory-two@example.com" },
   pendingBrand: { role: "Brand waiting for review", name: "Willow Lane Studio", email: "demo-brand-pending@example.com" },
   newFactory: { role: "Factory waiting for review", name: "Atlas Knit Studio", email: "demo-factory-new@example.com" },
+  // The one company in the queue that has not signed the terms: Approve
+  // waits for them. Every other seeded company finished onboarding signed.
+  unsignedBrand: { role: "Brand waiting for review, terms not signed", name: "Fernhill Basics (terms not signed)", email: "demo-brand-unsigned@example.com" },
   // Staff asked it for more information, at length: its finish card has to
   // hold the whole note.
   returnedFactory: { role: "Factory asked for more information", name: "Harbour Line Apparel", email: "demo-factory-returned@example.com" },
