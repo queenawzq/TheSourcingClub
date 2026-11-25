@@ -1454,7 +1454,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               )}
               {approved ? isVendor && (
                 <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0 || approvalTier === currentTier} title={approveBlocks.join("\n") || undefined} onClick={() => { const tier = approvalTier; Promise.resolve(onDecision(profile.id, "Approved", null, tier)).then((done) => { if (done) setChangedTier(tier); }); }}>
-                  Change badge to {tierWord}
+                  {approvalTier === currentTier ? `Current badge: ${tierWord}` : `Change badge to ${tierWord}`}
                 </button>
               ) : (
               <button className="primary-btn" type="button" disabled={deciding || approveBlocks.length > 0} title={approveBlocks.join("\n") || undefined} onClick={() => {
