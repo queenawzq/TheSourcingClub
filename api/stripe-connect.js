@@ -454,6 +454,12 @@ async function readBalance({ stripe, db, caller, orgId, owner, load = false, res
     if (!owner) return reply(response, 200, answer);
     const [allocation, methods, onTheirWay] = ownerReads;
     const migration = await upgradeReadiness(stripe, upgrade);
+    // A payout a withdrawal made is listed from the company's own record
+    // (factory_balance().withdrawals): Stripe's copy of it would be a second
+    // row, at Stripe's converted amount. Read after Stripe's list, so a
+    // payout Stripe lists has been recorded by now.
+    const recorded = await db.from("stripe_withdrawals").select("payout_id").eq("org_id", orgId).not("payout_id", "is", null);
+    const recordedIds = new Set((recorded.data ?? []).map((row) => row.payout_id));
     return reply(response, 200, {
       ...answer,
       displayFx, recovery,
@@ -461,7 +467,7 @@ async function readBalance({ stripe, db, caller, orgId, owner, load = false, res
       defaultCurrency: account.default_currency,
       available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
       pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
-      payouts: allocation.payouts,
+      payouts: allocation.payouts.filter((payout) => !recordedIds.has(payout.id)),
       pendingEarnings: allocation.pending,
       // Withdrawals not yet at the bank, and which account each is going to:
       // that account cannot be removed until its money arrives.
