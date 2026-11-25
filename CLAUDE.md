@@ -613,6 +613,12 @@ the form behind it only saves.
   it invites. Any `rfq_invitations` row makes `can_see_rfq()` true, so a
   writable `rfq_id` let a vendor invite itself to another brand's private
   request and tech pack.
+- **A factory creates a quote only as a plain draft** (`20261125700000`).
+  `quotes_factory_insert` requires status `draft`, version 1, no sent or
+  decided time and no `supersedes_quote_id`; before it, a factory could insert
+  a quote already "submitted" and skip the charge and every check. Sent,
+  revised and accepted come only from `submit_quote`, `revise_quote` and the
+  award.
 - **`saved_rfqs` is the vendor's own list** — the brand whose request it is
   cannot see that it was saved, and neither can another vendor.
 - **`rfq_views` records the brand looking at its own request**, one row per
