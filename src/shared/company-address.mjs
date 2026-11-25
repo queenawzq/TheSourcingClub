@@ -221,7 +221,11 @@ function placeOrNull(typed, value, max) {
   const core = placeCore(text);
   if (!core) return null;
   // Commas, lines, "/" ("Esenyurt / İstanbul / TÜRKİYE") and sentence breaks.
-  const segments = String(typed ?? "").split(/[,，;\n/／]|\.\s/).map(placeCore);
+  // A postcode or a bracketed code written beside the city is not part of it:
+  // "Leicester LE3 5AG", "24021 Albino (BG)" (Nov 25: the city was dropped).
+  const segments = String(typed ?? "").split(/[,，;\n/／]|\.\s/)
+    .flatMap((part) => [part, part.replace(/\([^)]*\)/g, " ").split(/\s+/).filter((word) => !/\d/.test(word)).join(" ")])
+    .map(placeCore);
   return segments.includes(core) ? text : null;
 }
 

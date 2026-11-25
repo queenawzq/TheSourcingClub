@@ -146,6 +146,20 @@ const CASES = [
     location: "China",
     parts: { city: null, city_en: null },
   },
+  {
+    label: "A UK city written with its postcode keeps the city (Nov 25: staff's edit lost Leicester)",
+    typed: "Unit 4, Frog Island Works, Leicester LE3 5AG, UK",
+    model: { street: "Unit 4, Frog Island Works", city: "Leicester", city_en: "Leicester", postal_code: "LE3 5AG", country_code: "GB" },
+    location: "Leicester, United Kingdom",
+    parts: { city: "Leicester" },
+  },
+  {
+    label: "An Italian city written after its postcode and before its province code",
+    typed: "Via Provinciale 62, 24021 Albino (BG), Italy",
+    model: { street: "Via Provinciale 62", city: "Albino", city_en: "Albino", postal_code: "24021", country_code: "IT" },
+    location: "Albino, Italy",
+    parts: { city: "Albino" },
+  },
 ];
 
 console.log("Grounding and what brands read");
