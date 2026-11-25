@@ -246,7 +246,9 @@ export function paymentRefund(payment) {
   const funded = Date.parse(payment?.confirmed_at ?? "") || 0;
   const lines = (payment?.refunds ?? []).filter((line) => (Date.parse(line.refunded_at ?? "") || 0) >= funded)
     .reduce((sum, line) => sum + n(line.amount_cents), 0);
-  const refunded = Math.max(n(payment?.refunded_cents), lines);
+  // A refund staff sent another way (manual_refunded_cents) is TSC's money: the
+  // brand's figures follow it, the factory's part (factory_refund_cents) never does.
+  const refunded = Math.max(n(payment?.refunded_cents) + n(payment?.manual_refunded_cents), lines);
   const lost = n(payment?.dispute_lost_cents);
   const charged = n(payment?.charged_cents ?? payment?.amount_received_cents);
   return { refunded, lost, brand: refunded + lost, factory: n(payment?.factory_refund_cents), full: charged > 0 && refunded + lost >= charged };

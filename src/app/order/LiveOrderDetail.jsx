@@ -707,14 +707,19 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     if (isFactory && refundPendingWord(payment, order)) return sum;
     return sum + (charged && !isFactory ? paymentRefund(payment).brand : Number(payment.factory_refund_cents ?? 0));
   }, 0);
+  // The brand's charged figures that went back to it, from the server when it says.
+  const brandBack = charged && charged.order.refunded_charged_cents != null
+    ? Number(charged.order.refunded_charged_cents) + Number(charged.order.reversed_charged_cents ?? 0) : wentBack;
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
-    total: money(charged ? charged.order.total_charged_cents : order.total_cents),
+    // What went back to the brand (refunded, reversed by its bank) is in neither
+    // figure, so total = funded + remaining (production_order_charges' own sums).
+    total: money(charged ? charged.order.total_charged_cents - brandBack : order.total_cents),
     // Money going back to the brand was never the factory's (as on its Payments page).
-    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)) - wentBack)),
+    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents - brandBack : order.paid_cents - (isFactory ? refundPendingCents : 0) - wentBack))),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),

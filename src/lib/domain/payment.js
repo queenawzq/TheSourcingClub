@@ -22,7 +22,7 @@ const PAYMENT_COLUMNS = `
   released_at, released_note, created_at,
   charged_cents, payment_method_type, payment_method_label, failure_reason,
   processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at,
-  service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, dispute_lost_cents, factory_refund_cents
+  service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, manual_refunded_cents, dispute_lost_cents, factory_refund_cents
 `;
 
 export async function listPayments(orderId) {
