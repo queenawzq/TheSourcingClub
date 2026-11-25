@@ -40,10 +40,12 @@ export function matchReason({ month, capacityLevel, moq, quantity, productionTyp
   if (productionTypes[0]) parts.push(zh ? `${productionTypes[0]}生产经验` : `${productionTypes[0].toLowerCase()} production`);
   if (categories[0]) parts.push(zh ? `${categories[0]}经验` : `${categories[0].toLowerCase()} experience`);
 
-  if (!parts.length) return zh ? "您的资料与该需求匹配。" : "Your profile matches this request.";
+  if (!parts.length) return zh ? "你的资料与该需求匹配。" : "Your profile matches this request.";
   if (zh) {
     const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join("、")}和${parts.at(-1)}`;
-    return `您的${list}与该需求匹配。`;
+    // A list that starts with a number ("200 件起订量") gets the space the
+    // other Chinese screens put before a figure.
+    return `你的${/^\d/.test(list) ? " " : ""}${list}与该需求匹配。`;
   }
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
   return `Your ${list} ${parts.length === 1 ? "matches" : "match"} this request.`;

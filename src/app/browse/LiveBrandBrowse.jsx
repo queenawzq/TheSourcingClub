@@ -56,7 +56,7 @@ function keepChoices(orgId, choices) {
 }
 
 /** The chosen filters and order in words, for the line under the count. */
-function matchingLine(panel, filters, query, sort) {
+function matchingLine(panel, filters, query, sort, isTrading = false) {
   const byId = new Map([
     ...panel.checks.flatMap((group) => group.options.map((option) => [option.id, option.label])),
     ...panel.priceLevels.map((option) => [option.id, option.label]),
@@ -74,7 +74,7 @@ function matchingLine(panel, filters, query, sort) {
     query.trim() ? `"${query.trim()}"` : null,
   ].filter(Boolean);
   const order = `${(SORTS.find((option) => option.key === sort) ?? SORTS[0]).words} first`;
-  return words.length ? `matching ${words.join(", ")}, ${order}` : `every vendor listed on TSC, ${order}`;
+  return words.length ? `matching ${words.join(", ")}, ${order}` : `every ${isTrading ? "trading company" : "factory"} listed on TSC, ${order}`;
 }
 
 export default function LiveBrandBrowse({ org, user, view = "cards" }) {
@@ -144,6 +144,17 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
     };
   };
 
+  // A search that finds nothing of this kind may find the other kind: the
+  // empty line says how many, and its button shows them with the same search.
+  const otherType = isTrading ? "factories" : "trading";
+  const otherMatches = query.trim() && !shown.length
+    ? filterVendors(cards.filter((item) => item.vendorType === (isTrading ? "factory" : "trading")), emptyFilters(), query).length
+    : 0;
+  const showOther = () => {
+    setVendorType(otherType);
+    setFilters(emptyFilters());
+  };
+
   const summaryText = isTrading ? plural(shown.length, "trading company", "trading companies") : plural(shown.length, "factory", "factories");
   const live = {
     vendorType,
@@ -172,14 +183,23 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
         </div>
       ),
     },
-    matching: matchingLine(panel, chosen, query, sort),
+    matching: matchingLine(panel, chosen, query, sort, isTrading),
     sortControl: <BrowseSort options={SORTS} value={sort} onChange={setSort} />,
     search: query,
     onSearch: setQuery,
     summary: summaryText,
-    empty: filterCount || query.trim()
-      ? "No vendors match these filters. Remove one, or press Reset."
-      : `No ${isTrading ? "trading companies" : "factories"} are listed yet.`,
+    empty: otherMatches
+      ? (
+        <>
+          {`No ${isTrading ? "trading companies" : "factories"} match these filters. `}
+          <button className="text-link" type="button" onClick={showOther}>
+            {`Show ${isTrading ? plural(otherMatches, "factory", "factories") : plural(otherMatches, "trading company", "trading companies")}`}
+          </button>
+        </>
+      )
+      : filterCount || query.trim()
+        ? "No vendors match these filters. Remove one, or press Reset."
+        : `No ${isTrading ? "trading companies" : "factories"} are listed yet.`,
     card,
   };
 

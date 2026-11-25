@@ -468,6 +468,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     }
   }
 
+  // A quantity in the person's language: "200 件" is read back as 200, as
+  // "200 units" is.
+  const unitsWord = getUiLanguage() === "zh" ? "件" : "units";
+
   return (
     <FactorySubmitQuote
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
@@ -476,7 +480,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
-        quantity: requestQuantity(rfq.quantity_total, colourSplits),
+        quantity: unitsWord === "件"
+          ? requestQuantity(rfq.quantity_total, colourSplits).replace(/ units\b/, " 件")
+          : requestQuantity(rfq.quantity_total, colourSplits),
         specialty: rfq.brief ?? "",
         images: requestDocuments.images,
         tags: [],
@@ -520,9 +526,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           ? `${formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)} / unit`
           : "",
         quantity: quote.production_quantity
-          ? `${quote.production_quantity} units`
+          ? `${quote.production_quantity} ${unitsWord}`
           : rfq.quantity_total
-            ? `${rfq.quantity_total} units`
+            ? `${rfq.quantity_total} ${unitsWord}`
             : "",
         leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days),
         // Every field the vendor has not filled is blank, never the design's

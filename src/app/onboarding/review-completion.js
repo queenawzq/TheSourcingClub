@@ -30,10 +30,10 @@ const COPY = {
   },
   zh: {
     needsTitle: "我们需要更多信息",
-    needsFallback: "在验证您的资料之前，我们的团队需要更多信息。",
+    needsFallback: "在验证你的资料之前，我们的团队需要更多信息。",
     needsCta: "更新我的资料",
-    declinedTitle: "我们无法验证您的资料",
-    contact: `如果您认为这有误，请发送邮件至 ${OPERATIONS_EMAIL}。`,
+    declinedTitle: "我们无法验证你的资料",
+    contact: `如果你认为这有误，请发送邮件至 ${OPERATIONS_EMAIL}。`,
   },
 };
 

@@ -44,11 +44,10 @@ export const TRADING_SECTIONS = {
 const NOT_GIVEN = "—";
 const NONE = "None selected";
 const count = (value) => Number(value).toLocaleString("en");
-const orNone = (items) => (items.length ? items : [NONE]);
 
-function chipsFor(selected, terms) {
+function chipsFor(selected, terms, language = "en") {
   return Object.fromEntries(
-    Object.entries(TRADING_CHIP_KINDS).map(([key, kind]) => [key, chipLabels(kind, selected, terms)]),
+    Object.entries(TRADING_CHIP_KINDS).map(([key, kind]) => [key, chipLabels(kind, selected, terms, language)]),
   );
 }
 
@@ -60,82 +59,96 @@ const listWords = (items) =>
  * completion page draws either). The two document checks are the factory's
  * own: a trading company files the same registration and certificates.
  */
-export function tradingProfileChecks(parts, now = new Date()) {
+export function tradingProfileChecks(parts, now = new Date(), language = "en") {
   const { profile, chips, references, samples, registration, certificates } = parts;
-  const complete = (description) => ({ tone: "complete", status: "Complete", description });
-  const missing = (description, action, suggestion) => ({ tone: "missing", status: "Needs attention", description, action, suggestion });
+  // Chinese for a company that chose it, in the trading onboarding's words.
+  const zh = language === "zh";
+  const t = (en, chinese) => (zh ? chinese : en);
+  const words = (items) => (zh ? items.join("、") : listWords(items));
+  const complete = (description) => ({ tone: "complete", status: t("Complete", "已完成"), description });
+  const missing = (description, action, suggestion) => ({ tone: "missing", status: t("Needs attention", "需要处理"), description, action, suggestion });
   const gaps = (pairs) => pairs.filter(([, given]) => !given).map(([label]) => label);
 
   const identityGaps = gaps([
     // Brands read the location the address gives (src/shared/company-address.mjs).
-    ["company address", profile?.production_address || profile?.location],
-    ["year founded", profile?.founded_year],
-    ["team size", profile?.employee_count != null],
-    ["languages", profile?.languages_supported],
+    [t("company address", "公司地址"), profile?.production_address || profile?.location],
+    [t("year founded", "成立年份"), profile?.founded_year],
+    [t("team size", "团队人数"), profile?.employee_count != null],
+    [t("languages", "支持语言"), profile?.languages_supported],
   ]);
   const networkGaps = gaps([
-    ["production programs", chips.productionPrograms.length],
-    ["product categories", chips.categories.length],
-    ["sourcing regions", chips.sourcingRegions.length],
+    [t("production programs", "生产合作模式"), chips.productionPrograms.length],
+    [t("product categories", "产品品类"), chips.categories.length],
+    [t("sourcing regions", "采购地区"), chips.sourcingRegions.length],
   ]);
   const servicesGaps = gaps([
-    ["core services", chips.coreServices.length],
-    ["quality and compliance checks", chips.qualityCompliance.length],
+    [t("core services", "核心服务"), chips.coreServices.length],
+    [t("quality and compliance checks", "质量与合规检查"), chips.qualityCompliance.length],
   ]);
   const commercialGaps = gaps([
-    ["typical MOQ", profile?.moq != null],
-    ["lead time", profile?.typical_lead_days != null],
-    ["number of partner factories", profile?.partner_factory_count != null],
+    [t("typical MOQ", "常规最低起订量"), profile?.moq != null],
+    [t("lead time", "交期"), profile?.typical_lead_days != null],
+    [t("number of partner factories", "活跃合作工厂数量"), profile?.partner_factory_count != null],
   ]);
   const documents = factoryProfileChecks(
     { profile, selected: {}, capacity: null, references, samples, registration, walkthrough: null, certificates },
     now,
+    language,
   ).filter((check) => check.key === "registration" || check.key === "certificates");
 
   const checks = [
     {
       key: "identity",
-      title: "Company identity",
-      todo: "your company details",
+      title: t("Company identity", "公司信息"),
+      todo: t("your company details", "公司信息"),
       ...(identityGaps.length
         // Brands never see the address itself (only its city and country), so
         // a missing one is said as what to do.
-        ? missing(identityGaps.includes("company address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Company name, address, year founded, team size and languages are complete.")),
+        ? missing(
+          !(profile?.production_address || profile?.location)
+            ? t(`Add your ${words(identityGaps)}.`, `请添加${words(identityGaps)}。`)
+            : t(`Brands can't see your ${words(identityGaps)} yet.`, `品牌暂时看不到你的${words(identityGaps)}。`),
+          { label: t("Update overview", "更新概览"), editor: "company" },
+          t(`Add your ${words(identityGaps)}`, `添加${words(identityGaps)}`),
+        )
+        : complete(t("Company name, address, year founded, team size and languages are complete.", "公司名称、地址、成立年份、团队人数和支持语言均已完整。"))),
     },
     {
       key: "network",
-      title: "Supplier network",
-      todo: "your supplier network",
+      title: t("Supplier network", "供应商网络"),
+      todo: t("your supplier network", "供应商网络"),
       ...(networkGaps.length
-        ? missing(`Add your ${listWords(networkGaps)} so brands can find your network.`, { label: "Update supplier network", editor: "network" }, `Add your ${listWords(networkGaps)}`)
-        : complete("Production programs, product categories and sourcing regions are filled in.")),
+        ? missing(t(`Add your ${words(networkGaps)} so brands can find your network.`, `请添加${words(networkGaps)}，方便品牌找到你的供应商网络。`), { label: t("Update supplier network", "更新供应商网络"), editor: "network" }, t(`Add your ${words(networkGaps)}`, `添加${words(networkGaps)}`))
+        : complete(t("Production programs, product categories and sourcing regions are filled in.", "生产合作模式、产品品类和采购地区均已填写。"))),
     },
     {
       key: "services",
-      title: "Services and oversight",
-      todo: "your services",
+      title: t("Services and oversight", "服务与监督"),
+      todo: t("your services", "服务信息"),
       ...(servicesGaps.length
-        ? missing(`Add your ${listWords(servicesGaps)} so brands know what your team manages.`, { label: "Update services", editor: "services" }, `Add your ${listWords(servicesGaps)}`)
-        : complete("Core services and quality checks are visible to brands.")),
+        ? missing(t(`Add your ${words(servicesGaps)} so brands know what your team manages.`, `请添加${words(servicesGaps)}，让品牌了解你的团队负责哪些工作。`), { label: t("Update services", "更新服务"), editor: "services" }, t(`Add your ${words(servicesGaps)}`, `添加${words(servicesGaps)}`))
+        : complete(t("Core services and quality checks are visible to brands.", "核心服务和质量检查均对品牌可见。"))),
     },
     {
       key: "commercial",
-      title: "Commercial terms",
-      todo: "commercial terms",
+      title: t("Commercial terms", "商务条件"),
+      todo: t("commercial terms", "商务条件"),
       ...(commercialGaps.length
-        ? missing(`Add your ${listWords(commercialGaps)} so brands know what you can take on.`, { label: "Update commercial terms", editor: "commercial" }, `Add your ${listWords(commercialGaps)}`)
-        : complete("MOQ, lead time and partner factory coverage are visible to brands.")),
+        ? missing(t(`Add your ${words(commercialGaps)} so brands know what you can take on.`, `请添加${words(commercialGaps)}，让品牌了解你能承接的订单。`), { label: t("Update commercial terms", "更新商务条件"), editor: "commercial" }, t(`Add your ${words(commercialGaps)}`, `添加${words(commercialGaps)}`))
+        : complete(t("MOQ, lead time and partner factory coverage are visible to brands.", "MOQ、交期和合作工厂信息均对品牌可见。"))),
     },
     {
       key: "proof",
-      title: "Client proof",
-      todo: "client references and sourcing work",
+      title: t("Client proof", "客户证明"),
+      todo: t("client references and sourcing work", "客户参考和采购项目"),
       ...(references.length === 0
-        ? missing("Add the brands you have worked with, so new brands can see who trusts your company.", { label: "Add references", editor: "references" }, "Add client references")
+        ? missing(t("Add the brands you have worked with, so new brands can see who trusts your company.", "请添加合作过的品牌，让新品牌了解哪些品牌信任你的公司。"), { label: t("Add references", "添加客户参考"), editor: "references" }, t("Add client references", "添加客户参考"))
         : samples.length === 0
-          ? missing("Client references are in. Add images of products you have sourced.", { label: "Add sourcing work", editor: "samples" }, "Add recent sourcing work")
-          : complete(`${references.length} client reference${references.length === 1 ? "" : "s"} and ${samples.length} sourcing image${samples.length === 1 ? "" : "s"} support buyer trust.`)),
+          ? missing(t("Client references are in. Add images of products you have sourced.", "客户参考已添加。请添加你采购过的产品图片。"), { label: t("Add sourcing work", "添加采购项目"), editor: "samples" }, t("Add recent sourcing work", "添加近期采购项目"))
+          : complete(t(
+            `${references.length} client reference${references.length === 1 ? "" : "s"} and ${samples.length} sourcing image${samples.length === 1 ? "" : "s"} support buyer trust.`,
+            `${references.length} 个客户参考和 ${samples.length} 张采购项目图片可增强买家信任。`,
+          ))),
     },
     ...documents,
   ];
@@ -148,10 +161,15 @@ export function tradingProfileChecks(parts, now = new Date()) {
  *
  * parts: what load-profile.js's loadOwnProfile() returns.
  */
-export function tradingProfileView(parts, now = new Date()) {
+export function tradingProfileView(parts, now = new Date(), language = "en") {
   const { orgName, profile, terms, selected, orders = [] } = parts;
+  // The values in the person's language; the page's labels are translated by
+  // its own Chinese layer (the design's dictionary).
+  const zh = language === "zh";
+  const t = (en, chinese) => (zh ? chinese : en);
   const name = orgName || profile?.legal_name;
-  const chips = chipsFor(selected, terms);
+  const chips = chipsFor(selected, terms, language);
+  const orNone = (items) => (items.length ? items : [t(NONE, "未选择")]);
   const location = profile?.location || NOT_GIVEN;
   const team = profile?.employee_count != null ? count(profile.employee_count) : null;
   const verified = profile?.verification_status === "verified";
@@ -160,6 +178,7 @@ export function tradingProfileView(parts, now = new Date()) {
     : parts.registrationDoc?.status === "rejected" ? "Rejected"
     : parts.registrationDoc ? "Uploaded" : "Not uploaded";
   const certificates = parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) }));
+  const statusWord = (status) => (zh ? { Verified: "已验证", Uploaded: "已上传", "Not uploaded": "未上传", Rejected: "未通过" }[status] ?? status : status);
   const samples = parts.samples.map((sample) => ({ title: sample.title, meta: sample.caption ?? "", src: sample.src }));
   const references = parts.references.map((reference) => reference.title);
   const live = orders.filter((order) => order.status !== "cancelled");
@@ -168,6 +187,7 @@ export function tradingProfileView(parts, now = new Date()) {
   const checks = tradingProfileChecks(
     { profile, chips, references: parts.references, samples, registration, certificates },
     now,
+    language,
   );
 
   return {
@@ -175,11 +195,11 @@ export function tradingProfileView(parts, now = new Date()) {
     initials: initialsOf(name),
     logoUrl: parts.logoUrl ?? null,
     verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
-    verifiedLabel: verified ? "Business verified" : "",
+    verifiedLabel: verified ? t("Business verified", "企业已验证") : "",
     heroLine: [
       profile?.location,
-      "Trading company",
-      team ? `${team}-person sourcing team` : null,
+      t("Trading company", "贸易公司"),
+      team ? t(`${team}-person sourcing team`, `${team} 人采购团队`) : null,
     ].filter(Boolean).join(" · "),
     tags: chips.coreServices.slice(0, 3),
     performance: {
@@ -197,7 +217,7 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Website URL", profile?.website_url || NOT_GIVEN],
       // The full address: the company's own page only.
       ["Company address", profile?.production_address || profile?.location || NOT_GIVEN],
-      ["Team size", team ? `${team} people` : NOT_GIVEN],
+      ["Team size", team ? t(`${team} people`, `${team} 人`) : NOT_GIVEN],
       ["Languages", profile?.languages_supported || NOT_GIVEN],
     ],
     // What a brand sees, for the page's public view.
@@ -206,7 +226,7 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Year founded", profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN],
       ["Website URL", profile?.website_url || NOT_GIVEN],
       ["Headquarters", location],
-      ["Team size", team ? `${team} people` : NOT_GIVEN],
+      ["Team size", team ? t(`${team} people`, `${team} 人`) : NOT_GIVEN],
       ["Languages", profile?.languages_supported || NOT_GIVEN],
     ],
     networkSections: [
@@ -225,18 +245,18 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Digital tools", orNone(chips.tools)],
     ],
     commercialRows: [
-      ["Typical MOQ", profile?.moq != null ? `${count(profile.moq)} units / style` : NOT_GIVEN],
-      ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max) || NOT_GIVEN],
+      ["Typical MOQ", profile?.moq != null ? t(`${count(profile.moq)} units / style`, `${count(profile.moq)} 件 / 款`) : NOT_GIVEN],
+      ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, t("days", "天")) || NOT_GIVEN],
       ["Typical order value", profile?.typical_order_value_band || NOT_GIVEN],
-      ["Partner factories", profile?.partner_factory_count != null ? `${count(profile.partner_factory_count)} active` : NOT_GIVEN],
+      ["Partner factories", profile?.partner_factory_count != null ? t(`${count(profile.partner_factory_count)} active`, `${count(profile.partner_factory_count)} 家活跃工厂`) : NOT_GIVEN],
       ["Incoterms", profile?.supported_incoterms || NOT_GIVEN],
       ["Payment terms", profile?.typical_payment_terms || NOT_GIVEN],
     ],
     samples,
     trust: [
-      { name: "Business registration", status: registration },
+      { name: t("Business registration", "营业执照"), status: registration },
       ...certificates,
-    ].map((item) => ({ ...item, verified: item.status === "Verified" || item.status === "Uploaded" })),
+    ].map((item) => ({ ...item, status: statusWord(item.status), verified: item.status === "Verified" || item.status === "Uploaded" })),
     references,
     snapshotRows: [
       ["Active factories", profile?.partner_factory_count != null ? count(profile.partner_factory_count) : NOT_GIVEN],
@@ -244,7 +264,7 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Primary markets", chips.destinationMarkets.length ? chips.destinationMarkets.join(" · ") : NOT_GIVEN],
     ],
     location,
-    status: profileStatus(checks),
+    status: profileStatus(checks, language, { trading: true }),
     checks,
   };
 }
@@ -257,7 +277,9 @@ export function tradingProfileEditOptions(terms) {
 }
 
 /** Where each trading dialog starts: the company's saved answers. */
-export function tradingProfileEditForm(parts) {
+export function tradingProfileEditForm(parts, language = "en") {
+  // "300 件 / 款" and "45-60 天" save as their English forms do.
+  const zh = language === "zh";
   const { orgName, profile, terms, selected, references = [] } = parts;
   const text = (value) => (value == null ? "" : String(value));
   const chips = chipsFor(selected, terms);
@@ -272,8 +294,8 @@ export function tradingProfileEditForm(parts) {
     ...chips,
     marketLevel: chips.marketLevel.slice(0, 1),
     otherCapabilities: equipmentList(profile?.equipment_notes),
-    moq: profile?.moq != null ? `${profile.moq} units / style` : "",
-    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max),
+    moq: profile?.moq != null ? `${profile.moq} ${zh ? "件 / 款" : "units / style"}` : "",
+    leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days"),
     orderValue: text(profile?.typical_order_value_band),
     partnerFactories: text(profile?.partner_factory_count),
     incoterms: text(profile?.supported_incoterms),
