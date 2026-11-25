@@ -95,7 +95,7 @@ function capacityRowsFor(profile, capacityState, terms, now, language = "en") {
     .slice(0, 2)
     .map((month) => {
       const level = CAPACITY_LEVELS[months[monthKey(month)]];
-      return zh ? `${monthWord(month)} ${level.labelZh}` : `${shortMonth(month)} ${level.labelEn.toLowerCase()}`;
+      return zh ? `${monthWord(month)}${level.labelZh}` : `${shortMonth(month)} ${level.labelEn.toLowerCase()}`;
     });
   const pieces = range ? (range.min === range.max ? count(range.max) : `${count(range.min)}-${count(range.max)}`) : "";
   const reference = zh ? category?.extra?.reference_style_zh ?? category?.extra?.reference_style_en : category?.extra?.reference_style_en;
@@ -181,7 +181,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
   const addressMissing = !(profile?.production_address || profile?.location);
 
   const productionGaps = [
-    [t("manufacturing model", "合作生产模式"), has("manufacturing_model")],
+    [t("manufacturing model", "生产合作模式"), has("manufacturing_model")],
     [t("production type", "生产类型"), has("production_type")],
     [t("product categories", "产品品类"), has("product_category")],
   ].filter(([, given]) => !given).map(([label]) => label);
@@ -216,7 +216,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
       todo: t("your production fit", "生产匹配"),
       ...(productionGaps.length
         ? missing(t(`Add your ${list(productionGaps)} so brands can find this factory.`, `请添加${list(productionGaps)}，方便品牌找到你的工厂。`), { label: t("Update production fit", "更新生产匹配"), editor: "production" }, t(`Add your ${list(productionGaps)}`, `添加${list(productionGaps)}`))
-        : complete(t("Manufacturing model, production type and product categories are filled in, with the makes, specialties, services, markets, tools and equipment you chose.", "合作生产模式、生产类型和产品品类均已填写，并包含你选择的款式、专长、服务、市场、工具和设备。"))),
+        : complete(t("Manufacturing model, production type and product categories are filled in, with the makes, specialties, services, markets, tools and equipment you chose.", "生产合作模式、生产类型和产品品类均已填写，并包含你选择的款式、专长、服务、市场、工具和设备。"))),
     },
     {
       key: "capacity",
@@ -264,7 +264,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
       todo: t("a walkthrough video", "工厂介绍视频"),
       ...(walkthrough
         ? complete(t("The walkthrough video is on your profile.", "工厂介绍视频已在你的资料中。"), walkthrough.status === "verified" ? "Verified" : "Complete")
-        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加介绍视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加工厂介绍视频"))),
+        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加巡视视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加巡视视频"))),
     },
     {
       // Named after the certificate when only one needs a file, as the
@@ -306,7 +306,7 @@ export function profileStatus(checks, language = "en") {
       percent,
       note: missing.length
         ? `请添加${missing.slice(0, 2).join("、")}${missing.length > 2 ? "等" : ""}，完善资料。`
-        : "品牌关注的信息均已填写。请保持月度产能为最新。",
+        : "品牌关注的信息均已填写。请及时更新月度产能。",
     };
   }
   const list = missing.length > 2
