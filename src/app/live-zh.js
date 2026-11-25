@@ -199,7 +199,8 @@ const PATTERNS = [
   [/^Now: (.+)$/, (m, inner) => `当前：${inner(m[1])}`],
   // Cancelling an order: the dialog, the banner and the activity (names kept as written).
   [/^Cancel (.+) as (.+) proposed\?$/, (m, inner) => `按 ${m[2]} 的提议取消「${inner(m[1])}」？`],
-  [/^Cancel (.+)\?$/, (m, inner) => `取消「${inner(m[1])}」？`],
+  // A title in its own quotes ("Cancel “Fit call”?", the call dialog) loses them inside 「」.
+  [/^Cancel [“"]?(.+?)[”"]?\?$/, (m, inner) => `取消「${inner(m[1])}」？`],
   [/^(.+) proposed cancelling this order$/, (m) => `${m[1]} 已提议取消此订单`],
   [/^(.+)'s reason$/, (m) => `${m[1]} 的原因`],
   // The same label when the name is its own text node ("{other}'s reason").
@@ -213,7 +214,7 @@ const PATTERNS = [
   [/^(.+) kept the order$/, (m) => `${m[1]} 已保留订单`],
   [/^You withdrew the proposal$/, () => "你已撤回提议"],
   [/^(.+) withdrew the proposal$/, (m) => `${m[1]} 已撤回提议`],
-  [/^The payment for (.+) was refunded to the brand after it was paid out$/, (m, inner) => `「${inner(m[1])}」的款项在支付后已退还给品牌`],
+  [/^The payment for (.+) was refunded to the brand after it was paid out$/, (m, inner) => `「${inner(m[1])}」的款项在放款后已退还给品牌`],
   [/^The payment for (.+) was refunded to the brand$/, (m, inner) => `「${inner(m[1])}」的款项已退还给品牌`],
   [PROPOSED, (m) => `${m[1]} 提议取消：${m[2]}`, { free: true }],
   [YOU_PROPOSED, (m) => `你提议取消：${m[1]}`, { free: true }],
