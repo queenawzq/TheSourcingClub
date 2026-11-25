@@ -192,7 +192,8 @@ export default async function handler(request, response) {
             account = await stripe.accounts.create(params);
             break;
           } catch (failure) {
-            if (failure?.type !== "StripeInvalidRequestError" || index === tries.length - 1) throw failure;
+            // Only a refusal of the prefilled detail is retried without it.
+            if (failure?.type !== "StripeInvalidRequestError" || !String(failure?.param ?? "").startsWith("business_profile") || index === tries.length - 1) throw failure;
             logStripeFailure("stripe-connect prefill", failure, { orgId });
           }
         }
