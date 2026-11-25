@@ -60,8 +60,8 @@ function RefundLines({ refunds, currency }) {
     <span key={refund.id ?? index} className="admin-sub payment-refund-line" data-testid="staff-refund-line">{refundLine(refund, currency)}</span>
   ));
 }
-/** What was charged, kept after a full refund sends the payment back to Due. */
-const chargedCents = (payment) => Number(payment.original_charged_cents ?? payment.charged_cents) || 0;
+/** What was charged: on a payment a full refund sent back to Due, the refunded charge. */
+const chargedCents = (payment) => Number(payment.charged_cents) || 0;
 const charged = (payment) => (!["due", "not_due"].includes(payment.state) || refundedCents(payment) > 0) && chargedCents(payment) > 0;
 
 /** The factory's share of a refund, as the database computes it, capped at what it can give back. */
