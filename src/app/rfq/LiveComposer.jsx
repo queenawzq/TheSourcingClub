@@ -871,11 +871,15 @@ export default function LiveComposer({ org, rfqId }) {
         disabled: busy || saveState === "saving" || saveState === "saved",
       }}
     >
-      {reorder && (
-        <p className="composer-note" data-testid="reorder-note">
-          Reordering {reorder.title} with {vendorNames.text(reorder.factoryOrgId, reorder.factoryName)}.
-        </p>
-      )}
+      {reorder && (() => {
+        const name = vendorNames.text(reorder.factoryOrgId, reorder.factoryName);
+        // "…Co., Ltd." already ends the sentence.
+        return (
+          <p className="composer-note" data-testid="reorder-note">
+            Reordering {reorder.title} with {name}{/[.!?]$/.test(name) ? "" : "."}
+          </p>
+        );
+      })()}
       <ReviewScreen
         brief={freeText}
         values={values}
