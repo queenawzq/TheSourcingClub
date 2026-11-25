@@ -9184,6 +9184,14 @@ function OnboardingAssetUploadCard({
     }
   }
 
+  // Live: a chosen file that is now stored leaves the "chosen" list, so a
+  // card that stays on screen after Next does not list it twice.
+  useEffect(() => {
+    const stored = files.filter((item) => documents.some((doc) => doc.file_name === item.name && (doc.size_bytes == null || Number(doc.size_bytes) === item.file.size)));
+    if (stored.length) publish(files.filter((item) => !stored.includes(item)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents]);
+
   const hasFiles = documents.length > 0 || files.length > 0;
 
   const clearDragState = () => {
