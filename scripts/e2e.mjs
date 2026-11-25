@@ -2681,15 +2681,15 @@ async function main() {
             })),
           };
         });
-        const isThisRow = (row) => row.type === "Withdrawal" && row.amount.includes(money(waitingNow.amount_cents)) && /^(Processing|Waiting|On hold)$/.test(row.status ?? "");
+        const isThisRow = (row) => row.type === "Withdrawal" && row.amount.includes(money(waitingNow.amount_cents)) && /^(Awaiting review|Processing|Waiting|On hold)$/.test(row.status ?? "");
         let earnings = null;
         await within(page, async () => {
           earnings = await readEarnings();
           return earnings.pendingCard !== null && earnings.rows.some(isThisRow);
         }, 20000);
         check(!/\$[\d,.]+ waiting/i.test(earnings.cardText), "the card has no \"$X waiting\" line: the withdrawal's own row says it");
-        check(earnings.open.some((text) => /Processing withdrawal/.test(text)) && !earnings.open.some((text) => /Pending withdrawal/.test(text)),
-          "its row reads \"Processing withdrawal\"");
+        check(earnings.open.some((text) => /Awaiting review/.test(text)) && !earnings.open.some((text) => /Pending withdrawal/.test(text)),
+          "its card block reads \"Awaiting review\", as its row does");
         // The card no longer says "$X pending" (Nov 23): each row says its own day.
         check(earnings.pendingCard !== null && !/\$[\d,]+\.\d{2} pending\./.test(earnings.line),
           `the Pending card (${earnings.pendingCard}) is shown and the balance line has no "$X pending." sentence`);
@@ -2699,10 +2699,10 @@ async function main() {
         const cardSaysOnHold = earnings.open.some((text) => /\bOn hold\b/.test(text));
         check(!cardSaysOnHold && !/\bon hold\b/i.test(earnings.cardText), "the card does not call the waiting withdrawal on hold");
         const thisRow = earnings.rows.find(isThisRow);
-        check(thisRow?.status === "Processing",
-          `Transactions: the withdrawal waiting for staff reads "Processing" (${thisRow?.status ?? "no row"})`);
+        check(thisRow?.status === "Awaiting review",
+          `Transactions: the withdrawal waiting for staff reads "Awaiting review" (${thisRow?.status ?? "no row"})`);
         check(!earnings.rows.some((row) => row.type === "Withdrawal" && row.status === "Waiting"), "no withdrawal in Transactions reads \"Waiting\"");
-        await record(page, "Processing withdrawal", "a PayPal withdrawal waiting for staff: Processing, not Pending");
+        await record(page, "Awaiting review", "a PayPal withdrawal waiting for staff: Awaiting review on the card and its row");
 
         // A second PayPal address beside the default the withdrawal goes to.
         const spareEmail = `e2e-spare-${stamp}@example.com`;

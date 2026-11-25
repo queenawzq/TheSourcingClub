@@ -571,6 +571,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualSaved={payouts.saved}
             manualOwed={payouts.owed}
             onItsWayCents={onItsWayCents}
+            withdrawalFeeFor={withdrawingFee}
           />}
           <label className="payments-client-filter">
             <span>Filter by client</span>

@@ -386,8 +386,23 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 // Round 9: a request the server marks on_hold reads "On hold" in the Pending withdrawal block, for owner and member.
 {
   const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
-  assert.ok(form.includes('words.get(row.id) === "on_hold"') && form.includes('{onHold(row) ? "On hold" : row.status === "requested" ? "Awaiting review" : "Processing"}')
-    && form.includes('data-testid="withdrawal-on-hold">On hold</span>'), "On hold for the owner and the member");
+  assert.ok(form.includes('data-testid="withdrawal-open-word">{wordOf(row)}'), "the card's word is the row's, for owner and member");
+}
+
+// Flow check R2m2: one waiting PayPal withdrawal says one state and one amount,
+// on the card and on its row.
+{
+  const { openWithdrawalWord } = await import("../src/app/order/WithdrawFromBalance.jsx").catch(() => ({}));
+  const rows = serverWithdrawalRows([{ id: "p", road: "pool", provider: "paypal", word: "waiting", amount_cents: 50000, created_at: "2026-11-24T10:00:00Z" }], { feeFor: () => 981 });
+  assert.equal(rows[0].status, "Awaiting review");
+  assert.equal(rows[0].amount, -49019, "the row: $500 less the $9.81 fee");
+  if (openWithdrawalWord) {
+    assert.equal(openWithdrawalWord({ status: "requested" }, "waiting"), rows[0].status, "the card says the row's word");
+    assert.equal(openWithdrawalWord({ status: "requested" }, "on_hold"), "On hold");
+    assert.equal(openWithdrawalWord({ status: "approved" }, "on_its_way"), "Processing");
+  }
+  const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
+  assert.ok(form.includes("Number(row.amount_cents) - refundedOf(row) - feeOf(row)"), "the card's amount is the row's: less the fee taken from it");
 }
 
 // Round 11: after any withdrawal answer, refusals included, the balance is read
@@ -771,7 +786,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   assert.ok(line.includes("reversed by your bank`") && line.includes("returned to the brand`") && !line.includes("} back to the brand`"),
     "a partial lost dispute and a refund plus a dispute, each in its words (R32: returned to the brand)");
   const block = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
-  assert.ok(block.includes("formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)") && block.includes("refunded`"),
+  assert.ok(block.includes("formatMoney(Number(row.amount_cents) - refundedOf(row) - feeOf(row), row.currency)") && block.includes("refunded`"),
     "a waiting withdrawal's block shows what it still holds, and its refunded part");
   const page = readFileSync(new URL("../src/app/order/PayoutDetails.jsx", import.meta.url), "utf8");
   assert.ok(page.includes("refundRows(answer?.figures)"), "Transactions list each refund on its own row");
@@ -796,7 +811,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const block22 = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(block22.includes("? reversedByBankLine(formatMoney(refundedOf(row), row.currency))") && !block22.includes("returned to the brand`"),
     "R32: the withdrawal block says reversed by the brand's bank");
-  assert.ok(!block22.includes('export const NOTHING_BACK') && block22.includes('import { NOTHING_BACK,'), "R32: NOTHING_BACK is defined once");
+  assert.ok(!block22.includes('export const NOTHING_BACK') && /import \{[^}]*\bNOTHING_BACK,/.test(block22), "R32: NOTHING_BACK is defined once");
 }
 
 // Fix round 24: a withdrawal part of which went back to the brand shows what

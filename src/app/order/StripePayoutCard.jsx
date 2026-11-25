@@ -343,6 +343,9 @@ export default function StripePayoutCard({
   problem = null,
   // Old step-by-step payouts still being sent (legacyOnItsWayCents): said on their own line.
   onItsWayCents = 0,
+  // The fee its Transactions row shows for an open withdrawal (PayoutDetails
+  // withdrawingFee), so the card says the same amount; none where not given.
+  withdrawalFeeFor = null,
   renderCard = true,
   initialAction = null,
   initialMethodId = null,
@@ -1138,7 +1141,7 @@ export default function StripePayoutCard({
           refunded={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0)]))}
           back={figures ? new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.back_cents != null).map((w) => [w.id, Number(w.back_cents)])) : null}
           reversed={new Set(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.refund_cause === "reversed").map((w) => w.id))}
-          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).filter((w) => w.word === "on_hold").map((w) => [w.id, "on_hold"]))} onCancel={(row) => {
+          words={new Map(((figures?.tsc ?? figures)?.withdrawals ?? figures?.withdrawals ?? []).map((w) => [w.id, w.word]))} feeFor={withdrawalFeeFor} onCancel={(row) => {
               setWithdrawalError(null);
               // Cancelling is asked first, like any step that can't be undone:
               // the dialog that chooses among several, with this one ticked.

@@ -5,7 +5,7 @@ import { dateFrom } from "../../lib/dates.js";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { FEE_FORMULAS, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import { methodProviderOn, providerOf } from "./payout-providers.js";
-import { NOTHING_BACK, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
+import { AWAITING_REVIEW, NOTHING_BACK, ON_HOLD, parseWithdrawAmount, reversedByBankLine, withdrawFeeLine } from "./payment-summary.mjs";
 import { RELOAD_AND_TRY_AGAIN, SIGN_IN_AGAIN } from "./balance-reader.mjs";
 
 /**
@@ -99,16 +99,33 @@ export const withdrawOptionLabel = (row, language = "en") => {
 };
 
 /**
- * Processing withdrawal details and the owner’s cancellation action: one row per
+ * An open withdrawal's word on the card: the word its Transactions row says
+ * (serverWithdrawalRows), from the server's `word` for it, so the card and the
+ * row never give one withdrawal two states.
+ */
+export function openWithdrawalWord(row, word = null) {
+  if (word === "on_hold") return ON_HOLD;
+  if (word === "on_its_way") return "Processing";
+  return word === "waiting" || (!word && row?.status === "requested") ? AWAITING_REVIEW : "Processing";
+}
+
+/**
+ * Open withdrawal details and the owner’s cancellation action: one row per
  * open withdrawal, oldest last. `onCancel(row)` cancels that one, or opens the
  * choice of which to cancel when more than one is still waiting.
  */
-export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null, reversed = null, back = null }) {
+export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, words = null, refunded = null, reversed = null, back = null, feeFor = null }) {
   const list = opens?.length ? opens : open ? [open] : [];
   if (list.length) {
     // The server's word for it (factory_balance().withdrawals): a request whose
     // step was refunded underneath is on hold, for the owner and members alike.
-    const onHold = (row) => words instanceof Map && words.get(row.id) === "on_hold";
+    const wordOf = (row) => openWithdrawalWord(row, words instanceof Map ? words.get(row.id) : null);
+    // The fee the row shows, taken from it as the row takes it (feeFor: PayPal
+    // while waiting or being sent; none for a quoted fee until it is paid).
+    const feeOf = (row) => {
+      const fee = typeof feeFor === "function" ? feeFor(row) : null;
+      return Number.isFinite(fee) && fee > 0 ? fee : 0;
+    };
     // The part of it refunded to the brand since it was asked (its parts'
     // "refunded"): no longer the factory's, so the block shows what it still
     // holds, and the refunded part on its own line.
@@ -116,17 +133,17 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
     return list.map((row) => (
       <div className="payout-pending-withdrawal" data-testid="withdrawal-open" key={row.id}>
         <div className="payout-pending-details">
-          <span className="payout-pending-label">Processing withdrawal</span>
-          <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row), row.currency)}</span>
+          <span className="payout-pending-label" data-testid="withdrawal-open-word">{wordOf(row)}</span>
+          <span className="payout-pending-amount">{formatMoney(Number(row.amount_cents) - refundedOf(row) - feeOf(row), row.currency)}</span>
+          {feeOf(row) > 0 ? <span className="payout-pending-destination">{`Fee ${formatMoney(feeOf(row), row.currency)}, taken from it`}</span> : null}
           {/* The brand's bank took part of it back (refund_cause "reversed"): the row's words for it. */}
           {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{reversed instanceof Set && reversed.has(row.id)
             ? reversedByBankLine(formatMoney(refundedOf(row), row.currency)) : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
           <span className="payout-pending-destination">{destination(row)}</span>
-          {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
         {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
-          // Someone who can't cancel sees the row's word: Awaiting review (waiting for TSC), or Processing (being sent).
-          : <span className="billing-status">{onHold(row) ? "On hold" : row.status === "requested" ? "Awaiting review" : "Processing"}</span>}
+          // Someone who can't cancel reads the word on the left; nothing to press.
+          : null}
       </div>
     ));
   }
