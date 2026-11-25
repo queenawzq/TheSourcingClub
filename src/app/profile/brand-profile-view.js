@@ -48,7 +48,7 @@ export function brandChips(selected, terms, profile = null) {
 
 /** The sourcing volume columns as the design's rows, own page wording. */
 function volumeRows(source) {
-  const price = priceRangeText(source?.target_price_min_cents, source?.target_price_max_cents);
+  const price = priceRangeText(source?.target_price_min_cents, source?.target_price_max_cents, source?.target_price_basis);
   return [
     ["Annual order volume", source?.pieces_per_year_band || NOT_GIVEN],
     ["Typical order size", source?.order_size_band || NOT_GIVEN],
@@ -348,7 +348,7 @@ export function brandProfileEditForm(parts) {
       annualVolume: profile?.pieces_per_year_band ?? "",
       orderSize: profile?.order_size_band ?? "",
       collectionsPerYear: profile?.collections_per_year ?? "",
-      targetPrice: priceRangeText(profile?.target_price_min_cents, profile?.target_price_max_cents),
+      targetPrice: priceRangeText(profile?.target_price_min_cents, profile?.target_price_max_cents, profile?.target_price_basis),
       reorderCadence: profile?.reorder_cadence ?? "",
       sourcingStage: profile?.sourcing_stage ?? "",
     },
@@ -370,7 +370,7 @@ export function factoryBrandView({ data, terms, logoUrl, assets }) {
   }
   const chips = brandChips(selected, terms);
   const location = data?.hq_location || "";
-  const price = priceRangeText(data?.target_price_min_cents, data?.target_price_max_cents);
+  const price = priceRangeText(data?.target_price_min_cents, data?.target_price_max_cents, data?.target_price_basis);
   const volume = [
     ["Typical order size", data?.order_size_band],
     ["Annual order volume", data?.pieces_per_year_band],

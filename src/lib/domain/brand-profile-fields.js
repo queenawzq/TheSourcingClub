@@ -57,20 +57,32 @@ export const BRAND_KINDS = [...new Set([...Object.values(KIND_FOR_LABEL), CATEGO
  */
 export function parsePriceRange(text) {
   const numbers = String(text ?? "").match(/\d+(?:\.\d+)?/g);
-  if (!numbers?.length) return { target_price_min_cents: null, target_price_max_cents: null };
+  if (!numbers?.length) return { target_price_min_cents: null, target_price_max_cents: null, target_price_basis: null };
   const [low, high = low] = numbers;
   return {
     target_price_min_cents: toCents(low),
     target_price_max_cents: toCents(high),
+    target_price_basis: priceBasis(text),
   };
 }
 
-/** The two price columns as one line again: "$18 - $40", "$18", or "". */
-export function priceRangeText(minCents, maxCents) {
+/** Incoterms 2020; the database's check on target_price_basis lists the same. */
+export const PRICE_BASES = ["EXW", "FCA", "FAS", "FOB", "CFR", "CIF", "CPT", "CIP", "DAP", "DPU", "DDP"];
+
+/** "$12-$28 FOB per unit" -> "FOB"; no code named -> null. */
+export function priceBasis(text) {
+  const words = String(text ?? "").toUpperCase().match(/[A-Z]+/g) ?? [];
+  return words.find((word) => PRICE_BASES.includes(word)) ?? null;
+}
+
+/** The price columns as one line again: "$18 - $40 FOB", "$18", or "". */
+export function priceRangeText(minCents, maxCents, basis = null) {
   const dollars = (cents) => `$${(cents / 100).toLocaleString("en", { maximumFractionDigits: 2 })}`;
   if (minCents == null && maxCents == null) return "";
-  if (minCents == null || maxCents == null || minCents === maxCents) return dollars(minCents ?? maxCents);
-  return `${dollars(minCents)} - ${dollars(maxCents)}`;
+  const range = minCents == null || maxCents == null || minCents === maxCents
+    ? dollars(minCents ?? maxCents)
+    : `${dollars(minCents)} - ${dollars(maxCents)}`;
+  return basis ? `${range} ${basis}` : range;
 }
 
 /**

@@ -506,8 +506,9 @@ const centsRange = (profile) => {
   const max = profile.target_price_max_cents;
   if (min == null && max == null) return null;
   const money = (c) => `$${(c / 100).toFixed(2)}`;
-  if (min != null && max != null) return `${money(min)} – ${money(max)}`;
-  return money(min ?? max);
+  const basis = profile.target_price_basis ? ` ${profile.target_price_basis}` : "";
+  if (min != null && max != null) return `${money(min)} – ${money(max)}${basis}`;
+  return `${money(min ?? max)}${basis}`;
 };
 
 /**

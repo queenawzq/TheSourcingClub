@@ -222,7 +222,7 @@ export default function LiveCompanyProfile({ org, profile, user, isFactory, onOp
             ? [liveProfile?.target_price_min_cents, liveProfile?.target_price_max_cents]
                 .map((amount) => amount == null ? null : `$${(amount / 100).toFixed(2)}`)
                 .filter(Boolean)
-                .join(" – ")
+                .join(" – ") + (liveProfile?.target_price_basis ? ` ${liveProfile.target_price_basis}` : "")
             : null,
         ],
       ];

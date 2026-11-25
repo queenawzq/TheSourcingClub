@@ -39,6 +39,7 @@ import {
   KIND_FOR_LABEL,
   NUMERIC_COLUMNS,
   parsePriceRange,
+  priceRangeText,
 } from "../../lib/domain/brand-profile-fields.js";
 import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import { useSignableTerms } from "./useSignableTerms.js";
@@ -167,6 +168,10 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[onboardingFieldName(label)] = String(profile[column]);
         }
+        // The range is two numbers and a basis; it comes back in the words the
+        // box asked for, or a resumed step 5 would save it blank.
+        const price = priceRangeText(profile.target_price_min_cents, profile.target_price_max_cents, profile.target_price_basis);
+        if (price) restored[onboardingFieldName("Typical price range for core styles")] = `${price} per unit`;
         // The brand name was asked at sign-up and named the company; asking
         // again on step 2 meant typing it a second time.
         const brandNameField = onboardingFieldName("Brand name");
