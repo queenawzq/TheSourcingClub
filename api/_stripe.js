@@ -299,7 +299,9 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   // back only its own review's takes (20261125100000).
   const dashboard = [];
   for (const refund of refunds.data) {
-    if (["succeeded", "pending"].includes(refund.status) && !refund.metadata?.tsc_problem) dashboard.push({ id: refund.id, amount: Number(refund.amount) || 0 });
+    if (["succeeded", "pending"].includes(refund.status) && !refund.metadata?.tsc_problem) {
+      dashboard.push({ id: refund.id, amount: Number(refund.amount) || 0, created: Number(refund.created) || null });
+    }
   }
   if (dashboard.length) await rpc(db, "note_review_refunds", { target_payment: payment.id, refunds: dashboard });
   return recorded;
@@ -527,9 +529,13 @@ export async function makeStaffRefund({ stripe, db, claim, renew = false }) {
         await rpc(db, "record_staff_refund_failed", { target_refund: claim.staff_refund_id, reason: `You can refund up to ${dollars(left)}.` });
         return { refused: "staff_refund_over", detail: dollars(left) };
       }
-      // A retry with nothing made yet: a new key, so Stripe can't replay a
-      // stored error (staff_refund_new_key; one key per minute per claim).
-      if (renew) claim = { ...claim, ...(await rpc(db, "staff_refund_new_key", { target_refund: claim.staff_refund_id })) };
+      // The try holds a lease: none while another may still be running at
+      // Stripe; a retry after one ran out gets a new key, so Stripe can't
+      // replay a stored error (staff_refund_attempt).
+      const attempt = await rpc(db, "staff_refund_attempt", { target_refund: claim.staff_refund_id, renew });
+      if (attempt?.busy) return { retry: true };
+      if (attempt?.status && attempt.status !== "claimed") return attempt.status === "made" ? { status: "refunded", ...figures } : { failed: attempt.failure ?? "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged." };
+      claim = { ...claim, ...attempt };
       refund = await stripe.refunds.create(
         {
           payment_intent: claim.intent,

@@ -62,7 +62,8 @@ alter table public.payment_reviews alter column state set default 'open';
 alter table public.payment_reviews alter column state set not null;
 alter table public.payment_reviews drop constraint if exists payment_reviews_state_check;
 alter table public.payment_reviews add constraint payment_reviews_state_check
-  check (state in ('inquiry', 'inquiry_closed', 'open', 'decide', 'resumed', 'closed', 'factory_at_fault', 'brand_at_fault', 'no_fault'));
+  check (state in ('inquiry', 'inquiry_closed', 'open', 'decide', 'resumed', 'closed', 'factory_at_fault', 'brand_at_fault', 'no_fault',
+                   'refund_failed'));
 alter table public.payment_reviews add constraint payment_reviews_decision_check
   check (decision in ('factory_at_fault', 'brand_at_fault', 'no_fault', 'brand_unpaused'));
 alter table public.payment_reviews drop constraint if exists payment_reviews_returned_check;
@@ -832,6 +833,7 @@ as $$
     when v.state = 'resumed' then 'Bank ruled for TSC'
     when v.state = 'closed' then 'Bank ruled for the brand · step not approved'
     when v.state = 'inquiry_closed' then 'Inquiry closed'
+    when v.state = 'refund_failed' then 'Refund failed · nothing returned'
   end;
 $$;
 revoke all on function public.payment_review_step_line(public.payment_reviews) from public, anon, authenticated;
@@ -973,6 +975,10 @@ create table if not exists public.staff_refunds (
   approved_at_claim boolean not null default false,
   kept_cents       bigint not null default 0 check (kept_cents >= 0),
   payment_intent   text,
+  -- A try at Stripe holds a lease (R2): no new key while one may still run.
+  attempt_at       timestamptz,
+  -- Marked failed, then made after all: Stripe decides (R1).
+  recovered_at     timestamptz,
   claimed_at       timestamptz not null default now(),
   recorded_at      timestamptz,
   failed_at        timestamptz,
@@ -1065,6 +1071,7 @@ as $$
            'id', s.id, 'amount_cents', s.amount_cents, 'factory_cents', s.factory_cents,
            'tsc_cents', s.amount_cents - s.factory_cents, 'payer', s.payer, 'note', s.note,
            'status', s.status, 'stripe_status', s.stripe_status, 'failure', s.failure,
+           'flag', case when s.recovered_at is not null then 'Refund succeeded after a failure' end,
            'created_at', s.created_at, 'by_name', (select u.full_name from public.user_profiles u where u.id = s.created_by))
          order by s.created_at desc), '[]'::jsonb)
     from public.staff_refunds s where s.payment_id = target_payment;
@@ -1301,7 +1308,7 @@ as $$
     'intent', p.stripe_payment_intent_id, 'charge', p.stripe_charge_id,
     'amount_cents', s.amount_cents, 'factory_cents', s.factory_cents, 'tsc_cents', s.amount_cents - s.factory_cents,
     'status', s.status, 'stripe_refund_id', s.stripe_refund_id, 'failure', s.failure,
-    'key', format('staff-refund-%s-%s', s.id, extract(epoch from s.claimed_at)::bigint));
+    'key', format('staff-refund-%s-%s', s.id, (extract(epoch from s.claimed_at) * 1000)::bigint));
 $$;
 revoke all on function public.staff_refund_claim(public.staff_refunds, public.order_payments) from public, anon, authenticated;
 grant execute on function public.staff_refund_claim(public.staff_refunds, public.order_payments) to service_role;
@@ -1384,6 +1391,12 @@ declare
   was_share bigint;
   was_debt bigint;
   step text;
+  recovering boolean := false;
+  part record;
+  left_to_take bigint;
+  take bigint;
+  taken jsonb := '[]'::jsonb;
+  retaken bigint := 0;
 begin
   select * into s from public.staff_refunds where id = target_refund;
   if not found then
@@ -1396,6 +1409,32 @@ begin
   perform 1 from public.orgs where id = o.factory_org_id for no key update;
   select * into p from public.order_payments where id = s.payment_id for update;
   select * into s from public.staff_refunds where id = target_refund for update;
+  -- Marked failed (refused, or failed later), and Stripe now says it was
+  -- made: Stripe decides (20261125100000). The factory's part is taken again,
+  -- up to what is still with TSC; TSC absorbs the rest; staff see a flag.
+  if s.status = 'failed' and refund_status in ('succeeded', 'pending') then
+    recovering := true;
+    if s.payer = 'factory' and s.factory_cents > 0 and s.approved_at_claim then
+      left_to_take := least(s.factory_cents, public.review_returnable_cents(o.factory_org_id));
+      for part in select * from public.review_returnable_parts(o.factory_org_id, p.id) loop
+        exit when left_to_take <= 0;
+        take := least(part.room_cents, left_to_take);
+        continue when take <= 0;
+        update public.order_payments set taken_back_cents = taken_back_cents + take where id = part.payment_id;
+        taken := taken || jsonb_build_array(jsonb_build_object('payment_id', part.payment_id, 'cents', take));
+        insert into public.payment_events (payment_id, from_state, to_state, actor_kind, note)
+        select x.id, x.state, x.state, 'system',
+               format('Took %s from the factory''s balance again: Stripe made a refund it had refused.', public.format_money(take, 'USD'))
+          from public.order_payments x where x.id = part.payment_id;
+        left_to_take := left_to_take - take;
+        retaken := retaken + take;
+      end loop;
+    end if;
+    update public.staff_refunds
+       set status = 'claimed', factory_cents = retaken, takes = taken, recovered_at = now(), failed_at = null, updated_at = now()
+     where id = s.id
+    returning * into s;
+  end if;
   if s.status <> 'claimed' then
     -- Recorded already; a later status from Stripe is kept for staff.
     update public.staff_refunds set stripe_status = coalesce(refund_status, stripe_status),
@@ -1448,7 +1487,7 @@ begin
   values (o.brand_org_id, 'payment_refunded', 'payment', p.id, o.id,
           format('Your payment for "%s" was refunded', step),
           format('%s was refunded to your card. Note from our team: %s', public.format_money(s.amount_cents, p.currency), s.note),
-          'staff_refund:' || s.id)
+          'staff_refund:' || s.id || case when recovering then ':recovered' else '' end)
   on conflict (org_id, dedupe_key) do nothing;
 
   if approved then
@@ -1459,7 +1498,7 @@ begin
               format('%s for "%s" on %s was returned to the brand from your balance. Note from our team: %s',
                      public.format_money(s.factory_cents, p.currency), step, o.order_number, s.note),
               jsonb_build_object('staff_refund_id', s.id, 'returned_cents', s.factory_cents),
-              'staff_refund:' || s.id)
+              'staff_refund:' || s.id || case when recovering then ':recovered' else '' end)
       on conflict (org_id, dedupe_key) do nothing;
     end if;
   else
@@ -1597,15 +1636,23 @@ declare
   r record;
   v uuid;
   noted int := 0;
+  approved_at timestamptz;
 begin
+  -- Only refunds made after approval belong to a review: one made before was
+  -- the brand's own money back, and never opened one (20261125100000).
+  select release_requested_at into approved_at from public.order_payments where id = target_payment;
+  if approved_at is null then
+    return 0;
+  end if;
   select id into v from public.payment_reviews
    where payment_id = target_payment and cause = 'refund'
    order by (state = 'decide') desc, created_at desc limit 1;
   if v is null then
     return 0;
   end if;
-  for r in select e->>'id' as id, (e->>'amount')::bigint as amount from jsonb_array_elements(coalesce(refunds, '[]'::jsonb)) e loop
-    continue when r.id is null;
+  for r in select e->>'id' as id, (e->>'amount')::bigint as amount, to_timestamp((e->>'created')::double precision) as created
+             from jsonb_array_elements(coalesce(refunds, '[]'::jsonb)) e loop
+    continue when r.id is null or r.created is null or r.created < approved_at;
     insert into public.payment_review_refunds (stripe_refund_id, review_id, payment_id, amount_cents)
     values (r.id, v, target_payment, greatest(coalesce(r.amount, 0), 0))
     on conflict (stripe_refund_id) do nothing;
@@ -1693,7 +1740,13 @@ begin
     continue when amt_here <= 0;
     failed_left := failed_left - amt_here;
     if v.state <> 'factory_at_fault' then
-      update public.payment_reviews set amount_cents = amount_cents - amt_here, updated_at = now() where id = v.id;
+      -- Nothing left with the brand: the review closes, the factory resumes.
+      update public.payment_reviews
+         set amount_cents = amount_cents - amt_here, updated_at = now(),
+             state = case when amount_cents - amt_here <= 0 then 'refund_failed' else state end,
+             refund_failed_at = case when amount_cents - amt_here <= 0 then now() else refund_failed_at end,
+             closed_at = case when amount_cents - amt_here <= 0 then now() else closed_at end
+       where id = v.id;
       continue;
     end if;
     -- The factory paid on this review: only its part of the failed amount
@@ -1726,8 +1779,21 @@ begin
       end if;
     end loop;
     given_back := given_back + (back_here - left_back);
+    -- All of it failed: nothing left with the brand. The review closes, and
+    -- what it took goes back (below, with what it still kept).
+    if v.amount_cents - amt_here <= 0 then
+      update public.payment_reviews
+         set amount_cents = 0, refund_failed_at = now(), refund_failed_cents = refund_failed_cents + (back_here - left_back),
+             returned_cents = 0, takes = '[]'::jsonb, state = 'refund_failed', closed_at = now(), updated_at = now()
+       where id = v.id;
+      for t in select (e->>'payment_id')::uuid as payment_id, (e->>'cents')::bigint as cents from jsonb_array_elements(kept_takes) e loop
+        select least(x.taken_back_cents, t.cents) into back from public.order_payments x where x.id = t.payment_id for update;
+        continue when coalesce(back, 0) <= 0;
+        update public.order_payments x set taken_back_cents = x.taken_back_cents - back where x.id = t.payment_id;
+        given_back := given_back + back;
+      end loop;
     -- Reopened for staff, unless another refund review is already waiting.
-    if not exists (select 1 from public.payment_reviews x where x.payment_id = p.id and x.cause = 'refund'
+    elsif not exists (select 1 from public.payment_reviews x where x.payment_id = p.id and x.cause = 'refund'
                      and x.state = 'decide' and x.id <> v.id) then
       update public.payment_reviews
          set amount_cents = amount_cents - amt_here,
@@ -2647,11 +2713,12 @@ $$;
 revoke all on function public.paused_brand_open_intents(uuid) from public, anon, authenticated;
 grant execute on function public.paused_brand_open_intents(uuid) to service_role;
 
--- A retry of a claim Stripe couldn't be asked about, after a check found no
--- refund made for it: a new claim time, so a new idempotency key (Stripe
--- replays a stored error for its key). Only once the claim is a minute old,
--- so two retries at once share one key.
-create or replace function public.staff_refund_new_key(target_refund uuid)
+-- The server, before it asks Stripe for a claim's refund (after a list found
+-- none made): the try holds a two-minute lease. While another try's lease is
+-- running the answer is busy (nothing is sent; Check again later). A retry
+-- after a lease ran out gets a new claim time, so a new idempotency key
+-- (Stripe replays a stored error for its key) (20261125100000).
+create or replace function public.staff_refund_attempt(target_refund uuid, renew boolean)
 returns jsonb
 language plpgsql
 security definer
@@ -2665,15 +2732,23 @@ begin
   if not found then
     return null;
   end if;
-  if s.status = 'claimed' and s.claimed_at < now() - interval '60 seconds' then
-    update public.staff_refunds set claimed_at = clock_timestamp(), updated_at = now() where id = s.id returning * into s;
-  end if;
   select * into p from public.order_payments where id = s.payment_id;
+  if s.status <> 'claimed' then
+    return public.staff_refund_claim(s, p);
+  end if;
+  if s.attempt_at is not null and s.attempt_at > clock_timestamp() - interval '2 minutes' then
+    return public.staff_refund_claim(s, p) || jsonb_build_object('busy', true);
+  end if;
+  update public.staff_refunds
+     set claimed_at = case when renew and s.attempt_at is not null then clock_timestamp() else claimed_at end,
+         attempt_at = clock_timestamp(), updated_at = now()
+   where id = s.id
+  returning * into s;
   return public.staff_refund_claim(s, p);
 end;
 $$;
-revoke all on function public.staff_refund_new_key(uuid) from public, anon, authenticated;
-grant execute on function public.staff_refund_new_key(uuid) to service_role;
+revoke all on function public.staff_refund_attempt(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.staff_refund_attempt(uuid, boolean) to service_role;
 
 -- What the server checks a Stripe refund naming a staff refund against.
 create or replace function public.staff_refund_matches(target_refund uuid, payment_intent text, amount_cents bigint)

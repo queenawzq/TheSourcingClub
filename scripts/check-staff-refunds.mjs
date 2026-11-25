@@ -8,13 +8,14 @@ const claim = (over = {}) => ({
   staff_refund_id: "sr-1", payment_id: "pay-1", order_id: "ord-1", intent: "pi_1", charge: "ch_1",
   amount_cents: 1000, factory_cents: 900, tsc_cents: 100, status: "claimed", key: "staff-refund-sr-1-100", ...over,
 });
-function dbFake() {
+function dbFake({ busy = false } = {}) {
   const calls = [];
   return {
     calls,
     rpc: async (name, args) => {
       calls.push([name, args]);
-      if (name === "staff_refund_new_key") return { ...claim(), key: "staff-refund-sr-1-200" };
+      // The try's lease: busy while another runs; a retry (renew) after one gets a new key.
+      if (name === "staff_refund_attempt") return busy ? { ...claim(), busy: true } : { ...claim(), key: args.renew ? "staff-refund-sr-1-200" : "staff-refund-sr-1-100" };
       return { data: null, error: null };
     },
   };
@@ -43,7 +44,7 @@ const names = (db) => db.calls.map(([name]) => name);
   assert.equal(stripe.created.length, 1);
   assert.equal(stripe.created[0][1].idempotencyKey, "staff-refund-sr-1-100");
   assert.equal(stripe.created[0][0].metadata.staff_refund_id, "sr-1");
-  assert.deepEqual(names(db), ["record_staff_refund"]);
+  assert.deepEqual(names(db), ["staff_refund_attempt", "record_staff_refund"]);
 }
 // 2. Check again: a refund already made for this claim is found by its id, never made again.
 {
@@ -60,7 +61,7 @@ const names = (db) => db.calls.map(([name]) => name);
   const db = wrap(dbFake());
   const stripe = stripeFake({});
   await makeStaffRefund({ stripe, db, claim: claim(), renew: true });
-  assert.deepEqual(names(db), ["staff_refund_new_key", "record_staff_refund"]);
+  assert.deepEqual(names(db), ["staff_refund_attempt", "record_staff_refund"]);
   assert.equal(stripe.created[0][1].idempotencyKey, "staff-refund-sr-1-200");
 }
 // 4. An idempotency error (another try with the same key still running) is an unknown outcome: the claim stays.
@@ -70,7 +71,7 @@ const names = (db) => db.calls.map(([name]) => name);
   const stripe = stripeFake({ create: () => { throw failure; } });
   const out = await makeStaffRefund({ stripe, db, claim: claim() });
   assert.deepEqual(out, { retry: true });
-  assert.deepEqual(names(db), [], "nothing recorded as failed");
+  assert.deepEqual(names(db), ["staff_refund_attempt"], "nothing recorded as failed");
 }
 // 5. Stripe can't be reached: the same.
 {
@@ -78,7 +79,7 @@ const names = (db) => db.calls.map(([name]) => name);
   const failure = Object.assign(new Error("connection"), { type: "StripeConnectionError" });
   const out = await makeStaffRefund({ stripe: stripeFake({ create: () => { throw failure; } }), db, claim: claim() });
   assert.deepEqual(out, { retry: true });
-  assert.deepEqual(names(db), []);
+  assert.deepEqual(names(db), ["staff_refund_attempt"]);
 }
 // 6. Refused: given back, said in our words.
 {
@@ -86,8 +87,16 @@ const names = (db) => db.calls.map(([name]) => name);
   const failure = Object.assign(new Error("sk_test_secret leaked words"), { type: "StripeInvalidRequestError", code: "insufficient_funds" });
   const out = await makeStaffRefund({ stripe: stripeFake({ create: () => { throw failure; } }), db, claim: claim() });
   assert.equal(out.failed, "TSC's Stripe balance is too low. Add funds in Stripe, then try again.");
-  assert.deepEqual(names(db), ["record_staff_refund_failed"]);
+  assert.deepEqual(names(db), ["staff_refund_attempt", "record_staff_refund_failed"]);
   assert.ok(!JSON.stringify(db.calls).includes("sk_test"), "never Stripe's message");
+}
+// 6b. Another try's lease is still running: nothing is sent, the claim stays.
+{
+  const db = wrap(dbFake({ busy: true }));
+  const stripe = stripeFake({});
+  const out = await makeStaffRefund({ stripe, db, claim: claim(), renew: true });
+  assert.deepEqual(out, { retry: true });
+  assert.equal(stripe.created.length, 0, "no second try while the first may still run at Stripe");
 }
 // 7. More than Stripe still holds: refused before any create.
 {

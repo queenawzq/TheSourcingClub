@@ -130,7 +130,7 @@ $f$;
 -- 0. Negatives first: the new helpers are the server's alone.
 -- ===========================================================================
 select ok(not has_function_privilege('authenticated', 'public.staff_refund_matches(uuid, text, bigint)', 'execute'), 'staff_refund_matches: server only');
-select ok(not has_function_privilege('authenticated', 'public.staff_refund_new_key(uuid)', 'execute'), 'staff_refund_new_key: server only');
+select ok(not has_function_privilege('authenticated', 'public.staff_refund_attempt(uuid, boolean)', 'execute'), 'staff_refund_attempt: server only');
 select ok(not has_function_privilege('authenticated', 'public.forget_cancelled_intent(uuid, text)', 'execute'), 'forget_cancelled_intent: server only');
 select ok(not has_function_privilege('authenticated', 'public.paused_brand_open_intents(uuid)', 'execute'), 'paused_brand_open_intents: server only');
 select ok(not has_function_privilege('authenticated', 'public.release_held_while_paused(uuid)', 'execute'), 'release_held_while_paused: server only');
@@ -194,12 +194,13 @@ select is((select sum(factory_cents)::bigint from public.staff_refunds where pay
 -- ===========================================================================
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_amount(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', 1015)')$$,
   'a $10 refund in Stripe''s dashboard');
-select lives_ok($$select pg_temp.as_server('select public.note_review_refunds(''c27f0001-0000-0000-0000-000000000001'', ''[{"id": "re_pgtap_pr27_a", "amount": 1000}]'')')$$,
+select lives_ok($$select pg_temp.as_server('select public.note_review_refunds(''c27f0001-0000-0000-0000-000000000001'', ' || quote_literal(jsonb_build_array(jsonb_build_object('id', 're_pgtap_pr27_a', 'amount', 1000, 'created', extract(epoch from now())))::text) || ')')$$,
   'noted on its review');
 select lives_ok($$select pg_temp.decide(1, 900)$$, 'the factory pays $9');
 select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_amount(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', 1515)')$$,
   'a second, $5, in the dashboard');
-select lives_ok($$select pg_temp.as_server('select public.note_review_refunds(''c27f0001-0000-0000-0000-000000000001'', ''[{"id": "re_pgtap_pr27_a", "amount": 1000}, {"id": "re_pgtap_pr27_b", "amount": 500}]'')')$$,
+select lives_ok($$select pg_temp.as_server('select public.note_review_refunds(''c27f0001-0000-0000-0000-000000000001'', ' || quote_literal(jsonb_build_array(jsonb_build_object('id', 're_pgtap_pr27_a', 'amount', 1000, 'created', extract(epoch from now())),
+                                                            jsonb_build_object('id', 're_pgtap_pr27_b', 'amount', 500, 'created', extract(epoch from now())))::text) || ')')$$,
   'noted on its own review');
 select lives_ok($$select pg_temp.decide(1, 450)$$, 'the factory pays $4.50');
 select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(1)), 1364::bigint, '14¢ + $9 + $4.50 taken');
@@ -207,9 +208,9 @@ select lives_ok($$select pg_temp.as_server('select public.record_payment_refund_
   'the first ($10) fails');
 select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(1)), 464::bigint, 'only its $9 comes back');
 select is((select string_agg(state || ' ' || returned_cents, ', ' order by state) from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund'),
-  'decide 0, factory_at_fault 450', 'its review reopens; the other keeps its decision');
+  'factory_at_fault 450, refund_failed 0', 'its review closes (all of it failed: nothing left with the brand); the other keeps its decision');
 select is((select review_id from public.payment_review_refunds where stripe_refund_id = 're_pgtap_pr27_a'),
-          (select id from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund' and state = 'decide'), 'the reopened one is the failed refund''s own');
+          (select id from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund' and state = 'refund_failed'), 'the closed one is the failed refund''s own');
 create function pg_temp.tsc_pays(n int) returns void language plpgsql as $f$
 declare v uuid;
 begin
@@ -220,7 +221,7 @@ begin
   reset role;
 end;
 $f$;
-select lives_ok($$select pg_temp.tsc_pays(1)$$, 'staff decide it again: TSC pays');
+select is(public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), false, 'nothing to decide: the factory carries on');
 
 -- ===========================================================================
 -- M3. Refund… during an inquiry.
@@ -364,6 +365,64 @@ select ok(public.staff_refund_matches(current_setting('tsc.b1')::uuid, 'pi_pgtap
 select ok(not public.staff_refund_matches(current_setting('tsc.b1')::uuid, 'pi_pgtap_pr27_2', 1071), 'another amount: not');
 select ok(not public.staff_refund_matches(current_setting('tsc.b1')::uuid, 'pi_other', 1070), 'another intent: not');
 select ok(not public.staff_refund_matches(gen_random_uuid(), 'pi_pgtap_pr27_2', 1070), 'an unknown claim: not');
+
+-- ===========================================================================
+-- Re-check round: R1–R4.
+-- ===========================================================================
+select lives_ok($$select pg_temp.as_server(format('select public.record_staff_refund_failed(%L, ''cleared for the next test'')',
+                  (select id from public.staff_refunds where payment_id = 'c27f0001-0000-0000-0000-000000000001' and status = 'claimed')))$$,
+  'the open claim is refused by Stripe');
+select lives_ok($$select pg_temp.claim_part(100, 0)$$, 'a claim with $0 from the factory''s balance');
+select is((select factory_cents from public.staff_refunds where payment_id = pg_temp.pay(1) and status = 'claimed'), 0::bigint, '$0 taken: TSC pays it all');
+select lives_ok($$select pg_temp.as_server(format('select public.record_staff_refund_failed(%L, ''refused'')',
+                  (select id from public.staff_refunds where payment_id = 'c27f0001-0000-0000-0000-000000000001' and status = 'claimed')))$$,
+  'cleared');
+
+-- R2: a try holds a two-minute lease; a retry after it gets a new key.
+select set_config('tsc.r2', pg_temp.claim(1, 107, 'factory')::text, true);
+create temp table r2 on commit drop as
+  select public.staff_refund_attempt(current_setting('tsc.r2')::uuid, false) as first;
+select ok((select not (first ? 'busy') from r2), 'the first try takes the lease');
+select is((public.staff_refund_attempt(current_setting('tsc.r2')::uuid, true) ->> 'busy'), 'true', 'a retry while it runs is busy: nothing sent twice');
+update public.staff_refunds set attempt_at = now() - interval '3 minutes', claimed_at = now() - interval '3 minutes' where id = current_setting('tsc.r2')::uuid;
+select isnt(public.staff_refund_attempt(current_setting('tsc.r2')::uuid, true) ->> 'key', (select first ->> 'key' from r2),
+  'after the lease, a retry gets a new key');
+
+-- R1: refused, then made after all: Stripe decides.
+select lives_ok($$select pg_temp.as_server(format('select public.record_staff_refund_failed(%L, ''refused'')', current_setting('tsc.r2')))$$,
+  'Stripe refuses it (as far as we know)');
+select is((select status || ' ' || factory_cents from public.staff_refunds where id = current_setting('tsc.r2')::uuid), 'failed 100',
+  'failed; its $1.00 given back');
+create temp table r1_before on commit drop as select taken_back_cents as t, refunded_cents as r from public.order_payments where id = pg_temp.pay(1);
+select lives_ok($$select pg_temp.as_server(format('select public.record_staff_refund(%L, ''re_pgtap_pr27_r1'', ''succeeded'')', current_setting('tsc.r2')))$$,
+  'then Stripe says it was made');
+select ok((select status = 'made' and recovered_at is not null and factory_cents = 100 from public.staff_refunds where id = current_setting('tsc.r2')::uuid),
+  'recorded, the factory''s part taken again');
+select ok((select taken_back_cents = (select t from r1_before) + 100 and refunded_cents = (select r from r1_before) + 107
+             from public.order_payments where id = pg_temp.pay(1)), 'the payment says so');
+select is((select x ->> 'flag' from jsonb_array_elements(public.staff_refund_rows(pg_temp.pay(1))) x where (x ->> 'id')::uuid = current_setting('tsc.r2')::uuid),
+  'Refund succeeded after a failure', 'flagged for staff');
+select is((select count(*)::int from public.notifications where dedupe_key = 'staff_refund:' || current_setting('tsc.r2') || ':recovered'), 2,
+  'both sides told it was refunded');
+
+-- R3: a refund made before approval never belongs to a review.
+select is(public.note_review_refunds(pg_temp.pay(1), jsonb_build_array(jsonb_build_object('id', 're_pgtap_pr27_old', 'amount', 50,
+            'created', extract(epoch from now() - interval '15 days')))), 0, 'made before approval: not noted');
+select is((select count(*)::int from public.payment_review_refunds where stripe_refund_id = 're_pgtap_pr27_old'), 0, 'on no review');
+
+-- R4: a review whose refund failed entirely closes; the factory resumes.
+select set_config('tsc.r4', (select refunded_cents::text from public.order_payments where id = pg_temp.pay(1)), true);
+select lives_ok(format($$select pg_temp.as_server('select public.record_payment_refund_amount(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', %s)')$$,
+                       current_setting('tsc.r4')::bigint + 300), 'a $3 refund in Stripe''s dashboard');
+select is(public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), true, 'the factory is paused for it');
+select lives_ok(format($$select pg_temp.as_server('select public.record_payment_refund_failed(''c27f0001-0000-0000-0000-000000000001'', ''pi_pgtap_pr27_1'', %s)')$$,
+                       current_setting('tsc.r4')), 'it fails in Stripe');
+select is((select count(*) filter (where state = 'decide') || ' ' || count(*) filter (where state = 'refund_failed')
+             from public.payment_reviews where payment_id = pg_temp.pay(1) and cause = 'refund'), '0 2',
+  'nothing left with the brand: the review closes');
+select is(public.factory_paused('c27b0000-0000-0000-0000-0000000000e1'), false, 'the factory resumes');
+select is((select public.payment_review_step_line(v) from public.payment_reviews v where v.payment_id = pg_temp.pay(1) and v.state = 'refund_failed' limit 1),
+  'Refund failed · nothing returned', 'the board says so');
 
 select * from finish();
 rollback;
