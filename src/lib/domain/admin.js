@@ -450,7 +450,7 @@ export async function overviewMetrics() {
     "load the marketplace overview",
   );
   // An empty answer is a failed read, never a zero (T1 P4): the overview says so.
-  if (!rows?.length) throw new Error("The marketplace overview couldn't be loaded. Reload the page.");
+  if (!rows?.length) throw new Error("The marketplace overview couldn't be loaded.");
   const row = rows[0];
   const paymentsHref = await paymentsQueueHref();
 

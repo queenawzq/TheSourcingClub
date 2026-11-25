@@ -29,7 +29,9 @@ const reasonOf = (row) => (isStaffRefund(row) ? "Refund failed" : REASON[row.rea
 function lineFor(row) {
   // An open failed staff refund: "Refund failed · <Stripe's reason in words>" (its first sentence; the row is narrow).
   const failure = isStaffRefund(row) && Number(row.step) < 3 ? String(row.failure ?? "").split(/(?<=\.)\s/)[0] : "";
-  const line = [row.step_line ?? "", failure].filter(Boolean).join(" · ");
+  // A closed one adds staff's note to the brand.
+  const closeNote = isStaffRefund(row) && Number(row.step) >= 3 ? row.close_note : "";
+  const line = [row.step_line ?? "", failure, closeNote].filter(Boolean).join(" · ");
   const date = day(row.step_date);
   if (!date) return line;
   // The date never breaks inside itself ("Dec" / "4").
@@ -192,7 +194,7 @@ function CloseRefundDialog({ row, onClose, onDone }) {
                  working={working} onCancel={onClose}>
       <p className="admin-modal-line">Close it once the brand has been refunded another way.</p>
       <label className="factory-onboarding-field">
-        <span>Note *</span>
+        <span>Note for the brand *</span>
         <textarea placeholder="How the brand was refunded" value={note} maxLength={500} data-testid="close-refund-note"
                   onChange={(event) => setNote(event.target.value)} />
       </label>

@@ -277,3 +277,5 @@
 .admin-user-reason-part { white-space: nowrap; }
 .admin-review-modal .admin-modal-line { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; }
 .admin-review-modal .admin-error { margin: 0; }
+.admin-overview-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
+.admin-overview-error .admin-error { margin: 0; }
