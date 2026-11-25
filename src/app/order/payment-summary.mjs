@@ -567,6 +567,19 @@ export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD
   return `Payout fee ${money(Number(feeCents), "USD")} is taken from this payment: you receive ${money(Number(receivesMinor), String(receivesCurrency || "USD").toUpperCase())}.`;
 }
 
+/**
+ * The Withdraw dialog's line for a bank in another currency (R2m10), in the
+ * words of the paid notice's "Your bank receives EUR 1,811.69."
+ * (api/_stripe-payout-events.js), with "about": the dialog converts at the
+ * display rate, Stripe at its own when it pays.
+ */
+export function bankReceivesAboutLine(localMinor, currency) {
+  const code = String(currency ?? "").toUpperCase();
+  if (!code || code === "USD" || !(Number(localMinor) > 0)) return null;
+  const figure = (Number(localMinor) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `Your bank receives about ${code} ${figure}.`;
+}
+
 /** A Stripe payout that has left and not yet reached the bank (until its arrival day): "Processing", like every withdrawal under way. */
 export const ON_ITS_WAY = "Processing";
 export const BANK_PROCESSING = "Your bank is processing the payout.";

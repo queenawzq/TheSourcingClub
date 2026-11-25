@@ -110,6 +110,8 @@ const PATTERNS = [
   [/^This payment of (\S+) is too small to send\. The fee is (\S+)\.$/, (m) => `该笔款项 ${m[1]} 金额过低，无法发送。手续费为 ${m[2]}。`],
   // Stripe's smallest payout (minimumWithdrawalSentence): the dialog's check and the server's refusal.
   [/^The minimum withdrawal is (\S+)\.$/, (m) => `最低提现金额为 ${m[1]}。`],
+  // A bank in another currency, in the Withdraw dialog (bankReceivesAboutLine).
+  [/^Your bank receives about ([A-Z]{3} [\d,]+\.\d\d)\.$/, (m) => `你的银行约收到 ${m[1]}。`],
   // Dates and times.
   [new RegExp(`^${MON} (\\d{1,2}), (\\d{4})$`), (m) => `${m[3]} 年 ${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],
   [new RegExp(`^${MON} (\\d{1,2})$`), (m) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日`],

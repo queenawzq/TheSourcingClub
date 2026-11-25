@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { clearingAfterDebt, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { bankReceivesAboutLine, clearingAfterDebt, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1049,6 +1049,14 @@ export default function StripePayoutCard({
     return withdrawal.amount < leastUsd ? minimumWithdrawalSentence(leastUsd, "USD") : null;
   })();
   const stripeFeeLine = stripeFee && !stripeFee.refused && !stripeMinimumProblem ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
+  // What a bank in another currency receives, at the same display rate as the
+  // minimum above: "about", since Stripe converts at its own rate when paying.
+  const stripeBankReceivesLine = (() => {
+    if (!stripeFeeLine || !(stripeFee.receivesCents > 0)) return null;
+    const local = String(balance?.defaultCurrency ?? currency ?? "USD").toUpperCase();
+    const usdPer = local === "USD" ? null : Number(balance?.displayFx?.rates?.[local]);
+    return usdPer > 0 ? bankReceivesAboutLine(Math.round(stripeFee.receivesCents / usdPer), local) : null;
+  })();
   // Opens on the default; when the default's method can reach nothing and
   // another can, on that one, so it never opens at $0.
   const openWithdraw = async () => {
@@ -1204,6 +1212,7 @@ export default function StripePayoutCard({
                   }} />
                 <p id="stripe-withdraw-available" className="withdraw-available">{`Available: ${formatMoney(withdrawal.max, withdrawal.currency)}`}</p>
                 {stripeFeeLine ? <p className="withdraw-available" data-testid="withdraw-fee">{stripeFeeLine}</p> : null}
+                {stripeBankReceivesLine ? <p className="withdraw-available" data-testid="withdraw-bank-receives">{stripeBankReceivesLine}</p> : null}
               </div>
             </div>
           )}

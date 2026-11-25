@@ -33,3 +33,4 @@ Run `npm run check:earnings`, `npm run check:payout-help` and `npm run build` af
 ### Order page words (flow check R2m9, Nov 24, 2026)
 
 - The factory's disabled Add update on a step that has not opened is titled "Available when this step opens" (`updateDisabledReason` in `LiveOrderDetail.jsx`), as the brand's is. Live says "step", never "milestone"; the prototype's own fallback is left as designed.
+- The Stripe Withdraw dialog adds one line under the fee line when the bank's currency is not US$: "Your bank receives about EUR 1,811.69." (`bankReceivesAboutLine`, at the balance's display rate, as the minimum check uses; flow check R2m10). Nothing else is added there.
