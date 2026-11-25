@@ -8236,6 +8236,8 @@ export function FactoryOnboarding({
         </footer>
       </section>
 
+      {/* Hidden with the step counter on a decided profile with nothing left to do (declined, flow check R2S12). */}
+      {isLast && completion && !completion.onCta ? null : (
       <div className="factory-onboarding-progress" aria-label="Onboarding progress">
         {copy.steps.map((item, index) => (
           <button
@@ -8256,6 +8258,7 @@ export function FactoryOnboarding({
           />
         ))}
       </div>
+      )}
     </main>
   );
 }
