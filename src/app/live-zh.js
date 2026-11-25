@@ -238,6 +238,7 @@ const PATTERNS = [
   [/^You receive: about (\S+)$/, (m) => `你将收到：约 ${m[1]}`],
   [/^You receive: (\S+)$/, (m) => `你将收到：${m[1]}`],
   [/^Fee (\S+), taken from it$/, (m) => `手续费 ${m[1]}，已从中扣除`],
+  [/^Fee (\S+), taken from it\. Your bank is processing the payout\.$/, (m) => `手续费 ${m[1]}，已从中扣除。你的银行正在处理这笔提现。`],
   [/^Back in your balance\. Check your withdrawal method, then withdraw again$/, () => "已退回余额。请检查你的提现方式，然后重新提现"],
   // A failed withdrawal: what came back, on its row and on the card (the notice's words).
   [/^(\$[\d,.]+) is back in your balance\. Check your withdrawal method, then withdraw again\.$/, (m) => `${m[1]} 已退回你的余额。请检查你的提现方式，然后重新提现。`],

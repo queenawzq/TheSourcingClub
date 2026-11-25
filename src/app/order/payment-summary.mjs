@@ -72,7 +72,9 @@ export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.
  *
  * The four figures over the Transactions list, in US$ cents. Total earnings
  * is the server's figures added up, never worked out on its own: the four,
- * plus withdrawals in progress (processing_cents), which are in no card.
+ * plus withdrawals in progress (processing_cents), which are in no card,
+ * plus the withdrawal fees taken from what was paid out: Paid out is what
+ * arrived, but a fee does not make the factory's earnings smaller.
  * Undefined (each) until the figures answer.
  */
 export function summaryFrom(figures) {
@@ -83,7 +85,9 @@ export function summaryFrom(figures) {
   const pending = n(figures.pending_cents);
   const processing = n(figures.processing_cents);
   const paid = n(figures.paid_out_cents);
-  return { total: approval + available + pending + processing + paid, approval, available, pending, processing, paid };
+  const parts = (figures.tsc ?? figures).parts ?? {};
+  const fees = n(parts.withdrawal_fees_cents) + n(parts.stripe_withdrawal_fees_cents);
+  return { total: approval + available + pending + processing + paid + fees, approval, available, pending, processing, paid, fees };
 }
 
 /**
@@ -300,7 +304,11 @@ export function failedWithdrawalNote(back, amount, currency = "USD") {
   if (!(cents > 0)) return NOTHING_BACK;
   return `${(cents / 100).toLocaleString("en-US", { style: "currency", currency })} is back in your balance. Check your withdrawal method, then withdraw again.`;
 }
-const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: "Completed", failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
+/** A PayPal or Wise withdrawal waiting for TSC to approve it (before it is sent). */
+export const AWAITING_REVIEW = "Awaiting review";
+/** A withdrawal that reached the factory, whatever the method: one word on every row. */
+export const WITHDRAWAL_DONE = "Completed";
+const ASKED_STATUS = { requested: "Processing", paying: "Processing", paid: WITHDRAWAL_DONE, failed: "Failed", declined: "Declined", cancelled: "Cancelled" };
 const ASKED_TITLE = { wise: "Bank transfer (Wise)", paypal: "PayPal", bank: "Bank transfer", tazapay: "Bank transfer" };
 
 export const ADDED_TO_BALANCE = "Added to your balance";
@@ -370,7 +378,7 @@ export function earningStatus(row, clearing = null, figures = null) {
   if (heldOnCancelledOrder(row)) return "Order cancelled";
   if (isClearing(row, clearing)) return "Pending";
   // A Stripe transfer reaches the factory's Stripe balance, not its bank: it is
-  // "Paid out to your bank" only on its withdrawal row, once Stripe's payout lands.
+  // "Completed" only on its withdrawal row, once Stripe's payout lands.
   // Taken by one-balance withdrawals and sent: paid, whichever road took it.
   const where = figures instanceof Map ? figures.get(row.id) : null;
   // Part of it went in a Stripe withdrawal whose payout has not reached the
@@ -402,7 +410,7 @@ export function stillClearing(row, now = new Date()) {
 
 // A payout sent step by step that is under way: main's word, still true (the
 // card's line counts it on its way: legacyOnItsWayCents).
-const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
+const WITHDRAWAL_STATUS = { processing: "Processing", paid: WITHDRAWAL_DONE, failed: "Failed" };
 const FAILURE_NOTE = {
   details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal address" },
 };
@@ -492,7 +500,7 @@ export function withdrawalRows(earnings, method = null) {
       meta: payoneer ? payoneer.paid_to_email
         : bank?.paid_to_bank ? `${bank.paid_to_bank}${bank.paid_to_last4 ? ` ending ${bank.paid_to_last4}` : ""}` : "",
       note: payoneer ? `Reference ${payoneer.payoneer_payment_id}` : staffBankNote(row) ? `Reference ${staffBankNote(row)}` : null,
-      status: "Completed",
+      status: WITHDRAWAL_DONE,
       failed: false,
       amount: -factoryAmount(row),
     }];
@@ -562,7 +570,7 @@ export function withdrawFeeLine(feeCents, receivesMinor, receivesCurrency = "USD
 /** A Stripe payout that has left and not yet reached the bank (until its arrival day): "Processing", like every withdrawal under way. */
 export const ON_ITS_WAY = "Processing";
 export const BANK_PROCESSING = "Your bank is processing the payout.";
-const STRIPE_PAYOUT_WORD = { paid: "Paid out to your bank", failed: "Failed", canceled: "Cancelled" };
+const STRIPE_PAYOUT_WORD = { paid: WITHDRAWAL_DONE, failed: "Failed", canceled: "Cancelled" };
 
 /**
  * The card's lines under the balance, in US$ cents, from the Pending figure
@@ -610,7 +618,7 @@ export function pendingParts(figures) {
  * request stays listed, muted, in no figure; a Stripe withdrawal that ended
  * with nothing sent and no payout made is not listed.
  */
-export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new Map(), methodName = () => null } = {}) {
+export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new Map(), methodName = () => null, feeFor = () => null } = {}) {
   const money = (cents) => (Number(cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
   return (list ?? []).flatMap((w) => {
     const fee = Math.max(0, Number(w.fee_cents) || 0);
@@ -618,6 +626,10 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
     if (w.road === "pool") {
       const own = pool.get(w.id);
       const paid = w.word === "paid";
+      // The fee from the start, as the Withdraw dialog said it: recorded once
+      // paid, worked out the same way (feeFor) while it is waiting or being sent.
+      const moving = ["waiting", "on_hold", "on_its_way"].includes(w.word);
+      const poolFee = paid ? (w.fee_cents == null ? null : fee) : moving ? feeFor(w) : null;
       return [{
         ...base,
         id: `asked-${w.id}`,
@@ -625,13 +637,13 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
         meta: w.to ?? own?.paid_to ?? null,
         note: own?.status === "declined" ? own.reason
           : own?.status === "failed" ? failedWithdrawalNote(w.back_cents ?? own.back_cents, w.amount_cents)
-          : paid && w.fee_cents != null ? `Fee ${money(fee)}, taken from it`
+          : poolFee != null ? `Fee ${money(poolFee)}, taken from it`
           : null,
-        status: w.word === "waiting" ? "Processing" : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
-          : paid ? "Completed" : ASKED_STATUS[own?.status] ?? "Failed",
+        status: w.word === "waiting" ? AWAITING_REVIEW : w.word === "on_hold" ? ON_HOLD : w.word === "on_its_way" ? "Processing"
+          : paid ? WITHDRAWAL_DONE : ASKED_STATUS[own?.status] ?? "Failed",
         failed: w.word === "returned",
         // What it still holds: less the part that went back to the brand since (its "refunded" part).
-        amount: -(Number(w.amount_cents) - (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0) - (paid ? fee : 0)),
+        amount: -(Number(w.amount_cents) - (w.parts ?? []).filter((part) => part.word === "refunded").reduce((sum, part) => sum + (Number(part.amount_cents) || 0), 0) - (poolFee ?? 0)),
         available: w.word !== "returned",
       }];
     }
@@ -645,7 +657,9 @@ export function serverWithdrawalRows(list = [], { pool = new Map(), stripe = new
       title: "Bank transfer",
       meta: w.to ? [w.to, own?.destination_bank].filter(Boolean).join(" · ") : own ? methodName(own) : null,
       arrives: w.word === "returned" ? null : arrives,
-      note: w.word === "on_its_way" ? BANK_PROCESSING : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
+      // The fee from the start (recorded with the withdrawal), then where the payout is.
+      note: w.word === "on_its_way" ? (fee ? `Fee ${money(fee)}, taken from it. ${BANK_PROCESSING}` : BANK_PROCESSING)
+        : w.word === "paid" && fee ? `Fee ${money(fee)}, taken from it` : null,
       status: w.word === "on_its_way" ? ON_ITS_WAY : w.word === "paid" ? STRIPE_PAYOUT_WORD.paid : STRIPE_PAYOUT_WORD[String(own?.payout_status ?? "").toLowerCase()] ?? "Failed",
       failed: w.word === "returned",
       amount: -Number(w.amount_cents),

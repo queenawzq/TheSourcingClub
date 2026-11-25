@@ -39,12 +39,12 @@ const tsc = (over = {}, parts = {}, rows = []) => ({
     withdrawal_fees_cents: 0, stripe_released_cents: 0, other_released_cents: 0, ...parts },
   rows, ...over,
 });
-const sumOfFour = (s) => s.approval + s.available + s.pending + s.processing + s.paid;
-/** Every case: Total is the figures added up (withdrawals in progress included), on the page and in the server's answer. */
+const sumOfFour = (s) => s.approval + s.available + s.pending + s.processing + s.paid + (s.fees ?? 0);
+/** Every case: Total is the figures added up (withdrawals in progress and withdrawal fees included), on the page and in the server's answer plus fees. */
 function checkTotal(figures, label) {
   const s = summaryFrom(figures);
-  assert.equal(s.total, sumOfFour(s), `${label}: Total earnings is the sum of the four figures`);
-  if (figures.total_cents != null) assert.equal(s.total, Number(figures.total_cents), `${label}: and the server's own total`);
+  assert.equal(s.total, sumOfFour(s), `${label}: Total earnings is the sum of the four figures and the fees`);
+  if (figures.total_cents != null) assert.equal(s.total, Number(figures.total_cents) + s.fees, `${label}: and the server's own total, fees added back`);
   return s;
 }
 const row = (payment_id, figure, amount_cents) => ({ payment_id, figure, amount_cents, stripe: false });
@@ -78,13 +78,13 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(figures.has_method, true, "IMG 76: Withdraw");
 }
 
-// IMG 45: $1 withdrawn by PayPal, $0.02 fee. Paid out $0.98, Total $0.98:
-// the fee is in no figure.
+// IMG 45: $1 withdrawn by PayPal, $0.02 fee. Paid out $0.98 (what arrived),
+// Total $1.00: a withdrawal fee does not shrink the earnings (flow check W2).
 {
   const figures = balanceFigures(tsc({ paid_out_cents: 98 }, { pool_paid_cents: 100, withdrawal_fees_cents: 2 }, [row("y1", "paid_out", 100)]), null, null);
   const s = checkTotal(figures, "IMG 45");
   assert.equal(s.paid, 98, "IMG 45: Paid out $0.98");
-  assert.equal(s.total, 98, "IMG 45: Total $0.98");
+  assert.equal(s.total, 100, "IMG 45: Total $1.00, the fee added back");
   assert.equal(s.available, 0, "IMG 45: nothing left to withdraw");
   const asked = withdrawalRows([]);
   assert.deepEqual(asked, [], "a balance withdrawal is listed from factory_withdrawals, not from its step");
@@ -154,7 +154,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
     [row("p1", "paid_out", 400), row("p1", "available", 600)]), null, null);
   const p = checkTotal(paid, "partial, paid");
   assert.equal(p.paid, 390, "partial: Paid out is what arrived");
-  assert.equal(p.total, 990, "partial: Total less the fee");
+  assert.equal(p.total, 1000, "partial: Total is the earnings, fee included");
 }
 
 // N7: a step still clearing reads Pending from the payment alone, so the order
@@ -301,7 +301,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.deepEqual(listedRows.map((r) => [r.id, r.status, r.amount]), [
     ["stripe-s1", "Processing", -184094],
     ["asked-p1", "Cancelled", -4500],
-    ["asked-p2", "Processing", -100000],
+    ["asked-p2", "Awaiting review", -100000],
     ["asked-p3", "On hold", -4500],
   ], "rows from the server's list: a cancelled request stays listed (round 28); a Stripe withdrawal refused before any payout is not");
   // Round 28: a cancelled or declined withdrawal stays a row: its word, its
@@ -377,7 +377,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   assert.equal(row.status, ON_ITS_WAY, "paid by Stripe, but its arrival day is tomorrow");
   assert.equal(row.arrives.getDate(), 23, "the arrival day is read as that day, not an instant");
   const [arrived] = serverWithdrawalRows([{ id: "y", road: "stripe", word: "paid", amount_cents: 1960, fee_cents: 40, arrives_on: "2026-11-23", created_at: "2026-11-20T10:00:00Z" }]);
-  assert.equal(arrived.status, "Paid out to your bank", "and at the bank from that day");
+  assert.equal(arrived.status, "Completed", "and at the bank from that day: Completed, as every method says it (W9)");
   const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
   assert.ok(form.includes("returnable.get(w.id)") && form.includes("total > 0 ? `Back to your balance: ${formatMoney(total, \"USD\")}` : NOTHING_BACK"),
     "cancelling says what really comes back, or that nothing does after a refund");
@@ -386,7 +386,7 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
 // Round 9: a request the server marks on_hold reads "On hold" in the Pending withdrawal block, for owner and member.
 {
   const form = readFileSync(new URL("../src/app/order/WithdrawFromBalance.jsx", import.meta.url), "utf8");
-  assert.ok(form.includes('words.get(row.id) === "on_hold"') && form.includes('{onHold(row) ? "On hold" : "Processing"}')
+  assert.ok(form.includes('words.get(row.id) === "on_hold"') && form.includes('{onHold(row) ? "On hold" : row.status === "requested" ? "Awaiting review" : "Processing"}')
     && form.includes('data-testid="withdrawal-on-hold">On hold</span>'), "On hold for the owner and the member");
 }
 
@@ -429,11 +429,18 @@ assert.deepEqual(withdrawReach(null), { stripe: null, balance: null, estimated: 
   ], { stripe: own });
   assert.equal(rows.length, 3, "only withdrawals that made a payout");
   assert.equal(rows[0].status, ON_ITS_WAY, "paid by Stripe but not at the bank until its arrival day");
-  assert.equal(rows[0].note, "Your bank is processing the payout.", "the processing sentence sits on its own row");
+  assert.equal(rows[0].note, "Fee $0.32, taken from it. Your bank is processing the payout.", "the fee from the start, and the processing sentence (W9)");
   assert.equal(rows[0].amount, -968, "what reaches the bank: the withdrawal less Stripe's fee");
-  assert.equal(rows[1].status, "Paid out to your bank");
+  assert.equal(rows[1].status, "Completed");
   assert.equal(rows[1].note, "Fee $0.50, taken from it", "the fee in the PayPal row's words");
   assert.equal(rows[2].failed, true);
+  // W9: a PayPal withdrawal shows its fee, and what arrives, from the start; the same word as Stripe's once paid.
+  const paypal = serverWithdrawalRows([
+    { id: "p1", road: "pool", provider: "paypal", word: "on_its_way", amount_cents: 20000, fee_cents: null, created_at: "2026-11-20T10:00:00Z" },
+    { id: "p2", road: "pool", provider: "paypal", word: "paid", amount_cents: 20000, fee_cents: 393, created_at: "2026-11-20T10:00:00Z" },
+  ], { feeFor: () => 393 });
+  assert.deepEqual(paypal.map((row) => [row.status, row.note, row.amount]),
+    [["Processing", "Fee $3.93, taken from it", -19607], ["Completed", "Fee $3.93, taken from it", -19607]], "W9: one amount and one fee, before and after");
   // Minor: the amount is read as typed, never clamped.
   assert.equal(parseWithdrawAmount("65.01", 6500).problem, "You can withdraw up to $65.00.");
   assert.equal(parseWithdrawAmount("1,000", 200000).cents, 100000, "a thousands comma is read as meant");
@@ -867,8 +874,9 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
   const staff = read("../src/app/admin/AdminWithdrawals.jsx");
   assert.ok(staff.includes('<span className="admin-sub admin-error" data-testid="withdrawal-at-risk">'), "staff's at-risk line on its own line, in red");
   const card = read("../src/app/order/StripePayoutCard.jsx");
-  assert.ok(card.includes("if (manualSaved) setMethodNotice(null);")
-    && card.includes("manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current)"), "only the latest status line under the balance");
+  assert.ok(card.includes("if (manualSaved) {\n      setMethodNotice(null);\n      setWithdrawn(false);")
+    && card.includes("if (methodNotice) setWithdrawn(false);")
+    && card.includes("manualSaved && !withdrawn && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current)"), "only the latest status line under the balance (W2)");
 }
 
 // Fix round 30 (G3): a step whose only withdrawal's Stripe payout failed is
@@ -937,7 +945,7 @@ for (const file of ["order/StripePayoutCard.jsx", "order/PayoutDetails.jsx", "or
     { stripe: new Map([["s1", { payout_status: "canceled", payout_id: "po_1" }]]) });
   assert.equal(cancelled[0]?.status, "Cancelled", "R32: a Stripe payout cancelled reads Cancelled");
   const css = readFileSync(new URL("../src/app/order/payout.css", import.meta.url), "utf8");
-  const words = ["Completed", "Paid", "Added to your balance", "Paid out to your bank", "Failed", "Cancelled", "Declined", "Refunded",
+  const words = ["Completed", "Paid", "Added to your balance", "Failed", "Cancelled", "Declined", "Refunded",
     summary.DISPUTE_LOST, "Order cancelled", "Processing", summary.ON_ITS_WAY, "Pending", summary.ON_HOLD, "Waiting", "Awaiting approval"];
   for (const word of words) {
     const slug = word.toLowerCase().replaceAll(" ", "-").replaceAll("'", "\\'");

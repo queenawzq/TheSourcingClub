@@ -1124,6 +1124,7 @@ export const factoryMainZhText = {
   "Not instant: sent once released": "非即时到账：放款后发出",
   // Withdrawing from the balance (src/app/order/WithdrawFromBalance.jsx).
   "Waiting": "等待中",
+  "Awaiting review": "待审核",
   "Processing": "处理中",
   "Failed": "失败",
   "Declined": "已拒绝",
@@ -1305,6 +1306,7 @@ export const factoryMainZhText = {
   "On hold": "暂扣中",
   "Your bank is processing the payout.": "你的银行正在处理这笔提现。",
   "Withdrawal requested. Your bank is processing the payout.": "已申请提现。你的银行正在处理这笔提现。",
+  "Withdrawal requested.": "已申请提现。",
   "Withdrawals paused": "提现已暂停",
   "Finish setup to withdraw": "完成设置后即可提现",
   "Canceled": "已取消",

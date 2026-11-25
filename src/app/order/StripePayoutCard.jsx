@@ -367,7 +367,8 @@ export default function StripePayoutCard({
   const [country, setCountry] = useState("");
   const [payoutRoute, setPayoutRoute] = useState("stripe");
   const [busy, setBusy] = useState(false);
-  // A Stripe withdrawal just made: main's confirmation under the balance.
+  // A withdrawal just made ("bank": main's confirmation under the balance;
+  // "pool": its own block says it): earlier status lines give way to it.
   const [withdrawn, setWithdrawn] = useState(false);
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
@@ -412,8 +413,15 @@ export default function StripePayoutCard({
   // One status line under the balance: the latest. A save replaces an
   // earlier "removed" or "now your default" line.
   useEffect(() => {
-    if (manualSaved) setMethodNotice(null);
+    if (manualSaved) {
+      setMethodNotice(null);
+      setWithdrawn(false);
+    }
   }, [manualSaved]);
+  // A method notice replaces the withdrawal's line too.
+  useEffect(() => {
+    if (methodNotice) setWithdrawn(false);
+  }, [methodNotice]);
 
   useEffect(() => {
     if (!methodMenu) return undefined;
@@ -511,6 +519,13 @@ export default function StripePayoutCard({
   }, [org.id, isOwner, load, loadAccount, manualAccount]);
 
   const supported = PAYOUT_COUNTRIES.has(country);
+  // The withdrawal just made, as its row says it: still on its way to the
+  // bank, or already there (then the bank is not processing anything).
+  const newestBankWithdrawalOnItsWay = (() => {
+    const list = answer?.figures?.withdrawals ?? [];
+    const newest = list.filter((w) => w?.road === "stripe").sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    return !newest || newest.word === "on_its_way";
+  })();
   const currency = balanceCurrency(balance);
   const recoveryCurrency = balanceCurrency(balance?.recovery);
   const recoveryAvailable = amountIn(balance?.recovery?.available, recoveryCurrency);
@@ -537,7 +552,8 @@ export default function StripePayoutCard({
         { amount: sendAmount, currency: sendCurrency, requestId, ...(withdrawal.previous || !destination ? {} : { destination }) });
       setWithdrawal(null);
       setModal(null);
-      setWithdrawn(true);
+      setMethodNotice(null);
+      setWithdrawn("bank");
       // Never leave an already-withdrawn amount available if refreshing fails,
       // nor let a read asked before the withdrawal land after it.
       const reading = read.reset();
@@ -1025,7 +1041,9 @@ export default function StripePayoutCard({
     const usdPer = local === "USD" ? 1 : Number(balance?.displayFx?.rates?.[local]);
     if (!(usdPer > 0)) return null;
     const leastLocal = stripeMinimumWithdrawal({ currency: local, country: String(account?.country ?? "").toUpperCase(), localPerUsd: 1 / usdPer });
-    return withdrawal.amount < Math.ceil(leastLocal * usdPer) ? minimumWithdrawalSentence(leastLocal, local) : null;
+    // Said in the dollars the form asks for, not the bank's currency.
+    const leastUsd = Math.ceil(leastLocal * usdPer);
+    return withdrawal.amount < leastUsd ? minimumWithdrawalSentence(leastUsd, "USD") : null;
   })();
   const stripeFeeLine = stripeFee && !stripeFee.refused && !stripeMinimumProblem ? withdrawFeeLine(stripeFee.feeCents, stripeFee.receivesCents, "USD") : null;
   // Opens on the default; when the default's method can reach nothing and
@@ -1091,8 +1109,8 @@ export default function StripePayoutCard({
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {manualSaved && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current) ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
-          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
+          {manualSaved && !withdrawn && !failedLine && !(methodNotice && methodNotice !== shownInDialogOnly.current) ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
+          {withdrawn === "bank" ? <p className="live-payment-notice" role="status">{newestBankWithdrawalOnItsWay ? "Withdrawal requested. Your bank is processing the payout." : "Withdrawal requested."}</p> : null}
           {/* A new default is said in Withdrawal methods, where it was chosen, and not again here. */}
           {methodNotice && methodNotice !== shownInDialogOnly.current ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error && modal !== "withdraw" ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -1139,7 +1157,7 @@ export default function StripePayoutCard({
           others={stripeReachable ? stripeWithdrawTargets.map((method) => ({ id: method.id, label: listLabelIn(method, uiLanguage) })) : []}
           onOther={(id) => openStripeWithdraw(id)}
           onRefused={() => { read.reload(); onMethodsChanged?.(); }}
-          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); read.reload(); }} />
+          Modal={PayoutModal} onClose={closeModal} onDone={() => { closeModal(); setMethodNotice(null); setWithdrawn("pool"); read.reload(); }} />
       ) : null}
 
       {modal === "withdraw" && withdrawal ? (
