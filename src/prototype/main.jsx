@@ -8311,7 +8311,7 @@ export function ProjectsScreen({
       <header className="rfqs-header projects-header">
         <div>
           <h1>Production orders</h1>
-          <p>Track funded vendor work, sample approvals, milestones, messages, and shared files.</p>
+          <p>{live ? "Track funded vendor work, sample approvals, production steps, messages, and shared files." : "Track funded vendor work, sample approvals, milestones, messages, and shared files."}</p>
         </div>
       </header>
 
