@@ -9,6 +9,7 @@
  * brand's orders), is left out rather than filled with an example.
  */
 import { minutesPerPieceFor, monthlyUnits } from "../../lib/domain/capacity.js";
+import { countText } from "../../lib/domain/profile.js";
 import { chipLabels, factoryProfileView } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
 import { checkedMonth } from "../../shared/registration-number.mjs";
@@ -40,7 +41,7 @@ export function brandFactoryView(parts, now = new Date()) {
 
   const specialty = isTrading ? "Trading company" : data.productionTypes.slice(0, 2).join(", ") || "Factory";
   const location = given(data.location) ? data.location : "Location not given";
-  const moq = profile?.moq != null ? `${count(profile.moq)}/style` : NOT_GIVEN;
+  const moq = profile?.moq != null ? `${countText(profile.moq, profile.moq_max)}/style` : NOT_GIVEN;
   const category = (terms?.capacity_category ?? []).find((term) => term.id === capacityState?.capacity?.category_term_id);
   const units = monthlyUnits(capacityState?.capacity, minutesPerPieceFor(category));
   // The design's wording ("420 units"); per month in the terms list.

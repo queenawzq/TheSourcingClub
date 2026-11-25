@@ -7,7 +7,7 @@
  * dialog saves only its own section: a save never touches a field or chip
  * group that dialog doesn't show.
  */
-import { addressPatch, dayRange, firstNumber, saveFactoryProfile, structureAddress } from "../../lib/domain/profile.js";
+import { addressPatch, countRange, dayRange, firstNumber, saveFactoryProfile, structureAddress } from "../../lib/domain/profile.js";
 import { CUSTOM_KINDS, addCustomTerm, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
@@ -18,6 +18,12 @@ import { TRADING_CHIP_KINDS, TRADING_SECTIONS } from "./trading-profile-view.js"
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 const textOrNull = (value) => String(value ?? "").trim() || null;
 /** A lead time as typed, both ends kept: "45-60 days" saves 45 and 60. */
+/** A minimum order as typed, both ends kept: "100-200" saves 100 and 200. */
+const moqRange = (value) => {
+  const { min, max } = countRange(value);
+  return { moq: min, moq_max: max };
+};
+
 const leadDays = (column, value) => {
   const { min, max } = dayRange(value);
   return { [column]: min, [`${column}_max`]: max };
@@ -103,7 +109,7 @@ async function saveCapacityAndTerms(org, form, terms, hadCapacity, now) {
   }
 
   await saveFactoryProfile(org.id, {
-    moq: firstNumber(form.moq),
+    ...moqRange(form.moq),
     ...leadDays("typical_lead_days", form.leadTime),
     ...leadDays("sample_lead_days", form.sampleLeadTime),
   });
@@ -161,7 +167,7 @@ async function saveTradingSection(org, editor, form, terms, parts) {
   }
   if (editor === "commercial") {
     return saveFactoryProfile(org.id, {
-      moq: firstNumber(form.moq),
+      ...moqRange(form.moq),
       ...leadDays("typical_lead_days", form.leadTime),
       typical_order_value_band: textOrNull(form.orderValue),
       partner_factory_count: firstNumber(form.partnerFactories),

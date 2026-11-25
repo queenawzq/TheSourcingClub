@@ -9,7 +9,7 @@
  * this page shows. What nothing records (a rating, verified partner counts)
  * is left out.
  */
-import { daysText } from "../../lib/domain/profile.js";
+import { countText, daysText } from "../../lib/domain/profile.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import {
   chipLabels,
@@ -245,7 +245,7 @@ export function tradingProfileView(parts, now = new Date(), language = "en") {
       ["Digital tools", orNone(chips.tools)],
     ],
     commercialRows: [
-      ["Typical MOQ", profile?.moq != null ? t(`${count(profile.moq)} units / style`, `${count(profile.moq)} 件 / 款`) : NOT_GIVEN],
+      ["Typical MOQ", profile?.moq != null ? t(`${countText(profile.moq, profile.moq_max)} units / style`, `${countText(profile.moq, profile.moq_max)} 件 / 款`) : NOT_GIVEN],
       ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, t("days", "天")) || NOT_GIVEN],
       ["Typical order value", profile?.typical_order_value_band || NOT_GIVEN],
       ["Partner factories", profile?.partner_factory_count != null ? t(`${count(profile.partner_factory_count)} active`, `${count(profile.partner_factory_count)} 家活跃工厂`) : NOT_GIVEN],
@@ -294,7 +294,7 @@ export function tradingProfileEditForm(parts, language = "en") {
     ...chips,
     marketLevel: chips.marketLevel.slice(0, 1),
     otherCapabilities: equipmentList(profile?.equipment_notes),
-    moq: profile?.moq != null ? `${profile.moq} ${zh ? "件 / 款" : "units / style"}` : "",
+    moq: profile?.moq != null ? `${countText(profile.moq, profile.moq_max)} ${zh ? "件 / 款" : "units / style"}` : "",
     leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days"),
     orderValue: text(profile?.typical_order_value_band),
     partnerFactories: text(profile?.partner_factory_count),

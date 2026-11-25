@@ -106,7 +106,7 @@ function fileDialogs(org, parts, reload) {
   return {
     banner: mediaFor(
       "banner",
-      logo ? [{ title: logo.title || "Profile image", meta: logo.caption || "Current factory profile image", editTitle: logo.title ?? "", editCaption: logo.caption ?? "", src: parts.logoUrl, doc: logo }] : [],
+      logo ? [{ title: logo.title || "Profile image", meta: logo.caption || (parts.profile?.vendor_kind === "trading_company" ? "Current company profile image" : "Current factory profile image"), editTitle: logo.title ?? "", editCaption: logo.caption ?? "", src: parts.logoUrl, doc: logo }] : [],
       parts.logos,
       { addLabel: logo ? "+ Replace image" : "+ Add image" },
     ),
@@ -185,6 +185,8 @@ function Completion({ view, verified, editors, isTrading, org, language }) {
             : null,
         })),
         suggestions: view.checks.filter((check) => check.suggestion).map((check) => check.suggestion),
+        // A trading company keeps no monthly capacity: the profile's own line for it (R3g3).
+        ...(isTrading ? { noSuggestions: language === "zh" ? "暂无需补充。请及时更新供应商覆盖、合规检查和采购服务信息。" : "Nothing to add. Keep supplier coverage, compliance checks, and sourcing services current." } : {}),
       }}
     />
   );

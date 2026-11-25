@@ -7,7 +7,7 @@
  * nothing records (a rating, reviews, a response time) it is left out or said
  * plainly, never filled with an example.
  */
-import { daysText } from "../../lib/domain/profile.js";
+import { countText, daysText } from "../../lib/domain/profile.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { equipmentList, titleFromFileName } from "../../shared/profile-translation.mjs";
 import {
@@ -101,7 +101,7 @@ function capacityRowsFor(profile, capacityState, terms, now, language = "en") {
   const reference = zh ? category?.extra?.reference_style_zh ?? category?.extra?.reference_style_en : category?.extra?.reference_style_en;
 
   return [
-    ["MOQ", profile?.moq != null ? (zh ? `${count(profile.moq)} 件 / 款` : `${count(profile.moq)} units / style`) : NOT_GIVEN],
+    ["MOQ", profile?.moq != null ? (zh ? `${countText(profile.moq, profile.moq_max)} 件 / 款` : `${countText(profile.moq, profile.moq_max)} units / style`) : NOT_GIVEN],
     ["Typical lead time", daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days") || NOT_GIVEN],
     ["Typical sample lead time", daysText(profile?.sample_lead_days, profile?.sample_lead_days_max, zh ? "天" : "days") || NOT_GIVEN],
     ["Capacity category", category ? termLabel(category, language) : NOT_GIVEN],
@@ -167,7 +167,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
   const has = (kind) => (selected?.[kind]?.length ?? 0) > 0;
   const current = capacityWindow(1, now)[0];
   const monthName = zh ? `${current.getUTCMonth() + 1} 月` : current.toLocaleString("en", { month: "long", timeZone: "UTC" });
-  const complete = (description, status = "Complete") => ({ tone: "complete", status: t(status, status === "Verified" ? "已验证" : "已完成"), description });
+  const complete = (description, status = "Complete") => ({ tone: "complete", status: t(status, { Verified: "已验证", Optional: "可选" }[status] ?? "已完成"), description });
   const inReview = (description) => ({ tone: "progress", status: t("In review", "审核中"), description });
   const missing = (description, action, suggestion) => ({ tone: "missing", status: t("Needs attention", "需要处理"), description, action, suggestion });
 
@@ -283,7 +283,8 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
         )
         : certificates.length
           ? complete(t(`Every certification you claim has its certificate file: ${listWords(certificates.map((cert) => cert.name))}.`, `你填写的每项认证都已有证书文件：${list(certificates.map((cert) => cert.name))}。`))
-          : complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"))),
+          // Nothing claimed is not a finished row: certifications are optional (R3g3).
+          : { ...complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"), "Optional"), optional: true }),
     },
     {
       key: "freshness",
@@ -466,7 +467,7 @@ export function factoryProfileEditForm(parts, now = new Date(), language = "en")
     website: text(profile?.website_url),
     employees: text(profile?.employee_count),
     intro: text(profile?.intro),
-    moq: withUnit(profile?.moq, zh ? "件 / 款" : "units / style"),
+    moq: withUnit(profile?.moq != null ? countText(profile.moq, profile.moq_max) : null, zh ? "件 / 款" : "units / style"),
     leadTime: daysText(profile?.typical_lead_days, profile?.typical_lead_days_max, zh ? "天" : "days"),
     sampleLeadTime: daysText(profile?.sample_lead_days, profile?.sample_lead_days_max, zh ? "天" : "days"),
     // The dialog shows a category whatever is saved, falling back to wovens

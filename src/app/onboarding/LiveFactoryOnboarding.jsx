@@ -21,7 +21,7 @@ import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/mai
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
 import { CUSTOM_KINDS, addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { addressPatch, completeOnboarding, dayRange, daysText, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { addressPatch, completeOnboarding, countRange, countText, dayRange, daysText, firstNumber, structureAddress, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
 import { ADDRESS_PLACE_NOTICE, addressMissesPlace } from "../../shared/company-address.mjs";
 import { constraintInWords, constraintName } from "../../shared/constraint-words.mjs";
@@ -29,6 +29,7 @@ import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { useUploadOnce } from "./upload-once.js";
 import { chooseUiLanguage, getUiLanguage } from "../../lib/ui-language.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { useAuth } from "../../lib/auth.jsx";
 import { deleteDocument, listDocuments } from "../../lib/domain/documents.js";
 import {
   addCertification as claimCertification,
@@ -105,6 +106,8 @@ const typedAddressIn = (fields) => fields[factoryFieldName(ADDRESS_LABELS.factor
 
 /** Lead times: a range keeps its high end in `<column>_max`. */
 const RANGE_COLUMNS = new Set(["typical_lead_days", "sample_lead_days"]);
+/** The minimum order too: "100-200 件 / 款" keeps 200 in `moq_max`. */
+const COUNT_RANGE_COLUMNS = new Set(["moq"]);
 
 const NUMERIC_COLUMNS = new Set([
   "founded_year", "employee_count", "moq", "typical_lead_days",
@@ -200,6 +203,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
   const uploads = useUploadOnce(step);
+  const { refreshOrgs } = useAuth();
 
   // Already signed? Looked up by the version on screen, once it has loaded, so
   // a returning company sees its read-only signature rather than a blank one.
@@ -239,6 +243,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // The registration number the factory was told is already in use; Next
   // again with the same number goes on (staff check it).
   const [numberWarned, setNumberWarned] = useState(null);
+  // A licence the number is read from (China): already another company's, by
+  // its number or the file itself. Said under the upload, once (flow check R3f2).
+  const [licenceInUse, setLicenceInUse] = useState(false);
+  const licenceWarned = useRef(false);
 
   /**
    * The registration row of the review step: its number and whether it is already another company's, by
@@ -267,14 +275,16 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       if (settled || Date.now() > deadline) {
         // A number the new file did not give (unreadable, or failing its check) is the old licence's: not shown.
         const numberIsThisFile = !waitForReading || Boolean(file?.numberRead);
+        const inUse = Boolean((byNumber && numberIsThisFile) || file?.copy === true);
         setNumberInUse(byNumber && numberIsThisFile);
+        setLicenceInUse(inUse);
         setValues((current) => ({
           ...current,
           ...(waitForReading ? { "registration-number": numberIsThisFile ? saved?.number ?? "" : "" } : {}),
           "registration-reading": "",
-          "registration-in-use": (byNumber && numberIsThisFile) || file?.copy === true ? (zh ? "已被另一家公司使用" : "already used by another company") : "",
+          "registration-in-use": inUse ? (zh ? "已被另一家公司使用" : "already used by another company") : "",
         }));
-        return;
+        return inUse;
       }
       await new Promise((resolve) => { setTimeout(resolve, 4000); });
       if (run !== following.current) return;
@@ -338,6 +348,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (RANGE_COLUMNS.has(column)) {
             const range = daysText(profile[column], profile[`${column}_max`], language === "zh" ? "天" : "days");
+            if (range) restored[factoryFieldName(label)] = range;
+          } else if (COUNT_RANGE_COLUMNS.has(column)) {
+            const range = countText(profile[column], profile[`${column}_max`]);
             if (range) restored[factoryFieldName(label)] = range;
           } else if (profile[column] != null) restored[factoryFieldName(label)] = String(profile[column]);
         }
@@ -432,8 +445,14 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const typedAddress = typedAddressIn(values);
   const registrationCountry = (typedAddress ? addressPatch(typedAddress, "").patch.country_code : null) ?? savedCountry;
   const registrationField = useMemo(() => {
-    // China types no number: it is read off the licence.
-    if (numberFromDocument(registrationCountry)) return null;
+    // China types no number: it is read off the licence. Only the warning is drawn, under the upload.
+    if (numberFromDocument(registrationCountry)) {
+      if (!licenceInUse) return null;
+      return {
+        documentOnly: true,
+        inUseText: language === "zh" ? "该营业执照已被 The Sourcing Club 上的另一家公司使用。请核对执照后继续。" : "Already used by another company on The Sourcing Club. Check the licence before you continue.",
+      };
+    }
     const copy = registrationCopy(registrationCountry);
     const lang = language === "zh" ? "zh" : "en";
     return {
@@ -463,7 +482,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         return "";
       },
     };
-  }, [registrationCountry, language, values, numberInUse]);
+  }, [registrationCountry, language, values, numberInUse, licenceInUse]);
 
   const certificationTerm = (name) => findCertificationTerm(name, terms.certification ?? [], language);
 
@@ -517,6 +536,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     const fresh = await listDocuments(org.id, doc.kind);
     setDocuments((current) => ({ ...current, [field]: fresh }));
     if (doc.kind === "business_registration") {
+      if (!fresh.length) {
+        setLicenceInUse(false);
+        setValues((current) => ({ ...current, "registration-in-use": "" }));
+      }
       setRegistrationFileName(fresh.length > 1 ? `${fresh.length} files uploaded` : fresh[0]?.file_name ?? "");
     }
     if (doc.kind === "logo") setValues((current) => ({ ...current, "uploaded-logo": fresh.length ? String(fresh.length) : "" }));
@@ -524,6 +547,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   }
 
   async function persist(submitted) {
+    const result = {};
     const patch = {};
     if (companyType) patch.vendor_kind = companyType === "trading" ? "trading_company" : "manufacturer";
     const links = [];
@@ -535,6 +559,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       if (RANGE_COLUMNS.has(column)) {
         // "45-60 天" keeps both ends (dayRange, as the profile editor reads it).
         const { min, max } = dayRange(trimmed);
+        patch[column] = min;
+        patch[`${column}_max`] = max;
+      } else if (COUNT_RANGE_COLUMNS.has(column)) {
+        const { min, max } = countRange(trimmed);
         patch[column] = min;
         patch[`${column}_max`] = max;
       } else if (trimmed === "") {
@@ -644,7 +672,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
       }, language === "zh" ? "zh" : "en");
       // A new licence whose number is read off it: wait for that reading (R2S7).
-      followRegistration({ waitForReading: fromDocument && registrationFiles.length > 0 }).catch(() => {});
+      const reading = followRegistration({ waitForReading: fromDocument && registrationFiles.length > 0 }).catch(() => undefined);
+      if (fromDocument && registrationFiles.length > 0) {
+        licenceWarned.current = false;
+        result.newLicence = reading;
+      }
       // The same country on the profile, for Browse's location filter.
       if (registrationCountry) patch.country_code = registrationCountry;
     }
@@ -661,6 +693,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     }
 
     await saveFactoryProfile(org.id, patch);
+    // The name typed here is the company's name, as on the profile's own edit
+    // (rename_factory, owners only): staff, brands and emails read orgs.name.
+    if (patch.legal_name && org.role === "owner" && patch.legal_name !== String(org.name ?? "").trim()) {
+      unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: patch.legal_name }), "save the company name");
+      await refreshOrgs?.().catch(() => {});
+    }
     if (addressChanged) structureAddress(org.id);
     // After the profile save, so the checks read the address just typed.
     if (evidenceUploaded) startVerification(org.id);
@@ -711,6 +749,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         .filter((row) => row.title);
       if (rows.length) unwrap(await supabase.from("profile_references").insert(rows), "save your references");
     }
+    return result;
   }
 
   /**
@@ -733,7 +772,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     setError(null);
 
     try {
-      await persist(submitted);
+      const saved = await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
       const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, "factory-photos": _photos, ...answers } = submitted;
       // One address on either copy of the flow: a vendor that switches between
@@ -753,6 +792,19 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         setNumberInUse(inUse);
         if (inUse) {
           setNumberWarned(typedNumber);
+          return;
+        }
+      }
+
+      // A licence already another company's (by its number or the file), said
+      // under the upload, once, before the factory moves on (R3f2). A new
+      // licence is waited for while it is read, at most 20 s.
+      if (numberFromDocument(registrationCountry) && "business-registration" in submitted) {
+        const inUse = saved?.newLicence
+          ? await Promise.race([saved.newLicence, new Promise((resolve) => { setTimeout(() => resolve(undefined), 20_000); })])
+          : licenceInUse;
+        if (inUse === true && !licenceWarned.current) {
+          licenceWarned.current = true;
           return;
         }
       }

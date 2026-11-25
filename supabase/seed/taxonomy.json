@@ -666,7 +666,7 @@
         {
           "slug": "cut-sew-knits",
           "label_en": "Cut & sew knits",
-          "label_zh": "裁剪车缝针织",
+          "label_zh": "针织裁剪缝制",
           "sort": 1,
           "extra": {
             "minutes_per_piece": 12,
@@ -688,7 +688,7 @@
         {
           "slug": "sweaters",
           "label_en": "Sweaters / knitwear",
-          "label_zh": "毛衫 / 针织衫",
+          "label_zh": "毛衫 / 针织成衣",
           "sort": 3,
           "extra": {
             "minutes_per_piece": 42,

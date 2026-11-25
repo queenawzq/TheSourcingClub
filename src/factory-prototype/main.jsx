@@ -1542,6 +1542,41 @@ export const factoryMainZhText = {
   "Add image": "添加图片",
   "Edit video": "编辑视频",
   "Edit image": "编辑图片",
+  // Live vendor screens (flow check R3g4, R3g9, R3f10, R3t5).
+  "Profile image": "资料图片",
+  "Current factory profile image": "当前工厂资料图片",
+  "Current company profile image": "当前公司资料图片",
+  "+ Replace image": "+ 替换图片",
+  "Services requested": "所需服务",
+  "What the brand needs sourced": "品牌需要采购的内容",
+  "Material sourcing details": "材料采购说明",
+  "No payments yet": "暂无付款记录",
+  "Available when this step opens": "该步骤开始后可添加更新",
+  "Needs the Add update permission": "需要“添加更新”权限",
+  "Not set yet": "尚未设置",
+  "Sent since the 1st": "本月 1 日起已发送",
+  "Add another image or file.": "添加其他图片或文件。",
+  "Add sample garments, development examples, construction details, or finished pieces.": "添加样衣、开发案例、工艺细节或成品图片。",
+  "Click or drag files to upload": "点击或拖拽文件上传",
+  "Click or drag files to replace image": "点击或拖拽文件替换图片",
+  "Click or drag files to replace project image": "点击或拖拽文件替换项目图片",
+  "Click or drag a video to upload": "点击或拖拽视频上传",
+  "Click or drag a video to replace it": "点击或拖拽视频替换",
+  "Image name": "图片名称",
+  "Video name": "视频名称",
+  "Project title": "项目名称",
+  "Project summary": "项目简介",
+  "Description": "描述",
+  "Add project": "添加项目",
+  "Edit project": "编辑项目",
+  "e.g. Organic poplin fit sample": "例如：有机府绸试身样",
+  "e.g. Wovens · sample development": "例如：梭织 · 样品开发",
+  "e.g. Production-floor walkthrough": "例如：工厂介绍视频",
+  "e.g. Cutting, sewing lines, QC and packing": "例如：裁剪、缝制线、质检和包装",
+  "e.g. Organic cotton woven shirt production": "例如：有机棉梭织衬衫生产",
+  "Close profile editor": "关闭资料编辑",
+  "Close add image dialog": "关闭添加图片窗口",
+  "Close edit image dialog": "关闭编辑图片窗口",
 };
 
 // The profile's completion note lists these ("Add your factory details and
@@ -4103,7 +4138,7 @@ const profileCompletionIconMap = {
  */
 export function FactoryProfileCompletionPage({ onBack, live = null, language = "en" }) {
   const checks = live ? live.checks : profileCompletionChecks;
-  const completeCount = checks.filter((item) => item.tone === "complete").length;
+  const completeCount = checks.filter((item) => item.tone === "complete" && !item.optional).length;
   const progressCount = checks.filter((item) => item.tone === "progress").length;
   const attentionCount = checks.filter((item) => item.tone === "missing").length;
 
@@ -4171,7 +4206,7 @@ export function FactoryProfileCompletionPage({ onBack, live = null, language = "
                 {live
                   ? live.suggestions.length
                     ? live.suggestions.map((suggestion) => <span key={suggestion}>{suggestion}</span>)
-                    : <span>Nothing to add. Keep monthly capacity current.</span>
+                    : <span>{live.noSuggestions ?? "Nothing to add. Keep monthly capacity current."}</span>
                   : (
                     <>
                       <span>Upload GOTS certificate</span>
@@ -7240,7 +7275,7 @@ const FACTORY_CAPACITY_CATEGORIES = [
   {
     key: "cut-sew-knits",
     label: "Cut & sew knits",
-    labelZh: "裁剪车缝针织",
+    labelZh: "针织裁剪缝制",
     referenceStyle: "Basic jersey T-shirt",
     referenceStyleZh: "基础针织 T 恤",
     minutesPerPiece: 12
@@ -7256,7 +7291,7 @@ const FACTORY_CAPACITY_CATEGORIES = [
   {
     key: "sweaters",
     label: "Sweaters / knitwear",
-    labelZh: "毛衫 / 针织衫",
+    labelZh: "毛衫 / 针织成衣",
     referenceStyle: "Basic crewneck sweater",
     referenceStyleZh: "基础圆领毛衫",
     minutesPerPiece: 42
@@ -9050,7 +9085,8 @@ function OnboardingVerification({
         onDeleteDocument={onDeleteRegistration}
         requiredMessage={live ? (isZh ? "请上传文件后继续。" : "Upload a file to continue.") : ""}
       />
-      {registration && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
+      {registration?.documentOnly && registration.inUseText && <small className="factory-onboarding-warning" role="status">{registration.inUseText}</small>}
+      {registration && !registration.documentOnly && <OnboardingRegistrationNumber registration={registration} onNoNumberChange={setSoleProprietor} />}
       {content.photosTitle && (
         <OnboardingAssetUploadCard
           title={content.photosTitle}
