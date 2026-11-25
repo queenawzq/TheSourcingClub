@@ -75,6 +75,15 @@ export async function registrationInUse(orgId) {
   return !error && data === true;
 }
 
+/**
+ * The newest registration file's own state (flow check R2S7): `{ file, read, numberRead, copy }`, `copy`
+ * null until the file has been fingerprinted. Never which company. Null when it can't be asked.
+ */
+export async function registrationFileState(orgId) {
+  const { data, error } = await supabase.rpc("registration_file_state", { target_org: orgId });
+  return error ? null : data ?? null;
+}
+
 /** Ask the server to look the company up on VIES. `force` (staff) skips the 10-minute repeat guard. */
 export async function requestViesCheck(orgId, { force = false } = {}) {
   const { data: { session } } = await supabase.auth.getSession();

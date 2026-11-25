@@ -23,8 +23,9 @@ import "../notifications.css";
 const DRAWER_LIMIT = 100;
 
 // The title says what happened. The body stays where it carries something the
-// title can't: what someone wrote, a reason, or what went wrong.
-const WORDS_MATTER = /^(message|payment_failed|funds_released|verification_|order_cancel|cancel|call_|milestone_update|payout_|referral_|credits_)/;
+// title can't: what someone wrote, a reason, what went wrong, or what staff
+// changed on the profile ("We updated your company address.").
+const WORDS_MATTER = /^(message|payment_failed|funds_released|verification_|order_cancel|cancel|call_|milestone_update|payout_|referral_|credits_|profile_updated)/;
 
 /** A notification as a row of the designed Activity drawer, in the reader's language. */
 function toActivityItem(notification, locale = "en") {

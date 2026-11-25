@@ -192,20 +192,23 @@ const foldWord = (word) => String(word ?? "").replace(/İ/g, "I").replace(/ı/g,
  */
 function marked(shown, other, parts = null) {
   if (parts?.length) {
-    const pieces = parts.filter((part) => part && shown.includes(part));
+    // Any case: the address check hands its parts back in lower case ("leiria" in "2415 557 LEIRIA").
+    const pieces = parts.filter((part) => part && shown.toLowerCase().includes(String(part).toLowerCase())).map((part) => String(part).toLowerCase());
     if (pieces.length) {
-      const pattern = new RegExp(`(${pieces.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-      return joinMarks(shown.split(pattern).map((piece) => ({ text: piece, mark: pieces.includes(piece) })));
+      const pattern = new RegExp(`(${pieces.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "i");
+      return joinMarks(shown.split(pattern).map((piece) => ({ text: piece, mark: pieces.includes(piece.toLowerCase()) })));
     }
   }
   const isCode = !/\s/.test(shown) && !/\s/.test(other) && shown.length === other.length;
   if (isCode) return [...shown].map((char, index) => (char === other[index] ? char : <mark key={index}>{char}</mark>));
   // Text in another script than what it is compared with: nothing to compare word for word, so nothing is marked.
   if (parts && /[\p{Script=Han}]/u.test(shown) !== /[\p{Script=Han}]/u.test(other)) return shown;
-  const words = new Set(other.split(/[\s,]+/).filter(Boolean).map(foldWord));
+  // Hyphens split words on both sides: a postcode written "2415-557" or "2415 557" is the same postcode.
+  const words = new Set(other.split(/[\s,\-–]+/).filter(Boolean).map(foldWord));
+  const known = (part) => part.split(/[-–]+/).filter(Boolean).every((piece) => words.has(foldWord(piece)));
   // A street-type abbreviation ("Mah." for Mahallesi, "Cad.", "No.") is how an address is written, not a difference.
   const isAbbreviation = (part) => /^(mah|mh|cad|cd|sok|sk|blv|bulv|no|apt|rd|st|ave|bldg|av|r|tv|est)\.$/i.test(part);
-  return joinMarks(shown.split(/([\s,]+)/).map((part) => ({ text: part, mark: !(/^[\s,]*$/.test(part) || words.has(foldWord(part)) || isAbbreviation(part)) })));
+  return joinMarks(shown.split(/([\s,]+)/).map((part) => ({ text: part, mark: !(/^[\s,]*$/.test(part) || known(part) || isAbbreviation(part)) })));
 }
 
 /**

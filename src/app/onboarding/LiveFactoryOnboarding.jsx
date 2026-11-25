@@ -16,7 +16,7 @@ import MatchingProfile from "../matching/MatchingProfile.jsx";
  * factory that fills the form in Chinese writes to the same columns as one
  * that fills it in English.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { useOnboardingStep } from "./onboarding-step.js";
 import { reopensSummary } from "./resubmit.mjs";
@@ -42,7 +42,7 @@ import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
-import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
+import { getRegistration, registrationFileState, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
   normaliseAccessCode, normaliseRegistrationLetter, numberFromDocument, registrationCopy, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
@@ -240,6 +240,47 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // again with the same number goes on (staff check it).
   const [numberWarned, setNumberWarned] = useState(null);
 
+  /**
+   * The registration row of the review step: its number and whether it is already another company's, by
+   * number or by the licence file itself (flow check R2S7). After a new licence (`waitForReading`), the old
+   * number and its warning are not shown: the row reads "Reading your licence…" until this file's reading
+   * and fingerprint are recorded, then this file's number (when the reading set one) and its own warning.
+   * Stops waiting after 90 s and shows what is on file.
+   */
+  const following = useRef(0);
+  useEffect(() => () => { following.current += 1; }, []);
+  const followRegistration = useCallback(async ({ waitForReading = false } = {}) => {
+    const run = ++following.current;
+    const zh = language === "zh";
+    const deadline = Date.now() + 90_000;
+    if (waitForReading) setValues((current) => ({ ...current, "registration-reading": zh ? "正在读取执照…" : "Reading your licence…", "registration-in-use": "" }));
+    for (;;) {
+      const [file, byNumber, saved] = await Promise.all([
+        registrationFileState(org.id),
+        registrationInUse(org.id),
+        waitForReading ? getRegistration(org.id).catch(() => null) : null,
+      ]);
+      if (run !== following.current) return;
+      // On load nothing is waited for: the by-number warning shows at once, the file copy when its fingerprint is
+      // known. Only right after a new licence does the row wait (up to 90 s) for that file's reading and fingerprint.
+      const settled = !waitForReading || (file && (!file.file || (file.read && file.copy !== null)));
+      if (settled || Date.now() > deadline) {
+        // A number the new file did not give (unreadable, or failing its check) is the old licence's: not shown.
+        const numberIsThisFile = !waitForReading || Boolean(file?.numberRead);
+        setNumberInUse(byNumber && numberIsThisFile);
+        setValues((current) => ({
+          ...current,
+          ...(waitForReading ? { "registration-number": numberIsThisFile ? saved?.number ?? "" : "" } : {}),
+          "registration-reading": "",
+          "registration-in-use": (byNumber && numberIsThisFile) || file?.copy === true ? (zh ? "已被另一家公司使用" : "already used by another company") : "",
+        }));
+        return;
+      }
+      await new Promise((resolve) => { setTimeout(resolve, 4000); });
+      if (run !== following.current) return;
+    }
+  }, [org.id, language]);
+
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
     [],
@@ -270,13 +311,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           supabase.from("factory_production_addresses").select("address").eq("org_id", org.id).maybeSingle(),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
-        if (savedRegistration?.number) {
-          registrationInUse(org.id).then((inUse) => {
-            if (cancelled) return;
-            setNumberInUse(inUse);
-            setValues((current) => ({ ...current, "registration-in-use": inUse ? (language === "zh" ? "已被另一家公司使用" : "already used by another company") : "" }));
-          }, () => {});
-        }
+        if (savedRegistration?.number || registrations?.length) followRegistration().catch(() => {});
         const certs = await loadCertifications(byKind);
         if (cancelled) return;
 
@@ -608,10 +643,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         confirmed: submitted["registration-confirmed"] === true,
         noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
       }, language === "zh" ? "zh" : "en");
-      registrationInUse(org.id).then((inUse) => {
-        setNumberInUse(inUse);
-        setValues((current) => ({ ...current, "registration-in-use": inUse ? (language === "zh" ? "已被另一家公司使用" : "already used by another company") : "" }));
-      }, () => {});
+      // A new licence whose number is read off it: wait for that reading (R2S7).
+      followRegistration({ waitForReading: fromDocument && registrationFiles.length > 0 }).catch(() => {});
       // The same country on the profile, for Browse's location filter.
       if (registrationCountry) patch.country_code = registrationCountry;
     }

@@ -511,7 +511,7 @@ async function addressInputs(asServer, orgId) {
     asServer.from("verification_signals").select("kind, subject_id, result, details, automatic, checked_at").eq("org_id", orgId).order("checked_at", { ascending: false }).limit(200),
     asServer.rpc("company_title", { target_org: orgId }),
     // Staff-only since 20261111120000: a trigger moves it out of factory_profiles.
-    asServer.from("factory_production_addresses").select("address").eq("org_id", orgId).maybeSingle(),
+    asServer.from("factory_production_addresses").select("address, city_en").eq("org_id", orgId).maybeSingle(),
   ]);
   const failed = [reg, profile, checks, signals].find((answer) => answer.error);
   if (failed) throw new Error(failed.error.message);
@@ -530,6 +530,7 @@ async function addressInputs(asServer, orgId) {
     countryCode: reg.data?.country_code ?? profile.data?.country_code ?? null,
     location: profile.data?.location ?? null,
     productionAddress: production?.data?.address ?? profile.data?.production_address ?? null,
+    productionCity: production?.data?.address ? production.data.city_en ?? null : null,
     checks: withNames,
   };
   const list = (signals.data ?? []).map((signal) => ({
@@ -865,13 +866,18 @@ export async function readingContext(asServer, orgId) {
       .eq("org_id", orgId).order("checked_at", { ascending: false }).limit(20),
   ]);
   if (files.error) return null;
-  // B4: the production address, once its column exists; a missing column is no address.
-  const production = await asServer.from("factory_profiles").select("production_address").eq("org_id", orgId).maybeSingle();
+  // B4: the production address. Staff-only since 20261111120000: a trigger moves it out of factory_profiles into
+  // factory_production_addresses, so reading only the old column compared the licence with the city alone.
+  const [production, moved] = await Promise.all([
+    asServer.from("factory_profiles").select("production_address").eq("org_id", orgId).maybeSingle(),
+    asServer.from("factory_production_addresses").select("address, city_en").eq("org_id", orgId).maybeSingle(),
+  ]);
   const detail = {
     registration: { country: registration.data?.country_code ?? null, number: registration.data?.number ?? null },
     title: title.data ?? null,
     location: profile.data?.location ?? null,
-    productionAddress: production.error ? null : production.data?.production_address ?? null,
+    productionAddress: (moved.error ? null : moved.data?.address) ?? (production.error ? null : production.data?.production_address ?? null),
+    productionCity: moved.error ? null : moved.data?.city_en ?? null,
   };
   return {
     detail,

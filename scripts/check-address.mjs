@@ -106,6 +106,70 @@ await check("PT: VIES's upper case, newline form matches the licence", () => {
   assert.equal(c.verdict, "match");
 });
 
+// Flow check round 2 (R2S1, R2S3, R2S4): another city is a major difference, a postcode compares without its
+// separator, and an English address is read against a Chinese licence through its place names, street and room.
+await check("PT: a different city (Famalicão / Leiria) is low, not 'street differs'", () => {
+  const owner = addressOwnerCheck({ license: "ESTRADA DA MATA, MARRAZES, 2415 557 LEIRIA", typed: "Rua das Fontaínhas 245, 4760-112 Vila Nova de Famalicão, Portugal", registry: "", typedFrom: "production" });
+  assert.equal(owner.level, "low");
+  assert.equal(owner.details.comparisons[0].differs[0].part, "city");
+});
+await check("PT: postcode '2415-557' and '2415 557' are the same", () => {
+  assert.equal(parseAddress("ESTRADA DA MATA, MARRAZES, 2415 557 LEIRIA").parts.postcode, "2415-557");
+  const c = compareAddresses("ESTRADA DA MATA, MARRAZES, 2415 557 LEIRIA", "Estrada da Mata 12, Marrazes, 2415-557 Leiria, Portugal");
+  assert.equal(c.verdict, "match");
+  assert.ok(c.same.includes("postcode") && !c.differs.length);
+});
+await check("CN: the same address in English matches the Chinese licence (street, number, room)", () => {
+  const c = compareAddresses("广东省东莞市大朗镇盈丰七街76号101室", "Room 101, No. 76 Yingfeng 7th Street, Dalang Town, Dongguan, Guangdong, China");
+  assert.equal(c.verdict, "match");
+  for (const part of ["city", "town", "road", "number", "room"]) assert.ok(c.same.includes(part), part);
+  assert.equal(addressOwnerCheck({ license: "广东省东莞市大朗镇盈丰七街76号101室", typed: "Room 101, No. 76 Yingfeng 7th Street, Dalang Town, Dongguan, Guangdong, China", registry: "", typedFrom: "production" }).level, "high");
+});
+await check("CN: 'No. 76' in an English address is not read as Turkish", () => {
+  const { parts } = parseAddress("Room 101, No. 76 Yingfeng 7th Street, Dalang Town, Dongguan, Guangdong, China");
+  assert.equal(parts.city, "dongguan");
+  assert.equal(parts.town, "dalang");
+});
+await check("CN: another room in the same building differs on the room", () => {
+  const c = compareAddresses("广东省东莞市大朗镇盈丰七街76号101室", "Room 301, No. 76 Yingfeng 7th Street, Dalang Town, Dongguan");
+  assert.deepEqual(c.differs.map((d) => d.part), ["room"]);
+});
+await check("CN: Dongguan typed against a Tongxiang licence is another city, low", () => {
+  const owner = addressOwnerCheck({ license: "桐乡市濮院镇毛衫城工业园区内", typed: "Room 101, No. 76 Yingfeng 7th Street, Dalang Town, Dongguan, Guangdong, China", registry: "", typedFrom: "production" });
+  assert.equal(owner.level, "low");
+  assert.equal(owner.details.comparisons[0].differs[0].part, "city");
+});
+await check("CN: a typed city whose characters are in the licence at another level still agrees (嘉兴市桐乡市)", () => {
+  const c = compareAddresses("浙江省嘉兴市桐乡市濮院镇工业路8号", "8 Gongye Road, Puyuan Town, Tongxiang, Zhejiang");
+  assert.ok(!c.differs.some((d) => d.part === "city"), JSON.stringify(c.differs));
+});
+await check("CN: the city from the structured parts is used when the text names none", () => {
+  const owner = addressOwnerCheck({ license: "桐乡市濮院镇毛衫城工业园区内", typed: "Room 101, No. 76 Yingfeng 7th Street", registry: "", typedFrom: "production", typedCity: "Dongguan" });
+  assert.equal(owner.level, "low");
+  assert.equal(owner.details.comparisons[0].differs[0].part, "city");
+});
+await check("CN: another Chinese town in the same city is low (大朗 / 虎门)", () => {
+  const owner = addressOwnerCheck({ license: "广东省东莞市虎门镇工业路8号", typed: "广东省东莞市大朗镇工业路8号", registry: "", typedFrom: "production" });
+  assert.equal(owner.level, "low");
+});
+// Review d2: a licence that doesn't print its city is never "another city"; a town under a district is a neighbourhood.
+await check("CN: 虎门镇 with no city on the licence vs Humen Town, Dongguan is High", () => {
+  assert.equal(addressOwnerCheck({ license: "虎门镇工业路8号", typed: "8 Gongye Road, Humen Town, Dongguan, Guangdong", registry: "", typedFrom: "production" }).level, "high");
+});
+await check("CN: 濮院镇 vs Puyuan Town, Tongxiang is not Low", () => {
+  assert.notEqual(addressOwnerCheck({ license: "濮院镇毛衫城工业园区内", typed: "Puyuan Town, Tongxiang, Zhejiang", registry: "", typedFrom: "production" }).level, "low");
+});
+await check("CN: 番禺区石碁镇 vs Panyu District, Guangzhou is not Low", () => {
+  assert.notEqual(addressOwnerCheck({ license: "番禺区石碁镇市莲路28号", typed: "28 Shilian Road, Shiji Town, Panyu District, Guangzhou", registry: "", typedFrom: "production" }).level, "low");
+});
+await check("CN: another 街道 in the same district (福永 / 沙井 in 宝安区) is Medium", () => {
+  assert.equal(addressOwnerCheck({ license: "广东省深圳市宝安区福永街道工业路8号", typed: "广东省深圳市宝安区沙井街道工业路8号", registry: "", typedFrom: "production" }).level, "medium");
+});
+await check("TR: another mahalle in the same district stays medium", () => {
+  const owner = addressOwnerCheck({ license: "Merkez Mah. Fabrika Cad. No:12 Güngören/İstanbul", typed: "Tozkoparan Mah. Fabrika Cad. No:12 Güngören/İstanbul", registry: "", typedFrom: "production" });
+  assert.equal(owner.level, "medium");
+});
+
 // ---------------------------------------------------------------- address_owner
 await check("address_owner: typed address in another district of the same city → medium, says which part", () => {
   const c = addressOwnerCheck({ typed: "广东省广州市番禺区石碁镇市莲路28号", license: "广东省广州市天河区体育西路191号", registry: "" });

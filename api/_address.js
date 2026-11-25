@@ -61,6 +61,8 @@ const PINYIN = {
 };
 
 const pinyinOf = (core) => PINYIN[core] ?? null;
+// The other way round: "dongguan" → "东莞", so a city typed in English can be looked for in a licence's characters.
+const HAN_OF = Object.fromEntries(Object.entries(PINYIN).map(([han, py]) => [py, han]));
 
 // Characters common in road names, read one by one (fix round 4), so "江东三路18号"
 // can be compared with "18 Jiangdong 3rd Road". A road with a character not
@@ -73,6 +75,8 @@ const CHAR_PINYIN = Object.fromEntries(`
 州zhou 杭hang 萧xiao 钱qian 塘tang 嘉jia 禾he 秀xiu 阳yang 春chun 景jing 星xing 友you 谊yi 交jiao 通tong 车che 站zhan
 高gao 科ke 技ji 创chuang 振zhen 永yong 先xian 锋feng 胜sheng 利li 红hong 旗qi 朝chao 望wang 鸿hong 运yun 通tong 万wan
 一yi 二er 三san 四si 五wu 六liu 七qi 八ba 九jiu 十shi 纺fang 织zhi 服fu 装zhuang 鞋xie 塘tang 坑keng 岭ling 田tian 林lin
+盈ying 丰feng 益yi 荣rong 德de 顺shun 祥xiang 瑞rui 达da 成cheng 美mei 洲zhou 源yuan 泉quan 溪xi 桂gui 荔li 莲lian 松song
+柏bai 竹zhu 梅mei 桃tao 杨yang 洪hong 坪ping 涌chong 沥li 井jing 岗gang 围wei 屋wu 横heng 厚hou 埗bu 头tou 尾wei 口kou
 `.trim().split(/\s+/).map((pair) => [pair[0], pair.slice(1)]));
 const CN_DIGITS = { 一: "1", 二: "2", 三: "3", 四: "4", 五: "5", 六: "6", 七: "7", 八: "8", 九: "9", 十: "10" };
 
@@ -103,6 +107,12 @@ function buildingOf(raw, han) {
   const text = clean(raw);
   const hit = han ? text.match(/(\d+)\s*(栋|幢|座|号楼|號樓)/) : text.match(/\b(?:building|bldg\.?|block|blk\.?)\s*(?:no\.?\s*)?(\d+)\b/i);
   return hit ? { value: hit[1], shown: han ? hit[0] : hit[0] } : null;
+}
+/** "Room 101" / "Rm 101" / "101室". */
+function roomOf(raw, han) {
+  const text = clean(raw);
+  const hit = han ? text.match(/(\d+)\s*(室|房)/) : text.match(/\b(?:room|rm\.?|unit)\s*(?:no\.?\s*)?(\d+)\b/i);
+  return hit ? { value: hit[1], shown: hit[0] } : null;
 }
 const KNOWN_PINYIN = new Set(Object.values(PINYIN));
 
@@ -154,13 +164,15 @@ function parseLatin(raw) {
   const text = clean(raw);
   const lower = text.toLowerCase().replace(/ı/g, "i").normalize("NFD").replace(/[̀-ͯ]/g, "");
   const out = {};
-  const pt = lower.match(/\b(\d{4})\s*-\s*(\d{3})\s+([a-z][a-z .'-]*)/);
+  // A Portuguese postcode, with its hyphen or, as certificates print it, a space: "2415-557" / "2415 557".
+  const pt = lower.match(/\b(\d{4})(?:\s*-\s*|\s)(\d{3})\s+([a-z][a-z .'-]*)/);
   if (pt) {
     out.postcode = `${pt[1]}-${pt[2]}`;
     out.city = pt[3].replace(/\b(portugal)\b/, "").trim();
   }
   const segments = lower.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
-  if (TR_LEVELS.test(lower) || TR_ROAD.test(lower) || /\bno\s*[:.]\s*\d/.test(lower)) {
+  // "No:12" is Turkish; "No. 76" is how an English address numbers a street in China, so it does not decide.
+  if (TR_LEVELS.test(lower) || TR_ROAD.test(lower) || /\bno\s*:\s*\d/.test(lower)) {
     const mah = lower.match(/([a-z0-9 ]{2,30}?)\s+(?:mahallesi|mah\.?|mh\.?)(?=[\s,]|$)/);
     if (mah) out.town = mah[1].trim().split(/\s+/).slice(-2).join(" ");
     const road = lower.match(/([a-z0-9 .]{2,40}?)\s+(?:caddesi|cad\.?|cd\.?|sokak|sokagi|sok\.?|sk\.?|bulvari|blv\.?|bulv\.?)(?=[\s,]|$)/);
@@ -199,7 +211,9 @@ function parseLatin(raw) {
       else if (!out.city) out.city = word;
       else out.district ??= word;
     }
-    if (!out.city && named.length && !roadSegment) out.city = named[named.length - 1 - (named.length > 1 && /^\d/.test(named[named.length - 1]) ? 1 : 0)];
+    // The last place-like part; a street or a room ("No. 76 Yingfeng 7th Street", "Room 101") is never the city.
+    const places = named.filter((segment) => !LATIN_ROAD.test(segment) && !/\b(room|rm|unit|no)\b\.?\s*\d/.test(segment));
+    if (!out.city && places.length && !roadSegment) out.city = places[places.length - 1 - (places.length > 1 && /^\d/.test(places[places.length - 1]) ? 1 : 0)];
   }
   return out;
 }
@@ -251,9 +265,11 @@ function latinOf(value) {
  *   near: one Chinese character apart in a name (a misread), nothing else differs;
  *   differs: a part both name is different.
  */
-export function compareAddresses(rawA, rawB) {
+export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
   const a = parseAddress(rawA);
   const b = parseAddress(rawB);
+  // The city from the address's structured parts (factory_production_addresses.city_en), when the text alone did not give one.
+  if (b.script === "latin" && !b.parts.city && cityB) b.parts.city = String(cityB).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   if (a.script === "none" || b.script === "none") return { verdict: "unknown", same: [], differs: [], note: "missing" };
   // The same text, to the punctuation, with a street or building number in it: the same address, in any
   // language, whatever the parser could split (an English Hong Kong address yields only its city). Without a
@@ -265,11 +281,23 @@ export function compareAddresses(rawA, rawB) {
     // Chinese against English: only the place names we can read both ways.
     const [han, latin] = a.script === "han" ? [a, b] : [b, a];
     const latinText = fold(a.script === "han" ? rawB : rawA);
+    const hanText = fold(a.script === "han" ? rawA : rawB);
+    // A place typed in English whose characters are in the licence: 桐乡 in 嘉兴市桐乡市 is Tongxiang, whichever level it was parsed at.
+    const typedPlaceInLicence = (part) => {
+      const core = HAN_OF[fold(latin.parts[part] ?? "")];
+      return Boolean(core && hanText.includes(core));
+    };
     for (const part of ["province", "city", "district", "town"]) {
       const py = latinOf(han.parts[part]);
+      if (py && latinText.includes(py)) { same.push(part); continue; }
+      if (typedPlaceInLicence(part)) { same.push(part); continue; }
+      // A licence part we can't read in Latin letters is not compared: never a difference.
       if (!py) continue;
-      if (latinText.includes(py)) same.push(part);
-      else if (latin.parts[part] && KNOWN_PINYIN.has(fold(latin.parts[part]))) differs.push({ part, a: han.parts[part], b: latin.parts[part] });
+      // Another place: the typed one is a name we can read and it is nowhere in the licence.
+      if (han.parts[part] && latin.parts[part] && KNOWN_PINYIN.has(fold(latin.parts[part]))) {
+        // A town is a place of its own only directly under the city (Dongguan's 镇); under a district it is a neighbourhood.
+        differs.push({ part, a: han.parts[part], b: latin.parts[part], ...(part === "town" && !han.parts.district ? { place: true } : {}) });
+      }
     }
     const hanRaw = a.script === "han" ? rawA : rawB;
     const latinRaw = a.script === "han" ? rawB : rawA;
@@ -291,6 +319,12 @@ export function compareAddresses(rawA, rawB) {
       if (hanBuilding.value === latinBuilding.value) same.push("building");
       else differs.push({ part: "building", a: hanBuilding.shown, b: latinBuilding.shown });
     }
+    const hanRoom = roomOf(hanRaw, true);
+    const latinRoom = roomOf(latinRaw, false);
+    if (hanRoom && latinRoom) {
+      if (hanRoom.value === latinRoom.value) same.push("room");
+      else differs.push({ part: "room", a: hanRoom.shown, b: latinRoom.shown });
+    }
     if (differs.length) return { verdict: "differs", same, differs, note: "scripts" };
     if (same.includes("road") && same.includes("number")) return { verdict: "match", same, differs, note: "scripts" };
     return { verdict: same.length ? "partial" : "unknown", same, differs, note: "scripts" };
@@ -305,7 +339,8 @@ export function compareAddresses(rawA, rawB) {
     if (verdict) same.push(part);
     // One Chinese character apart is more often a blurry read (北纬 / 北绣) than another place.
     else if (a.script === "han" && oneCharApart(a.parts[part], b.parts[part])) near.push({ part, a: a.parts[part], b: b.parts[part] });
-    else differs.push({ part, a: a.parts[part], b: b.parts[part] });
+    // A Chinese town (镇) directly under the city is a place of its own; under a district, or a Turkish mahalle, a neighbourhood.
+    else differs.push({ part, a: a.parts[part], b: b.parts[part], ...(part === "town" && a.script === "han" && !a.parts.district && !b.parts.district ? { place: true } : {}) });
   }
   if (differs.length) return { verdict: "differs", same, differs, near };
   if (near.length) return { verdict: "near", same, differs, near };
@@ -318,7 +353,7 @@ export function compareAddresses(rawA, rawB) {
   return { verdict: "unknown", same, differs };
 }
 
-const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", building: "building", postcode: "postcode" };
+const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", building: "building", room: "room", postcode: "postcode" };
 const SOURCE_WORDS = { typed: "the address the factory typed", license: "the licence", registry: "the registry" };
 
 /**
@@ -338,12 +373,14 @@ export function addressSources(detail, signals) {
     license: String(reading?.details?.extracted?.address ?? "").trim(),
     registry: fromCheck ? String(fromCheck.details.address).replace(/\s*\n\s*/g, ", ").trim() : "",
     registryFrom: fromCheck ? (fromCheck.automatic ? "VIES" : "the registry check") : "",
+    // The production address's city in English, from its structured parts (save_company_address_parts).
+    ...(production && String(detail?.productionCity ?? "").trim() ? { typedCity: String(detail.productionCity).trim() } : {}),
     country: String(detail?.registration?.country ?? detail?.countryCode ?? "").trim().toUpperCase(),
   };
 }
 
-// A different city or province is another place; a different street in the
-// same city can be an honest factory producing away from its registered seat.
+// A different city or province (or a Chinese town) is another place; a different
+// street in the same city can be an honest factory producing away from its registered seat.
 const PLACE_PARTS = new Set(["province", "city"]);
 
 /**
@@ -355,20 +392,20 @@ const PLACE_PARTS = new Set(["province", "city"]);
  *   high: two sources agree to street and number (or postcode) and nothing differs;
  *   unknown: nothing to compare.
  */
-export function addressOwnerCheck({ typed, license, registry, typedFrom = "location" }, now = new Date()) {
+export function addressOwnerCheck({ typed, license, registry, typedFrom = "location", typedCity = "" }, now = new Date()) {
   const pairs = [["license", "typed"], ["license", "registry"], ["registry", "typed"]];
   const addresses = { typed, license, registry };
   const words = { ...SOURCE_WORDS, typed: typedFrom === "production" ? "the production address the factory typed" : typedFrom === "staff" ? "the address staff entered" : SOURCE_WORDS.typed };
   const comparisons = [];
   for (const [x, y] of pairs) {
     if (!addresses[x] || !addresses[y]) continue;
-    comparisons.push({ between: [x, y], ...compareAddresses(addresses[x], addresses[y]) });
+    comparisons.push({ between: [x, y], ...compareAddresses(addresses[x], addresses[y], y === "typed" && typedFrom === "production" ? { cityB: typedCity } : {}) });
   }
   const parts = Object.fromEntries(Object.entries(addresses).filter(([, text]) => text).map(([key, text]) => [key, parseAddress(text).parts]));
   const reasons = [];
   let level = "unknown";
   const differing = comparisons.filter((c) => c.verdict === "differs");
-  const serious = differing.filter((c) => !c.between.includes("typed") || c.differs.some((d) => PLACE_PARTS.has(d.part)));
+  const serious = differing.filter((c) => !c.between.includes("typed") || c.differs.some((d) => PLACE_PARTS.has(d.part) || d.place));
   const describe = (c) => `${capital(words[c.between[0]])} and ${words[c.between[1]]} differ: ${c.differs.map((d) => `${PART_WORDS[d.part]} (${d.a} / ${d.b})`).join(", ")}`;
   if (serious.length) {
     level = "low";
