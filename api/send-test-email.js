@@ -134,6 +134,8 @@ function sampleOnboarding(companyName, path, locale = "en") {
     logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+    // As the real send: no welcome discount.
+    reward: false,
   };
 }
 

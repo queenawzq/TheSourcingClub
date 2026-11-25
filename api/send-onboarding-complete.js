@@ -117,6 +117,9 @@ export default async function handler(request, response) {
         logoUrl: EMAIL_LOGO_URL,
         supportEmail: REPLY_TO,
         companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+        // No discount is issued or usable yet, and a brand invite earns
+        // nothing: the email makes no $50 promise.
+        reward: false,
       });
       const delivery = await fetch(RESEND_ENDPOINT, {
         method: "POST",

@@ -304,12 +304,15 @@ function previewHtml() {
 /**
  * @param key        brand | factory | trading-company
  * @param variables  { companyName, dashboardUrl, logoUrl, supportEmail, companyAddress,
- *                     locale: the recipient's user_profiles.locale ("zh": Chinese, for a vendor) }
+ *                     locale: the recipient's user_profiles.locale ("zh": Chinese, for a vendor),
+ *                     reward: false leaves out the designed welcome discount, which live sends
+ *                     do while no discount is issued or usable }
  */
 export function onboardingEmail(key, variables = {}) {
   if (!variants[key]) throw new Error(`unknown onboarding email variant: ${key}`);
   const zh = variables.locale === "zh" && Boolean(variantsZh[key]);
-  const data = frame(zh ? variantsZh[key] : variants[key]);
+  const designed = frame(zh ? variantsZh[key] : variants[key]);
+  const data = variables.reward === false ? { ...designed, reward: false } : designed;
 
   const companyName = variables.companyName || (zh ? "你的公司" : key === "brand" ? "your brand" : "your company");
   const dashboardUrl = variables.dashboardUrl || "https://sourcing-club.com/app.html";
