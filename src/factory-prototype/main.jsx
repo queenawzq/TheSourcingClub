@@ -8134,7 +8134,8 @@ export function FactoryOnboarding({
       <header className="factory-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
         <div className="factory-onboarding-topbar-actions">
-          <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+          {/* A decided profile with nothing left to do (declined) is not a step in a flow. */}
+          {isLast && completion && !completion.onCta ? null : <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>}
           <button className="onboarding-logout-button" type="button" onClick={onLogout}>{language === "zh" ? "退出登录" : "Log out"}</button>
         </div>
       </header>
