@@ -346,7 +346,7 @@ export async function loadOwnBrandProfile(org) {
     listDocuments(org.id, "product_image"),
     listDocuments(org.id, "business_registration"),
     listMembers(org.id),
-    supabase.from("org_invitations").select("id, email, role, created_at").eq("org_id", org.id).eq("status", "pending").order("created_at")
+    supabase.from("org_invitations").select("id, email, role, invited_name, title, created_at").eq("org_id", org.id).eq("status", "pending").order("created_at")
       .then((result) => unwrap(result, "load your invitations")),
     listRfqs(org.id),
     listOrders(org.id),

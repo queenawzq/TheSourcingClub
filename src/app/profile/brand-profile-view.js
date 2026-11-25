@@ -199,6 +199,11 @@ export function brandProfilePercent(checks) {
   return Math.round((checks.filter((check) => check.done).length / checks.length) * 100);
 }
 
+/** A teammate's role as the brand gave it (their title), else Owner or Member. */
+export function memberRoleLabel(member) {
+  return member?.title || (member?.role === "owner" ? "Owner" : "Member");
+}
+
 /**
  * The brand's own page, as `BrandProfileScreen`'s `live` prop (minus the
  * dialogs, which the seam adds).
@@ -270,9 +275,16 @@ export function brandProfileView(parts) {
     stakeholders: [
       ...members.map((member) => {
         const person = member.user_profiles?.full_name || member.user_profiles?.email || "Member";
-        return { key: member.user_profiles?.id ?? person, initials: initialsOf(person), label: `${person} · ${member.role === "owner" ? "Owner" : "Member"}` };
+        return { key: member.user_profiles?.id ?? person, initials: initialsOf(person), label: `${person} · ${memberRoleLabel(member)}` };
       }),
-      ...invitations.map((invitation) => ({ key: invitation.id, initials: invitation.email.slice(0, 2).toUpperCase(), label: `${invitation.email} · Invited` })),
+      ...invitations.map((invitation) => {
+        const person = invitation.invited_name || invitation.email;
+        return {
+          key: invitation.id,
+          initials: invitation.invited_name ? initialsOf(person) : invitation.email.slice(0, 2).toUpperCase(),
+          label: [person, invitation.title, "Invited"].filter(Boolean).join(" · "),
+        };
+      }),
     ],
     projects: projectCards(orders, rfqs),
     projectsEmpty: {

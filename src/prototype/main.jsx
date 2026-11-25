@@ -6141,12 +6141,13 @@ function BrandProfileEditModal({ editor, data, live = null, onClose, onSave }) {
             {live.stakeholders.invitations.map((invitation) => (
               <section className="brand-stakeholder-editor-card" key={invitation.id}>
                 <div className="brand-stakeholder-editor-header">
-                  <strong>{invitation.email}</strong>
+                  <strong>{invitation.name || invitation.email}</strong>
                   {live.stakeholders.onRevoke && (
                     <button className="text-link" type="button" disabled={saving} onClick={() => revokeLiveInvite(invitation)}>Remove</button>
                   )}
                 </div>
-                <p>Invitation sent · joins as a member</p>
+                {invitation.name && <p>{invitation.email}</p>}
+                <p>{invitation.title ? `${invitation.title} · ` : ""}Invitation sent · joins as a member</p>
               </section>
             ))}
             {form.inviteDrafts.map((draft, index) => (
