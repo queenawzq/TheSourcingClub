@@ -607,6 +607,12 @@ the form behind it only saves.
   shortfall because the screen offers to buy more. The unique index from
   migration 005 makes the charge idempotent per quote; a revision is a new
   quote row and therefore a new charge, which is intended.
+- **A vendor answers its invitation, it never moves it** (`20261125600000`).
+  Signed-in users may update only `status` and `viewed_at` on
+  `rfq_invitations`; which request and which vendor are the brand's, set when
+  it invites. Any `rfq_invitations` row makes `can_see_rfq()` true, so a
+  writable `rfq_id` let a vendor invite itself to another brand's private
+  request and tech pack.
 - **`saved_rfqs` is the vendor's own list** — the brand whose request it is
   cannot see that it was saved, and neither can another vendor.
 - **`rfq_views` records the brand looking at its own request**, one row per
