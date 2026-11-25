@@ -604,7 +604,11 @@ for (const status of ["failed", "canceled"]) {
       const lostCb = { ...chargeback, status: "lost", amount: 5000, balance_transactions: [{ fee: 1500 }] };
       const { calls } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, lostCb], events: [inquiryClosed] });
       assert.equal(withoutReview(calls)[0][0], "record_payment_dispute_lost", "R34-1: the chargeback's loss decides");
-      assert.equal(calls[0][1].dispute_id, "du_cb");
+      // One review per dispute (20261125100000): the late inquiry's own review
+      // is recorded first, then the chargeback's, whose loss decides.
+      assert.deepEqual(calls.filter(([name]) => name === "record_payment_review_dispute").map(([, args]) => args.dispute_id), ["du_inq", "du_cb"],
+        "v2: each dispute on its own review");
+      assert.equal(withoutReview(calls)[0][1].dispute_id, "du_cb");
     }
     // An inquiry closed with no chargeback after it still lifts the hold.
     {

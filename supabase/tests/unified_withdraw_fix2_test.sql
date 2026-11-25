@@ -269,12 +269,13 @@ select ok((select disputed_at is null from public.order_payments where id = pg_t
 select pg_temp.act_as('01'); set local role authenticated;
 select is(pg_temp.fig(1, pg_temp.pay(1, 4)), 'available', 'and Available again');
 reset role;
--- Staff decide the review (nothing taken) and unpause the brand: off the count.
+-- The bank decided for TSC: the review resumed by itself (20261125100000) and
+-- leaves the count; the brand it paused is listed apart until staff unpause it.
 select set_config('tsc.uw2_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(1, 4)), true);
+select is((select state from public.payment_reviews where id = current_setting('tsc.uw2_review')::uuid), 'resumed', 'won: the review resumed by itself');
 select pg_temp.act_as('06'); set local role authenticated;
-select lives_ok(format($$select public.decide_payment_review(%L, 'pay_factory'); select public.unpause_brand(%L)$$,
-  current_setting('tsc.uw2_review'), current_setting('tsc.uw2_review')),
-  'staff decide the review: Pay factory, and unpause the brand');
+select lives_ok(format($$select public.unpause_brand(%L)$$, current_setting('tsc.uw2_review')),
+  'staff unpause the brand');
 reset role;
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int, 'F4: and off the overview count');
 

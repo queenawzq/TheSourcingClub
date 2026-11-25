@@ -126,6 +126,14 @@ const ZH_SAMPLES = [
   { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" is done. You can withdraw your balance again.' },
   { kind: "payment_disputed", title: "Account review complete", body: "Your account is no longer under review." },
   { kind: "payment_disputed", title: 'Payment for "Deposit" under review', body: "Our team is reviewing this payment before it goes to your balance." },
+  // Payment reviews v2 and staff refunds (20261125100000).
+  { kind: "payment_disputed", title: "Payment review complete", body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand. You can withdraw the rest of your balance. Note from our team: The goods did not arrive.' },
+  { kind: "payment_disputed", title: "Payment review complete", body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand. Withdrawals stay paused while another payment is reviewed. Note from our team: The goods did not arrive.' },
+  { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" is done. You can withdraw your balance again. Note from our team: Nothing to return.' },
+  { kind: "payment_disputed", title: "Account review complete", body: "You can fund steps, approve steps and accept quotes again." },
+  { kind: "payment_refunded", title: 'Refund for "Fit sample"', body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand from your balance. Note from our team: Late sample.' },
+  { kind: "payment_refunded", title: 'Your payment for "Fit sample" was refunded', body: "$68.25 was refunded to your card. Note from our team: Late sample." },
+  { kind: "payment_refunded", title: 'Refund for "Fit sample" didn\'t go through', body: "Your $68.25 refund didn't go through. That amount stays on this order." },
   // A refund that failed after Refund brand; a lost dispute told to a paused brand (20261124100100).
   { kind: "payment_refunded", title: 'Refund for "Deposit" didn\'t go through', body: "The refund to the brand didn't go through. Your earnings from TSC-1042 went back up by $40.00. Withdrawals are paused while our team reviews the payment again." },
   { kind: "payment_refunded", title: 'Your bank reversed your payment for "Deposit"', body: "$107.00 went back to your card." },

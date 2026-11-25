@@ -173,6 +173,8 @@ const TITLES = [
   // Refunds and lost disputes recorded at their amount (20261121200000).
   ["payment_refunded", /^Payment for "(.+)" refunded$/, (step) => `${quoted(step)}的付款已退款`],
   ["payment_refunded", /^Refund for "(.+)" didn't go through$/, (step) => `${quoted(step)}的退款未成功`],
+  // A refund staff made from the admin board, borne by the factory's balance (20261125100000).
+  ["payment_refunded", /^Refund for "(.+)"$/, (step) => `${quoted(step)}的退款`],
   ["payment_refunded", /^Payment for "(.+)" reversed$/, (step) => `${quoted(step)}的付款已被撤回`],
   ["payment_refunded", /^Your bank reversed your payment for "(.+)"$/, (step) => `你的银行撤回了你为${quoted(step)}支付的款项`],
   ["payment_rejected", /^We could not find your payment on (.+)$/, (order) => `我们未找到你在 ${order} 的付款`],
@@ -257,6 +259,11 @@ const SENTENCES = [
   [/^A payment for "(.+)" on (.+) was disputed with your bank\.$/, (step, order) => `${order} 中${quoted(step)}的一笔付款已向你的银行提出争议。`],
   [/^Until our review is done, you can only message vendors\.$/, () => "在我们的审核完成前，你只能给供应商发消息。"],
   [amountRe('^AMT for "(.+)" was returned to the brand\\.$'), (amount, step) => `${quoted(step)}的 ${amount} 已退回品牌。`],
+  // Payment reviews v2 and staff refunds (20261125100000).
+  [amountRe('^AMT for "(.+)" on (.+) was returned to the brand\\.$'), (amount, step, order) => `${order} 中${quoted(step)}的 ${amount} 已退回品牌。`],
+  [amountRe('^AMT for "(.+)" on (.+) was returned to the brand from your balance\\.$'),
+    (amount, step, order) => `${order} 中${quoted(step)}的 ${amount} 已从你的余额退回品牌。`],
+  [/^You can fund steps, approve steps and accept quotes again\.$/, () => "你现在可以再次为步骤付款、批准步骤和接受报价。"],
   [/^You can withdraw the rest of your balance\.$/, () => "你可以提现余额中的其余部分。"],
   [/^The review of the payment for "(.+)" is done\.$/, (step) => `${quoted(step)}的付款审核已完成。`],
   [/^Withdrawals stay paused while another payment is reviewed\.$/, () => "另一笔付款仍在审核中，提现继续暂停。"],

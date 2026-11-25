@@ -137,7 +137,10 @@ export default async function handler(request, response) {
         break;
       }
       case "charge.dispute.created":
+      case "charge.dispute.updated":
       case "charge.dispute.closed": {
+        // updated: an inquiry that became a chargeback, or a new respond-by
+        // date (20261125100000).
         // A disputed charge's step is never withdrawn while the dispute is
         // open; one TSC lost is recorded as a refund of the disputed amount
         // (its money went back to the brand). Read back

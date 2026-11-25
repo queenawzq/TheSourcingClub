@@ -196,14 +196,14 @@ begin
   return j;
 end;
 $f$;
--- Staff decide the factory's open payment review: Pay factory (nothing taken).
-create function pg_temp.pay_factory(n int) returns text language plpgsql as $f$
+-- Staff decide the factory's open payment review: Decline (nothing taken, TSC bears it).
+create function pg_temp.decline(n int) returns text language plpgsql as $f$
 declare v uuid; d text;
 begin
-  select id into v from public.payment_reviews where factory_org_id = pg_temp.org(n) and decided_at is null;
+  select id into v from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
   perform pg_temp.act_as('02');
   set local role authenticated;
-  d := (public.decide_payment_review(v, 'pay_factory')).decision;
+  d := (public.decide_payment_review(v, 'decline', null, 'pgTAP: TSC bears it')).decision;
   reset role;
   return d;
 end;
@@ -243,7 +243,7 @@ select is((select x ->> 'back_cents' from jsonb_array_elements(pg_temp.bal(4) ->
   'the card reads what was kept, not a figure worked out again');
 select is((select body from public.notifications where subject_id = current_setting('tsc.r26_p2')::uuid and title like '% did not go through'),
   'The amount is back in your balance. Check your withdrawal method, then withdraw again.', 'the notice says the same');
-select is(pg_temp.pay_factory(4), 'pay_factory', 'staff decide the review: Pay factory');
+select is(pg_temp.decline(4), 'decline', 'staff decide the review: Decline');
 select set_config('tsc.r26_c', pg_temp.req(4, 1000)::text, true);
 select pg_temp.act_as('06'); set local role authenticated;
 select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r26_c')::uuid)$$, 'a cancelled one');

@@ -39,7 +39,7 @@ export const READ_RPCS = new Set([
   "brand_profile_for_factory", "brand_summary_for_factory", "credit_balance", "credit_packs",
   "current_legal_documents", "dashboard_snapshot", "factory_matches_v2", "get_contract_attachments",
   "invitation_preview", "is_platform_admin", "match_score_rfq", "matching_evidence_notes",
-  "my_invitation_companies", "my_payment_pause", "payment_review_board", "my_review_status", "order_activity", "payout_number_reveal_log",
+  "my_invitation_companies", "my_payment_pause", "order_pause", "payment_review_board", "staff_refund_preview", "admin_order_payments", "admin_refund_info", "my_review_status", "order_activity", "payout_number_reveal_log",
   "public_factory_metrics", "quote_credit_cost", "quote_sample_subtotal", "rfq_last_brand_view",
   "thread_counterparty_time_zone",
 ]);

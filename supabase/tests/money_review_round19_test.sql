@@ -224,14 +224,14 @@ begin
   return j;
 end;
 $f$;
--- Staff decide the factory's open payment review: Pay factory (nothing taken).
-create function pg_temp.pay_factory(n int) returns text language plpgsql as $f$
+-- Staff decide the factory's open payment review: Decline (nothing taken, TSC bears it).
+create function pg_temp.decline(n int) returns text language plpgsql as $f$
 declare v uuid; d text;
 begin
-  select id into v from public.payment_reviews where factory_org_id = pg_temp.org(n) and decided_at is null;
+  select id into v from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
   perform pg_temp.act_as('02');
   set local role authenticated;
-  d := (public.decide_payment_review(v, 'pay_factory')).decision;
+  d := (public.decide_payment_review(v, 'decline', null, 'pgTAP: TSC bears it')).decision;
   reset role;
   return d;
 end;
@@ -303,7 +303,7 @@ select throws_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('t
   '22023', 'This factory''s withdrawals are paused while a payment is reviewed.',
   'staff can''t record the wire while the factory is paused');
 reset role;
-select is(pg_temp.pay_factory(3), 'pay_factory', 'staff decide: Pay factory');
+select is(pg_temp.decline(3), 'decline', 'staff decide: Decline');
 select pg_temp.act_as('02'); set local role authenticated;
 select lives_ok($$select public.mark_withdrawal_paid_by_bank(current_setting('tsc.r19_w3')::uuid, 'WIRE-R19')$$,
   'then the wire is recorded');
@@ -329,7 +329,7 @@ select lives_ok($$select pg_temp.refund(41, 10700)$$, '$107 of the pool deposit 
 select is(row(pg_temp.staff_row(current_setting('tsc.r19_p1')::uuid) ->> 'covered',
               pg_temp.staff_row(current_setting('tsc.r19_p2')::uuid) ->> 'covered'),
           row('false'::text, 'false'::text), 'while the review is open, neither request is paid');
-select is(pg_temp.pay_factory(4), 'pay_factory', 'staff decide: Pay factory');
+select is(pg_temp.decline(4), 'decline', 'staff decide: Decline');
 select is(row(pg_temp.staff_row(current_setting('tsc.r19_p1')::uuid) ->> 'covered',
               pg_temp.staff_row(current_setting('tsc.r19_p2')::uuid) ->> 'covered'),
           row('true'::text, 'true'::text), 'then both are covered: the refund took nothing from the pool deposit');
@@ -341,7 +341,7 @@ select is(row((pg_temp.bal(5) ->> 'owed_to_tsc_cents')::bigint, public.factory_p
   'F5 owes TSC nothing: a payment review pauses it instead');
 select throws_ok($$select pg_temp.req(5, 20000)$$, '22023', 'Withdrawals are paused while a payment is reviewed.',
   'a later withdrawal waits for the review');
-select is(pg_temp.pay_factory(5), 'pay_factory', 'staff decide: Pay factory');
+select is(pg_temp.decline(5), 'decline', 'staff decide: Decline');
 select set_config('tsc.r19_w5', pg_temp.req(5, 20000)::text, true);
 select is(pg_temp.staff_row(current_setting('tsc.r19_w5')::uuid) ->> 'covered', 'true', 'a later $200 withdrawal is covered');
 select lives_ok($$select pg_temp.pay_out(current_setting('tsc.r19_w5')::uuid)$$, 'and paid: the pool''s debt does not block it forever');

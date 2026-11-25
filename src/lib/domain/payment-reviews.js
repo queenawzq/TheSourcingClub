@@ -1,36 +1,47 @@
 /**
- * Payment reviews (20261124100000): a refund or dispute pauses the factory's
- * withdrawals (and, on a dispute, the brand) until staff decide. The database
- * decides everything; these carry the person's own token.
+ * Payment reviews (20261124100000, v2 20261125100000): a dispute or a refund
+ * made in Stripe after approval pauses the factory's withdrawals (and, on a
+ * chargeback, the brand); the bank's verdict drives a dispute, and staff
+ * Approve or Decline once the money is back with the brand. Staff also refund
+ * a brand from the admin board, choosing who pays. The database decides
+ * everything; these carry the person's own token.
+ *
+ * The shapes are in notes/cards/2026-11-25-pp-interface.md.
  */
 import { kickNotificationEmails, supabase, unwrap } from "../supabase.js";
 
-/** A company's own status: { brand_paused, factory: { paused, step_title, ... } | null }. Members only. */
+/** A company's own status: { brand_paused, factory: { paused, step_title, order_number, since, count } | null }. Members only. */
 export async function myPaymentPause(orgId) {
   return unwrap(await supabase.rpc("my_payment_pause", { target_org: orgId }), "read your account status");
 }
 
-/** Staff: every review waiting on a decision, then the last 30 days' decided ones. */
+/** Whether an order is on hold (its brand paused): { on_hold, brand_paused }. Either party, or staff. */
+export async function orderPause(orderId) {
+  return unwrap(await supabase.rpc("order_pause", { target_order: orderId }), "read this order's status");
+}
+
+/** Staff: every review, each with `list`: "reviews" (counted), "paused_brands" or "decided". */
 export async function paymentReviewBoard() {
   return unwrap(await supabase.rpc("payment_review_board"), "load payment reviews") ?? [];
 }
 
 const REFUSALS = {
+  review_decision: "Choose Approve or Decline.",
+  review_not_ready: "The bank hasn't decided yet. You can decide once it has.",
+  review_decide_first: "Approve or Decline this review first.",
   review_decided: "This review was already decided. Reload the board.",
-  review_amount: "Enter an amount to take from the factory's balance.",
-  review_dispute_open: "The bank hasn't decided this dispute yet. Refund brand is available once the brand has its money back.",
-  review_not_approved: "This step isn't approved, so its money isn't in the factory's balance. Choose Pay factory.",
-  review_brand_only: "This step isn't approved, so the factory isn't paused. Use Unpause brand.",
-  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
-  review_note: "Add a note for the factory.",
+  review_note: "Add a note.",
+  review_amount: "Enter an amount of $0.00 or more.",
+  review_balance_changed: "The factory's balance changed. Reload and try again.",
   review_brand_not_paused: "This brand isn't paused by this review. Reload the board.",
   review_own_company: "You belong to this brand, so someone else on the staff must decide.",
   payout_own_company: "You belong to this factory, so someone else on the staff must decide.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must decide.",
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).",
 };
 const said = (error) => {
-  if (error?.hint === "review_over_balance" && (error.details ?? error.detail)) return `You can take up to ${error.details ?? error.detail}, the factory's balance now.`;
-  if (error?.hint === "review_over_part" && (error.details ?? error.detail)) return `You can take up to ${error.details ?? error.detail}, the factory's part of what the brand got back.`;
+  const detail = error?.details ?? error?.detail;
+  if (error?.hint === "review_over_cap" && detail) return `You can take up to ${detail} from the factory's balance.`;
   return REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.";
 };
 
@@ -45,13 +56,79 @@ async function staffCall(name, args) {
   return data;
 }
 
-/** Pay factory: unpause it, nothing taken. */
-export const payFactory = (reviewId, note = null) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "pay_factory", amount_cents: null, note,
+/** Approve: take `cents` (0 up to the row's approve_max_cents) from the factory's balance; the brand can use its account again. */
+export const approveReview = (reviewId, cents, note) => staffCall("decide_payment_review", {
+  target_review: reviewId, decision: "approve", amount_cents: cents ?? null, note,
 });
-/** Refund brand: return `cents` to the brand from the factory's balance (capped by the database). */
-export const refundBrand = (reviewId, cents, note) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "refund_brand", amount_cents: cents, note,
+/** Decline: nothing taken (TSC bears it); the brand stays paused. The note stays with staff. */
+export const declineReview = (reviewId, note) => staffCall("decide_payment_review", {
+  target_review: reviewId, decision: "decline", amount_cents: null, note,
 });
-/** Unpause brand: it can fund steps and accept quotes again. */
+/** Unpause brand, on a resumed or declined review. */
 export const unpauseBrand = (reviewId) => staffCall("unpause_brand", { target_review: reviewId });
+
+/** Staff: the Refund… dialog's figures, read when it opens. */
+export async function staffRefundPreview(paymentId) {
+  return unwrap(await supabase.rpc("staff_refund_preview", { target_payment: paymentId }), "load this payment");
+}
+/** Staff: an order by its number (with or without TSC-), with its payments; null when none. */
+export async function adminOrderPayments(search) {
+  return unwrap(await supabase.rpc("admin_order_payments", { search }), "find this order");
+}
+/** Staff: refund facts for the Held tab's rows, { [paymentId]: { refundable_cents, refund_refusal, approved_step, staff_refunds } }. */
+export async function adminRefundInfo(paymentIds) {
+  if (!paymentIds?.length) return {};
+  return unwrap(await supabase.rpc("admin_refund_info", { payment_ids: paymentIds }), "load refunds") ?? {};
+}
+
+/** Why Refund… is refused on a payment (refund_refusal), in the words staff read. */
+export const REFUND_REFUSALS = {
+  staff_refund_over: "Nothing left to refund.",
+  staff_refund_not_charged: "This payment hasn't been charged.",
+  staff_refund_processing: "This payment is still processing. Try again once it's funded.",
+  staff_refund_disputed: "The bank is deciding this payment.",
+  staff_refund_cancelled_order: "This order was cancelled. Its payments are refunded automatically.",
+  staff_refund_claimed: "This payment is being refunded. Reload in a minute.",
+};
+
+async function refundCall(body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  let response;
+  try {
+    response = await fetch("/api/stripe-refund", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    const failure = new Error("We couldn't reach the server. Press Check again in a minute; nothing will be refunded twice.");
+    failure.hint = "stripe_unreachable";
+    throw failure;
+  }
+  let result = {};
+  try { result = await response.json(); } catch { /* read as its status below */ }
+  if (!response.ok) {
+    const failure = new Error(result.error || "That couldn't be done. Reload the page and try again.");
+    failure.hint = result.hint ?? null;
+    failure.staffRefundId = result.staffRefundId ?? null;
+    throw failure;
+  }
+  kickNotificationEmails();
+  return result;
+}
+
+/**
+ * Staff refund a brand: { paymentId, amountCents, payer: "factory" | "tsc" | null, note }.
+ * Resolves to { status: "refunded" | "pending", amountCents, factoryCents, tscCents };
+ * throws Error(sentence) with .hint (and .staffRefundId when Stripe couldn't be reached).
+ */
+export const staffRefund = ({ paymentId, amountCents, payer = null, note }) => refundCall({ paymentId, amountCents, payer, note });
+/** Check again on a refund Stripe couldn't be asked about: the same claim, never refunded twice. */
+export const checkStaffRefund = (staffRefundId) => refundCall({ staffRefundId });
+
+// #150's board still calls these until the staff screens move to Approve /
+// Decline (S's change); they map onto the v2 decisions.
+/** @deprecated use declineReview */
+export const payFactory = (reviewId, note) => declineReview(reviewId, note);
+/** @deprecated use approveReview */
+export const refundBrand = (reviewId, cents, note) => approveReview(reviewId, cents, note);

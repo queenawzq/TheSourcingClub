@@ -187,14 +187,14 @@ begin
   return j;
 end;
 $f$;
--- Staff decide a factory's open payment review: Pay factory (nothing taken).
+-- Staff decide a factory's open payment review: Decline (nothing taken, TSC bears it).
 create function pg_temp.decide(n int) returns void language plpgsql as $f$
 declare r uuid;
 begin
-  select id into r from public.payment_reviews where factory_org_id = pg_temp.org(n) and decided_at is null;
+  select id into r from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.decide_payment_review(r, 'pay_factory');
+  perform public.decide_payment_review(r, 'decline', null, 'pgTAP: TSC bears it');
   reset role;
 end;
 $f$;

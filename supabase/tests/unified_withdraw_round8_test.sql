@@ -122,9 +122,9 @@ select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(2), 'pi_pgtap_r8_2', 'The payment was refunded.')),
   'step 2, held by the $45 request, is refunded');
 select is(public.factory_paused('ce8b0000-0000-0000-0000-0000000000e1'), true, 'a refund after approval pauses the factory for a payment review');
-select set_config('tsc.r8_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(2) and decided_at is null), true);
+select set_config('tsc.r8_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(2) and state in ('open', 'decide')), true);
 select pg_temp.act_as('02'); set local role authenticated;
-select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8_review')::uuid, 'pay_factory')$$,
+select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8_review')::uuid, 'decline', null, 'pgTAP: TSC bears it')$$,
   'staff decide the review: pay the factory (nothing taken)');
 reset role;
 select pg_temp.act_as('02'); set local role authenticated;
@@ -329,9 +329,9 @@ select is(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid),
   'the $75 request: paused for the payment review, the whole $75 on hold, nothing refunded');
 select is((select sum((p ->> 'amount_cents')::bigint)::bigint from jsonb_array_elements(pg_temp.parts_of(current_setting('tsc.r8p_mixed')::uuid)) p),
   7500::bigint, 'its parts add up to its amount');
-select set_config('tsc.r8p_review', (select id::text from public.payment_reviews where payment_id = 'ce8f1002-0000-0000-0000-000000000002' and decided_at is null), true);
+select set_config('tsc.r8p_review', (select id::text from public.payment_reviews where payment_id = 'ce8f1002-0000-0000-0000-000000000002' and state in ('open', 'decide')), true);
 select pg_temp.act_as('02'); set local role authenticated;
-select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8p_review')::uuid, 'pay_factory')$$,
+select lives_ok($$select public.decide_payment_review(current_setting('tsc.r8p_review')::uuid, 'decline', null, 'pgTAP: TSC bears it')$$,
   'staff decide that review too: pay the factory');
 reset role;
 select is(pg_temp.parts_of(current_setting('tsc.r8p_clean')::uuid), '[{"word": "waiting", "amount_cents": 4000}]'::jsonb,

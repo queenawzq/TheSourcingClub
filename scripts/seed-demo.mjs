@@ -1712,6 +1712,15 @@ for (const [title, person, org] of [
 //    - Demo Brand's approved fit sample with Riverbend was half refunded in
 //      Stripe (record_payment_refund_amount): Riverbend is paused, Demo Brand
 //      is not, and nothing is taken from Riverbend.
+//    v2 (20261125100000), so every row of the board has a case:
+//    - Harbor's bag: a chargeback the bank decided for Harbor (lost) after
+//      approval: Riverbend stays paused, staff Approve or Decline.
+//    - Harbor's belt: a chargeback the bank decided for TSC (won): Riverbend
+//      resumed by itself, Harbor stays paused (Paused brands, Unpause brand).
+//    - Demo Brand's linen shirt: also a Stripe inquiry, which pauses nobody.
+//    - Demo Brand's canvas apron: approved, with a real test charge, to
+//      refund from the admin board (Refund…, who pays); poplin and twill are
+//      held ones with real charges.
 //    Staff decide in Payments → Needs checking → Payment reviews.
 console.log("payment reviews");
 const reviewBrandOrg = must(await reviewBrand.client.rpc("create_org", { org_name: LOGINS.reviewBrand.name, org_kind: "brand" }), "create the brand under review");
@@ -1757,11 +1766,50 @@ async function fundedWithIntent(payment, kind) {
     month: "2027-04-01", tags: [["product_category", "accessories"], ["region", "china"]], question: "Can you match the jacket's wax?",
   });
   await sendQuote(reviewFactory, reviewFactoryOrg, next, { price: 2100, quantity: 200, lead: 35, note: "Same wax as the jacket." });
+  // Two more approved steps, before anything pauses Harbor (v2).
+  const decided = {};
+  for (const [kind, stepTitle, brief, quantity, unitPrice] of [
+    ["lost", "Waxed canvas weekender bag, AW27", "80 waxed canvas weekender bags, brass hardware.", 80, 6200],
+    ["won", "Bridle leather belt, AW27", "150 bridle leather belts, solid brass buckle.", 150, 3800],
+  ]) {
+    const ord = await runningOrder({ title: stepTitle, brief, quantity, unitPrice, vendor: reviewFactory, vendorOrg: reviewFactoryOrg, buyer });
+    const step = await dueNow(ord, stepTitle);
+    const money = await fundedWithIntent(step, kind);
+    await approveOpenStep(ord, stepTitle, reviewFactory, reviewBrand.client);
+    decided[kind] = { step, ...money };
+  }
   must(await admin.rpc("record_payment_review_dispute", {
     target_payment: fit.id, dispute_id: `dp_demo_${fit.id.slice(0, 8)}`, status: "needs_response",
     amount_cents: total, due_by: new Date(Date.now() + 9 * 86400000).toISOString(), fee_cents: 1500,
   }), "the dispute opens a payment review");
   must(await admin.rpc("record_payment_disputed", { target_payment: fit.id, disputed: true }), "the charge is disputed");
+  // The bag: the bank decided for Harbor. Staff decide (Approve / Decline).
+  {
+    const { step, total } = decided.lost;
+    const dispute = `dp_demo_${step.id.slice(0, 8)}`;
+    for (const status of ["needs_response", "lost"]) {
+      must(await admin.rpc("record_payment_review_dispute", {
+        target_payment: step.id, dispute_id: dispute, status, amount_cents: total,
+        due_by: status === "lost" ? null : new Date(Date.now() + 4 * 86400000).toISOString(), fee_cents: 1500,
+      }), `the bag's dispute: ${status}`);
+    }
+    must(await admin.rpc("record_payment_dispute_lost", { target_payment: step.id, dispute_id: dispute, lost_cents: total, fee_cents: 1500 }),
+      "the bag's dispute lost");
+  }
+  // The belt: the bank decided for TSC. Riverbend resumes; Harbor stays paused.
+  {
+    const { step, total } = decided.won;
+    const dispute = `dp_demo_${step.id.slice(0, 8)}`;
+    must(await admin.rpc("record_payment_review_dispute", {
+      target_payment: step.id, dispute_id: dispute, status: "needs_response", amount_cents: total,
+      due_by: new Date(Date.now() + 3 * 86400000).toISOString(), fee_cents: 1500,
+    }), "the belt's dispute");
+    must(await admin.rpc("record_payment_disputed", { target_payment: step.id, disputed: true }), "the belt's charge is disputed");
+    must(await admin.rpc("record_payment_review_dispute", {
+      target_payment: step.id, dispute_id: dispute, status: "won", amount_cents: total, due_by: null, fee_cents: 1500,
+    }), "the belt's dispute won");
+    must(await admin.rpc("record_payment_disputed", { target_payment: step.id, disputed: false }), "the belt's hold lifted");
+  }
 }
 {
   const title = "Linen camp shirt, AW27";
@@ -1775,6 +1823,21 @@ async function fundedWithIntent(payment, kind) {
   must(await admin.rpc("record_payment_refund_amount", {
     target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
   }), "half refunded after approval");
+  // A Stripe inquiry on it too: staff respond in Stripe; nobody is paused by it.
+  must(await admin.rpc("record_payment_review_dispute", {
+    target_payment: fit.id, dispute_id: `dp_demo_inq_${fit.id.slice(0, 8)}`, status: "warning_needs_response",
+    amount_cents: total, due_by: new Date(Date.now() + 6 * 86400000).toISOString(), fee_cents: null,
+  }), "an inquiry");
+}
+{
+  // Approved, with a real test charge: staff refund it from the admin board.
+  const title = "Cotton canvas apron, AW27";
+  const order = await runningOrder({
+    title, brief: "120 cotton canvas work aprons, leather straps.", quantity: 120, unitPrice: 1800,
+    vendor: reviewFactory, vendorOrg: reviewFactoryOrg,
+  });
+  await fundedByStripe(await dueNow(order, title), CARD);
+  await approveOpenStep(order, title, reviewFactory);
 }
 {
   const paused = async (fn, org) => must(await admin.rpc(fn, { target_org: org.id }), `${fn} ${org.id}`);
@@ -1785,6 +1848,9 @@ async function fundedWithIntent(payment, kind) {
   if (want.some(([have, should]) => have !== should)) {
     throw new Error("payment reviews: only Harbor Lane and Riverbend should be paused");
   }
+  const states = must(await admin.from("payment_reviews").select("state").eq("factory_org_id", reviewFactoryOrg.id), "the review states");
+  const have = states.map((row) => row.state).sort().join(",");
+  if (have !== "decide,decide,inquiry,open,resumed") throw new Error(`payment reviews: expected decide,decide,inquiry,open,resumed, have ${have}`);
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production
