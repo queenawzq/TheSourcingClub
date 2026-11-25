@@ -19,9 +19,10 @@ set local session_replication_role = replica;
 
 insert into auth.users (id, email)
 select ('c26a0000-0000-0000-0000-0000000000' || k)::uuid, 'pgtap-pr25-' || k || '@example.com'
-  from unnest(array['01','02','03','04','06']) k;
+  from unnest(array['01','02','03','04','06','07']) k;
 insert into public.platform_admins (user_id, note) values
-  ('c26a0000-0000-0000-0000-000000000002', 'pgtap-pr25'), ('c26a0000-0000-0000-0000-000000000006', 'pgtap-pr25');
+  ('c26a0000-0000-0000-0000-000000000002', 'pgtap-pr25'), ('c26a0000-0000-0000-0000-000000000006', 'pgtap-pr25'),
+  ('c26a0000-0000-0000-0000-000000000007', 'pgtap-pr25');
 insert into public.orgs (id, type, name, slug) values
   ('c26b0000-0000-0000-0000-0000000000b1', 'brand', 'PR25 Brand One', 'pgtap-pr25-b1'),
   ('c26b0000-0000-0000-0000-0000000000e1', 'factory', 'PR25 Factory One', 'pgtap-pr25-f1'),
@@ -30,7 +31,8 @@ insert into public.org_members (org_id, user_id, role, permissions) values
   ('c26b0000-0000-0000-0000-0000000000e1', 'c26a0000-0000-0000-0000-000000000001', 'owner', '{}'),
   ('c26b0000-0000-0000-0000-0000000000b1', 'c26a0000-0000-0000-0000-000000000003', 'owner', '{}'),
   ('c26b0000-0000-0000-0000-0000000000b1', 'c26a0000-0000-0000-0000-000000000006', 'member', '{}'),
-  ('c26b0000-0000-0000-0000-0000000000e2', 'c26a0000-0000-0000-0000-000000000004', 'owner', '{}');
+  ('c26b0000-0000-0000-0000-0000000000e2', 'c26a0000-0000-0000-0000-000000000004', 'owner', '{}'),
+  ('c26b0000-0000-0000-0000-0000000000e1', 'c26a0000-0000-0000-0000-000000000007', 'member', '{}');
 insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total) values
   ('c26c0000-0000-0000-0000-000000000001', 'c26b0000-0000-0000-0000-0000000000b1', 'PR25 request 1', 'awarded', 'invited_only', 100),
   ('c26c0000-0000-0000-0000-000000000002', 'c26b0000-0000-0000-0000-0000000000b1', 'PR25 request 2', 'awarded', 'invited_only', 100);
@@ -299,6 +301,18 @@ select lives_ok($$select pg_temp.as_server('select public.run_daily_notification
 select is((select count(*)::int from public.notifications where org_id = pg_temp.org('b1') and kind = 'milestone_due_soon'
             and order_id = 'c26d0000-0000-0000-0000-000000000001'), 0, 'no reminder to fund while paused');
 select throws_ok($$select pg_temp.claim(5, 1000, 'tsc', 'x')$$, '22023', 'staff_refund_disputed', 'no refund while the bank decides');
+select pg_temp.act_as('07');
+set local role authenticated;
+select throws_ok($$select public.unpause_brand_org('c26b0000-0000-0000-0000-0000000000b1')$$, '42501',
+  'your company has orders with this brand, so someone else on the staff must decide', 'staff in a factory it orders from leave it to someone else');
+reset role;
+select pg_temp.act_as('06');
+set local role authenticated;
+select throws_ok($$select public.unpause_brand_org('c26b0000-0000-0000-0000-0000000000b1')$$, '42501',
+  'you belong to this brand, so someone else on the staff must decide', 'staff in the brand too');
+reset role;
+select throws_ok($$select pg_temp.staff('select to_jsonb(public.unpause_brand_org(''c26b0000-0000-0000-0000-0000000000e1''))')$$, 'P0002', null,
+  'a factory is not a brand to unpause');
 
 -- ===========================================================================
 -- 5. A refund made in Stripe's dashboard still opens a review (fallback).

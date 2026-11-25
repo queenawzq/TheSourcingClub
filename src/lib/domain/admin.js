@@ -524,6 +524,9 @@ async function directUserDirectory() {
     readEveryPage(() => supabase.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), "load users", "org_id"),
   ]);
   const [profiles, members, admins, factories] = lists.map((data) => ({ data }));
+  // Brands paused by a card dispute (20261125100000): Users' "Paused" filter.
+  const { data: paused } = await supabase.rpc("admin_paused_brands");
+  const pausedBrands = new Set((paused ?? []).map((row) => row.org_id));
 
   const memberships = new Map();
   for (const membership of members.data ?? []) {
@@ -543,6 +546,8 @@ async function directUserDirectory() {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      orgId: isAdmin ? null : membership?.org_id ?? null,
+      paymentPaused: !isAdmin && pausedBrands.has(membership?.org_id),
       createdAt: profile.created_at,
       lastActiveAt: null,
       disabled: false,

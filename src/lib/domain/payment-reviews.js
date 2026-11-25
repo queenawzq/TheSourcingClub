@@ -20,20 +20,20 @@ export async function orderPause(orderId) {
   return unwrap(await supabase.rpc("order_pause", { target_order: orderId }), "read this order's status");
 }
 
-/** Staff: every review, each with `list`: "reviews" (counted), "paused_brands" or "decided". */
+/** Staff: every review, with its three-step bar (`step`, `step_line`, `step_date`, `reason`, `flag`); `open` = counted. */
 export async function paymentReviewBoard() {
   return unwrap(await supabase.rpc("payment_review_board"), "load payment reviews") ?? [];
 }
 
 const REFUSALS = {
-  review_decision: "Choose Approve or Decline.",
+  review_decision: "Choose who pays.",
   review_not_ready: "The bank hasn't decided yet. You can decide once it has.",
-  review_decide_first: "Approve or Decline this review first.",
+  brand_not_paused: "This brand isn't paused. Reload the page.",
+  unpause_factory_side: "Your company has orders with this brand, so someone else on the staff must decide.",
   review_decided: "This review was already decided. Reload the board.",
   review_note: "Add a note.",
   review_amount: "Enter an amount of $0.00 or more.",
   review_balance_changed: "The factory's balance changed. Reload and try again.",
-  review_brand_not_paused: "This brand isn't paused by this review. Reload the board.",
   review_own_company: "You belong to this brand, so someone else on the staff must decide.",
   payout_own_company: "You belong to this factory, so someone else on the staff must decide.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must decide.",
@@ -56,16 +56,20 @@ async function staffCall(name, args) {
   return data;
 }
 
-/** Approve: take `cents` (0 up to the row's approve_max_cents) from the factory's balance; the brand can use its account again. */
-export const approveReview = (reviewId, cents, note) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "approve", amount_cents: cents ?? null, note,
+/** The factory pays: take `cents` (0 up to the row's factory_max_cents) from its balance, TSC the rest; the brand can use its account again. The note goes to the factory. */
+export const factoryPays = (reviewId, cents, note) => staffCall("decide_payment_review", {
+  target_review: reviewId, decision: "factory_pays", amount_cents: cents ?? null, note,
 });
-/** Decline: nothing taken (TSC bears it); the brand stays paused. The note stays with staff. */
-export const declineReview = (reviewId, note) => staffCall("decide_payment_review", {
-  target_review: reviewId, decision: "decline", amount_cents: null, note,
+/** TSC pays: nothing taken; the brand stays paused. The note stays with staff. */
+export const tscPays = (reviewId, note) => staffCall("decide_payment_review", {
+  target_review: reviewId, decision: "tsc_pays", amount_cents: null, note,
 });
-/** Unpause brand, on a resumed or declined review. */
-export const unpauseBrand = (reviewId) => staffCall("unpause_brand", { target_review: reviewId });
+/** Staff, on the brand's account: lift every pause of this brand. Resolves to { org_id, lifted }. */
+export const unpauseBrandOrg = (orgId) => staffCall("unpause_brand_org", { target_org: orgId });
+/** Staff: the brands paused now, [{ org_id, name, since, reviews }], for Users' "Paused" filter and count. */
+export async function pausedBrands() {
+  return unwrap(await supabase.rpc("admin_paused_brands"), "load paused brands") ?? [];
+}
 
 /** Staff: the Refund… dialog's figures, read when it opens. */
 export async function staffRefundPreview(paymentId) {
@@ -126,9 +130,11 @@ export const staffRefund = ({ paymentId, amountCents, payer = null, note }) => r
 /** Check again on a refund Stripe couldn't be asked about: the same claim, never refunded twice. */
 export const checkStaffRefund = (staffRefundId) => refundCall({ staffRefundId });
 
-// #150's board still calls these until the staff screens move to Approve /
-// Decline (S's change); they map onto the v2 decisions.
-/** @deprecated use declineReview */
-export const payFactory = (reviewId, note) => declineReview(reviewId, note);
-/** @deprecated use approveReview */
-export const refundBrand = (reviewId, cents, note) => approveReview(reviewId, cents, note);
+// #150's board still imports these until the staff screens move to "who
+// pays" (S's change).
+/** @deprecated use tscPays */
+export const payFactory = (reviewId, note) => tscPays(reviewId, note);
+/** @deprecated use factoryPays */
+export const refundBrand = (reviewId, cents, note) => factoryPays(reviewId, cents, note);
+/** @deprecated unpause from the brand's account: unpauseBrandOrg */
+export const unpauseBrand = () => Promise.reject(new Error("Unpause the brand from its account in Users."));

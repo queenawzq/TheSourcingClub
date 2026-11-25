@@ -257,7 +257,7 @@ reset role;
 -- review (the server opens it alongside record_payment_disputed), not the step.
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int, 'F4: the disputed step alone is not counted on the overview');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
-  format('select public.record_payment_review_dispute(%L, %L, %L, %s, null, null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'needs_response', 10700)),
+  format('select public.record_payment_review_dispute(%L, %L, %L, %s, now() + interval ''7 days'', null)', pg_temp.pay(1, 4), 'dp_pgtap_uw2_14', 'needs_response', 10700)),
   'the server opens the dispute''s payment review');
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int + 1, 'F4: and counted on the overview');
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
@@ -270,11 +270,12 @@ select pg_temp.act_as('01'); set local role authenticated;
 select is(pg_temp.fig(1, pg_temp.pay(1, 4)), 'available', 'and Available again');
 reset role;
 -- The bank decided for TSC: the review resumed by itself (20261125100000) and
--- leaves the count; the brand it paused is listed apart until staff unpause it.
+-- leaves the count; staff unpause the brand from its account.
 select set_config('tsc.uw2_review', (select id::text from public.payment_reviews where payment_id = pg_temp.pay(1, 4)), true);
+select set_config('tsc.uw2_brand', (select brand_org_id::text from public.payment_reviews where payment_id = pg_temp.pay(1, 4)), true);
 select is((select state from public.payment_reviews where id = current_setting('tsc.uw2_review')::uuid), 'resumed', 'won: the review resumed by itself');
 select pg_temp.act_as('06'); set local role authenticated;
-select lives_ok(format($$select public.unpause_brand(%L)$$, current_setting('tsc.uw2_review')),
+select lives_ok(format($$select public.unpause_brand_org(%L)$$, current_setting('tsc.uw2_brand')),
   'staff unpause the brand');
 reset role;
 select is(pg_temp.overview(), current_setting('tsc.uw2_before')::int, 'F4: and off the overview count');

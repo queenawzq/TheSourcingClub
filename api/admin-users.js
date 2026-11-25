@@ -55,13 +55,16 @@ async function readAllRows(query, key) {
 }
 
 async function listUsers(service, currentUserId) {
-  const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult] = await Promise.all([
+  const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult, pausedResult] = await Promise.all([
     listAllAuthUsers(service),
     readAllRows(() => service.from("user_profiles").select("id, email, full_name, created_at").order("id"), (row) => row.id),
     readAllRows(() => service.from("org_members").select("user_id, role, org_id, created_at, orgs (name, type)").order("created_at").order("user_id").order("org_id"), (row) => `${row.user_id}:${row.org_id}`),
     readAllRows(() => service.from("platform_admins").select("user_id").order("user_id"), (row) => row.user_id),
     readAllRows(() => service.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), (row) => row.org_id),
+    // Brands paused by a card dispute (20261125100000): Users' "Paused" filter.
+    service.rpc("paused_brand_rows"),
   ]);
+  const pausedBrands = new Set((pausedResult.data ?? []).map((row) => row.org_id));
 
   const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
   const memberships = new Map();
@@ -85,6 +88,8 @@ async function listUsers(service, currentUserId) {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      orgId: isAdmin ? null : membership?.org_id ?? null,
+      paymentPaused: !isAdmin && pausedBrands.has(membership?.org_id),
       createdAt: profile?.created_at || authUser.created_at,
       lastActiveAt: authUser.last_sign_in_at || null,
       disabled: bannedUntil > now,

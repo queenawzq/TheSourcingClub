@@ -331,7 +331,7 @@ create temp table r17_before on commit drop as select (pg_temp.bal(3) ->> 'paid_
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c17f0005-0000-0000-0000-000000000003'', true)')$$,
   'the brand disputes the deposit''s charge');
 -- The server opens the dispute's payment review alongside (20261124100000).
-select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c17f0005-0000-0000-0000-000000000003'', ''du_pgtap_r17_5'', ''needs_response'', 53500, null, null)')$$,
+select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c17f0005-0000-0000-0000-000000000003'', ''du_pgtap_r17_5'', ''needs_response'', 53500, now() + interval ''7 days'', null)')$$,
   'and the server opens its payment review');
 select ok(exists (select 1 from jsonb_array_elements(pg_temp.attention() -> 'disputed') x where (x ->> 'payment_id')::uuid = pg_temp.pay(5)
                    and (x ->> 'in_withdrawal_cents')::bigint = 40000), 'staff see it, $400 of it already withdrawn');

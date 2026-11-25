@@ -4,11 +4,12 @@
 --     declined, inquiry_closed. The bank's verdict drives a dispute: won
 --     resumes the factory by itself; lost waits for staff. An inquiry pauses
 --     nobody. One review per Stripe dispute id.
---  2. Staff decide with Approve (take an amount from the factory's balance,
---     up to its part and what is still with TSC; the brand can use its
---     account again) or Decline (nothing taken; the brand stays paused).
---     A brand paused on purpose (declined, or the bank decided for TSC) is
---     not counted as waiting: it is listed under Paused brands.
+--  2. Staff decide who pays once the money is back with the brand: the
+--     factory (an amount from its balance, up to its part and what is still
+--     with TSC; the brand can use its account again) or TSC (nothing taken;
+--     the brand stays paused). A loss on a step not approved has nothing to
+--     decide. Staff unpause a brand from its account (unpause_brand_org),
+--     which lifts every pause of that brand.
 --  3. Staff refund a brand in the app (staff_refunds): claimed in the
 --     database with who pays (the factory's balance, taken in the same
 --     transaction, or TSC), made in Stripe by the server, recorded without
@@ -30,23 +31,26 @@ alter table public.payment_reviews drop constraint if exists payment_reviews_dec
 alter table public.payment_reviews drop constraint if exists payment_reviews_check1;
 
 -- Rows written by 20261124100000/100100 (qa only; production has none).
-update public.payment_reviews set decision = 'decline' where decision = 'pay_factory';
-update public.payment_reviews set decision = 'approve' where decision = 'refund_brand';
+update public.payment_reviews set decision = 'tsc_pays' where decision = 'pay_factory';
+update public.payment_reviews set decision = 'factory_pays' where decision = 'refund_brand';
 update public.payment_reviews v
    set state = case
-         when v.decision = 'approve' then 'approved'
-         when v.decision in ('decline', 'brand_unpaused') then 'declined'
+         when v.decision = 'factory_pays' then 'factory_paid'
+         when v.decision = 'tsc_pays' then 'tsc_paid'
+         when v.decision = 'brand_unpaused' then 'closed'
          when v.cause = 'dispute' and v.dispute_status in ('warning_needs_response', 'warning_under_review') then 'inquiry'
          when v.cause = 'dispute' and v.dispute_status = 'warning_closed' then 'inquiry_closed'
          when v.cause = 'dispute' and v.dispute_status in ('won', 'prevented') then 'resumed'
+         when v.cause = 'dispute' and v.dispute_status = 'lost' and not v.pauses_factory then 'closed'
          when v.cause = 'dispute' and v.dispute_status = 'lost' then 'decide'
          when v.cause = 'dispute' then 'open'
          else 'decide' end,
        closed_at = case when v.decided_at is not null then v.decided_at
-                        when v.dispute_status in ('won', 'prevented', 'warning_closed') then v.updated_at end,
+                        when v.dispute_status in ('won', 'prevented', 'warning_closed')
+                          or (v.dispute_status = 'lost' and not v.pauses_factory) then v.updated_at end,
        paused_at = case when v.pauses_factory then v.created_at end
  where v.state is null;
--- A paused-only-by-inquiry brand under 100000's rules is not paused any more.
+-- An inquiry pauses nobody: a brand paused only by one under 100000's rules is not any more.
 update public.payment_reviews set brand_unpaused_at = coalesce(brand_unpaused_at, now())
  where state in ('inquiry', 'inquiry_closed');
 
@@ -54,14 +58,14 @@ alter table public.payment_reviews alter column state set default 'open';
 alter table public.payment_reviews alter column state set not null;
 alter table public.payment_reviews drop constraint if exists payment_reviews_state_check;
 alter table public.payment_reviews add constraint payment_reviews_state_check
-  check (state in ('inquiry', 'inquiry_closed', 'open', 'decide', 'resumed', 'approved', 'declined'));
+  check (state in ('inquiry', 'inquiry_closed', 'open', 'decide', 'resumed', 'closed', 'factory_paid', 'tsc_paid'));
 alter table public.payment_reviews add constraint payment_reviews_decision_check
-  check (decision in ('approve', 'decline', 'brand_unpaused'));
+  check (decision in ('factory_pays', 'tsc_pays', 'brand_unpaused'));
 alter table public.payment_reviews drop constraint if exists payment_reviews_returned_check;
 alter table public.payment_reviews add constraint payment_reviews_returned_check
-  check (decision = 'approve' or returned_cents = 0);
+  check (decision = 'factory_pays' or returned_cents = 0);
 comment on column public.payment_reviews.state is
-  'inquiry | inquiry_closed | open | decide | resumed | approved | declined (20261125100000).';
+  'inquiry | inquiry_closed | open | decide | resumed | closed | factory_paid | tsc_paid (20261125100000).';
 
 -- One review per Stripe dispute; one open refund review per payment.
 drop index if exists public.payment_reviews_one_open;
@@ -71,6 +75,8 @@ create unique index if not exists payment_reviews_one_open_refund
   on public.payment_reviews (payment_id) where cause = 'refund' and state = 'decide';
 drop index if exists public.payment_reviews_factory_open;
 create index if not exists payment_reviews_factory_open on public.payment_reviews (factory_org_id) where state in ('open', 'decide');
+drop index if exists public.payment_reviews_brand_open;
+create index if not exists payment_reviews_brand_open on public.payment_reviews (brand_org_id) where brand_unpaused_at is null and cause = 'dispute';
 
 -- ---------------------------------------------------------------------------
 -- 2. Who is paused, and what waits on staff.
@@ -88,6 +94,8 @@ $$;
 revoke all on function public.factory_paused(uuid) from public, anon, authenticated;
 grant execute on function public.factory_paused(uuid) to service_role;
 
+-- A chargeback pauses the brand until staff decide the factory pays, or
+-- unpause the brand from its account; an inquiry never does.
 create or replace function public.brand_paused(target_org uuid)
 returns boolean
 language sql
@@ -97,7 +105,7 @@ set search_path = public, pg_temp
 as $$
   select exists (select 1 from public.payment_reviews v
                   where v.brand_org_id = target_org and v.cause = 'dispute'
-                    and v.state in ('open', 'decide', 'resumed', 'declined') and v.brand_unpaused_at is null);
+                    and v.state not in ('inquiry', 'inquiry_closed') and v.brand_unpaused_at is null);
 $$;
 revoke all on function public.brand_paused(uuid) from public, anon, authenticated;
 grant execute on function public.brand_paused(uuid) to service_role;
@@ -124,35 +132,34 @@ $$;
 revoke all on function public.factory_review_summary(uuid) from public, anon, authenticated;
 grant execute on function public.factory_review_summary(uuid) to service_role;
 
--- The board's list for a row: reviews (waiting on staff, and counted),
--- paused_brands (only a brand paused on purpose left), decided (the rest).
-create or replace function public.payment_review_list(v public.payment_reviews)
-returns text
+-- The board's progress bar: 1 the bank deciding (or the refund made), 2 staff
+-- decide who pays, 3 done.
+create or replace function public.payment_review_step(v public.payment_reviews)
+returns int
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select case
-    when v.state in ('open', 'decide') or (v.state = 'inquiry' and v.dispute_due_by is not null) then 'reviews'
-    when v.cause = 'dispute' and v.state in ('resumed', 'declined') and v.brand_unpaused_at is null then 'paused_brands'
-    else 'decided' end;
+  select case when v.state in ('inquiry', 'open') then 1 when v.state = 'decide' then 2 else 3 end;
 $$;
-revoke all on function public.payment_review_list(public.payment_reviews) from public, anon, authenticated;
-grant execute on function public.payment_review_list(public.payment_reviews) to service_role;
+revoke all on function public.payment_review_step(public.payment_reviews) from public, anon, authenticated;
+grant execute on function public.payment_review_step(public.payment_reviews) to service_role;
 
--- Counted on the overview and in "Payment reviews (N)".
+-- Counted on the overview and in "Payment reviews (N)": a dispute staff must
+-- answer in Stripe (it has a respond-by date), or a decision.
 create or replace function public.payment_review_needs_staff(v public.payment_reviews)
 returns boolean
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select public.payment_review_list(v) = 'reviews';
+  select v.state = 'decide' or (v.state in ('inquiry', 'open') and v.dispute_due_by is not null);
 $$;
 revoke all on function public.payment_review_needs_staff(public.payment_reviews) from public, anon, authenticated;
 grant execute on function public.payment_review_needs_staff(public.payment_reviews) to service_role;
 
--- Stripe's dispute status → the review's state.
+-- Stripe's dispute status → the review's state ('decide' on a loss; a loss
+-- on a step not approved is 'closed' by the caller: nothing to decide).
 create or replace function public.payment_review_state_for(status text)
 returns text
 language sql
@@ -168,6 +175,23 @@ as $$
 $$;
 revoke all on function public.payment_review_state_for(text) from public, anon, authenticated;
 grant execute on function public.payment_review_state_for(text) to service_role;
+
+-- Brands paused now, for staff's Users page (admin_paused_brands) and the
+-- server's user directory (paused_brand_ids).
+create or replace function public.paused_brand_rows()
+returns table (org_id uuid, name text, since timestamptz, reviews bigint)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select v.brand_org_id, b.name, min(v.created_at), count(*)
+    from public.payment_reviews v join public.orgs b on b.id = v.brand_org_id
+   where v.cause = 'dispute' and v.state not in ('inquiry', 'inquiry_closed') and v.brand_unpaused_at is null
+   group by v.brand_org_id, b.name;
+$$;
+revoke all on function public.paused_brand_rows() from public, anon, authenticated;
+grant execute on function public.paused_brand_rows() to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3. On its way: a hand payout whose number staff revealed. What staff may
@@ -332,6 +356,7 @@ end;
 $$;
 revoke all on function public.tell_factory_resumed(public.payment_reviews, text, text) from public, anon, authenticated;
 
+-- "Account review complete", once the brand has no pause left.
 create or replace function public.tell_brand_unpaused(v public.payment_reviews)
 returns void
 language plpgsql
@@ -363,7 +388,7 @@ declare
   step text;
   num text;
 begin
-  if v.state not in ('open', 'decide') then
+  if v.state not in ('open', 'decide', 'closed') then
     return;
   end if;
   select coalesce(m.title, o.order_number), o.order_number into step, num
@@ -371,7 +396,7 @@ begin
     join public.order_payments p on p.id = v.payment_id
     left join public.order_milestones m on m.id = p.milestone_id
    where o.id = v.order_id;
-  if v.pauses_factory then
+  if v.pauses_factory and v.state in ('open', 'decide') then
     perform public.tell_factory_paused(v, step, num);
   end if;
   if v.cause = 'dispute' and v.brand_unpaused_at is null then
@@ -393,6 +418,11 @@ declare
   approved boolean := p.state = 'released' or p.release_requested_at is not null;
   first_state text := case when why = 'refund' then 'decide' else public.payment_review_state_for(status) end;
 begin
+  -- A loss on a step not approved: the factory never had the money, so there
+  -- is nothing to decide (20261125100000).
+  if first_state = 'decide' and why = 'dispute' and not approved then
+    first_state := 'closed';
+  end if;
   if why = 'refund' then
     -- A further refund made in Stripe adds to the one staff haven't decided yet.
     select * into v from public.payment_reviews
@@ -417,7 +447,7 @@ begin
 
   insert into public.payment_reviews (payment_id, order_id, factory_org_id, brand_org_id, cause, amount_cents, currency,
                                       stripe_ref, dispute_status, dispute_due_by, dispute_fee_cents, pauses_factory,
-                                      state, paused_at, brand_unpaused_at)
+                                      state, paused_at, brand_unpaused_at, closed_at)
   values (p.id, o.id, o.factory_org_id, o.brand_org_id, why, greatest(coalesce(amount, 0), 0), p.currency,
           ref, status, due_by, fee,
           -- Before approval the money was never in the factory's balance:
@@ -425,7 +455,8 @@ begin
           approved, first_state,
           case when approved and first_state in ('open', 'decide') then now() end,
           -- An inquiry pauses nobody (20261125100000).
-          case when first_state = 'inquiry' then now() end)
+          case when first_state = 'inquiry' then now() end,
+          case when first_state = 'closed' then now() end)
   returning * into v;
   perform public.tell_review_opened(v);
   return v;
@@ -436,7 +467,7 @@ grant execute on function public.open_payment_review(public.order_payments, publ
 
 -- The server, for every dispute it reads: one review per dispute id, its
 -- state from Stripe's status. Won resumes the factory by itself; lost waits
--- for staff; an inquiry pauses nobody.
+-- for staff (or closes, on a step not approved); an inquiry pauses nobody.
 create or replace function public.record_payment_review_dispute(target_payment uuid, dispute_id text, status text,
                                                                  amount_cents bigint, due_by timestamptz, fee_cents bigint)
 returns public.payment_reviews
@@ -485,6 +516,10 @@ begin
   if was_state = 'open' and next_state in ('inquiry', 'inquiry_closed') then
     next_state := 'open';
   end if;
+  -- Lost on a step still not approved: nothing to decide (20261125100000).
+  if next_state = 'decide' and was_state <> 'decide' and not approved and not v.pauses_factory then
+    next_state := 'closed';
+  end if;
   update public.payment_reviews
      set dispute_status = coalesce(status, dispute_status),
          dispute_due_by = coalesce(due_by, dispute_due_by),
@@ -497,15 +532,15 @@ begin
          paused_at = case when paused_at is null and next_state in ('open', 'decide')
                                and (pauses_factory or (next_state = 'decide' and approved)) then now() else paused_at end,
          -- An inquiry that became a chargeback pauses the brand from now.
-         brand_unpaused_at = case when was_state = 'inquiry' and next_state in ('open', 'decide') then null else brand_unpaused_at end,
-         brand_unpaused_by = case when was_state = 'inquiry' and next_state in ('open', 'decide') then null else brand_unpaused_by end,
-         closed_at = case when next_state in ('resumed', 'inquiry_closed') and closed_at is null then now() else closed_at end,
+         brand_unpaused_at = case when was_state = 'inquiry' and next_state in ('open', 'decide', 'closed') then null else brand_unpaused_at end,
+         brand_unpaused_by = case when was_state = 'inquiry' and next_state in ('open', 'decide', 'closed') then null else brand_unpaused_by end,
+         closed_at = case when next_state in ('resumed', 'inquiry_closed', 'closed') and closed_at is null then now() else closed_at end,
          updated_at = now()
    where id = v.id
   returning * into v;
 
   if was_state is distinct from next_state then
-    if next_state in ('open', 'decide') then
+    if next_state in ('open', 'decide', 'closed') then
       perform public.tell_review_opened(v);
     elsif next_state = 'resumed' and v.pauses_factory and was_state = 'open' then
       select coalesce(m.title, o.order_number) into step
@@ -520,7 +555,7 @@ revoke all on function public.record_payment_review_dispute(uuid, text, text, bi
 grant execute on function public.record_payment_review_dispute(uuid, text, text, bigint, timestamptz, bigint) to service_role;
 
 -- ---------------------------------------------------------------------------
--- 5. Staff decide: Approve or Decline, once the money is back with the brand.
+-- 5. Staff decide who pays, once the money is back with the brand.
 -- ---------------------------------------------------------------------------
 create or replace function public.decide_payment_review(target_review uuid, decision text, amount_cents bigint default null,
                                                         note text default null)
@@ -547,8 +582,8 @@ begin
   if not public.is_platform_admin() then
     raise exception 'deciding a payment review is limited to platform staff' using errcode = '42501';
   end if;
-  if decision is null or decision not in ('approve', 'decline') then
-    raise exception 'choose Approve or Decline' using errcode = '22023', hint = 'review_decision';
+  if decision is null or decision not in ('factory_pays', 'tsc_pays') then
+    raise exception 'choose who pays' using errcode = '22023', hint = 'review_decision';
   end if;
   select * into v from public.payment_reviews where id = target_review;
   if not found then
@@ -578,7 +613,7 @@ begin
   select * into m from public.order_milestones where id = p.milestone_id;
   step := coalesce(m.title, o.order_number);
 
-  if decision = 'approve' and v.pauses_factory then
+  if decision = 'factory_pays' and v.pauses_factory then
     if amount_cents is null or amount_cents < 0 then
       raise exception 'enter an amount of 0 or more' using errcode = '22023', hint = 'review_amount';
     end if;
@@ -608,11 +643,12 @@ begin
 
   update public.payment_reviews
      set decision = decide_payment_review.decision, decided_at = now(), decided_by = auth.uid(), closed_at = now(),
-         state = case when decide_payment_review.decision = 'approve' then 'approved' else 'declined' end,
+         state = case when decide_payment_review.decision = 'factory_pays' then 'factory_paid' else 'tsc_paid' end,
          returned_cents = amount, takes = taken, note = said_note, updated_at = now(),
-         brand_unpaused_at = case when decide_payment_review.decision = 'approve' and cause = 'dispute'
+         -- The factory pays: the brand can use its account again (if no other pause).
+         brand_unpaused_at = case when decide_payment_review.decision = 'factory_pays' and cause = 'dispute'
                                   then coalesce(brand_unpaused_at, now()) else brand_unpaused_at end,
-         brand_unpaused_by = case when decide_payment_review.decision = 'approve' and cause = 'dispute' and brand_unpaused_at is null
+         brand_unpaused_by = case when decide_payment_review.decision = 'factory_pays' and cause = 'dispute' and brand_unpaused_at is null
                                   then auth.uid() else brand_unpaused_by end
    where id = v.id
   returning * into v;
@@ -631,11 +667,11 @@ begin
               'payment_review_done:' || v.id)
       on conflict (org_id, dedupe_key) do nothing;
     else
-      -- Approve's note goes to the factory; Decline's stays with staff.
-      perform public.tell_factory_resumed(v, step, case when v.decision = 'approve' then said_note end);
+      -- factory_pays' note goes to the factory; tsc_pays' stays with staff.
+      perform public.tell_factory_resumed(v, step, case when v.decision = 'factory_pays' then said_note end);
     end if;
   end if;
-  if v.decision = 'approve' and v.cause = 'dispute' then
+  if v.decision = 'factory_pays' and v.cause = 'dispute' then
     perform public.tell_brand_unpaused(v);
   end if;
   return v;
@@ -644,68 +680,120 @@ $$;
 revoke all on function public.decide_payment_review(uuid, text, bigint, text) from public, anon;
 grant execute on function public.decide_payment_review(uuid, text, bigint, text) to authenticated, service_role;
 
-create or replace function public.unpause_brand(target_review uuid)
-returns public.payment_reviews
+-- Unpausing moved to the brand's account (20261125100000): it lifts every
+-- pause of that brand. Staff in the brand, or in a factory it orders from,
+-- leave it to someone else.
+drop function if exists public.unpause_brand(uuid);
+
+create or replace function public.unpause_brand_org(target_org uuid)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
   v public.payment_reviews;
+  lifted int := 0;
+  last public.payment_reviews;
 begin
   if not public.is_platform_admin() then
     raise exception 'unpausing a brand is limited to platform staff' using errcode = '42501';
   end if;
-  select * into v from public.payment_reviews where id = target_review for update;
-  if not found then
-    raise exception 'payment review not found' using errcode = 'P0002';
+  if not exists (select 1 from public.orgs where id = target_org and type = 'brand') then
+    raise exception 'brand not found' using errcode = 'P0002';
   end if;
-  perform public.payout_staff_check(v.factory_org_id);
-  if public.is_org_member(v.brand_org_id) then
+  if public.is_org_member(target_org) then
     raise exception 'you belong to this brand, so someone else on the staff must decide'
       using errcode = '42501', hint = 'review_own_company';
   end if;
-  if v.cause = 'dispute' and v.brand_unpaused_at is null and v.state in ('inquiry', 'open') then
-    raise exception 'the bank hasn''t decided yet' using errcode = '22023', hint = 'review_not_ready';
+  if exists (select 1 from public.production_orders o
+              where o.brand_org_id = target_org and public.is_org_member(o.factory_org_id)) then
+    raise exception 'your company has orders with this brand, so someone else on the staff must decide'
+      using errcode = '42501', hint = 'unpause_factory_side';
   end if;
-  if v.cause = 'dispute' and v.brand_unpaused_at is null and v.state = 'decide' then
-    raise exception 'approve or decline this review first' using errcode = '22023', hint = 'review_decide_first';
+  perform 1 from public.orgs where id = target_org for no key update;
+  for v in select * from public.payment_reviews
+            where brand_org_id = target_org and cause = 'dispute'
+              and state not in ('inquiry', 'inquiry_closed') and brand_unpaused_at is null
+            order by created_at
+              for update loop
+    update public.payment_reviews
+       set brand_unpaused_at = now(), brand_unpaused_by = auth.uid(), updated_at = now()
+     where id = v.id
+    returning * into last;
+    lifted := lifted + 1;
+  end loop;
+  if lifted = 0 then
+    raise exception 'this brand isn''t paused' using errcode = '22023', hint = 'brand_not_paused';
   end if;
-  if v.cause <> 'dispute' or v.brand_unpaused_at is not null or v.state not in ('resumed', 'declined') then
-    raise exception 'this brand is not paused by this review' using errcode = '22023', hint = 'review_brand_not_paused';
-  end if;
-  update public.payment_reviews
-     set brand_unpaused_at = now(), brand_unpaused_by = auth.uid(), updated_at = now()
-   where id = v.id
-  returning * into v;
-  perform public.tell_brand_unpaused(v);
-  return v;
+  perform public.tell_brand_unpaused(last);
+  return jsonb_build_object('org_id', target_org, 'lifted', lifted);
 end;
 $$;
-revoke all on function public.unpause_brand(uuid) from public, anon;
-grant execute on function public.unpause_brand(uuid) to authenticated, service_role;
+revoke all on function public.unpause_brand_org(uuid) from public, anon;
+grant execute on function public.unpause_brand_org(uuid) to authenticated, service_role;
+
+-- Staff's Users page: the brands paused now.
+create or replace function public.admin_paused_brands()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'limited to platform staff' using errcode = '42501';
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('org_id', org_id, 'name', name, 'since', since, 'reviews', reviews)
+                                    order by since)
+                     from public.paused_brand_rows()), '[]'::jsonb);
+end;
+$$;
+revoke all on function public.admin_paused_brands() from public, anon;
+grant execute on function public.admin_paused_brands() to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- 6. Staff's board.
+-- 6. Staff's board: one row per review, a three-step progress bar.
 -- ---------------------------------------------------------------------------
-create or replace function public.payment_review_status_word(v public.payment_reviews)
+
+create or replace function public.payment_review_reason(v public.payment_reviews)
 returns text
 language sql
 stable
 set search_path = public, pg_temp
 as $$
-  select case v.state
-    when 'inquiry' then 'Inquiry'
-    when 'open' then 'Waiting for the bank''s decision'
-    when 'decide' then case when v.refund_failed_at is not null then 'Refund failed · decision needed' else 'Decision needed' end
-    when 'resumed' then 'Bank decided for TSC'
-    when 'approved' then 'Approved'
-    when 'declined' then 'Declined'
-    when 'inquiry_closed' then 'Inquiry closed'
+  select case when v.cause = 'refund' then 'refunded_in_stripe'
+              when v.state in ('inquiry', 'inquiry_closed') or coalesce(v.dispute_status, '') like 'warning%' then 'inquiry'
+              else 'card_dispute' end;
+$$;
+revoke all on function public.payment_review_reason(public.payment_reviews) from public, anon, authenticated;
+grant execute on function public.payment_review_reason(public.payment_reviews) to service_role;
+
+-- The one short line beside the bar, without a date: step_date is shown
+-- after it in the reader's zone ("by <date>" on step 1, " · <date>" on 3).
+create or replace function public.payment_review_step_line(v public.payment_reviews)
+returns text
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select case
+    when v.state in ('inquiry', 'open') and v.dispute_due_by is not null then 'Respond in Stripe by'
+    when v.state in ('inquiry', 'open') then 'Waiting for the bank''s decision'
+    when v.state = 'decide' then format('Who pays for %s?', public.format_money(v.amount_cents, v.currency))
+    when v.state = 'factory_paid' then format('Factory paid %s', public.format_money(v.returned_cents, v.currency))
+      || coalesce(' · ' || (select nullif(btrim(u.full_name), '') from public.user_profiles u where u.id = v.decided_by), '')
+    when v.state = 'tsc_paid' then format('TSC paid %s', public.format_money(v.amount_cents, v.currency))
+      || coalesce(' · ' || (select nullif(btrim(u.full_name), '') from public.user_profiles u where u.id = v.decided_by), '')
+    when v.state = 'resumed' then 'Bank decided for us'
+    when v.state = 'closed' then 'Bank decided for the brand'
+    when v.state = 'inquiry_closed' then 'Inquiry closed'
   end;
 $$;
-revoke all on function public.payment_review_status_word(public.payment_reviews) from public, anon, authenticated;
-grant execute on function public.payment_review_status_word(public.payment_reviews) to service_role;
+revoke all on function public.payment_review_step_line(public.payment_reviews) from public, anon, authenticated;
+grant execute on function public.payment_review_step_line(public.payment_reviews) to service_role;
 
 create or replace function public.payment_review_board()
 returns jsonb
@@ -719,9 +807,9 @@ begin
     raise exception 'limited to platform staff' using errcode = '42501';
   end if;
   return coalesce((
-    select jsonb_agg(row_json order by list_rank, due_by nulls last, created_at)
+    select jsonb_agg(row_json order by counted desc, step_no, due_by nulls last, created_at)
       from (
-        select case public.payment_review_list(v) when 'reviews' then 0 when 'paused_brands' then 1 else 2 end as list_rank,
+        select public.payment_review_needs_staff(v) as counted, public.payment_review_step(v) as step_no,
                v.dispute_due_by as due_by, v.created_at,
                jsonb_build_object(
           'id', v.id, 'payment_id', v.payment_id, 'order_id', v.order_id, 'order_number', o.order_number,
@@ -729,29 +817,29 @@ begin
           'brand_org_id', v.brand_org_id, 'brand_name', b.name,
           'milestone_title', m.title, 'cause', v.cause,
           'state', v.state,
-          'status_word', public.payment_review_status_word(v),
+          'reason', public.payment_review_reason(v),
+          'step', public.payment_review_step(v),
+          'step_line', public.payment_review_step_line(v),
+          'step_date', case when v.state in ('inquiry', 'open') then v.dispute_due_by
+                            when v.state = 'decide' then null
+                            else coalesce(v.decided_at, v.closed_at) end,
+          'flag', case when v.state = 'decide' and v.refund_failed_at is not null then 'Refund failed' end,
           'respond_by', case when v.state in ('inquiry', 'open') then v.dispute_due_by end,
-          'list', public.payment_review_list(v),
-          'open', public.payment_review_list(v) = 'reviews',
+          'open', public.payment_review_needs_staff(v),
+          'actions', case when v.state = 'decide' then '["decide"]'::jsonb else '[]'::jsonb end,
           'amount_cents', v.amount_cents, 'currency', v.currency,
           'charged_cents', coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents),
           'step_cents', public.payment_factory_base_cents(p),
           'factory_part_cents', public.payment_review_factory_part(v),
           'returnable_cents', public.review_returnable_cents(v.factory_org_id),
-          'approve_max_cents', case when v.pauses_factory
+          'factory_max_cents', case when v.pauses_factory
                                     then least(public.payment_review_factory_part(v), public.review_returnable_cents(v.factory_org_id))
                                     else 0 end,
           'approved_step', p.release_requested_at is not null or p.state = 'released',
           'factory_paused', v.state in ('open', 'decide') and v.pauses_factory,
-          'brand_paused', v.cause = 'dispute' and v.brand_unpaused_at is null and v.state in ('open', 'decide', 'resumed', 'declined'),
-          'actions', case
-              when v.state = 'decide' then '["approve", "decline"]'::jsonb
-              when v.state in ('resumed', 'declined') and v.cause = 'dispute' and v.brand_unpaused_at is null then '["unpause_brand"]'::jsonb
-              else '[]'::jsonb end,
+          'brand_paused', public.brand_paused(v.brand_org_id),
           'decision', v.decision, 'returned_cents', v.returned_cents, 'note', v.note,
           'decided_at', v.decided_at, 'decided_by_name', (select u.full_name from public.user_profiles u where u.id = v.decided_by),
-          'brand_unpaused_at', v.brand_unpaused_at,
-          'brand_unpaused_by_name', (select u.full_name from public.user_profiles u where u.id = v.brand_unpaused_by),
           'refund_failed_at', v.refund_failed_at, 'refund_failed_cents', v.refund_failed_cents,
           'closed_at', v.closed_at,
           'stripe_ref', v.stripe_ref, 'stripe_payment_intent_id', p.stripe_payment_intent_id,
@@ -781,9 +869,8 @@ begin
           join public.orgs f on f.id = v.factory_org_id
           join public.orgs b on b.id = v.brand_org_id
           left join public.order_milestones m on m.id = p.milestone_id
-         where public.payment_review_list(v) <> 'decided'
-            or v.state = 'inquiry'
-            or coalesce(v.closed_at, v.decided_at, v.brand_unpaused_at, v.updated_at) > now() - interval '30 days'
+         where public.payment_review_step(v) < 3
+            or coalesce(v.closed_at, v.decided_at, v.updated_at) > now() - interval '30 days'
       ) rows), '[]'::jsonb);
 end;
 $$;
@@ -1471,7 +1558,7 @@ begin
   -- review opens again for staff to decide on what still went back
   -- (20261124100100).
   for v in select * from public.payment_reviews
-            where payment_id = p.id and cause = 'refund' and decision = 'approve' and returned_cents > 0
+            where payment_id = p.id and cause = 'refund' and decision = 'factory_pays' and returned_cents > 0
             order by decided_at desc
               for update loop
     left_back := v.returned_cents;
