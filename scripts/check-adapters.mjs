@@ -41,6 +41,8 @@ const ALLOWED_ABSENT = {
   "admin:companyCredits:mock": "live only; the review page draws no credits card without it",
   // The registry guard is live only: the prototype approves with no registry.
   "admin:termsBlock:mock": "live only; the database refuses Approve without signed terms",
+  // The live queue arrives oldest first; the prototype's mock list is drawn newest first (the button's default).
+  "admin:verificationQueueOrder:mock": "live only; the prototype's list keeps its designed Newest first",
   "admin:approvalBlock:mock": "live only; without it Approve is never greyed for a missing registry check",
   "admin:reviewEmailStatus:mock": "live only; the prototype has no email outbox, so the review page draws no email card without it",
   "admin:resendReviewEmails:mock": "live only; only called from the email card, which needs reviewEmailStatus",
