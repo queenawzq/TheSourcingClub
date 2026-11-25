@@ -43,8 +43,8 @@ export function paymentStatusWord(payment, order) {
     return paymentRefund(payment).refunded > 0 ? "Refunded" : "Reversed by your bank";
   }
   if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
-  // Disputed with the brand's bank: not held for the step while the bank decides.
-  if (payment.state === "confirmed" && payment.disputed_at) return "Disputed";
+  // Under a chargeback not resolved yet (order_pause's disputed_payment_ids).
+  if (payment.disputed && ["confirmed", "released"].includes(payment.state)) return "Disputed";
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
@@ -92,13 +92,14 @@ const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payme
  * listPaymentsForOrders() for those orders, stepCharges: listStepCharges()
  * for them, vendor: the filter's choice.
  */
-export function brandPaymentsView({ orders, payments, stepCharges = [], refunds = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
+export function brandPaymentsView({ orders, payments, stepCharges = [], refunds = [], disputedIds = new Set(), vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
   const byOrder = new Map(orders.map((order) => [order.id, order]));
   // `nameOf`: the vendor's name as the brand reads it (English where it has one).
   const vendorOf = (order) => nameOf(order) ?? "Factory";
   const refundsOf = (id) => refunds.filter((refund) => refund.payment_id === id);
   const listed = payments.filter((payment) => byOrder.has(payment.order_id))
-    .map((payment) => (refundsOf(payment.id).length ? { ...payment, refunds: refundsOf(payment.id) } : payment));
+    .map((payment) => (refundsOf(payment.id).length || disputedIds.has(payment.id)
+      ? { ...payment, refunds: refundsOf(payment.id), disputed: disputedIds.has(payment.id) } : payment));
 
   const rows = listed
     .filter((payment) => paymentStatusWord(payment, byOrder.get(payment.order_id)))

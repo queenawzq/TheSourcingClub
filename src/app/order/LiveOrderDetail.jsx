@@ -201,8 +201,9 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
     case "confirmed":
       // Held on a cancelled order it is on its way back to the brand: both sides read that.
       if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
-      // The brand disputed the charge with its bank: the money isn't held for the step any more.
-      if (payment.disputed_at) return "Disputed";
+      // Under a chargeback not resolved yet (order_pause's disputed_payment_ids):
+      // the money isn't held for the step any more.
+      if (payment.disputed) return "Disputed";
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
@@ -396,13 +397,16 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       setCharges(charged);
       setOnHold(Boolean(hold?.on_hold));
       setOrder(row);
+      const disputedIds = new Set(hold?.disputed_payment_ids ?? []);
       const refundsFor = (paymentId) => (refunds ?? []).filter((refund) => refund.order_id === orderId && refund.payment_id === paymentId)
         .sort((a, b) => String(a.refunded_at).localeCompare(String(b.refunded_at)));
       setMilestones((steps ?? []).map((milestone) => {
         if (!milestone.payment) return milestone;
         const word = words.has(milestone.payment.id) ? { word: words.get(milestone.payment.id) } : {};
         const listed = refundsFor(milestone.payment.id);
-        return word.word || listed.length ? { ...milestone, payment: { ...milestone.payment, ...word, ...(listed.length ? { refunds: listed } : {}) } } : milestone;
+        const disputed = disputedIds.has(milestone.payment.id) ? { disputed: true } : {};
+        return word.word || listed.length || disputed.disputed
+          ? { ...milestone, payment: { ...milestone.payment, ...word, ...disputed, ...(listed.length ? { refunds: listed } : {}) } } : milestone;
       }));
       setUpdates(posted ?? []);
       setActivity(events ?? []);
