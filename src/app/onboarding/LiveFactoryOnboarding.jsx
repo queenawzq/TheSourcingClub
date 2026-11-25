@@ -236,6 +236,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // The country the registration number was saved under, or the profile's.
   const [savedCountry, setSavedCountry] = useState(null);
   const [numberInUse, setNumberInUse] = useState(false);
+  // The registration number the factory was told is already in use; Next
+  // again with the same number goes on (staff check it).
+  const [numberWarned, setNumberWarned] = useState(null);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -413,7 +416,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       uploadLabel: copy.upload?.[lang] ?? null,
       soleUploadLabel: copy.soleUpload?.[lang] ?? null,
       // Saved, and already another company's on TSC: said, never refused.
-      inUseText: numberInUse ? (lang === "zh" ? "该号码已被 The Sourcing Club 上的另一家公司使用" : "Already used by another company on The Sourcing Club") : "",
+      inUseText: numberInUse ? (lang === "zh" ? "该号码已被 The Sourcing Club 上的另一家公司使用。请核对号码后继续。" : "Already used by another company on The Sourcing Club. Check the number before you continue.") : "",
       check: (value) => {
         const problem = registrationNumberProblem(registrationCountry, value);
         return { error: registrationProblemText(registrationCountry, problem, lang), confirmable: problem === "check_digit" };
@@ -708,6 +711,18 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         answers[factoryFieldName(ADDRESS_LABELS.trading)] = address;
       }
       setValues((current) => ({ ...current, ...answers }));
+
+      // A number already used by another company is said at its field, once,
+      // before the factory moves on.
+      const typedNumber = String(submitted["registration-number"] ?? "").trim();
+      if (typedNumber && submitted["registration-none"] !== true && typedNumber !== numberWarned) {
+        const inUse = await registrationInUse(org.id).catch(() => false);
+        setNumberInUse(inUse);
+        if (inUse) {
+          setNumberWarned(typedNumber);
+          return;
+        }
+      }
 
       if (submitted.signature && !termsAcceptance) {
         // The exact version on screen, so the record says what was agreed to.
