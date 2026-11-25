@@ -234,6 +234,8 @@ const SENTENCES = [
   [/^The (\d+) invitations they sent were withdrawn\.$/, (n) => `其发出的 ${n} 份邀请已撤回。`],
   // Orders and steps
   [/^The brand confirmed the production steps\.$/, () => "品牌已确认生产步骤。"],
+  [/^You confirmed the production steps\.$/, () => "你已确认生产步骤。"],
+  [/^The order continues\.$/, () => "订单继续进行。"],
   [/^The first step is open\.$/, () => "第一个步骤已开启。"],
   [/^Every step on this order is done\.$/, () => "此订单的所有步骤均已完成。"],
   [/^Confirm them and the order starts\.$/, () => "确认后订单即开始。"],

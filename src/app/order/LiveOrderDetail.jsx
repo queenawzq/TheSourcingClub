@@ -630,7 +630,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         && milestone.state !== "complete"
         && milestone.state !== "cancelled"
         && milestone.kind !== "payment_only",
-      updateDisabledReason: noUpdatePermission ? "Needs the Add update permission" : "",
+      // The disabled button's title says "step", as the brand's does; the
+      // design's fallback ("…this milestone opens") is the prototype's alone.
+      updateDisabledReason: noUpdatePermission ? "Needs the Add update permission" : "Available when this step opens",
       canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
       // Approval ends the work, not its history. Keep existing comments and
