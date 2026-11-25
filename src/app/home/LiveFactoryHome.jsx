@@ -36,7 +36,7 @@ import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
-import { requestSampleTag } from "../rfq/request-facts.js";
+import { requestQuantityTag, requestSampleTag } from "../rfq/request-facts.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -60,7 +60,7 @@ function toDashboardRfq(rfq) {
     trust: requestSampleTag(rfq),
     facts: [
       ["Unit target", formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency)],
-      ["Quantity", rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : "—"],
+      ["Quantity", requestQuantityTag(rfq) || "—"],
     ],
     description: rfq.brief ?? rfq.material_notes ?? "",
     images: [],

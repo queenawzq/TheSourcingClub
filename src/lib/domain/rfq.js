@@ -20,6 +20,13 @@ const RFQ_COLUMNS = `
   published_at, awarded_at, awarded_quote_id, reorder_of_order_id, created_at, updated_at
 `;
 
+/**
+ * A request's colour split, embedded for the list cards (requestQuantityTag):
+ * one read with the requests, not one per card. Same read policy as the
+ * request itself (can_see_rfq).
+ */
+const LIST_SPLITS = "rfq_colour_splits (colour, quantity, sort)";
+
 export async function createDraftRfq(orgId) {
   return unwrap(
     await supabase
@@ -79,7 +86,7 @@ export async function listRfqs(orgId) {
       // rfqs and quotes (quotes.rfq_id, and rfqs.awarded_quote_id pointing
       // back), so an unqualified `quotes(count)` is ambiguous and PostgREST
       // refuses it rather than guessing.
-      .select(`${RFQ_COLUMNS}, quotes!quotes_rfq_id_fkey(count), rfq_invitations(count)`)
+      .select(`${RFQ_COLUMNS}, ${LIST_SPLITS}, quotes!quotes_rfq_id_fkey(count), rfq_invitations(count)`)
       .eq("brand_org_id", orgId)
       // One vendor revising twice is one quote, not three: superseded and
       // withdrawn rows are history. Same set listQuotesForRfq() shows, so the
@@ -102,7 +109,7 @@ export async function listOpenRfqs() {
   return readEveryPage(
     () => supabase
       .from("rfqs")
-      .select(`${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`)
+      .select(`${RFQ_COLUMNS}, ${LIST_SPLITS}, orgs!rfqs_brand_org_id_fkey (name)`)
       .eq("status", "open")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false }),
@@ -120,7 +127,7 @@ export async function listOpenRfqs() {
  * beyond the factory's identity.
  */
 export async function listFactoryRfqs(factoryOrgId) {
-  const rfqColumns = `${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`;
+  const rfqColumns = `${RFQ_COLUMNS}, ${LIST_SPLITS}, orgs!rfqs_brand_org_id_fkey (name)`;
 
   // Each a page at a time: one read stops at 1,000 rows without saying so.
   const [quotes, invitations] = await Promise.all([
@@ -345,7 +352,7 @@ export async function listSavedRequests(orgId) {
   return unwrap(
     await supabase
       .from("saved_rfqs")
-      .select("rfq_id, created_at, rfqs (id, title, brief, quantity_total, quote_deadline, target_unit_price_min_cents, target_unit_price_max_cents, requires_sample, sample_notes, status, published_at, orgs!rfqs_brand_org_id_fkey (id, name))")
+      .select(`rfq_id, created_at, rfqs (id, title, brief, quantity_total, quote_deadline, target_unit_price_min_cents, target_unit_price_max_cents, requires_sample, sample_notes, status, published_at, ${LIST_SPLITS}, orgs!rfqs_brand_org_id_fkey (id, name))`)
       .eq("org_id", orgId)
       .order("created_at", { ascending: false }),
     "load your saved requests",

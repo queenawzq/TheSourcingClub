@@ -17,7 +17,7 @@ import React, { useEffect, useState } from "react";
 import { initials } from "../order/order-view.js";
 import { quoteTextValues } from "./quote-text-fields.js";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
-import { brandSummary, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { brandSummary, getColourSplits, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import {
   formatCapacityWindow,
@@ -40,7 +40,7 @@ import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
-import { requestSamples } from "../rfq/request-facts.js";
+import { requestQuantity, requestSamples } from "../rfq/request-facts.js";
 
 // The same day format as the quote-sent screen, so "Quote due" reads alike.
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -65,7 +65,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
     let cancelled = false;
     (async () => {
       try {
-        const [rfq, quote, cost, balance, scores, terms, documents, linkedTermIds] = await Promise.all([
+        const [rfq, quote, cost, balance, scores, terms, documents, linkedTermIds, colourSplits] = await Promise.all([
           getRfq(rfqId),
           getMyQuote(rfqId, org.id),
           quoteCreditCost(),
@@ -74,7 +74,9 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
           listTermsByKind(["sourcing_responsibility", "certification", "service"]),
           getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
           listLinks("rfq", rfqId),
+          getColourSplits(rfqId).catch(() => []),
         ]);
+        rfq.colourSplits = colourSplits;
         const brand = rfq.brand_org_id ? await brandSummary(rfq.brand_org_id).catch(() => null) : null;
         rfq.paymentVerified = Boolean(brand?.payment_verified);
         const [lines, materialLines] = quote?.id
@@ -206,7 +208,9 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
         initials: initials(rfq.orgs?.name),
-        quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
+        // The request's quantity and split, as Prepare quote shows them.
+        quantity: requestQuantity(rfq.quantity_total, rfq.colourSplits)
+          || (quote.production_quantity ? `${quote.production_quantity} units` : ""),
         specialty: rfq.brief ?? "",
         budget: formatRange(
           rfq.target_unit_price_min_cents,

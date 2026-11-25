@@ -23,7 +23,7 @@ import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
 import useFactoryRfqOrganization from "./useFactoryRfqOrganization.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
-import { requestSamples } from "./request-facts.js";
+import { requestQuantityTag, requestSamples } from "./request-facts.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -92,7 +92,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}, files = []) {
     images,
     files: files.map((file) => file.file_name),
     facts: [
-      ["Quantity", rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : "—"],
+      ["Quantity", requestQuantityTag(rfq) || "—"],
       ["Samples", requestSamples(rfq)],
     ],
     metrics: [
