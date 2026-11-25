@@ -42,6 +42,7 @@ import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { supabase } from "../../lib/supabase.js";
+import { orderPause } from "../../lib/domain/payment-reviews.js";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
@@ -78,6 +79,8 @@ function missingFor(milestone, kind, { canFund, canApprove }) {
 }
 
 const permissionWords = (missing) => missing.join(" and ");
+/** A brand paused by a payment review: the hover title on what it can't press. */
+const PAUSED_TITLE = "Your account is under review.";
 
 /**
  * What this step is waiting for, and from whom.
@@ -324,6 +327,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [charges, setCharges] = useState(null);
+  // The order's brand is paused by a payment review (order_pause): the
+  // factory reads that the order is on hold, the brand can't fund, approve or
+  // propose cancelling. A failed read is "not on hold": the database refuses anyway.
+  const [onHold, setOnHold] = useState(false);
   // A factory with no withdrawal method (factory_balance().no_saved_method:
   // the server's one rule, as the notices and the card). A failed read says
   // nothing rather than something wrong.
@@ -346,7 +353,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     try {
-      const [row, steps, posted, events, charged, earning] = await Promise.all([
+      const [row, steps, posted, events, charged, earning, hold] = await Promise.all([
         getOrder(orderId),
         listMilestones(orderId),
         listOrderUpdates(orderId),
@@ -357,6 +364,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           supabase.from("order_payments").select(EARNING_COLUMNS).eq("order_id", orderId),
           supabase.rpc("factory_balance", { target_org: org.id }),
         ]).catch(() => null) : null,
+        orderPause(orderId).catch(() => null),
       ]);
       if (version !== loadVersion.current) return;
       if (!row) throw new Error("This order isn't available to you.");
@@ -366,6 +374,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         ? earningWordsFor(earningRows.data, balance.data, row) : new Map();
       if (balance && !balance.error && balance.data) setNoMethod(balance.data.no_saved_method === true);
       setCharges(charged);
+      setOnHold(Boolean(hold?.on_hold));
       setOrder(row);
       setMilestones((steps ?? []).map((milestone) => (milestone.payment && words.has(milestone.payment.id)
         ? { ...milestone, payment: { ...milestone.payment, word: words.get(milestone.payment.id) } } : milestone)));
@@ -554,6 +563,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // The activity lines name the vendor as the rest of the page does.
   const namedOrder = isFactory || !order.factory ? order : { ...order, factory: { ...order.factory, name: factoryName } };
   const running = order.status === "active";
+  const brandPaused = !isFactory && onHold;
   // What this person may do here (has_org_permission); the database refuses
   // the rest, so the rows offer only these.
   const viewer = {
@@ -578,7 +588,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     const reminder = isFactory
       ? { canRemind: running && waitingOnOther(milestone, true, posted), reminderReason: "" }
       : brandReminderState(milestone, { running, posted, current: milestone.id === order.current_milestone_id });
-    const next = actionFor(milestone, { ...viewer, posted });
+    const found = actionFor(milestone, { ...viewer, posted });
+    // Paused by a payment review: Fund, Approve and Mark done are off, the
+    // reason only in the hover title (the timeline's line says it once).
+    const next = brandPaused && found.action && !found.actionDisabled
+      ? { ...found, actionDisabled: true, actionDisabledReason: PAUSED_TITLE } : found;
     const noUpdatePermission = isFactory && !viewer.canUpdate && running
       && milestone.kind !== "payment_only" && !["complete", "cancelled"].includes(milestone.state);
     const fileCount = stepUpdates.reduce((sum, update) => sum + (update.documents?.length ?? 0), 0);
@@ -707,6 +721,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
   );
 
+
   const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;
   const stepPopup = openMilestone && (
     <StepUpdatesModal
@@ -762,6 +777,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           : undefined}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
+        // The brand is paused by a payment review: one line under the timeline's title, like the brand's.
+        timelineNotice={onHold && order.status !== "cancelled" ? "This order is on hold while our team reviews a payment." : ""}
       />
       {stepPopup}
       {cancel.dialog}
@@ -776,7 +793,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         milestones={milestones}
         reload={load}
         onBack={() => navigate("/orders")}
-        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
+        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel, cancelLocked: brandPaused && proposeCancel ? PAUSED_TITLE : "" }}
         // Release funds pays (begin_payment_checkout); anyone else stays on the order.
         onFund={viewer.canFund ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
         locked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
@@ -826,6 +843,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
+        cancelLocked={brandPaused && proposeCancel ? PAUSED_TITLE : ""}
+        timelineNotice={brandPaused && running ? "Your account is under review. You can't fund, approve or cancel until it's done." : ""}
       />
       {stepPopup}
       {cancel.dialog}

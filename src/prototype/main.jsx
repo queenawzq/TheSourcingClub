@@ -4267,7 +4267,8 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
           {/* Live only, no design yet: cancelling an order whose steps are
               still being set. */}
           {rail.vendor.onCancel && (
-            <button className="order-cancel-link" type="button" onClick={rail.vendor.onCancel}>
+            <button className="order-cancel-link" type="button" onClick={rail.vendor.onCancel}
+              disabled={Boolean(rail.vendor.cancelLocked) || undefined} title={rail.vendor.cancelLocked || undefined}>
               Cancel order
             </button>
           )}
@@ -8659,6 +8660,10 @@ export function ProjectDetailScreen({
   // proposed (or once the order is cancelled), and the order-level menu.
   banner = null,
   onCancelOrder = null,
+  // Live only: why Cancel order is off (a hover title), and one line under
+  // the timeline's title (a brand paused by a payment review).
+  cancelLocked = "",
+  timelineNotice = "",
 }) {
   const milestoneList = liveMilestones ?? projectDetailMilestones;
   const isLive = Boolean(liveMilestones);
@@ -8691,6 +8696,8 @@ export function ProjectDetailScreen({
               <button
                 type="button"
                 role="menuitem"
+                disabled={Boolean(cancelLocked) || undefined}
+                title={cancelLocked || undefined}
                 onClick={() => {
                   close();
                   onCancelOrder();
@@ -8732,6 +8739,7 @@ export function ProjectDetailScreen({
           {activeDetailTab === "overview" && (
             <section className="milestone-timeline-card">
               <h2>Production timeline</h2>
+              {timelineNotice && <p className="order-paused-line" role="status" data-testid="order-paused-line">{timelineNotice}</p>}
               <div className="milestone-timeline-list">
                 {milestoneList.map((milestone, index) => (
                   <ProjectMilestoneItem

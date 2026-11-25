@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { myPaymentPause } from "../lib/domain/payment-reviews.js";
+import { useRouter } from "../lib/router.jsx";
 
 /**
  * Whether this company is paused by a payment review (20261124100000):
@@ -36,9 +37,11 @@ export const PAUSED_ACCEPT = "You can't accept quotes while your account is unde
  */
 export function PaymentPauseNotice({ org, isFactory }) {
   const pause = usePaymentPause(org?.id);
+  const { path } = useRouter();
   const [closed, setClosed] = useState(false);
   const paused = isFactory ? pause.factory : pause.brand;
-  if (!paused || closed) return null;
+  // The factory's Payments page says it on the balance card already.
+  if (!paused || closed || (isFactory && /^\/payout(\/|$)/.test(path ?? ""))) return null;
   return (
     <div className="tsc-team-notices tsc-review-notice" role="status" data-testid={isFactory ? "factory-under-review" : "brand-under-review"}>
       <div className="tsc-team-notice">
