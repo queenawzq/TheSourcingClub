@@ -992,9 +992,9 @@ export const factoryMainZhText = {
   "Estimated capacity": "估算产能",
   "Booking level": "接单状态",
   "Reference style": "参考款",
-  "Factory walkthrough": "工厂巡视视频",
+  "Factory walkthrough": "工厂介绍视频",
   "Manage video": "管理视频",
-  "Verified production-floor walkthrough": "已验证的生产现场巡视视频",
+  "Verified production-floor walkthrough": "已验证的生产现场介绍视频",
   "Continuous facility walkthrough covering the core areas requested during onboarding.": "连续展示入驻流程要求的核心工厂区域。",
   "Entrance or reception": "入口或前台",
   "Main production floor": "主要生产车间",
@@ -1092,7 +1092,7 @@ export const factoryMainZhText = {
   "Verification documents": "验证文件",
   "In review": "审核中",
   "Business registration is verified and OEKO-TEX is uploaded. GOTS and BSCI are still pending, so verified-certification matching is not fully unlocked yet.": "营业执照已验证，OEKO-TEX 已上传。GOTS 和 BSCI 仍待补充，因此认证匹配尚未完全开放。",
-  "The walkthrough video is present and covers the core production areas requested during onboarding.": "工厂巡视视频已上传，并覆盖入驻流程要求的核心生产区域。",
+  "The walkthrough video is present and covers the core production areas requested during onboarding.": "工厂介绍视频已上传，并覆盖入驻流程要求的核心生产区域。",
   "GOTS certificate": "GOTS 证书",
   "Needs attention": "需要处理",
   "Upload the certificate file or remove the pending certification if it is not currently held.": "请上传证书文件；如目前未持有该认证，请移除待补充状态。",
@@ -1360,7 +1360,7 @@ export const factoryMainZhText = {
   "Send": "发送",
   "Search conversations...": "搜索对话...",
   "No brand reviews yet": "暂无品牌评价",
-  "No walkthrough video yet.": "暂无工厂巡视视频。",
+  "No walkthrough video yet.": "暂无工厂介绍视频。",
   "All": "全部",
   "No messages yet.": "暂无消息。",
   "Translate to English": "翻译成英文",
@@ -1382,10 +1382,10 @@ export const factoryMainZhText = {
   "Registration number": "注册号",
   "None (sole proprietor)": "无（个体经营）",
   "Certificate files": "证书文件",
-  "Add walkthrough": "添加巡视视频",
-  "Add a walkthrough video": "添加巡视视频",
-  "Add a short production-floor walkthrough so brands can see the factory before they contact you.": "添加一段简短的生产车间巡视视频，让品牌在联系你之前先了解工厂。",
-  "The walkthrough video is on your profile.": "巡视视频已在你的资料中。",
+  "Add walkthrough": "添加工厂介绍视频",
+  "Add a walkthrough video": "添加工厂介绍视频",
+  "Add a short production-floor walkthrough so brands can see the factory before they contact you.": "添加一段简短的生产车间介绍视频，让品牌在联系你之前先了解工厂。",
+  "The walkthrough video is on your profile.": "工厂介绍视频已在你的资料中。",
   "Upload registration": "上传营业执照",
   "Upload your business registration": "上传营业执照",
   "Upload a new business registration": "上传新的营业执照",
@@ -1482,8 +1482,8 @@ export const factoryMainZhText = {
   "Add or update the brand references shown on the public profile.": "添加或更新公开资料中显示的品牌参考。",
   "Edit profile images": "编辑资料图片",
   "Upload or replace the profile image used on this profile.": "上传或替换资料中使用的头像图片。",
-  "Manage walkthrough": "管理巡视视频",
-  "Update the verified production-floor walkthrough and covered areas.": "更新已验证的生产车间巡视视频和拍摄区域。",
+  "Manage walkthrough": "管理工厂介绍视频",
+  "Update the verified production-floor walkthrough and covered areas.": "更新已验证的生产车间介绍视频和拍摄区域。",
   "Update sample images": "更新样品图片",
   "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit.": "添加样衣、开发案例和成品图片，展示工厂最擅长的生产类型。",
   "Manage verification documents": "管理验证文件",
@@ -1553,7 +1553,7 @@ const PROFILE_TODO_ZH = [
   ["your factory details", "工厂详情"],
   ["your production fit", "生产匹配"],
   ["capacity and terms", "产能与条款"],
-  ["a walkthrough video", "工厂巡视视频"]
+  ["a walkthrough video", "工厂介绍视频"]
 ];
 
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
@@ -2234,8 +2234,8 @@ const onboardingCopy = {
         referenceHelper: "你曾合作过的品牌或零售商。"
       },
       {
-        title: "添加工厂巡视视频",
-        intro: "录制或上传一段连续的 2-4 分钟工厂巡视视频。无需剪辑。",
+        title: "添加工厂介绍视频",
+        intro: "录制或上传一段连续的 2-4 分钟工厂介绍视频。无需剪辑。",
         laterNote: "你可以之后在资料页完成此步骤。",
         instructionTitle: "录制内容",
         instructionCopy: "从入口或前台开始，说出工厂名称、城市和当天日期。然后慢慢拍摄主要生产车间、物料或组件区域、关键机器或工位、质检区域，以及包装或仓库区域。",
@@ -2243,7 +2243,7 @@ const onboardingCopy = {
         checklistTitle: "视频应包括：",
         checklist: ["入口或前台", "主要生产车间", "物料 / 组件区域", "关键机器 / 工位", "质检区域", "包装或仓库"],
         optionTitle: "选择添加视频的方式（选填）",
-        options: [["直接录制", "打开录制器，现在拍摄工厂巡视视频。"], ["上传视频", "上传已拍好的工厂巡视视频文件。"]]
+        options: [["直接录制", "打开录制器，现在拍摄工厂介绍视频。"], ["上传视频", "上传已拍好的工厂介绍视频文件。"]]
       },
       {
         title: "确认你的工厂资料",
@@ -2255,7 +2255,7 @@ const onboardingCopy = {
           ["专长、服务、市场与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "制版，样衣开发"], ["主要出口市场", "美国与加拿大，欧盟"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
           ["产能与合作条件", [["MOQ", "100 件 / 款"], ["大货生产周期", "30-45 天"], ["常规打样周期", "10-14 天"], ["产能品类", "梭织"], ["产线工时", "2,400 小时 / 月"], ["参考款", "基础梭织衬衫 · 约 18 分钟 / 件"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"]]],
           ["验证资料", [["营业执照 / 注册文件", "已上传"], ["认证", "OEKO-TEX 已上传；GOTS 和 BSCI 待补充"], ["客户参考", "Maison Rue · Ari Chen"]]],
-          ["工厂巡视视频", [["视频状态", "尚未添加"], ["建议长度", "2-4 分钟"], ["需展示区域", "入口、生产车间、物料、机器、质检、包装"]]]
+          ["工厂介绍视频", [["视频状态", "尚未添加"], ["建议长度", "2-4 分钟"], ["需展示区域", "入口、生产车间、物料、机器、质检、包装"]]]
         ],
         cta: "确认"
       },
@@ -8687,7 +8687,7 @@ function FactoryOnboardingStep({
               <section className="walkthrough-camera-dialog" role="dialog" aria-modal="true" aria-labelledby="walkthrough-camera-title">
                 <header>
                   <div>
-                    <h2 id="walkthrough-camera-title">{language === "zh" ? "录制工厂巡视视频" : "Record factory walkthrough"}</h2>
+                    <h2 id="walkthrough-camera-title">{language === "zh" ? "录制工厂介绍视频" : "Record factory walkthrough"}</h2>
                     <p>{language === "zh" ? "准备好后开始录制。录制时请缓慢移动设备。" : "Start when ready and move the device slowly while recording."}</p>
                   </div>
                   <CloseIconButton className="walkthrough-camera-close" label={language === "zh" ? "关闭摄像头" : "Close camera"} onClick={closeCamera} />

@@ -254,7 +254,7 @@ export function tradingProfileView(parts, now = new Date(), language = "en") {
     ],
     samples,
     trust: [
-      { name: t("Business registration", "企业注册"), status: registration },
+      { name: t("Business registration", "营业执照"), status: registration },
       ...certificates,
     ].map((item) => ({ ...item, status: statusWord(item.status), verified: item.status === "Verified" || item.status === "Uploaded" })),
     references,

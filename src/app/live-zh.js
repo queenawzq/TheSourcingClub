@@ -45,7 +45,7 @@ const PROFILE_TODO = [
   ["your factory details", "工厂详情"],
   ["your production fit", "生产匹配"],
   ["capacity and terms", "产能与条款"],
-  ["a walkthrough video", "工厂巡视视频"],
+  ["a walkthrough video", "工厂介绍视频"],
 ];
 function profileTodo(list) {
   let rest = list.replace(/ and more$/, "");
