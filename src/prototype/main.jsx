@@ -3330,6 +3330,9 @@ export function BrandOnboarding({
   // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
   // button. Absent, the designed "You're all set" card shows.
   completion = null,
+  // Live only: false when no discount stands behind the finish card's
+  // welcome offer, so the card makes no promise. Absent, as designed.
+  discountOffer = true,
 }) {
   const designedStep = brandOnboardingSteps[step];
   const extraGroups = designedStep.type === "chips" ? extraChipGroups?.[step] : null;
@@ -3407,6 +3410,7 @@ export function BrandOnboarding({
           documents={documents}
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
+          discountOffer={discountOffer}
         />
         {extra}
 
@@ -3449,7 +3453,7 @@ export function BrandOnboarding({
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance, discountOffer = true }) {
   // Live mounts replace a hardcoded option list with the taxonomy; the
   // prototype passes nothing and keeps its own. The design is the UI, never
   // the data source.
@@ -3792,7 +3796,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
       <img className="brand-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
       {content.introNode ?? <p>{content.intro}</p>}
-      {content.reward !== false && <section className="brand-onboarding-discount-reward">
+      {content.reward !== false && discountOffer && <section className="brand-onboarding-discount-reward">
         <span>Welcome discount</span>
         <strong>$50 discount</strong>
         <p>Available for eligible orders. Invite another brand to earn another $50 discount.</p>

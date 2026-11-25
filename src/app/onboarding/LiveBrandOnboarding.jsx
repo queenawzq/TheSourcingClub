@@ -402,6 +402,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
+      // No discount can be used at payment yet (DISCOUNTS_USABLE in
+      // LiveHome), and a brand invite earns nothing yet.
+      discountOffer={false}
       notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language="en" /> : null}
       completion={reviewCompletion(review, {
         language: "en",
