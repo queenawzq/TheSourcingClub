@@ -7,7 +7,8 @@
  * spellings of the same category, which is exactly what the prototypes do
  * today.
  */
-import { supabase, unwrap } from "../supabase.js";
+import { fetchApi, supabase, unwrap } from "../supabase.js";
+import { countryIn, countryName, fallbackLocation } from "../../shared/company-address.mjs";
 
 const BRAND_COLUMNS = `
   org_id, legal_name, business_email, website_url, hq_location, founded_year,
@@ -41,7 +42,7 @@ export function firstNumber(text) {
 }
 
 /**
- * The design asks for "Factory Location" as free text ("Porto, Portugal")
+ * The design asks for a free-text place ("Porto, Portugal")
  * and never for a country code. But country_code is what match_score
  * compares, so a profile without one is invisible to half the marketplace.
  *
@@ -60,6 +61,36 @@ export function countryCodeFrom(location, countryTerms = []) {
     return (en && text.includes(en)) || (zh && String(location).includes(zh));
   });
   return hit?.extra?.code ?? null;
+}
+
+/**
+ * The columns a save of the vendor's one address writes ("Factory Address",
+ * "Company Address"; src/shared/company-address.mjs). The full address goes
+ * to the write-only production_address ("" clears it); a brand reads only
+ * location, which is set to the country alone here when the address changed,
+ * until the server's split (structureAddress) makes it "City, Country".
+ * Unchanged, location is left alone: an existing company keeps what it had.
+ */
+export function addressPatch(typed, previous, previousCountry = null) {
+  const said = String(typed ?? "").trim();
+  const patch = { production_address: said };
+  if (said === String(previous ?? "").trim()) return { patch, changed: false };
+  // No country in the words: the one Browse already files the company under,
+  // as the server's split keeps it (api/structure-address.js decide()).
+  patch.location = fallbackLocation(said) ?? (said ? countryName(previousCountry) : null) ?? null;
+  const code = said ? countryIn(said) : null;
+  if (code) patch.country_code = code;
+  return { patch, changed: Boolean(said) };
+}
+
+/**
+ * Ask the server to split the address just saved. Never waited on by a save,
+ * never throws: without it the address stays as typed (api/structure-address.js).
+ */
+export function structureAddress(orgId) {
+  return fetchApi("/api/structure-address", { orgId })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
 }
 
 export async function getBrandProfile(orgId) {

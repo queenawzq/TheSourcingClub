@@ -670,10 +670,10 @@ async function main() {
     await fillNamed(page, "factory-name", factoryName);
     await fillNamed(page, "year-founded", "2011");
     await fillNamed(page, "website-url", "www.atelier-e2e.pt");
-    await fillNamed(page, "factory-location", "Porto, Portugal");
+    await fillNamed(page, "factory-address", "Rua das Flores 12, 4050-262 Porto, Portugal");
     await fillNamed(page, "nearest-port", "Leixões");
     await fillNamed(page, "total-employees", "48");
-    await record(page, "Factory basics", "one designed card, six fields");
+    await record(page, "Factory basics", "one designed card, five fields");
     await nextCard(page);
 
     await fillNamed(page, "about-the-factory", "Small-batch woven shirting and dresses.");

@@ -66,7 +66,8 @@ export function tradingProfileChecks(parts, now = new Date()) {
   const gaps = (pairs) => pairs.filter(([, given]) => !given).map(([label]) => label);
 
   const identityGaps = gaps([
-    ["headquarters", profile?.location],
+    // Brands read the location the address gives (src/shared/company-address.mjs).
+    ["company address", profile?.production_address || profile?.location],
     ["year founded", profile?.founded_year],
     ["team size", profile?.employee_count != null],
     ["languages", profile?.languages_supported],
@@ -96,8 +97,10 @@ export function tradingProfileChecks(parts, now = new Date()) {
       title: "Company identity",
       todo: "your company details",
       ...(identityGaps.length
-        ? missing(`Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
-        : complete("Company name, headquarters, year founded, team size and languages are complete.")),
+        // Brands never see the address itself (only its city and country), so
+        // a missing one is said as what to do.
+        ? missing(identityGaps.includes("company address") ? `Add your ${listWords(identityGaps)}.` : `Brands can't see your ${listWords(identityGaps)} yet.`, { label: "Update overview", editor: "company" }, `Add your ${listWords(identityGaps)}`)
+        : complete("Company name, address, year founded, team size and languages are complete.")),
     },
     {
       key: "network",
@@ -191,6 +194,16 @@ export function tradingProfileView(parts, now = new Date()) {
       ["Company name", name],
       ["Year founded", profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN],
       ["Website URL", profile?.website_url || NOT_GIVEN],
+      // The full address: the company's own page only.
+      ["Company address", profile?.production_address || profile?.location || NOT_GIVEN],
+      ["Team size", team ? `${team} people` : NOT_GIVEN],
+      ["Languages", profile?.languages_supported || NOT_GIVEN],
+    ],
+    // What a brand sees, for the page's public view.
+    publicOverviewRows: [
+      ["Company name", name],
+      ["Year founded", profile?.founded_year ? String(profile.founded_year) : NOT_GIVEN],
+      ["Website URL", profile?.website_url || NOT_GIVEN],
       ["Headquarters", location],
       ["Team size", team ? `${team} people` : NOT_GIVEN],
       ["Languages", profile?.languages_supported || NOT_GIVEN],
@@ -251,7 +264,7 @@ export function tradingProfileEditForm(parts) {
     name: orgName || profile?.legal_name || "",
     founded: text(profile?.founded_year),
     website: text(profile?.website_url),
-    location: text(profile?.location),
+    address: text(profile?.production_address),
     employees: text(profile?.employee_count),
     languages: text(profile?.languages_supported),
     intro: text(profile?.intro),

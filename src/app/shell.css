@@ -830,3 +830,21 @@ body {
 .review-link-gate-status img { width: 42px; height: 42px; }
 .review-link-gate-status h1 { margin: 0; color: var(--text); font-size: 20px; font-weight: 700; line-height: 26px; }
 .review-link-gate-status p { margin: 0; color: var(--text-muted); font-size: 13px; font-weight: 500; line-height: 18px; overflow-wrap: anywhere; }
+
+/* Settings → Location for a vendor (SettingsScreen's live `locationLocked`):
+   read from its address, so drawn as the onboarding fields draw a field that
+   can be read but not changed, with the reason under it. */
+.settings-form-grid input.tsc-settings-readonly,
+.settings-form-grid input.tsc-settings-readonly:focus {
+  background: #f4f6f9;
+  color: #5b6577;
+  border-color: #d7e0ea;
+  box-shadow: none;
+  cursor: default;
+}
+.settings-form-grid .tsc-settings-field-note {
+  color: #4f6078;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}

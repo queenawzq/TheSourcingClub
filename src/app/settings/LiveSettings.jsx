@@ -44,8 +44,7 @@ import {
 import { MIN_PASSWORD_LENGTH, useAuth } from "../../lib/auth.jsx";
 import { useManualPayouts } from "../order/use-manual-payouts.js";
 import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
-import { countryCodeFrom, getBrandProfile, getFactoryProfile, saveFactoryProfile } from "../../lib/domain/profile.js";
-import { listTerms } from "../../lib/domain/taxonomy.js";
+import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
 import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard, { payoutRemovalError } from "../order/StripePayoutCard.jsx";
@@ -475,19 +474,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onSaveAccount={canSettings ? async (details) => {
           // A non-owner's save never carries the name: their copy goes stale
           // when an owner renames the company, and null means "leave it".
-          const { data: result, error: refused } = await supabase.rpc("save_account_settings", { target_org: org.id, account_name: isOwner ? details.name : null, phone: details.phone, location: details.location });
+          // A vendor's location is read from its address (its profile), so
+          // null leaves it as it is.
+          const { data: result, error: refused } = await supabase.rpc("save_account_settings", { target_org: org.id, account_name: isOwner ? details.name : null, phone: details.phone, location: isFactory ? null : details.location });
           if (refused) throw new Error(refused.code === "22023" ? refused.message : teamError(refused, "save these details"));
           setSavedAccount(result);
-          // The country Browse filters on and matching compares follows the
-          // location, the same reading as the profile dialog and onboarding.
-          if (isFactory) {
-            try {
-              const code = countryCodeFrom(details.location, await listTerms("country"));
-              if (code) await saveFactoryProfile(org.id, { country_code: code });
-            } catch {
-              throw new Error("Your details were saved, but the country could not be updated. Save again to retry.");
-            }
-          }
           await refreshOrgs();
         } : undefined}
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
@@ -516,6 +507,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         accountLocked={!canSettings}
         onChangePassword={changePassword}
         nameLocked={!isOwner}
+        locationLocked={isFactory ? `Set from your ${profile?.vendor_kind === "trading_company" ? "company" : "factory"} address. Change it on your profile.` : ""}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
         notificationEmailNotes={emailNotes({ isFactory, zh, locked: canSettings ? "" : permissionHint(org, "settingsAccess") })}
