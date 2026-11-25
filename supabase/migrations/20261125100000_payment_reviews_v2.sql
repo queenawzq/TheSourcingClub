@@ -26,6 +26,12 @@
 alter table public.payment_reviews add column if not exists state text;
 alter table public.payment_reviews add column if not exists closed_at timestamptz;
 alter table public.payment_reviews add column if not exists paused_at timestamptz;
+-- Stripe's reason for a dispute (its code), for staff deciding fault (T2 A6).
+alter table public.payment_reviews add column if not exists dispute_reason text;
+-- What staff refunded the brand outside Stripe, closing a failed refund (T2 R3).
+alter table public.order_payments add column if not exists manual_refunded_cents bigint not null default 0;
+alter table public.order_payments drop constraint if exists order_payments_manual_refunded_cents_check;
+alter table public.order_payments add constraint order_payments_manual_refunded_cents_check check (manual_refunded_cents >= 0);
 
 alter table public.payment_reviews drop constraint if exists payment_reviews_decision_check;
 alter table public.payment_reviews drop constraint if exists payment_reviews_check1;
@@ -134,6 +140,8 @@ as $$
            'paused', true,
            'step_title', (array_agg(coalesce(m.title, o.order_number) order by v.created_at))[1],
            'order_number', (array_agg(o.order_number order by v.created_at))[1],
+           -- T2 Y1: the first review's cause, so the card line says it: 'dispute' | 'refund'.
+           'cause', (array_agg(v.cause order by v.created_at))[1],
            'since', min(v.created_at),
            'count', count(*)) end
     from public.payment_reviews v
@@ -353,7 +361,8 @@ begin
   insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
   values (v.brand_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
           'Account under review',
-          format('A payment for "%s" on %s was disputed with your bank. Until our review is done, you can only message vendors.',
+          -- T2 B6: "You can still message vendors.", as the order page says it.
+          format('A payment for "%s" on %s was disputed with your bank. Until our review is done, you can''t fund or approve steps or accept quotes. You can still message vendors.',
                  step, order_number),
           jsonb_build_object('review_id', v.id),
           'payment_review_brand:' || v.id)
@@ -372,11 +381,14 @@ set search_path = public, pg_temp
 as $$
 declare
   still_paused boolean := public.factory_paused(v.factory_org_id);
+  num text := (select order_number from public.production_orders where id = v.order_id);
 begin
+  -- T2 A3: the order and the outcome (nothing left its balance). Never
+  -- "nothing was taken" (src/app/order/AGENTS.md).
   insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
   values (v.factory_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
           case when still_paused then 'Payment review complete' else 'Withdrawals resumed' end,
-          format('The review of the payment for "%s" is done.', step)
+          format('The review of the payment for "%s" on %s is done. Your balance is unchanged.', step, num)
           || case when still_paused then ' Withdrawals stay paused while another payment is reviewed.'
                   else ' You can withdraw your balance again.' end
           || case when nullif(btrim(coalesce(note, '')), '') is not null then ' Note from our team: ' || btrim(note) else '' end,
@@ -386,6 +398,63 @@ begin
 end;
 $$;
 revoke all on function public.tell_factory_resumed(public.payment_reviews, text, text) from public, anon, authenticated;
+
+-- The factory's "Withdrawals paused", once per review, in the true cause's
+-- words (T2 Y1): a card dispute, or a refund made outside the app.
+create or replace function public.tell_factory_paused(v public.payment_reviews, step text, order_number text)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
+  values (v.factory_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
+          'Withdrawals paused',
+          case when v.cause = 'dispute'
+               then format('A brand disputed a card payment for "%s" on %s, so our team is reviewing it. Withdrawals are paused until the review is done.',
+                           step, order_number)
+               else format('A brand requested a refund for "%s" on %s, so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+                           step, order_number) end,
+          jsonb_build_object('review_id', v.id),
+          'payment_review:' || v.id)
+  on conflict (org_id, dedupe_key) do nothing;
+end;
+$$;
+revoke all on function public.tell_factory_paused(public.payment_reviews, text, text) from public, anon, authenticated;
+
+-- A chargeback on a step not approved (the money isn't in the factory's
+-- balance, so it isn't paused): "Payment for "X" disputed", once per review
+-- (T2 R2, C1). Also what record_payment_funded sends when the charge was
+-- disputed before it was recorded.
+create or replace function public.tell_factory_disputed(v public.payment_reviews)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  step text;
+  num text;
+begin
+  if v is null or v.cause <> 'dispute' or v.state not in ('open', 'decide', 'closed') then
+    return;
+  end if;
+  select coalesce(m.title, o.order_number), o.order_number into step, num
+    from public.production_orders o
+    join public.order_payments p on p.id = v.payment_id
+    left join public.order_milestones m on m.id = p.milestone_id
+   where o.id = v.order_id;
+  insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
+  values (v.factory_org_id, 'payment_disputed', 'payment', v.payment_id, v.order_id,
+          format('Payment for "%s" disputed', step),
+          format('A brand disputed a card payment for "%s" on %s, so our team is reviewing it.', step, num),
+          jsonb_build_object('review_id', v.id),
+          'payment_review_funded:' || v.id)
+  on conflict (org_id, dedupe_key) do nothing;
+end;
+$$;
+revoke all on function public.tell_factory_disputed(public.payment_reviews) from public, anon, authenticated;
 
 -- "Account review complete", once the brand has no pause left.
 create or replace function public.tell_brand_unpaused(v public.payment_reviews)
@@ -429,6 +498,11 @@ begin
    where o.id = v.order_id;
   if v.pauses_factory and v.state in ('open', 'decide') then
     perform public.tell_factory_paused(v, step, num);
+  elsif v.cause = 'dispute' and not v.pauses_factory and v.state = 'open'
+        and exists (select 1 from public.order_payments p where p.id = v.payment_id and p.state in ('confirmed', 'released')) then
+    -- Held for a step not approved yet: told once per dispute (T2 R2). A
+    -- charge disputed before it is recorded is told by record_payment_funded.
+    perform public.tell_factory_disputed(v);
   end if;
   if v.cause = 'dispute' and v.brand_unpaused_at is null then
     perform public.tell_brand_paused(v, step, num);
@@ -704,7 +778,8 @@ begin
       insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
       values (v.factory_org_id, 'payment_disputed', 'payment', p.id, o.id,
               'Payment review complete',
-              format('%s for "%s" on %s was returned to the brand.', public.format_money(amount, 'USD'), step, o.order_number)
+              -- T2 A3/A4: what left its balance (the brand may have got more).
+              format('%s was taken from your balance for the brand''s refund of "%s" on %s.', public.format_money(amount, 'USD'), step, o.order_number)
               || case when still_paused then ' Withdrawals stay paused while another payment is reviewed.'
                       else ' You can withdraw the rest of your balance.' end
               || ' Note from our team: ' || said_note,
@@ -805,6 +880,49 @@ grant execute on function public.admin_paused_brands() to authenticated, service
 -- ---------------------------------------------------------------------------
 -- 6. Staff's board: one row per review, a three-step progress bar.
 -- ---------------------------------------------------------------------------
+
+-- Stripe's dispute reason in words staff read (T2 A6).
+create or replace function public.dispute_reason_words(reason text)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select case reason
+    when 'product_not_received' then 'Product not received'
+    when 'product_unacceptable' then 'Product unacceptable'
+    when 'fraudulent' then 'Fraudulent'
+    when 'unrecognized' then 'Charge not recognised'
+    when 'duplicate' then 'Duplicate charge'
+    when 'credit_not_processed' then 'Refund not processed'
+    when 'subscription_canceled' then 'Subscription cancelled'
+    when 'general' then 'General'
+    when 'bank_cannot_process' then 'Bank can''t process'
+    when 'customer_initiated' then 'Customer initiated'
+    when 'debit_not_authorized' then 'Debit not authorised'
+    when 'incorrect_account_details' then 'Incorrect account details'
+    when 'insufficient_funds' then 'Insufficient funds'
+    when 'check_returned' then 'Check returned'
+    when 'noncompliant' then 'Noncompliant'
+    else case when reason is null then null else initcap(replace(reason, '_', ' ')) end
+  end;
+$$;
+revoke all on function public.dispute_reason_words(text) from public, anon, authenticated;
+grant execute on function public.dispute_reason_words(text) to service_role;
+
+-- The server, with each dispute it reads: Stripe's reason, on its review.
+create or replace function public.record_payment_review_dispute_reason(dispute_id text, reason text)
+returns void
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  update public.payment_reviews set dispute_reason = nullif(btrim(coalesce(reason, '')), '')
+   where cause = 'dispute' and stripe_ref = dispute_id
+     and dispute_reason is distinct from nullif(btrim(coalesce(reason, '')), '');
+$$;
+revoke all on function public.record_payment_review_dispute_reason(text, text) from public, anon, authenticated;
+grant execute on function public.record_payment_review_dispute_reason(text, text) to service_role;
 
 create or replace function public.payment_review_reason(v public.payment_reviews)
 returns text
@@ -916,7 +1034,18 @@ begin
           'factory_order_ids', case when v.state in ('open', 'decide') and v.pauses_factory then
               (select coalesce(jsonb_agg(x.id), '[]'::jsonb) from public.production_orders x where x.factory_org_id = v.factory_org_id)
             else '[]'::jsonb end,
-          'created_at', v.created_at) as row_json
+          'created_at', v.created_at)
+          -- A second object: jsonb_build_object takes at most 100 arguments.
+          || jsonb_build_object(
+          -- T2 A10: this review is what pauses the brand now.
+          'pauses_brand', v.cause = 'dispute' and v.state not in ('inquiry', 'inquiry_closed') and v.brand_unpaused_at is null,
+          -- T2 A5: another review keeps the brand paused whatever is decided here.
+          'brand_stays_paused', exists (select 1 from public.payment_reviews x
+                                         where x.brand_org_id = v.brand_org_id and x.id <> v.id and x.cause = 'dispute'
+                                           and x.state not in ('inquiry', 'inquiry_closed') and x.brand_unpaused_at is null),
+          -- T2 A6: Stripe's reason, its code and in words.
+          'dispute_reason', v.dispute_reason,
+          'dispute_reason_words', public.dispute_reason_words(v.dispute_reason)) as row_json
           from public.payment_reviews v
           join public.order_payments p on p.id = v.payment_id
           join public.production_orders o on o.id = v.order_id
@@ -1015,7 +1144,7 @@ create table if not exists public.payment_refund_lines (
   payment_id       uuid not null references public.order_payments(id) on delete cascade,
   order_id         uuid not null references public.production_orders(id) on delete cascade,
   brand_org_id     uuid not null references public.orgs(id) on delete cascade,
-  kind             text not null check (kind in ('staff', 'stripe_dashboard', 'cancellation', 'automatic')),
+  kind             text not null,
   amount_cents     bigint not null check (amount_cents > 0),
   currency         text not null default 'USD',
   payment_intent   text,
@@ -1023,6 +1152,10 @@ create table if not exists public.payment_refund_lines (
   note             text,
   refunded_at      timestamptz not null default now()
 );
+-- 'manual': refunded by staff another way, closing a failed refund (T2 R3).
+alter table public.payment_refund_lines drop constraint if exists payment_refund_lines_kind_check;
+alter table public.payment_refund_lines add constraint payment_refund_lines_kind_check
+  check (kind in ('staff', 'stripe_dashboard', 'cancellation', 'automatic', 'manual'));
 create index if not exists payment_refund_lines_brand on public.payment_refund_lines (brand_org_id, refunded_at desc);
 create index if not exists payment_refund_lines_payment on public.payment_refund_lines (payment_id, refunded_at desc);
 alter table public.payment_refund_lines enable row level security;
@@ -1094,6 +1227,7 @@ select s.payment_id, s.order_id, s.brand_org_id, 'staff', s.amount_cents, s.curr
 alter table public.staff_refunds add column if not exists closed_at timestamptz;
 alter table public.staff_refunds add column if not exists closed_by uuid references auth.users(id) on delete set null;
 alter table public.staff_refunds add column if not exists close_note text;
+alter table public.staff_refunds add column if not exists close_refunded_cents bigint;
 
 create or replace function public.staff_refund_needs_staff(s public.staff_refunds)
 returns boolean
@@ -1111,7 +1245,12 @@ $$;
 revoke all on function public.staff_refund_needs_staff(public.staff_refunds) from public, anon, authenticated;
 grant execute on function public.staff_refund_needs_staff(public.staff_refunds) to service_role;
 
-create or replace function public.close_staff_refund_failure(target_refund uuid, note text)
+-- Close asks how much went back another way (0 up to the failed amount):
+-- that much is a 'manual' refund line and on the payment's
+-- manual_refunded_cents, so the brand's figures follow (T2 R3). It is TSC's
+-- money: the factory's balance doesn't change.
+drop function if exists public.close_staff_refund_failure(uuid, text);
+create or replace function public.close_staff_refund_failure(target_refund uuid, note text, refunded_cents bigint)
 returns public.staff_refunds
 language plpgsql
 security definer
@@ -1140,9 +1279,23 @@ begin
   if said is null then
     raise exception 'add a note' using errcode = '22023', hint = 'staff_refund_close_note';
   end if;
-  update public.staff_refunds set closed_at = now(), closed_by = auth.uid(), close_note = said, updated_at = now()
+  if refunded_cents is null or refunded_cents < 0 or refunded_cents > s.amount_cents then
+    raise exception 'enter an amount from 0 up to %', public.format_money(s.amount_cents, s.currency)
+      using errcode = '22023', hint = 'staff_refund_close_amount', detail = public.format_money(s.amount_cents, s.currency);
+  end if;
+  update public.staff_refunds set closed_at = now(), closed_by = auth.uid(), close_note = said,
+         close_refunded_cents = close_staff_refund_failure.refunded_cents, updated_at = now()
    where id = s.id
   returning * into s;
+  if s.close_refunded_cents > 0 then
+    update public.order_payments set manual_refunded_cents = manual_refunded_cents + s.close_refunded_cents
+     where id = s.payment_id;
+    perform public.add_refund_line(s.payment_id, 'manual', s.close_refunded_cents, null, s.id, said);
+    insert into public.payment_events (payment_id, from_state, to_state, actor_kind, actor_user_id, note)
+    select p.id, p.state, p.state, 'admin', auth.uid(),
+           format('Refunded %s to the brand another way (closing a failed refund).', public.format_money(s.close_refunded_cents, p.currency))
+      from public.order_payments p where p.id = s.payment_id;
+  end if;
   -- The note goes to the brand (Round 2 #10).
   insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, dedupe_key)
   select s.brand_org_id, 'payment_refunded', 'payment', s.payment_id, s.order_id,
@@ -1157,8 +1310,8 @@ begin
   return s;
 end;
 $$;
-revoke all on function public.close_staff_refund_failure(uuid, text) from public, anon;
-grant execute on function public.close_staff_refund_failure(uuid, text) to authenticated, service_role;
+revoke all on function public.close_staff_refund_failure(uuid, text, bigint) from public, anon;
+grant execute on function public.close_staff_refund_failure(uuid, text, bigint) to authenticated, service_role;
 
 -- The board: failed staff refunds as rows of their own (kind 'staff_refund'),
 -- beside the reviews (kind 'review').
@@ -1183,7 +1336,7 @@ as $$
            'flag', case when public.staff_refund_needs_staff(s) then 'Refund failed' end,
            'failure', s.failure,
            'amount_cents', s.amount_cents, 'currency', s.currency,
-           'factory_cents', s.factory_cents, 'payer', s.payer, 'note', s.note, 'close_note', s.close_note,
+           'factory_cents', s.factory_cents, 'payer', s.payer, 'note', s.note, 'close_note', s.close_note, 'close_refunded_cents', s.close_refunded_cents,
            'open', public.staff_refund_needs_staff(s),
            'actions', case when public.staff_refund_needs_staff(s) then '["refund_again", "close"]'::jsonb else '[]'::jsonb end,
            'brand_paused', public.brand_paused(s.brand_org_id),
@@ -1261,7 +1414,7 @@ begin
     select jsonb_agg(jsonb_build_object(
              'id', l.id, 'payment_id', l.payment_id, 'order_id', l.order_id, 'order_number', o.order_number,
              'step_title', m.title, 'amount_cents', l.amount_cents, 'currency', l.currency,
-             'refunded_at', l.refunded_at, 'kind', l.kind, 'note', case when l.kind = 'staff' then l.note end)
+             'refunded_at', l.refunded_at, 'kind', l.kind, 'note', case when l.kind in ('staff', 'manual') then l.note end)
            order by l.refunded_at desc)
       from public.payment_refund_lines l
       join public.production_orders o on o.id = l.order_id
@@ -1307,7 +1460,7 @@ security definer
 set search_path = public, pg_temp
 as $$
   select greatest(0, coalesce(p.charged_cents, p.amount_received_cents, p.amount_cents, 0)
-                     - p.refunded_cents - p.dispute_lost_cents
+                     - p.refunded_cents - p.dispute_lost_cents - p.manual_refunded_cents
                      - coalesce((select sum(s.amount_cents) from public.staff_refunds s
                                   where s.payment_id = p.id and (s.status = 'claimed' or (s.status = 'made' and s.recorded_at is null))), 0))::bigint;
 $$;
@@ -1376,7 +1529,7 @@ as $$
            'flag', case when s.recovered_at is not null then 'Refund succeeded after a failure' end,
            'created_at', s.created_at, 'by_name', (select u.full_name from public.user_profiles u where u.id = s.created_by),
            -- Closed after a failure (Round 2 #10): when, by whom, the note the brand got.
-           'closed_at', s.closed_at, 'close_note', s.close_note,
+           'closed_at', s.closed_at, 'close_note', s.close_note, 'close_refunded_cents', s.close_refunded_cents,
            'closed_by_name', (select u.full_name from public.user_profiles u where u.id = s.closed_by))
          order by s.created_at desc), '[]'::jsonb)
     from public.staff_refunds s where s.payment_id = target_payment;
@@ -1802,7 +1955,8 @@ begin
       insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, data, dedupe_key)
       values (o.factory_org_id, 'payment_refunded', 'payment', p.id, o.id,
               format('Refund for "%s"', step),
-              format('%s for "%s" on %s was returned to the brand from your balance. Note from our team: %s',
+              -- T2 A4: what left its balance, in the review's words.
+              format('%s was taken from your balance for the brand''s refund of "%s" on %s. Note from our team: %s',
                      public.format_money(s.factory_cents, p.currency), step, o.order_number, s.note),
               jsonb_build_object('staff_refund_id', s.id, 'returned_cents', s.factory_cents),
               'staff_refund:' || s.id || case when recovering then ':recovered' else '' end)
@@ -2703,12 +2857,10 @@ begin
     -- balance"; said in the review's words, never "on hold" or who disputed.
     -- A chargeback (not an inquiry, which is staff's only) (T1 #3).
     if public.payment_has_chargeback(p.id) then
-      insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body, dedupe_key)
-      values (o.factory_org_id, 'payment_disputed', 'payment', p.id, o.id,
-              format('Payment for "%s" under review', coalesce(m.title, o.order_number)),
-              'Our team is reviewing this payment before it goes to your balance.',
-              'payment_review_funded:' || p.id)
-      on conflict (org_id, dedupe_key) do nothing;
+      -- Once per dispute, in the dispute's words (T2 R2, C1).
+      perform public.tell_factory_disputed(v)
+         from public.payment_reviews v
+        where v.payment_id = p.id and v.cause = 'dispute' and v.state in ('open', 'decide', 'closed');
     else
     insert into public.notifications
       (org_id, kind, subject_type, subject_id, order_id, title, body)
@@ -3467,11 +3619,11 @@ as $$
   select case
     when public.payment_reset_charge_cents(p) is not null then public.payment_reset_charge_cents(p)
     when p.state = 'cancelled' and p.refunded_at is not null then
-      p.refunded_cents + p.dispute_lost_cents
+      p.refunded_cents + p.dispute_lost_cents + p.manual_refunded_cents
       + coalesce((select sum(l.amount_cents) from public.payment_refund_lines l
                    where l.payment_id = p.id and l.kind = 'cancellation'
                      and l.payment_intent is not distinct from p.stripe_payment_intent_id), 0)
-    else p.refunded_cents + p.dispute_lost_cents
+    else p.refunded_cents + p.dispute_lost_cents + p.manual_refunded_cents
   end::bigint;
 $$;
 revoke all on function public.payment_refunded_display_cents(public.order_payments) from public, anon, authenticated;
@@ -3862,3 +4014,47 @@ begin
   );
 end;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 16. Tester fixes, T2 (20261125100000). Notices (Y1, A3, A4, B6, R2), the
+--     board's flags (A5, A10) and Stripe's dispute reason (A6), Close with
+--     an amount (R3) are in place above. Here: the order page's figures add
+--     up after money went back (B2).
+-- ---------------------------------------------------------------------------
+-- production_order_charges (20261023000300) with what went back on funded
+-- payments, at the brand's charged figures: refunded (by Stripe, or by staff
+-- another way) and reversed by the brand's bank. Total = paid − returned −
+-- reversed + those two + outstanding, so the header can show each.
+create or replace view public.production_order_charges
+with (security_invoker = true) as
+select
+  o.id                                   as order_id,
+  coalesce(tot.total, 0)::bigint         as total_charged_cents,
+  coalesce(tot.paid, 0)::bigint          as paid_charged_cents,
+  (coalesce(tot.total, 0) - coalesce(tot.paid, 0))::bigint as outstanding_charged_cents,
+  nx.charged_cents                       as next_payment_charged_cents,
+  nx.fee_cents                           as next_payment_fee_cents,
+  coalesce(back.refunded, 0)::bigint     as refunded_charged_cents,
+  coalesce(back.reversed, 0)::bigint     as reversed_charged_cents
+from public.production_orders o
+left join lateral (
+  select
+    sum(c.charged_cents) as total,
+    sum(c.charged_cents) filter (where c.state in ('confirmed', 'released')) as paid
+  from public.order_step_charges c
+  where c.order_id = o.id
+) tot on true
+left join lateral (
+  select c.charged_cents, c.fee_cents
+  from public.order_step_charges c
+  where c.order_id = o.id and c.state in ('not_due', 'due', 'sent', 'processing', 'failed')
+  order by c.sort
+  limit 1
+) nx on true
+left join lateral (
+  select sum(p.refunded_cents + p.manual_refunded_cents) as refunded, sum(p.dispute_lost_cents) as reversed
+  from public.order_payments p
+  where p.order_id = o.id and p.state in ('confirmed', 'released')
+) back on true;
+revoke all on public.production_order_charges from anon, authenticated;
+grant select on public.production_order_charges to authenticated;

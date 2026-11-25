@@ -457,12 +457,17 @@ export function staffRefundFailure(failure) {
     return "TSC's Stripe balance is too low. Add funds in Stripe, then try again.";
   }
   if (code === "charge_expired_for_refund") return "This charge is too old to refund to the card. Refund the brand by bank.";
+  // T2 A7: Stripe's reason in words, and what to do next.
+  if (code === "resource_missing") return "Stripe has no record of this payment, so nothing was refunded. Refund the brand another way.";
+  if (code === "charge_already_refunded") return "Stripe has already refunded this payment in full. Nothing more was refunded.";
+  if (code === "amount_too_large") return "That is more than Stripe still holds of this payment. Nothing was refunded. Refund a smaller amount.";
+  if (code === "charge_disputed_refund" || code === "refund_disputed_payment") return "The bank is deciding this payment.";
   if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
     return "Stripe refused TSC's key. Nothing was refunded.";
   }
   const why = REFUND_FAILURE_WORDS[failure?.refundFailureReason];
   if (failure?.refundStatus || why) return `Stripe refused the refund${why ? `: ${why}` : ""}. Nothing was refunded, and the factory's balance is unchanged.`;
-  return "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.";
+  return "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged. Open the payment in Stripe to see why.";
 }
 
 /** A refund's failure_reason, in words staff read (never Stripe's message). */
@@ -755,12 +760,15 @@ export function disputeFeeCents(dispute) {
  */
 async function recordDisputeReview(db, paymentId, dispute) {
   const dueBy = Number(dispute.evidence_details?.due_by);
-  return rpc(db, "record_payment_review_dispute", {
+  const review = await rpc(db, "record_payment_review_dispute", {
     target_payment: paymentId, dispute_id: dispute.id, status: dispute.status ?? null,
     amount_cents: Number.isFinite(Number(dispute.amount)) ? Number(dispute.amount) : null,
     due_by: dueBy > 0 ? new Date(dueBy * 1000).toISOString() : null,
     fee_cents: disputeFeeCents(dispute),
   });
+  // Stripe's reason, for staff deciding fault (T2 A6).
+  if (dispute.reason) await rpc(db, "record_payment_review_dispute_reason", { dispute_id: dispute.id, reason: dispute.reason });
+  return review;
 }
 
 export async function applyDispute({ db, paymentId, dispute }) {
@@ -1190,6 +1198,21 @@ export function reply(response, status, body) {
  * offers them again; the brand can add another card. Read from Stripe by each
  * dispute's charge. Best effort: a card whose read fails is still offered.
  */
+export const DISPUTED_CARD = "This card can't be used. Use another card.";
+
+/**
+ * Whether a card the brand is about to pay with had a chargeback from this
+ * brand (T2 R1): by its own id or its fingerprint, so a disputed card typed
+ * in again is refused too. Reads the card from Stripe. Returns true to refuse.
+ */
+export async function cardDisputedByBrand({ stripe, db, orgId, paymentMethodId }) {
+  const disputed = await disputedCardsFor({ stripe, db, orgId });
+  if (!disputed.ids.size && !disputed.fingerprints.size) return false;
+  if (disputed.ids.has(paymentMethodId)) return true;
+  const method = await stripe.paymentMethods.retrieve(paymentMethodId);
+  return disputed.fingerprints.has(method.card?.fingerprint);
+}
+
 export async function disputedCardsFor({ stripe, db, orgId }) {
   const found = { ids: new Set(), fingerprints: new Set() };
   try {
