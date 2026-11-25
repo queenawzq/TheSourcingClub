@@ -133,6 +133,7 @@ const PATTERNS = [
   [/^(Today|Yesterday), (.+)$/, (m, inner) => `${m[1] === "Today" ? "今天" : "昨天"} ${inner(m[2])}`],
   [/^Last message (.+)$/, (m, inner) => `最新消息 ${inner(m[1])}`],
   [/^More options for (.+)$/, (m, inner) => `${inner(m[1])}的更多选项`],
+  [/^(.+) request references$/, (m) => `${m[1]} 的需求参考图片`],
   [/^(\d+) (?:min|mins|minute|minutes) ago$/, (m) => `${m[1]} 分钟前`],
   [/^(\d+) (?:hr|hrs|hour|hours) ago$/, (m) => `${m[1]} 小时前`],
   [/^(\d+) days? ago$/, (m) => `${m[1]} 天前`],
