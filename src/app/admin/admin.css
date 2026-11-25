@@ -337,6 +337,6 @@
 .admin-payments-page .payment-reviews-table td:nth-child(2),
 .admin-payments-page .payment-reviews-table td:nth-child(3) { min-width: 0; }
 .payment-reviews-table td.payment-review-progress-cell { min-width: 200px; }
-.payments-queue .payment-reviews-table .payment-review-line a { white-space: normal; }
 .payment-review-line { overflow-wrap: anywhere; }
 .admin-payments-page .payment-reviews-table td:nth-child(2) { white-space: nowrap; }
+.payment-review-nowrap, .payments-queue .payment-reviews-table .payment-review-line a { white-space: nowrap; }
