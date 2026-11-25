@@ -187,7 +187,6 @@ declare
   o        public.production_orders;
   mine     uuid;
   proposer uuid;
-  reason   text;
 begin
   select * into o from public.production_orders where id = target_order for update;
   if not found then
@@ -214,7 +213,6 @@ begin
   end if;
 
   proposer := o.cancel_proposed_by_org;
-  reason := o.cancel_reason;
 
   update public.production_orders
      set cancel_proposed_by_org = null,
