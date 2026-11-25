@@ -106,7 +106,7 @@ function fileDialogs(org, parts, reload) {
   return {
     banner: mediaFor(
       "banner",
-      logo ? [{ title: logo.title || "Profile image", meta: logo.caption || "Current factory profile image", editTitle: logo.title ?? "", editCaption: logo.caption ?? "", src: parts.logoUrl, doc: logo }] : [],
+      logo ? [{ title: logo.title || "Profile image", meta: logo.caption || (parts.profile?.vendor_kind === "trading_company" ? "Current company profile image" : "Current factory profile image"), editTitle: logo.title ?? "", editCaption: logo.caption ?? "", src: parts.logoUrl, doc: logo }] : [],
       parts.logos,
       { addLabel: logo ? "+ Replace image" : "+ Add image" },
     ),

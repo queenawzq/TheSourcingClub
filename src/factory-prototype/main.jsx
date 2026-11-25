@@ -1542,6 +1542,19 @@ export const factoryMainZhText = {
   "Add image": "添加图片",
   "Edit video": "编辑视频",
   "Edit image": "编辑图片",
+  // Live vendor screens (flow check R3g4, R3g9, R3f10, R3t5).
+  "Profile image": "资料图片",
+  "Current factory profile image": "当前工厂资料图片",
+  "Current company profile image": "当前公司资料图片",
+  "+ Replace image": "+ 替换图片",
+  "Services requested": "所需服务",
+  "What the brand needs sourced": "品牌需要采购的内容",
+  "Material sourcing details": "材料采购说明",
+  "No payments yet": "暂无付款记录",
+  "Available when this step opens": "该步骤开始后可添加更新",
+  "Needs the Add update permission": "需要“添加更新”权限",
+  "Not set yet": "尚未设置",
+  "Sent since the 1st": "本月 1 日起已发送",
 };
 
 // The profile's completion note lists these ("Add your factory details and
