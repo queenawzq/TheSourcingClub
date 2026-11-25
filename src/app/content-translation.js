@@ -17,8 +17,12 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { supabase } from "../lib/supabase.js";
 import { getUiLanguage } from "../lib/ui-language.js";
+import { needsEnglish } from "../shared/profile-translation.mjs";
+import { inReaderLanguage } from "../shared/words-in-reader-language.mjs";
 
-const state = { translations: new Map(), failed: new Set(), pending: 0, showOriginal: false, version: 0 };
+// `names`: sources that are names of things (a step, a sample stage), not a
+// block of text: translated in place, with no "Automatically translated" label.
+const state = { translations: new Map(), names: new Set(), failed: new Set(), pending: 0, showOriginal: false, version: 0 };
 const asked = new Set();
 // Ids whose first answer is in (or failed): a screen may stop holding for them.
 const answered = new Set();
@@ -66,8 +70,9 @@ async function ask(groups, extra = {}) {
   state.pending += 1;
   changed();
   try {
-    const { translations = {}, missing = [], incomplete } = await post({ ...fresh, ...(extra.to ? { to: extra.to } : {}) });
+    const { translations = {}, missing = [], incomplete, names = [] } = await post({ ...fresh, ...(extra.to ? { to: extra.to } : {}) });
     Object.entries(translations).forEach(([source, text]) => { state.translations.set(source, text); state.failed.delete(source); });
+    names.forEach((source) => state.names.add(source));
     missing.forEach((source) => { if (!state.translations.has(source)) state.failed.add(source); });
     if (incomplete) keys.forEach((key) => asked.delete(key));
   } catch {
@@ -125,11 +130,27 @@ export function useChineseContent({ rfqIds = [], brandOrgIds = [], messageIds = 
   return keys.some((k) => !answered.has(k));
 }
 
-/** A brand screen's quotes, orders and vendors: what the factory typed, in English. */
+/**
+ * What a factory typed (a step name, a sample stage, a note), in English for
+ * a brand, as far as this page's translations go; as written until they
+ * arrive. The same English BrandEnglishLayer puts on screen, for the values
+ * it cannot reach: an input's value, a select's options, a row's key.
+ */
+export function englishText(text) {
+  return inReaderLanguage(text, state.translations, needsEnglish);
+}
+
+/**
+ * A brand screen's quotes, orders and vendors: what the factory typed, in
+ * English. Returns `englishText`, and re-renders the screen as translations
+ * arrive, for the values a screen puts in itself.
+ */
 export function useEnglishContent({ quoteIds = [], orderIds = [], factoryOrgIds = [] }, { enabled = true } = {}) {
   const key = keyOf([quoteIds, orderIds, factoryOrgIds]);
+  useContentTranslations();
   useEffect(() => {
     if (enabled && key.replace(/\|/g, "")) requestEnglishContent({ quoteIds, orderIds, factoryOrgIds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled]);
+  return enabled ? englishText : (text) => text;
 }

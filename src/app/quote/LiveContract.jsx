@@ -16,11 +16,13 @@ import { getContractAttachments, saveContractAttachments } from "../../lib/domai
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
+import { useEnglishContent } from "../content-translation.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
 export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
+  const english = useEnglishContent({ quoteIds: [quoteId] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [agreedIncotermId, setAgreedIncotermId] = useState("");
@@ -147,7 +149,8 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       {blocked && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
       {found && (
         <ContractScreen
-          terms={{ ...found.view, title: state.request.title, brief: state.request.brief }}
+          // The sample stages the vendor wrote in Chinese, in English (as the quote page reads them).
+          terms={{ ...found.view, samplePlan: english(found.view.samplePlan), title: state.request.title, brief: state.request.brief }}
           deliveryTerms={state.incoterms.map((term) => ({
             id: term.id,
             label: termLabel(term),

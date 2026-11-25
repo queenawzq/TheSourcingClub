@@ -25,6 +25,7 @@ import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
 import { useVendorNames } from "../vendor-names.jsx";
+import { useEnglishContent } from "../content-translation.js";
 
 const DISCOUNTS_USABLE = false;
 
@@ -39,9 +40,11 @@ export default function LiveBrandPayments({ org }) {
   // Vendors' names in English where written in Chinese, as on their orders (vendor-names.jsx).
   const vendorNames = useVendorNames((state.loaded?.orders ?? []).map((order) => ({ id: order.factory_org_id, name: order.factory?.name })));
   const nameOf = (order) => (order.factory?.name ? vendorNames.text(order.factory_org_id, order.factory.name) : null);
-  const namesKey = (state.loaded?.orders ?? []).map((order) => nameOf(order)).join("|");
+  // Steps the factory named in Chinese, in the English the order page shows.
+  const stepName = useEnglishContent({ orderIds: (state.loaded?.orders ?? []).map((order) => order.id) });
+  const namesKey = [...(state.loaded?.orders ?? []).map((order) => nameOf(order)), ...(state.loaded?.payments ?? []).map((payment) => stepName(payment.order_milestones?.title ?? ""))].join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor, nameOf }) : null), [state.loaded, vendor, namesKey]);
+  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor, nameOf, stepName }) : null), [state.loaded, vendor, namesKey]);
 
   useEffect(() => {
     let cancelled = false;

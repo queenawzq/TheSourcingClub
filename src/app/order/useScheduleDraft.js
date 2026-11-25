@@ -18,7 +18,13 @@ import { editRow, moveScheduleRow, newRow, scheduleLines, scheduleProblem, sched
 
 const linesOf = (rows) => JSON.stringify(scheduleLines(rows));
 
-export function useScheduleDraft({ order, milestones, reload, onFund }) {
+/**
+ * `english`: the brand's reading of a step the factory named (a sample stage
+ * typed in Chinese reads "Fit sample", src/app/content-translation.js). Only
+ * what is shown: a name left untouched is saved as written, so the factory
+ * keeps reading its own words; one the brand types is saved as typed.
+ */
+export function useScheduleDraft({ order, milestones, reload, onFund, english = (text) => text }) {
   const saved = useMemo(() => scheduleRows(milestones), [milestones]);
   const savedLines = linesOf(saved);
   const [rows, setRows] = useState(saved);
@@ -88,7 +94,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
   }
 
   return {
-    rows,
+    rows: rows.map((row) => ({ ...row, title: english(row.title), description: english(row.description) })),
     total,
     balances,
     dirty,

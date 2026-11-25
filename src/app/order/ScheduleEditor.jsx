@@ -28,7 +28,7 @@ export default function ScheduleEditor({ orderId, isFactory }) {
   const { activeOrg, orgs } = useAuth();
   const [order, setOrder] = useState(null);
   // The brand reads what the factory typed (its location, the quote) in English.
-  useEnglishContent({ orderIds: [orderId] }, { enabled: !isFactory });
+  const english = useEnglishContent({ orderIds: [orderId] }, { enabled: !isFactory });
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -172,8 +172,11 @@ export default function ScheduleEditor({ orderId, isFactory }) {
       ) : null}
 
       <MilestonesScreen live={{
+        // A step the factory named, in the brand's English; saved as written unless retyped.
         rows: rows.map((row, index) => ({
           ...row,
+          title: english(row.title),
+          description: english(row.description),
           key: row.id ?? row.key ?? `step-${index}`,
           type: typeOf(row.kind),
           note: row.kind === "payment_only" ? PAID_ON_OPEN : "",

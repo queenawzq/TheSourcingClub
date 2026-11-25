@@ -1,7 +1,8 @@
 /**
  * The other side's words in the reader's language.
  * - Chinese, for a factory person who reads the app in Chinese: requests
- *   (title, brief, notes, questions, colours), the brand's profile as
+ *   (title, brief, notes, questions, colours), an order's step names and
+ *   descriptions, the brand's profile as
  *   `brand_profile_for_factory()` gives it (never revenue, email, website or
  *   documents) and the brand's messages.
  * - English (`to: "en"`), for a brand: what a factory typed on its quotes and
@@ -32,9 +33,20 @@ const MAX_MESSAGES = 100;
 const REQUESTS_PER_HOUR = 600;
 const UUID = /^[0-9a-f-]{36}$/i;
 
-const hashOf = (source) => createHash("sha256").update(`content-zh-v1:${source}`).digest("hex");
+export const hashOf = (source) => createHash("sha256").update(`content-zh-v1:${source}`).digest("hex");
 // api/profile-translation.js's key, so a sentence reads the same English everywhere.
-const profileHashOf = (source) => createHash("sha256").update(`profile-en-v1:${source}`).digest("hex");
+export const profileHashOf = (source) => createHash("sha256").update(`profile-en-v1:${source}`).digest("hex");
+
+/**
+ * Of the sources, those that name a thing (a sample stage, a step): the
+ * brand's screens translate them in place, with no "Automatically
+ * translated" label (src/app/BrandEnglishLayer.jsx).
+ */
+export function stepNameSources({ sampleLines = [], steps = [] }, sources) {
+  const shown = new Set(sources);
+  return [...new Set([...sampleLines.map((line) => line.stage), ...steps.map((step) => step.title)]
+    .filter((text) => typeof text === "string").map((text) => text.trim()))].filter((text) => shown.has(text));
+}
 
 /** Text worth translating: has English words and no Chinese already. */
 export function needsChinese(text) {
@@ -88,7 +100,7 @@ export async function translateAll(sources, { translate, cacheRead, cacheWrite, 
 }
 
 /** Cache reads and writes for one key prefix (`hash(source)`). */
-function cacheFor(service, hash) {
+export function cacheFor(service, hash) {
   return {
     cacheRead: async (texts) => {
       const bySource = new Map(texts.map((source) => [hash(source), source]));
@@ -110,11 +122,13 @@ function cacheFor(service, hash) {
 const ids = (value, max) => (Array.isArray(value) ? [...new Set(value)] : []).slice(0, max + 1);
 
 /** What a factory wrote, for a brand: quotes, answers, step updates, its location and intro. */
-export function factoryWordsSources({ quotes = [], answers = [], sampleLines = [], materialLines = [], updates = [], profiles = [], sampleTitles = [] }, needsEnglish) {
+export function factoryWordsSources({ quotes = [], answers = [], sampleLines = [], materialLines = [], updates = [], profiles = [], sampleTitles = [], steps = [] }, needsEnglish) {
   return [...new Set([
     ...quotes.flatMap((quote) => [quote.shipping_notes, quote.sourcing_includes, quote.factory_response, quote.factory_notes]),
     ...answers.map((answer) => answer.answer_text),
     ...sampleLines.flatMap((line) => [line.stage, line.includes]),
+    // The order's steps: named from the quote's sample stages, as written.
+    ...steps.flatMap((step) => [step.title, step.description]),
     ...materialLines.map((line) => line.material),
     ...updates.map((update) => update.body),
     ...profiles.flatMap((profile) => [profile.location, profile.intro]),
@@ -166,7 +180,7 @@ export default async function handler(request, response) {
     if (orders.error) return response.status(503).json({ error: "Order text unavailable" });
     for (const order of orders.data ?? []) if (order.rfq_id && !rfqIds.includes(order.rfq_id) && rfqIds.length < MAX_RFQS) rfqIds.push(order.rfq_id);
   }
-  const [rfqs, questions, colours, brands, messages] = await Promise.all([
+  const [rfqs, questions, colours, brands, messages, steps] = await Promise.all([
     rfqIds.length ? caller.from("rfqs").select("id,title,brief,material_notes,sample_notes,additional_details,sourcing_details").in("id", rfqIds) : { data: [] },
     rfqIds.length ? caller.from("rfq_questions").select("rfq_id,prompt").in("rfq_id", rfqIds) : { data: [] },
     rfqIds.length ? caller.from("rfq_colour_splits").select("rfq_id,colour").in("rfq_id", rfqIds) : { data: [] },
@@ -176,6 +190,8 @@ export default async function handler(request, response) {
     })),
     // Read through messages_read: only a party's delivered messages.
     messageIds.length ? caller.from("messages").select("id,body").in("id", messageIds) : { data: [] },
+    // The order's steps as the brand named and described them.
+    orderIds.length ? caller.from("order_milestones").select("title,description").in("order_id", orderIds) : { data: [] },
   ]);
   if (rfqs.error || messages.error) return response.status(503).json({ error: "Text unavailable" });
 
@@ -184,6 +200,7 @@ export default async function handler(request, response) {
     ...(rfqs.data ?? []).flatMap((rfq) => rfqSources(rfq, own(questions, rfq.id), own(colours, rfq.id))),
     ...brands.flatMap(brandSources),
     ...(messages.data ?? []).map((message) => message.body).filter(needsChinese).map((text) => text.trim()),
+    ...(steps.data ?? []).flatMap((step) => [step.title, step.description]).filter(needsChinese).map((text) => text.trim()),
   ])];
 
   const { translations, missing } = await translateAll(sources, {
@@ -210,7 +227,7 @@ async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, r
     shownQuotes.length ? caller.from("quote_question_answers").select("answer_text").in("quote_id", shownQuotes) : { data: [] },
     shownQuotes.length ? caller.from("quote_sample_lines").select("stage,includes").in("quote_id", shownQuotes) : { data: [] },
     shownQuotes.length ? caller.from("quote_material_lines").select("material").in("quote_id", shownQuotes) : { data: [] },
-    orderIds.length ? caller.from("order_milestones").select("id").in("order_id", orderIds) : { data: [] },
+    orderIds.length ? caller.from("order_milestones").select("id,title,description").in("order_id", orderIds) : { data: [] },
     // Published profiles only, as the vendor page and Browse read them.
     factories.length ? caller.from("factory_profiles").select("org_id,location,intro").in("org_id", factories) : { data: [] },
     // Sample titles, as a Browse card shows them (titled from the file name when untitled).
@@ -224,9 +241,10 @@ async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, r
   const { needsEnglish, translateSources, titleFromFileName } = await import("../src/shared/profile-translation.mjs");
   const sources = factoryWordsSources({
     quotes: quotes.data, answers: answers.data, sampleLines: sampleLines.data, materialLines: materialLines.data,
-    updates: updates.data, profiles: profiles.data,
+    updates: updates.data, profiles: profiles.data, steps: milestones.data,
     sampleTitles: (samples.data ?? []).map((sample) => sample.title || titleFromFileName(sample.file_name)),
   }, needsEnglish).slice(0, 120);
+  const names = stepNameSources({ sampleLines: sampleLines.data, steps: milestones.data }, sources);
   // The vendor profile's key: one sentence reads the same English on Browse,
   // the vendor page, the invite step, quotes and the order.
   const { translations, missing } = await translateSources(sources, {
@@ -234,5 +252,5 @@ async function english(caller, service, { quoteIds, orderIds, factoryOrgIds }, r
     translate: (text, { timeoutMs }) => translateText(text, { timeoutMs }),
     ...cacheFor(service, profileHashOf),
   });
-  return response.status(200).json({ translations, missing, incomplete: missing.length > 0 });
+  return response.status(200).json({ translations, missing, incomplete: missing.length > 0, names: names.filter((name) => translations[name]) });
 }
