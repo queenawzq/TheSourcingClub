@@ -75,6 +75,14 @@ const MAKE_STEP = 3;
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
 
+// The Add stakeholder dialog's Role box starts as "Stakeholder"; that is the
+// design's default text, not a role anyone chose.
+const DEFAULT_ROLE = "Stakeholder";
+function chosenRole(person) {
+  const role = String(person?.role ?? "").trim().slice(0, 60);
+  return role && role !== DEFAULT_ROLE ? role : null;
+}
+
 /** The trust card's decision makers, by email: { name, role } as typed. */
 function detailsByEmail(json) {
   try {
@@ -333,14 +341,18 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
           // A team member listed here (the founder herself) keeps the role
           // typed for her, as her title on the team; the profile reads it.
           const member = memberByEmail.get(address);
-          const typedRole = person?.role?.trim().slice(0, 60);
-          if (member && callerIsOwner && typedRole && typedRole !== "Stakeholder" && typedRole !== member.title) {
-            await setMemberAccess(org.id, member.user_id, member.permissions, typedRole);
+          const typedRole = chosenRole(person);
+          if (member && member.user_id === user?.id && callerIsOwner && typedRole && typedRole !== member.title) {
+            try {
+              await setMemberAccess(org.id, member.user_id, member.permissions, typedRole);
+            } catch {
+              // Title only; Settings can set it. It never holds up the step.
+            }
           }
           if (already.has(address)) continue;
           await inviteMember(org.id, address, {
             name: person?.name?.trim().slice(0, 120) || null,
-            title: person?.role?.trim().slice(0, 60) || null,
+            title: typedRole,
           });
           already.add(address);
         }
