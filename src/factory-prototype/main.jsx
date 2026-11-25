@@ -7240,7 +7240,7 @@ const FACTORY_CAPACITY_CATEGORIES = [
   {
     key: "cut-sew-knits",
     label: "Cut & sew knits",
-    labelZh: "裁剪车缝针织",
+    labelZh: "针织裁剪缝制",
     referenceStyle: "Basic jersey T-shirt",
     referenceStyleZh: "基础针织 T 恤",
     minutesPerPiece: 12
@@ -7256,7 +7256,7 @@ const FACTORY_CAPACITY_CATEGORIES = [
   {
     key: "sweaters",
     label: "Sweaters / knitwear",
-    labelZh: "毛衫 / 针织衫",
+    labelZh: "毛衫 / 针织成衣",
     referenceStyle: "Basic crewneck sweater",
     referenceStyleZh: "基础圆领毛衫",
     minutesPerPiece: 42
