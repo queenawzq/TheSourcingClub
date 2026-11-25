@@ -40,6 +40,7 @@ import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 import { getUiLanguage } from "../../lib/ui-language.js";
 import { useChineseContent } from "../content-translation.js";
+import { requestSamples } from "../rfq/request-facts.js";
 
 // The same day format as the quote-sent screen, so "Quote due" reads alike.
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -212,7 +213,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
           rfq.target_unit_price_max_cents,
           rfq.currency,
         ),
-        samples: rfq.requires_sample ? "Sample required" : "No sample",
+        samples: requestSamples(rfq),
         quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
         location: "",
         images: documents.images,

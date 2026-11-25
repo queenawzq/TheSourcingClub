@@ -9427,7 +9427,10 @@ export function DescribeScreen({
         )}
         {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
         <div className="describe-actions">
-          <button className="secondary-btn" type="button" disabled={busy} onClick={onSkip ?? onContinue}>Skip AI</button>
+          <button className="secondary-btn" type="button" disabled={busy} onClick={onSkip ?? onContinue}>
+            {/* With the model off there is nothing to skip. */}
+            {isLive && !modelEnabled ? "Continue" : "Skip AI"}
+          </button>
           {/* The model is optional and often off. Offering to draft a brief it
               cannot draft would be a button that does nothing. */}
           {(!isLive || modelEnabled) && (
@@ -10407,7 +10410,12 @@ export function QuotesScreen({
                         <td>{details.shipping}</td>
                         <td>{details.capacityWindow}</td>
                         <td>{details.total}</td>
-                        <td>{factory.fitType ? <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span> : "—"}</td>
+                        <td>
+                          {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
+                          {/* Live: the card's own figure, so the two never disagree. */}
+                          {factory.fitPercent && `${factory.fitType ? " " : ""}${factory.fitPercent}`}
+                          {!factory.fitType && !factory.fitPercent && "—"}
+                        </td>
                         <td>{factory.factoryNote}</td>
                       </tr>
                     );

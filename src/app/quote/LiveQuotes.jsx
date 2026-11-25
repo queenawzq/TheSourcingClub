@@ -81,6 +81,7 @@ export default function LiveQuotes({ rfqId }) {
       // invited gets the figure without a fit label.
       fitType: chosenByBrand ? "" : fit?.label ?? "",
       fitSummary: fit ? `${Math.round(fit.score)}% match to this request` : "",
+      fitPercent: fit ? `${Math.round(fit.score)}%` : "",
       factoryNote: view.notes,
       price: view.price || "—",
       quoteQuantity: view.quantity || "—",

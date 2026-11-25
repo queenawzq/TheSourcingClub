@@ -17,6 +17,7 @@ import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import "../profile/profile.css";
 import { getUiLanguage } from "../../lib/ui-language.js";
+import { requestSamples } from "./request-facts.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -60,7 +61,7 @@ export default function LiveSaved({ org }) {
         location: "",
         budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents),
         quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
-        samples: rfq.requires_sample ? "Sample required" : "No sample",
+        samples: requestSamples(rfq),
         quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
         specialty: rfq.brief ?? "",
         posted: rfq.published_at ? `Posted ${DAY.format(new Date(rfq.published_at))}` : "",
