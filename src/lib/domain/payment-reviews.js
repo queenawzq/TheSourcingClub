@@ -161,8 +161,3 @@ export const unpauseBrand = () => Promise.reject(new Error("Unpause the brand fr
 
 /** Staff: close a staff refund that failed after it was made (refunded the brand another way). The note is required. */
 export const closeStaffRefundFailure = (staffRefundId, note) => staffCall("close_staff_refund_failure", { target_refund: staffRefundId, note });
-
-/** The brand's own refunds, one line each: [{ id, payment_id, order_number, step_title, amount_cents, refunded_at, note }]. Members only. */
-export async function brandPaymentRefunds(orgId) {
-  return unwrap(await supabase.rpc("brand_payment_refunds", { target_org: orgId }), "load your refunds") ?? [];
-}
