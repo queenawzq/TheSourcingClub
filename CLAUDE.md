@@ -600,6 +600,12 @@ the form behind it only saves.
   shortfall because the screen offers to buy more. The unique index from
   migration 005 makes the charge idempotent per quote; a revision is a new
   quote row and therefore a new charge, which is intended.
+- **A factory creates a quote only as a plain draft** (`20261125700000`).
+  `quotes_factory_insert` requires status `draft`, version 1, no sent or
+  decided time and no `supersedes_quote_id`; before it, a factory could insert
+  a quote already "submitted" and skip the charge and every check. Sent,
+  revised and accepted come only from `submit_quote`, `revise_quote` and the
+  award.
 - **`saved_rfqs` is the vendor's own list** — the brand whose request it is
   cannot see that it was saved, and neither can another vendor.
 - **`rfq_views` records the brand looking at its own request**, one row per
