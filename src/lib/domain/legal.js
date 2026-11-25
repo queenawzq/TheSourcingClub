@@ -42,6 +42,14 @@ export function pickText(en, zh, language) {
   return language === "zh" && zh?.trim() ? zh : en;
 }
 
+/**
+ * The language pickText() returns, so the page around a document (its title,
+ * its buttons) is in the language of the text it shows.
+ */
+export function pickedLanguage(zh, language) {
+  return language === "zh" && zh?.trim() ? "zh" : "en";
+}
+
 /** The current version of every document, keyed by kind. */
 export async function listCurrentLegalDocuments() {
   const rows = unwrap(await supabase.rpc("current_legal_documents"), "load the terms");

@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { TERMS_TYPES, listCurrentLegalDocuments, pickText } from "../lib/domain/legal.js";
+import { TERMS_TYPES, listCurrentLegalDocuments, pickText, pickedLanguage } from "../lib/domain/legal.js";
 
 function readLanguage(params) {
   if (params.get("lang") === "zh") return "zh";
@@ -57,13 +57,16 @@ export default function LegalPage() {
     );
   }
   if (!doc) return null;
+  // A document with no Chinese text is shown in English, and so is its title
+  // and its button.
+  const shown = pickedLanguage(doc.full_zh, language);
 
   return (
     <TermsDialog
       accountType={type === "brand" ? "brand" : "factory"}
-      language={language}
-      text={pickText(doc.full_en, doc.full_zh, language)}
-      title={isPrivacy ? (language === "zh" ? "隐私政策" : "Privacy Policy") : undefined}
+      language={shown}
+      text={pickText(doc.full_en, doc.full_zh, shown)}
+      title={isPrivacy ? (shown === "zh" ? "隐私政策" : "Privacy Policy") : undefined}
       onClose={leave}
     />
   );
