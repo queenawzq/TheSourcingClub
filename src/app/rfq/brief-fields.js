@@ -82,10 +82,17 @@ function namedSplitsFrom(text) {
  */
 const BRAND_SUPPLIES = /\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i;
 const VENDOR_SOURCES = /\b(?:factory|vendor|supplier)\s+(?:to\s+|should\s+|will\s+)?sources?\b/i;
+// "We provide labels" is about sourcing; "we provide a tech pack" or "we
+// will provide feedback" is not.
+const MATERIAL_WORDS = /\b(?:fabrics?|trims?|labels?|materials?|yarns?|buttons?|zips?|zippers?|packaging|hang ?tags?|components?|accessor(?:y|ies)|linings?|threads?|interlinings?|care labels?)\b/i;
+const brandSupplies = (part) => BRAND_SUPPLIES.test(part) && MATERIAL_WORDS.test(part);
+// Clause and sentence ends, but not the point in "2.5 cm".
+const CLAUSE_END = /(?<!\d)[.;!?](?!\d)|\n/;
 
 function sourcingFrom(text) {
-  const brand = BRAND_SUPPLIES.test(text);
-  const clause = text.split(/[.;!?\n]/).find((part) => VENDOR_SOURCES.test(part));
+  const parts = text.split(CLAUSE_END);
+  const brand = parts.some(brandSupplies);
+  const clause = parts.find((part) => VENDOR_SOURCES.test(part));
   // "The factory sources fabric; we provide labels." is the mixed case.
   if (brand && clause) return "partial";
   if (brand) return "brand-provided";
@@ -97,10 +104,11 @@ function sourcingFrom(text) {
  * Details: "The factory sources fabric; we provide labels."
  */
 function sourcingDetailsFrom(text) {
-  const sentences = text.match(/[^.!?\n]+[.!?]?/g) ?? [];
+  const sentences = text.match(/(?:[^.!?\n]|(?<=\d)\.(?=\d))+[.!?]?/g) ?? [];
   return sentences
     .map((sentence) => sentence.trim())
-    .filter((sentence) => BRAND_SUPPLIES.test(sentence) || VENDOR_SOURCES.test(sentence))
+    .filter((sentence) => VENDOR_SOURCES.test(sentence)
+      || sentence.split(/;/).some(brandSupplies))
     .join(" ");
 }
 
