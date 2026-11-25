@@ -9312,7 +9312,12 @@ function OnboardingCapacitySetup({ content, language, live = false, values = {},
   const [selectedCategory, setSelectedCategory] = useState(values?.["capacity-category"] ?? (live ? "" : "wovens"));
   const [monthOffset, setMonthOffset] = useState(0);
   // Nothing is marked until the vendor marks it, prototype or not.
-  const [monthSelections, setMonthSelections] = useState(values?.["capacity-months"] ?? {});
+  // Live, a saved calendar comes back as the JSON its hidden input sent.
+  const [monthSelections, setMonthSelections] = useState(() => {
+    const saved = values?.["capacity-months"];
+    if (typeof saved !== "string") return saved ?? {};
+    try { const parsed = JSON.parse(saved); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch { return {}; }
+  });
   // The drawn months are an example; a live vendor marks up the real next six.
   const months = live
     ? Array.from({ length: 6 }, (_, index) => {
