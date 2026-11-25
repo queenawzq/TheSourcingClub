@@ -350,7 +350,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                         value={card.id}
                         aria-label={`${card.brand} ending in ${card.last4}`}
                         checked={!addingCard && selectedCardId === card.id}
-                        onChange={() => { setSelectedCardId(card.id); setAddingCard(false); }}
+                        onChange={() => { setSelectedCardId(card.id); setAddingCard(false); setProblem(null); }}
                       />
                       <span className="saved-card-icon" aria-hidden="true">▰</span>
                       <span className="saved-card-copy">
@@ -370,7 +370,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                       <div className="tsc-stripe-input">
                         <CardNumberElement
                           options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true, disableLink: true }}
-                          onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
+                          onChange={(event) => { setProblem(null); setNewCardComplete((current) => ({ ...current, number: event.complete })); }}
                         />
                       </div>
                     </label>
