@@ -1713,10 +1713,13 @@ function UsersPage({ users, onToggleStatus }) {
     return (!normalizedSearch || `${brand.name} ${email}`.toLowerCase().includes(normalizedSearch))
       && (userType === "All user types" || userType === "Brand");
   });
+  // One status everywhere: a paused brand's people read Paused; no access (Disabled) wins.
+  const shownStatus = (user) => (user.status === "Disabled" ? "Disabled" : user.paymentPaused ? "Paused" : user.status);
+  const pausedBrandOf = (user) => (paused ?? []).find((brand) => brand.orgId === user.orgId) ?? null;
   const filteredUsers = users.filter((user) => {
     const matchesSearch = !normalizedSearch || `${user.name} ${user.email} ${user.company}`.toLowerCase().includes(normalizedSearch);
     const matchesType = userType === "All user types" || user.type === userType;
-    const matchesStatus = status === "All statuses" || user.status === status;
+    const matchesStatus = status === "All statuses" || shownStatus(user) === status;
     return matchesSearch && matchesType && matchesStatus;
   });
   const activeCount = users.filter((user) => user.status === "Active").length;
@@ -1776,13 +1779,18 @@ function UsersPage({ users, onToggleStatus }) {
                     <td><div className="admin-user-identity"><span>{user.initials}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div></td>
                     <td><StatusPill tone={user.type === "Admin" ? "violet" : "info"}>{user.type}</StatusPill></td>
                     <td>{user.company}</td><td>{user.lastActive}</td>
-                    <td><StatusPill tone={user.status === "Active" ? "success" : "neutral"}>{user.status}</StatusPill></td>
+                    <td><StatusPill tone={{ Active: "success", Paused: "warning" }[shownStatus(user)] ?? "neutral"}>{shownStatus(user)}</StatusPill></td>
                     <td>
                       {user.protected ? <span className="admin-current-account">Current account</span> : (
                         <button className={`secondary-btn admin-user-access-button ${user.status === "Active" ? "disable" : "enable"}`} type="button" aria-label={`${user.status === "Active" ? "Disable" : "Enable"} ${user.name}`} onClick={() => onToggleStatus(user.id)}>
                           {user.status === "Active" ? "Disable" : "Enable"}
                         </button>
                       )}
+                      {/* Live only: a paused brand's people can be unpaused from their own row, with the same confirm. */}
+                      {shownStatus(user) === "Paused" && pausedBrandOf(user) ? (
+                        <button className="secondary-btn admin-user-access-button enable admin-user-unpause" type="button" aria-label={`Unpause ${pausedBrandOf(user).name}`}
+                                onClick={() => setUnpausing(pausedBrandOf(user))}>Unpause</button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
