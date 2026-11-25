@@ -1812,7 +1812,12 @@ function PausedBrandsPanel({ rows, users, onUnpause }) {
                 <tr key={brand.orgId} data-testid="paused-brand">
                   <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
                   <td><StatusPill tone="info">Brand</StatusPill></td>
-                  <td className="admin-user-reason">{String(brand.reason ?? "").split(" · ").map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}<span className="admin-user-reason-part">{part}</span></React.Fragment>)}</td>
+                  <td className="admin-user-reason">{String(brand.reason ?? "").split(" · ").map((part, index) => (
+                    <React.Fragment key={index}>{index ? " · " : ""}<span className="admin-user-reason-part">{
+                      // An order number opens that order's payments (T2 A9).
+                      /^TSC-\d+$/.test(part) ? <a href={`/app.html/admin/payments?order=${encodeURIComponent(part)}`}>{part}</a> : part
+                    }</span></React.Fragment>
+                  ))}</td>
                   <td><span className="admin-cell-label">Paused since </span>{brand.since}</td>
                   <td><StatusPill tone="warning">Paused</StatusPill></td>
                   <td><button className="secondary-btn admin-user-access-button enable" type="button" aria-label={`Unpause ${brand.name}`} onClick={() => onUnpause(brand)}>Unpause</button></td>
