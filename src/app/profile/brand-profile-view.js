@@ -266,6 +266,13 @@ export function brandProfileView(parts) {
       ["Certifications requested", chips.certifications],
       ["Services needed", chips.services],
     ].map(([label, items]) => [label, items.length ? items : [NONE]]),
+    // "View as public": the four groups a vendor reads (factoryBrandView).
+    publicFitSections: [
+      ["What the brand makes", chips.products],
+      ["Preferred regions", chips.regions],
+      ["Certifications requested", chips.certifications],
+      ["Services needed", chips.services],
+    ].map(([label, items]) => [label, items.length ? items : [NONE]]),
     volumeRows: volumeRows(profile),
     assets: (parts.assets ?? []).map((asset) => ({ key: asset.doc.id, title: asset.title, meta: asset.caption, src: asset.src })),
     assetsEmpty: "No brand assets yet. Add product photos and references vendors can look at.",

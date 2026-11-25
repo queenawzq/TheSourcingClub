@@ -5306,7 +5306,8 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
  * `live`, when the real app mounts this screen, replaces the example brand:
  * `{ name, initials, logoUrl, location, categoryLine, revenue, tags,
  * performance: { primary, primaryLabel, metrics }, intro, introEmpty,
- * overviewRows, privateRows, publicOverviewRows, fitSections: [[label, items]], volumeRows,
+ * overviewRows, privateRows, publicOverviewRows, fitSections: [[label, items]],
+ * publicFitSections, volumeRows,
  * assets: [{ title, meta, src }], assetsEmpty, status: { percent },
  * verification: [{ name, status, verified }], stakeholders: [{ key, initials,
  * label }], projects: { completed, active }, projectsEmpty, editors,
@@ -5480,6 +5481,7 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
   const overviewRows = isOwnerView
     ? [...view.overviewRows, ...view.privateRows]
     : view.publicOverviewRows ?? view.overviewRows;
+  const fitSections = isOwnerView ? view.fitSections : view.publicFitSections ?? view.fitSections;
   const renderProfileStatusCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">
@@ -5567,7 +5569,7 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Sourcing fit" editable={canEdit("sourcing")} onEdit={() => openEditor("sourcing")} />
-              {view.fitSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)}
+              {fitSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)}
             </section>
 
             <section className="factory-profile-card">
