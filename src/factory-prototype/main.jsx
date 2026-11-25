@@ -8426,7 +8426,7 @@ function FactoryOnboardingStep({
   }
 
   if (stepType === "capacity") {
-    return <OnboardingCapacitySetup content={content} language={language} live={isLive} values={values} />;
+    return <OnboardingCapacitySetup content={content} language={language} live={isLive} values={values} nameAt={(index) => nameAt("fields", index)} />;
   }
 
   if (stepType === "chipsBalanced") {
@@ -9305,7 +9305,7 @@ function OnboardingField({ label, placeholder, required = false, language = "en"
   );
 }
 
-function OnboardingCapacitySetup({ content, language, live = false, values = {} }) {
+function OnboardingCapacitySetup({ content, language, live = false, values = {}, nameAt }) {
   const [lineHours, setLineHours] = useState(live ? values?.["capacity-line-hours"] ?? "" : "2400");
   const [capacityUnits, setCapacityUnits] = useState(live ? values?.["capacity-units"] ?? "" : "7200");
   const [capacityInputMode, setCapacityInputMode] = useState(values?.["capacity-input-mode"] ?? "units");
@@ -9364,9 +9364,12 @@ function OnboardingCapacitySetup({ content, language, live = false, values = {} 
   return (
     <div className="onboarding-capacity-setup">
       <div className="factory-onboarding-form-grid">
-        {content.fields.map(([label, placeholder, required]) => (
-          <OnboardingField label={label} placeholder={placeholder} required={required} defaultValue={values?.[factoryFieldName(label)]} key={label} />
-        ))}
+        {/* Keyed by the English label, as on every other step: the Chinese
+            labels have no Latin letters to make a name from. */}
+        {content.fields.map(([label, placeholder, required], index) => {
+          const name = nameAt?.(index) ?? factoryFieldName(label);
+          return <OnboardingField label={label} placeholder={placeholder} required={required} name={name} defaultValue={values?.[name]} key={label} />;
+        })}
       </div>
 
       <section className="onboarding-capacity-panel">
