@@ -5,7 +5,7 @@ const chinese = { body: "袖口做好了", body_lang: "zh", body_translated: "Th
 assert.equal(englishTranslation(chinese).body, chinese.body);
 assert.equal(englishTranslation(chinese).translation, chinese.body_translated);
 assert.equal(englishTranslation(chinese).showAltLabel, "Translate to English");
-assert.equal(englishTranslation(chinese).hideAltLabel, "Show Original");
+assert.equal(englishTranslation(chinese).hideAltLabel, "Show original");
 assert.equal(englishTranslation(chinese, { own: true }).translation, undefined);
 const english = { body: "hello", body_lang: "en", body_translated: "你好", body_translated_lang: "zh" };
 assert.equal(englishTranslation(english).translation, undefined);

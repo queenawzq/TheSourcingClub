@@ -3170,9 +3170,9 @@ async function main() {
       check(await inBubble("Translate to English"), "the received message offers a translation");
       await page.waitForTimeout(500);
       check((await bubbleText()).includes(sent.body_translated), "the English translation appears on request");
-      check(await inBubble("Show Original"), "and offers the original back");
+      check(await inBubble("Show original"), "and offers the original back");
       await page.waitForTimeout(500);
-      check((await bubbleText()).includes(factoryLine), "Show Original restores the received text");
+      check((await bubbleText()).includes(factoryLine), "Show original restores the received text");
     } else {
       check(readerSees.includes(factoryLine.slice(0, 8)),
         "with no translation available, the brand sees exactly what was written");

@@ -232,6 +232,8 @@ export function toRfqCard(rfq, messageCount = 0) {
     // Real requests may have no reference imagery, and the card renders
     // without it rather than showing a placeholder that implies one exists.
     images: [],
+    // A draft has no quotes to view: its card opens the composer instead.
+    path: rfq.status === "draft" ? `/rfqs/${rfq.id}/edit` : `/rfqs/${rfq.id}/quotes`,
     status: rfq.status === "awarded"
       ? "Awarded"
       : rfq.status === "cancelled"

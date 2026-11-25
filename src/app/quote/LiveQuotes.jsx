@@ -60,7 +60,7 @@ export default function LiveQuotes({ rfqId }) {
    * Fit comes from the same RFQ-to-factory profile score used while inviting
    * vendors, so brands see a consistent suitability label on the quote card.
    */
-  const shaped = state.quotes.map(({ raw, view, matchScore }) => {
+  const shaped = state.quotes.map(({ raw, view, matchScore, chosenByBrand }) => {
     const fit = matchFit(matchScore);
     return {
       id: view.id,
@@ -77,8 +77,10 @@ export default function LiveQuotes({ rfqId }) {
         ? (raw.orgs?.factory_profiles?.trust_tier ?? "basic") : "",
       fit: "",
       response: "",
-      fitType: fit?.label ?? "",
-      fitSummary: fit ? `${fit.score}% match to this request` : "This vendor has not been scored against this request.",
+      // The invite step's figure, rounded the same way. A vendor the brand
+      // invited gets the figure without a fit label.
+      fitType: chosenByBrand ? "" : fit?.label ?? "",
+      fitSummary: fit ? `${Math.round(fit.score)}% match to this request` : "",
       factoryNote: view.notes,
       price: view.price || "—",
       quoteQuantity: view.quantity || "—",

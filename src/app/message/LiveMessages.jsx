@@ -140,7 +140,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     const english = englishTranslation(message, { own });
     if (!readsChinese || own || english.translation) return english;
     const chinese = contentTranslations().translations.get(String(message.body ?? "").trim());
-    return chinese ? { body: message.body, translation: chinese, language: "zh", showAltLabel: "Translate to Chinese", hideAltLabel: "Show Original" } : english;
+    return chinese ? { body: message.body, translation: chinese, language: "zh", showAltLabel: "Translate to Chinese", hideAltLabel: "Show original" } : english;
   };
   // Messages on their way: drawn the moment Send is pressed, before the
   // database has answered. { [threadId]: [{ tempId, body, files, at, failed }] }

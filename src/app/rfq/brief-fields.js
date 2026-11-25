@@ -63,6 +63,47 @@ function quantityFrom(text) {
   return null;
 }
 
+/**
+ * "two colours (sage 200, ecru 200)" → Sage 200, Ecru 200. Only a list that
+ * follows the word "colours" counts, with at least two named quantities.
+ */
+function namedSplitsFrom(text) {
+  const list = text.match(/colou?r(?:way)?s?\s*(?:\(|:)\s*([^)\n.;]+)/i);
+  if (!list) return [];
+  const splits = [...list[1].matchAll(/([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)?)\s+(\d{1,3}(?:,\d{3})+|\d+)/g)]
+    .map(([, name, quantity]) => ({ colour: capitalise(name.replace(/^and\s+/i, "").trim().toLowerCase()), quantity: Number(quantity.replace(/,/g, "")) }))
+    .filter((split) => split.quantity > 0);
+  return splits.length >= 2 && splits.length <= 24 ? splits : [];
+}
+
+/**
+ * Who sources the materials, in the review card's choice keys: "Factory
+ * sources fabric and trims" → full. Anything less plain is left to the brand.
+ */
+function sourcingFrom(text) {
+  const brand = /\b(?:we|brand)\s+(?:will\s+)?(?:supply|supplies|provide|provides)\b/i.test(text);
+  const clause = text.split(/[.;!?\n]/).find((part) => /\b(?:factory|vendor|supplier)\s+(?:to\s+|should\s+|will\s+)?sources?\b/i.test(part));
+  // "The factory sources fabric; we provide labels." is the mixed case.
+  if (brand && clause) return "partial";
+  if (brand) return "brand-provided";
+  return clause && !/\b(?:some|partly|partially|except|but)\b/i.test(clause) ? "full" : "";
+}
+
+/**
+ * The quantity line. Named colours are kept only when they agree with the
+ * total (or there is no other total, or the first split number was read as
+ * the total): "500 shirts (sage 200, ecru 200)" keeps the 500 and no names.
+ */
+function quantityLineFrom(text) {
+  const named = namedSplitsFrom(text);
+  const total = quantityFrom(text);
+  if (named.length) {
+    const sum = named.reduce((acc, split) => acc + split.quantity, 0);
+    if (!total || total === sum || named.some((split) => split.quantity === total)) return quantityLine(sum, null, named);
+  }
+  return quantityLine(total, colourCountFrom(text));
+}
+
 function colourCountFrom(text) {
   const match = text.match(/(\d+)\s*colou?r(?:way)?s?\b/i);
   const count = match ? Number(match[1]) : 0;
@@ -140,6 +181,20 @@ function productTypeFrom(text, terms) {
 }
 
 /**
+ * Where the text names a label. An all-capitals label (WRAP, GOTS, GRS) is
+ * also an everyday word, so it counts only when written in capitals or next
+ * to "certified"/"certification": "wrap dresses" is a garment, not WRAP.
+ */
+function acronymIndex(text, word) {
+  if (!/^[A-Z]{2,}$/.test(word)) return firstIndex(text, word);
+  const exact = text.match(new RegExp(`\\b${escape(word)}\\b`));
+  if (exact) return exact.index;
+  const named = text.match(new RegExp(`\\b${escape(word)}[\\s-]+certif|\\bcertif\\w*\\s+(?:by\\s+|from\\s+)?${escape(word)}\\b`, "i"));
+  if (!named) return -1;
+  return firstIndex(text.slice(named.index), word) + named.index;
+}
+
+/**
  * Taxonomy labels the text names, for regions and certifications: "Portugal
  * or Turkey" → "Portugal, Turkey"; "OEKO-TEX" names OEKO-TEX Standard 100.
  */
@@ -147,7 +202,7 @@ function labelsIn(text, terms) {
   const found = [];
   for (const term of terms ?? []) {
     const words = [term.label_en, term.label_en?.split(/\s+standard\b/i)[0], ...(term.aliases ?? [])].filter(Boolean);
-    const at = Math.min(...words.map((word) => firstIndex(text, word)).filter((index) => index >= 0));
+    const at = Math.min(...words.map((word) => acronymIndex(text, word)).filter((index) => index >= 0));
     if (Number.isFinite(at)) found.push({ at, label: term.label_en });
   }
   return found.sort((a, b) => a.at - b.at).map((entry) => entry.label).join(", ");
@@ -167,9 +222,10 @@ function materialFrom(text) {
 }
 
 /** The quantity line, in the "N units · C colours, M each" shape the save step splits. */
-export function quantityLine(total, colours) {
+export function quantityLine(total, colours, named = []) {
   if (!total) return "";
   const number = (value) => value.toLocaleString("en-US");
+  if (named.length) return `${number(total)} units · ${named.map((split) => `${split.colour} ${number(split.quantity)}`).join(", ")}`;
   if (!colours) return `${number(total)} units`;
   const each = total % colours === 0 ? `, ${number(total / colours)} each` : "";
   return `${number(total)} units · ${colours} colour${colours === 1 ? "" : "s"}${each}`;
@@ -185,15 +241,20 @@ export function fieldsFromBrief(brief, categoryTerms, otherTerms = {}) {
   if (!text) return {};
   const samples = clauses(text).find((clause) => /\bsamples?\b/i.test(clause)) ?? "";
 
+  const category = productTypeFrom(text, categoryTerms);
   return {
-    category: productTypeFrom(text, categoryTerms),
+    // A request is saved under its product when the brand names it nothing
+    // else, so the card shows that name rather than an empty field.
+    title: category,
+    category,
     certifications: labelsIn(text, otherTerms.certification),
     regions: labelsIn(text, otherTerms.region),
-    quantity: quantityLine(quantityFrom(text), colourCountFrom(text)),
+    quantity: quantityLineFrom(text),
     material: materialFrom(text),
     samples: capitalise(samples),
     timeline: timelineFrom(text),
     price: priceFrom(text),
+    sourcing: sourcingFrom(text),
   };
 }
 

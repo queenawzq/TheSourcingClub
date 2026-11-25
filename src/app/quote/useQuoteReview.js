@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getColourSplits, getInvitations, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { listQuotesForRfq } from "../../lib/domain/quote.js";
+import { getOrder } from "../../lib/domain/order.js";
 import { listRfqDocuments } from "../../lib/domain/documents.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
@@ -61,21 +62,30 @@ export function useQuoteReview(rfqId) {
       ]);
       if (!rfq) throw new Error("this request is not available to you");
 
-      const [matchScores, invitations] = await Promise.all([
+      const [matchScores, invitations, reorderOf] = await Promise.all([
         matchScoresForRfq(
           rfqId,
           quotes.map((quote) => quote.factory_org_id).filter(Boolean),
         ).catch(() => new Map()),
         getInvitations(rfqId).catch(() => []),
+        rfq.reorder_of_order_id ? getOrder(rfq.reorder_of_order_id).catch(() => null) : null,
       ]);
       // A vendor the brand chose (invited, or the reorder's factory, which is
       // invited) gets no fit label: "Not a fit" on it contradicts the brand.
+      // Its score is still the one the invite step showed, so it is kept.
       const invited = new Set((invitations ?? []).map((row) => row.factory_org_id));
+      // As on the invite step: no figure for the factory a reorder repeats,
+      // or for a score of nothing.
+      const scoreOf = (orgId) => {
+        const score = matchScores.get(orgId);
+        return !score || orgId === reorderOf?.factory_org_id ? null : score;
+      };
 
       const prompts = Object.fromEntries((questions ?? []).map((question) => [question.id, question.prompt]));
       const described = quotes.map((quote) => ({
         raw: quote,
-        matchScore: invited.has(quote.factory_org_id) ? null : matchScores.get(quote.factory_org_id) ?? null,
+        matchScore: scoreOf(quote.factory_org_id),
+        chosenByBrand: invited.has(quote.factory_org_id),
         view: {
           ...describeQuote(quote, { incoterms: terms.incoterm ?? [] }),
           answers: (quote.answers ?? [])
