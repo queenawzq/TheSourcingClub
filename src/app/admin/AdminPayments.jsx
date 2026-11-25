@@ -54,7 +54,8 @@ import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
 import { PaymentReviewsSection } from "./PaymentReviews.jsx";
-import { paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
+import { HeldRefund, OrderSearchBar, OrderSearchSection } from "./OrderRefunds.jsx";
+import { adminRefundInfo, paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
 import { adminBalanceAttention, adminWithdrawals, checkStripeWithdrawal, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
@@ -87,7 +88,9 @@ const SentContext = createContext(null);
 // Orders of factories paused by a payment review: no payout button on their
 // rows (the database refuses every road too; 20261124100100).
 const PausedContext = createContext(new Set());
-const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).";
+// Held rows' refund facts ({ [paymentId]: { refundable_cents, refund_refusal, … } }); null on the design preview.
+const RefundInfoContext = createContext(null);
+const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).";
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -127,7 +130,8 @@ function AccountNumber({ row, onViewed }) {
     setBusy(true);
     setProblem(null);
     try {
-      const answer = await revealNumber(row.payout_account_id);
+      // Named for this payout: only then is it "being sent" while the factory is paused.
+      const answer = await revealNumber(row.payout_account_id, { paymentId: row.payment_id });
       onViewed?.();
       if (answer.changed_at !== row.payout_changed_at) {
         setProblem("These details changed since this page loaded. Reload the page and check them.");
@@ -575,7 +579,7 @@ export function useNarrow() {
 }
 
 /** Whether a row in this section has a note and buttons. */
-const rowActs = (section, row, attempt) => section === "payout"
+const rowActs = (section, row, attempt, refundInfo = null) => (section === "held" && Boolean(refundInfo?.[row.payment_id]) && refundInfo[row.payment_id].refund_refusal !== "staff_refund_not_charged") || section === "payout"
   || (section === "clearing" && underway(row, attempt)) || (section === "failed" && (providerFailed(row, attempt) || Boolean(row.refund_failed_at)));
 
 function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns, notes }) {
@@ -583,10 +587,11 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
   const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
   const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
-  const acts = rowActs(section, row, attempt);
+  const refundInfo = useContext(RefundInfoContext);
+  const acts = rowActs(section, row, attempt, refundInfo);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
-  const noteInput = acts ? (
+  const noteInput = acts && section !== "held" ? (
     <>
       {section === "failed" && row.refund_failed_at ? (
         <label className="admin-sub">
@@ -614,7 +619,9 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} onNoteChange={setNote} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+  const buttons = section === "held"
+    ? <HeldRefund row={row} info={refundInfo?.[row.payment_id]} onRefunded={onChanged} />
+    : <Actions row={row} section={section} note={note} onNoteChange={setNote} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
 
   return (
     <>
@@ -723,7 +730,8 @@ function providerCounts(rows, attempts) {
 }
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
-  const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id)));
+  const refundInfo = useContext(RefundInfoContext);
+  const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id), refundInfo));
   // Only a payout has a note: a bank reference.
   const notes = columns && (id === "payout" || id === "failed");
   return (
@@ -790,6 +798,7 @@ export default function AdminPayments() {
   const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
   const [attention, setAttention] = useState(null);
   const [reviews, setReviews] = useState(null);
+  const [refundInfo, setRefundInfo] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -802,6 +811,8 @@ export default function AdminPayments() {
       setAttention(checking);
       setReviews(reviewed);
       setRows(board);
+      // Refund… on the Held tab; without it the rows simply have no button.
+      adminRefundInfo(boardSections(board).held.map((row) => row.payment_id)).then(setRefundInfo, () => setRefundInfo(null));
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
       // Only says why a row waits; the board stands without it.
@@ -905,9 +916,11 @@ export default function AdminPayments() {
 
   return (
     <AdminWorkspaceShell onSignOut={signOut}>
+      <RefundInfoContext.Provider value={refundInfo}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
                      load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} withdrawals={withdrawals}
                      attention={attention} reviews={reviews} />
+      </RefundInfoContext.Provider>
     </AdminWorkspaceShell>
   );
 }
@@ -1033,12 +1046,15 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     try {
       const asked = new URLSearchParams(window.location.search).get("tab");
       // The tab's words, as a link may say them.
-      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
+      return { needs_checking: "attention", "needs-checking": "attention", review_needed: "attention", "review-needed": "attention",
+        payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
     } catch {
       return null;
     }
   });
   const [sentNotice, setSentNotice] = useState(null);
+  // An order searched by its number: while it shows, no tab is active.
+  const [search, setSearch] = useState(null);
   const onSent = useCallback((row, name, done) => {
     setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
       : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
@@ -1051,7 +1067,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   // Disputes and refunds after approval are payment reviews now (20261124100000): each open one counts here.
   if (attention) sections.attention = [...(reviews?.list ?? []).filter((row) => row.open), ...attention.stuck, ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
-  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
+  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Review needed"]] : [])];
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
@@ -1069,11 +1085,12 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     <PausedContext.Provider value={pausedOrders}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
+      {attention ? <OrderSearchBar query={search} onSearch={setSearch} onClear={() => setSearch(null)} /> : null}
       {tabs.length > 1 ? (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
           {tabs.map(([id, label]) => (
-            <button type="button" key={id} data-tab={id} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined}
-                    onClick={() => setChosen(id)}>
+            <button type="button" key={id} data-tab={id} className={!search && active === id ? "active" : ""} aria-current={!search && active === id ? "page" : undefined}
+                    onClick={() => { setSearch(null); setChosen(id); }}>
               {label} <span>{sections[id].length}</span>
             </button>
           ))}
@@ -1084,21 +1101,22 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
       {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
-      {active === "payout" ? (
+      {search ? <OrderSearchSection query={search} /> : null}
+      {!search && active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
                  empty="No payouts waiting on staff." />
       ) : null}
-      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
-      {active === "clearing" ? (
+      {!search && active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
+      {!search && active === "clearing" ? (
         <Section id="clearing" title="Processing" rows={sections.clearing} {...shared} empty="Nothing is processing."
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
-      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
-      {active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
+      {!search && active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
+      {!search && active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
       {/* Its own rows, or its own failure; the reviews above say "All clear" when nothing is open. */}
-      {active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
+      {!search && active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
         ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
-      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
+      {!search && active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
         pausedOrgs={pausedOrgs} /> : null}
 
     </main>

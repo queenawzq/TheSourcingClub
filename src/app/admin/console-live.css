@@ -263,3 +263,12 @@
 @media (max-width: 600px) {
   .admin-payout-provider-row { flex-direction: column; align-items: flex-start; }
 }
+
+/* Live only: Users → Paused brands (paused payments). A fourth count, the
+   reason column, and the Unpause confirm's line. */
+.admin-user-metrics.has-paused { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 900px; }
+@media (max-width: 760px) { .admin-user-metrics.has-paused { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.admin-user-metrics > div.selected { border-color: #174df2; box-shadow: 0 0 0 1px #174df2; }
+.admin-users-table td.admin-user-reason { white-space: normal; }
+.admin-review-modal .admin-modal-line { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; }
+.admin-review-modal .admin-error { margin: 0; }
