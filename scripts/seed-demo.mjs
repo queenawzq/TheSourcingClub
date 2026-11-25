@@ -44,6 +44,7 @@ import { addressOwnerCheck, addressSiteCheck } from "../api/_address.js";
 import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
 import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
+import { brandLocation, countryName } from "../src/shared/company-address.mjs";
 import { FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
 
 // The local stack, or a test database named with --remote; never production.
@@ -1824,6 +1825,44 @@ for (const orgId of new Set(demoMembers.map((member) => member.org_id))) {
     .order("created_at", { ascending: false }), "unread notifications");
   const older = unread.slice(5).map((row) => row.id);
   if (older.length) must(await admin.from("notifications").update({ read_at: new Date().toISOString() }).in("id", older).select("id"), "mark older notifications read");
+}
+
+// Each vendor's one address (Factory Address / Company Address): the full
+// text in the members-and-staff table, its parts written as the server writes
+// them (api/structure-address.js), and a brand reading only "City, Country".
+console.log("company addresses");
+{
+  const vendorNames = [...new Set(Object.values(LOGINS).map((login) => login.name).filter(Boolean))];
+  const { data: vendors } = await admin.from("orgs").select("id, name, type").in("name", vendorNames).eq("type", "factory");
+  const orgOf = (name) => vendors?.find((row) => row.name === name)?.id;
+  const addresses = [
+    [LOGINS.factory.name, "Rua do Freixo 1071, 4300-219 Porto, Portugal",
+      { street: "Rua do Freixo 1071", city: "Porto", city_en: "Porto", postal_code: "4300-219", country_code: "PT" }],
+    [LOGINS.secondFactory.name, "中国浙江省宁波市鄞州区工业园路18号",
+      { street: "鄞州区工业园路18号", city: "宁波市", city_en: "Ningbo", region: "浙江省", country_code: "CN" }],
+    [LOGINS.tradingCompany.name, "Unit 1203, 12/F, Tower 1, 100 Nathan Road, Tsim Sha Tsui, Kowloon, Hong Kong",
+      { street: "Unit 1203, 12/F, Tower 1, 100 Nathan Road", city: "Kowloon", city_en: "Kowloon", country_code: "HK" }],
+  ];
+  for (const [name, address, parts] of addresses) {
+    const orgId = orgOf(name);
+    if (!orgId) continue;
+    must(await admin.from("factory_profiles").update({ production_address: address }).eq("org_id", orgId), `${name} address`);
+    must(await admin.rpc("save_company_address_parts", {
+      target_org: orgId, for_address: address, parts, brand_location: brandLocation(parts), source: "model",
+    }), `${name} address parts`);
+  }
+  // Every other demo vendor: its location is its address (as the migration
+  // copies it), and a location with a street in it reads as the country only.
+  for (const vendor of vendors ?? []) {
+    if (addresses.some(([name]) => name === vendor.name)) continue;
+    const { data: profile } = await admin.from("factory_profiles").select("location, country_code").eq("org_id", vendor.id).maybeSingle();
+    if (!profile?.location) continue;
+    const { data: row } = await admin.from("factory_production_addresses").select("address").eq("org_id", vendor.id).maybeSingle();
+    if (!row) must(await admin.from("factory_profiles").update({ production_address: profile.location }).eq("org_id", vendor.id), `${vendor.name} address`);
+    if (/\d/.test(profile.location)) {
+      must(await admin.from("factory_profiles").update({ location: countryName(profile.country_code) }).eq("org_id", vendor.id), `${vendor.name} location`);
+    }
+  }
 }
 
 console.log(`

@@ -19,7 +19,7 @@ set local tsc.skip_terms_guard = 'on';
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(12);
+select plan(18);
 
 insert into auth.users (id, email) values
   ('f9a10000-0000-0000-0000-000000000001', 'psb-staff-brand@example.com'),
@@ -179,6 +179,24 @@ select is(
 
 set local request.jwt.claims = '{"sub":"f9a10000-0000-0000-0000-000000000003","role":"authenticated"}';
 set local role authenticated;
+select public.admin_review_decision('f9a20000-0000-0000-0000-0000000000f1', 'approved', 'A second welcome.');
+reset role;
+
+select is(
+  (select count(*)::integer from public.notifications
+    where org_id = 'f9a20000-0000-0000-0000-0000000000f1' and kind = 'verification_approved'),
+  1,
+  'approving an approved company again with a new message tells it nothing'
+);
+
+select is(
+  (select note from public.org_reviews where org_id = 'f9a20000-0000-0000-0000-0000000000f1'),
+  null,
+  'and keeps the message it was sent (none)'
+);
+
+set local request.jwt.claims = '{"sub":"f9a10000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
 select public.admin_review_decision('f9a20000-0000-0000-0000-0000000000f1', 'needs_information', 'Upload the licence.');
 reset role;
 
@@ -187,6 +205,44 @@ select is(
     where org_id = 'f9a20000-0000-0000-0000-0000000000f1' and kind = 'verification_needs_information'),
   1,
   'a different decision is still told'
+);
+
+-- A company verified some other way (the seed, a file review) has no staff
+-- approval on file. Changing its badge still tells it nothing and emails nobody.
+insert into auth.users (id, email) values
+  ('f9a10000-0000-0000-0000-000000000004', 'psb-verified@example.com');
+insert into public.org_members (org_id, user_id, role) values
+  ('f9a20000-0000-0000-0000-0000000000f2', 'f9a10000-0000-0000-0000-000000000004', 'owner');
+
+set local request.jwt.claims = '{"sub":"f9a10000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select public.admin_review_decision_with_tier('f9a20000-0000-0000-0000-0000000000f2', 'approved', 'Welcome again.', null, 'basic');
+reset role;
+
+select is(
+  (select count(*)::integer from public.notifications
+    where org_id = 'f9a20000-0000-0000-0000-0000000000f2' and kind = 'verification_approved'),
+  0,
+  'a badge change on a company verified another way tells it nothing'
+);
+
+select is(
+  (select count(*)::integer from public.verification_approval_email_outbox
+    where org_id = 'f9a20000-0000-0000-0000-0000000000f2'),
+  0,
+  'and queues no approval email'
+);
+
+select is(
+  (select note from public.org_reviews where org_id = 'f9a20000-0000-0000-0000-0000000000f2'),
+  null,
+  'and records no message it was never sent'
+);
+
+select is(
+  (select trust_tier::text from public.factory_profiles where org_id = 'f9a20000-0000-0000-0000-0000000000f2'),
+  'basic',
+  'the badge is still set'
 );
 
 select * from finish();
