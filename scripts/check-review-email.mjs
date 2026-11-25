@@ -106,7 +106,10 @@ check("Test emails sends the sample for a request", /needs_information", locale,
 const suggest = await import("../api/suggest-review-request.js");
 const ITEMS = ["Upload your licence (Verification)."];
 const answer = await suggest.shapeSuggestion("Hello,\n\nTwo items are open.\n\n1. A list it was told not to write\n\nWe look forward to it.\n\nWarm regards,\nThe Sourcing Club", ITEMS);
-check("the list is ours; the greeting, its list and the sign-off go", answer === "Two items are open.\n\n- Upload your licence (Verification).\n\nWe look forward to it.", answer);
+check("the list is ours; the greeting, its list and the sign-off go", answer === "Two items are open.\n\n- Upload your licence (Verification).\n\nWe look forward to receiving these.", answer);
+// The model's own closing line is never used: it padded (R3t7).
+const closing = await suggest.shapeSuggestion("We need the items below to complete the review of your factory profile.\n\nWe look forward to receiving these and will move things along as soon as they arrive.", ITEMS);
+check("the closing line is ours, never the model's", closing.endsWith("\n\nWe look forward to receiving these.") && !/move things along/.test(closing), closing);
 // Flow check R2S5: the company named again, thanks for patience and "nearly through" fall back to our words.
 const padded = await suggest.shapeSuggestion("Thank you for your patience while we continue reviewing your Sourcing Club profile for Dongguan Tuosheng Apparel; we are nearly through the verification process and only a few items remain.\n\nWe look forward to receiving these.", ITEMS, "Dongguan Tuosheng Apparel");
 check("a summary naming the company or padding with progress falls back", padded.startsWith("We need a few more details to finish reviewing your profile."), padded);

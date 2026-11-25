@@ -95,7 +95,7 @@ const declinedCopy = {
     cardEyebrow: "MESSAGE FROM OUR REVIEW TEAM",
     cardTitle: "Reason given",
     nextTitle: "What you can do",
-    nextCopy: "If you think this is a mistake or have new information, just reply to this email and our team will take a look.",
+    nextCopy: "If you think this is a mistake or have new information, reply to this email.",
     cta: "Log in to The Sourcing Club",
     help: "Questions? Reply to this email or contact",
     footer: "You’re receiving this because our team reviewed your TSC profile.",
@@ -111,7 +111,7 @@ const declinedCopy = {
     cardEyebrow: "审核团队的留言",
     cardTitle: "原因说明",
     nextTitle: "你可以做什么",
-    nextCopy: "如果你认为这有误，或有新的资料，直接回复这封邮件，我们的团队会查看。",
+    nextCopy: "如果你认为这有误，或有新的资料，请回复这封邮件。",
     cta: "登录 The Sourcing Club",
     help: "有疑问？直接回复这封邮件，或联系",
     footer: "你收到这封邮件是因为我们的团队审核了你的 TSC 资料。",
@@ -259,7 +259,7 @@ if (isDirectRun) {
     companyName: "Wonder Lab",
     logoUrl: "../assets/logo.png",
     loginUrl: "https://sourcing-club.com/app.html",
-    note: "Your profile is nearly complete, but we could not confirm your registration.\n\n- A current business registration certificate showing your company name and address\n- Your company website, so we can match the legal name\n\nWe look forward to receiving these.",
+    note: "We need the items below to complete the review of your profile.\n\n- A current business registration certificate showing your company name and address\n- Your company website, so we can match the legal name\n\nWe look forward to receiving these.",
   });
   await writeFile(path.join(outputDir, "more-information-needed.html"), needsInformationSample.html);
   console.log(`Generated account review emails in ${outputDir}`);

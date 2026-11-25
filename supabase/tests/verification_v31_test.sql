@@ -110,16 +110,17 @@ select is(public.admin_verification_rules('d3100000-0000-0000-0000-0000000000f1'
 select is(public.admin_verification_rules('d3100000-0000-0000-0000-0000000000f1') #>> '{staffNumber,note}', 'Read off the licence photo: the AI misread one character', 'and staff''s note');
 select is(public.admin_registry_detail('d3100000-0000-0000-0000-0000000000f1') #>> '{registration,source}', 'staff', 'the registry detail says whose number it is');
 
--- An old 15-digit code, and a Hong Kong CR, are staff's to type
+-- An old 15-digit code read with a failing check digit (it passes when its check digit does, 20261124616100),
+-- and a Hong Kong CR, are staff's to type
 reset role;
 select lives_ok($$select public.record_verification_signal('d3100000-0000-0000-0000-0000000000f2', 'document_reading', 'a3100000-0000-0000-0000-000000000002', 'agrees',
   jsonb_build_object('extracted', jsonb_build_object('registrationNumber', '330200000012345'), 'differences', '[]'::jsonb), 'c3100000-0000-0000-0000-000000000001')$$,
-  'the AI reads an old 15-digit code');
+  'the AI reads an old 15-digit code, one digit off');
 insert into public.company_registrations (org_id, country_code, number_source) values ('d3100000-0000-0000-0000-0000000000f2', 'CN', 'document');
-select is(public.registry_approval_problem('d3100000-0000-0000-0000-0000000000f2'), 'number_needs_staff', 'approval asks staff for the number, not a clearer licence');
+select is(public.registry_approval_problem('d3100000-0000-0000-0000-0000000000f2'), 'number_check_digit_fails', 'approval asks staff for the number, not a clearer licence');
 set local request.jwt.claims = '{"sub":"c3100000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
-select lives_ok($$select public.admin_set_registration_number('d3100000-0000-0000-0000-0000000000f2', '330200000012345', 'Old registration code, before 2015')$$,
+select lives_ok($$select public.admin_set_registration_number('d3100000-0000-0000-0000-0000000000f2', '330200000012344', 'Old registration code, before 2015')$$,
   'staff store the old code');
 reset role;
 select is(public.registry_approval_problem('d3100000-0000-0000-0000-0000000000f2'), 'no_check', 'and it is no longer a dead end');

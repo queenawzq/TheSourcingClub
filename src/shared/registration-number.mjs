@@ -117,7 +117,7 @@ const EU_VAT_PREFIX = Object.fromEntries(["AT", "BE", "BG", "CY", "CZ", "DE", "D
  * - Hong Kong: the 8-digit Business Registration number is the start of the certificate's full number
  *   (71234567 and 71234567-000-11-25-6);
  * - the EU: a VAT number is the country's prefix and the national number (ESB12345678 and B12345678).
- * China's old 15-digit registration number cannot be derived from the 18-character code, so it never matches.
+ * China's old 15-digit registration number (注册号) cannot be derived from the 18-character code, so it never matches.
  */
 export function sameRegistrationNumber(country, a, b) {
   const x = normaliseRegistrationNumber(country, a);
@@ -135,6 +135,20 @@ export function usccCheckChar(first17) {
   for (let i = 0; i < 17; i += 1) sum += USCC_CHARS.indexOf(first17[i]) * USCC_WEIGHTS[i];
   const c = 31 - (sum % 31);
   return USCC_CHARS[c === 31 ? 0 : c];
+}
+
+/**
+ * China's registration number before the credit code (注册号, licences issued
+ * before 2015): 15 digits, the last a GB/T 17710 (ISO 7064 MOD 11,10) check
+ * digit. Such a licence is still valid, and GSXT finds the company by it.
+ */
+export function oldCnCheckDigit(first14) {
+  let p = 10;
+  for (let i = 0; i < 14; i += 1) {
+    const s = (p + Number(first14[i])) % 10 || 10;
+    p = (s * 2) % 11;
+  }
+  return (11 - p) % 10;
 }
 
 export function orgCodeCheckChar(first8) {
@@ -166,15 +180,17 @@ export function vknCheckDigit(first9) {
 
 /**
  * Null when the number is acceptable, else a code: `missing`, `format`
- * (length or characters: refused), `old_number` (China's pre-2017 15 digits:
- * refused, ask for the current licence) or `check_digit` (the factory may
- * confirm it, and staff are shown that it did). Runs on a normalised number.
+ * (length or characters: refused) or `check_digit` (the factory may confirm
+ * it, and staff are shown that it did). China takes the 18-character credit
+ * code and the old 15-digit registration number, each with its own check
+ * (Nov 25: a licence issued before 2015 could never be approved). Runs on a
+ * normalised number.
  */
 export function registrationNumberProblem(country, raw) {
   const value = normaliseRegistrationNumber(country, raw);
   if (!value) return "missing";
   if (country === "CN") {
-    if (/^\d{15}$/.test(value)) return "old_number";
+    if (/^\d{15}$/.test(value)) return oldCnCheckDigit(value.slice(0, 14)) === Number(value[14]) ? null : "check_digit";
     if (!/^[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}$/.test(value)) return "format";
     return usccCheckChar(value.slice(0, 17)) === value[17] ? null : "check_digit";
   }

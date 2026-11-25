@@ -717,7 +717,7 @@ export function scopeCheck({ reading, level, country, vendorKind = null }) {
   };
 }
 
-const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", room: "Room", postcode: "Postcode" };
+const PART_WORDS = { province: "Province", city: "City", district: "District", town: "Neighbourhood", road: "Street", number: "Street number", building: "Building", floor: "Floor", room: "Room", postcode: "Postcode" };
 
 export function addressCheck({ owner, siteSignal, typedAddress }) {
   const base = { key: "address", label: "Address", weight: 15, reasonKey: "address" };
@@ -947,9 +947,10 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
       // What clears it (Nov 25): an explanation, or a registry check showing the licence's name (or theirs).
       : "Registry name: the licence's name differs from what they typed. Explain it on the Typed: line, or record a check with the name the registry shows",
     duplicate: "Shared number: explain it first",
-    number_check_digit_fails: "Number fails its check digit: correct it from the licence",
-    number_needs_staff: "Number: type it from the licence",
-    number_unread: licence ? "Number not read: ask for a clearer licence" : "No registration number: record a registry check with it",
+    // The number is entered on the registry check (Found, with the number the registry shows): the one field for it.
+    number_check_digit_fails: "Number fails its check digit: record a registry check with the correct number",
+    number_needs_staff: "Number: record a registry check with it",
+    number_unread: licence ? "Number not read: record a registry check with it, or ask for a clearer licence" : "No registration number: record a registry check with it",
     trading_only: "Factory or trader: record a check first",
   }[problem] ?? "Not ready to approve";
 }
@@ -969,10 +970,9 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
       ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and save"
       : "Approve needs: the name differs from the licence. Explain it on the Typed: line, or record a check with the name the registry shows"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
-    number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
-    number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
-    number_unread: licence ? ["business_registration", "licence", "Approve needs: a clearer licence"]
-      : ["business_registration", "registry", "Approve needs: a registry check with their registration number"],
+    number_check_digit_fails: ["business_registration", "registry", "Approve needs: a registry check with the correct number"],
+    number_needs_staff: ["business_registration", "registry", "Approve needs: a registry check with the number"],
+    number_unread: ["business_registration", "registry", "Approve needs: a registry check with their registration number"],
     trading_only: ["company_information", "scope", "Approve needs: record a check here"],
   }[problem];
   return row ? { group: row[0], check: row[1], words: row[2] } : null;
@@ -1065,7 +1065,9 @@ export function scoreVerification(input, { timeZone } = {}) {
   // The registry is the document's country: a mainland licence (an 18-character credit code that passes its check)
   // is checked on China's registry, whatever the address (Nov 25: a Hong Kong office's Sichuan licence was sent to
   // the Hong Kong Companies Registry).
-  const registryCountry = country !== "CN" && readValues.registrationNumber && registrationNumberProblem("CN", readValues.registrationNumber) === null
+  // Only the 18-character code: an old 15-digit number is all digits, and another country's number can pass its check.
+  const registryCountry = country !== "CN" && /^[0-9A-Z]{18}$/.test(String(readValues.registrationNumber ?? "").replace(/[\s-]/g, "").toUpperCase())
+    && registrationNumberProblem("CN", readValues.registrationNumber) === null
     ? "CN" : country;
   const registry = withReason(registryCheck({
     detail, country: registryCountry, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",

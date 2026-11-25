@@ -185,6 +185,12 @@ console.log("fix round 2");
   const row = approvalBlockRow("document_differs", {}, reading);
   check(row?.check === "registry" && /number differs/.test(row.words), `the number difference is named on the registry row (${row?.words})`);
   check(/number differs/.test(approvalBlockWords("document_differs", {}, reading)), "the side panel names the number too");
+  // A number staff must enter goes on the registry check, the one field for it (R3t1): never a row with no field.
+  for (const problem of ["number_needs_staff", "number_check_digit_fails", "number_unread"]) {
+    const block = approvalBlockRow(problem, {}, null, { licence: true });
+    check(block?.check === "registry" && /registry check/.test(block.words), `${problem} points at the registry check (${block?.words})`);
+    check(/registry check/.test(approvalBlockWords(problem, {}, null)), `${problem}: the side panel says so too`);
+  }
 }
 {
   check(watermarkWords("仅供认证使用") === "仅供认证使用 (for verification use only)", "the watermark is translated");

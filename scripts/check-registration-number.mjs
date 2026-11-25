@@ -35,7 +35,12 @@ const cases = [
   ["CN", "91330100MA2B7C4D3F", null],
   ["CN", "９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ", null],
   ["CN", "91330100MA2B7C4D31", "check_digit"],
-  ["CN", "330100000012345", "old_number"],
+  // The old 15-digit registration number (注册号, before 2015), with its MOD 11,10 check digit (Nov 25).
+  ["CN", "370900200020864", null],
+  ["CN", "3709 0020 0020 864", null],
+  ["CN", "370900200020865", "check_digit"],
+  ["CN", "330100000012345", "check_digit"],
+  ["CN", "37090020002086", "format"],
   ["CN", "9133O100MA2B7C4D3F", "format"],
   ["CN", "91350100M000100I43", "format"],
   ["PT", "501964843", null],
@@ -266,6 +271,26 @@ check("the same number written two ways, by the country's rule (Nov 25)", () => 
   // The database's copy agrees.
   const sql = readFileSync("supabase/migrations/20261124370000_registration_numbers_same.sql", "utf8");
   assert.ok(/country = 'HK' and short ~ '\^\\d\{8\}\$'/.test(sql) && /'GR' and long = 'EL' \|\| short/.test(sql));
+});
+check("an English name in the pinyin of the licence's Chinese name is the same name (R3t3)", () => {
+  const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };
+  const same = (title, legalName) => compareDocument({ registrationNumber: "", legalName }, { country: "CN", number: "", title }, helpers).differences.length === 0;
+  assert.equal(same("Shandong Tianyuan Garment", "山东天源服装股份有限公司"), true);
+  assert.equal(same("Hefei Liansheng Apparel", "合肥联晟服饰有限责任公司"), true);
+  assert.equal(same("Tianyuan Garment Co., Ltd.", "山东天源服装股份有限公司"), true);
+  assert.equal(same("Dongguan Humen Huamei Garment Factory", "东莞市虎门镇华美服装厂"), true);
+  // Another trade name, a trade word the licence doesn't carry, or no trade name at all: still differs.
+  assert.equal(same("Shandong Tianfu Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Shandong Tianyuan Knitwear", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Shandong Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Wenzhou Senzhonghua Apparel", "温州森神华服饰有限公司"), false);
+  // Review d3: another company whose trade name contains the typed one, half a trade name, and words out of order.
+  assert.equal(same("Tianyuan Garment", "东莞市华天源服装有限公司"), false);
+  assert.equal(same("Tianyuan Garment", "东莞市新天源服装有限公司"), false);
+  assert.equal(same("Yuan Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Yuan Tian Garment", "山东天源服装股份有限公司"), false);
+  // A trade word the English leaves out may sit before the one it names.
+  assert.equal(same("Tianyuan Garment", "山东天源针织服装有限公司"), true);
 });
 check("public licences: a misread number or one CJK character is unsure, not differs", () => {
   const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };

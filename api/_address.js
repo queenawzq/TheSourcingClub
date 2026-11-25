@@ -42,6 +42,8 @@ export function fold(text) {
     .replace(/[\s,.;:'"()（）、，。·\-_/#º°ª]+/g, "");
 }
 
+import { spellings } from "./_pinyin.js";
+
 const hasHan = (text) => /[一-鿿]/.test(text);
 
 // Garment-region place names, so an address typed in English can be read
@@ -58,7 +60,25 @@ const PINYIN = {
   张家港: "zhangjiagang", 昆山: "kunshan", 吴江: "wujiang", 盛泽: "shengze", 海门: "haimen", 扬州: "yangzhou",
   厦门: "xiamen", 泉州: "quanzhou", 晋江: "jinjiang", 石狮: "shishi", 福州: "fuzhou", 莆田: "putian", 长乐: "changle",
   青岛: "qingdao", 济南: "jinan", 烟台: "yantai", 潍坊: "weifang", 即墨: "jimo", 武汉: "wuhan", 郑州: "zhengzhou",
+  合肥: "hefei", 泰安: "taian",
+  // Every province (R3t2): a licence may print only its province and county, and the province alone tells two places apart.
+  山西: "shanxi", 陕西: "shaanxi", 辽宁: "liaoning", 吉林: "jilin", 黑龙江: "heilongjiang", 四川: "sichuan", 贵州: "guizhou",
+  云南: "yunnan", 海南: "hainan", 甘肃: "gansu", 青海: "qinghai", 广西: "guangxi", 宁夏: "ningxia", 新疆: "xinjiang",
+  内蒙古: "neimenggu", 西藏: "xizang",
 };
+
+// The provinces (and the four cities that are provinces), in characters and pinyin.
+const PROVINCES = ["北京", "天津", "上海", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东",
+  "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "广西", "内蒙古", "西藏", "宁夏", "新疆"];
+const PROVINCE_PINYIN = new Set(PROVINCES.map((han) => PINYIN[han]));
+// 陕西 is often written "Shanxi" in English, which is 山西's name: never a difference between the two.
+const SAME_PROVINCE = { shaanxi: ["shanxi"], shanxi: ["shaanxi"], neimenggu: ["innermongolia"], xizang: ["tibet"] };
+// The province of a city we know by name, so "Dongguan" can be compared with a licence that prints only 山东.
+const CITY_PROVINCE = Object.fromEntries([
+  ["广东", "广州 深圳 东莞 佛山 中山 汕头 惠州 江门 珠海 揭阳 潮州 普宁"], ["浙江", "杭州 宁波 绍兴 湖州 嘉兴 义乌 金华 温州 桐乡 台州"],
+  ["江苏", "苏州 无锡 常州 南通 南京 常熟 江阴 张家港 昆山 扬州"], ["福建", "厦门 泉州 晋江 石狮 福州 莆田"],
+  ["山东", "青岛 济南 烟台 潍坊 泰安"], ["湖北", "武汉"], ["河南", "郑州"], ["安徽", "合肥"],
+].flatMap(([province, cities]) => cities.split(" ").map((city) => [city, province])));
 
 const pinyinOf = (core) => PINYIN[core] ?? null;
 // The other way round: "dongguan" → "东莞", so a city typed in English can be looked for in a licence's characters.
@@ -83,7 +103,14 @@ const CN_DIGITS = { 一: "1", 二: "2", 三: "3", 四: "4", 五: "5", 六: "6", 
 /** "江东三" → ["jiangdong3", "jiangdongsan"]; null when a character is not known. */
 function roadKeys(han) {
   const chars = [...String(han ?? "")];
-  if (!chars.length || chars.some((c) => !CHAR_PINYIN[c] && !/\d/.test(c))) return null;
+  if (!chars.length) return null;
+  // A character the road table lacks is read from the full table (纬二 is Weier, R3t4); never guessed.
+  if (chars.some((c) => !CHAR_PINYIN[c] && !/\d/.test(c))) {
+    const spelled = spellings(chars.join(""), 16);
+    if (!spelled) return null;
+    const numbered = chars.map((c, i) => (CN_DIGITS[c] && i > 0 ? CN_DIGITS[c] : null));
+    return [...new Set([...spelled, ...(numbered.some(Boolean) ? (spellings(chars.map((c, i) => numbered[i] ?? c).join(""), 16) ?? []) : [])])];
+  }
   const spelled = chars.map((c) => CHAR_PINYIN[c] ?? c).join("");
   const numbered = chars.map((c, i) => (CN_DIGITS[c] && i > 0 ? CN_DIGITS[c] : CHAR_PINYIN[c] ?? c)).join("");
   return [...new Set([numbered, spelled])];
@@ -97,7 +124,8 @@ function latinRoadOf(raw) {
   const segment = segments.find((s) => LATIN_ROAD.test(s));
   if (!segment) return {};
   const number = segment.match(/^(?:no\.?\s*)?(\d+)[a-z]?\b/)?.[1] ?? segment.match(/\bno\.?\s*(\d+)\b/)?.[1] ?? null;
-  const name = segment.replace(/^(?:no\.?\s*)?\d+[a-z]?\s+/, "").replace(/\bno\.?\s*\d+\b/, "").split(LATIN_ROAD)[0]
+  // "North of Weier Road" is how 纬二路北 reads in English: the side of the road is not its name.
+  const name = segment.replace(/^(?:no\.?\s*)?\d+[a-z]?\s+/, "").replace(/\bno\.?\s*\d+\b/, "").replace(/^(?:north|south|east|west)\s+of\s+/, "").split(LATIN_ROAD)[0]
     .replace(/(\d+)(st|nd|rd|th)\b/g, "$1").replace(/[^a-z0-9]+/g, "");
   return { road: name || null, number };
 }
@@ -107,6 +135,12 @@ function buildingOf(raw, han) {
   const text = clean(raw);
   const hit = han ? text.match(/(\d+)\s*(栋|幢|座|号楼|號樓)/) : text.match(/\b(?:building|bldg\.?|block|blk\.?)\s*(?:no\.?\s*)?(\d+)\b/i);
   return hit ? { value: hit[1], shown: han ? hit[0] : hit[0] } : null;
+}
+/** "4th Floor" / "Floor 4" / "4楼" / "4层". */
+function floorOf(raw, han) {
+  const text = clean(raw);
+  const hit = han ? text.match(/(\d+)\s*(楼|樓|层|層)(?!\d)/) : text.match(/\b(\d+)(?:st|nd|rd|th)?\s*(?:floor|fl\.?|f)\b|\bfloor\s*(\d+)\b/i);
+  return hit ? { value: hit[1] ?? hit[2], shown: hit[0] } : null;
 }
 /** "Room 101" / "Rm 101" / "101室". */
 function roomOf(raw, han) {
@@ -142,10 +176,13 @@ function parseChinese(raw) {
     rest = rest.slice(municipality[0].length);
   } else {
     take("province", /^(.{2,7}?)(省|自治区|特别行政区)/);
+    // A province printed without 省 ("山东宁阳环城科技产业园", R3t2).
+    if (!out.province) take("province", new RegExp(`^(${PROVINCES.join("|")})()`));
     take("city", /^(.{2,6}?)(市|地区|自治州|盟)/);
   }
   take("district", /^(.{1,8}?)(区|县级市|县|市|旗)/);
-  take("town", /^(.{1,8}?)(镇|街道|乡|开发区|工业区|工业园)/);
+  // 工业园区 before 工业园, or the 区 is left to start the road ("瑶海工业园区纬二路" read the road as 区纬二).
+  take("town", /^(.{1,8}?)(镇|街道|乡|开发区|工业园区|工业区|工业园)/);
   take("road", /^(?:.{0,10}?村)?(.{1,14}?)(大道|路|街|道|巷|弄|大街)/);
   take("number", /^.{0,8}?(\d+)\s*(号|號)/);
   if (!out.number) {
@@ -205,14 +242,15 @@ function parseLatin(raw) {
     for (const segment of named) {
       const word = segment.replace(/\b(city|district|province|town|county|shi|qu|zhen)\b/g, "").trim().replace(/\s+/g, "");
       if (!KNOWN_PINYIN.has(word)) continue;
-      if (/province/.test(segment) || ["guangdong", "zhejiang", "jiangsu", "fujian", "shandong", "hebei", "henan", "hubei", "hunan", "anhui", "jiangxi"].includes(word)) out.province ??= word;
+      if (/province/.test(segment) || PROVINCE_PINYIN.has(word)) out.province ??= word;
       else if (/district|county|qu\b/.test(segment)) out.district ??= word;
       else if (/town|zhen\b/.test(segment)) out.town ??= word;
       else if (!out.city) out.city = word;
       else out.district ??= word;
     }
     // The last place-like part; a street or a room ("No. 76 Yingfeng 7th Street", "Room 101") is never the city.
-    const places = named.filter((segment) => !LATIN_ROAD.test(segment) && !/\b(room|rm|unit|no)\b\.?\s*\d/.test(segment));
+    const places = named.filter((segment) => !LATIN_ROAD.test(segment) && !/\b(room|rm|unit|no)\b\.?\s*\d/.test(segment)
+      && !PROVINCE_PINYIN.has(segment.replace(/\bprovince\b/, "").replace(/\s+/g, "")));
     if (!out.city && places.length && !roadSegment) out.city = places[places.length - 1 - (places.length > 1 && /^\d/.test(places[places.length - 1]) ? 1 : 0)];
   }
   return out;
@@ -257,6 +295,32 @@ function latinOf(value) {
   return pinyinOf(String(value ?? "").replace(/(省|市|区|县|镇)$/, ""));
 }
 
+/** Every way the part may be written in English: the known name (and its other spelling), else its characters read one by one. */
+function latinForms(value) {
+  const core = String(value ?? "").replace(/(省|市|区|县|镇)$/, "");
+  const known = pinyinOf(core);
+  if (known) return [known, ...(SAME_PROVINCE[known] ?? [])];
+  // Read from the full table only for a name of two characters or more, spelled in four letters or more (R3t4: 瑶海, 新站).
+  return [...core].length >= 2 ? (spellings(core, 8) ?? []).filter((form) => form.length >= 4) : [];
+}
+
+/** The province of a known city, in characters, when the address names no province. */
+function provinceOfCity(parts, script) {
+  for (const part of ["city", "district", "town"]) {
+    const value = parts[part];
+    if (!value) continue;
+    const han = script === "han" ? String(value).replace(/(市|区|县|镇)$/, "") : HAN_OF[fold(value)];
+    if (han && CITY_PROVINCE[han]) return CITY_PROVINCE[han];
+  }
+  return null;
+}
+
+/** The text without the country and a leading province: "安徽省合肥市…" and "合肥市…" are the same address (R3t6). */
+function withoutProvince(raw) {
+  const text = fold(raw).replace(/^(中华人民共和国|中国)/, "");
+  return text.replace(new RegExp(`^(${PROVINCES.join("|")})(省|自治区|市)?`), "");
+}
+
 /**
  * Two addresses compared part by part.
  * `{ verdict: "match" | "partial" | "differs" | "unknown", same: [], differs: [{ part, a, b }] }`.
@@ -275,6 +339,11 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
   // language, whatever the parser could split (an English Hong Kong address yields only its city). Without a
   // number ("Merter, Güngören, Istanbul") it is only an area, compared as before.
   if (fold(rawA) === fold(rawB) && /\d/.test(fold(rawA))) return { verdict: "match", same: ["address"], differs: [], note: "identical" };
+  // The same Chinese text with the province (or the country) written in front of one of them only.
+  if (a.script === "han" && b.script === "han" && withoutProvince(rawA) === withoutProvince(rawB) && /\d/.test(withoutProvince(rawA))
+    && !(a.parts.province && b.parts.province && fold(a.parts.province) !== fold(b.parts.province))) {
+    return { verdict: "match", same: ["address"], differs: [], note: "identical" };
+  }
   const same = [];
   const differs = [];
   if (a.script !== b.script) {
@@ -284,19 +353,28 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
     const hanText = fold(a.script === "han" ? rawA : rawB);
     // A place typed in English whose characters are in the licence: 桐乡 in 嘉兴市桐乡市 is Tongxiang, whichever level it was parsed at.
     const typedPlaceInLicence = (part) => {
-      const core = HAN_OF[fold(latin.parts[part] ?? "")];
+      const core = HAN_OF[fold(latinParts[part] ?? "")];
       return Boolean(core && hanText.includes(core));
     };
+    // A province one side leaves out is the province of a city it names, when the other side prints no city to
+    // compare (R3t2: a licence printing only 山东, against Dongguan).
+    const hanParts = { ...han.parts };
+    const latinParts = { ...latin.parts };
+    if (!hanParts.province && latinParts.province && !latinParts.city) hanParts.province = provinceOfCity(hanParts, "han") ?? undefined;
+    if (!latinParts.province && hanParts.province && !hanParts.city) {
+      const province = provinceOfCity(latinParts, "latin");
+      if (province) latinParts.province = PINYIN[province];
+    }
     for (const part of ["province", "city", "district", "town"]) {
-      const py = latinOf(han.parts[part]);
-      if (py && latinText.includes(py)) { same.push(part); continue; }
+      const py = latinOf(hanParts[part]);
+      if (hanParts[part] && latinForms(hanParts[part]).some((form) => latinText.includes(form))) { same.push(part); continue; }
       if (typedPlaceInLicence(part)) { same.push(part); continue; }
       // A licence part we can't read in Latin letters is not compared: never a difference.
       if (!py) continue;
       // Another place: the typed one is a name we can read and it is nowhere in the licence.
-      if (han.parts[part] && latin.parts[part] && KNOWN_PINYIN.has(fold(latin.parts[part]))) {
+      if (hanParts[part] && latinParts[part] && KNOWN_PINYIN.has(fold(latinParts[part]))) {
         // A town is a place of its own only directly under the city (Dongguan's 镇); under a district it is a neighbourhood.
-        differs.push({ part, a: han.parts[part], b: latin.parts[part], ...(part === "town" && !han.parts.district ? { place: true } : {}) });
+        differs.push({ part, a: hanParts[part], b: latinParts[part], ...(part === "town" && !hanParts.district ? { place: true } : {}) });
       }
     }
     const hanRaw = a.script === "han" ? rawA : rawB;
@@ -325,8 +403,20 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
       if (hanRoom.value === latinRoom.value) same.push("room");
       else differs.push({ part: "room", a: hanRoom.shown, b: latinRoom.shown });
     }
+    const hanFloor = floorOf(hanRaw, true);
+    const latinFloor = floorOf(latinRaw, false);
+    if (hanFloor && latinFloor) {
+      if (hanFloor.value === latinFloor.value) same.push("floor");
+      else differs.push({ part: "floor", a: hanFloor.shown, b: latinFloor.shown });
+    }
     if (differs.length) return { verdict: "differs", same, differs, note: "scripts" };
     if (same.includes("road") && same.includes("number")) return { verdict: "match", same, differs, note: "scripts" };
+    // A licence that prints no street number (纬二路北…科研楼4楼): the street and the building, floor or room it does print.
+    // Every place the licence prints must be found in the English too: a street name alone repeats across districts.
+    if (same.includes("road") && !han.parts.number && ["building", "floor", "room"].some((part) => same.includes(part))
+      && ["province", "city", "district", "town"].every((part) => !han.parts[part] || same.includes(part))) {
+      return { verdict: "match", same, differs, note: "scripts" };
+    }
     return { verdict: same.length ? "partial" : "unknown", same, differs, note: "scripts" };
   }
   const near = [];
@@ -353,7 +443,7 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
   return { verdict: "unknown", same, differs };
 }
 
-const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", building: "building", room: "room", postcode: "postcode" };
+const PART_WORDS = { province: "province", city: "city", district: "district", town: "town or neighbourhood", road: "street", number: "street number", building: "building", floor: "floor", room: "room", postcode: "postcode" };
 const SOURCE_WORDS = { typed: "the address the factory typed", license: "the licence", registry: "the registry" };
 
 /**
@@ -423,7 +513,12 @@ export function addressOwnerCheck({ typed, license, registry, typedFrom = "locat
     reasons.push("To settle: look at the licence; a blurry character is often misread");
   } else if (comparisons.some((c) => c.verdict === "match") && !comparisons.some((c) => c.verdict === "partial" && c.between.includes("license") && c.note !== "scripts")) {
     level = "high";
-    for (const c of comparisons.filter((c) => c.verdict === "match")) reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} give the same street and number`);
+    for (const c of comparisons.filter((c) => c.verdict === "match")) {
+      // Only the parts that matched: a match on the street and the floor is not "the same building" (review d3).
+      const what = c.note === "identical" ? "address" : c.same.includes("number") || c.same.includes("postcode") ? "street and number"
+        : `street and ${["building", "floor", "room"].filter((part) => c.same.includes(part)).join(" and ")}`;
+      reasons.push(`${capital(words[c.between[0]])} and ${words[c.between[1]]} give the same ${what}`);
+    }
   } else if (comparisons.some((c) => c.verdict === "partial")) {
     level = "medium";
     for (const c of comparisons.filter((c) => c.verdict === "partial")) {

@@ -28,7 +28,7 @@ select is(public.registration_number_problem('PT', '509999905'), null, 'PT: a fa
 select is(public.registration_number_problem('TR', '483 726 1591'), null, 'TR: a VKN passes its mod-10 check');
 select is(public.registration_number_problem('TR', '4837261592'), 'check_digit', 'TR: wrong VKN check digit');
 select is(public.registration_number_problem('TR', '0123456789000015'), 'format', 'TR: a MERSIS number is not a VKN');
-select is(public.registration_number_problem('CN', '330100000012345'), 'old_number', 'CN: the old 15 digits');
+select is(public.registration_number_problem('CN', '330100000012345'), 'check_digit', 'CN: the old 15 digits, check digit wrong');
 select is(public.registration_number_problem(null, 'HRB 12345'), null, 'other: as written');
 select is(public.registration_number_problem(null, ''), 'missing', 'other: blank is missing');
 select is(public.registration_number_problem('CN', '９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ'), null, 'CN: full-width characters from a Chinese keyboard pass');

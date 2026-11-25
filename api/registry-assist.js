@@ -44,6 +44,7 @@ import {
 // ownerAtReading (session "address", A4) is read through the namespace, so this
 // file loads whether or not that export has landed yet.
 import * as addressRules from "./_address.js";
+import { englishNameIsPinyinOf } from "./_pinyin.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM helpers lazily.
 const loadRegistrationNumber = () => import("../src/shared/registration-number.mjs");
 
@@ -254,7 +255,9 @@ export function compareDocument(extracted, { country, number, title } = {}, { co
   }
   if (!docNumber && typed) unsure.push({ field: "number", document: "", typed: number, reason: "No number could be read off the document" });
   const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
-  if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
+  // A Chinese licence's name and the English name the factory typed in its pinyin ("Shandong Tianyuan Garment" for
+  // 山东天源服装股份有限公司) are the same name (R3t3).
+  if (names.length && title && !names.some((name) => companyNamesMatch(name, title) || englishNameIsPinyinOf(title, name))) {
     const key = companyNameKey ? (text) => companyNameKey(text).replace(/\s+/g, "") : undefined;
     if (names.some((name) => nearlySameCjk(name, title, key))) unsure.push({ field: "name", document: names.join(" / "), typed: title, reason: "One character differs: check the document" });
     else differences.push({ field: "name", document: names.join(" / "), typed: title });

@@ -458,6 +458,9 @@ export async function overviewMetrics() {
     rfqsSubmittedToday: row.rfqs_submitted_today ?? 0,
     quotesSubmittedToday: row.quotes_submitted_today ?? 0,
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
+    // The count is every queue that waits on staff (payouts, refunds, withdrawals to approve, review needed), not
+    // the board's "Payout owed" tab: "Payments owed 1" opened on "Payout owed 0" (flow check R3t8).
+    paymentsLabel: "Payments awaiting staff",
     // The payments board is the app's, not the console's.
     paymentsHref,
   };
