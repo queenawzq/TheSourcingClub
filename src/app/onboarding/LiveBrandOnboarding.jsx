@@ -30,7 +30,7 @@ import { reviewCompletion } from "./review-completion.js";
 import { useUploadOnce } from "./upload-once.js";
 import { useOnboardingStep } from "./onboarding-step.js";
 import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
-import { inviteMember } from "../../lib/domain/org.js";
+import { inviteMember, listMembers } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import {
   CATEGORY_KIND,
@@ -292,14 +292,25 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       }
 
       // Leaving and returning to this card re-submits the whole list, so only
-      // addresses without an invitation yet are invited.
+      // addresses without an invitation yet are invited. Someone already on
+      // the team (the founder listing herself) is a decision maker already,
+      // and is not invited.
       const stakeholders = submitted[onboardingFieldName("Decision makers")];
       if (stakeholders?.length) {
-        const { data: invited } = await supabase.from("org_invitations").select("email").eq("org_id", org.id);
-        const already = new Set((invited ?? []).map((row) => row.email));
+        const [{ data: invited }, members] = await Promise.all([
+          supabase.from("org_invitations").select("email").eq("org_id", org.id),
+          listMembers(org.id),
+        ]);
+        const already = new Set([
+          ...(invited ?? []).map((row) => row.email.toLowerCase()),
+          ...members.map((member) => member.user_profiles?.email?.toLowerCase()).filter(Boolean),
+          String(user?.email ?? "").toLowerCase(),
+        ]);
         for (const email of stakeholders) {
           const address = String(email).trim().toLowerCase();
-          if (address.includes("@") && !already.has(address)) await inviteMember(org.id, address);
+          if (!address.includes("@") || already.has(address)) continue;
+          await inviteMember(org.id, address);
+          already.add(address);
         }
       }
 

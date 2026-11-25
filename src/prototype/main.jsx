@@ -3985,6 +3985,16 @@ function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pd
     publish([...files, ...incomingFiles.filter((item) => !existingIds.has(item.id))]);
   };
 
+  // A file that has been stored is listed as Uploaded, so it leaves the
+  // pending list: a Next that failed after the upload otherwise showed it
+  // twice, and offered it for upload again.
+  useEffect(() => {
+    if (!documents.length || !files.length) return;
+    const stored = new Set(documents.map((doc) => `${doc.file_name}|${doc.size_bytes}`));
+    const pending = files.filter((item) => !stored.has(`${item.name}|${item.file.size}`));
+    if (pending.length !== files.length) publish(pending);
+  }, [documents]);
+
   async function removeDocument(doc) {
     if (!onDeleteDocument) return;
     setBusyId(doc.id);
