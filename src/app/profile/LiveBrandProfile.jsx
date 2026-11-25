@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { BrandProfileCompletionPage, BrandProfileScreen } from "../../prototype/main.jsx";
 import { useRouter } from "../../lib/router.jsx";
 import { inviteMember, revokeInvitation } from "../../lib/domain/org.js";
-import { brandCompletionView, brandProfileEditForm, brandProfileEditOptions, brandProfileView } from "./brand-profile-view.js";
+import { brandCompletionView, brandProfileEditForm, brandProfileEditOptions, brandProfileView, memberRoleLabel } from "./brand-profile-view.js";
 import { BRAND_EDITORS, saveBrandProfileSection } from "./brand-profile-save.js";
 import {
   DOCUMENT_ACCEPT,
@@ -96,9 +96,9 @@ function dialogParts(org, parts, reload) {
         key: member.user_profiles?.id ?? member.user_profiles?.email,
         name: member.user_profiles?.full_name || member.user_profiles?.email || "Member",
         email: member.user_profiles?.email ?? "",
-        role: member.role === "owner" ? "Owner" : "Member",
+        role: memberRoleLabel(member),
       })),
-      invitations: parts.invitations,
+      invitations: parts.invitations.map((invitation) => ({ ...invitation, name: invitation.invited_name ?? "" })),
       // Settings access invites and withdraws (RLS and the invitation guard).
       canInvite: parts.canInvite,
       onInvite: after((email) => invite(org, email)),
