@@ -45,7 +45,7 @@ import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
 import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 import { brandLocation, countryName } from "../src/shared/company-address.mjs";
-import { FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
+import { applyChargeRefund, FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
 
 // The local stack, or a test database named with --remote; never production.
 const { URL, ANON, SERVICE, isLocal } = demoTarget();
@@ -1700,28 +1700,31 @@ for (const [title, person, org] of [
   await approveOpenStep(order, title, person);
 }
 
-// 7c. Payment reviews (20261124100000), recorded the way the server records
-//    what Stripe reports; each payment carries a demo PaymentIntent id (no
-//    Stripe charge behind it). Two companies of their own, so every other
-//    demo stays as it was:
+// 7c. Payment reviews (20261124100000, v2 20261125100000). With a Stripe
+//    test key (T2 A1), every payment here is a REAL test-mode charge staff
+//    can refund or open in Stripe, made with Stripe's dispute test cards, and
+//    each dispute is Stripe's own (its id, reason and respond-by date). Each
+//    charge is captured only after its step is approved, so the dispute
+//    Stripe opens on it comes after the approval even when a webhook listener
+//    is forwarding to this database; the seed records it as the server does
+//    (record_payment_review_dispute, its reason, then disputed or lost).
+//    Without a key: demo ids, as before. Two companies of their own, so every
+//    other demo stays as it was:
 //    - Harbor Lane Goods paid Riverbend Knit for a fit sample, approved it,
-//      then its bank opened a dispute (record_payment_review_dispute, then
-//      record_payment_disputed): Harbor is paused to messaging only (its next
-//      step is due: Fund is refused; Riverbend's quote on its open request:
-//      Accept is refused), and Riverbend's withdrawals are paused.
-//    - Demo Brand's approved fit sample with Riverbend was half refunded in
-//      Stripe (record_payment_refund_amount): Riverbend is paused, Demo Brand
-//      is not, and nothing is taken from Riverbend.
-//    v2 (20261125100000), so every row of the board has a case:
+//      then its bank opened a dispute ("Product not received"): Harbor is
+//      paused to messaging only (its next step is due: Fund is refused;
+//      Riverbend's quote on its open request: Accept is refused), and
+//      Riverbend's withdrawals are paused.
 //    - Harbor's bag: a chargeback the bank decided for Harbor (lost) after
-//      approval: Riverbend stays paused, staff Approve or Decline.
+//      approval: Riverbend stays paused, staff decide who was at fault.
 //    - Harbor's belt: a chargeback the bank decided for TSC (won): Riverbend
-//      resumed by itself, Harbor stays paused (Paused brands, Unpause brand).
-//    - Demo Brand's linen shirt: also a Stripe inquiry, which pauses nobody.
+//      resumed by itself, Harbor stays paused (Paused brands, Unpause).
+//    - Demo Brand's linen shirt, approved, half refunded in Stripe's
+//      dashboard (a real refund): Riverbend is paused, Demo Brand is not. A
+//      Stripe inquiry on it too, which pauses nobody.
 //    - Demo Brand's canvas apron: approved, with a real test charge, to
-//      refund from the admin board (Refund…, who pays); poplin and twill are
-//      held ones with real charges.
-//    Staff decide in Payments → Needs checking → Payment reviews.
+//      refund from the admin board (Refund…, who pays).
+//    Staff decide in Payments → Review needed → Payment reviews.
 console.log("payment reviews");
 const reviewBrandOrg = must(await reviewBrand.client.rpc("create_org", { org_name: LOGINS.reviewBrand.name, org_kind: "brand" }), "create the brand under review");
 must(await admin.from("brand_profiles").upsert({
@@ -1740,14 +1743,84 @@ must(await admin.from("credit_ledger").insert({
 must(await reviewFactory.client.from("factory_payout_accounts").insert({
   org_id: reviewFactoryOrg.id, method: "paypal", paypal_email: "riverbend-payouts@example.com", bank_country: "VN", is_primary: true,
 }), "the factory under review's PayPal account");
-async function fundedWithIntent(payment, kind) {
-  const intent = `pi_demo_${kind}_${payment.id.slice(0, 8)}`;
+
+const reviewStripe = stripeTestKey() ? new Stripe(stripeTestKey()) : null;
+if (!reviewStripe) console.warn("NO STRIPE TEST KEY: the payment reviews use demo ids, so staff can't refund them or open them in Stripe.");
+const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+/**
+ * A payment held by TSC. With a key: authorised in Stripe test mode with
+ * `card` (a dispute test card for the dispute cases) and captured by
+ * `capture()` once its step is approved. Without: a demo id.
+ */
+async function reviewFunded(payment, kind, card) {
   const total = await charged(payment);
+  let intent = `pi_demo_${kind}_${payment.id.slice(0, 8)}`;
+  let charge = null;
+  if (reviewStripe) {
+    const made = await reviewStripe.paymentIntents.create({
+      amount: total, currency: "usd", payment_method: card, confirm: true, capture_method: "manual",
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      transfer_group: payment.order_id, metadata: { payment_id: payment.id },
+    });
+    intent = made.id;
+    charge = typeof made.latest_charge === "string" ? made.latest_charge : made.latest_charge?.id ?? null;
+  }
   must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent, charged: total }), `the ${kind} charge's intent`);
   must(await admin.rpc("record_payment_funded", {
-    target_payment: payment.id, charge: null, method_type: CARD[0], method_label: CARD[1], received: total,
+    target_payment: payment.id, charge, method_type: CARD[0], method_label: CARD[1], received: total,
   }), `the ${kind} payment held by TSC`);
-  return { intent, total };
+  return {
+    payment, intent, charge, total,
+    async capture() {
+      if (!reviewStripe) return;
+      await reviewStripe.paymentIntents.capture(intent);
+      await recordFundsAvailable({ stripe: reviewStripe, db: admin, paymentId: payment.id, charge, waitMs: FUNDS_WAIT_MS }).catch(() => null);
+    },
+  };
+}
+/** Stripe's dispute on a captured charge (it opens a moment after), or a demo one. */
+async function disputeOf(paid, demo) {
+  if (!reviewStripe) {
+    return { id: `dp_demo_${demo}_${paid.payment.id.slice(0, 8)}`, amount: paid.total, reason: demo === "inq" ? "general" : "product_not_received",
+      status: demo === "inq" ? "warning_needs_response" : "needs_response",
+      evidence_details: { due_by: Math.floor(Date.now() / 1000) + 9 * 86400 }, balance_transactions: demo === "inq" ? [] : [{ fee: 1500 }] };
+  }
+  for (let tries = 0; tries < 30; tries += 1) {
+    const dispute = (await reviewStripe.disputes.list({ payment_intent: paid.intent, limit: 1 })).data[0];
+    if (dispute) return dispute;
+    await pause(1000);
+  }
+  throw new Error(`Stripe opened no dispute on ${paid.intent}`);
+}
+/** Stripe decides a test dispute by its evidence ("winning_evidence" / "losing_evidence"); demo ones are decided here. */
+async function decided(dispute, outcome) {
+  if (!reviewStripe) return { ...dispute, status: outcome, evidence_details: {} };
+  await reviewStripe.disputes.update(dispute.id, { evidence: { uncategorized_text: `${outcome === "won" ? "winning" : "losing"}_evidence` }, submit: true });
+  for (let tries = 0; tries < 30; tries += 1) {
+    const now = await reviewStripe.disputes.retrieve(dispute.id);
+    if (now.status === outcome) return now;
+    await pause(2000);
+  }
+  throw new Error(`Stripe didn't decide ${dispute.id} as ${outcome}`);
+}
+/** A dispute recorded as api/_stripe.js applyDispute records it. */
+async function recordDispute(paid, dispute) {
+  const dueBy = Number(dispute.evidence_details?.due_by);
+  const fee = (dispute.balance_transactions ?? []).reduce((sum, row) => sum + Number(row?.fee || 0), 0);
+  must(await admin.rpc("record_payment_review_dispute", {
+    target_payment: paid.payment.id, dispute_id: dispute.id, status: dispute.status, amount_cents: dispute.amount,
+    due_by: dueBy > 0 ? new Date(dueBy * 1000).toISOString() : null, fee_cents: dispute.balance_transactions?.length ? fee : null,
+  }), `the dispute ${dispute.id}: ${dispute.status}`);
+  if (dispute.reason) {
+    must(await admin.rpc("record_payment_review_dispute_reason", { dispute_id: dispute.id, reason: dispute.reason }), "the dispute's reason");
+  }
+  if (dispute.status === "lost") {
+    must(await admin.rpc("record_payment_dispute_lost", {
+      target_payment: paid.payment.id, dispute_id: dispute.id, lost_cents: dispute.amount, fee_cents: dispute.balance_transactions?.length ? fee : null,
+    }), "the dispute lost");
+  } else if (!String(dispute.status).startsWith("warning_")) {
+    must(await admin.rpc("record_payment_disputed", { target_payment: paid.payment.id, disputed: !["won", "prevented"].includes(dispute.status) }), "the charge's hold");
+  }
 }
 {
   const buyer = { client: reviewBrand.client, org: reviewBrandOrg };
@@ -1756,8 +1829,7 @@ async function fundedWithIntent(payment, kind) {
     title, brief: "60 waxed cotton field jackets, corduroy collar.", quantity: 60, unitPrice: 8400,
     vendor: reviewFactory, vendorOrg: reviewFactoryOrg, buyer,
   });
-  const fit = await dueNow(order, title);
-  const { total } = await fundedWithIntent(fit, "dispute");
+  const jacket = await reviewFunded(await dueNow(order, title), "dispute", "pm_card_createDisputeProductNotReceived");
   await approveOpenStep(order, title, reviewFactory, reviewBrand.client);
   // Its next request, quoted by Riverbend and waiting for Harbor to choose.
   const next = await publishRequest({
@@ -1767,53 +1839,37 @@ async function fundedWithIntent(payment, kind) {
   });
   await sendQuote(reviewFactory, reviewFactoryOrg, next, { price: 2100, quantity: 200, lead: 35, note: "Same wax as the jacket." });
   // Two more approved steps, before anything pauses Harbor (v2).
-  const decided = {};
+  const decidedSteps = {};
   for (const [kind, stepTitle, brief, quantity, unitPrice] of [
     ["lost", "Waxed canvas weekender bag, AW27", "80 waxed canvas weekender bags, brass hardware.", 80, 6200],
     ["won", "Bridle leather belt, AW27", "150 bridle leather belts, solid brass buckle.", 150, 3800],
   ]) {
     const ord = await runningOrder({ title: stepTitle, brief, quantity, unitPrice, vendor: reviewFactory, vendorOrg: reviewFactoryOrg, buyer });
-    const step = await dueNow(ord, stepTitle);
-    const money = await fundedWithIntent(step, kind);
+    const paid = await reviewFunded(await dueNow(ord, stepTitle), kind, "pm_card_createDispute");
     await approveOpenStep(ord, stepTitle, reviewFactory, reviewBrand.client);
-    decided[kind] = { step, order: ord, ...money };
+    decidedSteps[kind] = { order: ord, paid };
   }
-  must(await admin.rpc("record_payment_review_dispute", {
-    target_payment: fit.id, dispute_id: `dp_demo_${fit.id.slice(0, 8)}`, status: "needs_response",
-    amount_cents: total, due_by: new Date(Date.now() + 9 * 86400000).toISOString(), fee_cents: 1500,
-  }), "the dispute opens a payment review");
-  must(await admin.rpc("record_payment_disputed", { target_payment: fit.id, disputed: true }), "the charge is disputed");
-  // The bag: the bank decided for Harbor. Staff decide (Approve / Decline).
+  // Every step approved: now the charges are captured and the banks dispute them.
+  for (const paid of [jacket, decidedSteps.lost.paid, decidedSteps.won.paid]) await paid.capture();
+  await recordDispute(jacket, await disputeOf(jacket, "fit"));
+  // The bag: the bank decided for Harbor. Staff decide who was at fault.
   {
-    const { step, total } = decided.lost;
-    const dispute = `dp_demo_${step.id.slice(0, 8)}`;
-    for (const status of ["needs_response", "lost"]) {
-      must(await admin.rpc("record_payment_review_dispute", {
-        target_payment: step.id, dispute_id: dispute, status, amount_cents: total,
-        due_by: status === "lost" ? null : new Date(Date.now() + 4 * 86400000).toISOString(), fee_cents: 1500,
-      }), `the bag's dispute: ${status}`);
-    }
-    must(await admin.rpc("record_payment_dispute_lost", { target_payment: step.id, dispute_id: dispute, lost_cents: total, fee_cents: 1500 }),
-      "the bag's dispute lost");
+    const { paid } = decidedSteps.lost;
+    const dispute = await disputeOf(paid, "bag");
+    await recordDispute(paid, dispute);
+    await recordDispute(paid, await decided(dispute, "lost"));
   }
   // The belt: the bank decided for TSC. Riverbend resumes; Harbor stays paused.
   {
-    const { step, total } = decided.won;
-    const dispute = `dp_demo_${step.id.slice(0, 8)}`;
-    must(await admin.rpc("record_payment_review_dispute", {
-      target_payment: step.id, dispute_id: dispute, status: "needs_response", amount_cents: total,
-      due_by: new Date(Date.now() + 3 * 86400000).toISOString(), fee_cents: 1500,
-    }), "the belt's dispute");
-    must(await admin.rpc("record_payment_disputed", { target_payment: step.id, disputed: true }), "the belt's charge is disputed");
-    must(await admin.rpc("record_payment_review_dispute", {
-      target_payment: step.id, dispute_id: dispute, status: "won", amount_cents: total, due_by: null, fee_cents: 1500,
-    }), "the belt's dispute won");
-    must(await admin.rpc("record_payment_disputed", { target_payment: step.id, disputed: false }), "the belt's hold lifted");
+    const { paid } = decidedSteps.won;
+    const dispute = await disputeOf(paid, "belt");
+    await recordDispute(paid, dispute);
+    await recordDispute(paid, await decided(dispute, "won"));
   }
   // Riverbend asks to cancel the belt order: the paused Harbor may accept it
   // (the one thing it can do besides messaging).
   must(await reviewFactory.client.rpc("propose_cancellation", {
-    target_order: decided.won.order.id, reason: "We can't source the bridle leather in time.",
+    target_order: decidedSteps.won.order.id, reason: "We can't source the bridle leather in time.",
   }), "Riverbend proposes cancelling the belt order");
 }
 {
@@ -1822,17 +1878,21 @@ async function fundedWithIntent(payment, kind) {
     title, brief: "150 linen camp-collar shirts.", quantity: 150, unitPrice: 2200,
     vendor: reviewFactory, vendorOrg: reviewFactoryOrg,
   });
-  const fit = await dueNow(order, title);
-  const { intent, total } = await fundedWithIntent(fit, "refund");
+  const paid = await reviewFunded(await dueNow(order, title), "refund", "pm_card_createDisputeInquiry");
   await approveOpenStep(order, title, reviewFactory);
-  must(await admin.rpc("record_payment_refund_amount", {
-    target_payment: fit.id, payment_intent: intent, refunded_cents: Math.round(total / 2),
-  }), "half refunded after approval");
+  await paid.capture();
+  // Half refunded in Stripe's dashboard after approval: recorded as the
+  // server records charge.refunded (applyChargeRefund), so it opens a review.
+  if (reviewStripe) {
+    await reviewStripe.refunds.create({ payment_intent: paid.intent, amount: Math.round(paid.total / 2) });
+    await applyChargeRefund({ stripe: reviewStripe, db: admin, charge: await reviewStripe.charges.retrieve(paid.charge) });
+  } else {
+    must(await admin.rpc("record_payment_refund_amount", {
+      target_payment: paid.payment.id, payment_intent: paid.intent, refunded_cents: Math.round(paid.total / 2),
+    }), "half refunded after approval");
+  }
   // A Stripe inquiry on it too: staff respond in Stripe; nobody is paused by it.
-  must(await admin.rpc("record_payment_review_dispute", {
-    target_payment: fit.id, dispute_id: `dp_demo_inq_${fit.id.slice(0, 8)}`, status: "warning_needs_response",
-    amount_cents: total, due_by: new Date(Date.now() + 6 * 86400000).toISOString(), fee_cents: null,
-  }), "an inquiry");
+  await recordDispute(paid, await disputeOf(paid, "inq"));
 }
 {
   // Approved, with a real test charge: staff refund it from the admin board.
@@ -1920,13 +1980,18 @@ must(await admin.from("factory_capacity_months").insert(capacityMonths.map((row)
 
 // Email switches: the brand has "Payment and approval requests" off, so a
 // tester sees a switch in both states. The seed's own notifications are not
-// news to anyone, so none of their queued emails go out.
+// news to anyone, so none of their queued emails go out, except the payment
+// reviews' (Harbor Lane and Riverbend): a tester checks those emails in
+// Mailpit, and they go out the next time the app sends (T2 A2).
 must(await brand.client.rpc("set_notification_preference", {
   target_org: brandOrg.id, category: "payments", enabled: false,
 }), "the brand's email switches");
+const reviewNotices = must(await admin.from("notifications").select("id")
+  .in("org_id", [reviewBrandOrg.id, reviewFactoryOrg.id]).in("kind", ["payment_disputed", "payment_refunded"]), "the payment reviews' notices");
 must(await admin.from("notification_email_outbox")
   .update({ status: "skipped", last_error: "demo seed" })
   .in("recipient_user_id", demoUserIds)
+  .not("notification_id", "in", `(${reviewNotices.map((n) => n.id).join(",") || "00000000-0000-0000-0000-000000000000"})`)
   .eq("status", "pending"), "skip the seed's own emails");
 
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
