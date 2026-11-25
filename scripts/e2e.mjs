@@ -156,6 +156,16 @@ async function recordRegistryFound(page, reference) {
   return text;
 }
 
+/**
+ * Approve opens a message pop-up on main (a9091a31): its own Approve button
+ * sends the decision. Click the review's button, then the pop-up's.
+ */
+async function approveWithMessage(page, label) {
+  await clickButton(page, label);
+  await waitFor(page, "[aria-labelledby='approve-message-title'] footer .primary-btn", 10000);
+  await page.evaluate(() => document.querySelector("[aria-labelledby='approve-message-title'] footer .primary-btn")?.click());
+}
+
 async function within(page, test, timeout = 15000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -1068,7 +1078,7 @@ async function main() {
     const { data: staffCheck } = await db.from("registry_checks").select("result, automatic")
       .eq("org_id", factoryOrg.id).eq("automatic", false).order("checked_at", { ascending: false }).limit(1).maybeSingle();
     check(staffCheck?.result === "found", `the registry check is recorded from the review page's form (a person's "${staffCheck?.result ?? "nothing"}")`);
-    await clickButton(page, "approve as basic");
+    await approveWithMessage(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
     // Profile completeness used to vanish once a decision was made.
@@ -1110,7 +1120,7 @@ async function main() {
     }
     check(brandOpened, "the queue row for this brand was found and opened");
     await page.waitForTimeout(2500);
-    await clickButton(page, "approve profile");
+    await approveWithMessage(page, "approve profile");
     await page.waitForTimeout(4000);
     const { data: brandVerified } = await db
       .from("brand_profiles").select("verification_status").eq("org_id", brandOrg.id).single();
@@ -4098,7 +4108,7 @@ async function main() {
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it (v3: in the Registry row's details).
       await recordRegistryFound(page, "E2E: the registration document shows this number and name");
-      await clickButton(page, "approve as");
+      await approveWithMessage(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
       check(Number(invitedBalance) === 500, `the invited factory got its 500 on verification (${invitedBalance})`);
