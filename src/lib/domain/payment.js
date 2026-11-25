@@ -225,10 +225,12 @@ export async function releasePayment(paymentId, note, paidToChangedAt = null) {
  * One account's full number, for a person about to pay it. The database records
  * who asked before answering. The caller shows it and forgets it.
  */
-export async function revealPayoutNumber(accountId) {
+export async function revealPayoutNumber(accountId, { paymentId = null, withdrawalId = null } = {}) {
   try {
+    // What it is for (the step or the withdrawal being paid by hand): only
+    // that payout counts as being sent while the factory is paused (20261125100000).
     const rows = unwrap(
-      await supabase.rpc("reveal_payout_account_number", { target_account: accountId }),
+      await supabase.rpc("reveal_payout_account_number", { target_account: accountId, for_payment: paymentId, for_withdrawal: withdrawalId }),
       "show this account number",
     );
     return rows[0];

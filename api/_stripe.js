@@ -254,7 +254,8 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   let refunds = null;
   if (Number(charge.amount_refunded) > 0) {
     refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
-    const staffMade = refunds.data.filter((refund) => refund.metadata?.staff_refund_id);
+    const staffMade = [];
+    for (const refund of refunds.data) if (await isStaffRefund(db, refund)) staffMade.push(refund);
     for (const refund of staffMade) await recordStaffRefundFromStripe(db, refund);
     if (staffMade.length && staffMade.length === refunds.data.length) {
       return (await paymentForCharge(db, charge)).payment;
@@ -275,7 +276,7 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   // was recorded, or after recording it failed: record it with the reason
   // it was made for. Recording twice writes nothing the second time.
   refunds ??= await stripe.refunds.list({ charge: charge.id, limit: 100 });
-  const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem && !refund.metadata?.staff_refund_id);
+  const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem && refund.metadata.tsc_problem !== "staff_refund");
   if (ours && charge.refunded) {
     // Never 'stripe_refund': that cause means a refund made in Stripe, which
     // record_full_refund_failed may fund again if it fails (20261121340000).
@@ -291,9 +292,19 @@ export async function applyChargeRefund({ stripe, db, charge }) {
     return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason: REFUNDED, cause: "stripe_refund" });
   }
   // Only ever raises the total: an older copy of the charge never lowers it.
-  return rpc(db, "record_payment_refund_amount", {
+  const recorded = await rpc(db, "record_payment_refund_amount", {
     target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
   });
+  // Which review each dashboard refund belongs to, so one that fails gives
+  // back only its own review's takes (20261125100000).
+  const dashboard = [];
+  for (const refund of refunds.data) {
+    if (["succeeded", "pending"].includes(refund.status) && !refund.metadata?.tsc_problem) {
+      dashboard.push({ id: refund.id, amount: Number(refund.amount) || 0, created: Number(refund.created) || null });
+    }
+  }
+  if (dashboard.length) await rpc(db, "note_review_refunds", { target_payment: payment.id, refunds: dashboard });
+  return recorded;
 }
 
 /** What the brand reads when a cancelled order's held money goes back. */
@@ -379,7 +390,7 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
   // A refund staff made from the admin board: its own row says what happens
   // (20261125100000). A full refund of a held payment that failed goes on to
   // record_full_refund_failed below, as a refund made in Stripe does.
-  if (refund?.metadata?.staff_refund_id) {
+  if (refund?.metadata?.staff_refund_id && await isStaffRefund(db, refund)) {
     const row = await recordStaffRefundFromStripe(db, refund);
     if (!row?.reset_payment || !["failed", "canceled"].includes(refund.status)) return row;
   }
@@ -424,6 +435,7 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
     if (!payment) return null;
     await rpc(db, "record_payment_refund_failed", {
       target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
+      failed_refund: refund.id,
     });
     // A refund made since that read is never lost: the charge as it is now,
     // recorded by the function that only raises (20261121240000).
@@ -448,8 +460,30 @@ export function staffRefundFailure(failure) {
   if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
     return "Stripe refused TSC's key. Nothing was refunded.";
   }
-  if (failure?.refundStatus) return "The refund failed. Nothing was refunded.";
-  return "Stripe refused the refund. Nothing was refunded.";
+  const why = REFUND_FAILURE_WORDS[failure?.refundFailureReason];
+  if (failure?.refundStatus || why) return `Stripe refused the refund${why ? `: ${why}` : ""}. Nothing was refunded, and the factory's balance is unchanged.`;
+  return "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged.";
+}
+
+/** A refund's failure_reason, in words staff read (never Stripe's message). */
+const REFUND_FAILURE_WORDS = {
+  expired_or_canceled_card: "the card was closed",
+  lost_or_stolen_card: "the card was reported lost or stolen",
+  declined: "the card's bank declined it",
+  merchant_request: "it was cancelled",
+}
+
+/**
+ * Whether a Stripe refund is one staff made from the admin board: it names a
+ * claim, and that claim's PaymentIntent and amount are the refund's
+ * (20261125100000). Anything else, an unknown id included, is a refund made
+ * in Stripe's dashboard and opens a review.
+ */
+async function isStaffRefund(db, refund) {
+  const id = refund?.metadata?.staff_refund_id;
+  if (!id) return false;
+  const intent = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+  return Boolean(await rpc(db, "staff_refund_matches", { target_refund: id, payment_intent: intent ?? null, amount_cents: Number(refund.amount) || 0 }));
 }
 
 /** A staff refund as Stripe reports it (its webhook, or a read), recorded once by its own row. */
@@ -458,6 +492,7 @@ async function recordStaffRefundFromStripe(db, refund) {
   if (["failed", "canceled"].includes(refund.status)) {
     const failure = new Error(`refund ${refund.status}`);
     failure.refundStatus = refund.status;
+    failure.refundFailureReason = refund.failure_reason ?? null;
     return rpc(db, "record_staff_refund_failed", { target_refund: id, reason: staffRefundFailure(failure) });
   }
   return rpc(db, "record_staff_refund", { target_refund: id, stripe_refund: refund.id, refund_status: refund.status });
@@ -476,7 +511,7 @@ const dollars = (cents) => `$${(Number(cents) / 100).toLocaleString("en-US", { m
  * Returns { status: "refunded" | "pending", ... } | { refused, detail } |
  * { failed: sentence } | { retry: true }.
  */
-export async function makeStaffRefund({ stripe, db, claim }) {
+export async function makeStaffRefund({ stripe, db, claim, renew = false }) {
   const figures = { amountCents: claim.amount_cents, factoryCents: claim.factory_cents, tscCents: claim.tsc_cents };
   if (claim.status === "made") return { status: "refunded", ...figures };
   if (claim.status === "failed") return { failed: claim.failure ?? "Stripe refused the refund. Nothing was refunded." };
@@ -494,6 +529,13 @@ export async function makeStaffRefund({ stripe, db, claim }) {
         await rpc(db, "record_staff_refund_failed", { target_refund: claim.staff_refund_id, reason: `You can refund up to ${dollars(left)}.` });
         return { refused: "staff_refund_over", detail: dollars(left) };
       }
+      // The try holds a lease: none while another may still be running at
+      // Stripe; a retry after one ran out gets a new key, so Stripe can't
+      // replay a stored error (staff_refund_attempt).
+      const attempt = await rpc(db, "staff_refund_attempt", { target_refund: claim.staff_refund_id, renew });
+      if (attempt?.busy) return { retry: true };
+      if (attempt?.status && attempt.status !== "claimed") return attempt.status === "made" ? { status: "refunded", ...figures } : { failed: attempt.failure ?? "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged." };
+      claim = { ...claim, ...attempt };
       refund = await stripe.refunds.create(
         {
           payment_intent: claim.intent,
@@ -507,11 +549,14 @@ export async function makeStaffRefund({ stripe, db, claim }) {
     if (!["succeeded", "pending"].includes(refund.status)) {
       const failure = new Error(`refund ${refund.status}`);
       failure.refundStatus = refund.status;
+      failure.refundFailureReason = refund.failure_reason ?? null;
       throw failure;
     }
   } catch (failure) {
     logStripeFailure("staff-refund", failure, { staffRefundId: claim.staff_refund_id });
-    if (OUTAGE_TYPES.has(failure?.type)) return { retry: true };
+    // Unknown outcome: Stripe down, or another try with the same key still
+    // running. The claim stays; Check again finds it by its id.
+    if (OUTAGE_TYPES.has(failure?.type) || failure?.type === "StripeIdempotencyError") return { retry: true };
     const sentence = staffRefundFailure(failure);
     await rpc(db, "record_staff_refund_failed", { target_refund: claim.staff_refund_id, reason: sentence });
     return { failed: sentence };
@@ -528,7 +573,7 @@ export async function settleStaffRefunds({ stripe, db }) {
     try {
       const claim = await rpc(db, "staff_refund_for_server", { target_refund: id });
       if (!claim) continue;
-      const outcome = await makeStaffRefund({ stripe, db, claim });
+      const outcome = await makeStaffRefund({ stripe, db, claim, renew: true });
       if (outcome.status) counts.refunded += 1;
       else if (outcome.retry) counts.retry += 1;
       else counts.failed += 1;
@@ -785,7 +830,43 @@ export async function applyDisputeEvent({ stripe, db, dispute }) {
   // recorded on its own review, even when a newer one on the charge decides
   // the step's hold.
   if (current?.id && dispute?.id && current.id !== dispute.id) await recordDisputeReview(db, payment.id, dispute);
-  return applyDispute({ db, paymentId: payment.id, dispute: current });
+  const held = await applyDispute({ db, paymentId: payment.id, dispute: current });
+  await cancelPausedBrandIntents({ stripe, db, paymentId: payment.id });
+  return held;
+}
+
+/**
+ * A brand paused by a chargeback can't finish paying on a page it opened
+ * before (20261125100000): its open PaymentIntents are cancelled, best effort,
+ * and each payment lets go of its intent, so a new one is made once the brand
+ * is unpaused. A failure here never stops the webhook.
+ */
+export async function cancelPausedBrandIntents({ stripe, db, paymentId }) {
+  try {
+    const { data: row } = await db.from("order_payments").select("production_orders (brand_org_id)").eq("id", paymentId).maybeSingle();
+    const brand = Array.isArray(row?.production_orders) ? row.production_orders[0]?.brand_org_id : row?.production_orders?.brand_org_id;
+    if (!brand) return 0;
+    const open = await rpc(db, "paused_brand_open_intents", { target_brand: brand });
+    let cancelled = 0;
+    for (const { payment_id: id, payment_intent: intentId } of open ?? []) {
+      try {
+        const intent = await stripe.paymentIntents.retrieve(intentId);
+        if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status)) {
+          await stripe.paymentIntents.cancel(intentId);
+          await rpc(db, "forget_cancelled_intent", { target_payment: id, payment_intent: intentId });
+          cancelled += 1;
+        } else if (intent.status === "canceled") {
+          await rpc(db, "forget_cancelled_intent", { target_payment: id, payment_intent: intentId });
+        }
+      } catch (failure) {
+        logStripeFailure("cancel-paused-intent", failure, { paymentId: id });
+      }
+    }
+    return cancelled;
+  } catch (failure) {
+    logStripeFailure("cancel-paused-intents", failure, { paymentId });
+    return 0;
+  }
 }
 
 /**

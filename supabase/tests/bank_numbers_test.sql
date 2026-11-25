@@ -167,7 +167,7 @@ select ok(not has_function_privilege('authenticated', 'public.payout_number_plai
 select ok(not has_function_privilege('service_role', 'public.payout_number_plain(uuid)', 'execute'), 'nor the server key');
 select ok(not has_function_privilege('authenticated', 'public.payout_text_holds_number(uuid, text)', 'execute'), 'nor ask whether a text holds a number, which would tell it digit by digit');
 select ok(not has_function_privilege('anon', 'public.save_bank_payout_account(uuid, uuid, text, text, text, text, text, text, text, text, text)', 'execute'), 'a signed-out visitor cannot save one');
-select ok(not has_function_privilege('anon', 'public.reveal_payout_account_number(uuid)', 'execute'), 'nor reveal one');
+select ok(not has_function_privilege('anon', 'public.reveal_payout_account_number(uuid, uuid, uuid)', 'execute'), 'nor reveal one');
 
 -- ---------------------- who may save one -----------------------------------
 reset role; select pg_temp.act_as(2); set local role authenticated;

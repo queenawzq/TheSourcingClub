@@ -660,7 +660,7 @@ for (const status of ["failed", "canceled"]) {
   {
     const db = dbFor("confirmed");
     await applyRefundUpdate({ stripe: stripeFor({ amountRefunded: [0, 2000] }), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
-    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 0 }],
+    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 0, failed_refund: "re_1" }],
       ["record_payment_refund_amount", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 2000 }]]);
   }
   // Fix round 20: a full refund before approval that failed, the payment no

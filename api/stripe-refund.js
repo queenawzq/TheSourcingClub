@@ -63,6 +63,7 @@ const REFUSALS = {
   staff_refund_note: () => "Add a reason for the brand.",
   staff_refund_claimed: () => "This payment is being refunded. Reload in a minute.",
   staff_refund_balance_changed: () => "The factory's balance changed. Reload and try again.",
+  staff_refund_factory_over: (detail) => (detail ? `You can take up to ${detail} from the factory's balance.` : "Enter an amount from the factory's balance."),
   review_own_company: () => "You belong to this brand, so someone else on the staff must refund it.",
   payout_own_company: () => "You belong to this factory, so someone else on the staff must refund it.",
   reveal_brand_side: () => "Your company has an order with this factory, so someone else on the staff must refund it.",
@@ -71,7 +72,7 @@ export const staffRefundRefusal = (hint, detail) => REFUSALS[hint]?.(detail) ?? 
 const NOT_ALLOWED = "That couldn't be done. Reload the page and try again.";
 
 async function staffRefund({ stripe, db, caller, body, response }) {
-  const { paymentId, amountCents, payer, note, staffRefundId } = body;
+  const { paymentId, amountCents, payer, note, staffRefundId, factoryCents } = body;
   let read;
   if (staffRefundId) {
     if (typeof staffRefundId !== "string") return reply(response, 400, { error: NOT_ALLOWED });
@@ -80,8 +81,12 @@ async function staffRefund({ stripe, db, caller, body, response }) {
     if (typeof paymentId !== "string" || !Number.isSafeInteger(amountCents)) {
       return reply(response, 409, { error: REFUSALS.staff_refund_amount(), hint: "staff_refund_amount" });
     }
+    if (factoryCents != null && !Number.isSafeInteger(factoryCents)) {
+      return reply(response, 409, { error: REFUSALS.staff_refund_factory_over(null), hint: "staff_refund_factory_over" });
+    }
     read = await caller.rpc("claim_staff_refund", {
       target_payment: paymentId, amount_cents: amountCents, payer: payer ?? null, note: typeof note === "string" ? note : null,
+      factory_cents: factoryCents ?? null,
     });
   }
   if (tokenRefused(read)) return reply(response, 401, { error: "sign in is required" });
@@ -96,7 +101,7 @@ async function staffRefund({ stripe, db, caller, body, response }) {
   const claim = read.data;
   let outcome;
   try {
-    outcome = await makeStaffRefund({ stripe, db, claim });
+    outcome = await makeStaffRefund({ stripe, db, claim, renew: Boolean(staffRefundId) });
   } catch (failure) {
     // Recording failed after Stripe answered: the claim stays, Check again finishes it.
     logStripeFailure("staff-refund-record", failure, { staffRefundId: claim.staff_refund_id });

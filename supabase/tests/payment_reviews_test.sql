@@ -164,7 +164,7 @@ select throws_ok($$insert into public.payment_reviews (payment_id, order_id, fac
                            'c24b0000-0000-0000-0000-0000000000e1', 'c24b0000-0000-0000-0000-0000000000b1', 'refund')$$,
   '42501', null, 'nobody writes a review directly');
 select throws_ok($$select public.payment_review_board()$$, '42501', null, 'a factory cannot read the staff board');
-select throws_ok($$select public.decide_payment_review('c24f0001-0000-0000-0000-000000000001', 'factory_pays', 0, 'x')$$, '42501', null,
+select throws_ok($$select public.decide_payment_review('c24f0001-0000-0000-0000-000000000001', 'factory_at_fault', 0, 'x')$$, '42501', null,
   'a factory cannot decide its own review');
 select throws_ok($$select public.unpause_brand_org('c24b0000-0000-0000-0000-0000000000b1')$$, '42501', null, 'nor unpause a brand');
 select throws_ok($$select public.admin_paused_brands()$$, '42501', null, 'nor list paused brands');
@@ -295,7 +295,7 @@ select is((select count(*)::int from public.payment_reviews where payment_id = p
 -- ===========================================================================
 select pg_temp.act_as('06');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 0, 'x')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 0, 'x')$$, pg_temp.review(1, 'dispute')),
   '42501', null, 'staff in the brand leave it to someone else');
 select throws_ok($$select public.unpause_brand_org('c24b0000-0000-0000-0000-0000000000b1')$$,
   '42501', 'you belong to this brand, so someone else on the staff must decide', 'nor unpause it');
@@ -309,9 +309,9 @@ select is((select concat_ws(' | ', r ->> 'state', r ->> 'reason', r ->> 'step', 
 select ok((select r ->> 'respond_by' is not null from pr24_row), 'with the respond-by date');
 select pg_temp.act_as('02');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 5000, 'early')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 5000, 'early')$$, pg_temp.review(1, 'dispute')),
   '22023', 'the bank hasn''t decided yet', 'no decision while the bank has not decided');
-select throws_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, 'early')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, 'early')$$, pg_temp.review(1, 'dispute')),
   '22023', 'the bank hasn''t decided yet', 'either way');
 reset role;
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0001-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_1'', ''lost'', 21400, null, 1500)')$$,
@@ -325,27 +325,27 @@ select ok(public.factory_paused(pg_temp.org('e1')) and public.brand_paused(pg_te
 select is((select x -> 'actions' from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(1, 'dispute')),
   '["decide"]'::jsonb, 'the board offers the decision');
 select is((select x ->> 'step' || ' ' || (x ->> 'step_line') from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(1, 'dispute')),
-  '2 Who pays for $214.00?', 'step 2: who pays for what went back');
+  '2 Bank ruled for the brand', 'step 2: resolve what the bank ruled');
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok(format($$select public.decide_payment_review(%L, 'pay_factory', null, 'old')$$, pg_temp.review(1, 'dispute')),
-  '22023', 'choose who pays', 'the old decisions are gone');
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 25000, 'too much')$$, pg_temp.review(1, 'dispute')),
+  '22023', 'choose who was at fault', 'the old decisions are gone');
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 25000, 'too much')$$, pg_temp.review(1, 'dispute')),
   '22023', 'You can take up to $200.00 from the factory''s balance.', 'never more than the factory''s part of what went back');
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 5000, '  ')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 5000, '  ')$$, pg_temp.review(1, 'dispute')),
   '22023', 'add a note', 'a note is required');
-select throws_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, null)$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, null)$$, pg_temp.review(1, 'dispute')),
   '22023', 'add a note', 'on Decline too');
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', -1, 'negative')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', -1, 'negative')$$, pg_temp.review(1, 'dispute')),
   '22023', 'enter an amount of 0 or more', 'no negative amount');
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', null, 'none')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', null, 'none')$$, pg_temp.review(1, 'dispute')),
   '22023', 'enter an amount of 0 or more', 'Approve needs an amount on an approved step');
-select lives_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 5000, 'The sample did not arrive.')$$, pg_temp.review(1, 'dispute')),
+select lives_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 5000, 'The sample did not arrive.')$$, pg_temp.review(1, 'dispute')),
   'the factory pays: $50 back from its balance');
-select throws_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, 'again')$$, pg_temp.review(1, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, 'again')$$, pg_temp.review(1, 'dispute')),
   '22023', 'this review was already decided', 'decided once');
 reset role;
-select is((select state || ' ' || returned_cents from public.payment_reviews where id = pg_temp.review(1, 'dispute')), 'factory_paid 5000', 'the factory paid $50');
+select is((select state || ' ' || returned_cents from public.payment_reviews where id = pg_temp.review(1, 'dispute')), 'factory_at_fault 5000', 'the factory paid $50');
 select is((select taken_back_cents from public.order_payments where id = pg_temp.pay(1)), 5000::bigint, 'taken from the reviewed step');
 select is(pg_temp.avail('e1', '01'), ((select f1 from pr24_before) ->> 'available_cents')::bigint - 5000, 'Available down by $50, never below zero');
 select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal('e1', '01') -> 'rows') r
@@ -374,7 +374,7 @@ select is((select count(*)::int from public.notifications where data ->> 'review
 select is(public.brand_paused(pg_temp.org('b1')), true, 'the brand is paused');
 select pg_temp.act_as('02');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 0, 'no')$$, pg_temp.review(2, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 0, 'no')$$, pg_temp.review(2, 'dispute')),
   '22023', 'the bank hasn''t decided yet', 'nothing to decide while the bank decides');
 reset role;
 select lives_ok($$select pg_temp.as_server('select public.record_payment_review_dispute(''c24f0002-0000-0000-0000-000000000001'', ''dp_pgtap_pr24_2'', ''lost'', 9630, null, 1500)')$$,
@@ -383,7 +383,7 @@ select is((select state from public.payment_reviews where id = pg_temp.review(2,
   'nothing to decide: the factory never had that money (W2b)');
 select pg_temp.act_as('02');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 0, 'x')$$, pg_temp.review(2, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 0, 'x')$$, pg_temp.review(2, 'dispute')),
   '22023', 'this review was already decided', 'no decision on it');
 reset role;
 select is(public.brand_paused(pg_temp.org('b1')), true, 'the brand stays paused');
@@ -401,14 +401,14 @@ select is((select count(*)::int from public.notifications where dedupe_key = 'pa
 -- Decline a refund made in Stripe: nothing taken, TSC bears it.
 select pg_temp.act_as('02');
 set local role authenticated;
-select lives_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, 'Our mistake: TSC bears it.')$$, pg_temp.review(3, 'refund')), 'TSC pays for F2');
+select lives_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, 'Our mistake: TSC bears it.')$$, pg_temp.review(3, 'refund')), 'TSC pays for F2');
 reset role;
 select is(pg_temp.avail('e2', '04'), (select before from pr24_f2), 'nothing taken');
 select is(public.factory_paused(pg_temp.org('e2')), false, 'F2 unpaused');
 select is(pg_temp.told(pg_temp.org('e2'), 'Withdrawals resumed'), 'The review of the payment for "PR24 deposit two" is done. You can withdraw your balance again.',
   'F2 is told, without the note (staff only)');
 select is((select x ->> 'step' || ' ' || (x ->> 'reason') || ' ' || (x ->> 'step_line') from jsonb_array_elements(pg_temp.board()) x where (x ->> 'id')::uuid = pg_temp.review(3, 'refund')),
-  '3 refunded_in_stripe TSC paid $53.50', 'and the row is done: TSC paid');
+  '3 refunded_in_stripe No fault · TSC absorbed $53.50', 'and the row is done: not the factory');
 
 -- ===========================================================================
 -- 6. Two reviews on one factory; money already withdrawn; a lost dispute
@@ -433,16 +433,16 @@ select is((select dispute_status || ' ' || state from public.payment_reviews whe
   'lost decide', 'the outcome is shown, nothing decided');
 select pg_temp.act_as('02');
 set local role authenticated;
-select lives_ok(format($$select public.decide_payment_review(%L, 'tsc_pays', null, 'TSC bears it.')$$, pg_temp.review(6, 'refund')), 'decide one');
+select lives_ok(format($$select public.decide_payment_review(%L, 'no_fault', null, 'TSC bears it.')$$, pg_temp.review(6, 'refund')), 'decide one');
 reset role;
 select is(public.factory_paused(pg_temp.org('e3')), true, 'still paused by the other');
 select is(pg_temp.told(pg_temp.org('e3'), 'Payment review complete'),
   'The review of the payment for "PR24 sample three" is done. Withdrawals stay paused while another payment is reviewed.', 'and told so');
 select pg_temp.act_as('02');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 46000, 'too much')$$, pg_temp.review(5, 'dispute')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 46000, 'too much')$$, pg_temp.review(5, 'dispute')),
   '22023', 'You can take up to $450.00 from the factory''s balance.', 'never more than the balance now (the $200 withdrawn is not offered)');
-select lives_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 45000, 'Goods not delivered.')$$, pg_temp.review(5, 'dispute')),
+select lives_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 45000, 'Goods not delivered.')$$, pg_temp.review(5, 'dispute')),
   'the factory pays all that is left');
 reset role;
 select is((select sum(taken_back_cents)::bigint from public.order_payments where id in (pg_temp.pay(5), pg_temp.pay(6))), 45000::bigint,
@@ -484,10 +484,10 @@ select is((select body from public.notifications where dedupe_key = 'payment_rev
 select is(public.brand_paused(pg_temp.org('b2')), true, 'the brand that disputed stays paused');
 select is((select concat_ws(' | ', x ->> 'step', x ->> 'step_line', (x -> 'actions')::text, x ->> 'open', x ->> 'brand_paused') from jsonb_array_elements(pg_temp.board()) x
             where (x ->> 'id')::uuid = pg_temp.by_ref('dp_pgtap_pr24_3')),
-  '3 | Bank decided for us | [] | false | true', 'done on the board, the brand tagged paused, not counted');
+  '3 | Bank ruled for TSC | [] | false | true', 'done on the board, the brand tagged paused, not counted');
 select pg_temp.act_as('02');
 set local role authenticated;
-select throws_ok(format($$select public.decide_payment_review(%L, 'factory_pays', 0, 'x')$$, pg_temp.by_ref('dp_pgtap_pr24_3')),
+select throws_ok(format($$select public.decide_payment_review(%L, 'factory_at_fault', 0, 'x')$$, pg_temp.by_ref('dp_pgtap_pr24_3')),
   '22023', 'this review was already decided', 'nothing to decide on a resumed review');
 reset role;
 select lives_ok($$select pg_temp.as_server('select public.record_payment_disputed(''c24f0003-0000-0000-0000-000000000002'', false)')$$, 'the hold is lifted');

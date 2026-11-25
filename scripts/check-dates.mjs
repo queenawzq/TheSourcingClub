@@ -127,6 +127,7 @@ const ZH_SAMPLES = [
   { kind: "payment_disputed", title: "Account review complete", body: "Your account is no longer under review." },
   { kind: "payment_disputed", title: 'Payment for "Deposit" under review', body: "Our team is reviewing this payment before it goes to your balance." },
   // Payment reviews v2 and staff refunds (20261125100000).
+  { kind: "payment_confirmed", title: 'Payment held for "Second deposit"', body: "Demo Brand funded $100.00 for Second deposit on Linen shirt. It is added to your balance when our team finishes a payment review." },
   { kind: "payment_disputed", title: "Payment review complete", body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand. You can withdraw the rest of your balance. Note from our team: The goods did not arrive.' },
   { kind: "payment_disputed", title: "Payment review complete", body: '$65.00 for "Fit sample" on TSC-000019 was returned to the brand. Withdrawals stay paused while another payment is reviewed. Note from our team: The goods did not arrive.' },
   { kind: "payment_disputed", title: "Withdrawals resumed", body: 'The review of the payment for "Fit sample" is done. You can withdraw your balance again. Note from our team: Nothing to return.' },
