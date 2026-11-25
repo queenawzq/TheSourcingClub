@@ -100,6 +100,8 @@ const PROPOSED = /^(.+) proposed cancelling: (.*)$/;
 const YOU_PROPOSED = /^You proposed cancelling: (.*)$/;
 
 const PATTERNS = [
+  // The profile's capacity dialog: its estimate line.
+  [/^([\d,]+) units \/ month × (\d+)%-(\d+)% free$/, (m) => `${m[1]} 件 / 月 × ${m[2]}%-${m[3]}% 可接单`],
   // The payout fee the factory paid: its payments row (PayoutDetails) and the paid notification.
   [/^Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `提现手续费 ${m[1]} 从该笔款项中扣除：你收到 ${m[2]}。`],
   [/^Step (\S+)\. Payout fee (\S+) is taken from this payment: you receive (\S+)\.$/, (m) => `步骤金额 ${m[1]}。提现手续费 ${m[2]} 从该笔款项中扣除：你收到 ${m[3]}。`],

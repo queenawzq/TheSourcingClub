@@ -159,19 +159,24 @@ function fileDialogs(org, parts, reload) {
 }
 
 /** The completion page, on either kind of vendor's checks. */
-function Completion({ view, verified, editors, isTrading, org }) {
+function Completion({ view, verified, editors, isTrading, org, language }) {
   const { navigate } = useRouter();
   const who = isTrading ? "your company" : "the factory";
   return (
     <FactoryProfileCompletionPage
+      language={language}
       onBack={() => navigate("/profile")}
       live={{
         matchingPanel: <MatchingProfile org={org} subjectType="factory_profile" />,
         percent: view.status.percent,
-        intro: verified
-          ? `You can receive matching RFQs now. Complete the items below to improve trust signals and help brands understand ${who} faster.`
-          : `Brands can see your profile now. Quoting opens once your business registration is approved. Complete the items below to help brands understand ${who} faster.`,
-        summaryLabel: "Complete",
+        intro: language === "zh"
+          ? (verified
+            ? `你现在可以接收匹配的询价。完成以下项目可增强信任信号，帮助品牌更快了解${isTrading ? "你的公司" : "工厂"}。`
+            : `品牌现在可以查看你的资料。营业执照通过审核后即可报价。完成以下项目，帮助品牌更快了解${isTrading ? "你的公司" : "工厂"}。`)
+          : verified
+            ? `You can receive matching RFQs now. Complete the items below to improve trust signals and help brands understand ${who} faster.`
+            : `Brands can see your profile now. Quoting opens once your business registration is approved. Complete the items below to help brands understand ${who} faster.`,
+        summaryLabel: language === "zh" ? "已完成" : "Complete",
         checks: view.checks.map((check) => ({
           ...check,
           // A button only where the dialog that fixes it is live.
@@ -217,7 +222,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
   const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts, new Date(), language);
   const editors = isTrading ? TRADING_EDITORS : SAVED_EDITORS;
 
-  if (page === "completion") return <Completion org={org} view={view} verified={verified} editors={editors} isTrading={isTrading} />;
+  if (page === "completion") return <Completion org={org} view={view} verified={verified} editors={editors} isTrading={isTrading} language={language} />;
 
   const dialogs = {
     editors,
@@ -272,6 +277,8 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
         form: factoryProfileEditForm(parts),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
+        // The capacity dialog's category list in the person's language.
+        language,
         // The company's own words: Chinese translates the page's labels, never these (B10).
         ownWords: ownWords(parts),
       }}

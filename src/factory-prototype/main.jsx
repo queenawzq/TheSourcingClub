@@ -742,6 +742,17 @@ export const factoryMainZhText = {
   "Shortlist starts after Jul 24": "7 月 24 日后开始筛选",
   "Add fit sample update": "添加试身样更新",
   "Line-hours available per month": "每月可用产线工时",
+  "Units available per month": "每月可生产件数",
+  "Units": "件数",
+  "Hours": "工时",
+  "units / month": "件 / 月",
+  "hours / month": "小时 / 月",
+  "Edit capacity and terms": "编辑产能与合作条件",
+  "Keep MOQ, lead time, booking level, and capacity estimates current.": "请保持 MOQ、交期、接单状态和产能估算为最新。",
+  "Minimum order quantity": "最低起订量",
+  "Location not given": "未填写所在地",
+  "No sample images yet.": "暂无样品图片。",
+  "No client references yet.": "暂无客户参考。",
   "Category": "品类",
   "Wovens — your registered specialization": "梭织 — 你注册的专长",
   "hours / month": "小时 / 月",
@@ -1100,6 +1111,8 @@ export const factoryMainZhText = {
   "Aug mostly open; Sep partly booked": "8 月较空；9 月部分已订",
   "Basic woven shirt · ~18 min/pc": "基础梭织衬衫 · 约 18 分钟 / 件",
   "Back to profile": "返回资料",
+  "‹ Back to profile": "‹ 返回资料",
+  "Nothing to add. Keep monthly capacity current.": "暂无需补充。请保持月度产能为最新。",
   "Completed": "已完成",
   "Failed": "失败",
   "Available": "可用方式",
@@ -1462,6 +1475,8 @@ const PROFILE_TODO_ZH = [
 const MONTH_NUMBER = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 const factoryMainZhReplacements = [
+  // The capacity dialog's estimate line, before "N units" below takes part of it.
+  [/^([\d,]+) units \/ month × (\d+)%-(\d+)% free$/, "$1 件 / 月 × $2%-$3% 可接单"],
   [/Current status:/g, "当前状态："],
   [/(\d+) day avg\. response/g, "平均 $1 天回复"],
   [/Best Fit/g, "最佳匹配"],
@@ -4000,7 +4015,7 @@ const profileCompletionIconMap = {
  * description, action: { label, onClick } | null }`. Without it the page
  * shows the design's example, unchanged.
  */
-export function FactoryProfileCompletionPage({ onBack, live = null }) {
+export function FactoryProfileCompletionPage({ onBack, live = null, language = "en" }) {
   const checks = live ? live.checks : profileCompletionChecks;
   const completeCount = checks.filter((item) => item.tone === "complete").length;
   const progressCount = checks.filter((item) => item.tone === "progress").length;
@@ -4008,6 +4023,8 @@ export function FactoryProfileCompletionPage({ onBack, live = null }) {
 
   return (
     <main className="factory-profile-page factory-profile-completion-page">
+      {/* Live, the page's own labels in the person's language, as on the profile. */}
+      {live && <FactoryMainLanguageLayer language={language} scope=".factory-profile-completion-page" />}
       <div className="factory-profile-shell">
         <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
 
@@ -4341,7 +4358,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
         )}
 
         {editor === "capacity" && (
-          <ProfileCapacityEditor form={form} onChange={updateField} months={live?.months} />
+          <ProfileCapacityEditor form={form} onChange={updateField} months={live?.months} language={live?.language} />
         )}
 
         {editor === "references" && (
@@ -4857,7 +4874,7 @@ function ProfileEditField({ label, value, onChange, lockedReason = "", placehold
 }
 
 /** `months`, live: the next three months from today, in place of the design's Aug-Oct. */
-function ProfileCapacityEditor({ form, onChange, months }) {
+function ProfileCapacityEditor({ form, onChange, months, language = "en" }) {
   const monthNames = months ?? ["Aug", "Sep", "Oct"];
   const selectedCategory = FACTORY_CAPACITY_CATEGORIES.find((category) => category.key === form.capacityCategoryKey) || FACTORY_CAPACITY_CATEGORIES[1];
   const availableHours = Number.parseInt(form.lineHoursInput || "0", 10) || 0;
@@ -4896,7 +4913,7 @@ function ProfileCapacityEditor({ form, onChange, months }) {
             <label className="capacity-select-field onboarding-capacity-select">
               <select value={form.capacityCategoryKey} onChange={(event) => onChange("capacityCategoryKey", event.target.value)} aria-label="Select category">
                 {FACTORY_CAPACITY_CATEGORIES.map((category) => (
-                  <option value={category.key} key={category.key}>{category.label}</option>
+                  <option value={category.key} key={category.key}>{language === "zh" ? category.labelZh : category.label}</option>
                 ))}
               </select>
             </label>
