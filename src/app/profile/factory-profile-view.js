@@ -167,7 +167,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
   const has = (kind) => (selected?.[kind]?.length ?? 0) > 0;
   const current = capacityWindow(1, now)[0];
   const monthName = zh ? `${current.getUTCMonth() + 1} 月` : current.toLocaleString("en", { month: "long", timeZone: "UTC" });
-  const complete = (description, status = "Complete") => ({ tone: "complete", status: t(status, status === "Verified" ? "已验证" : "已完成"), description });
+  const complete = (description, status = "Complete") => ({ tone: "complete", status: t(status, { Verified: "已验证", Optional: "可选" }[status] ?? "已完成"), description });
   const inReview = (description) => ({ tone: "progress", status: t("In review", "审核中"), description });
   const missing = (description, action, suggestion) => ({ tone: "missing", status: t("Needs attention", "需要处理"), description, action, suggestion });
 
@@ -283,7 +283,8 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
         )
         : certificates.length
           ? complete(t(`Every certification you claim has its certificate file: ${listWords(certificates.map((cert) => cert.name))}.`, `你填写的每项认证都已有证书文件：${list(certificates.map((cert) => cert.name))}。`))
-          : complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"))),
+          // Nothing claimed is not a finished row: certifications are optional (R3g3).
+          : complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"), "Optional")),
     },
     {
       key: "freshness",

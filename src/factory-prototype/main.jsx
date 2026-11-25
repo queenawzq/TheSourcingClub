@@ -4171,7 +4171,7 @@ export function FactoryProfileCompletionPage({ onBack, live = null, language = "
                 {live
                   ? live.suggestions.length
                     ? live.suggestions.map((suggestion) => <span key={suggestion}>{suggestion}</span>)
-                    : <span>Nothing to add. Keep monthly capacity current.</span>
+                    : <span>{live.noSuggestions ?? "Nothing to add. Keep monthly capacity current."}</span>
                   : (
                     <>
                       <span>Upload GOTS certificate</span>
