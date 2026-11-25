@@ -79,27 +79,46 @@ function namedSplitsFrom(text) {
 // Commas that end a clause, not the one in "1,000".
 const COMMA = /,(?!\d{3}\b)/;
 const NAMED_QUANTITY = /^([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*)?)\s+(\d{1,3}(?:,\d{3})+|\d+)$/;
-// Words a "name number" pair can start with that are not a colour.
-const NOT_A_COLOUR = /^(?:total|units?|pcs|pieces?|moq|qty|quantity|approx|about|around|up to|over|under|by|in|within|of|at|for|than|sizes?|styles?)$/i;
-// "S 100 and M 200" is a size split, not colours.
-const SIZE_WORD = /^(?:x{0,3}s|m|x{0,3}l|\d?xl|one size|size \w+)$/i;
+// A bare list is read as colours only when every name is one: "men 150 and
+// women 150", "cotton 150 and polyester 150" or "US 100 and EU 200" are not.
+// An unknown word leaves the line as "N units", never a wrong split.
+const COLOUR_WORD = new RegExp(`^(?:(?:light|dark|pale|deep|bright|dusty|washed|heather)\\s+)?(?:${[
+  "black", "white", "grey", "gray", "red", "blue", "green", "yellow", "orange", "pink", "purple", "brown", "beige",
+  "navy", "sage", "ecru", "oatmeal", "heather", "charcoal", "khaki", "olive", "stone", "sand", "ivory", "cream",
+  "rust", "burgundy", "camel", "taupe", "mauve", "teal", "natural", "indigo", "denim", "tan", "chocolate", "coffee",
+  "mocha", "maroon", "wine", "plum", "lilac", "lavender", "mint", "forest", "emerald", "mustard", "coral", "peach",
+  "blush", "rose", "fuchsia", "magenta", "turquoise", "aqua", "sky", "cobalt", "royal", "silver", "gold", "bone",
+  "nude", "off-white", "offwhite", "slate", "graphite", "ash", "smoke", "pebble", "clay", "terracotta", "brick",
+  "cinnamon", "caramel", "toffee", "biscuit", "latte", "vanilla", "lemon", "lime", "moss", "pine", "bottle",
+  "petrol", "steel", "ink", "jet", "onyx", "ochre",
+].join("|")})$`, "i");
 
 /**
  * "sage 150 and ecru 250" → Sage 150, Ecru 250, without the word "colours":
  * a clause that is nothing but two or more name-and-number pairs, read only
  * when they add up to the request's total (quantityLineFrom checks).
  */
-function listedSplitsFrom(text) {
+function listedSplitsFrom(text, total) {
+  const pair = (part) => {
+    const match = part.match(NAMED_QUANTITY);
+    if (!match || !COLOUR_WORD.test(match[1].trim())) return null;
+    return { colour: capitalise(match[1].trim().toLowerCase()), quantity: Number(match[2].replace(/,/g, "")) };
+  };
   for (const sentence of text.split(/(?<!\d)[.;!?](?!\d)|\n/)) {
+    // Runs of clauses that are nothing but colour pairs: "sage 150 and ecru
+    // 250", "black 100, white 200".
+    let run = [];
+    const runs = [];
     for (const clause of sentence.split(COMMA)) {
-      const parts = clause.trim().split(/\s*(?:,|\band\b|&)\s*/i).filter(Boolean);
-      if (parts.length < 2 || parts.length > 24) continue;
-      const matches = parts.map((part) => part.match(NAMED_QUANTITY));
-      if (matches.some((match) => !match || NOT_A_COLOUR.test(match[1]) || NOT_A_COLOUR.test(match[1].split(/\s+/)[0])
-        || SIZE_WORD.test(match[1]) || SIZE_WORD.test(match[1].split(/\s+/).pop()))) continue;
-      const splits = matches.map(([, name, quantity]) => ({ colour: capitalise(name.toLowerCase()), quantity: Number(quantity.replace(/,/g, "")) }));
-      if (splits.every((split) => split.quantity > 0)) return splits;
+      const pairs = clause.trim().replace(/[.!?]+$/, "").split(/\s*(?:\band\b|&)\s*/i).filter(Boolean).map(pair);
+      if (pairs.length && pairs.every(Boolean)) run.push(...pairs);
+      else { runs.push(run); run = []; }
     }
+    runs.push(run);
+    const found = runs.find((splits) => splits.length >= 2 && splits.length <= 24
+      && splits.every((split) => split.quantity > 0)
+      && splits.reduce((acc, split) => acc + split.quantity, 0) === total);
+    if (found) return found;
   }
   return [];
 }
@@ -165,10 +184,8 @@ function quantityLineFrom(text) {
     if (!total || total === sum || named.some((split) => split.quantity === total)) return quantityLine(sum, null, named);
   }
   // A bare list ("sage 150 and ecru 250") only when it is the total, split.
-  const listed = listedSplitsFrom(text);
-  if (listed.length && total && listed.reduce((acc, split) => acc + split.quantity, 0) === total) {
-    return quantityLine(total, null, listed);
-  }
+  const listed = total ? listedSplitsFrom(text, total) : [];
+  if (listed.length) return quantityLine(total, null, listed);
   return quantityLine(total, colourCountFrom(text));
 }
 

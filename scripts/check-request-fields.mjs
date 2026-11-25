@@ -85,6 +85,18 @@ check("a split that does not add up, or a size split, is not read as colours", (
   assert.equal(brief("400 linen shirts, sage 150 and ecru 200.").quantity, "400 units");
   assert.equal(brief("300 tees, sizes S 100 and M 200, navy.").quantity, "300 units");
 });
+check("only colours are read as a colour split", () => {
+  for (const list of ["men 150 and women 150", "adults 200 and kids 100", "cotton 150 and polyester 150",
+    "logo 100 and plain 200", "US 100 and EU 200", "GSM 180 and GSM 120", "S 100, M 200", "small 100, medium 200",
+    "style A 100, style B 200", "XL 100 and XXL 200"]) {
+    assert.equal(brief(`300 hoodies, ${list}, delivery by March.`).quantity, "300 units", list);
+  }
+  assert.equal(brief("300 hoodies, light grey 100, heather grey 100 and navy 100, delivery by March.").quantity,
+    "300 units · Light grey 100, Heather grey 100, Navy 100");
+});
+check("a colour list that ends the sentence is read", () => {
+  assert.equal(brief("300 hoodies, black 100 and white 200.").quantity, "300 units · Black 100, White 200");
+});
 check("the colours list after 'colours' still reads", () => {
   assert.equal(brief("500 shirts in two colours (sage 200, ecru 300).").quantity, "500 units · Sage 200, Ecru 300");
 });
