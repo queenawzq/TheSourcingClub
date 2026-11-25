@@ -45,7 +45,7 @@ import { demoPdf, demoTarget } from "./demo-target.mjs";
 import { seedZhFactory } from "./demo-zh-factory.mjs";
 import { withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
 import { brandLocation, countryName } from "../src/shared/company-address.mjs";
-import { applyChargeRefund, FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
+import { FUNDS_WAIT_MS, recordFundsAvailable } from "../api/_stripe.js";
 
 // The local stack, or a test database named with --remote; never production.
 const { URL, ANON, SERVICE, isLocal } = demoTarget();
@@ -1719,9 +1719,9 @@ for (const [title, person, org] of [
 //      approval: Riverbend stays paused, staff decide who was at fault.
 //    - Harbor's belt: a chargeback the bank decided for TSC (won): Riverbend
 //      resumed by itself, Harbor stays paused (Paused brands, Unpause).
-//    - Demo Brand's linen shirt, approved, half refunded in Stripe's
-//      dashboard (a real refund): Riverbend is paused, Demo Brand is not. A
-//      Stripe inquiry on it too, which pauses nobody.
+//    - Demo Brand's linen shirt, approved, with a Stripe inquiry on it,
+//      which pauses nobody. (Card disputes only: no refund made in Stripe's
+//      dashboard here.)
 //    - Demo Brand's canvas apron: approved, with a real test charge, to
 //      refund from the admin board (Refund…, who pays).
 //    Staff decide in Payments → Review needed → Payment reviews.
@@ -1878,20 +1878,10 @@ async function recordDispute(paid, dispute) {
     title, brief: "150 linen camp-collar shirts.", quantity: 150, unitPrice: 2200,
     vendor: reviewFactory, vendorOrg: reviewFactoryOrg,
   });
-  const paid = await reviewFunded(await dueNow(order, title), "refund", "pm_card_createDisputeInquiry");
+  const paid = await reviewFunded(await dueNow(order, title), "inquiry", "pm_card_createDisputeInquiry");
   await approveOpenStep(order, title, reviewFactory);
   await paid.capture();
-  // Half refunded in Stripe's dashboard after approval: recorded as the
-  // server records charge.refunded (applyChargeRefund), so it opens a review.
-  if (reviewStripe) {
-    await reviewStripe.refunds.create({ payment_intent: paid.intent, amount: Math.round(paid.total / 2) });
-    await applyChargeRefund({ stripe: reviewStripe, db: admin, charge: await reviewStripe.charges.retrieve(paid.charge) });
-  } else {
-    must(await admin.rpc("record_payment_refund_amount", {
-      target_payment: paid.payment.id, payment_intent: paid.intent, refunded_cents: Math.round(paid.total / 2),
-    }), "half refunded after approval");
-  }
-  // A Stripe inquiry on it too: staff respond in Stripe; nobody is paused by it.
+  // A Stripe inquiry: staff respond in Stripe; nobody is paused by it.
   await recordDispute(paid, await disputeOf(paid, "inq"));
 }
 {
@@ -1915,7 +1905,7 @@ async function recordDispute(paid, dispute) {
   }
   const states = must(await admin.from("payment_reviews").select("state").eq("factory_org_id", reviewFactoryOrg.id), "the review states");
   const have = states.map((row) => row.state).sort().join(",");
-  if (have !== "decide,decide,inquiry,open,resumed") throw new Error(`payment reviews: expected decide,decide,inquiry,open,resumed, have ${have}`);
+  if (have !== "decide,inquiry,open,resumed") throw new Error(`payment reviews: expected decide,inquiry,open,resumed, have ${have}`);
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production
