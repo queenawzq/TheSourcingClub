@@ -127,7 +127,7 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
                 <p className="admin-error" role="alert">{`You can take up to ${moneyIn(factoryCap, currency)} from the factory's balance.`}</p>
               ) : typedFactory == null ? (
                 <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
-              ) : rest > 0 && !over ? <p className="payment-rest-line">{`TSC pays the rest (${moneyIn(rest, currency)})`}</p> : null}
+              ) : rest > 0 && !over ? <p className="payment-rest-line">{`TSC absorbs the rest (${moneyIn(rest, currency)})`}</p> : null}
             </>
           ) : null}
           <label className="factory-onboarding-field">

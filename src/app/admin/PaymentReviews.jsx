@@ -162,7 +162,7 @@ function ResolveDialog({ row, onClose, onDone }) {
   );
 }
 
-function ReviewRow({ row, onChanged }) {
+function ReviewRow({ row, onChanged, withActions = true }) {
   const [resolving, setResolving] = useState(false);
   const canResolve = (row.actions ?? []).includes("decide");
   return (
@@ -185,26 +185,27 @@ function ReviewRow({ row, onChanged }) {
           ) : null}
         </p>
       </td>
-      <td className="admin-actions">{canResolve ? (
+      {withActions ? <td className="admin-actions">{canResolve ? (
         <button type="button" className="admin-approve" data-testid="review-resolve" onClick={() => setResolving(true)}>Resolve…</button>
       ) : null}
         {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={() => { setResolving(false); onChanged?.(); }} /> : null}
-      </td>
+      </td> : null}
     </tr>
   );
 }
 
-function ReviewTable({ rows, onChanged }) {
+/** Done rows have nothing to act on, so their table has no actions column. */
+function ReviewTable({ rows, onChanged, withActions = true }) {
   return (
     <div className="admin-scroll">
       <table className="payment-reviews-table">
         <thead>
           <tr>
             <th>Brand → factory</th><th>Order</th><th>Amount</th><th>Reason</th><th>Progress</th>
-            <th className="payments-action-heading"><span className="admin-visually-hidden">Actions</span></th>
+            {withActions ? <th className="payments-action-heading"><span className="admin-visually-hidden">Actions</span></th> : null}
           </tr>
         </thead>
-        <tbody>{rows.map((row) => <ReviewRow key={row.id} row={row} onChanged={onChanged} />)}</tbody>
+        <tbody>{rows.map((row) => <ReviewRow key={row.id} row={row} onChanged={onChanged} withActions={withActions} />)}</tbody>
       </table>
     </div>
   );
@@ -227,7 +228,7 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
       {!error && done.length > 0 ? (
         <details className="admin-views-fold" data-testid="payment-reviews-done">
           <summary>Done ({done.length})</summary>
-          <ReviewTable rows={done} onChanged={onChanged} />
+          <ReviewTable rows={done} onChanged={onChanged} withActions={false} />
         </details>
       ) : null}
     </section>
