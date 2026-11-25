@@ -294,7 +294,7 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, onRetryMetrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
@@ -305,7 +305,12 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, 
         </header>
 
         {/* A failed read is said, never shown as zeros (live only: the mock never fails). */}
-        {metricsError ? <p className="admin-error" role="alert" data-testid="overview-error">{metricsError.message}</p> : null}
+        {metricsError ? (
+          <div className="admin-overview-error" role="alert" data-testid="overview-error">
+            <p className="admin-error">{metricsError.message}</p>
+            {onRetryMetrics ? <button className="secondary-btn" type="button" onClick={() => onRetryMetrics()}>Try again</button> : null}
+          </div>
+        ) : null}
         <div className="factory-dashboard-metrics admin-metrics">
           <MetricCard label="Profiles awaiting review" value={metricsError ? "—" : metrics.profilesAwaitingReview ?? pending.length} note={metricsError ? "" : `${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
           <MetricCard label="RFQs submitted today" value={metricsError ? "—" : metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
@@ -1844,6 +1849,7 @@ function UnpauseBrandDialog({ brand, onClose, onDone }) {
         <button className="settings-drawer-close" type="button" aria-label="Close" disabled={working} onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
         <header><div><h2 id="unpause-brand-title">{`Unpause ${brand.name}?`}</h2></div></header>
         <p className="admin-modal-line">They can fund steps, approve steps and accept quotes again.</p>
+        {brand.bankOrder ? <p className="admin-modal-line" data-testid="unpause-bank-open">{`A dispute is still with the bank (${brand.bankOrder}).`}</p> : null}
         {problem && <p className="admin-error" role="alert">{problem}</p>}
         <footer>
           <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
@@ -2517,7 +2523,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         : loading
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
-      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} metricsError={metricsError} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} metricsError={metricsError} onRetryMetrics={reloadMetrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel || actions.verificationScore ? reloadQueue : null} />}

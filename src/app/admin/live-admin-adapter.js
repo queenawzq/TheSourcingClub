@@ -414,6 +414,8 @@ async function pausedBrandRows() {
       email: brand.owner_email ?? "",
       since: shortDate(brand.since),
       reason: [brand.reason, brand.order_number, more > 0 ? `+${more} more` : null].filter(Boolean).join(" · "),
+      // A dispute still with the bank, for the Unpause dialog's warning (bank deciding is the most pressing reason).
+      bankOrder: brand.bank_order_number ?? (brand.reason === "Bank ruling pending" ? brand.order_number : null),
     };
   });
 }

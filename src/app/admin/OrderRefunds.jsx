@@ -42,6 +42,8 @@ const refundFlags = (refunds) => [...new Set((refunds ?? []).map((refund) => ref
 function refundLine(refund, currency) {
   const amount = moneyIn(refund.amount_cents, currency);
   // The failure's first sentence only: the row is narrow, and the rest is on Review needed.
+  // Closed by staff (the brand was refunded another way): "Refund failed · closed · <name> · <note>".
+  if (refund.status === "failed" && refund.closed_at) return ["Refund failed", "closed", refund.closed_by_name, refund.close_note].filter(Boolean).join(" · ");
   if (refund.status === "failed") return ["Refund failed", amount, String(refund.failure ?? "").split(/(?<=\.)\s/)[0]].filter(Boolean).join(" · ");
   if (refund.status === "claimed") return `Refund pending · ${amount}`;
   const parts = [`Refunded ${amount}`];
@@ -58,7 +60,9 @@ function RefundLines({ refunds, currency }) {
     <span key={refund.id ?? index} className="admin-sub payment-refund-line" data-testid="staff-refund-line">{refundLine(refund, currency)}</span>
   ));
 }
-const charged = (payment) => !["due", "not_due"].includes(payment.state) && Number(payment.charged_cents) > 0;
+/** What was charged, kept after a full refund sends the payment back to Due. */
+const chargedCents = (payment) => Number(payment.original_charged_cents ?? payment.charged_cents) || 0;
+const charged = (payment) => (!["due", "not_due"].includes(payment.state) || refundedCents(payment) > 0) && chargedCents(payment) > 0;
 
 /** The factory's share of a refund, as the database computes it, capped at what it can give back. */
 function factoryShare(preview, amount) {
@@ -191,7 +195,7 @@ function PaymentRow({ payment, order, onRefund }) {
   return (
     <tr data-payment={payment.payment_id}>
       <td><strong>{payment.step_title ?? "Payment"}</strong></td>
-      <td>{shown ? moneyIn(payment.charged_cents, order.currency) : "—"}</td>
+      <td>{shown ? moneyIn(chargedCents(payment), order.currency) : "—"}</td>
       <td>
         {refundedCents(payment) > 0 ? moneyIn(refundedCents(payment), order.currency) : "—"}
         <RefundLines refunds={payment.staff_refunds} currency={order.currency} />
