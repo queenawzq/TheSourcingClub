@@ -291,15 +291,13 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
       const py = latinOf(han.parts[part]);
       if (py && latinText.includes(py)) { same.push(part); continue; }
       if (typedPlaceInLicence(part)) { same.push(part); continue; }
+      // A licence part we can't read in Latin letters is not compared: never a difference.
+      if (!py) continue;
       // Another place: the typed one is a name we can read and it is nowhere in the licence.
       if (han.parts[part] && latin.parts[part] && KNOWN_PINYIN.has(fold(latin.parts[part]))) {
-        differs.push({ part, a: han.parts[part], b: latin.parts[part], ...(part === "town" ? { place: true } : {}) });
+        // A town is a place of its own only directly under the city (Dongguan's 镇); under a district it is a neighbourhood.
+        differs.push({ part, a: han.parts[part], b: latin.parts[part], ...(part === "town" && !han.parts.district ? { place: true } : {}) });
       }
-    }
-    // The licence names no city we parsed, but the typed city is one we can read and is not in it.
-    if (!han.parts.city && !same.includes("city") && !differs.some((d) => d.part === "city") && latin.parts.city && HAN_OF[fold(latin.parts.city)]
-      && (han.parts.district || han.parts.town) && !typedPlaceInLicence("city")) {
-      differs.push({ part: "city", a: han.parts.district ?? han.parts.town, b: latin.parts.city });
     }
     const hanRaw = a.script === "han" ? rawA : rawB;
     const latinRaw = a.script === "han" ? rawB : rawA;
@@ -341,8 +339,8 @@ export function compareAddresses(rawA, rawB, { cityB = "" } = {}) {
     if (verdict) same.push(part);
     // One Chinese character apart is more often a blurry read (北纬 / 北绣) than another place.
     else if (a.script === "han" && oneCharApart(a.parts[part], b.parts[part])) near.push({ part, a: a.parts[part], b: b.parts[part] });
-    // A Chinese town (镇) is a place of its own, kilometres from the next; a Turkish mahalle is a neighbourhood.
-    else differs.push({ part, a: a.parts[part], b: b.parts[part], ...(part === "town" && a.script === "han" ? { place: true } : {}) });
+    // A Chinese town (镇) directly under the city is a place of its own; under a district, or a Turkish mahalle, a neighbourhood.
+    else differs.push({ part, a: a.parts[part], b: b.parts[part], ...(part === "town" && a.script === "han" && !a.parts.district && !b.parts.district ? { place: true } : {}) });
   }
   if (differs.length) return { verdict: "differs", same, differs, near };
   if (near.length) return { verdict: "near", same, differs, near };

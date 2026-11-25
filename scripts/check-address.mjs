@@ -152,6 +152,19 @@ await check("CN: another Chinese town in the same city is low (大朗 / 虎门)"
   const owner = addressOwnerCheck({ license: "广东省东莞市虎门镇工业路8号", typed: "广东省东莞市大朗镇工业路8号", registry: "", typedFrom: "production" });
   assert.equal(owner.level, "low");
 });
+// Review d2: a licence that doesn't print its city is never "another city"; a town under a district is a neighbourhood.
+await check("CN: 虎门镇 with no city on the licence vs Humen Town, Dongguan is High", () => {
+  assert.equal(addressOwnerCheck({ license: "虎门镇工业路8号", typed: "8 Gongye Road, Humen Town, Dongguan, Guangdong", registry: "", typedFrom: "production" }).level, "high");
+});
+await check("CN: 濮院镇 vs Puyuan Town, Tongxiang is not Low", () => {
+  assert.notEqual(addressOwnerCheck({ license: "濮院镇毛衫城工业园区内", typed: "Puyuan Town, Tongxiang, Zhejiang", registry: "", typedFrom: "production" }).level, "low");
+});
+await check("CN: 番禺区石碁镇 vs Panyu District, Guangzhou is not Low", () => {
+  assert.notEqual(addressOwnerCheck({ license: "番禺区石碁镇市莲路28号", typed: "28 Shilian Road, Shiji Town, Panyu District, Guangzhou", registry: "", typedFrom: "production" }).level, "low");
+});
+await check("CN: another 街道 in the same district (福永 / 沙井 in 宝安区) is Medium", () => {
+  assert.equal(addressOwnerCheck({ license: "广东省深圳市宝安区福永街道工业路8号", typed: "广东省深圳市宝安区沙井街道工业路8号", registry: "", typedFrom: "production" }).level, "medium");
+});
 await check("TR: another mahalle in the same district stays medium", () => {
   const owner = addressOwnerCheck({ license: "Merkez Mah. Fabrika Cad. No:12 Güngören/İstanbul", typed: "Tozkoparan Mah. Fabrika Cad. No:12 Güngören/İstanbul", registry: "", typedFrom: "production" });
   assert.equal(owner.level, "medium");
