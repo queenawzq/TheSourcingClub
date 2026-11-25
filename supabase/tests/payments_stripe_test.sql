@@ -757,7 +757,7 @@ select ok(
 select set_config('tsc.p18_review', (select id::text from public.payment_reviews where payment_id = pg_temp.p18_pay('order_d', 'Fit sample')), true);
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
-select public.decide_payment_review(current_setting('tsc.p18_review')::uuid, 'tsc_pays', null, 'pgTAP: TSC bears it');
+select public.decide_payment_review(current_setting('tsc.p18_review')::uuid, 'no_fault', null, 'pgTAP: TSC bears it');
 reset role;
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;

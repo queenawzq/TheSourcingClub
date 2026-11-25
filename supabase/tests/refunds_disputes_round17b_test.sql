@@ -194,7 +194,7 @@ begin
   select id into r from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
   perform pg_temp.act_as('02');
   set local role authenticated;
-  perform public.decide_payment_review(r, 'tsc_pays', null, 'pgTAP: TSC bears it');
+  perform public.decide_payment_review(r, 'no_fault', null, 'pgTAP: TSC bears it');
   reset role;
 end;
 $f$;

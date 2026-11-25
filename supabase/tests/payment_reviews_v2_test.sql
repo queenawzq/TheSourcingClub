@@ -325,7 +325,7 @@ select is((select state || ' ' || amount_cents from public.payment_reviews where
 -- ===========================================================================
 -- 6. New functions are staff's or the server's: grants.
 -- ===========================================================================
-select ok(not has_function_privilege('anon', 'public.claim_staff_refund(uuid, bigint, text, text)', 'execute'), 'anon cannot claim');
+select ok(not has_function_privilege('anon', 'public.claim_staff_refund(uuid, bigint, text, text, bigint)', 'execute'), 'anon cannot claim');
 select ok(not has_function_privilege('authenticated', 'public.record_staff_refund(uuid, text, text)', 'execute'), 'only the server records');
 select ok(not has_function_privilege('authenticated', 'public.hand_payout_revealed(public.order_payments, uuid, timestamptz)', 'execute'), 'internal helper');
 select ok(not has_function_privilege('authenticated', 'public.give_back_staff_refund_takes(public.staff_refunds)', 'execute'), 'internal helper');
