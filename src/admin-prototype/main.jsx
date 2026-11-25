@@ -1694,6 +1694,18 @@ function UsersPage({ users, onToggleStatus }) {
   const [userType, setUserType] = useState("All user types");
   const [status, setStatus] = useState("All statuses");
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  // Live only: brands paused by a payment review (the prototype has none, and draws none).
+  const actions = useActions();
+  const [paused, setPaused] = useState(null);
+  const [unpausing, setUnpausing] = useState(null);
+  const loadPaused = useCallback(() => actions.pausedBrands?.().then(setPaused, () => setPaused([])), [actions]);
+  useEffect(() => { loadPaused(); }, [loadPaused]);
+  const showPaused = paused !== null && status === "Paused";
+  const pausedRows = (paused ?? []).filter((brand) => {
+    const email = users.find((user) => user.orgId === brand.orgId)?.email ?? "";
+    return (!normalizedSearch || `${brand.name} ${email}`.toLowerCase().includes(normalizedSearch))
+      && (userType === "All user types" || userType === "Brand");
+  });
   const filteredUsers = users.filter((user) => {
     const matchesSearch = !normalizedSearch || `${user.name} ${user.email} ${user.company}`.toLowerCase().includes(normalizedSearch);
     const matchesType = userType === "All user types" || user.type === userType;
@@ -1708,10 +1720,11 @@ function UsersPage({ users, onToggleStatus }) {
         <div><p className="admin-eyebrow">Admin</p><h1>User management</h1><p>Find marketplace users, review their account type, and control access.</p></div>
       </header>
 
-      <div className="admin-user-metrics" aria-label="User account summary">
+      <div className={`admin-user-metrics${paused !== null ? " has-paused" : ""}`} aria-label="User account summary">
         <div><span>Total users</span><strong>{users.length}</strong></div>
         <div><span>Active</span><strong>{activeCount}</strong></div>
         <div><span>Disabled</span><strong>{users.length - activeCount}</strong></div>
+        {paused !== null && <div className={showPaused ? "selected" : ""}><span>Paused brands</span><strong>{paused.length}</strong></div>}
       </div>
 
       <div className="admin-filter-bar admin-users-filter-bar">
@@ -1729,11 +1742,14 @@ function UsersPage({ users, onToggleStatus }) {
         <label className="rfqs-sort admin-profile-type-filter admin-user-status-filter">
           <span>Account status</span>
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option>All statuses</option><option>Active</option><option>Disabled</option>
+            <option>All statuses</option><option>Active</option><option>Disabled</option>{paused !== null && <option>Paused</option>}
           </select>
         </label>
       </div>
 
+      {showPaused ? (
+        <PausedBrandsPanel rows={pausedRows} users={users} onUnpause={setUnpausing} />
+      ) : (
       <section className="factory-dashboard-panel admin-panel admin-users-panel">
         <header><div><h2>{filteredUsers.length} user{filteredUsers.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
         {filteredUsers.length > 0 ? (
@@ -1761,7 +1777,72 @@ function UsersPage({ users, onToggleStatus }) {
           </div>
         ) : <div className="admin-empty-state"><strong>No users found</strong><p>Try a different search term or filter.</p></div>}
       </section>
+      )}
+      {unpausing && <UnpauseBrandDialog brand={unpausing} onClose={() => setUnpausing(null)}
+                                        onDone={() => { setUnpausing(null); loadPaused(); }} />}
     </main>
+  );
+}
+
+/** Live only: Users → Paused brands, one row per brand, with its owner's email. */
+function PausedBrandsPanel({ rows, users, onUnpause }) {
+  return (
+    <section className="factory-dashboard-panel admin-panel admin-users-panel">
+      <header><div><h2>{rows.length} paused brand{rows.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
+      {rows.length > 0 ? (
+        <div className="admin-table-wrap">
+          <table className="admin-table admin-users-table">
+            <thead><tr><th>Brand</th><th>User type</th><th>Reason</th><th>Paused</th><th>Status</th><th>Access</th></tr></thead>
+            <tbody>
+              {rows.map((brand) => (
+                <tr key={brand.orgId} data-testid="paused-brand">
+                  <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
+                  <td><StatusPill tone="info">Brand</StatusPill></td>
+                  <td className="admin-user-reason">{brand.reason}</td>
+                  <td>{brand.since}</td>
+                  <td><StatusPill tone="warning">Paused</StatusPill></td>
+                  <td><button className="secondary-btn admin-user-access-button enable" type="button" aria-label={`Unpause ${brand.name}`} onClick={() => onUnpause(brand)}>Unpause</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <div className="admin-empty-state"><strong>No paused brands</strong><p>Try a different search term or filter.</p></div>}
+    </section>
+  );
+}
+
+const initialsOf = (name) => String(name ?? "").split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+
+function UnpauseBrandDialog({ brand, onClose, onDone }) {
+  const actions = useActions();
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const unpause = async () => {
+    setWorking(true);
+    setProblem(null);
+    try {
+      await actions.unpauseBrandOrg(brand.orgId);
+      onDone();
+    } catch (error) {
+      setProblem(error.message);
+      setWorking(false);
+    }
+  };
+  return createPortal(
+    <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onClose()}>
+      <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="unpause-brand-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close" disabled={working} onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+        <header><div><h2 id="unpause-brand-title">{`Unpause ${brand.name}?`}</h2></div></header>
+        <p className="admin-modal-line">They can fund steps, approve steps and accept quotes again.</p>
+        {problem && <p className="admin-error" role="alert">{problem}</p>}
+        <footer>
+          <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" disabled={working} data-testid="unpause-brand-confirm" onClick={unpause}>Unpause</button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
 

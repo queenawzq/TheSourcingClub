@@ -54,6 +54,7 @@ import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
 import { PaymentReviewsSection } from "./PaymentReviews.jsx";
+import { OrderSearchBar, OrderSearchSection } from "./OrderRefunds.jsx";
 import { paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
 import { adminBalanceAttention, adminWithdrawals, checkStripeWithdrawal, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
@@ -87,7 +88,7 @@ const SentContext = createContext(null);
 // Orders of factories paused by a payment review: no payout button on their
 // rows (the database refuses every road too; 20261124100100).
 const PausedContext = createContext(new Set());
-const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking).";
+const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).";
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -1033,12 +1034,15 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     try {
       const asked = new URLSearchParams(window.location.search).get("tab");
       // The tab's words, as a link may say them.
-      return { needs_checking: "attention", "needs-checking": "attention", payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
+      return { needs_checking: "attention", "needs-checking": "attention", review_needed: "attention", "review-needed": "attention",
+        payout_owed: "payout", processing: "clearing" }[asked] ?? asked;
     } catch {
       return null;
     }
   });
   const [sentNotice, setSentNotice] = useState(null);
+  // An order searched by its number: while it shows, no tab is active.
+  const [search, setSearch] = useState(null);
   const onSent = useCallback((row, name, done) => {
     setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
       : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);
@@ -1051,7 +1055,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   // Disputes and refunds after approval are payment reviews now (20261124100000): each open one counts here.
   if (attention) sections.attention = [...(reviews?.list ?? []).filter((row) => row.open), ...attention.stuck, ...(attention.refund_failed ?? []), ...(attention.returned ?? [])];
-  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Needs checking"]] : [])];
+  const tabs = [...TABS, ...(withdrawals ? [["withdrawals", "Withdrawals"]] : []), ...(attention ? [["attention", "Review needed"]] : [])];
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
   const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
@@ -1069,11 +1073,12 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     <PausedContext.Provider value={pausedOrders}>
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
+      {attention ? <OrderSearchBar query={search} onSearch={setSearch} onClear={() => setSearch(null)} /> : null}
       {tabs.length > 1 ? (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
           {tabs.map(([id, label]) => (
-            <button type="button" key={id} data-tab={id} className={active === id ? "active" : ""} aria-current={active === id ? "page" : undefined}
-                    onClick={() => setChosen(id)}>
+            <button type="button" key={id} data-tab={id} className={!search && active === id ? "active" : ""} aria-current={!search && active === id ? "page" : undefined}
+                    onClick={() => { setSearch(null); setChosen(id); }}>
               {label} <span>{sections[id].length}</span>
             </button>
           ))}
@@ -1084,21 +1089,22 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
       {sentNotice ? <p className="admin-sub" role="status" data-testid="provider-sent">{sentNotice}</p> : null}
 
-      {active === "payout" ? (
+      {search ? <OrderSearchSection query={search} /> : null}
+      {!search && active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
                  empty="No payouts waiting on staff." />
       ) : null}
-      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
-      {active === "clearing" ? (
+      {!search && active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} empty="Nothing has failed." /> : null}
+      {!search && active === "clearing" ? (
         <Section id="clearing" title="Processing" rows={sections.clearing} {...shared} empty="Nothing is processing."
                  above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
-      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
-      {active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
+      {!search && active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} empty="Nothing is held." /> : null}
+      {!search && active === "attention" && attention ? <PaymentReviewsSection reviews={reviews?.list} error={reviews?.error} onChanged={onChanged} /> : null}
       {/* Its own rows, or its own failure; the reviews above say "All clear" when nothing is open. */}
-      {active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
+      {!search && active === "attention" && attention && (attention.error || attention.stuck.length + (attention.refund_failed ?? []).length + (attention.returned ?? []).length > 0)
         ? <AttentionSection attention={attention} onChanged={onChanged} /> : null}
-      {active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
+      {!search && active === "withdrawals" && withdrawals ? <WithdrawalsSection withdrawals={withdrawals.withdrawals} onChanged={onChanged} providerLine={wiseLine}
         pausedOrgs={pausedOrgs} /> : null}
 
     </main>

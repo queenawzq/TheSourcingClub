@@ -287,3 +287,46 @@
   .payment-reviews-table tr { border-bottom: 1px solid var(--border); }
   .admin-payments-page .payment-reviews-table .admin-actions { max-width: none; }
 }
+
+/* Paused payments v2 (staff): the review list's bar, the Resolve and Refund dialogs, the order search. */
+.payment-review-status { display: block; font-size: 13px; line-height: 19px; }
+.payment-reviews-table .admin-sub a, .payment-reviews-table a.admin-sub { color: var(--text-muted); }
+.payments-order-search-bar { margin: 24px 0 0; }
+.payments-order-search-bar .admin-search { max-width: 360px; }
+.payments-search-clear { margin-left: 4px; }
+.admin-actions .admin-row-message.admin-sub { margin: 0 0 8px; }
+/* The dialog's helper line ("Up to $X"), as console-live.css draws it on the review page. */
+.admin-review-modal .admin-assist-meta { margin: 0 0 12px; color: #4c6487; font-size: 12px; font-weight: 500; line-height: 17px; overflow-wrap: anywhere; }
+.admin-review-modal .factory-onboarding-field + .admin-assist-meta { margin-top: -8px; }
+.admin-tier-option.no-icon { grid-template-columns: auto minmax(0, 1fr); }
+.admin-review-modal .admin-error { margin: 0; }
+.admin-review-modal .admin-modal-line { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; }
+
+/* "Paused" after the brand's name: the .admin-pill frame in the admin warning tier. */
+.admin-pill--paused { background: #fff7e8; border-color: #f2b253; color: #a65f00; }
+.payment-reviews-table .admin-pill { margin-left: 6px; vertical-align: 1px; }
+.payment-review-line .admin-pill { margin-left: 8px; vertical-align: 0; }
+
+/* Progress: the order card's stepper (.project-progress), three steps, compact. */
+.payment-reviews-table .project-progress {
+  --project-step-count: 3; --project-rail-inset: 16.667%;
+  width: 200px; margin: 0 0 6px -22px; padding-top: 0;
+}
+.payment-reviews-table .project-progress-line { top: 11px; }
+.payment-reviews-table .project-progress-step { gap: 4px; }
+.payment-reviews-table .project-progress-step span { width: 22px; height: 22px; }
+.payment-review-line { margin: 0; color: var(--text); font-size: 13px; line-height: 19px; }
+.payment-review-line.done { color: var(--text-muted); }
+.payments-queue .payment-reviews-table .payment-review-line a { margin-left: 8px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.payment-reviews-table td.payment-review-progress-cell { min-width: 280px; white-space: normal; }
+.admin-payments-page .payment-reviews-table td.admin-actions { white-space: nowrap; }
+.admin-views-fold .admin-scroll { margin-top: 4px; }
+@media (max-width: 760px) {
+  .payment-reviews-table .project-progress { margin-top: 8px; }
+  .payment-reviews-table td.admin-actions:empty { display: none; }
+}
+
+/* The choices: the tier picker's rows, sub-line at caption size. */
+.admin-tier-option small { font-size: 12px; line-height: 16px; }
+.admin-review-modal .admin-assist-meta + .admin-error { margin-top: -14px; }
+.admin-review-modal .payment-rest-line { margin: -14px 0 0; color: var(--text); font-size: 13px; line-height: 19px; font-weight: 500; }
