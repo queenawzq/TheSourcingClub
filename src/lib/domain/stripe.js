@@ -17,7 +17,7 @@ export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KE
  */
 export function withCardAdvice(reason) {
   const text = String(reason || "The payment did not go through.").trim();
-  return /\btry\b/i.test(text) ? text : `${text} Try again, or use another card.`;
+  return /\btry\b|another card/i.test(text) ? text : `${text} Try again, or use another card.`;
 }
 
 /** Test-mode objects live under /test/ in Stripe's dashboard. */
