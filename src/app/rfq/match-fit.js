@@ -14,6 +14,12 @@ export function matchFit(score) {
   return { label, tone, score: numericScore };
 }
 
+/** A score Browse calls a fit (60 and over); unscored is not one. */
+export function isFit(score) {
+  const fit = matchFit(score);
+  return Boolean(fit) && fit.tone !== "tradeoff";
+}
+
 /**
  * One sentence saying why a request fits this factory, from the factors that
  * fully match in match_score_rfq(): capacity in the delivery month, the
