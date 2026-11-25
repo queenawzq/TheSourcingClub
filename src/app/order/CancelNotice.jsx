@@ -16,6 +16,7 @@ import React from "react";
 import { cancelProposal } from "../live-adapter.js";
 import { day } from "./order-view.js";
 import { cancelMoneyLines } from "./cancel-money.mjs";
+import { getUiLanguage } from "../../lib/ui-language.js";
 import "./order.css";
 
 export default function CancelNotice({ order, isFactory, counterparty, title, store, payments = [] }) {
@@ -27,7 +28,7 @@ export default function CancelNotice({ order, isFactory, counterparty, title, st
         <div className="order-cancel-notice-text">
           <strong>This order was cancelled{order.cancelled_at ? ` · ${day(order.cancelled_at)}` : ""}</strong>
           {order.cancel_reason && <p>{order.cancel_reason}</p>}
-          {cancelMoneyLines(payments, { isFactory, counterparty, cancelled: true }).map((line) => <p key={line} data-testid="cancel-money">{line}</p>)}
+          {cancelMoneyLines(payments, { isFactory, counterparty, cancelled: true, language: isFactory ? getUiLanguage() : "en" }).map((line) => <p key={line} data-testid="cancel-money">{line}</p>)}
         </div>
       </section>
     );

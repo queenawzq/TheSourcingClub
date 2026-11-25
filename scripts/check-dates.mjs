@@ -140,6 +140,10 @@ const ZH_SAMPLES = [
   { kind: "payment_processing", title: 'A payment for "Deposit" is on its way', body: "$1,200.00 on TSC-1042. It is still being confirmed. We will tell you when TSC holds it; please do not start this work yet." },
   { kind: "payment_refunded", title: 'Your payment for "Deposit" was refunded', body: "The amount changed while you were paying. You were refunded; please pay again. Pay again from the step's payment page on TSC-1042." },
   { kind: "payment_refunded", title: 'Your payment for "Deposit" was refunded', body: "TSC-1042 was cancelled. You were refunded." },
+  // The amount and the step (fix m3, 20261124615100).
+  { kind: "payment_refunded", title: 'Your payment for "Fit sample" was refunded', body: 'TSC-1042 was cancelled. $86.82 for "Fit sample" was refunded to you.' },
+  { kind: "payment_refunded", title: 'Your payment for "Deposit" was refunded', body: "The amount changed while you were paying. $1,284.00 for \"Deposit\" was refunded to you; please pay again. Pay again from the step's payment page on TSC-1042." },
+  { kind: "payment_refunded", title: 'Your payment for "Deposit" was refunded', body: "This step was not open for payment. $1,284.00 for \"Deposit\" was refunded to you. You will be asked to pay when the step opens on TSC-1042." },
   { kind: "payment_refunded", title: 'The payment for "Deposit" was refunded', body: "TSC no longer holds money for this step on TSC-1042. The brand has been asked to pay again; we will tell you when it is held." },
   { kind: "payment_refunded", title: 'The payment for "Deposit" went back to the brand', body: "TSC-1042 was cancelled." },
   { kind: "payment_rejected", title: "We could not find your payment on TSC-1042", body: "No transfer arrived.", typed: true },
@@ -335,7 +339,17 @@ async function formatters() {
     const { capacityWindowProblem, formatCapacityWindow, parseCapacityWindow } = await load("/src/lib/domain/quote.js");
     const { notificationBody, notificationTitle } = await load("/src/shared/notification-text.mjs");
     const email = await load("/scripts/generate-notification-email.mjs");
-    const { ZH_TITLE_KINDS } = await load("/src/shared/notification-zh.mjs");
+    const { ZH_TITLE_KINDS, GENERATED_STEPS_ZH } = await load("/src/shared/notification-zh.mjs");
+    // An email names a generated step as the factory's order page does (fix m3).
+    const { factoryMainZhText } = await load("/src/factory-prototype/main.jsx");
+    for (const [en, zh] of Object.entries(GENERATED_STEPS_ZH)) expect(`step name in emails: ${en}`, zh, factoryMainZhText[en]);
+    // Names are swapped only where the database writes a name, never inside our sentences (review m3).
+    const { swapNames } = await load("/api/_email-words.js");
+    const names = new Map([["Review", "审核"], ["Linen vest", "亚麻背心"], ["Bulk deposit", "大货定金"], ["试身样", "Fit sample"]]);
+    expect("email names: a word in our sentence", swapNames("Review the production steps, then confirm them.", names), "Review the production steps, then confirm them.");
+    expect("email names: quoted", swapNames('Your payment for "试身样" is funded', names), 'Your payment for "Fit sample" is funded');
+    expect("email names: the order's title", swapNames("Linen vest (TSC-000541) is under way", names), "亚麻背心 (TSC-000541) is under way");
+    expect("email names: for … on …", swapNames("Fix M3 Linen funded $80.00 for Bulk deposit on Linen vest.", names), "Fix M3 Linen funded $80.00 for 大货定金 on 亚麻背心.");
 
     // The activity line for a funded deposit (payment-only step): added to the
     // balance, never "held by TSC"; a paid step stays held until approved.
@@ -423,6 +437,9 @@ async function formatters() {
       expect("cancel: refunded after payout, factory", cancelMoneyLines([paidOutThenRefunded], { isFactory: true, counterparty: "B", cancelled: true }).join(" "), "$1,000.00 refunded to B.");
       expect("cancel: half refunded, brand", cancelMoneyLines([halfRefunded], { isFactory: false, counterparty: "F" }).join(" "), "$535.00 refunded to you. $535.00 paid for steps not yet released is refunded to you.");
       expect("cancel: half refunded, factory", cancelMoneyLines([halfRefunded], { isFactory: true, counterparty: "B" }).join(" "), "$500.00 refunded to B. $500.00 for steps not yet released is refunded to B.");
+      // A factory reading Chinese: the same figures (fix m3, R3g13).
+      expect("cancel: half refunded, factory, zh", cancelMoneyLines([halfRefunded], { isFactory: true, counterparty: "B", language: "zh" }).join(""), "$500.00 已退还给 B。尚未放款步骤的 $500.00 将退还给 B。");
+      expect("cancel: refunded after payout, factory, zh", cancelMoneyLines([paidOutThenRefunded], { isFactory: true, cancelled: true, language: "zh" }).join(""), "$1,000.00 已退还给品牌。");
     }
 
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");

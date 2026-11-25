@@ -13,6 +13,7 @@ import React from "react";
 import { FlowShell, MilestonesScreen } from "../../prototype/main.jsx";
 import { scheduleBar } from "./order-view.js";
 import { useScheduleDraft } from "./useScheduleDraft.js";
+import { useEnglishContent } from "../content-translation.js";
 
 // The bar is on screen wherever the page is scrolled, so what stops Continue
 // is said there.
@@ -23,7 +24,9 @@ const totalLine = (draft, order) => scheduleBar({
 // `locked`: hover text when this person may read the steps but not save or
 // confirm them (Quote flow sets them); empty for someone who may.
 export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFund, banner = null, dialog = null, locked = "" }) {
-  const draft = useScheduleDraft({ order, milestones, reload, onFund });
+  // Steps named after the factory's sample stages, in English (as the order page reads them).
+  const english = useEnglishContent({ orderIds: [order.id] });
+  const draft = useScheduleDraft({ order, milestones, reload, onFund, english });
 
   return (
     <FlowShell

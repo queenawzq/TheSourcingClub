@@ -87,7 +87,7 @@ const shownTime = (payment) => dateFrom(shownAt(payment))?.getTime() ?? 0;
  * listPaymentsForOrders() for those orders, stepCharges: listStepCharges()
  * for them, vendor: the filter's choice.
  */
-export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name }) {
+export function brandPaymentsView({ orders, payments, stepCharges = [], vendor = ALL_VENDORS, nameOf = (order) => order.factory?.name, stepName = (title) => title }) {
   const byOrder = new Map(orders.map((order) => [order.id, order]));
   // `nameOf`: the vendor's name as the brand reads it (English where it has one).
   const vendorOf = (order) => nameOf(order) ?? "Factory";
@@ -108,7 +108,8 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], vendor =
       return {
         id: payment.id,
         orderId: payment.order_id,
-        title: payment.order_milestones?.title || "Payment",
+        // `stepName`: a step the factory named, as the order page reads it (its rows and the type filter).
+        title: stepName(payment.order_milestones?.title) || "Payment",
         client: vendorOf(order),
         date: day(shownAt(payment)),
         meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,

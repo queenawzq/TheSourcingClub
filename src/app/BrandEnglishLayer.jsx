@@ -15,7 +15,7 @@
  * vendor-names.jsx shows it.
  */
 import { useEffect } from "react";
-import { contentTranslations, useContentTranslations } from "./content-translation.js";
+import { contentTranslations, englishText, useContentTranslations } from "./content-translation.js";
 import { needsEnglish } from "../shared/profile-translation.mjs";
 import { cardFor, labelAnchors, labelPlace, translatesItself } from "./translation-card.mjs";
 import "./profile/profile.css";
@@ -30,9 +30,7 @@ export default function BrandEnglishLayer() {
 
   useEffect(() => {
     const content = contentTranslations();
-    // The Chinese sources, longest first, so a sentence is replaced before
-    // a shorter text it contains.
-    const sources = [...content.translations.keys()].filter(needsEnglish).sort((a, b) => b.length - a.length);
+    const sources = [...content.translations.keys()].filter(needsEnglish);
     const failed = [...content.failed].filter((source) => typeof source === "string");
     // node → { original, english }
     const swapped = new Map();
@@ -40,11 +38,8 @@ export default function BrandEnglishLayer() {
     const controls = new Map();
     const titled = new Map();
 
-    const english = (text) => {
-      let out = text;
-      for (const source of sources) if (out.includes(source)) out = out.split(source).join(content.translations.get(source));
-      return out;
-    };
+    // The same English a screen puts in its own inputs and lists (englishText).
+    const english = englishText;
     const showingIn = (element) => controls.get(cardFor(element))?.showing ?? "english";
     const show = (card, showing) => {
       const entry = controls.get(card);
@@ -57,7 +52,7 @@ export default function BrandEnglishLayer() {
     };
     // The label of each card, right after the card's first translated text.
     const placeControls = () => {
-      const anchors = labelAnchors([...swapped.keys()].filter((node) => node.isConnected).map((node) => node.parentElement));
+      const anchors = labelAnchors([...swapped.entries()].filter(([node, texts]) => node.isConnected && texts.labelled).map(([node]) => node.parentElement));
       for (const [card, entry] of controls) {
         if (!anchors.has(card) || !card.isConnected) { entry.control.remove(); controls.delete(card); }
       }
@@ -110,7 +105,11 @@ export default function BrandEnglishLayer() {
       }
       const translated = english(value);
       if (translated !== value) {
-        swapped.set(node, { original: value, english: translated });
+        // A step's or a sample stage's name is translated like a company
+        // name: in place, with no label of its own (R3g12: five labels on
+        // the Fund page, one squeezing the summary's step name).
+        const labelled = sources.some((source) => value.includes(source) && !content.names.has(source));
+        swapped.set(node, { original: value, english: translated, labelled });
         if (showingIn(element) === "original") return;
         node.nodeValue = translated;
       } else if (failed.some((source) => value.includes(source))) {

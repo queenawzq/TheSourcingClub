@@ -11478,7 +11478,7 @@ function AcceptedQuoteField({ label, value, readOnly = false }) {
   return (
     <label className="accepted-quote-field">
       <span>{label}</span>
-      <input defaultValue={value} readOnly={readOnly} />
+      <input key={value} defaultValue={value} readOnly={readOnly} />
     </label>
   );
 }

@@ -166,7 +166,7 @@ export default async function handler(request, response) {
       case "account.external_account.updated":
       case "account.external_account.deleted": {
         if (await tellExternalAccountEvent(db, event) && emailTransport()) {
-          await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+          await sendDueNotificationEmails(db, request, undefined, { translateMisses: false }).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
         }
         break;
       }
@@ -182,7 +182,7 @@ export default async function handler(request, response) {
         // it. First: it is safe to repeat, the bell below is not.
         if (event.type === "payout.failed") await returnFeeOnFailedPayout({ stripe, db, payout: event.data.object });
         if (await tellPayoutEvent(db, event) && emailTransport()) {
-          await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+          await sendDueNotificationEmails(db, request, undefined, { translateMisses: false }).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
         }
         break;
       }
@@ -209,7 +209,7 @@ export default async function handler(request, response) {
             // queue until the daily job: send it now. A failure here is left
             // to that job, never a reason to handle the event again.
             if (emailTransport()) {
-              await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+              await sendDueNotificationEmails(db, request, undefined, { translateMisses: false }).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
             }
           }
         }

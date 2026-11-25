@@ -17,6 +17,7 @@ import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { listPayments } from "../../lib/domain/payment.js";
 import { cancelMoneyLines } from "./cancel-money.mjs";
+import { getUiLanguage } from "../../lib/ui-language.js";
 
 /**
  * What cancelling does to the money, said before, from the order's own
@@ -34,7 +35,8 @@ export default function CancelOrderDialog({ mode = "propose", orderId, title, co
     listPayments(orderId).then((rows) => { if (live) setRead(rows ?? []); }).catch(() => null);
     return () => { live = false; };
   }, [given, orderId]);
-  const money = cancelMoneyLines(given ?? read, { isFactory, counterparty }).join(" ");
+  // A factory reading Chinese reads the money in Chinese, from the same figures.
+  const money = cancelMoneyLines(given ?? read, { isFactory, counterparty, language: isFactory ? getUiLanguage() : "en" }).join(isFactory && getUiLanguage() === "zh" ? "" : " ");
 
   return createPortal((
     <div className="approve-fund-modal-layer" role="presentation">

@@ -18,6 +18,7 @@ import { dateFrom } from "../lib/dates.js";
 import React from "react";
 import { LiveVendorName, vendorNameText } from "./vendor-names.jsx";
 import { requestQuantityTag, requestSampleTag } from "./rfq/request-facts.js";
+import { requestEnglishContent } from "./content-translation.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -259,7 +260,13 @@ export function toRfqCard(rfq, messageCount = 0) {
 export function createLiveAdapter({ org, isFactory, user }) {
   return {
     viewer: { isFactory, org, user },
-    orders: async () => (await listOrders(org.id)).map((order) => toProjectCard(order, isFactory)),
+    orders: async () => {
+      const orders = await listOrders(org.id);
+      // A brand reads the steps a factory named in Chinese in English, as on
+      // the order page (BrandEnglishLayer): the card's rail and current step.
+      if (!isFactory && orders.length) requestEnglishContent({ orderIds: orders.map((order) => order.id) });
+      return orders.map((order) => toProjectCard(order, isFactory));
+    },
 
     // Split here rather than in the screen: which statuses count as "closed"
     // is a domain question, and the factory side will need the same answer.

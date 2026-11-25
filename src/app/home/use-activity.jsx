@@ -18,6 +18,7 @@ import {
 import { supabase } from "../../lib/supabase.js";
 import { reviewNoteText } from "../../shared/review-note.mjs";
 import { useRouter } from "../../lib/router.jsx";
+import { requestEnglishContent } from "../content-translation.js";
 import "../notifications.css";
 
 const DRAWER_LIMIT = 100;
@@ -89,11 +90,14 @@ export function useActivity(orgId, { isFactory, description, onError, language }
   const loadItems = useCallback(async () => {
     try {
       const rows = await listNotifications(orgId, { limit: DRAWER_LIMIT });
+      // A brand reads the steps a factory named in Chinese in English, as on the order (BrandEnglishLayer).
+      const orderIds = [...new Set((rows ?? []).map((row) => row.order_id).filter(Boolean))];
+      if (!isFactory && orderIds.length) requestEnglishContent({ orderIds });
       if (isOpen.current) setDrawer({ items: (rows ?? []).map((row) => toActivityItem(row, locale)) });
     } catch (failure) {
       onErrorRef.current?.(failure);
     }
-  }, [orgId, locale]);
+  }, [orgId, locale, isFactory]);
 
   // The language arrived (or changed) with the drawer open: say it again.
   useEffect(() => { if (isOpen.current) loadItems(); }, [loadItems]);
