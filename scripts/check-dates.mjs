@@ -97,7 +97,7 @@ const ZH_SAMPLES = [
   { kind: "quote_received", title: 'Ningbo Knit sent a quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
   { kind: "quote_received", title: 'Ningbo Knit sent a revised quote on "Organic tees"', body: "Compare it with the other quotes on this request." },
   { kind: "quote_withdrawn", title: 'Ningbo Knit withdrew its quote on "Organic tees"', body: "It no longer appears in your comparison." },
-  { kind: "order_created", title: "Production order TSC-1042 is ready", body: "Ningbo Knit accepted. Review the production steps drafted from their quote, then confirm them to start." },
+  { kind: "order_created", title: "Production order TSC-1042 is ready", body: "You accepted Ningbo Knit's quote. Review the production steps, then confirm them to start." },
   { kind: "order_cancelled", title: "TSC-1042 was cancelled", body: "Brand changed plans", typed: true },
   { kind: "rfq_cancelled", title: 'Maison Rue cancelled "Organic tees"', body: "The brand is no longer taking quotes on this request." },
   { kind: "rfq_matched", title: 'New request that matches you: "Organic tees"', body: "Maison Rue is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: "2026-11-20T15:59:00Z" } },
