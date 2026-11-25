@@ -9,7 +9,7 @@
  * never scored as a failure.
  *
  * Groups (weights are a decision for Queena to confirm):
- *   Business registration  20, only when a document is uploaded; else shown, not counted
+ *   Business registration  20, only once staff have decided on an upload (or it is empty); else shown, not counted
  *   Company information    50  company details 70 + terms 30
  *   Brand evidence         30  logo, product images and brand direction
  *
@@ -58,7 +58,9 @@ function registrationCheck(row) {
   if (row.result === "Rejected") return { ...base, score: BRAND_SCORES.registration.rejected, verdict: "Rejected by staff" };
   if (row.result === "Verified") return { ...base, score: BRAND_SCORES.registration.accepted, verdict: "Accepted by staff" };
   if (Number(row.value) === 0) return { ...base, score: BRAND_SCORES.registration.empty, verdict: "The file is empty" };
-  return { ...base, score: BRAND_SCORES.registration.uploaded, verdict: "Uploaded, not reviewed yet" };
+  // Nobody has read it yet, so it supports nothing: no score until staff accept it (Nov 25: an unrelated
+  // certificate scored 80%).
+  return { ...base, score: null, verdict: "Uploaded, not reviewed yet" };
 }
 
 function detailsCheck(row) {
@@ -146,7 +148,9 @@ export function brandVerification({ checks, documents = [], submittedBy = null, 
     ...shared,
     key: "business_registration",
     label: "Business registration",
-    weight: registration.missing ? 0 : BRAND_WEIGHTS.business_registration,
+    // Optional for a brand, and counted only once staff have decided on it: an upload nobody has read neither helps
+    // nor costs (Nov 25).
+    weight: registration.missing || registration.score == null ? 0 : BRAND_WEIGHTS.business_registration,
     tip: "The brand's registration document. Optional for brands: it counts only when uploaded.",
     verdict: registration.verdict,
     why: "",

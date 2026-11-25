@@ -279,7 +279,7 @@ console.log("brands (Nov 13)");
   check(P.scoreOverall(a.groups) === Math.round(((Math.round(83 * 0.7 + 100 * 0.3)) * 50 + 100 * 30) / 80), `unregistered overall from company information 50 + evidence 30 (${P.scoreOverall(a.groups)})`);
   check(!a.facts.find((f) => f.key === "registration").ok && a.facts.find((f) => f.key === "registration").ok !== false && a.facts.find((f) => f.key === "terms").value === "Ava Brooks, Nov 11", "facts: registration missing is information, not a gap; terms signer and day");
   const b = of("registered");
-  check(P.groupWeight(b.groups[0]) === 20 && P.scoreGroup(b.groups[0]) === 80 && b.groups[2].verdict === "Only 2 files uploaded", `a registered brand: registration counts 20 (${P.scoreOverall(b.groups)})`);
+  check(P.groupWeight(b.groups[0]) === 0 && P.scoreGroup(b.groups[0]) == null && b.groups[0].verdict === "Uploaded, not reviewed yet" && b.groups[2].verdict === "Only 2 files uploaded", `a brand's registration nobody has reviewed is shown, not counted (Nov 25: an unrelated certificate scored 80%) (${P.scoreOverall(b.groups)})`);
   const c = of("nothing");
   check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Flagged" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Flagged (${c.groups[1].verdict})`);
   check(a.groups.every((g) => g.reasons === false && g.rerunnable === false), "brand rows have no reasons and no Run again");
