@@ -7,7 +7,10 @@ import { useAuth } from "../../lib/auth.jsx";
 import { dateFrom } from "../../lib/dates.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { paymentStatusWord } from "./brand-payments-view.js";
+import { paymentStatusWord, refundLineWords } from "./brand-payments-view.js";
+import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
+import { paymentRefund } from "../order/payment-summary.mjs";
+import { PAUSED_TITLE, PAYMENTS_PAUSED_LINE, usePaymentPause } from "../payment-pause.jsx";
 import "../order/payout.css";
 import "./brand-payment-detail.css";
 import { useVendorNames } from "../vendor-names.jsx";
@@ -49,15 +52,26 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
   useEffect(() => {
     requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0 }));
     let cancelled = false;
-    Promise.all([getOrder(orderId), getPayment(orderId, paymentId)]).then(
-      ([order, payment]) => {
-        if (!order || !payment) throw new Error("That transaction is not available to you.");
+    Promise.all([
+      getOrder(orderId), getPayment(orderId, paymentId),
+      // Under a chargeback (order_pause), and each refund that went back (a failed read: the payment's own word).
+      orderPause(orderId).catch(() => null),
+      activeOrg?.id ? brandPaymentRefunds(activeOrg.id).catch(() => []) : [],
+    ]).then(
+      ([order, found, hold, refunds]) => {
+        if (!order || !found) throw new Error("That transaction is not available to you.");
+        const lines = (refunds ?? []).filter((refund) => refund.payment_id === found.id)
+          .sort((a, b) => String(a.refunded_at).localeCompare(String(b.refunded_at)));
+        const disputed = (hold?.disputed_payment_ids ?? []).includes(found.id);
+        const payment = lines.length || disputed ? { ...found, refunds: lines, disputed } : found;
         if (!cancelled) setState({ loading: false, order, payment, error: null });
       },
       (error) => !cancelled && setState({ loading: false, order: null, payment: null, error }),
     );
     return () => { cancelled = true; };
-  }, [orderId, paymentId]);
+  }, [orderId, paymentId, activeOrg?.id]);
+  // Under review: nothing can be paid now, said here and on the button.
+  const paused = usePaymentPause(activeOrg?.id).brand;
 
   // The vendor's name in English where it has one, as on the order (vendor-names.jsx).
   const vendorNames = useVendorNames(state.order?.factory?.name ? [{ id: state.order.factory_org_id, name: state.order.factory.name }] : []);
@@ -77,6 +91,12 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       status: statusWord(payment, order),
       statusKey: statusWord(payment, order).toLowerCase().replaceAll(" ", "-"),
       failure: failureLine(payment),
+      // What went back to the brand, each on its own line: "Refunded $20.00 · Nov 25",
+      // "Refunded $20.00 · by our team", "Reversed by your bank · $70.60".
+      back: [
+        ...(payment.refunds ?? []).map(refundLineWords),
+        paymentRefund(payment).lost > 0 ? `Reversed by your bank · ${formatMoney(paymentRefund(payment).lost, payment.currency)}` : null,
+      ].filter(Boolean),
       // A due payment is dated when it falls due, as on the list; the rest when they moved.
       date: payment.state === "due" && payment.order_milestones?.due_on
         ? dateFrom(payment.order_milestones.due_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -128,13 +148,15 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
         <div>
           <span className={`billing-status payout-status-${content.statusKey}`}>{content.status}</span>
           {content.failure ? <p role="alert" className="brand-payment-failure">{content.failure}</p> : null}
+          {content.back.map((line) => <p key={line} data-testid="payment-went-back">{line}</p>)}
+          {payable && paused ? <p className="brand-payment-failure" data-testid="payment-paused">{PAYMENTS_PAUSED_LINE}</p> : null}
           {payable && !canPay ? <p data-testid="payment-owner-only">Only someone with Release funds at {activeOrg?.name || "your company"} can pay for a step. Ask an owner for this permission.</p> : null}
           {payable ? (
             <button
               className="primary-btn compact-btn brand-payment-pay-again"
               type="button"
-              disabled={canPay ? undefined : true}
-              title={canPay ? undefined : permissionHint(activeOrg, "releaseFunds")}
+              disabled={canPay && !paused ? undefined : true}
+              title={paused ? PAUSED_TITLE : canPay ? undefined : permissionHint(activeOrg, "releaseFunds")}
               onClick={() => navigate(`/orders/${order.id}/payments/${payment.id}`)}
             >
               {payment.state === "failed" ? "Pay again" : "Pay now"}

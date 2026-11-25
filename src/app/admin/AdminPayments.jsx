@@ -1053,8 +1053,14 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
     }
   });
   const [sentNotice, setSentNotice] = useState(null);
-  // An order searched by its number: while it shows, no tab is active.
-  const [search, setSearch] = useState(null);
+  // An order searched by its number: while it shows, no tab is active. A link may ask for one (?order=, T2 A9).
+  const [search, setSearch] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("order") || null;
+    } catch {
+      return null;
+    }
+  });
   const onSent = useCallback((row, name, done) => {
     setSentNotice(done === "paid" ? `${row.order_number}: paid by ${name}.`
       : `${row.order_number}: sent to ${name}. It's under Processing until ${name} confirms it.`);

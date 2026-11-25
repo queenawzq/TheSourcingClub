@@ -3,7 +3,7 @@ import { formatMoney } from "../../lib/money.js";
 import {
   adminOrderPayments, checkStaffRefund, REFUND_REFUSALS, staffRefund, staffRefundPreview,
 } from "../../lib/domain/payment-reviews.js";
-import { Choice, StaffDialog } from "./PaymentReviews.jsx";
+import { Choice, StaffDialog, restLine } from "./PaymentReviews.jsx";
 
 /**
  * Staff refund a brand in the app (D8): find an order by its number, then
@@ -70,6 +70,14 @@ function factoryShare(preview, amount) {
   if (!chargedCents || amount == null) return 0;
   const share = Math.round((amount * Number(preview.step_cents)) / chargedCents);
   return Math.max(0, Math.min(share, Number(preview.step_cents) || 0, Number(preview.factory_cap_cents) || 0));
+}
+
+/** The rest is the service fee when the factory pays its whole proportional part of this amount, uncapped. */
+function isFeeRest(preview, amount, factoryCents) {
+  const charged = Number(preview?.charged_cents) || 0;
+  const step = Number(preview?.step_cents) || 0;
+  if (!charged || amount == null || step >= charged) return false;
+  return factoryCents === Math.round((amount * step) / charged);
 }
 
 export function RefundDialog({ payment, orderNumber, currency, initialCents = null, onClose, onDone }) {
@@ -158,7 +166,9 @@ export function RefundDialog({ payment, orderNumber, currency, initialCents = nu
                 <p className="admin-error" role="alert">{`You can take up to ${moneyIn(factoryCap, currency)} from the factory's balance.`}</p>
               ) : typedFactory == null ? (
                 <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
-              ) : rest > 0 && !over ? <p className="payment-rest-line">{`TSC absorbs the rest (${moneyIn(rest, currency)})`}</p> : null}
+              ) : rest > 0 && !over ? (
+                <p className="payment-rest-line">{restLine(rest, currency, isFeeRest(preview, cents, factoryCents))}</p>
+              ) : null}
             </>
           ) : null}
           <label className="factory-onboarding-field">
@@ -195,8 +205,9 @@ function PaymentRow({ payment, order, onRefund }) {
   return (
     <tr data-payment={payment.payment_id}>
       <td><strong>{payment.step_title ?? "Payment"}</strong></td>
-      <td>{shown ? moneyIn(chargedCents(payment), order.currency) : "—"}</td>
+      <td><span className="payment-cell-label">Charged </span>{shown ? moneyIn(chargedCents(payment), order.currency) : "—"}</td>
       <td>
+        <span className="payment-cell-label">Refunded </span>
         {refundedCents(payment) > 0 ? moneyIn(refundedCents(payment), order.currency) : "—"}
         <RefundLines refunds={payment.staff_refunds} currency={order.currency} />
         {refundFlags(payment.staff_refunds).map((flag) => <span key={flag} className="admin-sub" data-testid="staff-refund-flag">{flag}</span>)}
@@ -246,10 +257,17 @@ export function HeldRefund({ row, info, onRefunded }) {
   );
 }
 
-/** The search box above the tabs. `query` is what was searched; empty = the tabs show. */
+/** The search box above the tabs. `query` is what was searched; empty = the tabs show. Searches as you type (T2 A11). */
 export function OrderSearchBar({ query, onSearch, onClear }) {
   const [text, setText] = useState(query ?? "");
   useEffect(() => { setText(query ?? ""); }, [query]);
+  // Typing pauses for half a second, then searches; an emptied box shows the tabs again.
+  useEffect(() => {
+    const wanted = text.trim();
+    if (wanted === (query ?? "")) return undefined;
+    const timer = setTimeout(() => (wanted ? onSearch(wanted) : onClear()), 500);
+    return () => clearTimeout(timer);
+  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <form className="admin-filter-bar payments-order-search-bar" role="search" onSubmit={(event) => { event.preventDefault(); if (text.trim()) onSearch(text.trim()); }}>
       <label className="admin-search">
@@ -260,6 +278,7 @@ export function OrderSearchBar({ query, onSearch, onClear }) {
         <span className="admin-visually-hidden">Search by order number</span>
         <input placeholder="Search by order number" value={text} data-testid="order-search" onChange={(event) => setText(event.target.value)} />
       </label>
+      <button className="secondary-btn payments-search-submit" type="submit" disabled={!text.trim()}>Search</button>
       {query ? <button className="quiet-btn payments-search-clear" type="button" onClick={() => { setText(""); onClear(); }}>Clear</button> : null}
     </form>
   );

@@ -86,7 +86,7 @@ export function summaryFrom(figures) {
   const paid = n(figures.paid_out_cents);
   // Steps not approved under an open chargeback (§14): in Total, in no card of their own.
   const disputed = n(figures.disputed_cents);
-  return { total: approval + disputed + available + pending + processing + paid, approval, available, pending, processing, paid };
+  return { total: approval + disputed + available + pending + processing + paid, approval, available, pending, processing, paid, disputed };
 }
 
 /**
@@ -202,8 +202,8 @@ export const uncoveredDebtCents = (figures) => Math.max(0, Number(figures?.tsc?.
 export const clearingAfterDebt = (clearing, debt) => Math.max(0, (Number(clearing) || 0) - Math.max(0, Number(debt) || 0));
 /**
  * The card's two sentences while a payment is reviewed (factory_balance().review),
- * or null. Only a refund or a dispute pauses today, so "requested a refund" is
- * true of both, and nothing says the factory did anything wrong.
+ * or null. The true cause (`cause`): a card dispute, or a refund made outside
+ * the app. Nothing says the factory did anything wrong.
  */
 export function reviewLines(figures) {
   const review = figures?.tsc?.review ?? figures?.review;
@@ -212,7 +212,9 @@ export function reviewLines(figures) {
   // The order too: two orders can have a step of the same name.
   const on = review.step_title && review.order_number ? ` on ${review.order_number}` : "";
   return ["Withdrawals are paused while a payment is reviewed.",
-    `A brand requested a refund for ${step}${on}, so our team is reviewing the payment.`];
+    review.cause === "dispute"
+      ? `A brand disputed a card payment${review.step_title ? ` for ${step}${on}` : ""}, so our team is reviewing it.`
+      : `A brand requested a refund for ${step}${on}, so our team is reviewing the payment.`];
 }
 
 /**
@@ -239,7 +241,14 @@ export const reversedByBankLine = (amount) => `${amount} reversed by the brand's
  */
 export function paymentRefund(payment) {
   const n = (value) => Math.max(0, Number(value) || 0);
-  const refunded = n(payment?.refunded_cents);
+  // The brand's refund lines on this charge (brand_payment_refunds, attached
+  // as payment.refunds): one staff recorded as sent another way is a line only.
+  const funded = Date.parse(payment?.confirmed_at ?? "") || 0;
+  const lines = (payment?.refunds ?? []).filter((line) => (Date.parse(line.refunded_at ?? "") || 0) >= funded)
+    .reduce((sum, line) => sum + n(line.amount_cents), 0);
+  // A refund staff sent another way (manual_refunded_cents) is TSC's money: the
+  // brand's figures follow it, the factory's part (factory_refund_cents) never does.
+  const refunded = Math.max(n(payment?.refunded_cents) + n(payment?.manual_refunded_cents), lines);
   const lost = n(payment?.dispute_lost_cents);
   const charged = n(payment?.charged_cents ?? payment?.amount_received_cents);
   return { refunded, lost, brand: refunded + lost, factory: n(payment?.factory_refund_cents), full: charged > 0 && refunded + lost >= charged };

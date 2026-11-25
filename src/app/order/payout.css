@@ -70,6 +70,9 @@
 .payout-transaction-type { flex: 0 0 auto; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .payout-transaction-type.earning { background: #eaf7ef; color: #167847; }
 .payout-transaction-type.withdrawal { background: #eef3fa; color: #4d6282; }
+/* Money a refund took back from the balance: not an earning. */
+.payout-transaction-type.refund { background: #fff7e8; color: #a76500; }
+.payout-transaction-details strong a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .payout-transaction-row > strong:last-child { justify-self: end; font-size: 15px; }
 .payout-amount-positive { color: #16834f; }
 .payout-amount-negative { color: var(--text); }

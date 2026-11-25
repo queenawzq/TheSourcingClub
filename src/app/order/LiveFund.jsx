@@ -35,7 +35,7 @@ import { FlowShell, FundScreen, SuccessScreen } from "../../prototype/main.jsx";
 import { getOrder } from "../../lib/domain/order.js";
 import { getPayment, listPayments } from "../../lib/domain/payment.js";
 import { cardReason, plainCardReason } from "../../shared/card-words.mjs";
-import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment, withCardAdvice } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, checkFundingCard, startCheckout, syncPayment, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { can } from "../../lib/domain/org.js";
@@ -253,14 +253,23 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     setBusy(true);
     setProblem(null);
     try {
-      const result = addingCard
-        ? await stripe.confirmCardPayment(checkout.clientSecret, {
-            payment_method: {
-              card: elements.getElement(CardNumberElement),
-              billing_details: postalCode.trim() ? { address: { postal_code: postalCode.trim() } } : undefined,
-            },
-          })
-        : await stripe.confirmCardPayment(checkout.clientSecret, { payment_method: selectedCardId });
+      // The card is checked before anything is charged: one the brand disputed a
+      // charge with is refused ("This card can't be used. Use another card.").
+      let paymentMethodId = selectedCardId;
+      if (addingCard) {
+        const created = await stripe.createPaymentMethod({
+          type: "card",
+          card: elements.getElement(CardNumberElement),
+          billing_details: postalCode.trim() ? { address: { postal_code: postalCode.trim() } } : undefined,
+        });
+        if (created.error) {
+          setProblem(cardProblem(created.error));
+          return;
+        }
+        paymentMethodId = created.paymentMethod.id;
+      }
+      await checkFundingCard(payment.id, paymentMethodId);
+      const result = await stripe.confirmCardPayment(checkout.clientSecret, { payment_method: paymentMethodId });
       // Recorded either way: a decline is a failed payment with its reason.
       const synced = await syncPayment(payment.id).catch(() => null);
       if (result.error) {

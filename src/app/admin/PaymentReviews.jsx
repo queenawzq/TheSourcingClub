@@ -62,12 +62,14 @@ function centsFrom(text) {
   if (!/^\d+(\.\d{1,2})?$/.test(value)) return null;
   return Math.round(Number(value) * 100);
 }
+/** "TSC absorbs the rest": named the service fee when the factory gives back its whole part (T2 A11). */
+export const restLine = (rest, currency, isFee) => `TSC absorbs the rest (${moneyIn(rest, currency)}${isFee ? ", the service fee" : ""})`;
 const typed = (cents) => (Number(cents || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** The design's dialog frame ("Request more information"), shared by Resolve and Refund. */
 export function StaffDialog({ eyebrow, title, labelId, working, onCancel, children }) {
   return createPortal(
-    <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onCancel()}>
+    <div className="approve-fund-modal-layer staff-dialog-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onCancel()}>
       <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby={labelId}>
         <button className="settings-drawer-close" type="button" aria-label="Close" disabled={working} onClick={onCancel}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
         <header><div>{eyebrow ? <span>{eyebrow}</span> : null}<h2 id={labelId}>{title}</h2></div></header>
@@ -102,6 +104,8 @@ function ResolveDialog({ row, onClose, onDone }) {
   const over = cents != null && cents > most;
   const factoryCents = cents != null && !over ? cents : most;
   const rest = Math.max(0, back - factoryCents);
+  // T2 A5: another open dispute keeps the brand paused whatever is decided here.
+  const unpauseWords = row.brand_stays_paused ? "brand stays paused (another dispute is open)" : "brand unpaused";
   const ready = fault && note.trim() && (fault !== "factory_at_fault" || (cents != null && !over));
 
   async function confirm() {
@@ -109,7 +113,8 @@ function ResolveDialog({ row, onClose, onDone }) {
     setProblem(null);
     try {
       await reviews.resolveReview(row.id, fault, fault === "factory_at_fault" ? cents : null, note.trim());
-      onDone();
+      onDone(`${row.order_number}: resolved. ${{ factory_at_fault: `${moneyIn(cents, currency)} from the factory's balance.`,
+        brand_at_fault: `TSC absorbed ${moneyIn(back, currency)}.`, no_fault: `TSC absorbed ${moneyIn(back, currency)}.` }[fault]}`);
     } catch (failure) {
       setProblem(failure.message);
     } finally {
@@ -121,6 +126,7 @@ function ResolveDialog({ row, onClose, onDone }) {
     <StaffDialog eyebrow={`${row.order_number}${row.milestone_title ? ` · ${row.milestone_title}` : ""}`} title={`Resolve ${moneyIn(back, currency)}`}
                  labelId="payment-resolve-title" working={working} onCancel={onClose}>
       <p className="admin-modal-line">{refund ? "Refunded in Stripe after approval." : "The bank ruled for the brand."}</p>
+      {!refund && row.dispute_reason_words ? <p className="admin-modal-line" data-testid="resolve-dispute-reason">{`Reason: ${row.dispute_reason_words}`}</p> : null}
       <fieldset className="admin-tier-picker payment-who-pays">
         <legend>Who was at fault?</legend>
         {refund ? (
@@ -133,11 +139,11 @@ function ResolveDialog({ row, onClose, onDone }) {
         ) : (
           <>
             <Choice name="fault" value="factory_at_fault" chosen={fault} onChoose={setFault} title="Factory"
-                    line={`${moneyIn(factoryCents, currency)} from the factory's balance · brand unpaused`} />
+                    line={`${moneyIn(factoryCents, currency)} from the factory's balance · ${unpauseWords}`} />
             <Choice name="fault" value="brand_at_fault" chosen={fault} onChoose={setFault} title="Brand"
                     line={`TSC absorbs ${moneyIn(back, currency)} · brand stays paused`} />
             <Choice name="fault" value="no_fault" chosen={fault} onChoose={setFault} title="No one"
-                    line={`TSC absorbs ${moneyIn(back, currency)} · brand unpaused`} />
+                    line={`TSC absorbs ${moneyIn(back, currency)} · ${unpauseWords}`} />
           </>
         )}
       </fieldset>
@@ -153,7 +159,7 @@ function ResolveDialog({ row, onClose, onDone }) {
           ) : cents == null ? (
             <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
           ) : rest > 0 ? (
-            <p className="payment-rest-line">{`TSC absorbs the rest (${moneyIn(rest, currency)})`}</p>
+            <p className="payment-rest-line">{restLine(rest, currency, factoryCents === Number(row.factory_part_cents))}</p>
           ) : null}
         </>
       ) : null}
@@ -173,15 +179,20 @@ function ResolveDialog({ row, onClose, onDone }) {
 
 /** Close a failed staff refund: staff refunded the brand another way. The note stays with staff. */
 function CloseRefundDialog({ row, onClose, onDone }) {
+  const failed = Number(row.amount_cents) || 0;
   const [note, setNote] = useState("");
+  // "Refunded another way" (T2 R3): recorded as a refund line, so the brand's figures follow. 0 up to the failed amount.
+  const [amount, setAmount] = useState(typed(failed));
+  const cents = centsFrom(amount);
+  const amountOk = cents != null && cents <= failed;
   const [working, setWorking] = useState(false);
   const [problem, setProblem] = useState(null);
   async function confirm() {
     setWorking(true);
     setProblem(null);
     try {
-      await reviews.closeStaffRefundFailure(row.id, note.trim());
-      onDone();
+      await reviews.closeStaffRefundFailure(row.id, note.trim(), cents);
+      onDone(`${row.order_number}: refund closed. The brand is told.`);
     } catch (failure) {
       setProblem(failure.message);
     } finally {
@@ -194,6 +205,13 @@ function CloseRefundDialog({ row, onClose, onDone }) {
                  working={working} onCancel={onClose}>
       <p className="admin-modal-line">Close it once the brand has been refunded another way.</p>
       <label className="factory-onboarding-field">
+        <span>Refunded another way (USD)</span>
+        <input inputMode="decimal" value={amount} data-testid="close-refund-amount" onChange={(event) => setAmount(event.target.value)} />
+      </label>
+      <p className="admin-assist-meta">{`Up to ${moneyIn(failed, row.currency)}`}</p>
+      {cents == null ? <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
+        : !amountOk ? <p className="admin-error" role="alert">{`You can enter up to ${moneyIn(failed, row.currency)}.`}</p> : null}
+      <label className="factory-onboarding-field">
         <span>Note for the brand *</span>
         <textarea placeholder="How the brand was refunded" value={note} maxLength={500} data-testid="close-refund-note"
                   onChange={(event) => setNote(event.target.value)} />
@@ -201,13 +219,13 @@ function CloseRefundDialog({ row, onClose, onDone }) {
       {problem ? <p className="admin-error" role="alert">{problem}</p> : null}
       <footer>
         <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
-        <button className="primary-btn" type="button" disabled={working || !note.trim()} data-testid="close-refund-confirm" onClick={confirm}>Close</button>
+        <button className="primary-btn" type="button" disabled={working || !note.trim() || !amountOk} data-testid="close-refund-confirm" onClick={confirm}>Close</button>
       </footer>
     </StaffDialog>
   );
 }
 
-function ReviewRow({ row, onChanged, withActions = true }) {
+function ReviewRow({ row, onChanged, onHeard, withActions = true }) {
   const [resolving, setResolving] = useState(false);
   const [refunding, setRefunding] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -217,12 +235,12 @@ function ReviewRow({ row, onChanged, withActions = true }) {
     <tr data-testid="payment-review" data-review={row.id} data-kind={row.kind ?? "review"}>
       <td>
         <strong>{row.brand_name}</strong>
-        {row.brand_paused ? <span className="admin-pill admin-pill--paused" data-testid="review-brand-paused">Paused</span> : null}
+        {(row.pauses_brand ?? row.brand_paused) ? <span className="admin-pill admin-pill--paused" data-testid="review-brand-paused">Paused</span> : null}
         {" → "}<strong>{row.factory_name}</strong>
       </td>
       <td>{row.order_number}{row.milestone_title ? <span className="admin-sub">{row.milestone_title}</span> : null}</td>
       <td><strong>{moneyIn(row.amount_cents, row.currency)}</strong></td>
-      <td>{reasonOf(row)}</td>
+      <td>{reasonOf(row)}{!isRefund(row) && row.dispute_reason_words ? <span className="admin-sub" data-testid="review-dispute-reason">{row.dispute_reason_words}</span> : null}</td>
       <td className="payment-review-progress-cell">
         <Progress row={row} />
         <p className={`payment-review-line${row.step === 3 ? " done" : ""}`} data-testid="review-line">
@@ -242,20 +260,24 @@ function ReviewRow({ row, onChanged, withActions = true }) {
         {acts.includes("close") ? (
           <button type="button" className="admin-reject" data-testid="review-close-refund" onClick={() => setClosing(true)}>Close</button>
         ) : null}
-        {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={() => { setResolving(false); onChanged?.(); }} /> : null}
+        {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={(heard) => { setResolving(false); onHeard?.(heard); onChanged?.(); }} /> : null}
         {refunding ? (
           <RefundDialog payment={{ payment_id: row.payment_id, step_title: row.milestone_title }} orderNumber={row.order_number}
                         currency={row.currency ?? "USD"} initialCents={row.amount_cents}
-                        onClose={() => setRefunding(false)} onDone={() => { setRefunding(false); onChanged?.(); }} />
+                        onClose={() => setRefunding(false)} onDone={(result) => {
+                          setRefunding(false);
+                          onHeard?.(result?.status === "pending" ? `${row.order_number}: refund pending.` : `${row.order_number}: refunded ${moneyIn(result?.amountCents, row.currency)}.`);
+                          onChanged?.();
+                        }} />
         ) : null}
-        {closing ? <CloseRefundDialog row={row} onClose={() => setClosing(false)} onDone={() => { setClosing(false); onChanged?.(); }} /> : null}
+        {closing ? <CloseRefundDialog row={row} onClose={() => setClosing(false)} onDone={(heard) => { setClosing(false); onHeard?.(heard); onChanged?.(); }} /> : null}
       </td> : null}
     </tr>
   );
 }
 
 /** Done rows have nothing to act on, so their table has no actions column. */
-function ReviewTable({ rows, onChanged, withActions = true }) {
+function ReviewTable({ rows, onChanged, onHeard, withActions = true }) {
   return (
     <div className="admin-scroll">
       <table className="payment-reviews-table">
@@ -265,7 +287,7 @@ function ReviewTable({ rows, onChanged, withActions = true }) {
             {withActions ? <th className="payments-action-heading"><span className="admin-visually-hidden">Actions</span></th> : null}
           </tr>
         </thead>
-        <tbody>{rows.map((row) => <ReviewRow key={`${row.kind ?? "review"}-${row.id}`} row={row} onChanged={onChanged} withActions={withActions} />)}</tbody>
+        <tbody>{rows.map((row) => <ReviewRow key={`${row.kind ?? "review"}-${row.id}`} row={row} onChanged={onChanged} onHeard={onHeard} withActions={withActions} />)}</tbody>
       </table>
     </div>
   );
@@ -278,13 +300,16 @@ export function PaymentReviewsSection({ reviews, error = null, onChanged }) {
   const open = reviewsInProgress(reviews);
   const counted = (reviews ?? []).filter((row) => row.open).length;
   const done = (reviews ?? []).filter((row) => !row.open && Number(row.step) >= 3);
+  // What the last action did, since its row leaves the list (T2 A11).
+  const [heard, setHeard] = useState(null);
   return (
     <section className="payments-queue" data-section="payment-reviews">
       <h2>Payment reviews ({counted})</h2>
+      {heard ? <p className="admin-sub" role="status" data-testid="review-done">{heard}</p> : null}
       {error ? <p className="admin-error">{error.message}</p> : null}
       {error ? null : open.length === 0 ? (
         <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">No payment is under review.</p></div>
-      ) : <ReviewTable rows={open} onChanged={onChanged} />}
+      ) : <ReviewTable rows={open} onChanged={onChanged} onHeard={setHeard} />}
       {!error && done.length > 0 ? (
         <details className="admin-views-fold" data-testid="payment-reviews-done">
           <summary>Done ({done.length})</summary>

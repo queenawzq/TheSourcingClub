@@ -43,7 +43,7 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { supabase } from "../../lib/supabase.js";
 import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
-import { refundedInFull } from "../payments/brand-payments-view.js";
+import { refundLineWords, refundedInFull } from "../payments/brand-payments-view.js";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
@@ -136,7 +136,6 @@ function actionFor(milestone, viewer) {
   return none;
 }
 
-const refundDay = (value) => (value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
 
 /**
  * Where the step's money is, in words. TSC holds a funded payment until the
@@ -148,7 +147,7 @@ function paymentLine(payment, isFactory, kind, needsMethod = null, order = null)
   // The brand reads each refund it got back on its own: "Refunded $50.00 · Nov 25".
   if (!isFactory && payment?.refunds?.length) {
     const money = (cents, currency) => formatMoney(Number(cents) || 0, currency ?? payment.currency ?? "USD");
-    const refunded = payment.refunds.map((refund) => `Refunded ${money(refund.amount_cents, refund.currency)} · ${refundDay(refund.refunded_at)}`);
+    const refunded = payment.refunds.map(refundLineWords);
     const held = ["confirmed", "released"].includes(payment.state);
     const refund = paymentRefund(payment);
     // All of it went back: the refunds say it, with nothing held.
@@ -706,16 +705,21 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     if (!["confirmed", "released"].includes(payment?.state)) return sum;
     // Held on a cancelled order: already taken off whole (refundPendingCents).
     if (isFactory && refundPendingWord(payment, order)) return sum;
-    return sum + (charged && !isFactory ? Number(payment.refunded_cents ?? 0) + Number(payment.dispute_lost_cents ?? 0) : Number(payment.factory_refund_cents ?? 0));
+    return sum + (charged && !isFactory ? paymentRefund(payment).brand : Number(payment.factory_refund_cents ?? 0));
   }, 0);
+  // The brand's charged figures that went back to it, from the server when it says.
+  const brandBack = charged && charged.order.refunded_charged_cents != null
+    ? Number(charged.order.refunded_charged_cents) + Number(charged.order.reversed_charged_cents ?? 0) : wentBack;
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
-    total: money(charged ? charged.order.total_charged_cents : order.total_cents),
+    // What went back to the brand (refunded, reversed by its bank) is in neither
+    // figure, so total = funded + remaining (production_order_charges' own sums).
+    total: money(charged ? charged.order.total_charged_cents - brandBack : order.total_cents),
     // Money going back to the brand was never the factory's (as on its Payments page).
-    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)) - wentBack)),
+    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents - brandBack : order.paid_cents - (isFactory ? refundPendingCents : 0) - wentBack))),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),

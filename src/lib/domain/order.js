@@ -42,7 +42,7 @@ export async function listOrders(orgId) {
       // The steps ride along so each card can draw its own rail rather than
       // the design's fixed five, and `brief` so the card's description line
       // has something in it.
-      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents))`)
+      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents, charge_cents, disputed_at))`)
       // RLS already scopes this, but a person can belong to both a brand and a
       // factory org, and the question being asked is about the ACTIVE one.
       .or(`brand_org_id.eq.${orgId},factory_org_id.eq.${orgId}`)
@@ -124,8 +124,22 @@ export async function declineCancellation(orderId) {
  * the viewer should read depends on which side it is. Only the brand sets the
  * production steps, and its confirmation starts the order.
  */
+/**
+ * A payment on this open order is under a card dispute (`disputed_at`: an open
+ * chargeback; cleared once the bank decides), when the row carries its steps.
+ * The card then reads "Disputed", the word its step and Payments use.
+ */
+export function orderDisputed(order) {
+  if (order?.status !== "active" || !order.order_milestones) return false;
+  return order.order_milestones.some((milestone) => {
+    const payment = Array.isArray(milestone.order_payments) ? milestone.order_payments[0] : milestone.order_payments;
+    return Boolean(payment?.disputed_at) && ["confirmed", "released"].includes(payment.state);
+  });
+}
+
 export function orderStatusLabel(order, { isFactory }) {
   if (!order) return "";
+  if (orderDisputed(order)) return "Disputed";
 
   switch (order.status) {
     case "pending_schedule":
@@ -190,6 +204,7 @@ export function paymentStatusLabel(state, { isFactory }) {
  */
 export function statusTone(order, { isFactory }) {
   if (!order) return "neutral";
+  if (orderDisputed(order)) return "warning";
   switch (order.status) {
     case "pending_schedule":
       return isFactory ? "neutral" : "warning";

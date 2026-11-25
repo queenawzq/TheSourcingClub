@@ -6,7 +6,8 @@
  * an old bank-wire claim), each refund on its own row (Refunded), with the design's four figures (brand-payments-view.js). A row opens
  * its transaction page; a due one opens the Fund screen on its order for an
  * owner, who alone may pay (begin_payment_checkout). A member's due row opens
- * the transaction page, which says so up front.
+ * the transaction page, which says so up front. While a card dispute pauses
+ * the brand, the page says so above its figures, and a due row opens its order.
  * Discounts: hidden, with the dashboard's Savings card, until a code can be
  * used at payment (DISCOUNTS_USABLE). When on: the brand's real credit and
  * discount codes (credits.js).
@@ -23,6 +24,7 @@ import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
 import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
 import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
+import { PAYMENTS_PAUSED_LINE, usePaymentPause } from "../payment-pause.jsx";
 import "../browse/browse.css";
 import "../order/payout.css";
 import { useVendorNames } from "../vendor-names.jsx";
@@ -31,6 +33,8 @@ const DISCOUNTS_USABLE = false;
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
+  // Paused by a card dispute: nothing can be funded, so a due row opens its order.
+  const paused = usePaymentPause(org.id).brand;
   const [state, setState] = useState({ loaded: null, codes: [], savings: null, error: null });
   const [copied, setCopied] = useState(null);
   // BillingScreen keeps its vendor filter to itself and applies it to the
@@ -103,12 +107,17 @@ export default function LiveBrandPayments({ org }) {
             // A due payment has no transaction to show yet: it opens the Fund
             // screen, for an owner. A member cannot pay, so its row opens the
             // transaction page, which says who can.
-            const path = row.state === "due" && !row.refund && can(org, "releaseFunds")
-              ? `/orders/${row.orderId}/payments/${row.id}`
-              : `/payments/${row.orderId}/${row.paymentId ?? row.id}`;
+            // While paused nothing can be funded: a due or failed row opens its order,
+            // where the paused line is, rather than a page that refuses.
+            const path = paused && !row.refund && ["due", "failed"].includes(row.state)
+              ? `/orders/${row.orderId}`
+              : row.state === "due" && !row.refund && can(org, "releaseFunds")
+                ? `/orders/${row.orderId}/payments/${row.id}`
+                : `/payments/${row.orderId}/${row.paymentId ?? row.id}`;
             return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
           }),
           empty: "No payment transactions yet.",
+          notice: paused ? PAYMENTS_PAUSED_LINE : "",
           hideDiscounts: !DISCOUNTS_USABLE,
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,

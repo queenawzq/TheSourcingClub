@@ -58,6 +58,13 @@ export function paymentStatusWord(payment, order) {
 export const refundedInFull = (payment) => payment?.state === "failed" && Boolean(payment.refunded_at)
   && (payment.refunds ?? []).some((refund) => String(refund.refunded_at) >= String(payment.failed_at ?? payment.refunded_at).slice(0, 19));
 
+const shortDay = (value) => (value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "");
+/**
+ * One refund that went back to the brand, in words: "Refunded $20.00 · Nov 25";
+ * one staff recorded as sent another way (kind "manual"): "Refunded $20.00 · by our team".
+ */
+export const refundLineWords = (refund) => `Refunded ${formatMoney(Number(refund.amount_cents) || 0, refund.currency ?? "USD")} · ${refund.kind === "manual" ? "by our team" : shortDay(refund.refunded_at)}`;
+
 /** The design's status word for each payment state that is listed. */
 export const PAYMENT_STATUS = {
   due: "Due",
@@ -137,7 +144,7 @@ export function brandPaymentsView({ orders, payments, stepCharges = [], refunds 
         title: refund.step_title || "Payment",
         client: vendorOf(order),
         date: day(refund.refunded_at),
-        meta: order.rfqs?.title || order.order_number,
+        meta: [order.rfqs?.title || order.order_number, refund.kind === "manual" ? "by our team" : null].filter(Boolean).join(" · "),
         status: "Refunded",
         state: "refunded",
         refund: true,

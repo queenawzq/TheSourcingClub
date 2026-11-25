@@ -26,6 +26,7 @@ import {
 import { supabase } from "../../lib/supabase.js";
 import { byCreated, readByIds, readEveryPage } from "../../lib/read-pages.js";
 import { can } from "../../lib/domain/org.js";
+import { useRouter } from "../../lib/router.jsx";
 import { useUiLanguage } from "../../lib/ui-language.js";
 import { formatMoney } from "../../lib/money.js";
 import { payoutFeeSentence } from "../../shared/withdrawal-fees.mjs";
@@ -35,7 +36,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, RETURNED, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
+import { DISPUTED, DISPUTE_LOST, EARNING_COLUMNS, REFUNDED, refundRows, serverWithdrawalRows, clearingFor, clearingNote, earningPaid, earningStatus, factoryAmount, figuresByPayment, grossAmount, refundedEarning, legacyOnItsWayCents, owedClearingNote, paymentFigureCents, payoutFee, stepRowCents, heldOnCancelledOrder, stripeRelevant, summaryFrom, missingPoolIds, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import { useFactoryBalance } from "./use-factory-balance.js";
 import { withdrawalsFrom } from "./balance-reader.mjs";
 import { payoutFailureSentence } from "../../shared/payout-failure-words.mjs";
@@ -140,6 +141,7 @@ function showTabInAddress(key) {
 }
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
+  const { navigate } = useRouter();
   // A select's options are not reached by the language layer, so "All clients" is drawn here.
   const uiLanguage = useUiLanguage();
   // Payouts stay with owners; cards and credits are Settings access.
@@ -431,6 +433,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row, clearing, placed),
+      // A disputed step opens its order, where the dispute is said.
+      orderId: earningStatus(row, clearing, placed) === DISPUTED ? row.order_id : null,
       amount: stepRowCents(row, perPayment),
       currency: row.currency,
       available: earningPaid(row, clearing, placed),
@@ -448,7 +452,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         title: row?.order_milestones?.title || row?.order?.order_number || "Order payment",
         meta: `${row?.order?.orgs?.name || "Brand"} · ${row?.order?.order_number || "Production order"}`,
         note: null,
-        status: part.cause === "dispute_lost" ? DISPUTE_LOST : part.cause === "returned" ? RETURNED : REFUNDED,
+        // One word per cause: a lost card dispute is the bank's; money the brand
+        // got back from this balance (staff's decision, or a refund) is Refunded.
+        status: part.cause === "dispute_lost" ? DISPUTE_LOST : REFUNDED,
+        // Money taken back, not earned: its own label.
+        kind: "refund",
         amount: part.amount,
         currency: row?.currency ?? "USD",
         available: true,
@@ -570,13 +578,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           </label>
           {earningsError || balanceError ? <p className="projects-empty projects-error" role="alert">{(earningsError ?? balanceError).message}</p> : <>
           <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
-            {earningsSummary.map(([label, amounts, help], index) => (
+            {earningsSummary.map(([label, amounts, text], index) => {
+              // A step not approved under a card dispute is in Total only: said in its help,
+              // as its own text for the language layer.
+              const help = index === 0 && summary.disputed > 0
+                ? <>{text} <span>{`Includes ${formatMoney(summary.disputed, "USD")} disputed.`}</span></> : text;
+              return (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
                 <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
                   : <span className="payment-currency-value">{formatMoney(amounts, "USD")}</span>}</strong>
                 <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
-            ))}
+              );
+            })}
           </div>
           {STRIPE_FIGURES_TEXT[stripeFigures] ? <p className="payment-allocation-note" role="status">{STRIPE_FIGURES_TEXT[stripeFigures]}</p> : null}
 
@@ -602,8 +616,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                   <article className="payout-transaction-row" key={row.id}>
                     <time dateTime={row.date || undefined}>{dateLabel(row.date)}</time>
                     <div className="payout-transaction-details">
-                      <span className={`payout-transaction-type ${row.type}`}>{row.type === "earning" ? "Earning" : "Withdrawal"}</span>
-                      <div><strong>{row.title}</strong><span>{row.meta}</span>{row.note ? <span>{row.note}</span> : null}</div>
+                      <span className={`payout-transaction-type ${row.kind ?? row.type}`}>{row.kind === "refund" ? "Refund" : row.type === "earning" ? "Earning" : "Withdrawal"}</span>
+                      <div><strong>{row.orderId ? <a href={`/orders/${row.orderId}`} onClick={(event) => { event.preventDefault(); navigate(`/orders/${row.orderId}`); }}>{row.title}</a> : row.title}</strong><span>{row.meta}</span>{row.note ? <span>{row.note}</span> : null}</div>
                     </div>
                     <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
                     <strong className={row.failed ? "payout-amount-failed" : row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
