@@ -435,7 +435,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
-      stakeholderNote="We will email them an invitation to join your team."
+      stakeholderNote="They will be invited to join your team."
       // No discount can be used at payment yet (DISCOUNTS_USABLE in
       // LiveHome), and a brand invite earns nothing yet.
       discountOffer={false}
