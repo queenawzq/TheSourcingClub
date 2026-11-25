@@ -357,6 +357,9 @@ const SENTENCES = [
   [/^The order was cancelled\.$/, () => "订单已取消。"],
   [/^(.+) was cancelled\.$/, (order) => `${order} 已取消。`],
   [/^You were refunded\.$/, () => "款项已退还给你。"],
+  // The brand's refund, with its amount and step (20261124615100).
+  [amountRe('^AMT for "(.+)" was refunded to you\\.$'), (amount, step) => `你为${quoted(step)}支付的 ${amount} 已退还给你。`],
+  [amountRe('^AMT for "(.+)" was refunded to you; please pay again\\.$'), (amount, step) => `你为${quoted(step)}支付的 ${amount} 已退还，请重新付款。`],
   [/^The amount changed while you were paying\.$/, () => "你付款时金额发生了变化。"],
   [/^You were refunded; please pay again\.$/, () => "款项已退还，请重新付款。"],
   [/^The order was cancelled before your payment went through\.$/, () => "你的付款完成前订单已被取消。"],
@@ -589,6 +592,23 @@ export function zhNotificationBody(notification, ctx = {}) {
 
 /** Kinds whose body is what a person wrote (or a call's title), not ours. */
 const TYPED_BODY_KINDS = /^(verification_(approved|declined|needs_information)|matching_evidence_[a-z_]+|cancellation_(proposed|declined)|order_cancelled|milestone_update|milestone_dispute|milestone_approved|message_rejected|payment_rejected|credits_adjusted|rfq_cancelled|call_[a-z]+|message)$/;
+
+/**
+ * The names the database gives the steps it generates, in the design's
+ * Chinese (factoryMainZhText, src/factory-prototype/main.jsx), so an email
+ * names a step as the factory's order page does. check:dates holds the two
+ * equal. A step the brand named itself is translated by the server
+ * (api/_email-words.js).
+ */
+export const GENERATED_STEPS_ZH = {
+  "Fit sample": "试身样",
+  "PP sample": "PP 样",
+  "Bulk deposit": "大货定金",
+  "Bulk production": "大货生产",
+  "QC photos": "QC 照片",
+  "Final balance": "尾款",
+  "Deposit": "定金",
+};
 
 /** Every kind with a Chinese title; check:dates renders a sample of each. */
 export const ZH_TITLE_KINDS = [...new Set(TITLES.map(([kind]) => kind))];

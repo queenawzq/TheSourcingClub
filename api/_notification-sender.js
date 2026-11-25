@@ -118,6 +118,14 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
   if (claimError) throw new Error("the email queue could not be read");
 
   const { notificationEmail } = await loadNotificationEmail();
+  // Step names and request titles in each reader's language, as on screen.
+  let readable = rows ?? [];
+  try {
+    const { inReadersWords } = await import("./_email-words.js");
+    readable = await inReadersWords(service, readable);
+  } catch {
+    // The emails still go, with the words as typed.
+  }
   // The order's number, for a subject that names it. Not read, it is left out.
   const orderNumbers = new Map();
   const orderIds = [...new Set((rows ?? []).map((row) => row.order_id).filter(Boolean))];
@@ -139,7 +147,7 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
   let sent = 0;
   let skipped = 0;
   let failed = 0;
-  for (const [index, row] of (rows ?? []).entries()) {
+  for (const [index, row] of readable.entries()) {
     if (mail.name === "resend" && RESERVED.test(row.recipient_email)) {
       await service.rpc("skip_notification_email", { outbox_id: row.id, reason: "reserved test address" });
       skipped += 1;
