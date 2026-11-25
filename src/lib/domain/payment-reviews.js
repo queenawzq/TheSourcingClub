@@ -39,6 +39,7 @@ const REFUSALS = {
   review_decision: "Choose who was at fault.",
   staff_refund_not_open: "This refund isn't waiting on staff any more. Reload the page.",
   staff_refund_close_note: "Add a note.",
+  staff_refund_close_amount: "Enter an amount from $0.00 up to the failed refund.",
   review_no_brand: "A refund made in Stripe has no brand at fault. Choose Factory or Not the factory.",
   review_not_ready: "The bank hasn't decided yet. You can decide once it has.",
   brand_not_paused: "This brand isn't paused. Reload the page.",
@@ -55,6 +56,7 @@ const REFUSALS = {
 const said = (error) => {
   const detail = error?.details ?? error?.detail;
   if (error?.hint === "review_over_cap" && detail) return `You can take up to ${detail} from the factory's balance.`;
+  if (error?.hint === "staff_refund_close_amount" && detail) return `Enter an amount from $0.00 up to ${detail}.`;
   return REFUSALS[error?.hint] ?? "That couldn't be done. Reload the page and try again.";
 };
 
@@ -159,5 +161,12 @@ export const refundBrand = (reviewId, cents, note) => factoryPays(reviewId, cent
 /** @deprecated unpause from the brand's account: unpauseBrandOrg */
 export const unpauseBrand = () => Promise.reject(new Error("Unpause the brand from its account in Users."));
 
-/** Staff: close a staff refund that failed after it was made (refunded the brand another way). The note is required. */
-export const closeStaffRefundFailure = (staffRefundId, note) => staffCall("close_staff_refund_failure", { target_refund: staffRefundId, note });
+/**
+ * Staff: close a staff refund that failed after it was made. `refundedCents`
+ * is what went back to the brand another way, 0 up to the failed amount
+ * (T2 R3): it becomes a refund line the brand reads ("manual"). The note,
+ * required, goes to the brand.
+ */
+export const closeStaffRefundFailure = (staffRefundId, note, refundedCents) => staffCall("close_staff_refund_failure", {
+  target_refund: staffRefundId, note, refunded_cents: refundedCents,
+});
