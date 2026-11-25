@@ -466,49 +466,78 @@ const LEGAL_TAIL = /(股份有限公司|有限责任公司|有限公司|分公�
 // What an English name may leave out after the trade name: the trade words, the legal form.
 const DROPPABLE = /(服装|服饰|制衣|成衣|时装|针织|毛织|毛衫|纺织|织造|印染|印花|实业|工业|科技|发展|集团|国际|贸易|商贸|进出口|制品|用品|制造|鞋业|箱包|饰品|皮革|羽绒|家居|股份|有限|责任|省|市|县|区|镇)/gu;
 
+// Places a legal name may start with (the same names as _address.js knows): a province, then cities, counties,
+// districts and towns. Kept here, not imported, so the two modules do not import each other.
+const PROVINCES = ["北京", "天津", "上海", "重庆", "河北", "山西", "辽宁", "吉林", "黑龙江", "江苏", "浙江", "安徽", "福建", "江西", "山东",
+  "河南", "湖北", "湖南", "广东", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "广西", "内蒙古", "西藏", "宁夏", "新疆"];
+const KNOWN_CITIES = ("广州 深圳 东莞 佛山 中山 汕头 惠州 江门 珠海 揭阳 潮州 普宁 番禺 增城 新塘 虎门 大朗 杭州 宁波 绍兴 湖州 嘉兴 义乌 金华 温州 "
+  + "桐乡 柯桥 濮院 织里 萧山 余杭 台州 苏州 无锡 常州 南通 南京 常熟 江阴 张家港 昆山 吴江 盛泽 海门 扬州 厦门 泉州 晋江 石狮 福州 莆田 长乐 "
+  + "青岛 济南 烟台 潍坊 即墨 武汉 郑州 合肥 泰安").split(" ");
+const PLACE_SEGMENT = new RegExp(`^(?:${KNOWN_CITIES.join("|")})(?:市|县|区|镇)?|^.{1,6}?(?:市|县|区|镇)`, "u");
+const ADMIN_CHARS = /^[省市县区镇]+/u;
+
+/** Where the place at the front of a legal name may end: 0, after the province, after each city, county, district or town. */
+function placeBoundaries(han) {
+  const ends = [0];
+  let at = 0;
+  const province = han.match(new RegExp(`^(?:${PROVINCES.join("|")})(?:省|自治区)?`, "u"));
+  if (province) { at = province[0].length; ends.push(at); }
+  for (let hit = han.slice(at).match(PLACE_SEGMENT); hit && at < han.length; hit = han.slice(at).match(PLACE_SEGMENT)) {
+    at += hit[0].length;
+    ends.push(at);
+  }
+  return ends;
+}
+
+/** Only trade words, legal forms and administrative suffixes. */
+const onlyDroppable = (text) => text.replace(DROPPABLE, "") === "";
+
 /**
- * A company's English name against its Chinese legal name: true when every
- * English word is the pinyin of the Chinese (Tianyuan = 天源), a trade word
- * the Chinese name carries (Garment = 服装 / 服饰) or a legal form, and the
- * Chinese left over is only the place in front, trade words or the legal form.
- * "Shandong Tianyuan Garment" = 山东天源服装股份有限公司. At least one word
- * must be pinyin: a name of trade words alone says nothing.
+ * A company's English name against its Chinese legal name: true when the
+ * English, word by word and in order, spells one unbroken run of the Chinese
+ * name that starts where its place ends (or with the place itself): pinyin
+ * for the name (Tianyuan = 天源), a trade word for what the Chinese carries
+ * (Garment = 服装 / 服饰), legal forms ignored. Left out may be only the place
+ * in front (a province, cities, counties, districts, towns) and trade words
+ * or the legal form after. "Shandong Tianyuan Garment" = 山东天源服装股份有限公司;
+ * "Tianyuan Garment" is not 东莞市华天源服装有限公司, nor is "Yuan Garment"
+ * 山东天源服装. At least one word must be pinyin.
  */
 export function englishNameIsPinyinOf(english, chinese) {
   const words = fold(english).split(/[^a-z0-9]+/).filter((w) => w && !EMPTY_WORDS.has(w));
   let han = String(chinese ?? "").normalize("NFKC").replace(/[\s()（）]/g, "");
   if (!words.length || !/^[\u4e00-\u9fff]+$/u.test(han)) return false;
   han = han.replace(LEGAL_TAIL, "");
-  const used = new Array([...han].length).fill(false);
   const chars = [...han];
-  let pinyinWords = 0;
-  let firstPinyinAt = -1;
-  for (const word of words) {
-    const trade = TRADE_WORDS[word];
-    if (trade) {
-      const at = trade.map((t) => han.indexOf(t)).find((i) => i >= 0 && !used.slice(i, i + 2).some(Boolean));
-      if (at == null || at < 0) return false;
-      const length = trade.find((t) => han.indexOf(t) === at).length;
-      for (let i = at; i < at + length; i += 1) used[i] = true;
-      continue;
-    }
-    let hit = null;
-    for (let start = 0; start < chars.length && !hit; start += 1) {
-      for (let end = start + 1; end <= Math.min(chars.length, start + 6) && !hit; end += 1) {
-        if (used.slice(start, end).some(Boolean)) break;
-        const spelled = spellings(chars.slice(start, end).join(""));
-        if (spelled && spelled.includes(word)) hit = [start, end];
+  const text = chars.join("");
+  const tryFrom = (start) => {
+    let at = start;
+    let pinyinWords = 0;
+    const skipAdmin = () => { const m = chars.slice(at).join("").match(ADMIN_CHARS); if (m && at > start) at += [...m[0]].length; };
+    for (const word of words) {
+      skipAdmin();
+      const trade = TRADE_WORDS[word];
+      if (trade) {
+        // The trade word may come after other trade words the English leaves out (天源针织服装, "Tianyuan Garment").
+        let found = null;
+        for (const variant of trade) {
+          const index = text.indexOf(variant, at);
+          if (index >= 0 && onlyDroppable(text.slice(at, index)) && (found == null || index < found.index)) found = { index, length: [...variant].length };
+        }
+        if (!found) return false;
+        at = found.index + found.length;
+        continue;
       }
+      let end = 0;
+      for (let length = 1; length <= Math.min(6, chars.length - at) && !end; length += 1) {
+        const spelled = spellings(chars.slice(at, at + length).join(""));
+        if (spelled && spelled.includes(word)) end = at + length;
+      }
+      if (!end) return false;
+      at = end;
+      pinyinWords += 1;
     }
-    if (!hit) return false;
-    for (let i = hit[0]; i < hit[1]; i += 1) used[i] = true;
-    pinyinWords += 1;
-    if (firstPinyinAt < 0 || hit[0] < firstPinyinAt) firstPinyinAt = hit[0];
-  }
-  if (!pinyinWords) return false;
-  // Left over: the place in front of the first name word (山东, 合肥市) may stay; after it only trade words and legal forms.
-  const rest = chars.map((ch, i) => (used[i] ? " " : ch)).join("");
-  const front = rest.slice(0, firstPinyinAt).replace(/\s+/g, "");
-  const after = rest.slice(firstPinyinAt).replace(DROPPABLE, "").replace(/\s+/g, "");
-  return front.length <= 8 && after === "";
+    return pinyinWords > 0 && onlyDroppable(chars.slice(at).join(""));
+  };
+  return placeBoundaries(text).some((start) => tryFrom(start));
 }

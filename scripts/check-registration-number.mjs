@@ -284,6 +284,13 @@ check("an English name in the pinyin of the licence's Chinese name is the same n
   assert.equal(same("Shandong Tianyuan Knitwear", "山东天源服装股份有限公司"), false);
   assert.equal(same("Shandong Garment", "山东天源服装股份有限公司"), false);
   assert.equal(same("Wenzhou Senzhonghua Apparel", "温州森神华服饰有限公司"), false);
+  // Review d3: another company whose trade name contains the typed one, half a trade name, and words out of order.
+  assert.equal(same("Tianyuan Garment", "东莞市华天源服装有限公司"), false);
+  assert.equal(same("Tianyuan Garment", "东莞市新天源服装有限公司"), false);
+  assert.equal(same("Yuan Garment", "山东天源服装股份有限公司"), false);
+  assert.equal(same("Yuan Tian Garment", "山东天源服装股份有限公司"), false);
+  // A trade word the English leaves out may sit before the one it names.
+  assert.equal(same("Tianyuan Garment", "山东天源针织服装有限公司"), true);
 });
 check("public licences: a misread number or one CJK character is unsure, not differs", () => {
   const helpers = { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem };
