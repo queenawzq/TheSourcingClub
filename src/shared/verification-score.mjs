@@ -961,7 +961,7 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
     number_unread: licence ? ["business_registration", "licence", "Approve needs: a clearer licence"]
       : ["business_registration", "registry", "Approve needs: a registry check with their registration number"],
-    trading_only: ["company_information", "scope", "Approve needs: a reason here"],
+    trading_only: ["company_information", "scope", "Approve needs: record a check here"],
   }[problem];
   return row ? { group: row[0], check: row[1], words: row[2] } : null;
 }
