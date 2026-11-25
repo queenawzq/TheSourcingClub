@@ -369,6 +369,8 @@ const SENTENCES = [
   [/^You can start this work; it is added to your balance when the brand approves it\.$/, () => "你可以开始这项工作，品牌批准后款项将计入你的余额。"],
   [amountRe("^(.+) funded AMT for (.+?) on (.+)\\.$"), (brand, amount, step, order) => `${lead(brand)}已为${inner(order)}中的${quoted(step)}付款 ${amount}。`],
   [/^It will become available when (.+) approves this step\.$/, (brand) => `${lead(brand)}批准此步骤后，这笔款项即可使用。`],
+  // Held while the brand's account is under review (20261125100000).
+  [/^It is added to your balance when our team finishes a payment review\.$/, () => "我们的团队完成付款审核后，这笔款项将计入你的余额。"],
   [/^It becomes available to the factory when you approve this step\.$/, () => "你批准此步骤后，这笔款项即可供工厂使用。"],
   [amountRe("^AMT on (.+)\\.$"), (amount, order) => `${order}：${amount}。`],
   [/^It is still being confirmed\.$/, () => "款项仍在确认中。"],

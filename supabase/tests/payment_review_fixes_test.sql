@@ -132,17 +132,32 @@ reset role;
 select is((select state::text from public.order_payments where id = pg_temp.pay(2)), 'confirmed', 'it stays owed');
 -- A hand payout staff are sending (20261125100000).
 select is(public.review_returnable_cents(pg_temp.org('e1')), 30000::bigint, 'before any reveal, both owed steps could be taken from');
-insert into public.payout_number_reveals (account_id, org_id, org_name, staff_user_id, revealed_at)
-values (gen_random_uuid(), 'c25b0000-0000-0000-0000-0000000000e1', 'PR24X Factory One', 'c25a0000-0000-0000-0000-000000000002', now() + interval '1 second');
+-- A reveal for another payout (the deposit) never counts for this step (20261125100000).
+insert into public.payout_number_reveals (account_id, org_id, org_name, staff_user_id, revealed_at, payment_id)
+values (gen_random_uuid(), 'c25b0000-0000-0000-0000-0000000000e1', 'PR24X Factory One', 'c25a0000-0000-0000-0000-000000000002', now() - interval '1 minute',
+        'c25f0001-0000-0000-0000-000000000001');
+select pg_temp.act_as('02');
+set local role authenticated;
+select throws_ok($$select public.release_payment_to_factory('c25f0002-0000-0000-0000-000000000001', 'WIRE-PR24X-1')$$,
+  '22023', 'This factory''s withdrawals are paused while a payment is reviewed.', 'a reveal for another payout doesn''t open this one');
+reset role;
+select is(public.review_returnable_cents(pg_temp.org('e1')), 10000::bigint,
+  'only the payout the reveal was for is left out of the cap');
+delete from public.payout_number_reveals where org_id = 'c25b0000-0000-0000-0000-0000000000e1';
+insert into public.payout_number_reveals (account_id, org_id, org_name, staff_user_id, revealed_at, payment_id)
+values (gen_random_uuid(), 'c25b0000-0000-0000-0000-0000000000e1', 'PR24X Factory One', 'c25a0000-0000-0000-0000-000000000002', now() + interval '1 second',
+        'c25f0002-0000-0000-0000-000000000001');
 select pg_temp.act_as('02');
 set local role authenticated;
 select throws_ok($$select public.release_payment_to_factory('c25f0002-0000-0000-0000-000000000001', 'WIRE-PR24X-1')$$,
   '22023', 'This factory''s withdrawals are paused while a payment is reviewed.', 'a number revealed after the pause: still refused');
 reset role;
-select is(public.review_returnable_cents(pg_temp.org('e1')), 0::bigint, 'once revealed, no cap takes from the steps being sent by hand');
+select is(public.review_returnable_cents(pg_temp.org('e1')), 20000::bigint,
+  'once revealed for it, no cap takes from the step being sent by hand');
 delete from public.payout_number_reveals where org_id = 'c25b0000-0000-0000-0000-0000000000e1';
-insert into public.payout_number_reveals (account_id, org_id, org_name, staff_user_id, revealed_at)
-values (gen_random_uuid(), 'c25b0000-0000-0000-0000-0000000000e1', 'PR24X Factory One', 'c25a0000-0000-0000-0000-000000000002', now() - interval '1 minute');
+insert into public.payout_number_reveals (account_id, org_id, org_name, staff_user_id, revealed_at, payment_id)
+values (gen_random_uuid(), 'c25b0000-0000-0000-0000-0000000000e1', 'PR24X Factory One', 'c25a0000-0000-0000-0000-000000000002', now() - interval '1 minute',
+        'c25f0002-0000-0000-0000-000000000001');
 select pg_temp.act_as('02');
 set local role authenticated;
 select lives_ok($$select public.release_payment_to_factory('c25f0002-0000-0000-0000-000000000001', 'WIRE-PR24X-1')$$,
