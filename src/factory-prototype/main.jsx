@@ -1952,8 +1952,8 @@ const onboardingCopy = {
           ["Factory Name", "e.g. Golden Thread Manufacturing", true],
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
-          ["Factory Address", "e.g. street and number, city, country"],
-          ["Nearest Port", "e.g. the port you ship from"],
+          ["Factory Address", "e.g. 8 Industrial Rd, Humen, Dongguan, China"],
+          ["Nearest Port", "e.g. Port of Shanghai"],
           ["Total Employees", "e.g. 120"]
         ],
         helper: "The seaport or airport you ship from most often."
@@ -2229,7 +2229,7 @@ const tradingOnboardingCopy = {
         type: "fields",
         title: "Tell us about your trading company",
         intro: "Share the company details brands need before starting a sourcing relationship.",
-        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Company Address", "e.g. street and number, city, country"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
+        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Company Address", "e.g. 100 Nathan Road, Kowloon, Hong Kong"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
       },
       {
         type: "context",
