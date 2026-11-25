@@ -383,6 +383,15 @@ async function formatters() {
         { id: "out", order_id: "o", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", confirmed_at: "2026-11-17T10:00:00Z", release_requested_at: "2026-11-17T11:00:00Z", released_at: "2026-11-18T10:00:00Z", order_milestones: { title: "Trim", kind: "payment_only" } },
       ],
     });
+    expect("brand payments: date order", brandPaymentsView({
+      orders: [{ id: "o", status: "active", order_number: "TSC-1", factory: { name: "F" } }],
+      payments: [
+        { id: "a", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "A", due_on: "2026-11-28" } },
+        { id: "b", order_id: "o", state: "due", amount_cents: 100, currency: "USD", order_milestones: { title: "B", due_on: "2026-12-09" } },
+        { id: "c", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-24T10:00:00Z", order_milestones: { title: "C" } },
+        { id: "d", order_id: "o", state: "confirmed", amount_cents: 100, currency: "USD", confirmed_at: "2026-11-20T10:00:00Z", release_requested_at: "2026-11-25T10:00:00Z", released_at: "2026-11-30T10:00:00Z", order_milestones: { title: "D" } },
+      ],
+    }).rows.map((row) => row.id).join(","), "b,a,d,c");
     expect("brand payments: words", oneBalance.rows.map((row) => `${row.id}:${row.status}`).sort().join(","), "dep:Funded,ok:Approved,out:Paid,wait:Funded");
     expect("brand payments: Paid", oneBalance.metrics.find(([name]) => name === "Paid")?.[1], "$11.00");
     expect("brand payments: Held", oneBalance.metrics.find(([name]) => name === "Held")?.[1], "$1,224.00");
