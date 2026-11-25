@@ -13,17 +13,28 @@
  * "accept" (their reason, read back). `onConfirm(reason)` resolves true when
  * the dialog may close; a refusal stays in the dialog that caused it.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { listPayments } from "../../lib/domain/payment.js";
+import { cancelMoneyLines } from "./cancel-money.mjs";
 
-/** What accepting does today (close_order, migration 035). Said before, not after. */
-export const CANCEL_CONSEQUENCES =
-  "Money TSC holds for steps not yet paid out goes back to the brand.";
-
-export default function CancelOrderDialog({ mode = "propose", title, counterparty, reason = "", busy = false, error = null, onConfirm, onClose }) {
+/**
+ * What cancelling does to the money, said before, from the order's own
+ * payments (cancel-money.mjs). `payments` may be passed (the order page has
+ * them); otherwise they are read here (the order lists).
+ */
+export default function CancelOrderDialog({ mode = "propose", orderId, title, counterparty, isFactory = false, payments: given, reason = "", busy = false, error = null, onConfirm, onClose }) {
   const [text, setText] = useState("");
+  const [read, setRead] = useState(null);
   const other = counterparty || "the other side";
   const proposing = mode === "propose";
+  useEffect(() => {
+    if (given || !orderId) return undefined;
+    let live = true;
+    listPayments(orderId).then((rows) => { if (live) setRead(rows ?? []); }).catch(() => null);
+    return () => { live = false; };
+  }, [given, orderId]);
+  const money = cancelMoneyLines(given ?? read, { isFactory, counterparty }).join(" ");
 
   return createPortal((
     <div className="approve-fund-modal-layer" role="presentation">
@@ -35,7 +46,9 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
         <header>
           <p>{proposing ? "Cancel order" : "Accept cancellation"}</p>
           <h2 id="order-cancel-title">{proposing ? `Cancel ${title}?` : `Cancel ${title} as ${other} proposed?`}</h2>
-          {proposing ? null : <span>This closes the order for both sides and cannot be undone. {CANCEL_CONSEQUENCES}</span>}
+          {proposing
+            ? (money ? <span data-testid="cancel-money">{money}</span> : null)
+            : <span data-testid="cancel-money">This closes the order for both sides and cannot be undone.{money ? ` ${money}` : ""}</span>}
         </header>
         {proposing ? (
           <label className="approve-fund-note">

@@ -435,7 +435,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   // Cancelling has no design: the banner, the dialog and the side panel's
   // "Cancel order" are live only (CancelNotice, CancelOrderDialog).
-  const cancel = useOrderCancel({ onChanged: load });
+  const cancel = useOrderCancel({ onChanged: load, isFactory, payments: milestones.map((milestone) => milestone.payment).filter(Boolean) });
 
   // The parts that do not change as the order moves: the request's files, the
   // other company's location, and the snapshot's term labels. Each one is
@@ -704,7 +704,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     ? () => cancel.propose({ id: order.id, title: header.title, counterparty: other })
     : null;
   const cancelBanner = (
-    <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
+    <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel}
+      payments={milestones.map((milestone) => milestone.payment).filter(Boolean)} />
   );
 
   const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;

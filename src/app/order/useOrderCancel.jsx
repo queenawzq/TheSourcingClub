@@ -17,7 +17,7 @@ import {
 } from "../../lib/domain/order.js";
 import CancelOrderDialog from "./CancelOrderDialog.jsx";
 
-export default function useOrderCancel({ onChanged = null, onViewOrder = null } = {}) {
+export default function useOrderCancel({ onChanged = null, onViewOrder = null, isFactory = false, payments = null } = {}) {
   // { mode: "propose" | "accept", id, title, counterparty, reason, onDone }
   const [target, setTarget] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -70,6 +70,9 @@ export default function useOrderCancel({ onChanged = null, onViewOrder = null } 
       <CancelOrderDialog
         key={`${target.mode}-${target.id}`}
         mode={target.mode}
+        orderId={target.id}
+        isFactory={isFactory}
+        payments={payments ?? undefined}
         title={target.title}
         counterparty={target.counterparty}
         reason={target.reason}

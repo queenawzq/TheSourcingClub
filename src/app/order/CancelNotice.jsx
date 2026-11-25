@@ -9,14 +9,16 @@
  * - the other side proposed it: their reason, "Keep order" and "Accept
  *   cancellation" (which asks first, in `CancelOrderDialog`);
  * - this side proposed it: that it is waiting, and "Withdraw";
- * - the order is cancelled: when, and why.
+ * - the order is cancelled: when, why, and what happened to the money it
+ *   had (cancel-money.mjs).
  */
 import React from "react";
 import { cancelProposal } from "../live-adapter.js";
 import { day } from "./order-view.js";
+import { cancelMoneyLines } from "./cancel-money.mjs";
 import "./order.css";
 
-export default function CancelNotice({ order, isFactory, counterparty, title, store }) {
+export default function CancelNotice({ order, isFactory, counterparty, title, store, payments = [] }) {
   const other = counterparty || (isFactory ? "The brand" : "The factory");
 
   if (order.status === "cancelled") {
@@ -25,6 +27,7 @@ export default function CancelNotice({ order, isFactory, counterparty, title, st
         <div className="order-cancel-notice-text">
           <strong>This order was cancelled{order.cancelled_at ? ` · ${day(order.cancelled_at)}` : ""}</strong>
           {order.cancel_reason && <p>{order.cancel_reason}</p>}
+          {cancelMoneyLines(payments, { isFactory, counterparty, cancelled: true }).map((line) => <p key={line} data-testid="cancel-money">{line}</p>)}
         </div>
       </section>
     );

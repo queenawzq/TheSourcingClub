@@ -22,7 +22,7 @@ function Orders({ org, user, onViewOrder }) {
   // Held until the Chinese is in (at most 3 s): no English for a moment first.
   const waitingForChinese = useChineseContent({ rfqIds: (data ?? []).map((card) => card.rfqId) });
   const tabStore = useOrderTabs(org, user);
-  const cancelStore = useOrderCancel({ onViewOrder });
+  const cancelStore = useOrderCancel({ onViewOrder, isFactory: true });
   const projects = (data ?? []).map((card) => ({
     ...card,
     brand: card.factory,
