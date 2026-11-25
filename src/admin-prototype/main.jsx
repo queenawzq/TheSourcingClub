@@ -1724,7 +1724,14 @@ function UsersPage({ users, onToggleStatus }) {
         <div><span>Total users</span><strong>{users.length}</strong></div>
         <div><span>Active</span><strong>{activeCount}</strong></div>
         <div><span>Disabled</span><strong>{users.length - activeCount}</strong></div>
-        {paused !== null && <div className={showPaused ? "selected" : ""}><span>Paused brands</span><strong>{paused.length}</strong></div>}
+        {paused !== null && (
+          <div className={`admin-user-metric-toggle${showPaused ? " selected" : ""}`} role="button" tabIndex={0} aria-pressed={showPaused}
+               data-testid="paused-brands-count"
+               onClick={() => setStatus(showPaused ? "All statuses" : "Paused")}
+               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setStatus(showPaused ? "All statuses" : "Paused"); } }}>
+            <span>Paused brands</span><strong>{paused.length}</strong>
+          </div>
+        )}
       </div>
 
       <div className="admin-filter-bar admin-users-filter-bar">
@@ -1798,7 +1805,7 @@ function PausedBrandsPanel({ rows, users, onUnpause }) {
                 <tr key={brand.orgId} data-testid="paused-brand">
                   <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
                   <td><StatusPill tone="info">Brand</StatusPill></td>
-                  <td className="admin-user-reason">{brand.reason}</td>
+                  <td className="admin-user-reason">{String(brand.reason ?? "").split(" · ").map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}<span className="admin-user-reason-part">{part}</span></React.Fragment>)}</td>
                   <td>{brand.since}</td>
                   <td><StatusPill tone="warning">Paused</StatusPill></td>
                   <td><button className="secondary-btn admin-user-access-button enable" type="button" aria-label={`Unpause ${brand.name}`} onClick={() => onUnpause(brand)}>Unpause</button></td>

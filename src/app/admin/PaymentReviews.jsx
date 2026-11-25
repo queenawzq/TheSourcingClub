@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { formatMoney } from "../../lib/money.js";
-import { resolveReview } from "../../lib/domain/payment-reviews.js";
+import * as reviews from "../../lib/domain/payment-reviews.js";
+import { RefundDialog } from "./OrderRefunds.jsx";
 import { stripeDashboardUrl } from "../../lib/domain/stripe.js";
 
 /**
@@ -18,8 +19,8 @@ import { stripeDashboardUrl } from "../../lib/domain/stripe.js";
 const moneyIn = (cents, currency = "USD") => formatMoney(Number(cents) || 0, currency || "USD");
 // In the reader's own zone.
 const day = (value) => (value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null);
-const isRefund = (row) => row.reason === "refunded_in_stripe";
-const REASON = { card_dispute: "Card dispute", inquiry: "Inquiry", refunded_in_stripe: "Refund" };
+const isRefund = (row) => row.reason === "refunded_in_stripe" || row.reason === "staff_refund_failed";
+const REASON = { card_dispute: "Card dispute", inquiry: "Inquiry", refunded_in_stripe: "Refund", staff_refund_failed: "Refund failed" };
 
 /** The one line under the bar: the server's words, then the date in the reader's zone. */
 function lineFor(row) {
@@ -100,7 +101,7 @@ function ResolveDialog({ row, onClose, onDone }) {
     setWorking(true);
     setProblem(null);
     try {
-      await resolveReview(row.id, fault, fault === "factory_at_fault" ? cents : null, note.trim());
+      await reviews.resolveReview(row.id, fault, fault === "factory_at_fault" ? cents : null, note.trim());
       onDone();
     } catch (failure) {
       setProblem(failure.message);
@@ -163,9 +164,48 @@ function ResolveDialog({ row, onClose, onDone }) {
   );
 }
 
+/** Close a failed staff refund: staff refunded the brand another way. The note stays with staff. */
+function CloseRefundDialog({ row, onClose, onDone }) {
+  const [note, setNote] = useState("");
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState(null);
+  async function confirm() {
+    setWorking(true);
+    setProblem(null);
+    try {
+      await reviews.closeFailedStaffRefund(row.staff_refund_id ?? row.id, note.trim());
+      onDone();
+    } catch (failure) {
+      setProblem(failure.message);
+    } finally {
+      setWorking(false);
+    }
+  }
+  return (
+    <StaffDialog eyebrow={`${row.order_number}${row.milestone_title ? ` · ${row.milestone_title}` : ""}`}
+                 title={`Close failed refund of ${moneyIn(row.amount_cents, row.currency)}`} labelId="payment-close-refund-title"
+                 working={working} onCancel={onClose}>
+      <p className="admin-modal-line">Close it once the brand has been refunded another way.</p>
+      <label className="factory-onboarding-field">
+        <span>Note *</span>
+        <textarea placeholder="How the brand was refunded" value={note} maxLength={500} data-testid="close-refund-note"
+                  onChange={(event) => setNote(event.target.value)} />
+      </label>
+      {problem ? <p className="admin-error" role="alert">{problem}</p> : null}
+      <footer>
+        <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
+        <button className="primary-btn" type="button" disabled={working || !note.trim()} data-testid="close-refund-confirm" onClick={confirm}>Close</button>
+      </footer>
+    </StaffDialog>
+  );
+}
+
 function ReviewRow({ row, onChanged, withActions = true }) {
   const [resolving, setResolving] = useState(false);
-  const canResolve = (row.actions ?? []).includes("decide");
+  const [refunding, setRefunding] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const acts = row.actions ?? [];
+  const canResolve = acts.includes("decide");
   return (
     <tr data-testid="payment-review" data-review={row.id}>
       <td>
@@ -189,7 +229,19 @@ function ReviewRow({ row, onChanged, withActions = true }) {
       {withActions ? <td className="admin-actions">{canResolve ? (
         <button type="button" className="admin-approve" data-testid="review-resolve" onClick={() => setResolving(true)}>Resolve…</button>
       ) : null}
+        {acts.includes("refund_again") ? (
+          <button type="button" className="admin-approve" data-testid="review-refund-again" onClick={() => setRefunding(true)}>Refund again…</button>
+        ) : null}
+        {acts.includes("close") ? (
+          <button type="button" className="admin-reject" data-testid="review-close-refund" onClick={() => setClosing(true)}>Close</button>
+        ) : null}
         {resolving ? <ResolveDialog row={row} onClose={() => setResolving(false)} onDone={() => { setResolving(false); onChanged?.(); }} /> : null}
+        {refunding ? (
+          <RefundDialog payment={{ payment_id: row.payment_id, step_title: row.milestone_title }} orderNumber={row.order_number}
+                        currency={row.currency ?? "USD"} initialCents={row.amount_cents}
+                        onClose={() => setRefunding(false)} onDone={() => { setRefunding(false); onChanged?.(); }} />
+        ) : null}
+        {closing ? <CloseRefundDialog row={row} onClose={() => setClosing(false)} onDone={() => { setClosing(false); onChanged?.(); }} /> : null}
       </td> : null}
     </tr>
   );

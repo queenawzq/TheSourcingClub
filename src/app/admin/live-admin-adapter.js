@@ -400,15 +400,22 @@ export function toAdminUser(user) {
   };
 }
 
-/** Paused brands for Users: "Brand at fault · TSC-000016", and the owner's email under the name. */
+/**
+ * Paused brands for Users: the most pressing review first, as the database
+ * orders them ("Bank ruling pending · TSC-000052 · +2 more"), and the owner's
+ * email under the name.
+ */
 async function pausedBrandRows() {
-  return (await pausedBrands()).map((brand) => ({
-    orgId: brand.org_id,
-    name: brand.name,
-    email: brand.owner_email ?? "",
-    since: shortDate(brand.since),
-    reason: [brand.reason, brand.order_number].filter(Boolean).join(" · "),
-  }));
+  return (await pausedBrands()).map((brand) => {
+    const more = Number(brand.more ?? (Number(brand.reviews) || 1) - 1) || 0;
+    return {
+      orgId: brand.org_id,
+      name: brand.name,
+      email: brand.owner_email ?? "",
+      since: shortDate(brand.since),
+      reason: [brand.reason, brand.order_number, more > 0 ? `+${more} more` : null].filter(Boolean).join(" · "),
+    };
+  });
 }
 
 export function createAdminAdapter({ user, signOut }) {

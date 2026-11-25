@@ -24,8 +24,13 @@ const STATE_WORD = {
   released: "Approved", confirmed: "Held", processing: "Processing", due: "Due", not_due: "Not due",
   failed: "Failed", cancelled: "Cancelled", sent: "Sent",
 };
+/** What staff refunds made add up to; a full refund of a held step sends the payment back to the brand, and the row must still say so. */
+const madeRefunds = (refunds) => (refunds ?? []).filter((refund) => refund.status === "made");
+const refundedCents = (payment) => Math.max(Number(payment.refunded_cents) || 0,
+  madeRefunds(payment.staff_refunds).reduce((sum, refund) => sum + (Number(refund.amount_cents) || 0), 0));
 function statusWord(payment) {
   if (payment.refund_refusal === "staff_refund_disputed") return "Disputed";
+  if (["due", "failed"].includes(payment.state) && madeRefunds(payment.staff_refunds).length) return "Refunded";
   if (payment.approved_step) return "Approved";
   return STATE_WORD[payment.state] ?? payment.state;
 }
@@ -33,6 +38,26 @@ function statusWord(payment) {
 const ROW_REFUSAL = { ...REFUND_REFUSALS, staff_refund_processing: "Still processing." };
 /** A staff refund's own flag ("Refund succeeded after a failure"), once per payment. */
 const refundFlags = (refunds) => [...new Set((refunds ?? []).map((refund) => refund.flag).filter(Boolean))];
+/** One line per staff refund: "Refunded $50.00 · factory $20.00 · TSC $30.00 · <note>". */
+function refundLine(refund, currency) {
+  const amount = moneyIn(refund.amount_cents, currency);
+  // The failure's first sentence only: the row is narrow, and the rest is on Review needed.
+  if (refund.status === "failed") return ["Refund failed", amount, String(refund.failure ?? "").split(/(?<=\.)\s/)[0]].filter(Boolean).join(" · ");
+  if (refund.status === "claimed") return `Refund pending · ${amount}`;
+  const parts = [`Refunded ${amount}`];
+  if (refund.payer === "factory" || Number(refund.factory_cents) > 0) {
+    parts.push(`factory ${moneyIn(refund.factory_cents, currency)}`, `TSC ${moneyIn(refund.tsc_cents, currency)}`);
+  } else if (refund.payer === "tsc") {
+    parts.push(`TSC ${moneyIn(refund.tsc_cents ?? refund.amount_cents, currency)}`);
+  }
+  if (refund.note) parts.push(refund.note);
+  return parts.join(" · ");
+}
+function RefundLines({ refunds, currency }) {
+  return (refunds ?? []).map((refund, index) => (
+    <span key={refund.id ?? index} className="admin-sub payment-refund-line" data-testid="staff-refund-line">{refundLine(refund, currency)}</span>
+  ));
+}
 const charged = (payment) => !["due", "not_due"].includes(payment.state) && Number(payment.charged_cents) > 0;
 
 /** The factory's share of a refund, as the database computes it, capped at what it can give back. */
@@ -43,7 +68,7 @@ function factoryShare(preview, amount) {
   return Math.max(0, Math.min(share, Number(preview.step_cents) || 0, Number(preview.factory_cap_cents) || 0));
 }
 
-function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
+export function RefundDialog({ payment, orderNumber, currency, initialCents = null, onClose, onDone }) {
   const [preview, setPreview] = useState(null);
   const [loadProblem, setLoadProblem] = useState(null);
   const [amount, setAmount] = useState("");
@@ -60,11 +85,13 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
     staffRefundPreview(payment.payment_id).then((answer) => {
       if (!live) return;
       setPreview(answer);
-      setAmount(typed(answer.refundable_cents));
+      // Refund again… starts from the amount that failed, within what is refundable now.
+      const most = Number(answer.refundable_cents) || 0;
+      setAmount(typed(initialCents != null ? Math.min(Number(initialCents) || 0, most) : most));
       setPendingId(answer.pending_refund_id ?? null);
     }, (failure) => live && setLoadProblem(failure.message));
     return () => { live = false; };
-  }, [payment.payment_id]);
+  }, [payment.payment_id, initialCents]);
 
   const most = Number(preview?.refundable_cents) || 0;
   const cents = centsFrom(amount);
@@ -166,7 +193,8 @@ function PaymentRow({ payment, order, onRefund }) {
       <td><strong>{payment.step_title ?? "Payment"}</strong></td>
       <td>{shown ? moneyIn(payment.charged_cents, order.currency) : "—"}</td>
       <td>
-        {Number(payment.refunded_cents) > 0 ? moneyIn(payment.refunded_cents, order.currency) : "—"}
+        {refundedCents(payment) > 0 ? moneyIn(refundedCents(payment), order.currency) : "—"}
+        <RefundLines refunds={payment.staff_refunds} currency={order.currency} />
         {refundFlags(payment.staff_refunds).map((flag) => <span key={flag} className="admin-sub" data-testid="staff-refund-flag">{flag}</span>)}
       </td>
       <td><span className="payment-review-status">{statusWord(payment)}</span></td>
@@ -196,6 +224,9 @@ export function HeldRefund({ row, info, onRefunded }) {
   return (
     <>
       {heard ? <span className="admin-sub admin-row-message" role="status" data-testid="refund-done">{heard}</span> : null}
+      {(info.staff_refunds ?? []).map((refund, index) => (
+        <span key={refund.id ?? index} className="admin-sub admin-row-message" data-testid="staff-refund-line">{refundLine(refund, row.currency)}</span>
+      ))}
       {refundFlags(info.staff_refunds).map((flag) => <span key={flag} className="admin-sub admin-row-message" data-testid="staff-refund-flag">{flag}</span>)}
       {refusal ? <span className="admin-sub admin-row-message">{ROW_REFUSAL[refusal] ?? REFUND_REFUSALS.staff_refund_over}</span> : null}
       <button type="button" className="admin-reject" disabled={Boolean(refusal)} data-testid="staff-refund" onClick={() => setOpen(true)}>Refund…</button>

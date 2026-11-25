@@ -269,6 +269,11 @@
 .admin-user-metrics.has-paused { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 900px; }
 @media (max-width: 760px) { .admin-user-metrics.has-paused { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .admin-user-metrics > div.selected { border-color: #174df2; box-shadow: 0 0 0 1px #174df2; }
+.admin-user-metrics > div.admin-user-metric-toggle { cursor: pointer; }
+.admin-user-metrics > div.admin-user-metric-toggle:hover { border-color: #174df2; }
+.admin-user-metrics > div.admin-user-metric-toggle:focus-visible { outline: 2px solid #174df2; outline-offset: 2px; }
 .admin-users-table td.admin-user-reason { white-space: normal; }
+/* "TSC-000363" and "+2 more" never break inside themselves. */
+.admin-user-reason-part { white-space: nowrap; }
 .admin-review-modal .admin-modal-line { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; }
 .admin-review-modal .admin-error { margin: 0; }
