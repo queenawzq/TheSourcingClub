@@ -39,11 +39,14 @@ const FACTORY_COLUMNS = `
  * times through this, so a range typed in either is kept whole.
  */
 export function dayRange(text) {
-  const numbers = String(text ?? "").match(/\d+/g)?.map(Number) ?? [];
-  if (!numbers.length) return { min: null, max: null };
-  const [low, high] = numbers;
-  if (high == null || high === low) return { min: low, max: null };
-  return { min: Math.min(low, high), max: Math.max(low, high) };
+  // A range only when two numbers are joined ("45-60", "45 to 60", "45至60"):
+  // "35 天，样品 7 天" is 35, not 7-35.
+  const joined = String(text ?? "").match(/(\d+)\s*(?:-|–|—|~|～|to|至|到)\s*(\d+)/);
+  if (joined) {
+    const [a, b] = [Number(joined[1]), Number(joined[2])];
+    return a === b ? { min: a, max: null } : { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+  return { min: firstNumber(text), max: null };
 }
 
 /** A saved lead time back in words: "45-60 days", "40 days", or "". */
