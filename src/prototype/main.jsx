@@ -3330,6 +3330,9 @@ export function BrandOnboarding({
   // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
   // button. Absent, the designed "You're all set" card shows.
   completion = null,
+  // Live only: a line under the stakeholder's email saying what adding them
+  // does (live invites them to the team). Absent, the dialog is as designed.
+  stakeholderNote = null,
   // Live only: false when no discount stands behind the finish card's
   // welcome offer, so the card makes no promise. Absent, as designed.
   discountOffer = true,
@@ -3410,6 +3413,7 @@ export function BrandOnboarding({
           documents={documents}
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
+          stakeholderNote={stakeholderNote}
           discountOffer={discountOffer}
         />
         {extra}
@@ -3453,7 +3457,7 @@ export function BrandOnboarding({
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance, discountOffer = true }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance, stakeholderNote = null, discountOffer = true }) {
   // Live mounts replace a hardcoded option list with the taxonomy; the
   // prototype passes nothing and keeps its own. The design is the UI, never
   // the data source.
@@ -3462,6 +3466,16 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   // A live signup starts blank. The design's pre-picked examples are there to
   // show the prototype populated, not to answer on a real brand's behalf.
   const isLive = optionsByLabel !== undefined;
+  // Each decision maker's name, email and role, as the card published them
+  // (the email list alone loses who they are).
+  const stakeholderDetails = (() => {
+    try {
+      const parsed = JSON.parse(valueFor("Decision makers detail") || "null");
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  })();
 
   /**
    * The review card names a few things differently from the step that
@@ -3493,6 +3507,9 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
       if (label === "Business certificate") return values?.["uploaded-registration"] ? "Uploaded" : "Not uploaded yet";
     }
     const empty = isLive ? "Not added yet" : drawn;
+    if (isLive && label === "Decision makers" && stakeholderDetails?.length) {
+      return stakeholderDetails.map((person) => [person.name || person.email, person.role].filter(Boolean).join(" · ")).join(", ");
+    }
     const actual = valueFor(REVIEW_ALIAS[label] ?? label);
     if (actual === undefined || actual === null) return empty;
     if (Array.isArray(actual)) return actual.length ? actual.join(", ") : empty;
@@ -3501,7 +3518,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   // Nobody is a stakeholder until someone is added. The drawn examples read
   // as this brand's actual team, live or not.
   const [onboardingStakeholders, setOnboardingStakeholders] = useState(
-    (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })),
+    stakeholderDetails ?? (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })),
   );
   const [stakeholderModalOpen, setStakeholderModalOpen] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -3667,6 +3684,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
             value={onboardingStakeholders.map((stakeholder) => stakeholder.email).filter(Boolean).join("")}
             readOnly
           />
+          <input type="hidden" name={onboardingFieldName("Decision makers detail")} value={JSON.stringify(onboardingStakeholders)} readOnly />
         </section>
 
         {stakeholderModalOpen && createPortal(
@@ -3681,6 +3699,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
               <div className="brand-profile-edit-stack">
                 <BrandProfileEditField label="Name" value={stakeholderDraft.name} onChange={(value) => updateStakeholderDraft("name", value)} />
                 <BrandProfileEditField label="Email" value={stakeholderDraft.email} onChange={(value) => updateStakeholderDraft("email", value)} />
+                {stakeholderNote ? <small className="tsc-stakeholder-note">{stakeholderNote}</small> : null}
                 <BrandProfileEditField label="Role" value={stakeholderDraft.role} onChange={(value) => updateStakeholderDraft("role", value)} />
               </div>
               <footer className="brand-profile-modal-actions">
