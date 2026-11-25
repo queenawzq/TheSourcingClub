@@ -125,7 +125,9 @@ export function englishProfileParts(parts, translations) {
     profile: {
       ...parts.profile,
       ...Object.fromEntries(["intro", "location", "nearest_port"].map((field) => [field, text(parts.profile?.[field])])),
-      equipment_notes: machines.length ? machines.map(text).join(", ") : parts.profile?.equipment_notes,
+      // One machine stays one item: "岛精电脑横机 60 台" can come back as
+      // "…machines, 60 units", and the page splits the list on commas.
+      equipment_notes: machines.length ? machines.map((machine) => text(machine).replace(/\s*[,;，；、]\s*/g, " ")).join(", ") : parts.profile?.equipment_notes,
     },
     references: parts.references?.map((reference) => ({ ...reference, title: text(reference.title) })),
     samples: parts.samples?.map((sample) => ({ ...sample, title: text(sample.title), caption: text(sample.caption) })),
