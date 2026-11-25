@@ -260,11 +260,11 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
     },
     {
       key: "walkthrough",
-      title: t("Factory walkthrough", "工厂介绍视频"),
-      todo: t("a walkthrough video", "工厂介绍视频"),
+      title: t("Factory walkthrough", "工厂巡视视频"),
+      todo: t("a walkthrough video", "工厂巡视视频"),
       ...(walkthrough
-        ? complete(t("The walkthrough video is on your profile.", "工厂介绍视频已在你的资料中。"), walkthrough.status === "verified" ? "Verified" : "Complete")
-        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的车间介绍视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加巡视视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加巡视视频"))),
+        ? complete(t("The walkthrough video is on your profile.", "巡视视频已在你的资料中。"), walkthrough.status === "verified" ? "Verified" : "Complete")
+        : missing(t("Add a short production-floor walkthrough so brands can see the factory before they contact you.", "请添加一段简短的生产车间巡视视频，让品牌在联系你之前先了解工厂。"), { label: t("Add walkthrough", "添加巡视视频"), editor: "walkthrough" }, t("Add a walkthrough video", "添加巡视视频"))),
     },
     {
       // Named after the certificate when only one needs a file, as the

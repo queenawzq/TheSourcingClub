@@ -317,5 +317,5 @@ export function addressMissesPlace(typed) {
 
 export const ADDRESS_PLACE_NOTICE = {
   en: "Add the city and country, so brands can see where you are.",
-  zh: "请填写城市和国家/地区，以便品牌了解您的位置。",
+  zh: "请填写城市和国家/地区，以便品牌了解你的位置。",
 };
