@@ -294,7 +294,7 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
@@ -304,15 +304,17 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
           {showNotifications && <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>}
         </header>
 
+        {/* A failed read is said, never shown as zeros (live only: the mock never fails). */}
+        {metricsError ? <p className="admin-error" role="alert" data-testid="overview-error">{metricsError.message}</p> : null}
         <div className="factory-dashboard-metrics admin-metrics">
-          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
-          <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
-          <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
+          <MetricCard label="Profiles awaiting review" value={metricsError ? "—" : metrics.profilesAwaitingReview ?? pending.length} note={metricsError ? "" : `${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
+          <MetricCard label="RFQs submitted today" value={metricsError ? "—" : metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
+          <MetricCard label="Quotes submitted today" value={metricsError ? "—" : metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
           {/* Where the design puts "low-confidence checks". There is no
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments owed" value={metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
+          <MetricCard label="Payments owed" value={metricsError ? "—" : metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
         </div>
 
         <section className="admin-overview-grid">
@@ -2249,7 +2251,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const { data: queue, loading: queueLoading, error: queueError, reload: reloadQueue } = useVerificationQueue();
   const { data: rfqRows, loading: rfqsLoading, error: rfqsError } = useAdminRfqs();
   const { data: quoteRows, loading: quotesLoading, error: quotesError } = useAdminQuotes();
-  const { data: metricRow, reload: reloadMetrics } = useAdminMetrics();
+  const { data: metricRow, error: metricsError, reload: reloadMetrics } = useAdminMetrics();
   const { data: userRows, loading: usersLoading, error: usersError, reload: reloadUsers } = useAdminUsers();
   const actions = useActions();
   const viewer = useViewer();
@@ -2515,7 +2517,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         : loading
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
-      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} metricsError={metricsError} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel || actions.verificationScore ? reloadQueue : null} />}
