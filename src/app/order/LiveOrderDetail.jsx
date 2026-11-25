@@ -720,15 +720,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const cancelBanner = (
     <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
   );
-  // The factory's line while the brand is paused, in the order notice frame, above the money strip.
-  const factoryBanner = onHold && order.status !== "cancelled" ? (
-    <>
-      <section className="order-cancel-notice" data-state="on-hold" role="status" data-testid="order-on-hold">
-        <div className="order-cancel-notice-text"><strong>This order is on hold while our team reviews a payment.</strong></div>
-      </section>
-      {cancelBanner}
-    </>
-  ) : cancelBanner;
+
 
   const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;
   const stepPopup = openMilestone && (
@@ -783,8 +775,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         notice={pending
           ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
           : undefined}
-        banner={factoryBanner}
+        banner={cancelBanner}
         onCancelOrder={proposeCancel}
+        // The brand is paused by a payment review: one line under the timeline's title, like the brand's.
+        timelineNotice={onHold && order.status !== "cancelled" ? "This order is on hold while our team reviews a payment." : ""}
       />
       {stepPopup}
       {cancel.dialog}

@@ -1075,8 +1075,8 @@ export default function StripePayoutCard({
           ) : figures ? (
             <>
             {/* While a payment is reviewed this line takes the place of "Earnings stay…":
-                plain text in the danger colour, the Pending balance "?" kept after it. */}
-            {review ? <p className="payout-review-line" role="status" data-testid="payout-under-review">{review.join(" ")}{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</p> : null}
+                plain text in the danger colour. The Pending figure below keeps its own "?". */}
+            {review ? <p className="payout-review-line" role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
             {review && !heldCurrency && !paused && !(account?.transfers_active && (!account.payouts_enabled || needsMore)) ? null : (
             <p className="payout-balance-line" data-testid="payout-balance-line">{[
               // The Pending balance "?" sits right after it, not on a line of its own.

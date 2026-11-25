@@ -10233,6 +10233,9 @@ export function FactoryProjectProgressDetail({
   // "Cancel order" under Message.
   banner = null,
   onCancelOrder = null,
+  // Live only: one line under the timeline's title (the order is on hold
+  // while a payment is reviewed).
+  timelineNotice = "",
   // Live only: open "Add update" for this step from outside the timeline
   // (the step's pop-up, reached from a "due soon" reminder), then report it.
   updateStepId = null,
@@ -10314,6 +10317,7 @@ export function FactoryProjectProgressDetail({
           {activeDetailTab === "overview" && (
             <section className="factory-milestone-card">
               <h2>Production timeline</h2>
+              {timelineNotice && <p className="order-paused-line" role="status" data-testid="order-on-hold">{timelineNotice}</p>}
               {notice && <p className="muted production-schedule-helper" data-testid="schedule-notice">{notice}</p>}
               <div className="factory-milestone-list">
                 {(liveMilestones ?? factoryProjectMilestones).map((milestone, index) => (
