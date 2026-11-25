@@ -170,6 +170,8 @@ const PATTERNS = [
   [/^Withdrawals are paused while a payment is reviewed\. A brand requested a refund for "(.+)", so our team is reviewing the payment\.$/,
     (m) => `付款审核期间，提现已暂停。品牌方就“${m[1]}”申请了退款，我们的团队正在审核这笔付款。`],
   [/^Withdrawals are paused while a payment is reviewed\.$/, () => "付款审核期间，提现已暂停。"],
+  // The factory's order page while the brand is paused by a payment review (hand-written).
+  [/^This order is on hold while our team reviews a payment\.$/, () => "我们的团队正在审核一笔付款，此订单暂时搁置。"],
   // A step still clearing, on its Payments row: "Available Nov 22.", alone or
   // before the row's other sentences, which are translated on their own.
   [new RegExp(`^Available ${MON} (\\d{1,2})\\.?(?: (.+))?$`), (m, inner) => `${MONTHS[m[1]]} 月 ${Number(m[2])} 日起可提现。${m[3] ? inner(m[3]) : ""}`, { free: true }],

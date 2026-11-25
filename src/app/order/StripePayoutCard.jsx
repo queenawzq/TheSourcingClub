@@ -1073,17 +1073,24 @@ export default function StripePayoutCard({
           {!figures && onPage && !figuresFailed ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : figures ? (
+            <>
+            {/* While a payment is reviewed this line takes the place of "Earnings stay…":
+                plain text in the danger colour, the Pending balance "?" kept after it. */}
+            {review ? <p className="payout-review-line" role="status" data-testid="payout-under-review">{review.join(" ")}{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</p> : null}
+            {review && !heldCurrency && !paused && !(account?.transfers_active && (!account.payouts_enabled || needsMore)) ? null : (
             <p className="payout-balance-line" data-testid="payout-balance-line">{[
               // The Pending balance "?" sits right after it, not on a line of its own.
-              <>Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</>,
+              review ? null : <>Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</>,
               // Orders are in USD; an account is credited in its own currency.
               heldCurrency ? `Part of your balance is held in ${heldCurrency}, so USD amounts are estimates.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
+            )}
+            </>
           ) : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} processing`}</p> : null}
-          {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold until the bank decides on a card dispute`}</p> : null}
-          {review ? <p role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
+          {/* Not while paused: the review line says it, and the rows say On hold. */}
+          {figures && onHoldCents > 0 && !review ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold until the bank decides on a card dispute`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
