@@ -155,7 +155,7 @@ const copy = {
     why: (company, setting) =>
       `You’re receiving this because ${company} has “${setting}” emails turned on. Anyone with Settings access can turn them off in Settings → Notifications.`,
     whyAlways: (company) =>
-      `Sent to everyone at ${company}.`,
+      `Sent to everyone at ${/\.$/.test(company) ? company : `${company}.`}`,
     questions: "Questions? Reply to this email or contact",
   },
   zh: {
@@ -400,7 +400,7 @@ export function teamInviteEmail(invite, env) {
     : null;
   const body = [
     `${company} works with ${kind === "factory" ? "brands" : "factories"} on The Sourcing Club${role ? `, and has added you as ${role}` : ""}. ${can}`,
-    `Use the button below to create a password or log in with this address (${invite.email}), and you'll join ${company}.${expires ? ` It is open until ${expires}.` : ""}`,
+    `Use the button below to create a password or log in with this address (${invite.email}), and you'll join ${/\.$/.test(company) ? company : `${company}.`}${expires ? ` It is open until ${expires}.` : ""}`,
     zh,
   ].filter(Boolean).join("\n\n");
   // The id tells the page who was invited to what. The sample in Test emails has none.

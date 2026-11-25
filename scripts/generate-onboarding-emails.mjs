@@ -317,6 +317,9 @@ export function onboardingEmail(key, variables = {}) {
   const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
   const companyAddress = variables.companyAddress || "New York, USA";
   const html = emailHtml(key, data)
+    // A name ending in its own full stop ("Sample Co.") ends the sentence once, not "Co.." (Nov 25).
+    .replaceAll("{{ brand_name }}.", escapeHtml(/\.$/.test(companyName) ? companyName : `${companyName}.`))
+    .replaceAll("{{ company_name }}.", escapeHtml(/\.$/.test(companyName) ? companyName : `${companyName}.`))
     .replaceAll("{{ brand_name }}", escapeHtml(companyName))
     .replaceAll("{{ company_name }}", escapeHtml(companyName))
     .replaceAll("{{ dashboard_url }}", escapeHtml(dashboardUrl))
@@ -332,6 +335,8 @@ export function onboardingEmail(key, variables = {}) {
     subject: data.subject,
     html,
     text: `${data.title}\n\n${data.intro
+      .replaceAll("{{ brand_name }}.", /\.$/.test(companyName) ? companyName : `${companyName}.`)
+      .replaceAll("{{ company_name }}.", /\.$/.test(companyName) ? companyName : `${companyName}.`)
       .replaceAll("{{ brand_name }}", companyName)
       .replaceAll("{{ company_name }}", companyName)}\n\n${data.reviewTitle}\n${review}\n${reward}\n${data.nextTitle}\n${data.nextCopy}\n\n${data.cta}: ${dashboardUrl}\n\n${data.noAction}\n\n${data.questions} ${supportEmail}${data.stop}\n${data.footerLine}\nThe Sourcing Club · ${companyAddress}`,
   };

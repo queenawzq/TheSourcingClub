@@ -72,6 +72,13 @@ const SIGNED_IN = ["ready", "no-org"];
 
 function AdminConsole() {
   const { status, error, user, signOut } = useAuth();
+  // On a local copy whose emails land in Mailpit, a reserved address can still read its test emails (never on Vercel).
+  const [mailpit, setMailpit] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/send-test-email").then((reply) => (reply.ok ? reply.json() : null)).then((body) => { if (live) setMailpit(body?.mailpit === true); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
   const [staff, setStaff] = useState(null);
   // One adapter per signed-in person. Made on every render, each auth event
   // handed every screen a new set of actions, and the review page re-read the
@@ -135,7 +142,7 @@ function AdminConsole() {
       <App
         matchingPanel={<EvidenceReview staff />}
         testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
-        testEmailsUnavailable={reservedEmailNotice(user?.email)}
+        testEmailsUnavailable={mailpit ? null : reservedEmailNotice(user?.email)}
         // Staff have no org, so nothing can notify them; the design's bell
         // and its count of 5 had nothing behind them.
         showNotifications={false}
