@@ -1427,7 +1427,6 @@ export const factoryMainZhText = {
   "shipping terms (try EXW, FOB or DDP)": "运输条款（可填 EXW、FOB 或 DDP）",
   "quote valid until": "报价有效期",
   "Show Original": "查看原文",
-  "See original": "查看原文",
   "Translate to Chinese": "翻译成中文",
   "Today": "今天",
   "Yesterday": "昨天",

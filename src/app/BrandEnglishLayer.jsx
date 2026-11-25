@@ -20,7 +20,7 @@ import { needsEnglish } from "../shared/profile-translation.mjs";
 import { cardFor, labelAnchors, translatesItself } from "./translation-card.mjs";
 import "./profile/profile.css";
 
-const LEAVE_ALONE = "script, style, input, textarea, select, [contenteditable], [contenteditable] *, .message-bubble, .message-thread-card, .profile-translation-controls";
+const LEAVE_ALONE = "script, style, input, textarea, select, [contenteditable], [contenteditable] *, .message-bubble, .message-thread-card em, .profile-translation-controls";
 const FAILED_TITLE = "Couldn't translate this. Shown as written.";
 const LABEL = { english: "Automatically translated to English", original: "Original text" };
 const BUTTON = { english: "See original", original: "See translation" };
