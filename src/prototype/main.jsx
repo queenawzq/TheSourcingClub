@@ -3415,6 +3415,7 @@ export function BrandOnboarding({
           termsAcceptance={termsAcceptance}
           stakeholderNote={stakeholderNote}
           discountOffer={discountOffer}
+          extraChipGroups={extraChipGroups}
         />
         {extra}
 
@@ -3457,7 +3458,7 @@ export function BrandOnboarding({
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance, stakeholderNote = null, discountOffer = true }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance, stakeholderNote = null, discountOffer = true, extraChipGroups }) {
   // Live mounts replace a hardcoded option list with the taxonomy; the
   // prototype passes nothing and keeps its own. The design is the UI, never
   // the data source.
@@ -3737,7 +3738,10 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
     return (
       <div className="brand-onboarding-review-grid">
-        {sections.map(({ title, step: targetStep, rows }) => (
+        {sections.map(({ title, step: targetStep, rows: designedRows }) => {
+          // A live mount's extra chip groups are read back with their step.
+          const rows = [...designedRows, ...(extraChipGroups?.[targetStep] ?? []).map(([label]) => [label, ""])];
+          return (
           <section key={title}>
             <div className="brand-onboarding-review-section-header">
               <h2>{title}</h2>
@@ -3759,7 +3763,8 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
               ))}
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
     );
   }

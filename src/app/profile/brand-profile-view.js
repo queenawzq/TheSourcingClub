@@ -31,6 +31,7 @@ export function brandChips(selected, terms, profile = null) {
   const chips = {
     categories: chipLabels(CATEGORY_KIND, selected, terms),
     products: chipLabels("product_category", selected, terms),
+    productionTypes: chipLabels("production_type", selected, terms),
     marketLevel: chipLabels("market_level", selected, terms),
     regions: chipLabels("region", selected, terms),
     certifications: chipLabels("certification", selected, terms),
@@ -259,6 +260,7 @@ export function brandProfileView(parts) {
     ],
     fitSections: [
       ["What the brand makes", chips.products],
+      ["Production type", chips.productionTypes],
       ["Market level", marketLevel],
       ["Preferred regions", chips.regions],
       ["Certifications requested", chips.certifications],
