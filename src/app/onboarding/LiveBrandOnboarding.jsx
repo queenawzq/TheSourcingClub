@@ -132,7 +132,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
           listTermsByKind(kinds),
           getSelectedTerms("brand_profile", org.id),
           supabase.from("brand_profiles").select("*").eq("org_id", org.id).maybeSingle(),
-          supabase.from("org_invitations").select("email, role, invited_name, title").eq("org_id", org.id).order("created_at"),
+          supabase.from("org_invitations").select("email, role, invited_name, title").eq("org_id", org.id).eq("status", "pending").order("created_at"),
           ...Object.keys(UPLOADED_FLAG).map((kind) => listDocuments(org.id, kind)),
         ]);
         if (cancelled) return;
@@ -315,7 +315,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       const stakeholders = submitted[onboardingFieldName("Decision makers")];
       if (stakeholders?.length) {
         const [{ data: invited }, members] = await Promise.all([
-          supabase.from("org_invitations").select("email").eq("org_id", org.id),
+          supabase.from("org_invitations").select("email").eq("org_id", org.id).eq("status", "pending"),
           listMembers(org.id),
         ]);
         const already = new Set([
