@@ -1571,7 +1571,7 @@ export const factoryMainZhText = {
   "Edit project": "编辑项目",
   "e.g. Organic poplin fit sample": "例如：有机府绸试身样",
   "e.g. Wovens · sample development": "例如：梭织 · 样品开发",
-  "e.g. Production-floor walkthrough": "例如：生产车间介绍视频",
+  "e.g. Production-floor walkthrough": "例如：工厂介绍视频",
   "e.g. Cutting, sewing lines, QC and packing": "例如：裁剪、缝制线、质检和包装",
   "e.g. Organic cotton woven shirt production": "例如：有机棉梭织衬衫生产",
   "Close profile editor": "关闭资料编辑",
@@ -4138,7 +4138,7 @@ const profileCompletionIconMap = {
  */
 export function FactoryProfileCompletionPage({ onBack, live = null, language = "en" }) {
   const checks = live ? live.checks : profileCompletionChecks;
-  const completeCount = checks.filter((item) => item.tone === "complete").length;
+  const completeCount = checks.filter((item) => item.tone === "complete" && !item.optional).length;
   const progressCount = checks.filter((item) => item.tone === "progress").length;
   const attentionCount = checks.filter((item) => item.tone === "missing").length;
 

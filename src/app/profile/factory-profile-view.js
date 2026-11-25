@@ -284,7 +284,7 @@ export function factoryProfileChecks(parts, now = new Date(), language = "en") {
         : certificates.length
           ? complete(t(`Every certification you claim has its certificate file: ${listWords(certificates.map((cert) => cert.name))}.`, `你填写的每项认证都已有证书文件：${list(certificates.map((cert) => cert.name))}。`))
           // Nothing claimed is not a finished row: certifications are optional (R3g3).
-          : complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"), "Optional")),
+          : { ...complete(t("No certifications claimed. Add any you hold under Verification.", "尚未填写认证。如持有认证，可在验证资料中添加。"), "Optional"), optional: true }),
     },
     {
       key: "freshness",
