@@ -71,14 +71,14 @@ export function priceLine(lowCents, highCents) {
  * listed by name, which that parser leaves alone, so saving keeps the names
  * rather than renaming them "Colour 1", "Colour 2".
  */
-export function quantityLine(total, splits = []) {
+export function quantityLine(total, splits = [], units = "units total") {
   if (!total && !splits.length) return "";
   const sum = total ?? splits.reduce((acc, split) => acc + split.quantity, 0);
   if (!splits.length) return `${sum} units`;
   const generic = splits.every((split, index) => split.colour === `Colour ${index + 1}`);
   const even = splits.every((split) => split.quantity === splits[0].quantity);
   if (generic && even) {
-    return `${sum} units total · ${splits.length} colors, ${splits[0].quantity} each`;
+    return `${sum} ${units} · ${splits.length} colors, ${splits[0].quantity} each`;
   }
-  return `${sum} units total · ${splits.map((split) => `${split.colour} ${split.quantity}`).join(", ")}`;
+  return `${sum} ${units} · ${splits.map((split) => `${split.colour} ${split.quantity}`).join(", ")}`;
 }

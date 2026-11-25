@@ -135,6 +135,8 @@ const PATTERNS = [
   [/^(\d+) weeks? ago$/, (m) => `${m[1]} 周前`],
   [new RegExp(`^${MON} roughly ([\\d,.-]+) pieces$`), (m) => `${MONTHS[m[1]]} 月约 ${m[2]} 件`],
   [/^([\d,]+) units?$/, (m) => `${m[1]} 件`],
+  // A request's even colour split (quantityLine): "2 colors, 200 each".
+  [/^(\d+) colors(?:, ([\d,]+) each)?$/, (m) => (m[2] ? `${m[1]} 个颜色，每色 ${m[2]} 件` : `${m[1]} 个颜色`)],
   [/^([\d,]+)\s*[-–]\s*([\d,]+) units$/, (m) => `${m[1]}–${m[2]} 件`],
   [/^(\d+) days?$/, (m) => `${m[1]} 天`],
   [/^(\d+)\s*[-–]\s*(\d+) days$/, (m) => `${m[1]}–${m[2]} 天`],

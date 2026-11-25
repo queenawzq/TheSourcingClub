@@ -1,3 +1,5 @@
+import { quantityLine } from "./resume-fields.js";
+
 /**
  * A request's quantity and samples in the brand's own words, for every
  * screen a vendor reads them on.
@@ -8,20 +10,16 @@
  * reduced both to "400 units" and "Sample required".
  */
 
-/** "400 units · Sage 150, Ecru 250"; generic colours as "2 colours, 200 each". */
+/**
+ * "400 units · Sage 150, Ecru 250"; generic colours as "2 colors, 200 each".
+ * The composer's and the admin page's quantityLine, so every reader sees the
+ * same line; "units" rather than "units total", which live-zh translates.
+ */
 export function requestQuantity(total, splits = []) {
-  const rows = (splits ?? []).filter((split) => split?.colour && Number(split.quantity) > 0);
-  const sum = total ?? (rows.length ? rows.reduce((acc, split) => acc + Number(split.quantity), 0) : null);
-  if (!sum) return "";
-  const number = (value) => Number(value).toLocaleString("en-US");
-  const units = `${number(sum)} units`;
-  if (rows.length < 2) return units;
-  const generic = rows.every((split, index) => split.colour === `Colour ${index + 1}`);
-  if (generic) {
-    const even = rows.every((split) => Number(split.quantity) === Number(rows[0].quantity));
-    return `${units} · ${rows.length} colours${even ? `, ${number(rows[0].quantity)} each` : ""}`;
-  }
-  return `${units} · ${rows.map((split) => `${split.colour} ${number(split.quantity)}`).join(", ")}`;
+  const rows = (splits ?? [])
+    .filter((split) => split?.colour && Number(split.quantity) > 0)
+    .map((split) => ({ colour: split.colour, quantity: Number(split.quantity) }));
+  return quantityLine(total ?? null, rows.length >= 2 ? rows : [], "units");
 }
 
 /** The sample plan as the brand wrote it, else whether one is required. */
@@ -31,9 +29,12 @@ export function requestSamples(rfq) {
   return rfq?.requires_sample ? "Sample required" : "No sample";
 }
 
-/** The short card tag: the brand's sample words, else the design's tag. */
+/** Longer words than this would overflow the card's one-line tag. */
+const TAG_LENGTH = 32;
+
+/** The short card tag: the brand's sample words when they fit, else the design's tag. */
 export function requestSampleTag(rfq) {
   const notes = rfq?.sample_notes?.trim();
-  if (notes) return notes;
+  if (notes && notes.length <= TAG_LENGTH) return notes;
   return rfq?.requires_sample ? "Sample before bulk" : "";
 }
