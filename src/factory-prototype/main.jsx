@@ -2096,7 +2096,7 @@ const onboardingCopy = {
         title: "添加工厂背景",
         intro: "补充工厂介绍、生产优势和合作方式，帮助品牌更快判断是否匹配。",
         brandLabel: "工厂介绍",
-        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送询价前需要了解的信息。",
+        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送 RFQ 前需要了解的信息。",
         logoTitle: "工厂 Logo",
         logoHelper: "上传工厂 logo、字标或图标。",
         logoAccept: "SVG、PNG 或 JPG",
