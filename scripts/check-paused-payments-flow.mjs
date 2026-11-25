@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { notificationBody, notificationTitle } from "../src/shared/notification-text.mjs";
+import { applyRefundUpdate } from "../api/_stripe.js";
 
 // ---------------------------------------------------------------------------
 // Arguments and keys.
@@ -42,7 +43,7 @@ const argValue = (name) => {
   return eq ? eq.slice(name.length + 1) : undefined;
 };
 const REPEAT = Math.max(1, Number(argValue("--repeat") ?? 1));
-const ONLY = argValue("--only") ? new Set(argValue("--only").split(",").map(Number)) : null;
+const ONLY = argValue("--only") ? new Set(argValue("--only").split(",").map((key) => key.trim())) : null;
 const VERBOSE = argv.includes("--verbose");
 
 function loadEnvFile(path) {
@@ -76,6 +77,8 @@ const PASSWORD = "pp flow 8 check";
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const money = (cents) => `$${(Number(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 class Check extends Error {}
+/** Neither pass nor fail: something outside the product (Stripe test mode's timing) didn't happen in time. */
+class Skip extends Error {}
 let currentStep = "";
 const step = (name) => { currentStep = name; if (VERBOSE) console.log(`      · ${name}`); };
 function expectEq(got, want, what) {
@@ -835,7 +838,7 @@ const SCENARIOS = {
     expectEq(factoryRefundNotices.length, 1, "factory not told of refunds TSC paid");
   }],
 
-  9: ["In-app refund fails later; Stripe unreachable, then Check again", async (run) => {
+  "9a": ["In-app refund fails later (Stripe test mode's own failure; skipped when Stripe is slow)", async (run) => {
     const c = await companies(`S9R${run}`);
     const { staff } = await people();
     const A = await runningOrder(c, `S9R${run} failing tee`);
@@ -850,8 +853,18 @@ const SCENARIOS = {
     const share = r.body.factoryCents;
     expectEq(share, Math.round(3000 * 6500 / paidA.charged), "the factory's share of $30.00");
     expectEq(Number((await balanceOf(c, "balance after the refund")).total_cents), Number(before.total_cents) - share, "share taken from the balance");
-    step("Stripe fails the refund later");
-    const failed = await waitFor(async () => (await admin.from("staff_refunds").select("*").eq("payment_id", pA.id).eq("status", "failed")).data?.[0], "the refund failing", { timeout: 420_000, every: 3000 });
+    step("Stripe fails the refund later (its test card, on Stripe's own clock)");
+    let failed = null;
+    try {
+      failed = await waitFor(async () => (await admin.from("staff_refunds").select("*").eq("payment_id", pA.id).eq("status", "failed")).data?.[0],
+        "the refund failing", { timeout: 300_000, every: 3000 });
+    } catch {
+      const atStripe = (await stripe.refunds.list({ payment_intent: paidA.intentId })).data[0]?.status;
+      // Ours still matches Stripe's: nothing to test until Stripe fails it.
+      const ours = (await admin.from("staff_refunds").select("status").eq("payment_id", pA.id)).data?.[0]?.status;
+      if (atStripe !== "failed") throw new Skip(`Stripe hasn't failed the refund yet (Stripe: ${atStripe}; ours: ${ours})`);
+      throw new Check(`Stripe failed the refund but it isn't recorded (ours: ${ours})`);
+    }
     expectEq(Number(failed.amount_cents), 3000, "the failed refund");
     expectEq(Number((await balanceOf(c, "balance after the failure")).total_cents), Number(before.total_cents), "the share given back exactly");
     const p = await paymentRow(pA.id);
@@ -860,8 +873,42 @@ const SCENARIOS = {
     const fn = await expectNotice(c.factoryOrg.id, TEXT.fRefundFailed(info.step, info.label, share), "factory told its share is back");
     expectTrue(notificationTitle(fn, { timeZone: "UTC", locale: "zh" }) !== fn.title, "factory's failure notice has Chinese", notificationTitle(fn, { timeZone: "UTC", locale: "zh" }));
     expectEq((await stripe.refunds.list({ payment_intent: paidA.intentId })).data.length, 1, "Stripe made one refund only");
-    step("Stripe unreachable: the claim is left; Check again finishes it once");
-    const B = await runningOrder(c, `S9R${run} unreachable tee`);
+  }],
+
+  "9b": ["In-app refund fails later (driven through the server); Stripe unreachable, then Check again", async (run) => {
+    const c = await companies(`S9bR${run}`);
+    const { staff } = await people();
+    const A = await runningOrder(c, `S9bR${run} failing tee`);
+    const pA = await duePayment(A);
+    const paidA = await pay(pA, "pm_card_visa");
+    must((await approveStep(A)).result, "approve");
+    const before = await balanceOf(c, "balance before");
+    const info = await stepInfo(A, pA);
+    step("refund $30.00, the factory's balance pays its share");
+    const r = await api("/api/stripe-refund", staff, { paymentId: pA.id, amountCents: 3000, payer: "factory", note: "Two units short." });
+    expectEq([r.status, r.body?.status], [200, "refunded"], "refund accepted at first");
+    const share = r.body.factoryCents;
+    expectEq(share, Math.round(3000 * 6500 / paidA.charged), "the factory's share of $30.00");
+    expectEq(Number((await balanceOf(c, "balance after the refund")).total_cents), Number(before.total_cents) - share, "share taken from the balance");
+    step("Stripe's webhooks for the refund are in; then it fails (refund.failed, through the server's own handler)");
+    await waitFor(() => relay.log.some((e) => e.intent === paidA.intentId && e.type === "charge.refunded" && e.status === 200), "the refund's webhook", { timeout: 60_000 });
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    const made = (await stripe.refunds.list({ payment_intent: paidA.intentId })).data[0];
+    await applyRefundUpdate({ stripe, db: admin, refund: { ...made, status: "failed", failure_reason: "expired_or_canceled_card" } });
+    const failed = await waitFor(async () => (await admin.from("staff_refunds").select("*").eq("payment_id", pA.id).eq("status", "failed")).data?.[0],
+      "the refund failing", { timeout: 30_000, every: 1000 });
+    expectEq(failed.failure, "Stripe refused the refund: the card was closed. Nothing was refunded, and the factory's balance is unchanged.", "the reason in our words");
+    const board = must(await staff.client.rpc("payment_review_board"), "board");
+    expectTrue(board.some((x) => x.kind === "staff_refund" && x.id === failed.id && x.open), "an open Review needed row for staff", failed.id);
+    expectEq(Number(failed.amount_cents), 3000, "the failed refund");
+    expectEq(Number((await balanceOf(c, "balance after the failure")).total_cents), Number(before.total_cents), "the share given back exactly");
+    const p = await paymentRow(pA.id);
+    expectEq([p.state, Number(p.refunded_cents)], ["confirmed", 0], "the step funded again, nothing refunded");
+    await expectNotice(c.brandOrg.id, TEXT.bRefundFailed(info.step, 3000), "brand told it didn't go through");
+    const fn = await expectNotice(c.factoryOrg.id, TEXT.fRefundFailed(info.step, info.label, share), "factory told its share is back");
+    expectTrue(notificationTitle(fn, { timeZone: "UTC", locale: "zh" }) !== fn.title, "factory's failure notice has Chinese", notificationTitle(fn, { timeZone: "UTC", locale: "zh" }));
+        step("Stripe unreachable: the claim is left; Check again finishes it once");
+    const B = await runningOrder(c, `S9bR${run} unreachable tee`);
     const pB = await duePayment(B);
     const paidB = await pay(pB, "pm_card_visa");
     const claim = must(await staff.client.rpc("claim_staff_refund", { target_payment: pB.id, amount_cents: 2000, payer: null, note: "Price adjustment.", factory_cents: null }), "claim");
@@ -874,7 +921,7 @@ const SCENARIOS = {
     const listB = (await stripe.refunds.list({ payment_intent: paidB.intentId })).data;
     expectEq(listB.map((x) => x.amount), [2000], "Stripe refunded once");
     step("Stripe refunded but the answer was lost: Check again finds it");
-    const C = await runningOrder(c, `S9R${run} lost answer tee`);
+    const C = await runningOrder(c, `S9bR${run} lost answer tee`);
     const pC = await duePayment(C);
     const paidC = await pay(pC, "pm_card_visa");
     const claimC = must(await staff.client.rpc("claim_staff_refund", { target_payment: pC.id, amount_cents: 2000, payer: null, note: "Price adjustment.", factory_cents: null }), "claim C");
@@ -1163,7 +1210,7 @@ try {
   for (let run = 1; run <= REPEAT; run += 1) {
     console.log(`\nrun ${run} of ${REPEAT}`);
     for (const [n, [name, fn]] of Object.entries(SCENARIOS)) {
-      if (ONLY && !ONLY.has(Number(n))) continue;
+      if (ONLY && !ONLY.has(String(n))) continue;
       const t0 = Date.now();
       currentStep = "";
       try {
@@ -1171,6 +1218,11 @@ try {
         (results[n] ??= []).push({ ok: true, ms: Date.now() - t0 });
         console.log(`  PASS ${n}. ${name} (${Math.round((Date.now() - t0) / 1000)} s)`);
       } catch (failure) {
+        if (failure instanceof Skip) {
+          (results[n] ??= []).push({ ok: true, skipped: true, message: failure.message, ms: Date.now() - t0 });
+          console.log(`  SKIPPED ${n}. ${name}: ${failure.message}`);
+          continue;
+        }
         const message = failure instanceof Check ? failure.message : `${failure?.message ?? failure}${VERBOSE ? `\n${failure?.stack}` : ""}`;
         (results[n] ??= []).push({ ok: false, message, step: currentStep, ms: Date.now() - t0 });
         console.log(`  FAIL ${n}. ${name}: [${currentStep}] ${message}`);
@@ -1185,9 +1237,12 @@ try {
 }
 console.log(`\nsummary (${REPEAT} run${REPEAT > 1 ? "s" : ""}, ${Math.round((Date.now() - started) / 60000)} min)`);
 for (const [n, list] of Object.entries(results)) {
-  const passed = list.filter((r) => r.ok).length;
-  const ok = passed === list.length;
+  const passed = list.filter((r) => r.ok && !r.skipped).length;
+  const skipped = list.filter((r) => r.skipped).length;
+  const ok = list.every((r) => r.ok);
   if (!ok) exitCode = 1;
-  console.log(`  ${ok ? "PASS" : "FAIL"} ${n}. ${SCENARIOS[n][0]}: ${passed}/${list.length}${ok ? "" : ` — ${list.find((r) => !r.ok).message}`}`);
+  const word = !ok ? "FAIL" : skipped ? "SKIPPED" : "PASS";
+  console.log(`  ${word} ${n}. ${SCENARIOS[n][0]}: ${passed}/${list.length} passed${skipped ? `, ${skipped} skipped (${list.find((r) => r.skipped).message})` : ""}`
+    + `${ok ? "" : ` — ${list.find((r) => !r.ok).message}`}`);
 }
 setTimeout(() => process.exit(exitCode), 500);
