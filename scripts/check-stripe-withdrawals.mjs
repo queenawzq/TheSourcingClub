@@ -823,24 +823,24 @@ for (const status of ["failed", "canceled"]) {
 console.log("stripe withdrawals: the fee is taken once, given back when nothing went, refused when too small; refunds recorded, never added to");
 
 // Flow check R2m5: a new payout account carries what the company already said
-// (website, what it makes, clothing), and a refused detail is dropped alone.
+// (website, what it sells), and a refused detail is dropped alone.
 {
   const { stripeBusinessProfile, prefillAttempts } = await import("../api/stripe-connect.js");
   assert.deepEqual(stripeBusinessProfile({ website: "", intro: "  Knit sportswear maker\nin Leiria. ", categories: ["Activewear"] }),
-    { product_description: "Knit sportswear maker in Leiria.", mcc: "5137" }, "no website: its intro, and the industry");
-  assert.deepEqual(stripeBusinessProfile({ categories: ["Menswear", "Activewear", "Menswear"] }),
-    { product_description: "Apparel manufacturing: Menswear, Activewear.", mcc: "5137" }, "no intro: what it makes");
+    { product_description: "Knit sportswear maker in Leiria." }, "no website: its intro, and no industry (MCC not decided)");
+  assert.deepEqual(stripeBusinessProfile({ categories: ["Menswear", "Activewear", "Menswear"], vendorKind: "manufacturer" }),
+    { product_description: "Apparel manufacturing: Menswear, Activewear." }, "no intro: what a factory makes");
+  assert.deepEqual(stripeBusinessProfile({ categories: ["Outerwear"], vendorKind: "trading_company" }),
+    { product_description: "Apparel sourcing: Outerwear." }, "a trading company sources, it does not manufacture");
   assert.equal(stripeBusinessProfile({ website: "https://a.example.org" }).url, "https://a.example.org");
   const base = { country: "PT", business_profile: { name: "Co" } };
-  const known = { url: "https://bad.example.com", product_description: "Tees.", mcc: "5137" };
+  const known = { url: "https://bad.example.com", product_description: "Tees." };
   const tries = prefillAttempts(base, known);
   assert.deepEqual(tries.first.business_profile, { name: "Co", ...known });
   const refused = (param) => ({ type: "StripeInvalidRequestError", param });
   const second = tries.after(tries.first, refused("business_profile[url]"));
-  assert.deepEqual(second.business_profile, { name: "Co", product_description: "Tees.", mcc: "5137" }, "a refused website is dropped alone");
-  const third = tries.after(second, refused("business_profile[mcc]"));
-  assert.deepEqual(third.business_profile, { name: "Co", product_description: "Tees." }, "then a refused industry");
-  assert.equal(tries.after(third, refused("business_profile[product_description]")), base, "nothing left: the bare account");
+  assert.deepEqual(second.business_profile, { name: "Co", product_description: "Tees." }, "a refused website is dropped alone");
+  assert.equal(tries.after(second, refused("business_profile[product_description]")), base, "nothing left: the bare account");
   assert.equal(tries.after(second, refused("business_profile")), base, "a refusal naming no field: the bare account");
   assert.equal(tries.after(base, refused("business_profile")), null, "the bare account refused: not retried");
   assert.equal(tries.after(tries.first, refused("country")), null, "anything else: not retried");

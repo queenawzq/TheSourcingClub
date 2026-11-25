@@ -180,7 +180,7 @@ export default async function handler(request, response) {
           metadata: { org_id: orgId },
           settings: { payouts: { schedule: { interval: "manual" } } },
         };
-        // What the company already told TSC (its website, what it makes), so
+        // What the company already told TSC (its website, what it sells), so
         // Stripe's form does not ask for it again (TSC collects the requirements here).
         const known = await knownCompanyDetails(db, orgId);
         // A detail Stripe will not take (a website it refuses, say) must never
@@ -347,13 +347,13 @@ const WITHDRAWAL_COLUMNS = "id, provider, status, amount_cents, currency, paid_t
 async function knownCompanyDetails(db, orgId) {
   try {
     const [{ data: profile }, { data: links }] = await Promise.all([
-      db.from("factory_profiles").select("website_url, intro").eq("org_id", orgId).maybeSingle(),
+      db.from("factory_profiles").select("website_url, intro, vendor_kind").eq("org_id", orgId).maybeSingle(),
       db.from("taxonomy_links").select("taxonomy_terms (kind, label_en)")
         .eq("org_id", orgId).eq("subject_type", "factory_profile"),
     ]);
     const categories = (links ?? []).map((link) => link.taxonomy_terms)
       .filter((term) => term?.kind === "product_category" && term.label_en).map((term) => term.label_en);
-    return { businessProfile: stripeBusinessProfile({ website: profile?.website_url, intro: profile?.intro, categories }) };
+    return { businessProfile: stripeBusinessProfile({ website: profile?.website_url, intro: profile?.intro, categories, vendorKind: profile?.vendor_kind }) };
   } catch {
     return { businessProfile: {} };
   }
@@ -361,21 +361,20 @@ async function knownCompanyDetails(db, orgId) {
 
 /**
  * What the company told TSC, in Stripe's business_profile words, so Stripe's
- * form does not ask again (flow check W4, R2m5): its website; what it sells
- * (its own intro, else the categories it makes); and the industry, clothing
- * (MCC 5137, uniforms and commercial clothing), since every company that is
- * paid on TSC makes garments for brands. Only what it has: an empty field is
- * left for the form.
+ * form does not ask again (flow check W4, R2m5): its website, and what it
+ * sells (its own intro, else the categories it makes or sources, by its
+ * vendor_kind). Only what it has: an empty field is left for the form. The
+ * industry (MCC) is not set: which code fits is not decided.
  */
-export function stripeBusinessProfile({ website = "", intro = "", categories = [] } = {}) {
+export function stripeBusinessProfile({ website = "", intro = "", categories = [], vendorKind = null } = {}) {
   const profile = {};
   const url = String(website ?? "").trim();
   if (/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(url)) profile.url = url;
   const about = String(intro ?? "").replace(/\s+/g, " ").trim();
   const made = [...new Set(categories.map((label) => String(label).trim()).filter(Boolean))];
-  const description = about || (made.length ? `Apparel manufacturing: ${made.join(", ")}.` : "");
+  const activity = vendorKind === "trading_company" ? "Apparel sourcing" : "Apparel manufacturing";
+  const description = about || (made.length ? `${activity}: ${made.join(", ")}.` : "");
   if (description) profile.product_description = description.slice(0, 500);
-  profile.mcc = "5137";
   return profile;
 }
 
