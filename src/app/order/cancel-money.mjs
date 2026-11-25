@@ -15,13 +15,19 @@
  * factory reads the step amounts. No line names TSC.
  */
 import { formatMoney } from "../../lib/money.js";
+import { chargedCents } from "../../lib/domain/payment.js";
+import { paymentRefund } from "./payment-summary.mjs";
 
 const released = (p) => (p.state === "confirmed" && Boolean(p.release_requested_at)) || p.state === "released";
 const toRefund = (p) => (p.state === "confirmed" && !p.release_requested_at) || p.state === "processing";
 const refunded = (p) => p.state === "cancelled" && Boolean(p.refunded_at);
 
-/** What the brand paid for a payment, fees included. */
-const brandPaid = (p) => Number(p.charge_cents ?? p.charged_cents ?? p.amount_cents) || 0;
+/** What the brand paid for a payment, fees included, less what already went back to it. */
+const brandPaid = (p) => Math.max(0, chargedCents(p) - paymentRefund(p).brand);
+/** What already went back to the brand from a funded payment (staff refunds, a lost dispute). */
+const alreadyBack = (p, isFactory) => (["confirmed", "released"].includes(p.state)
+  ? (isFactory ? Number(p.factory_refund_cents) || 0 : paymentRefund(p).brand)
+  : 0);
 /** The factory's part, less anything already returned to the brand from it. */
 const factoryPart = (p) => Math.max(0, (Number(p.amount_cents) || 0) - (Number(p.factory_refund_cents) || 0));
 
@@ -39,7 +45,8 @@ export function cancelMoneyLines(payments, { isFactory, counterparty, cancelled 
   const other = counterparty || (isFactory ? "the brand" : "the factory");
 
   const back = sum(rows.filter(toRefund), figure);
-  const done = sum(rows.filter(refunded), (p) => (isFactory ? factoryPart(p) : Number(p.refunded_cents ?? 0) || brandPaid(p)));
+  const done = sum(rows.filter(refunded), (p) => (isFactory ? factoryPart(p) : Number(p.refunded_cents ?? 0) || chargedCents(p)))
+    + sum(rows, (p) => alreadyBack(p, isFactory));
   const kept = sum(rows.filter(released), figure);
   const lines = [];
 

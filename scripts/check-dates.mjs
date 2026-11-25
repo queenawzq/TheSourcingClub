@@ -411,6 +411,18 @@ async function formatters() {
     expect("brand payments: Held, net", refunds.metrics.find(([name]) => name === "Held")?.[1], "$53.50");
     expect("brand payments: Paid, net", refunds.metrics.find(([name]) => name === "Paid")?.[1], "$0.00");
 
+    // Cancelling (flow check E4): refunds already made count, so no money
+    // sentence claims more than is still there.
+    {
+      const { cancelMoneyLines } = await load("/src/app/order/cancel-money.mjs");
+      const paidOutThenRefunded = { state: "released", release_requested_at: "2026-11-20T10:00:00Z", refunded_at: "2026-11-21T10:00:00Z", amount_cents: 100000, charged_cents: 107000, charge_cents: 107000, refunded_cents: 107000, factory_refund_cents: 100000, currency: "USD" };
+      const halfRefunded = { state: "confirmed", amount_cents: 100000, charged_cents: 107000, charge_cents: 107000, refunded_cents: 53500, factory_refund_cents: 50000, currency: "USD" };
+      expect("cancel: refunded after payout, brand", cancelMoneyLines([paidOutThenRefunded], { isFactory: false, counterparty: "F", cancelled: true }).join(" "), "$1,070.00 refunded to you.");
+      expect("cancel: refunded after payout, factory", cancelMoneyLines([paidOutThenRefunded], { isFactory: true, counterparty: "B", cancelled: true }).join(" "), "$1,000.00 refunded to B.");
+      expect("cancel: half refunded, brand", cancelMoneyLines([halfRefunded], { isFactory: false, counterparty: "F" }).join(" "), "$535.00 refunded to you. $535.00 paid for steps not yet released is refunded to you.");
+      expect("cancel: half refunded, factory", cancelMoneyLines([halfRefunded], { isFactory: true, counterparty: "B" }).join(" "), "$500.00 refunded to B. $500.00 for steps not yet released is refunded to B.");
+    }
+
     expect("quote: valid until", validUntilOf({ valid_until: "2026-10-26" }), "Oct 26, 2026");
     expect("quote: capacity window",
       formatCapacityWindow({ capacity_window_start: "2026-11-01", capacity_window_end: "2026-11-30" }, new Date(2026, 9, 1)),
