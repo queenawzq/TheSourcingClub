@@ -54,8 +54,8 @@ import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 import WithdrawalsSection from "./AdminWithdrawals.jsx";
 import { PaymentReviewsSection } from "./PaymentReviews.jsx";
-import { OrderSearchBar, OrderSearchSection } from "./OrderRefunds.jsx";
-import { paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
+import { HeldRefund, OrderSearchBar, OrderSearchSection } from "./OrderRefunds.jsx";
+import { adminRefundInfo, paymentReviewBoard } from "../../lib/domain/payment-reviews.js";
 import { adminBalanceAttention, adminWithdrawals, checkStripeWithdrawal, syncWithdrawals } from "../../lib/domain/withdrawals.js";
 
 function PaymentDate({ value }) {
@@ -88,6 +88,8 @@ const SentContext = createContext(null);
 // Orders of factories paused by a payment review: no payout button on their
 // rows (the database refuses every road too; 20261124100100).
 const PausedContext = createContext(new Set());
+// Held rows' refund facts ({ [paymentId]: { refundable_cents, refund_refusal, … } }); null on the design preview.
+const RefundInfoContext = createContext(null);
 const PAUSED_ROW = "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).";
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
@@ -128,7 +130,8 @@ function AccountNumber({ row, onViewed }) {
     setBusy(true);
     setProblem(null);
     try {
-      const answer = await revealNumber(row.payout_account_id);
+      // Named for this payout: only then is it "being sent" while the factory is paused.
+      const answer = await revealNumber(row.payout_account_id, { paymentId: row.payment_id });
       onViewed?.();
       if (answer.changed_at !== row.payout_changed_at) {
         setProblem("These details changed since this page loaded. Reload the page and check them.");
@@ -576,7 +579,7 @@ export function useNarrow() {
 }
 
 /** Whether a row in this section has a note and buttons. */
-const rowActs = (section, row, attempt) => section === "payout"
+const rowActs = (section, row, attempt, refundInfo = null) => (section === "held" && Boolean(refundInfo?.[row.payment_id]) && refundInfo[row.payment_id].refund_refusal !== "staff_refund_not_charged") || section === "payout"
   || (section === "clearing" && underway(row, attempt)) || (section === "failed" && (providerFailed(row, attempt) || Boolean(row.refund_failed_at)));
 
 function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns, notes }) {
@@ -584,10 +587,11 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
   const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
   const bankFee = withdrawalFee({ provider: "bank", amountCents: Number(row.amount_cents), currency: row.currency });
-  const acts = rowActs(section, row, attempt);
+  const refundInfo = useContext(RefundInfoContext);
+  const acts = rowActs(section, row, attempt, refundInfo);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
-  const noteInput = acts ? (
+  const noteInput = acts && section !== "held" ? (
     <>
       {section === "failed" && row.refund_failed_at ? (
         <label className="admin-sub">
@@ -615,7 +619,9 @@ function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} onNoteChange={setNote} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+  const buttons = section === "held"
+    ? <HeldRefund row={row} info={refundInfo?.[row.payment_id]} onRefunded={onChanged} />
+    : <Actions row={row} section={section} note={note} onNoteChange={setNote} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
 
   return (
     <>
@@ -724,7 +730,8 @@ function providerCounts(rows, attempts) {
 }
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
-  const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id)));
+  const refundInfo = useContext(RefundInfoContext);
+  const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id), refundInfo));
   // Only a payout has a note: a bank reference.
   const notes = columns && (id === "payout" || id === "failed");
   return (
@@ -791,6 +798,7 @@ export default function AdminPayments() {
   const [withdrawals, setWithdrawals] = useState({ withdrawals: [], poolPaymentIds: new Set() });
   const [attention, setAttention] = useState(null);
   const [reviews, setReviews] = useState(null);
+  const [refundInfo, setRefundInfo] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -803,6 +811,8 @@ export default function AdminPayments() {
       setAttention(checking);
       setReviews(reviewed);
       setRows(board);
+      // Refund… on the Held tab; without it the rows simply have no button.
+      adminRefundInfo(boardSections(board).held.map((row) => row.payment_id)).then(setRefundInfo, () => setRefundInfo(null));
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
       // Only says why a row waits; the board stands without it.
@@ -906,9 +916,11 @@ export default function AdminPayments() {
 
   return (
     <AdminWorkspaceShell onSignOut={signOut}>
+      <RefundInfoContext.Provider value={refundInfo}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
                      load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} withdrawals={withdrawals}
                      attention={attention} reviews={reviews} />
+      </RefundInfoContext.Provider>
     </AdminWorkspaceShell>
   );
 }

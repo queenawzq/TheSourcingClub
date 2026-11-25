@@ -1702,7 +1702,7 @@ function UsersPage({ users, onToggleStatus }) {
   useEffect(() => { loadPaused(); }, [loadPaused]);
   const showPaused = paused !== null && status === "Paused";
   const pausedRows = (paused ?? []).filter((brand) => {
-    const email = users.find((user) => user.orgId === brand.orgId)?.email ?? "";
+    const email = brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? "";
     return (!normalizedSearch || `${brand.name} ${email}`.toLowerCase().includes(normalizedSearch))
       && (userType === "All user types" || userType === "Brand");
   });
@@ -1796,7 +1796,7 @@ function PausedBrandsPanel({ rows, users, onUnpause }) {
             <tbody>
               {rows.map((brand) => (
                 <tr key={brand.orgId} data-testid="paused-brand">
-                  <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
+                  <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
                   <td><StatusPill tone="info">Brand</StatusPill></td>
                   <td className="admin-user-reason">{brand.reason}</td>
                   <td>{brand.since}</td>

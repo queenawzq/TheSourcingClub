@@ -50,6 +50,8 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
   const [working, setWorking] = useState(false);
   const [problem, setProblem] = useState(null);
   const [pendingId, setPendingId] = useState(null);
+  // What staff typed for the factory's part; null follows the most it can be.
+  const [factoryText, setFactoryText] = useState(null);
 
   useEffect(() => {
     let live = true;
@@ -67,9 +69,14 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
   const over = cents != null && cents > most;
   const approved = Boolean(preview?.approved_step);
   const factoryMax = Number(preview?.factory_max_cents ?? 0) || 0;
-  const factoryCents = preview && payer === "factory" ? factoryShare(preview, over ? most : cents) : 0;
+  // The most the factory can pay for this amount: its share of it, within what it can give back.
+  const factoryCap = preview ? Math.min(factoryMax, factoryShare(preview, over || cents == null ? most : cents)) : 0;
+  const typedFactory = factoryText == null ? factoryCap : centsFrom(factoryText);
+  const factoryOver = typedFactory != null && typedFactory > factoryCap;
+  const factoryCents = payer === "factory" && typedFactory != null && !factoryOver ? typedFactory : 0;
   const rest = Math.max(0, (cents ?? 0) - factoryCents);
-  const ready = preview && !pendingId && cents != null && cents > 0 && !over && (!approved || payer) && reason.trim() && !preview.refund_refusal;
+  const factoryOk = payer !== "factory" || (typedFactory != null && !factoryOver);
+  const ready = preview && !pendingId && cents != null && cents > 0 && !over && (!approved || payer) && factoryOk && reason.trim() && !preview.refund_refusal;
 
   async function send(work) {
     setWorking(true);
@@ -101,20 +108,24 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
             <fieldset className="admin-tier-picker payment-who-pays">
               <legend>Who pays for this refund?</legend>
               <Choice name="payer" value="factory" chosen={payer} onChoose={setPayer} title="Factory's balance"
-                      line={`Up to ${moneyIn(factoryMax, currency)} · the factory is told`} disabled={Boolean(pendingId)} />
+                      line={`Up to ${moneyIn(factoryCap, currency)} · the factory is told`} disabled={Boolean(pendingId)} />
               <Choice name="payer" value="tsc" chosen={payer} onChoose={setPayer} title="TSC"
                       line="Nothing changes for the factory" disabled={Boolean(pendingId)} />
             </fieldset>
           ) : null}
           {approved && payer === "factory" ? (
             <>
-              {/* The server takes the factory's share of the amount, capped; shown, not typed. */}
               <label className="factory-onboarding-field">
                 <span>From the factory's balance (USD)</span>
-                <input inputMode="decimal" value={typed(factoryCents)} readOnly data-testid="refund-factory-amount" />
+                <input inputMode="decimal" value={factoryText ?? typed(factoryCap)} disabled={Boolean(pendingId)} data-testid="refund-factory-amount"
+                       onChange={(event) => setFactoryText(event.target.value)} />
               </label>
-              <p className="admin-assist-meta">{`Up to ${moneyIn(factoryMax, currency)}`}</p>
-              {rest > 0 && !over ? <p className="payment-rest-line">{`TSC pays the rest (${moneyIn(rest, currency)})`}</p> : null}
+              <p className="admin-assist-meta">{`Up to ${moneyIn(factoryCap, currency)}`}</p>
+              {factoryOver ? (
+                <p className="admin-error" role="alert">{`You can take up to ${moneyIn(factoryCap, currency)} from the factory's balance.`}</p>
+              ) : typedFactory == null ? (
+                <p className="admin-error" role="alert">Enter an amount of $0.00 or more.</p>
+              ) : rest > 0 && !over ? <p className="payment-rest-line">{`TSC pays the rest (${moneyIn(rest, currency)})`}</p> : null}
             </>
           ) : null}
           <label className="factory-onboarding-field">
@@ -133,7 +144,10 @@ function RefundDialog({ payment, orderNumber, currency, onClose, onDone }) {
                   onClick={() => send(() => checkStaffRefund(pendingId))}>Check again</button>
         ) : (
           <button className="primary-btn" type="button" disabled={working || !ready} data-testid="refund-confirm"
-                  onClick={() => send(() => staffRefund({ paymentId: payment.payment_id, amountCents: cents, payer: approved ? payer : null, note: reason.trim() }))}>
+                  onClick={() => send(() => staffRefund({
+                    paymentId: payment.payment_id, amountCents: cents, payer: approved ? payer : null, note: reason.trim(),
+                    factoryCents: approved && payer === "factory" ? factoryCents : null,
+                  }))}>
             {`Refund ${moneyIn(cents ?? 0, currency)}`}
           </button>
         )}
@@ -160,6 +174,34 @@ function PaymentRow({ payment, order, onRefund }) {
         )}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Refund… on a row of the Held tab: the same dialog. A held step isn't the
+ * factory's money yet, so the dialog asks no "who pays" (approved_step is false).
+ */
+export function HeldRefund({ row, info, onRefunded }) {
+  const [open, setOpen] = useState(false);
+  const [heard, setHeard] = useState(null);
+  if (!info) return null;
+  const refusal = info.refund_refusal;
+  if (refusal === "staff_refund_not_charged") return null;
+  const payment = { payment_id: row.payment_id, step_title: row.milestone_title };
+  return (
+    <>
+      {heard ? <span className="admin-sub admin-row-message" role="status" data-testid="refund-done">{heard}</span> : null}
+      {refusal ? <span className="admin-sub admin-row-message">{ROW_REFUSAL[refusal] ?? REFUND_REFUSALS.staff_refund_over}</span> : null}
+      <button type="button" className="admin-reject" disabled={Boolean(refusal)} data-testid="staff-refund" onClick={() => setOpen(true)}>Refund…</button>
+      {open ? (
+        <RefundDialog payment={payment} orderNumber={row.order_number} currency={row.currency ?? "USD"} onClose={() => setOpen(false)}
+                      onDone={(result) => {
+                        setOpen(false);
+                        setHeard(result?.status === "pending" ? "Refund pending." : `Refunded ${moneyIn(result?.amountCents, row.currency)}.`);
+                        onRefunded?.();
+                      }} />
+      ) : null}
+    </>
   );
 }
 

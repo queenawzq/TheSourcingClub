@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { formatMoney } from "../../lib/money.js";
-import * as reviewsApi from "../../lib/domain/payment-reviews.js";
+import { resolveReview } from "../../lib/domain/payment-reviews.js";
 import { stripeDashboardUrl } from "../../lib/domain/stripe.js";
 
 /**
@@ -21,44 +21,12 @@ const day = (value) => (value ? new Date(value).toLocaleDateString("en-US", { mo
 const isRefund = (row) => row.reason === "refunded_in_stripe";
 const REASON = { card_dispute: "Card dispute", inquiry: "Inquiry", refunded_in_stripe: "Refund" };
 
-/**
- * Who was at fault. `resolveReview` is the database's own decision (§10);
- * until it is published, the three answers go through the two older ones:
- * no fault is the factory paying nothing, which unpauses the brand.
- */
-function resolve(row, fault, cents, note) {
-  if (typeof reviewsApi.resolveReview === "function") return reviewsApi.resolveReview(row.id, fault, cents, note);
-  if (fault === "factory_at_fault") return reviewsApi.factoryPays(row.id, cents, note);
-  if (fault === "brand_at_fault") return reviewsApi.tscPays(row.id, note);
-  return reviewsApi.factoryPays(row.id, 0, note);
-}
-
-/** What was decided, from the row's own decision (new names, then the older ones). */
-function faultOf(row) {
-  if (["factory_at_fault", "brand_at_fault", "no_fault"].includes(row.decision)) return row.decision;
-  if (row.state === "factory_paid" || row.decision === "factory_pays") {
-    return Number(row.returned_cents) > 0 ? "factory_at_fault" : "no_fault";
-  }
-  if (row.state === "tsc_paid" || row.decision === "tsc_pays") return isRefund(row) ? "no_fault" : "brand_at_fault";
-  return null;
-}
-
-/** The one line under the bar. */
+/** The one line under the bar: the server's words, then the date in the reader's zone. */
 function lineFor(row) {
-  if (row.step === 1) {
-    return row.respond_by && new Date(row.respond_by) > new Date() ? `Respond in Stripe by ${day(row.respond_by)}` : "Waiting for the bank's decision";
-  }
-  if (row.step === 2) return isRefund(row) ? "Refunded in Stripe" : "Bank ruled for the brand";
-  const who = row.decided_by_name ? ` · ${row.decided_by_name}` : "";
-  const when = row.step_date ? ` · ${day(row.step_date)}` : "";
-  const fault = faultOf(row);
-  if (fault === "factory_at_fault") return `Factory at fault · ${moneyIn(row.returned_cents, row.currency)} from its balance${who}${when}`;
-  if (fault === "brand_at_fault") return `Brand at fault · TSC absorbed ${moneyIn(row.amount_cents, row.currency)}${who}${when}`;
-  if (fault === "no_fault") return `No fault · TSC absorbed ${moneyIn(row.amount_cents, row.currency)}${who}${when}`;
-  if (row.state === "resumed") return `Bank ruled for TSC${when}`;
-  if (row.state === "closed") return `Bank ruled for the brand · step not approved${when}`;
-  if (row.state === "inquiry_closed") return `Inquiry closed${when}`;
-  return `${row.step_line ?? ""}${when}`;
+  const line = row.step_line ?? "";
+  const date = day(row.step_date);
+  if (!date) return line;
+  return Number(row.step) === 3 ? `${line} · ${date}` : `${line} ${date}`;
 }
 
 function Progress({ row }) {
@@ -114,7 +82,7 @@ export function Choice({ name, value, chosen, onChoose, title, line, disabled = 
 function ResolveDialog({ row, onClose, onDone }) {
   const refund = isRefund(row);
   const currency = row.currency || "USD";
-  const most = Math.max(0, Number(row.factory_max_cents ?? row.approve_max_cents) || 0);
+  const most = Math.max(0, Number(row.factory_max_cents) || 0);
   const back = Number(row.amount_cents) || 0;
   const [fault, setFault] = useState(null);
   const [amount, setAmount] = useState(typed(most));
@@ -131,7 +99,7 @@ function ResolveDialog({ row, onClose, onDone }) {
     setWorking(true);
     setProblem(null);
     try {
-      await resolve(row, fault, fault === "factory_at_fault" ? cents : null, note.trim());
+      await resolveReview(row.id, fault, fault === "factory_at_fault" ? cents : null, note.trim());
       onDone();
     } catch (failure) {
       setProblem(failure.message);

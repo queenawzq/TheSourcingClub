@@ -61,7 +61,7 @@ import {
 import { urlFor } from "../../lib/domain/documents.js";
 import { profileCompletion } from "./profile-completion.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
-import { pausedBrands, paymentReviewBoard, unpauseBrandOrg } from "../../lib/domain/payment-reviews.js";
+import { pausedBrands, unpauseBrandOrg } from "../../lib/domain/payment-reviews.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
 import { monthLine, quantityLine } from "../rfq/resume-fields.js";
@@ -400,31 +400,15 @@ export function toAdminUser(user) {
   };
 }
 
-/** Why a brand is paused, from its latest pausing review: "Brand at fault · TSC-000016". */
-function pauseReason(review) {
-  if (!review) return "";
-  const decision = review.decision;
-  const words = review.state === "open" ? "Bank ruling pending"
-    : review.state === "resumed" ? "Bank ruled for TSC"
-    : decision === "brand_at_fault" || review.state === "tsc_paid" ? "Brand at fault"
-    : "Bank ruled for the brand";
-  return `${words} · ${review.order_number}`;
-}
-
-/** Paused brands for Users, each with its reason (the database's own when it gives one). */
+/** Paused brands for Users: "Brand at fault · TSC-000016", and the owner's email under the name. */
 async function pausedBrandRows() {
-  const [brands, board] = await Promise.all([pausedBrands(), paymentReviewBoard().catch(() => [])]);
-  return brands.map((brand) => {
-    const latest = board
-      .filter((review) => review.brand_org_id === brand.org_id && review.reason === "card_dispute" && review.state !== "inquiry_closed")
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-    return {
-      orgId: brand.org_id,
-      name: brand.name,
-      since: shortDate(brand.since),
-      reason: brand.reason ? `${brand.reason}${brand.order_number ? ` · ${brand.order_number}` : ""}` : pauseReason(latest),
-    };
-  });
+  return (await pausedBrands()).map((brand) => ({
+    orgId: brand.org_id,
+    name: brand.name,
+    email: brand.owner_email ?? "",
+    since: shortDate(brand.since),
+    reason: [brand.reason, brand.order_number].filter(Boolean).join(" · "),
+  }));
 }
 
 export function createAdminAdapter({ user, signOut }) {
