@@ -96,7 +96,7 @@ async function staffRefund({ stripe, db, caller, body, response }) {
   const claim = read.data;
   let outcome;
   try {
-    outcome = await makeStaffRefund({ stripe, db, claim });
+    outcome = await makeStaffRefund({ stripe, db, claim, renew: Boolean(staffRefundId) });
   } catch (failure) {
     // Recording failed after Stripe answered: the claim stays, Check again finishes it.
     logStripeFailure("staff-refund-record", failure, { staffRefundId: claim.staff_refund_id });

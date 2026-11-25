@@ -389,9 +389,9 @@ select is(row(pg_temp.recover(7), public.factory_paused(pg_temp.org(7))), row('[
 -- ===========================================================================
 -- Grants and shape.
 -- ===========================================================================
-select ok(not has_function_privilege('authenticated', 'public.record_payment_refund_failed(uuid, text, bigint)', 'execute')
-      and not has_function_privilege('anon', 'public.record_payment_refund_failed(uuid, text, bigint)', 'execute')
-      and has_function_privilege('service_role', 'public.record_payment_refund_failed(uuid, text, bigint)', 'execute'),
+select ok(not has_function_privilege('authenticated', 'public.record_payment_refund_failed(uuid, text, bigint, text)', 'execute')
+      and not has_function_privilege('anon', 'public.record_payment_refund_failed(uuid, text, bigint, text)', 'execute')
+      and has_function_privilege('service_role', 'public.record_payment_refund_failed(uuid, text, bigint, text)', 'execute'),
   'record_payment_refund_failed is the server''s');
 select ok(not has_function_privilege('authenticated', 'public.claim_owed_steps(uuid, bigint, text, uuid)', 'execute'), 'claim_owed_steps stays the server''s');
 select ok(has_function_privilege('authenticated', 'public.mark_withdrawal_paid_by_bank(uuid, text)', 'execute')
