@@ -6,7 +6,8 @@
  *     group: business_registration | company_information | certification
  *     fields: only the fields staff edited, in the contract's keys
  *             (src/shared/verification-rerun.mjs GROUP_FIELDS)
- *   → 200 { ok: true, group, ran, outOfDate }
+ *   → 200 { ok: true, group, ran, outOfDate, notice? }  notice = the edit was saved
+ *         but the registry lookup after it did not answer ("Saved. EU VIES didn't answer; …")
  *   → 200 { ok: false, code, error, ran }  error = the footer's words
  *   → 401 / 403 { ok: false, code, error } signed out / not staff
  *
@@ -401,7 +402,11 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       }
     }
     const body = { ok: result.ok, group, ran: result.ran, edits: edits.map(({ field }) => field), outOfDate };
-    if (!result.ok) Object.assign(body, { code: result.code, error: rules.rerunFailureWords(result.code, { source: result.source }) });
+    // Every edit saved and only the registry lookup after it not answering: a save, with a note (N1).
+    const notice = !result.ok && edits.length > 0 && saved.length === edits.length && rules.savedNoticeWords
+      ? rules.savedNoticeWords(result.code, { source: result.source }) : null;
+    if (notice) Object.assign(body, { ok: true, code: result.code, notice });
+    else if (!result.ok) Object.assign(body, { code: result.code, error: rules.rerunFailureWords(result.code, { source: result.source }) });
     response.status(200).json(body);
   } catch (error) {
     console.error("verification-rerun", error?.message);

@@ -74,6 +74,15 @@ export function rerunFailureWords(code, { source } = {}) {
 }
 
 /**
+ * The note after a save that worked when only the registry lookup that follows
+ * did not answer: the edit is kept, so it is not shown as a failure.
+ */
+export function savedNoticeWords(code, { source } = {}) {
+  if (code === "registry_unreachable") return `Saved. ${source || "The registry"} didn't answer; check again later.`;
+  return null;
+}
+
+/**
  * A model or reading failure sentence (api/admin-review-assist.js
  * modelFailure, registry-assist's reasons) as one of our codes.
  */

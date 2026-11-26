@@ -1137,13 +1137,14 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
       outcome = { error: error?.message || "Couldn't save. Try again." };
     }
     onRunning(false);
-    setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done" });
+    // Saved, with a note when the registry lookup after the save did not answer (N1): the editing closes either way.
+    setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done", notice: outcome?.notice ?? null });
     if (!outcome?.error) setFixing(false);
   };
 
   const status = run.state === "running" ? { text: "Saving…" }
     : run.state === "error" && !fixing ? { text: run.message, tone: "error" }
-      : run.state === "done" ? { text: "Saved", tone: "done" }
+      : run.state === "done" ? (run.notice ? { text: run.notice, tone: "stale" } : { text: "Saved", tone: "done" })
         : group.checking && group.checkingWords ? { text: group.checkingWords }
         : group.error ? { text: group.error, tone: "error" }
           : { text: group.readAt ?? "" };

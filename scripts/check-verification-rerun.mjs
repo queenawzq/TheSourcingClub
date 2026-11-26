@@ -417,6 +417,25 @@ await check("U6: a save that failed records no edit", async () => {
   assert.ok(!calls.includes("rpc:record_verification_field_edits"));
 });
 
+await check("N1: an edit saved while EU VIES doesn't answer is a save, with a note", async () => {
+  const calls = [];
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls }), steps: stubSteps([], { vies: { result: "could_not_check", details: { reason: "timed out" } } }) });
+  assert.equal(response.out.body.ok, true, JSON.stringify(response.out.body));
+  assert.equal(response.out.body.notice, "Saved. EU VIES didn't answer; check again later.");
+  assert.equal(response.out.body.error, undefined);
+  assert.ok(calls.includes("rpc:record_verification_field_edits"));
+  assert.equal(rules.savedNoticeWords("registry_unreachable", {}), "Saved. The registry didn't answer; check again later.");
+  assert.equal(rules.savedNoticeWords("save_failed", {}), null);
+});
+
+await check("N1: a save that failed while EU VIES doesn't answer is still a failure", async () => {
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls: [] }), steps: stubSteps([], { readAnswer: { available: true, saved: false }, vies: { result: "could_not_check", details: {} } }) });
+  assert.equal(response.out.body.ok, false);
+  assert.equal(response.out.body.notice, undefined);
+});
+
 await check("an edited number is saved as the staff number first", async () => {
   const calls = [];
   const response = fakeResponse();
@@ -455,6 +474,18 @@ await check("the caller: a failure part-way carries the words and the new score"
   assert.equal(result.ok, false);
   assert.equal(result.error, "EU VIES didn't answer. Try again later.");
   assert.equal(result.after, 95);
+});
+
+await check("N1, the caller: a saved edit's note is passed on, with no error", async () => {
+  const run = createRerun({
+    getToken: async () => "t",
+    fetchImpl: async () => ({ status: 200, json: async () => ({ ok: true, code: "registry_unreachable", notice: "Saved. EU VIES didn't answer; check again later.", ran: { reading: { ran: true } } }) }),
+    readScore: async () => verificationAt(95),
+  });
+  const result = await run({ orgId: ORG, group: "business_registration", before: verificationAt(55) });
+  assert.equal(result.ok, true);
+  assert.equal(result.notice, "Saved. EU VIES didn't answer; check again later.");
+  assert.equal(result.error, undefined);
 });
 
 await check("the caller: refused or unreachable is words only, never thrown", async () => {

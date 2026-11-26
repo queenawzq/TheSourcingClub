@@ -251,7 +251,8 @@ export function verificationActions(orgId, { reload, changed }) {
         await reload();
         changed?.();
       }
-      return outcome.ok ? {} : { error: outcome.error || "Couldn't save. Try again." };
+      if (outcome.ok) return outcome.notice ? { notice: outcome.notice } : {};
+      return { error: outcome.error || "Couldn't save. Try again." };
     },
   };
 }
