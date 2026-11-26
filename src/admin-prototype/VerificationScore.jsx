@@ -384,7 +384,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 role="button"
                 tabIndex={0}
                 aria-busy={busy || undefined}
-                aria-label={`${group.label}, ${busy ? "checking" : failed ? group.error : score == null ? "no score" : `${score}%`}: open details`}
+                aria-label={`${group.label}, ${busy ? "checking" : failed ? group.error : standingFor(score).word}: open details`}
                 onClick={() => setOpenKey(group.key)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenKey(group.key); }
