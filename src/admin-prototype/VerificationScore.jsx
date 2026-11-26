@@ -900,9 +900,9 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   const ownDup = !dupField && !numberShown && check.sharedNumber
     ? { with: check.sharedNumber.with, explained: check.sharedNumber.explained ?? null } : null;
   // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
-  // another company uses until it is explained; Strong and Not checked start closed.
+  // another company uses until it is explained, and one that blocks Approve (R7); Strong and Not checked start closed.
   const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.unchecked ? null : check.score).tone)
-    || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained));
+    || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained) || Boolean(check.blocks));
   const [explainingDup, setExplainingDup] = useState(false);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
