@@ -74,7 +74,7 @@ const mockSubmission = {
 
 /** Staff's edits on the review page, kept in this tab: the history starts empty, as a new company's does. */
 let reviewHistory = [];
-const FIELD_KIND = { companyName: "company_name", legalName: "legal_name", country: "country", website: "website" };
+const FIELD_KIND = { companyName: "company_name", legalName: "legal_name", country: "country", website: "website", registrationNumber: "registration_number" };
 
 /** The legal name its licence reads, in the mock scores; else the shared submission's. */
 function mockLegalName(profile) {

@@ -305,6 +305,25 @@ const turkeyTrader = {
 /* ---------- (d) Portugal, EU VIES: the company's number, name and address differ from the certificate's ---------- */
 const PT_FULL_NAME = "Têxteis Douro – Confecções, Lda";
 const PT_ADDRESS = addressCheck({ score: 40, verdict: "Street number differs from the licence", typed: "Rua da Igreja 241, Arcozelo, Barcelos", licence: ["Registration certificate", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", ["214,"]] });
+const plainValue = (value) => String(value ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+function ptRecheck(group) {
+  const field = Object.fromEntries(group.fields.map((item) => [item.key, item]));
+  const differs = (key) => Boolean(field[key]?.typed) && plainValue(field[key].typed) !== plainValue(field[key].value);
+  const number = differs("number");
+  const name = differs("legalName");
+  const address = differs("address");
+  const registry = number ? { score: 60, verdict: "Found on EU VIES; the licence shows another number" }
+    : name ? { score: 70, verdict: "Found on EU VIES; the licence shows another name" }
+      : { score: 95, verdict: "EU VIES: VAT number valid, name matches" };
+  return {
+    verdict: number ? "Registered, but the certificate shows another number" : name ? "Registered, but the certificate shows another name"
+      : address ? "Registered; the certificate shows another address" : "Registered: name and VAT number match EU VIES",
+    why: "",
+    checks: group.checks.map((check) => (check.key === "registry" ? { ...check, ...registry, registry: { ...check.registry, reference: `PT${field.number?.value ?? ""}` }, lookup: { ...check.lookup, copy: field.number?.value ?? "" } }
+      : check.key === "address" ? { ...check, score: address ? 40 : 90, verdict: address ? "Street number differs from the licence" : "Same as the licence" } : check)),
+  };
+}
+
 const portugalFactory = {
   id: "verify-pt-vies",
   initials: "TD",
@@ -346,7 +365,7 @@ const portugalFactory = {
           { key: "legalName", label: "Legal name", value: PT_FULL_NAME, typed: "Têxteis Douro, Lda" },
           { key: "established", label: "Registered", value: "2012-03-08" },
           { key: "activity", label: "Activity code (CAE)", value: "14130 · Other outerwear", wide: true },
-          { key: "address", label: "Registered address", value: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", wide: true },
+          { key: "address", label: "Registered address", value: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", wide: true, typed: "Rua da Igreja 241, Arcozelo, Barcelos" },
           { key: "scope", label: "Activity on the certificate", value: "CAE 14130 · Manufacture of other outerwear", wide: true, multiline: true },
         ],
         checks: [
@@ -354,6 +373,8 @@ const portugalFactory = {
           { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 60, verdict: "Found on EU VIES; the licence shows another number", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT519211596" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "519211596" } },
           PT_ADDRESS,
         ],
+        // "Which is correct?" (Nov 26): once a difference is settled, the checks are worked out again.
+        recheck: ptRecheck,
       },
       {
         key: "company_information",

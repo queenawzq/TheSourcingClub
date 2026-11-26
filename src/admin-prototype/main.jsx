@@ -1324,7 +1324,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
-            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} />}
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} onCompanyChange={actions.updateCompanyProfile ? saveCompanyField : null} />}
             {live && (
               <VerificationScoreCard
                 key={profile.id}

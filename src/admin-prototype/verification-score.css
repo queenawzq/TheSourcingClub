@@ -613,7 +613,8 @@
 .vr-field.is-wide { grid-column: 1 / -1; }
 
 .vr-field > label,
-.vr-field > span {
+.vr-field > span,
+.vr-read-head > .vr-field-label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1578,3 +1579,31 @@ a.vr-text-action {
 .vr-file-row > button { display: grid; place-items: center; }
 .vr-file-row > button svg { width: 14px; height: 14px; }
 @media (max-width: 640px) { .vr-file-list { grid-template-columns: minmax(0, 1fr); } .vr-same-line { flex-wrap: wrap; } .vr-same { flex: 1 1 100%; } }
+
+/* "Which is correct?" (Nov 26): the company's value or the licence's, in the row that shows both. */
+.vr-match { margin-left: 10px; color: var(--vr-good-text); font-size: 12px; font-style: normal; font-weight: 700; line-height: 17px; }
+.vr-which { margin-top: 4px; }
+.vr-choice { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.vr-choice legend { margin: 0 0 10px; padding: 0; color: var(--vr-ink); font-size: 13px; font-weight: 700; line-height: 18px; }
+.vr-choice-option { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--vr-ink); font-size: 13px; font-weight: 500; line-height: 18px; cursor: pointer; }
+.vr-choice-option > input[type="radio"] { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--vr-blue); }
+.vr-choice-option > span { min-width: 0; overflow-wrap: anywhere; }
+.vr-choice-option strong { color: var(--vr-muted); font-weight: 700; }
+.vr-choice-option.is-on strong { color: var(--vr-ink); }
+.vr-choice-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--vr-field-stroke);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vr-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+.vr-choice-input:focus { border-color: var(--vr-blue); outline: none; box-shadow: 0 0 0 3px var(--vr-strong-fill); }
+.vr-read-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.vr-read-head .vr-text-action { flex: none; }
+.vr-read .vr-compare { margin-top: 2px; }
