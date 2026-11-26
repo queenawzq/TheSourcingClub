@@ -132,10 +132,13 @@ function withReading(orgId, verification) {
     ?? (fileId && triedRecently(fileId) ? { state: "failed" } : startReading(orgId, fileId));
   const failed = run.state === "failed" || run.state === "done";
   // Done with no reading is a reading that failed: staff record what the registry shows instead.
+  // The card's line says so only while the licence is unchecked; once staff check it, the line is the
+  // checks' own, the same result the pill shows (T5).
+  const licenceOpen = (group.checks ?? []).some((check) => check.key === "licence" && check.score == null);
   const patch = failed
     ? {
       stale: "Couldn't read the document",
-      verdict: "Couldn't read the document",
+      verdict: licenceOpen ? "Couldn't read the document" : group.verdict,
       checks: (group.checks ?? []).map((check) => (check.key === "licence" && check.score == null ? { ...check, verdict: "Couldn't read the document" } : check)),
     }
     : { checking: true, checkingWords: "Reading the document…" };
