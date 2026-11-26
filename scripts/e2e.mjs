@@ -160,8 +160,14 @@ async function recordRegistryFound(page, reference) {
   if (!foundChosen) return null;
   await page.waitForTimeout(200);
   // Where you checked: the official register is prefilled; type one if it is not.
-  const site = page.locator(`${form} input[list]`).first();
-  if (!(await site.inputValue()).trim()) await site.fill("Official business register");
+  // Nov 26: a combobox (input role=combobox + "Show known sites"), not an <input list>.
+  const site = page.locator(`${form} input[role="combobox"]`).first();
+  if (!(await site.inputValue()).trim()) {
+    await site.fill("Official business register");
+    // Close the known-sites list the way a person would; Escape with no list open would close the window.
+    const listOpen = await page.evaluate((selector) => document.querySelector(selector)?.getAttribute("aria-expanded") === "true", `${form} input[role="combobox"]`);
+    if (listOpen) await page.keyPress("Escape");
+  }
   // Each value the company gave is the same in the registry.
   await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record .vr-same-row .vr-segmented label")]
     .filter((item) => item.textContent.trim() === "Same in registry").forEach((item) => item.click()));
