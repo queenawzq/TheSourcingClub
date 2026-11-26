@@ -681,7 +681,11 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const [tried, setTried] = useState(false);
   const emptyDifferent = !isCert && result === "found"
     ? fieldsFor.map(([key]) => key).filter((key) => hasProfile(key) && same[key] === "different" && !String(registryValue[key] ?? "").trim()) : [];
-  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null;
+  // Found (R3): every value shown is answered, Same in registry or Different, and a plain input is filled,
+  // so a registry name and number are always on the record.
+  const unanswered = !isCert && result === "found"
+    ? fieldsFor.map(([key]) => key).filter((key) => (hasProfile(key) ? !same[key] : !String(registryValue[key] ?? "").trim())) : [];
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null && !unanswered.length;
 
   const addFiles = async (list) => {
     const files = [...(list ?? [])];
