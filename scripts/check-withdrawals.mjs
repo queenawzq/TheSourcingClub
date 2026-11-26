@@ -135,6 +135,74 @@ function world({ balance = 100000, fee = 80, payFails = null, status = "paid", f
   assert.deepEqual(w.paid.map((p) => p.key), ["key-1", "key-1"], "same key: the provider answers with the first payment");
 }
 
+// TSC-13: a timeout after the provider took the money, and the next press
+// finds TSC's balance short (that first payment is what took it). The press
+// must keep the key: a new one makes the press after a top-up pay again.
+// The database as claim_withdrawal and record_withdrawal behave: a press on a
+// withdrawal still paying is resumed; requeue gives a new key. The provider
+// as Wise behaves: the same key is the same payment, never a second one.
+{
+  let balance = 7000;
+  const row = { status: "requested", key: "key-1", ref: null };
+  const recorded = [];
+  const moved = new Map(); // key -> cents taken from TSC's balance
+  let failNextAfterTaking = true;
+  const claimRow = () => {
+    const resumed = row.status === "paying";
+    row.status = "paying";
+    return { withdrawal_id: "w1", key: row.key, resumed, provider: "paypal", provider_ref: row.ref, amount_cents: 6500, currency: "USD", account_id: "a1", paypal_email: "f@example.com" };
+  };
+  const w = {
+    db: {
+      from: (table) => (table === "factory_withdrawals"
+        ? { update: () => ({ eq: async () => ({ error: null }) }) }
+        : { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { country_code: "CN" }, error: null }) }) }) }),
+      rpc: async (name, args) => {
+        assert.equal(name, "record_withdrawal");
+        recorded.push(args);
+        if (args.ref) row.ref = args.ref;
+        if (args.outcome === "requeue") Object.assign(row, { status: "requested", key: `key-${recorded.filter((r) => r.outcome === "requeue").length + 1}` });
+        if (args.outcome === "paid") row.status = "paid";
+        return { data: {}, error: null };
+      },
+    },
+    caller: { rpc: async (name) => (assert.equal(name, "claim_withdrawal"), { data: claimRow(), error: null }) },
+    adapter: {
+      provider: "paypal", label: "Fake",
+      balance: async () => balance,
+      quote: async (_client, ctx) => ({ feeCents: 80, leavesCents: ctx.amountCents, receivesMinor: ctx.amountCents - 80, receivesCurrency: "USD", quote: null }),
+      pay: async (_client, ctx) => {
+        if (!moved.has(ctx.key)) { moved.set(ctx.key, 6500); balance -= 6500; }
+        if (failNextAfterTaking) { failNextAfterTaking = false; throw new PayoutFailure("timeout", "Fake didn't answer.", { unsure: true }); }
+        return { ref: `ref-${ctx.key}` };
+      },
+      status: async () => ({ state: "paid", raw: "paid" }),
+    },
+    client: {}, stripeBuild: () => null,
+  };
+  await assert.rejects(approveWithdrawal({ ...w, id: "w1" }), /didn't answer/);
+  assert.equal(balance, 500, "the provider took the money before its answer was lost");
+  const second = await approveWithdrawal({ ...w, id: "w1" });
+  assert.equal(second.done, "short_balance", "the balance the first payment emptied reads short");
+  assert.equal(row.key, "key-1", "a resumed press keeps its key, short balance or not");
+  assert.equal(row.status, "paying", "and stays paying: the provider may already have it");
+  balance += 10000; // staff top up, as the sentence says
+  assert.equal((await approveWithdrawal({ ...w, id: "w1" })).done, "paid");
+  assert.deepEqual([...moved.keys()], ["key-1"], "one payment for one withdrawal");
+  assert.equal(balance, 10500, "TSC paid the 6,500 once");
+
+  // Our own check failing on a resumed press (the charge check could not read
+  // Stripe) keeps the key too: the provider was not asked about it again.
+  Object.assign(row, { status: "paying", key: "key-9", ref: null });
+  const broken = { charges: { retrieve: async () => { throw new Error("stripe down"); } } };
+  const takes = { from: (table) => (table === "payment_takes"
+    ? { select: () => ({ eq: () => ({ eq: async () => ({ data: [{ payment_id: "p1", order_payments: { stripe_charge_id: "ch_1" } }], error: null }) }) }) }
+    : w.db.from(table)), rpc: w.db.rpc };
+  await assert.rejects(approveWithdrawal({ ...w, db: takes, id: "w1", stripeBuild: () => broken }), (failure) => failure instanceof PayoutFailure);
+  assert.equal(row.key, "key-9", "a resumed press our own check refused keeps its key");
+  assert.equal(row.status, "paying");
+}
+
 // A certain refusal: back to waiting under a new key, so it is never replayed.
 {
   const w = world({ payFails: new PayoutFailure("refused", "Fake refused this payment. Nothing was sent.") });
