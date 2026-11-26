@@ -7,7 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
-import { CompanyFields, CompanyOverride } from "./CompanyOverride.jsx";
+import { CompanyDetails, CompanyOverride } from "./CompanyOverride.jsx";
 import { countryIn } from "../shared/company-address.mjs";
 import { verificationMockProfiles } from "./verification-mock.js";
 import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
@@ -1259,6 +1259,21 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     website: companyEdits.website ?? submission?.profile?.website_url ?? (shownWebsite && shownWebsite !== "—" ? shownWebsite : ""),
   };
   const savedAddress = verification?.groups?.flatMap((group) => group.checks ?? []).find((check) => check.edit)?.edit.value ?? "";
+  // Company details in Company information's window (Nov 26): name, legal name, country, website, address, type.
+  // The company's type follows staff's Factory or trader answer (Nov 26).
+  const currentKind = companyEdits.vendorKind ?? (profile?.entityType === "Trading company" ? "trading_company" : "manufacturer");
+  const onVendorKind = isVendor && actions.updateCompanyProfile ? async (vendorKind) => { if (vendorKind !== currentKind) await saveCompanyField({ vendorKind }); } : null;
+  const companyPanel = actions.updateCompanyProfile ? ({ groups: windowGroups, actions: windowActions }) => {
+    const addressCheck = (windowGroups ?? []).flatMap((group) => group.checks ?? []).find((check) => check.edit) ?? null;
+    return (
+      <CompanyDetails
+        values={companyValues}
+        address={isVendor && addressCheck ? addressCheck.edit : null}
+        onSave={saveCompanyField}
+        onSaveAddress={windowActions?.saveAddress ?? null}
+      />
+    );
+  } : null;
   const deleteLabel = profile?.entityType === "Trading company" ? "trading company" : isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1324,7 +1339,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
-            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} />}
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} companyPanel={companyPanel} onVendorKind={onVendorKind} />}
             {live && (
               <VerificationScoreCard
                 key={profile.id}
@@ -1334,9 +1349,11 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 onRetry={live.reload}
                 actions={live.actions}
                 fileUrl={live.fileUrl}
+                companyPanel={companyPanel}
+                onVendorKind={onVendorKind}
               />
             )}
-            {brandScore && <VerificationScoreCard key={profile.id} verification={brandScore} actions={NO_SCORE_ACTIONS} fileUrl={actions.verificationFileUrl} />}
+            {brandScore && <VerificationScoreCard key={profile.id} verification={brandScore} actions={NO_SCORE_ACTIONS} fileUrl={actions.verificationFileUrl} companyPanel={companyPanel} />}
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               {profile.capabilityGroups?.length ? (
@@ -1411,14 +1428,13 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               </>)}
-              {actions.updateCompanyProfile && <CompanyFields values={companyValues} onSave={saveCompanyField} />}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
-              {/* Change type (vendors), and who changed what. Edit address is in the Address block (Nov 25). */}
+              {/* Who changed what. The company's details are edited in Company information (Nov 26). */}
               {actions.updateCompanyProfile && (
                 <CompanyOverride
                   orgId={profile.id}
                   entityType={profile.entityType}
-                  canChangeType={isVendor}
+                  canChangeType={false}
                   actions={actions}
                   refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
                   onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}

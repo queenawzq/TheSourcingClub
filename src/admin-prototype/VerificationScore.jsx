@@ -297,7 +297,7 @@ function CardSkeleton() {
  * `actions`, `loading`, `error`, `onRetry` and `fileUrl` (a signed link for a
  * stored file).
  */
-export function VerificationScoreCard({ profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl }) {
+export function VerificationScoreCard({ profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl, companyPanel = null, onVendorKind = null }) {
   const verification = given ?? profile?.verification ?? null;
   const [localGroups, setLocalGroups] = useState(() => verification?.groups ?? []);
   const localRef = useRef(localGroups);
@@ -416,6 +416,8 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
           groups={groups}
           actions={actions}
           fileUrl={fileUrl}
+          companyPanel={companyPanel}
+          onVendorKind={onVendorKind}
           onRunning={runningChange}
           onClose={closeModal}
         />
@@ -554,6 +556,62 @@ const SEEN_FIELDS = {
  * The one record form (Nov 24): where staff checked, what it showed, the values as the site shows them
  * (prefilled from the document), proof files and a link or note. The page compares the values itself.
  */
+/**
+ * "Where you checked" (Nov 26): the product's combobox (factory onboarding's
+ * certification picker), not the browser's autocomplete. Typing filters the
+ * known sites; any other site can still be typed.
+ */
+function SiteCombobox({ id, value, sites, placeholder, onFocus, onChange }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const listId = `${id}-sites`;
+  const query = (value ?? "").trim().toLowerCase();
+  // A site already chosen shows every known site; typing something new filters them.
+  const chosen = sites.some((item) => item.name.toLowerCase() === query);
+  const shown = chosen ? sites : sites.filter((item) => !query || `${item.name} ${item.label ?? ""}`.toLowerCase().includes(query));
+  const options = shown.length ? shown : sites;
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event) => { if (!boxRef.current?.contains(event.target)) setOpen(false); };
+    const key = (event) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key, true);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key, true); };
+  }, [open]);
+  return (
+    <div className="vr-combobox" ref={boxRef}>
+      <input
+        id={id}
+        value={value}
+        spellCheck={false}
+        autoComplete="off"
+        placeholder={placeholder}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        onFocus={(event) => { onFocus?.(event); if (sites.length) setOpen(true); }}
+        onChange={(event) => { onChange(event.target.value); if (sites.length) setOpen(true); }}
+      />
+      {sites.length > 0 && (
+        <button className="vr-combobox-toggle" type="button" aria-label="Show known sites" onClick={() => setOpen((current) => !current)}>
+          <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+        </button>
+      )}
+      {open && sites.length > 0 && (
+        <div className="vr-combobox-menu" id={listId} role="listbox">
+          {options.map((item) => (
+            <button type="button" role="option" aria-selected={value === item.name} key={item.key} onClick={() => { onChange(item.name); setOpen(false); }}>
+              <strong>{item.name}</strong>
+              {item.label && item.label !== item.name && <small>{item.label}</small>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RecordForm({ check, onSave, onDone, actions }) {
   const registry = check.registry;
   const isCert = check.kind === "certificate";
@@ -683,10 +741,9 @@ function RecordForm({ check, onSave, onDone, actions }) {
       <div className="vr-field">
         <label htmlFor={ids.site}>Where you checked</label>
         <div className="vr-input has-open">
-          <input id={ids.site} list={ids.list} value={site} spellCheck={false} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onFocus={selectAll} onChange={(event) => setSite(event.target.value)} />
+          <SiteCombobox id={ids.site} value={site} sites={form.sites ?? []} placeholder={isCert ? "Issuer's site" : "Registry or directory site"} onFocus={selectAll} onChange={setSite} />
           {known?.href && <LookupAction lookup={{ label: "Open", href: known.href }} />}
         </div>
-        {form.sites?.length > 0 && <datalist id={ids.list}>{form.sites.map((item) => <option value={item.name} key={item.key}>{item.label}</option>)}</datalist>}
       </div>
       <Segmented
         options={RECORD_RESULTS[isCert ? "certificate" : "registry"]}
@@ -847,7 +904,8 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
   const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
   const close = () => setMode(null);
-  const canEditAddress = Boolean(check.edit && actions.saveAddress);
+  // Edit address moved to Company information's Company details (Nov 26); the check only shows the addresses.
+  const canEditAddress = false;
   // Staff decide the address, factory-or-trader and licence checks themselves (Nov 25).
   const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
   // A check staff record by hand has its own note: no separate reason (Nov 25).
@@ -1066,7 +1124,18 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = 
 
 const fieldValues = (fields) => Object.fromEntries((fields ?? []).map((field) => [field.key, field.value ?? ""]));
 
-function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, onClose }) {
+function VerificationModal({ group, groups = null, actions: scoreActions, fileUrl, companyPanel = null, onVendorKind = null, onRunning, onClose }) {
+  // Factory or trader (Nov 26): staff's answer is also the company's type, so the type is set in one place.
+  const actions = useMemo(() => (onVendorKind && scoreActions?.recordOverride ? {
+    ...scoreActions,
+    recordOverride: async (groupKey, check, record) => {
+      const outcome = await scoreActions.recordOverride(groupKey, check, record);
+      if (check.key === "scope" && (record?.result === "factory" || record?.result === "trading_company")) {
+        await onVendorKind(record.result === "factory" ? "manufacturer" : "trading_company");
+      }
+      return outcome;
+    },
+  } : scoreActions), [scoreActions, onVendorKind]);
   const titleId = useId();
   // Several certificates: one tab each, showing that certificate's check, fields and file (Nov 13).
   const certs = group.evidence?.kind === "certificate" ? (group.evidence.certificates ?? []) : [];
@@ -1078,7 +1147,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   const evidence = cert ? { kind: "certificate", name: cert.label, number: cert.number, valid: cert.valid, holder: cert.holder, file: cert.file } : group.evidence;
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle" });
-  // "Fix misread" (Nov 26): the reading is shown as read; a misread is fixed here, and it changes the reading only.
+  // "Edit details" (Nov 26): the reading is shown as read; a value read wrongly is corrected here, and it changes the reading only.
   const [fixing, setFixing] = useState(false);
   // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
   const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
@@ -1111,12 +1180,11 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   };
 
   const status = run.state === "running" ? { text: "Saving…" }
-    : run.state === "error" ? { text: run.message, tone: "error" }
+    : run.state === "error" && !fixing ? { text: run.message, tone: "error" }
       : run.state === "done" ? { text: "Saved", tone: "done" }
         : group.checking && group.checkingWords ? { text: group.checkingWords }
         : group.error ? { text: group.error, tone: "error" }
-          : group.stale ? { text: group.stale, tone: "stale" }
-            : { text: group.readAt ?? "" };
+          : { text: group.readAt ?? "" };
 
   // A registration number another company also uses: said in the Official registry row (Nov 26).
   // The licence's number or name against the company's own, worked out now: said, and explained, in the registry row.
@@ -1126,9 +1194,9 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     <section className="vr-section vr-read-section">
       <div className="vr-section-head">
         <h3>{group.evidencePane === false ? "What the AI read" : "Read from this document"}</h3>
-        {canRun && (
-          <button className="vr-text-action" type="button" onClick={() => { if (fixing) setValues(fieldValues(fields)); setFixing(!fixing); }}>
-            {fixing ? "Cancel" : "Fix misread"}
+        {canRun && !fixing && (
+          <button className="vr-text-action" type="button" onClick={() => { setRun({ state: "idle" }); setFixing(true); }}>
+            Edit details
           </button>
         )}
       </div>
@@ -1145,6 +1213,17 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
           />
         )))}
       </div>
+      {/* Correcting what was read (Nov 26): its own Save, under the fields it saves, not in the window's footer. */}
+      {fixing && (
+        <div className="vr-read-actions">
+          {run.state === "error" && <p className="vr-run-status is-error" role="status"><i aria-hidden="true" />{run.message}</p>}
+          <button className="secondary-btn" type="button" disabled={run.state === "running"} onClick={() => { setValues(fieldValues(fields)); setRun({ state: "idle" }); setFixing(false); }}>Cancel</button>
+          <button className="primary-btn vr-run" type="button" disabled={run.state === "running" || edited.length === 0} onClick={runAgain}>
+            {run.state === "running" && <Spinner />}
+            {run.state === "running" ? "Saving" : "Save changes"}
+          </button>
+        </div>
+      )}
     </section>
   );
 
@@ -1168,6 +1247,12 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                 <Segmented options={certs.map((c) => ({ key: c.id, label: c.label }))} value={cert.id} onChange={setCertId} name={`cert-${titleId}`} label="Certificates" />
               </div>
             )}
+            {/* Company details (Nov 26): the company's own values are edited here, in Company information. */}
+            {group.key === "company_information" && companyPanel && (
+              <section className="vr-section vr-read-section vr-company-section" aria-label="Company details">
+                {companyPanel({ groups: groups ?? [], actions })}
+              </section>
+            )}
             <section className="vr-section" aria-label="Checks">
               <h3>Checks</h3>
               {checks?.length ? (
@@ -1190,10 +1275,10 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                 </ul>
               ) : <p className="vr-section-empty">Nothing to check yet</p>}
             </section>
-            {group.evidencePane === false && readSection}
+            {readSection}
           </div>
 
-          {/* The document, and under it what was read from it (Nov 26). A group with no file at all keeps the reading in one column. */}
+          {/* The document on the right; what was read from it sits under the checks on the left (Nov 26). */}
           {group.evidencePane !== false ? (
             <div className="vr-side">
               <EvidencePane
@@ -1202,7 +1287,6 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                 onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
                 key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
               />
-              {readSection}
             </div>
           ) : null}
         </div>
@@ -1213,12 +1297,6 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
             {status.text}
           </p>
           <button className="secondary-btn" type="button" onClick={onClose}>Close</button>
-          {canRun && (edited.length > 0 || run.state === "running") && (
-            <button className="primary-btn vr-run" type="button" disabled={run.state === "running"} onClick={runAgain}>
-              {run.state === "running" && <Spinner />}
-              {run.state === "running" ? "Saving" : "Save changes"}
-            </button>
-          )}
         </footer>
       </section>
     </div>

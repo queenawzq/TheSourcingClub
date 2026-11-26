@@ -1578,3 +1578,18 @@ a.vr-text-action {
 .vr-file-row > button { display: grid; place-items: center; }
 .vr-file-row > button svg { width: 14px; height: 14px; }
 @media (max-width: 640px) { .vr-file-list { grid-template-columns: minmax(0, 1fr); } .vr-same-line { flex-wrap: wrap; } .vr-same { flex: 1 1 100%; } }
+
+/* Nov 26: correcting what was read has its own Cancel / Save changes under the fields, like the check forms. */
+.vr-read-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--vr-line); }
+.vr-read-actions .vr-run-status { margin-right: auto; }
+
+/* Nov 26: "Where you checked" uses the product's combobox (copied from factory onboarding's certification picker). */
+.vr-combobox { position: relative; flex: 1; min-width: 0; }
+.vr-combobox > input { width: 100%; padding-right: 40px; }
+.vr-combobox-toggle { position: absolute; z-index: 2; top: 0; right: 0; display: grid; place-items: center; width: 40px; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.vr-combobox-toggle img { width: 16px; height: 16px; }
+.vr-combobox-menu { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; display: grid; width: 100%; max-height: 264px; padding: 6px; border: 1px solid #d7e0ea; border-radius: 8px; background: #fff; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14); overflow-y: auto; }
+.vr-combobox-menu button { display: grid; gap: 2px; min-height: 38px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: #1d293d; cursor: pointer; font: inherit; font-size: 14px; text-align: left; }
+.vr-combobox-menu button strong { font-weight: 600; }
+.vr-combobox-menu button small { color: #62748e; font-size: 12px; }
+.vr-combobox-menu button:hover, .vr-combobox-menu button:focus-visible, .vr-combobox-menu button[aria-selected="true"] { background: #f4f7fb; outline: none; }

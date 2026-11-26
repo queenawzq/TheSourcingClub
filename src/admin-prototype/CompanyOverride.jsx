@@ -121,7 +121,7 @@ export function AddressDialog({ label, address, onSave, onClose }) {
   );
 }
 
-export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged, canChangeType = true }) {
+export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged, canChangeType = true, showHistory = true }) {
   const [open, setOpen] = useState(null);
   const [kind, setKind] = useState("manufacturer");
   const [busy, setBusy] = useState(false);
@@ -161,12 +161,18 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
 
   return (
     <div className="vr-override">
-      {canChangeType && (
+      {canChangeType && !showHistory && (
+        <div className="vr-company-field">
+          <div className="factory-detail-pair"><span>Type</span><strong>{KIND_WORDS[currentKind]}</strong></div>
+          <button className="vr-text-action" type="button" aria-label="Edit type" onClick={start}>Edit</button>
+        </div>
+      )}
+      {canChangeType && showHistory && (
         <div className="vr-override-actions">
           <button className="vr-text-action" type="button" onClick={start}>Change type</button>
         </div>
       )}
-      {history.length > 0 && (
+      {showHistory && history.length > 0 && (
         <div className="vr-history">
           <span>History</span>
           <ul>
@@ -206,7 +212,8 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
  *   values: { companyName, legalName, country (two-letter code), website }
  *   onSave({ companyName } | { legalName } | { country } | { website }) saves one value.
  */
-export function CompanyFields({ values, onSave }) {
+export function CompanyFields({ values, onSave, address = null, onSaveAddress = null }) {
+  const [addressOpen, setAddressOpen] = useState(false);
   const [open, setOpen] = useState(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -251,6 +258,14 @@ export function CompanyFields({ values, onSave }) {
           <button className="vr-text-action" type="button" aria-label={`Edit ${field.label.toLowerCase()}`} onClick={() => start(field.key)}>Edit</button>
         </div>
       ))}
+      {/* The address (Nov 26): edited here with the company's other details, not in the Address check. */}
+      {address && onSaveAddress && (
+        <div className="vr-company-field">
+          <div className="factory-detail-pair"><span>{address.label}</span><strong>{address.value || "Not given"}</strong></div>
+          <button className="vr-text-action" type="button" aria-label={`Edit ${address.label.toLowerCase()}`} onClick={() => setAddressOpen(true)}>Edit</button>
+        </div>
+      )}
+      {addressOpen && <AddressDialog label={address.label} address={address.value} onSave={onSaveAddress} onClose={() => setAddressOpen(false)} />}
       {current && (
         <OverrideDialog
           title={`Edit ${current.label.toLowerCase()}`}
@@ -280,5 +295,116 @@ export function CompanyFields({ values, onSave }) {
         </OverrideDialog>
       )}
     </div>
+  );
+}
+
+/**
+ * Company details in Company information's window (Nov 26): the company's own
+ * values, shown like "Read from this document": plain values, one "Edit
+ * details", the values become fields in place, and Cancel / Save changes sit
+ * under them. One save writes every changed value (history per value, one
+ * notice to the company); the address goes through the address check's own
+ * save, so the check runs again.
+ *
+ *   values: { companyName, legalName, country, website }
+ *   kind: "manufacturer" | "trading_company" | null (brands have no type)
+ *   address: { label, value } | null      (vendors)
+ *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind? }
+ *   onSaveAddress(text) | null
+ */
+export function CompanyDetails({ values, kind = null, address = null, onSave, onSaveAddress = null }) {
+  const initial = () => ({ ...values, vendorKind: kind ?? "", address: address?.value ?? "" });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const countries = useMemo(() => (editing ? signupCountries() : []), [editing]);
+  const rows = [
+    { key: "companyName", label: "Company name", shown: values.companyName },
+    { key: "legalName", label: "Legal name", shown: values.legalName },
+    { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
+    { key: "website", label: "Website", shown: values.website },
+    ...(address && onSaveAddress ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
+    ...(kind ? [{ key: "vendorKind", label: "Type", shown: KIND_WORDS[kind] }] : []),
+  ];
+  const before = initial();
+  const changed = rows.map((row) => row.key).filter((key) => (draft[key] ?? "").trim() !== (before[key] ?? "").trim());
+  const set = (key, value) => { setDraft((current) => ({ ...current, [key]: value })); setError(""); };
+  const start = () => { setDraft(initial()); setError(""); setEditing(true); };
+  const cancel = () => { setDraft(initial()); setError(""); setEditing(false); };
+
+  const save = async () => {
+    const change = {};
+    for (const key of changed) {
+      if (key === "address") continue;
+      if (key === "website") {
+        const web = draft.website.trim() ? webAddress(draft.website) : "";
+        if (web == null) { setError(WEB_ADDRESS_WORDS); return; }
+        change.website = web;
+      } else if (key === "companyName" && !draft.companyName.trim()) {
+        setError("Enter the company name");
+        return;
+      } else {
+        change[key] = draft[key].trim();
+      }
+    }
+    if (changed.includes("address") && !draft.address.trim()) { setError("Enter the address"); return; }
+    setBusy(true);
+    setError("");
+    try {
+      if (Object.keys(change).length) await onSave(change);
+      if (changed.includes("address")) await onSaveAddress(draft.address.trim());
+      setEditing(false);
+    } catch (failure) {
+      setError(failure?.message || "Couldn't save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="vr-section-head">
+        <h3>Company details</h3>
+        {!editing && <button className="vr-text-action" type="button" onClick={start}>Edit details</button>}
+      </div>
+      <div className="vr-fields">
+        {rows.map((row) => (!editing ? (
+          <div className={`vr-field vr-read${row.multiline ? " is-wide" : ""}`} key={row.key}>
+            <span className="vr-field-label">{row.label}</span>
+            <div className="vr-read-line"><span className="vr-read-value">{row.shown || "Not given"}</span></div>
+          </div>
+        ) : (
+          <div className={`vr-field${row.multiline ? " is-wide" : ""}${changed.includes(row.key) ? " is-edited" : ""}`} key={row.key}>
+            <label htmlFor={`company-${row.key}`}>{row.label}{changed.includes(row.key) && <em>Edited</em>}</label>
+            <div className="vr-input">
+              {row.key === "country" ? (
+                <select id={`company-${row.key}`} value={draft.country ?? ""} onChange={(event) => set("country", event.target.value)}>
+                  {!draft.country && <option value="">Choose a country</option>}
+                  {countries.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}
+                </select>
+              ) : row.key === "vendorKind" ? (
+                <select id={`company-${row.key}`} value={draft.vendorKind} onChange={(event) => set("vendorKind", event.target.value)}>
+                  {Object.entries(KIND_WORDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+              ) : row.multiline ? (
+                <textarea id={`company-${row.key}`} rows={2} value={draft[row.key] ?? ""} onChange={(event) => set(row.key, event.target.value)} />
+              ) : (
+                <input id={`company-${row.key}`} type={row.key === "website" ? "url" : "text"} value={draft[row.key] ?? ""} spellCheck={false} onChange={(event) => set(row.key, event.target.value)} />
+              )}
+            </div>
+          </div>
+        )))}
+      </div>
+      {editing && (
+        <div className="vr-read-actions">
+          {error && <p className="vr-run-status is-error" role="status"><i aria-hidden="true" />{error}</p>}
+          <button className="secondary-btn" type="button" disabled={busy} onClick={cancel}>Cancel</button>
+          <button className="primary-btn vr-run" type="button" disabled={busy || changed.length === 0} onClick={save}>
+            {busy ? "Saving" : "Save changes"}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
