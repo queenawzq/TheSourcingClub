@@ -203,6 +203,30 @@ Read before planning, building or testing anything a person will see.
 - When a rule changes, change every layer in one go: form, client, database.
 - A browser check that cannot reach the page usually means no dev server is running, not a slow machine.
 
+## How we work (lessons, Nov 25, 2026)
+
+Read before planning any feature. The paused-payments rebuild (#150) is the model.
+
+**Standard way, users first.** Every plan starts from each user's job (brand, factory, staff), then the established standard for the problem (Stripe's docs, how mature marketplaces do it), then the screen. Nothing is built just to have it done. A rule the product owners decided explicitly is settled even where the standard differs; follow the standard everywhere else and don't reopen it.
+
+**Reading requests.**
+- Read the source requests word for word, not a summary, before planning.
+- Separate the rule from its wording. Keep the reason behind each rule: it shows which standard answer fits (e.g. the whole balance is paused because the same brand may dispute its other payments).
+- A comment about a screen applies to what was on that screen at the time; check the code at that commit before acting on "remove the first two sentences".
+- When a request says "hold off", offer scope options with a recommendation instead of building all of it.
+
+**Not confusing.**
+- Name a decision after what the person actually knows ("Who was at fault?"), not after the mechanics behind it. One question per dialog; the money and the state follow from the answer.
+- Status words and a small progress indicator, not sentences. Never a sentence that a button on the same screen can make false.
+- One word for one thing on every surface: screen, list, bell, email and admin. A status that differs between two pages is a bug.
+- Mock first (UI agent, real CSS, three widths), approve, then build exactly that. A one-page flow explainer helps people who weren't in the work.
+
+**Running the work.**
+- Decisions in one list, settled in one sitting. One interface file that parallel builders share; builders never touch the same files.
+- Test in this order: money and security reviews; an automated end-to-end scenario script against real Stripe test mode, three runs in a row (a scenario that fails once is a blocker); an independent tester; a fix file with a ruling and an owner per finding; a fresh re-check of exactly those items; simple-user testers per role; another fix round until no blocker and nothing confusing.
+- Testers sharing one Chrome sign each other's tabs in: run them one at a time or in separate profiles. Nobody purges, reseeds or resets a database while testers use it; announce every shared-database change first.
+- Under a deadline, freeze: push what is verified, list what isn't, never rush an unchecked change.
+
 ## Design system
 
 `TSC_DESIGN_SYSTEM.md` is the enforceable spec for **product screens** (the React prototypes): tokens, a role-based type scale, and fixed component dimensions (42px buttons, 28px pills, 8px cards, 76px bottom bar). Read it before changing prototype UI, and follow its rule that conflicts are fixed by updating the screen rather than adding a local exception.
