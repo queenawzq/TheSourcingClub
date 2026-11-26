@@ -112,7 +112,8 @@ const mockAdapter = {
   adminRfqs: () => rfqs,
   adminQuotes: () => quotes,
   adminMetrics: () => ({
-    profilesAwaitingReview: profiles.filter((p) => !["Approved", "Declined"].includes(p.status)).length,
+    // The queue's Active tab: not decided, and not waiting on the company (M7).
+    profilesAwaitingReview: profiles.filter((p) => p.signupFinished !== false && !["Approved", "Needs information", "Declined"].includes(p.status)).length,
     profilesSubmittedToday: 2,
     rfqsSubmittedToday: 12,
     quotesSubmittedToday: 19,

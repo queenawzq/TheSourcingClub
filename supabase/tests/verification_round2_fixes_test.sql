@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(12);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -55,6 +55,18 @@ select ok(public.registry_check_holds('d2611261-0000-0000-0000-0000000000f1', '{
   'C2: with no registry name, the names it was checked under are compared the same way, not to the letter');
 select ok(not exists (select 1 from pg_proc p where p.proname = 'registry_approval_problem'
   and pg_get_functiondef(p.oid) like '%''renamed''%'), 'C2: the approval rule has no renamed state');
+
+-- M7: the overview's "awaiting review" is the queue's Active count ----------------
+set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is((select m.profiles_awaiting_review from public.admin_overview_metrics() m),
+          (select count(*)::int from public.admin_verification_queue() q where q.state in ('ready_for_review', 'in_review')),
+  'M7: the overview counts what the queue lists as Active');
+select ok(exists (select 1 from public.admin_verification_queue() q where q.org_id = 'd2611261-0000-0000-0000-0000000000f2'),
+  'M7: a finished signup is in the queue, and so in the count');
+reset role;
+select ok(not exists (select 1 from pg_proc p where p.proname = 'admin_overview_metrics'
+  and pg_get_functiondef(p.oid) like '%needs_information%'), 'M7: a company asked for more information is not awaiting review');
 
 select * from finish();
 rollback;
