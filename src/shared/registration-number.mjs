@@ -101,20 +101,28 @@ export function numberFromDocument(country) {
 }
 
 /**
- * The label people type before the number ("NIF 519211596", "NIPC: …",
- * "VKN …", "统一社会信用代码：…", "No: …"), dropped in every country. A Latin
- * label needs a space, colon, "#" or dot after it, so a number that merely
- * starts with those letters keeps them; the Chinese labels need nothing. The
- * database's normalise_registration_number() drops the same labels.
+ * The label people type before the number, dropped only in the country it
+ * belongs to (R16, Nov 26): Portugal "NIF", "NIPC", "N.º"; Turkey "VKN",
+ * "Vergi No"; China "USCC" and "统一社会信用代码". A Latin label needs a space,
+ * colon, "#" or dot after it, so a number that merely starts with those
+ * letters keeps them; the Chinese labels need nothing. Anywhere, "No:",
+ * "Nr:" or "Nº:" is dropped only when a colon follows it, so a number such as
+ * Norway's "NO 123456789 MVA" is kept as written. The database's
+ * normalise_registration_number() drops the same labels.
  */
-const LATIN_LABEL = /^(?:UNIFIED SOCIAL CREDIT CODE|USCC|NIF\/NIPC|NIPC|NIF|VKN|VERGI NO|VERGI NUMARASI|TAX ID|TAX NO|VAT NO|VAT|NO|NR|Nº|N\.º)(?:\s*[:#.]+\s*|\s+)(?=\S)/u;
-const CHINESE_LABEL = /^(?:统一社会信用代码|社会信用代码|信用代码)\s*:?\s*(?=\S)/u;
+const COUNTRY_LABELS = {
+  PT: /^(?:NIF\/NIPC|NIPC|NIF|Nº|N\.º)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  TR: /^(?:VKN|VERGI NO|VERGI NUMARASI)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  CN: /^(?:(?:UNIFIED SOCIAL CREDIT CODE|USCC)(?:\s*[:#.]+\s*|\s+)|(?:统一社会信用代码|社会信用代码|信用代码)\s*:?\s*)(?=\S)/u,
+};
+const ANY_LABEL = /^(?:NO|NR|Nº|N\.º)\s*:\s*(?=\S)/u;
 
-/** Spaces, dots and dashes removed; letters upper-case; a typed label ("NIF", "VKN", "No:"…) and Portugal's "PT" prefix dropped. */
+/** Spaces, dots and dashes removed; letters upper-case; the country's own typed label ("NIF", "VKN"…) or "No:" dropped; Portugal's "PT" prefix dropped. */
 export function normaliseRegistrationNumber(country, value) {
   // \p{Cf}: a copied number can carry invisible characters (U+200B seen from the AI read).
   let text = halfWidth(value).replace(/\p{Cf}/gu, "").trim().toUpperCase().replace(/İ/g, "I");
-  text = text.replace(CHINESE_LABEL, "").replace(LATIN_LABEL, "");
+  if (COUNTRY_LABELS[country]) text = text.replace(COUNTRY_LABELS[country], "");
+  text = text.replace(ANY_LABEL, "");
   text = text.replace(/[\s.\-/]/gu, "");
   if (country === "PT" && /^PT\d{9}$/.test(text)) text = text.slice(2);
   return text;

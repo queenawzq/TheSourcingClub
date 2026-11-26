@@ -62,7 +62,8 @@ for (const [country, number, expected] of cases) {
   });
 }
 
-// Nov 26: the label typed before a number is dropped, in every country. The same cases are
+// Nov 26: the label typed before a number is dropped, only in the country it belongs to
+// ("No:" with a colon anywhere). The same cases are
 // pinned for the database's normalise_registration_number() in verification_round2_test.sql.
 const labelled = [
   ["PT", "NIF 519211596", "519211596"],
@@ -79,6 +80,17 @@ const labelled = [
   // A number that merely starts with a label's letters keeps them.
   ["GB", "NO12345", "NO12345"],
   ["PT", "51921159", "51921159"],
+  // Another country's label is part of the number there (R16).
+  ["NO", "NO 123456789 MVA", "NO123456789MVA"],
+  ["GB", "VAT 123456789", "VAT123456789"],
+  ["GB", "NIF 519211596", "NIF519211596"],
+  ["PT", "VKN 4837261591", "VKN4837261591"],
+  ["TR", "USCC 91330100MA2B7C4D3F", "USCC91330100MA2B7C4D3F"],
+  ["GB", "统一社会信用代码 12345", "统一社会信用代码12345"],
+  // "No" without a colon is kept; with one it is dropped anywhere.
+  [null, "NO 12345", "NO12345"],
+  ["GB", "Nr: 12345", "12345"],
+  ["CN", "USCC: 91330100MA2B7C4D3F", "91330100MA2B7C4D3F"],
 ];
 for (const [country, typed, stored] of labelled) {
   check(`label dropped: ${country ?? "other"} ${JSON.stringify(typed)} → ${stored}`, () => assert.equal(normaliseRegistrationNumber(country, typed), stored));
