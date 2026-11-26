@@ -137,7 +137,7 @@ async function recordRegistryFound(page, reference) {
       return Boolean(row);
     }
     if (what === "record") {
-      const button = [...(row?.querySelectorAll(".vr-sub-actions button") ?? [])].find((b) => /^(Record check|Edit)$/.test(b.textContent.trim()));
+      const button = [...(row?.querySelectorAll(".vr-sub-actions button") ?? [])].find((b) => /^(Record check|Edit check|Edit)$/.test(b.textContent.trim()));
       button?.click();
       return Boolean(button);
     }
@@ -4102,6 +4102,17 @@ async function main() {
       check(!finishedError, `the invited factory is marked as having finished onboarding${finishedError ? ` (${finishedError.message})` : ""}`);
       // And gave its registration number on the step (20261108600000).
       await db.from("company_registrations").upsert({ org_id: invitedOrg?.id, number: `E2E${Date.now()}` }, { onConflict: "org_id" });
+      // And signed the factory terms, as the terms card does: Approve waits for them (20261124310000).
+      {
+        const { data: owner } = await db.from("org_members").select("user_id").eq("org_id", invitedOrg?.id ?? stamp).eq("role", "owner").limit(1).maybeSingle();
+        const { data: terms } = await db.from("legal_documents").select("id, kind, version")
+          .eq("kind", "terms_factory").order("version", { ascending: false }).limit(1).single();
+        const { error: signedError } = await db.from("terms_acceptances").upsert({
+          org_id: invitedOrg?.id, terms_version: `${terms.kind} v${terms.version}`, legal_document_id: terms.id,
+          signature: "Invited Mill owner", accepted_by: owner?.user_id,
+        }, { onConflict: "org_id,terms_version", ignoreDuplicates: true });
+        check(!signedError, `the invited factory signed the terms${signedError ? ` (${signedError.message})` : ""}`);
+      }
 
       await signOutFully(page);
       await signIn(page, factoryEmail, "Factory, invite joined", "factory");
