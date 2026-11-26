@@ -340,7 +340,7 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
-export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "" }) {
+export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "", addressConfirmed = false }) {
   const reg = detail?.registration ?? null;
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
@@ -373,11 +373,14 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     // Names are compared live (C2, Nov 26): a registry name that is not the company's current name differs.
     const asSaved = detail.renamedSinceCheck && recorded.result === "found"
       ? { ...recorded, differs: { ...recorded.differs, name: true }, compared: { ...recorded.compared, name: true } } : recorded;
-    // A registry address that differs stays a difference, whatever the Address row says (T1): the summary
-    // names it, the Address row shows the Registry: line, and the check needs a look.
     const saved = asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
-    out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
+    // A registry address that differs is always said: in the summary and on the Address row's Registry: line (T1).
+    // Once staff confirm the company's address (Nov 25), that difference is settled: it no longer lowers the check.
+    const settled = addressConfirmed && saved.result === "found" && saved.differs?.address && !saved.differs?.name && !saved.differs?.number;
+    const verdict = siteVerdict(saved, SCORES.registry);
+    out = { ...verdict, ...(settled ? { score: SCORES.registry.found, short: `found on ${saved.site || "the site"}` } : {}),
+      registry: { ...registry, summary: siteSummary(saved, by) } };
   } else if (current) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const cd = current.details ?? {};
@@ -1037,7 +1040,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
     .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
   const registry = withReason(registryCheck({
-    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress,
+    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
   // Company information's inputs, read here: the address check is in this group (Nov 25).

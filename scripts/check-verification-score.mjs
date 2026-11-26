@@ -96,13 +96,32 @@ console.log("staff's own result (Nov 25)");
   check(find(trader, "scope").score === SCORES.scope.trading, "a trading company judged a factory scores as a mismatch");
 }
 {
-  // A registry address that differs stays a difference, even once staff confirm the typed address (T1, Nov 26):
-  // the summary names it and the check needs a look. Accents alone are no difference.
+  // Staff confirmed the current address: a registry check's address difference no longer counts (Nov 25 tester),
+  // but it is still said (T1, Nov 26): in the summary and on the Address row's Registry: line.
   const current = (address) => ({ id: "x", source: "gib", result: "found", details: { form: 2, outcome: "found", site: "GİB", name: "A Tekstil", number: "6230418795", address } });
-  const reg = (address) => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current: current(address), checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, İzmir" });
-  check(reg("Izmir, Türkiye").score === 60 && /address differs/.test(reg("Izmir, Türkiye").registry.summary), `an address the registry shows differently flags (${reg("Izmir, Türkiye").registry.summary})`);
-  check(reg("KEMALPASA CD 12, BORNOVA, IZMIR").score === 90 && /address match/.test(reg("KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary),
-    `the same address without its accents matches (${reg("KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary})`);
+  const reg = (addressConfirmed, address = "Izmir, Türkiye") => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current: current(address), checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, İzmir", addressConfirmed });
+  check(reg(false).score === 60 && /address differs/.test(reg(false).registry.summary), `an address the registry shows differently flags (${reg(false).registry.summary})`);
+  check(reg(true).score === 90, `once staff confirm the address, it is settled (${reg(true).score}, ${reg(true).registry.summary})`);
+  check(/address differs/.test(reg(true).registry.summary), `and the summary still says the registry's address differs (${reg(true).registry.summary})`);
+  check(reg(false, "KEMALPASA CD 12, BORNOVA, IZMIR").score === 90 && /address match/.test(reg(false, "KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary),
+    `the same address without its accents matches (${reg(false, "KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary})`);
+}
+{
+  // The Address row always shows the registry's address, marked when it differs, confirmed or not (T1).
+  const input = (confirmed) => ({
+    detail: { title: "A Tekstil", productionAddress: "Kemalpaşa Cd. 12, Bornova, İzmir", registration: { country: "TR", number: "6230418795" },
+      current: { id: "x", source: "gib", result: "found", checked_at: "2026-11-26T10:00:00Z", details: { form: 2, outcome: "found", site: "GİB", name: "A Tekstil", number: "6230418795", address: "Izmir, Türkiye" } },
+      checks: [{ id: "x" }] },
+    profile: { name: "A Tekstil", countryCode: "TR" },
+    extra: { signals: confirmed
+      ? [{ kind: "address", automatic: false, result: "confirmed", note: "x", checkedAt: "2026-11-26T11:00:00Z", details: { address: "Kemalpaşa Cd. 12, Bornova, İzmir" } }] : [] },
+  });
+  for (const confirmed of [false, true]) {
+    const v = scoreVerification(input(confirmed), { timeZone: "UTC" });
+    const address = v.groups.flatMap((g) => g.checks).find((c) => c.key === "address");
+    const line = address?.lines?.find((l) => l.key === "registry");
+    check(line?.value === "Izmir, Türkiye" && line.differs === true, `${confirmed ? "confirmed" : "not confirmed"}: the Address row shows Registry: …, marked as differing (${JSON.stringify(line)})`);
+  }
 }
 console.log("Hong Kong (Nov 25)");
 {
