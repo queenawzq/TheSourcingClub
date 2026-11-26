@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(32);
+select plan(37);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -124,6 +124,15 @@ select is((select hq_location from public.brand_profiles where org_id = 'd261126
   'London, Ireland', 'M8: the brand''s location now names Ireland');
 select is((select country_code || ' ' || location from public.factory_profiles where org_id = 'd2611261-0000-0000-0000-0000000000f2'),
   'CI Braga, Côte d’Ivoire', 'M8: the factory''s code and location are both written');
+
+-- T8: a staff profile edit is a Company profile notice that says the new value ----
+select is((select body from public.notifications where org_id = 'd2611261-0000-0000-0000-0000000000b1' and kind = 'profile_updated'
+            and body like '%Ireland%'), 'We updated your country to Ireland.', 'T8: the notice names the new country');
+select is((select body from public.notifications where org_id = 'd2611261-0000-0000-0000-0000000000b1' and kind = 'profile_updated'
+            and body like '%website%' order by created_at desc limit 1), 'We updated your website to https://r2f-brand.example.', 'T8: and the new website');
+select is(public.notification_email_category('profile_updated'), 'profile', 'T8: emailed under Company profile, not Account security');
+select is(public.notification_email_category('payout_method_changed'), 'account', 'T8: the payout alert keeps Account security');
+select ok(public.notification_email_enabled('d2611261-0000-0000-0000-0000000000b1', 'profile'), 'T8: sent to everyone, whatever the email settings');
 
 select * from finish();
 rollback;

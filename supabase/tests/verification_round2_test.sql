@@ -205,7 +205,7 @@ select is((select legal_name from public.factory_profiles where org_id = 'd26112
 select is((select details from public.org_review_changes where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'legal_name'),
   '{"from":"Hellstitch Lda","to":"Hell Stitch Unipessoal Lda"}'::jsonb, 'one history line, from and to');
 select is((select count(*)::int from public.notifications where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'profile_updated'
-            and title = 'Your company profile was updated' and body = 'We updated your legal name.'), 1, 'the company is told, once');
+            and title = 'Your company profile was updated' and body = 'We updated your legal name to Hell Stitch Unipessoal Lda.'), 1, 'the company is told, once, with the new name');
 select is(public.company_title('d2611260-0000-0000-0000-0000000000f2'), 'Hell Stitch Unipessoal Lda', 'and the checks use the new legal name');
 
 set local role authenticated;

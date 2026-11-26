@@ -227,6 +227,13 @@ const SENTENCES = [
   [/^We updated your company type to trading company\.$/, () => "我们已将你的公司类型更新为贸易公司。"],
   [/^We updated your company type to factory\.$/, () => "我们已将你的公司类型更新为工厂。"],
   [/^We updated your company address\.$/, () => "我们已更新你的公司地址。"],
+  // …saying what it is now (T8, Nov 26)
+  [/^We updated your company name to (.+)\.$/, (value) => `我们已将你的公司名称更新为 ${value}。`],
+  [/^We updated your legal name to (.+)\.$/, (value) => `我们已将你的法定名称更新为 ${value}。`],
+  [/^We updated your legal name\.$/, () => "我们已更新你的法定名称。"],
+  [/^We updated your company address to (.+)\.$/, (value) => `我们已将你的公司地址更新为 ${value}。`],
+  [/^We updated your website to (.+)\.$/, (value) => `我们已将你的网站更新为 ${value}。`],
+  [/^We updated your website\.$/, () => "我们已更新你的网站。"],
   // People
   [/^They accepted the invitation and can now work with the permissions it gave them\.$/, () => "对方已接受邀请，现在可以按邀请中的权限开展工作。"],
   [/^Everything they worked on stays with the company\.$/, () => "其经手的所有内容都保留在公司中。"],
