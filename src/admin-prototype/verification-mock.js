@@ -45,9 +45,11 @@ const CN_SAVED = siteRecord({
   proof: [{ path: "mock-gsxt-1", name: "gsxt-record.png", type: "image/png", url: PHOTO.floor }, { path: "mock-gsxt-2", name: "gsxt-annual-report.png", type: "image/png", url: PHOTO.line }],
 }, CN_PROFILE);
 /** The Address check in Business registration (Nov 25): each version of the address on its own line, Open map, Edit address. */
-function addressCheck({ score, verdict, typed, licence = null, registry = null, label = "Factory address" }) {
+function addressCheck({ score, verdict, typed, licence = null, registry = null, label = "Factory address", sameAsLicence = false }) {
   return {
     key: "address", label: "Address", weight: 15, score, verdict,
+    // The same address written another way (another language): not a difference with the licence.
+    ...(sameAsLicence ? { sameAsLicence: true } : {}),
     lookup: { label: "Open map", href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(typed)}` },
     lines: [
       { key: "typed", label: "Typed", value: typed },
@@ -104,7 +106,7 @@ const chinaOriginal = {
         checks: [
           { key: "licence", label: "Licence", weight: 30, score: 96, verdict: "Original, every field readable" },
           { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 90, verdict: "Found on GSXT, name, number and address match", registry: { ...CN_SAVED, source: "GSXT", by: "Maya Chen, Nov 10", reference: "", summary: siteSummary(CN_SAVED, "Maya Chen, Nov 10"), form: siteForm("CN", { name: "杭州钱江服装有限公司", number: "91330109MA2B3K7Q4X", address: "杭州市萧山区江东三路18号" }, CN_PROFILE, "QCC") }, lookup: { label: "Open QCC", href: "https://www.qcc.com/web/search?key=91330109MA2B3K7Q4X", copy: "91330109MA2B3K7Q4X" } },
-          addressCheck({ score: 90, verdict: "Same as the licence, in an industrial area", typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", licence: ["Licence", "杭州市萧山区江东三路18号"], registry: CN_SAVED.address }),
+          addressCheck({ score: 90, verdict: "Same as the licence, in an industrial area", typed: "18 Jiangdong 3rd Road, Xiaoshan, Hangzhou", licence: ["Licence", "杭州市萧山区江东三路18号"], registry: CN_SAVED.address, sameAsLicence: true }),
         ],
       },
       {
@@ -305,6 +307,28 @@ const turkeyTrader = {
 /* ---------- (d) Portugal, EU VIES: the company's number, name and address differ from the certificate's ---------- */
 const PT_FULL_NAME = "Têxteis Douro – Confecções, Lda";
 const PT_ADDRESS = addressCheck({ score: 40, verdict: "Street number differs from the licence", typed: "Rua da Igreja 241, Arcozelo, Barcelos", licence: ["Registration certificate", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", ["214,"]] });
+const plainValue = (value) => String(value ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/** Once the differences are settled, the checks are worked out again (the mock's stand-in for the live comparison). */
+function ptRecheck(group) {
+  const field = Object.fromEntries(group.fields.map((item) => [item.key, item]));
+  const differs = (key) => Boolean(field[key]?.typed) && plainValue(field[key].typed) !== plainValue(field[key].value);
+  const lines = group.checks.find((check) => check.key === "address")?.lines ?? [];
+  const line = (key) => lines.find((entry) => entry.key === key)?.value;
+  const number = differs("number");
+  const name = differs("legalName");
+  const address = Boolean(line("typed") && line("licence")) && plainValue(line("typed")) !== plainValue(line("licence"));
+  const registry = number ? { score: 60, verdict: "Found on EU VIES; number differs from the licence" }
+    : name ? { score: 70, verdict: "Found on EU VIES; legal name differs from the licence" }
+      : { score: 95, verdict: "EU VIES: VAT number valid, name matches" };
+  return {
+    verdict: number ? "Registered, but the certificate shows another number" : name ? "Registered, but the certificate shows another name"
+      : address ? "Registered; the certificate shows another address" : "Registered: name and VAT number match EU VIES",
+    why: "",
+    checks: group.checks.map((check) => (check.key === "registry" ? { ...check, ...registry, registry: { ...check.registry, reference: `PT${field.number?.value ?? ""}` }, lookup: { ...check.lookup, copy: field.number?.value ?? "" } }
+      : check.key === "address" ? { ...check, score: address ? 40 : 90, verdict: address ? "Street number differs from the licence" : "Same as the licence" } : check)),
+  };
+}
+
 const portugalFactory = {
   id: "verify-pt-vies",
   initials: "TD",
@@ -351,9 +375,10 @@ const portugalFactory = {
         ],
         checks: [
           { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 60, verdict: "Found on EU VIES; the licence shows another number", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT519211596" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "519211596" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 60, verdict: "Found on EU VIES; number differs from the licence", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT519211596" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "519211596" } },
           PT_ADDRESS,
         ],
+        recheck: ptRecheck,
       },
       {
         key: "company_information",
