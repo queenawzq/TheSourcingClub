@@ -1531,7 +1531,7 @@ const PAPERS = {
     kicker: "Conservatória do Registo Comercial",
     title: "Certidão Permanente",
     rows: [
-      ["NIPC", "513284976"], ["Firma", "TÊXTEIS DOURO –\nCONFECÇÕES, LDA"], ["Natureza jurídica", "Sociedade por quotas"],
+      ["NIPC", "519211596"], ["Firma", "TÊXTEIS DOURO –\nCONFECÇÕES, LDA"], ["Natureza jurídica", "Sociedade por quotas"],
       ["CAE principal", "14130"], ["Sede", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"], ["Data do registo", "2012-03-08"], ["Código de acesso", "4821-7730-9145"],
     ],
   },
