@@ -210,7 +210,7 @@ const byMe = "You, just now";
  * as the database would. Same signatures as the live ones, so the modal
  * cannot tell them apart.
  */
-function mockActions(setGroups, groupsRef, entityType = null) {
+function mockActions(setGroups, groupsRef, entityType = null, onCompanyChange = null) {
   const change = (groupKey, update) => setGroups((current) => current.map((group) => (group.key === groupKey ? update(group) : group)));
   const changeCheck = (groupKey, next) => change(groupKey, (group) => ({
     ...group,
@@ -252,6 +252,31 @@ function mockActions(setGroups, groupsRef, entityType = null) {
         lines: [{ key: "typed", label: "Typed", value: address }, ...(check.lines ?? []).filter((line) => line.key !== "typed")],
       })),
     }))),
+    // Differences with the licence (Nov 26), settled together: the licence's value or another one changes the
+    // company's (one history line per field, one notice); the company's own corrects the licence's value only.
+    resolveDifferences: async (groupKey, answers) => {
+      await new Promise((resolve) => { window.setTimeout(resolve, 500); });
+      const companyChange = Object.fromEntries(answers.filter((answer) => answer.choice !== "company")
+        .map((answer) => [{ number: "registrationNumber", legalName: "legalName", address: "address" }[answer.key], answer.value]));
+      if (Object.keys(companyChange).length) await onCompanyChange?.(companyChange);
+      const settled = Object.fromEntries(answers.map((answer) => [answer.key, answer.value]));
+      change(groupKey, (group) => {
+        const next = {
+          ...group,
+          fields: group.fields.map((field) => {
+            if (field.key === "address" && settled.address != null) return { ...field, value: settled.address };
+            if (settled[field.key] == null) return field;
+            return { ...field, value: settled[field.key], ...(field.typed ? { typed: settled[field.key] } : {}) };
+          }),
+          checks: settled.address == null ? group.checks : group.checks.map((check) => (check.key !== "address" ? check : {
+            ...check,
+            ...(check.edit ? { edit: { ...check.edit, value: settled.address } } : {}),
+            lines: check.lines.map((line) => (line.key === "typed" || line.key === "licence" ? { ...line, value: settled.address, parts: undefined } : line)),
+          })),
+        };
+        return withPhotoCheck(group.recheck ? { ...next, ...group.recheck(next) } : next);
+      });
+    },
     runAgain: (groupKey, values) => new Promise((resolve) => {
       window.setTimeout(() => {
         const group = groupsRef.current.find((item) => item.key === groupKey);
@@ -297,13 +322,15 @@ function CardSkeleton() {
  * `actions`, `loading`, `error`, `onRetry` and `fileUrl` (a signed link for a
  * stored file).
  */
-export function VerificationScoreCard({ profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl }) {
+export function VerificationScoreCard({ profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl, onCompanyChange = null }) {
   const verification = given ?? profile?.verification ?? null;
   const [localGroups, setLocalGroups] = useState(() => verification?.groups ?? []);
   const localRef = useRef(localGroups);
   localRef.current = localGroups;
   const groups = (liveActions ? verification?.groups : localGroups) ?? [];
-  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef, profile?.entityType ?? null), [liveActions, profile?.entityType]);
+  const companyChangeRef = useRef(onCompanyChange);
+  companyChangeRef.current = onCompanyChange;
+  const actions = useMemo(() => liveActions ?? mockActions(setLocalGroups, localRef, profile?.entityType ?? null, (change) => companyChangeRef.current?.(change)), [liveActions, profile?.entityType]);
   const [openKey, setOpenKey] = useState(() => new URLSearchParams(window.location.search).get("check"));
   // Automatic checks still running when the page opens (the mock's timers, or the database saying so);
   // Run again adds its group while it runs.
@@ -831,7 +858,7 @@ function OverrideForm({ check, onSave, onDone }) {
 // The address's versions, in plain words (Nov 26): whose address each line is.
 const ADDRESS_LINE_WORDS = { typed: "Company", licence: "Licence", registry: "Registry" };
 
-function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
+function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null, addressInBlock = false }) {
   const [explainingTyped, setExplainingTyped] = useState(null);
   const [mode, setMode] = useState(null);
   // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
@@ -843,7 +870,9 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
   const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
   const close = () => setMode(null);
-  const canEditAddress = Boolean(check.edit && actions.saveAddress);
+  // An address that differs from the licence is settled in "Differences with the licence", not here (Nov 26).
+  const canEditAddress = Boolean(check.edit && actions.saveAddress) && !addressInBlock;
+  const lines = addressInBlock ? (check.lines ?? []).filter((entry) => entry.key !== "typed" && entry.key !== "licence") : check.lines;
   // Staff decide the address, factory-or-trader and licence checks themselves (Nov 25).
   const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
   // A check staff record by hand has its own note: no separate reason (Nov 25).
@@ -853,7 +882,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   const line = registry?.summary && !registry.for ? registry.summary : check.verdict;
   // A row with nothing more to show (a brand's details, its terms) is a plain line: nothing opens.
   const hasBody = Boolean(check.lookup || registry?.for || (!registry?.summary && registry?.by) || (check.sharedNumber && !numberShown)
-    || typedFields.length > 0 || check.staff || check.blocks || registry?.proof?.length || check.lines?.length || dup || check.reason
+    || typedFields.length > 0 || check.staff || check.blocks || registry?.proof?.length || lines?.length || dup || check.reason
     || canRecord || canOverride || canEditAddress || canReason || (check.duplicate && !numberShown && actions.explainField));
   const open = hasBody && (expanded || Boolean(mode));
   const toggle = () => { if (!mode && hasBody) setExpanded(!open); };
@@ -892,10 +921,10 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
               {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
             </div>
           )}
-          {check.lines?.length > 0 && (
+          {lines?.length > 0 && (
             // The address, each version on its own line (Nov 25); Edit address sits with the company's own (Nov 26).
             <div className="vr-sub-lines">
-              {check.lines.map((entry) => (
+              {lines.map((entry) => (
                 <p className="vr-compare" key={entry.key}>
                   <span>{ADDRESS_LINE_WORDS[entry.key] ?? entry.label}:</span> {entry.value}
                   {entry.key === "typed" && canEditAddress && !mode && (
@@ -945,7 +974,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
               <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
             </p>
           )}
-          {!mode && (canRecord || canReason || (check.duplicate && !numberShown && actions.explainField) || canOverride || (canEditAddress && !check.lines?.some((entry) => entry.key === "typed"))) && (
+          {!mode && (canRecord || canReason || (check.duplicate && !numberShown && actions.explainField) || canOverride || (canEditAddress && !lines?.some((entry) => entry.key === "typed"))) && (
             <div className="vr-sub-actions">
               {canRecord && (
                 <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
@@ -953,7 +982,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
                 </button>
               )}
               {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
-              {canEditAddress && !check.lines?.some((entry) => entry.key === "typed") && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
+              {canEditAddress && !lines?.some((entry) => entry.key === "typed") && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
               {check.duplicate && !numberShown && actions.explainField && (
                 <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
               )}
@@ -983,15 +1012,137 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
 
 /* ---------------------------------------------------------------- fields */
 
-/** Read from this document (Nov 26): the value as read; the checks on the left say whether it matches. */
-function ReadValue({ field, value }) {
+/*
+ * Differences with the licence (Nov 26). The company's registration number, legal name and address against the
+ * licence's, each difference shown once, here, and settled with one Save: the company's value (the licence's is
+ * corrected), the licence's (the company's changes, with its history line and notice) or another one (both).
+ */
+const DIFFERENCE_LABELS = { number: "Registration number", legalName: "Legal name", address: "Address" };
+const plainValue = (value) => String(value ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const sameValue = (a, b) => plainValue(a) === plainValue(b);
+
+/** What differs between the company and the licence, worked out from what is shown now. */
+function licenceDifferences(fields, checks) {
+  const differences = ["number", "legalName"].map((key) => fields.find((field) => field.key === key))
+    .filter((field) => field?.typed && field.value && !sameValue(field.typed, field.value))
+    .map((field) => ({ key: field.key, label: DIFFERENCE_LABELS[field.key], company: field.typed, licence: field.value }));
+  const address = (checks ?? []).find((check) => check.key === "address");
+  const company = address?.lines?.find((line) => line.key === "typed")?.value;
+  const licence = address?.lines?.find((line) => line.key === "licence")?.value;
+  if (company && licence && !address.sameAsLicence && !sameValue(company, licence)) {
+    differences.push({ key: "address", label: DIFFERENCE_LABELS.address, company, licence });
+  }
+  return differences;
+}
+
+function DifferencesBlock({ differences, onSave }) {
+  const [answers, setAnswers] = useState({});
+  const [save, run] = useSave();
+  const id = useId();
+  const valueOf = (item) => {
+    const answer = answers[item.key];
+    if (!answer) return "";
+    return answer.choice === "company" ? item.company : answer.choice === "licence" ? item.licence : (answer.other ?? "").trim();
+  };
+  // One Save for every difference: it is ready once each one has an answer.
+  const ready = differences.every((item) => valueOf(item));
+  const choose = (key, choice, other) => setAnswers((current) => ({ ...current, [key]: { ...current[key], choice, ...(other !== undefined ? { other } : {}) } }));
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready || save.busy) return;
+    await run(() => onSave(differences.map((item) => ({ key: item.key, choice: answers[item.key].choice, value: valueOf(item) }))));
+  };
   return (
-    <div className={`vr-field vr-read${field.wide ? " is-wide" : ""}`}>
-      <span className="vr-field-label">{field.label}</span>
-      <div className="vr-read-line">
-        <span className="vr-read-value">{value || "Not read"}</span>
-        {field.copy && value && <CopyButton text={value} label={field.label} />}
+    <section className="vr-section" aria-labelledby={`${id}-title`}>
+      <h3 id={`${id}-title`}>Differences with the licence</h3>
+      <form className="vr-diffs" onSubmit={submit}>
+        {differences.map((item) => {
+          const answer = answers[item.key];
+          const name = `${id}-${item.key}`;
+          const option = (choice, value, whose) => (
+            <label className={`vr-choice-option${answer?.choice === choice ? " is-on" : ""}`}>
+              <input type="radio" name={name} value={choice} checked={answer?.choice === choice} onChange={() => choose(item.key, choice)} />
+              <span>{value} <em>({whose})</em></span>
+            </label>
+          );
+          return (
+            <fieldset className="vr-diff" key={item.key}>
+              <legend>{item.label}</legend>
+              {option("company", item.company, "company")}
+              {option("licence", item.licence, "licence")}
+              <label className={`vr-choice-option is-other${answer?.choice === "other" ? " is-on" : ""}`}>
+                <input type="radio" name={name} value="other" checked={answer?.choice === "other"} onChange={() => choose(item.key, "other")} />
+                <span>Other:</span>
+                <input
+                  className="vr-choice-input"
+                  type="text"
+                  value={answer?.other ?? ""}
+                  spellCheck={false}
+                  aria-label={`Other ${item.label.toLowerCase()}`}
+                  onFocus={() => choose(item.key, "other")}
+                  onChange={(event) => choose(item.key, "other", event.target.value)}
+                />
+              </label>
+            </fieldset>
+          );
+        })}
+        <div className="vr-diffs-foot">
+          <SaveError text={save.error} />
+          <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/*
+ * Read from this document (Nov 26): what the document says, as plain text. Values only the licence has
+ * (dates, activity, representative, tax office, scope) can be corrected here; the ones compared with the
+ * company's are settled in "Differences with the licence".
+ */
+const LICENCE_ONLY = new Set(["established", "activity", "scope", "representative", "taxOffice"]);
+
+function EditReadForm({ field, onSave, onDone }) {
+  const [text, setText] = useState(field.value ?? "");
+  const [save, run] = useSave();
+  const id = useId();
+  const Control = field.multiline ? "textarea" : "input";
+  const ready = text.trim() !== "" && text.trim() !== (field.value ?? "").trim();
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready || save.busy) return;
+    const { ok } = await run(() => onSave(text.trim()));
+    if (ok) onDone();
+  };
+  return (
+    <form className="vr-record vr-read-edit" onSubmit={submit}>
+      <div className="vr-field">
+        <Control id={id} aria-label={field.label} value={text} rows={field.multiline ? 2 : undefined} spellCheck={false} autoFocus onChange={(event) => setText(event.target.value)} />
       </div>
+      <SaveError text={save.error} />
+      <div className="vr-record-actions">
+        <button className="secondary-btn compact-btn" type="button" onClick={onDone}>Cancel</button>
+        <button className="primary-btn compact-btn" type="submit" disabled={!ready || save.busy}>{save.busy ? "Saving…" : "Save"}</button>
+      </div>
+    </form>
+  );
+}
+
+function ReadValue({ field, value, onEdit = null }) {
+  const [editing, setEditing] = useState(false);
+  const editable = Boolean(onEdit) && LICENCE_ONLY.has(field.key);
+  return (
+    <div className={`vr-field vr-read${field.wide || editing ? " is-wide" : ""}`}>
+      <div className="vr-read-head">
+        <span className="vr-field-label">{field.label}</span>
+        {editable && !editing && <button className="vr-text-action" type="button" aria-label={`Edit ${field.label.toLowerCase()}`} onClick={() => setEditing(true)}>Edit</button>}
+      </div>
+      {editing ? <EditReadForm field={field} onSave={(next) => onEdit(field, next)} onDone={() => setEditing(false)} /> : (
+        <div className="vr-read-line">
+          <span className="vr-read-value">{value || "Not read"}</span>
+          {field.copy && value && <CopyButton text={value} label={field.label} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -1073,8 +1224,6 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   const evidence = cert ? { kind: "certificate", name: cert.label, number: cert.number, valid: cert.valid, holder: cert.holder, file: cert.file } : group.evidence;
   const [values, setValues] = useState(() => fieldValues(fields));
   const [run, setRun] = useState({ state: "idle" });
-  // "Fix misread" (Nov 26): the reading is shown as read; a misread is fixed here, and it changes the reading only.
-  const [fixing, setFixing] = useState(false);
   // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
   const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
   const canRun = group.rerunnable !== false && fields.length > 0;
@@ -1102,8 +1251,24 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     }
     onRunning(false);
     setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done" });
-    if (!outcome?.error) setFixing(false);
   };
+  // A value only the licence has, corrected on its own (Nov 26): saved as Save changes saved it.
+  const saveReadField = async (field, value) => {
+    setRun({ state: "running" });
+    onRunning(true);
+    let outcome;
+    try {
+      outcome = await actions.runAgain(group.key, { ...fieldValues(fields), [field.key]: value }, [field.key], cert?.id ?? null);
+    } catch (error) {
+      outcome = { error: error?.message || "Couldn't save. Try again." };
+    }
+    onRunning(false);
+    setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done" });
+    if (outcome?.error) throw new Error(outcome.error);
+  };
+  // Differences with the licence (Nov 26): worked out from what is shown; none, and the block isn't there.
+  const differences = actions.resolveDifferences ? licenceDifferences(fields, checks) : [];
+  const addressInBlock = differences.some((item) => item.key === "address");
 
   const status = run.state === "running" ? { text: "Saving…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
@@ -1115,30 +1280,15 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
 
   // A registration number another company also uses: said in the Official registry row (Nov 26).
   // The licence's number or name against the company's own, worked out now: said, and explained, in the registry row.
-  const typedFields = (checks ?? []).some((check) => check.key === "registry") ? fields.filter((field) => field.typed && field.typed !== field.value) : [];
+  // The company's number and legal name against the licence's are said once, in Differences with the licence (Nov 26).
   const dupField = (checks ?? []).some((check) => check.key === "registry") ? fields.find((field) => field.key === "number" && field.duplicate) ?? null : null;
   const readSection = fields.length > 0 && (
     <section className="vr-section vr-read-section">
       <div className="vr-section-head">
         <h3>{group.evidencePane === false ? "What the AI read" : "Read from this document"}</h3>
-        {canRun && (
-          <button className="vr-text-action" type="button" onClick={() => { if (fixing) setValues(fieldValues(fields)); setFixing(!fixing); }}>
-            {fixing ? "Cancel" : "Fix misread"}
-          </button>
-        )}
       </div>
       <div className="vr-fields">
-        {fields.map((field) => (!fixing ? <ReadValue field={field} value={values[field.key]} key={field.key} /> : (
-          <ReadField
-            plain
-            field={field}
-            value={values[field.key]}
-            onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
-            onExplain={(text) => actions.explainField(group.key, field, text)}
-            onExplainTyped={actions.explainTyped ? (text) => actions.explainTyped(group.key, field, text, group.checks.find((check) => check.key === "registry")) : null}
-            key={field.key}
-          />
-        )))}
+        {fields.map((field) => <ReadValue field={field} value={values[field.key]} onEdit={canRun ? saveReadField : null} key={`${field.key}-${field.value ?? ""}`} />)}
       </div>
     </section>
   );
@@ -1163,6 +1313,13 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                 <Segmented options={certs.map((c) => ({ key: c.id, label: c.label }))} value={cert.id} onChange={setCertId} name={`cert-${titleId}`} label="Certificates" />
               </div>
             )}
+            {differences.length > 0 && (
+              <DifferencesBlock
+                differences={differences}
+                onSave={(answers) => actions.resolveDifferences(group.key, answers)}
+                key={differences.map((item) => item.key).join("-")}
+              />
+            )}
             <section className="vr-section" aria-label="Checks">
               <h3>Checks</h3>
               {checks?.length ? (
@@ -1175,8 +1332,7 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                       canReason={canReason && check.canReason !== false}
                       numberShown={Boolean(dupField)}
                       dupField={check.key === "registry" ? dupField : null}
-                      typedFields={check.key === "registry" ? typedFields : []}
-                      onExplainTyped={check.key === "registry" && actions.explainTyped ? (field, text) => actions.explainTyped(group.key, field, text, check) : null}
+                      addressInBlock={check.key === "address" && addressInBlock}
                       onExplainDup={dupField ? (text) => actions.explainField(group.key, dupField, text) : null}
                       actions={actions}
                       key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}

@@ -1578,3 +1578,35 @@ a.vr-text-action {
 .vr-file-row > button { display: grid; place-items: center; }
 .vr-file-row > button svg { width: 14px; height: 14px; }
 @media (max-width: 640px) { .vr-file-list { grid-template-columns: minmax(0, 1fr); } .vr-same-line { flex-wrap: wrap; } .vr-same { flex: 1 1 100%; } }
+
+/* Differences with the licence (Nov 26): each difference once, at the top of the checks, settled with one Save. */
+.vr-diffs { display: grid; margin: 0; border: 1px solid var(--vr-line); border-radius: 8px; background: #fff; }
+.vr-diff { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px 16px; border: 0; }
+.vr-diff + .vr-diff { border-top: 1px solid var(--vr-line-soft); }
+.vr-diff legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; color: var(--vr-ink); font-size: 14px; font-weight: 700; line-height: 20px; }
+.vr-choice-option { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--vr-ink); font-size: 13px; font-weight: 500; line-height: 18px; cursor: pointer; }
+.vr-choice-option > input[type="radio"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; box-shadow: none; accent-color: var(--vr-blue); }
+.vr-choice-option > span { min-width: 0; overflow-wrap: anywhere; }
+.vr-choice-option em { color: var(--vr-muted); font-style: normal; }
+.vr-choice-option.is-other > span { flex: none; }
+.vr-choice-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--vr-field-stroke);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vr-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+.vr-choice-input:focus { border-color: var(--vr-blue); outline: none; box-shadow: 0 0 0 3px var(--vr-strong-fill); }
+.vr-diffs-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--vr-line-soft); }
+.vr-diffs-foot .primary-btn:disabled { opacity: 0.45; cursor: default; }
+/* Read from this document: a value only the licence has keeps its Edit beside the label. */
+.vr-read-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.vr-read-head > .vr-field-label { display: flex; align-items: center; gap: 8px; color: var(--vr-ink); font-size: 12px; font-weight: 700; line-height: 16px; }
+.vr-read-head .vr-text-action { flex: none; }
+.vr-read .vr-record { background: #fff; box-shadow: inset 0 0 0 1px var(--vr-line); }
