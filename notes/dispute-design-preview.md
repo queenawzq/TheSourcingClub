@@ -28,3 +28,13 @@ The preview now mounts the existing brand ProjectsScreen / ProjectDetailScreen a
 
 ## Automatic case status
 Start review is removed. Submission waits for the other party; an admin response request records pending recipients and a business-day deadline. The case becomes Ready for TSC review only when all requested parties have responded. Extra notes from the opener do not satisfy a pending request to the other party. Recording a resolution leaves the case Awaiting completion. An admin must add a verification note and confirm the agreed actions are complete before marking it Resolved. Viewing a case never changes status. All state and deadline handling remains local to this mockup; there is no email, payment, or database action. Run `node scripts/check-dispute-preview.mjs` for transition checks.
+
+## Flow v2 (Nov 26 mock)
+
+Walkthrough with screenshots: `notes/mocks/2026-11-26-dispute-flow.html` (in the main checkout). Transitions: `dispute-preview-state.mjs`, checked by `node scripts/check-dispute-preview.mjs`.
+
+- **Settle first.** The other side answers within 2 business days: Accept · Make an offer · Reply. Each answer gives the other side 2 business days. A missed deadline, or either side asking, moves the case to TSC review. The preview's "Skip 2 days" shows it.
+- **Outcomes are platform actions only:** Refund (capped at what TSC holds on the order) · Pay out the step · New due date · Cancel the order · No change. An agreement or TSC's "Record resolution" sets it. Money outcomes wait for one staff confirm ("Awaiting completion"); a new date or no change resolves at once.
+- **Money while open:** the factory's whole balance is paused ("Withdrawals are paused while a payment is reviewed"), and the disputed step shows "On hold: dispute open" with Approve off. The brand is not paused. Both lift on Resolved or Withdrawn, unless another case or a bank dispute is open.
+- **One open case per order.** The case has its own page per side (`/orders/TSC-000524/dispute`), reached from the order card, the order banner, the bell and the emails. Statuses: Awaiting response · TSC review · Awaiting completion · Resolved · Withdrawn.
+- **The opener can withdraw** until an outcome is set.
