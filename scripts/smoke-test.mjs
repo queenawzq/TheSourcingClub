@@ -2878,8 +2878,8 @@ console.log("\nRun again — staff edit what the AI read (20261112300000)");
     ? ok("an edited number is saved as the staff number, and the reading is for it") : fail("the staff number", registration);
 
   const badNumber = await staffRouteAs("verification-rerun", staff.client, { body: { orgId: mill.id, group: "business_registration", fields: { number: "91440300MA5F00001B" } } });
-  badNumber.ok === false && badNumber.error === "That number isn't valid. Check it."
-    ? ok("a number failing its check digit is refused in words") : fail("a bad number", badNumber);
+  badNumber.ok === false && badNumber.error === "The last digit doesn't match. Check the number"
+    ? ok("a number failing its check digit is refused in staff's words") : fail("a bad number", badNumber);
 
   const { error: brandRecord } = await brand.client.rpc("record_verification_field_edits", { target_org: mill.id, group_key: "business_registration", edits: [{ field: "legalName", to: "x" }] });
   const { error: brandRead } = await brand.client.rpc("admin_verification_field_edits", { target_org: mill.id });

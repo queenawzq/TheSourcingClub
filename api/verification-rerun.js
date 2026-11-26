@@ -330,6 +330,14 @@ function fail(response, status, code, rules, extra = {}) {
   response.status(status).json({ ok: false, code, error: rules.rerunFailureWords(code, extra), ...extra });
 }
 
+/** A refused number's expected format for its country, in staff's words; null when there is none to say. */
+async function badNumberWords(country, number) {
+  if (!country) return null;
+  const { registrationNumberProblem, registrationProblemText } = await import("../src/shared/registration-number.mjs");
+  const problem = registrationNumberProblem(String(country).toUpperCase(), number);
+  return problem ? registrationProblemText(String(country).toUpperCase(), problem, "en", { staff: true }) : null;
+}
+
 export default function handler(request, response) {
   return handle(request, response);
 }
@@ -383,7 +391,12 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       const { error } = await asCaller.rpc("admin_set_registration_number", {
         target_org: orgId, number: numberEdit.to, note: "Edited under What the AI read, then Run again", country,
       });
-      if (error) return fail(response, 200, error.code === "22023" ? "bad_number" : error.code === "42501" ? "not_staff" : "save_failed", rules);
+      if (error?.code === "22023") {
+        // The expected format for the country, as staff read it (N4): never "where the company finds it".
+        const words = await badNumberWords(country ?? registration?.country_code, numberEdit.to);
+        return fail(response, 200, "bad_number", rules, words ? { error: words } : {});
+      }
+      if (error) return fail(response, 200, error.code === "42501" ? "not_staff" : "save_failed", rules);
     }
     const result = await runGroup({ orgId, group, fields: checked.fields, edits, asServer, requestedBy, subjectId, rules, steps, addressOnly: addressOnly === true && group === "company_information" });
     // Who edited what is recorded once the edit is saved (U6): a save that failed leaves no edit behind.

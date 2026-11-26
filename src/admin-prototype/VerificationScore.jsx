@@ -1018,7 +1018,7 @@ function ReadValue({ field, value }) {
   );
 }
 
-function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = false, documentLabel = "Licence" }) {
+function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = false, documentLabel = "Licence", error = "" }) {
   const id = useId();
   const [explaining, setExplaining] = useState(false);
   const [explainingTyped, setExplainingTyped] = useState(false);
@@ -1039,6 +1039,7 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = 
         />
         {field.copy && <CopyButton text={value ?? ""} label={field.label} />}
       </div>
+      <SaveError text={error} />
       {field.by && !isEdited && <small className="vr-field-by">{field.by}</small>}
       {!plain && field.typed && (value ?? "") !== field.typed && (
         <p className="vr-compare is-typed">
@@ -1153,6 +1154,9 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
   // The licence's number or name against the company's own, worked out now: said, and explained, in the registry row.
   // The document's own name on its comparison lines, as the address lines say it ("Registration certificate", "Tax plate"; N3).
   const documentLabel = (group.checks ?? []).find((check) => check.key === "licence")?.label ?? "Licence";
+  // An edited number in the wrong format for the country: the expected format, under the field (N4), as in Record check.
+  const numberCountry = (group.checks ?? []).find((check) => check.key === "registry")?.registry?.form?.profile?.country ?? null;
+  const numberWords = fixing && edited.includes("number") ? numberFormatWords(numberCountry, values.number) : "";
   const typedFields = (checks ?? []).some((check) => check.key === "registry") ? fields.filter((field) => field.typed && field.typed !== field.value) : [];
   const dupField = (checks ?? []).some((check) => check.key === "registry") ? fields.find((field) => field.key === "number" && field.duplicate) ?? null : null;
   const readSection = fields.length > 0 && (
@@ -1170,6 +1174,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
           <ReadField
             plain
             documentLabel={documentLabel}
+            error={field.key === "number" ? numberWords : ""}
             field={field}
             value={values[field.key]}
             onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
@@ -1184,7 +1189,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
         <div className="vr-read-actions">
           {run.state === "error" && <p className="vr-run-status is-error" role="status"><i aria-hidden="true" />{run.message}</p>}
           <button className="secondary-btn" type="button" disabled={run.state === "running"} onClick={() => { setValues(fieldValues(fields)); setRun({ state: "idle" }); setFixing(false); }}>Cancel</button>
-          <button className="primary-btn vr-run" type="button" disabled={run.state === "running" || edited.length === 0} onClick={runAgain}>
+          <button className="primary-btn vr-run" type="button" disabled={run.state === "running" || edited.length === 0 || Boolean(numberWords)} onClick={runAgain}>
             {run.state === "running" && <Spinner />}
             {run.state === "running" ? "Saving" : "Save changes"}
           </button>

@@ -444,6 +444,19 @@ await check("an edited number is saved as the staff number first", async () => {
   assert.ok(set > -1 && set < calls.indexOf("rpc:record_verification_field_edits"));
 });
 
+await check("N4: a refused number says the country's expected format, in staff's words", async () => {
+  const response = fakeResponse();
+  const base = clients({ staff: true, calls: [] });
+  const makeClient = (url, key, options) => {
+    const db = base(url, key, options);
+    return { ...db, rpc: async (name, args) => (name === "admin_set_registration_number" ? { data: null, error: { code: "22023", message: "bad" } } : db.rpc(name, args)) };
+  };
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { number: "12345" } }), response, { env: ENV, makeClient, steps: stubSteps([]) });
+  assert.equal(response.out.body.ok, false);
+  assert.equal(response.out.body.code, "bad_number");
+  assert.equal(response.out.body.error, "A Portuguese company number has 9 digits, e.g. 519211596");
+});
+
 // ---------------------------------------------------------- the caller
 
 const verificationAt = (score) => ({ groups: [{ key: "business_registration", label: "Business registration", checks: [{ key: "licence", weight: 30, score }, { key: "registry", weight: 30, score: 95 }] }] });
