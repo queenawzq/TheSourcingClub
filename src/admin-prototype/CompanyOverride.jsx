@@ -6,10 +6,16 @@
  * in `AddressDialog`, the same dialog.
  *
  *   actions.updateCompanyProfile(orgId, { vendorKind })
+ *   actions.updateCompanyProfile(orgId, { companyName | country | website })
  *   actions.reviewChanges(orgId) → [{ kind, details, at, by }]
+ *
+ * Company name, country and website are edited where Review details shows
+ * them (`CompanyFields`), for brands and vendors, in the same dialog and
+ * written to the same history. Change type is a vendor's only.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { countryName } from "../shared/company-address.mjs";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -18,6 +24,8 @@ const STAFF_RESULT_WORDS = {
   confirmed: "Confirmed", problem: "Problem found", could_not_check: "Couldn't check",
   factory: "Factory", trading_company: "Trading company", could_not_tell: "Couldn't tell", original: "Original",
 };
+// A company value staff edited (Nov 26): its kind, or `company_field` with the field in its details.
+const FIELD_WORDS = { company_name: "Company name", name: "Company name", country: "Country", website: "Website" };
 const DECISION_WORDS = { approved: "Approved", declined: "Declined", needs_information: "Asked for more information" };
 
 /** One line of the history, in plain words. */
@@ -30,6 +38,11 @@ export function changeWords(change) {
   if (change.kind === "certificate_check") return `Certificate check: ${result}${note}${files}`;
   if (change.kind === "vendor_kind") return `Type changed to ${KIND_WORDS[d.to] ?? d.to}`;
   if (change.kind === "address") return "Address changed";
+  const field = change.kind === "company_field" ? d.field : change.kind;
+  if (FIELD_WORDS[field]) {
+    const to = field === "country" ? countryName(d.to) ?? d.to : d.to;
+    return to ? `${FIELD_WORDS[field]} changed to ${to}` : `${FIELD_WORDS[field]} changed`;
+  }
   // Staff's own result on a check, and each decision (Nov 25).
   const staffCheck = { address_check: "Address check", scope_check: "Factory or trader", licence_check: "Licence check" }[change.kind];
   if (staffCheck) return `${staffCheck}: ${STAFF_RESULT_WORDS[d.result] ?? d.result}${note}`;
@@ -107,7 +120,7 @@ export function AddressDialog({ label, address, onSave, onClose }) {
   );
 }
 
-export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged }) {
+export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged, canChangeType = true }) {
   const [open, setOpen] = useState(null);
   const [kind, setKind] = useState("manufacturer");
   const [busy, setBusy] = useState(false);
@@ -147,9 +160,11 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
 
   return (
     <div className="vr-override">
-      <div className="vr-override-actions">
-        <button className="vr-text-action" type="button" onClick={start}>Change type</button>
-      </div>
+      {canChangeType && (
+        <div className="vr-override-actions">
+          <button className="vr-text-action" type="button" onClick={start}>Change type</button>
+        </div>
+      )}
       {history.length > 0 && (
         <div className="vr-history">
           <span>History</span>
@@ -174,6 +189,95 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
               </label>
             ))}
           </fieldset>
+        </OverrideDialog>
+      )}
+    </div>
+  );
+}
+
+/** Every country the platform names, by its English name. */
+function countryOptions() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const rows = [];
+  for (const a of letters) for (const b of letters) {
+    const name = countryName(a + b);
+    if (name) rows.push({ code: a + b, name });
+  }
+  return rows.sort((x, y) => x.name.localeCompare(y.name));
+}
+
+/**
+ * Company name, Country and Website in Review details, each with its Edit
+ * link (Nov 26): edited where it is shown, in Change type's dialog, written
+ * to the same history, and the company is told. Brands and vendors.
+ *
+ *   values: { companyName, country (two-letter code), website }
+ *   onSave({ companyName } | { country } | { website }) saves one value.
+ */
+export function CompanyFields({ values, onSave }) {
+  const [open, setOpen] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const countries = useMemo(() => (open === "country" ? countryOptions() : []), [open]);
+  const fields = [
+    { key: "companyName", label: "Company name", shown: values.companyName },
+    { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
+    { key: "website", label: "Website", shown: values.website },
+  ];
+  const current = fields.find((field) => field.key === open);
+  const before = (values[open] ?? "").trim();
+  const start = (key) => {
+    setError("");
+    setText(values[key] ?? "");
+    setOpen(key);
+  };
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ [open]: text.trim() });
+      setOpen(null);
+    } catch (failure) {
+      setError(failure?.message || "Couldn't save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="vr-override vr-company-fields">
+      {fields.map((field) => (
+        <div className="vr-company-field" key={field.key}>
+          <div className="factory-detail-pair"><span>{field.label}</span><strong>{field.shown || "Not given"}</strong></div>
+          <button className="vr-text-action" type="button" aria-label={`Edit ${field.label.toLowerCase()}`} onClick={() => start(field.key)}>Edit</button>
+        </div>
+      ))}
+      {current && (
+        <OverrideDialog
+          title={`Edit ${current.label.toLowerCase()}`}
+          busy={busy}
+          error={error}
+          saveDisabled={!text.trim() || text.trim() === before}
+          onSave={save}
+          onClose={() => setOpen(null)}
+        >
+          <label className="factory-onboarding-field">
+            <span>{current.label}</span>
+            {open === "country" ? (
+              <select value={text} onChange={(event) => setText(event.target.value)}>
+                {!text && <option value="">Choose a country</option>}
+                {countries.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
+              </select>
+            ) : (
+              <input
+                type={open === "website" ? "url" : "text"}
+                value={text}
+                autoFocus
+                placeholder={open === "website" ? "https://" : undefined}
+                onChange={(event) => setText(event.target.value)}
+              />
+            )}
+          </label>
         </OverrideDialog>
       )}
     </div>
