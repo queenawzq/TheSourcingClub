@@ -28,7 +28,7 @@
  *     them, checked against today's date and the company's name.
  * Who edited which field, and the value before, is kept in
  * `verification_field_edits` (`record_verification_field_edits`, as the staff
- * member), before anything runs.
+ * member), once the edit is saved (savedEdits).
  */
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
@@ -307,6 +307,21 @@ async function currentValues({ group, orgId, asServer, rules, subjectId }) {
   return { scope: values.scope, siteAddress: (await LATEST_SITE_ADDRESS(asServer, orgId).catch(() => "")) || null };
 }
 
+/**
+ * The edits that were saved, so only those are recorded as staff edits: a
+ * number is saved as the staff number before the run; the reading's fields
+ * when the reading was saved; the certificate's when its signal was; a site
+ * address is itself the saved value (the next run reads it back).
+ */
+export function savedEdits(group, edits, ran = {}) {
+  return edits.filter((edit) => {
+    if (group === "business_registration") return edit.field === "number" || ran.reading?.ran === true;
+    if (group === "company_information") return edit.field === "siteAddress" || ran.reading?.ran === true;
+    if (group === "certification") return ran.certificate?.ran === true;
+    return false;
+  });
+}
+
 // Groups running on this instance, so a double press runs once.
 const running = new Set();
 
@@ -369,12 +384,13 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       });
       if (error) return fail(response, 200, error.code === "22023" ? "bad_number" : error.code === "42501" ? "not_staff" : "save_failed", rules);
     }
-    if (edits.length) {
-      const { error } = await asCaller.rpc("record_verification_field_edits", { target_org: orgId, group_key: group, edits });
-      if (error) return fail(response, 200, error.code === "42501" ? "not_staff" : "save_failed", rules);
-    }
-
     const result = await runGroup({ orgId, group, fields: checked.fields, edits, asServer, requestedBy, subjectId, rules, steps, addressOnly: addressOnly === true && group === "company_information" });
+    // Who edited what is recorded once the edit is saved (U6): a save that failed leaves no edit behind.
+    const saved = savedEdits(group, edits, result.ran);
+    if (saved.length) {
+      const { error } = await asCaller.rpc("record_verification_field_edits", { target_org: orgId, group_key: group, edits: saved });
+      if (error) console.error("verification-rerun", "record_verification_field_edits", error.message);
+    }
     let outOfDate = null;
     if (group !== "certification") {
       const assist = await steps.registryAssist();
