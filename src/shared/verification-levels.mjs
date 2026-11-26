@@ -17,7 +17,62 @@
  * Video is never decisive: it is not submitted yet.
  */
 
+import { companyNameKey, companyNamesMatch, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber } from "./registration-number.mjs";
+
 export const LEVELS = ["low", "medium", "high", "unknown"];
+
+// --- the reading against the company, now -------------------------------------
+
+const CJK = /[\u3400-\u9fff\uf900-\ufaff]/u;
+function oneEditApart(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+  let j = 0;
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j += 1;
+  return a.length - i - j <= 1 && b.length - i - j <= 1;
+}
+const nearlySameCjk = (a, b) => {
+  const key = (text) => companyNameKey(text).replace(/\s+/g, "");
+  const x = key(a);
+  const y = key(b);
+  return Boolean(x && y && x !== y && CJK.test(x) && CJK.test(y) && Math.min(x.length, y.length) >= 4 && oneEditApart(x, y));
+};
+
+/**
+ * What the document says against the company's number and name NOW (Nov 26): the reading keeps only what the
+ * document says (`extracted`); its stored `differences` / `unsure` were the company's values when it was read,
+ * so they are worked out again here and never go out of date. Same rules as compareDocument in
+ * api/registry-assist.js; names compare only through companyNamesMatch.
+ */
+export function compareReading(extracted, { country, number, title } = {}) {
+  const differences = [];
+  const unsure = [];
+  if (!extracted || extracted.readable === false) return { differences, unsure };
+  const docNumber = normaliseRegistrationNumber(country, extracted.registrationNumber ?? "");
+  const typed = normaliseRegistrationNumber(country, number ?? "");
+  const problem = (value) => (country ? registrationNumberProblem(country, value) : null);
+  if (docNumber && typed && docNumber !== typed && !sameRegistrationNumber(country, docNumber, typed)) {
+    const docProblem = problem(docNumber);
+    if (docProblem && !problem(typed)) unsure.push({ field: "number", document: extracted.registrationNumber, typed: number, reason: docProblem === "check_digit" ? "The number read fails its check digit" : "The number read has the wrong length or characters" });
+    else differences.push({ field: "number", document: extracted.registrationNumber, typed: number });
+  }
+  if (!docNumber && typed) unsure.push({ field: "number", document: "", typed: number, reason: "No number could be read off the document" });
+  const names = [extracted.legalName, extracted.legalNameEnglish].filter((name) => String(name ?? "").trim());
+  if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
+    if (names.some((name) => nearlySameCjk(name, title))) unsure.push({ field: "name", document: names.join(" / "), typed: title, reason: "One character differs: check the document" });
+    else differences.push({ field: "name", document: names.join(" / "), typed: title });
+  }
+  return { differences, unsure };
+}
+
+/** A document reading with its comparisons worked out against the company now; a reading with nothing extracted is as stored. */
+export function liveReading(reading, { country, number, title } = {}) {
+  const extracted = reading?.details?.extracted;
+  if (!extracted || typeof extracted !== "object") return reading;
+  return { ...reading, details: { ...reading.details, ...compareReading(extracted, { country, number, title }) } };
+}
 export const LEVEL_WORDS = { high: "High", medium: "Medium", low: "Low", unknown: "Can't tell" };
 export const LEVEL_TONE = { high: "success", medium: "warning", low: "danger", unknown: "neutral" };
 const RANK = { low: 0, medium: 1, high: 2 };
@@ -83,7 +138,9 @@ function latest(signals, kind, subjectId) {
 
 // --- license read -----------------------------------------------------------
 
-export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
+export function licenseRead({ reading: stored, hasFile, latestFileId, currentNumber, currentTitle = null, country = null }) {
+  // Compared with the company now (Nov 26): a reading is never "before the number changed".
+  const reading = liveReading(stored, { country, number: currentNumber, title: currentTitle });
   if (!hasFile) return result("license_read", "unknown", ["No registration document"]);
   if (!reading) return result("license_read", "unknown", ["Not read yet"]);
   const d = reading.details ?? {};
@@ -92,7 +149,6 @@ export function licenseRead({ reading, hasFile, latestFileId, currentNumber }) {
   const base = { fileName: d.fileName ?? null, extracted: x, differences: d.differences ?? [] };
   if (x.readable === false) return result("license_read", "low", ["Not readable as a registration document"], base, at);
   if (latestFileId && reading.subjectId && reading.subjectId !== latestFileId) return result("license_read", "unknown", ["Read from an earlier upload"], base, at);
-  if (d.numberAtReading !== undefined && (d.numberAtReading ?? null) !== (currentNumber ?? null)) return result("license_read", "unknown", ["Read before the number changed"], base, at);
   const reasons = [];
   let level = "high";
   if (x.specimen || d.specimen || x.markedAsSample) { level = "low"; reasons.push("Looks like a specimen or sample"); }
@@ -325,7 +381,10 @@ export function deriveLevels({ detail, extra, states = {} }) {
   const files = extra?.registrationFiles ?? [];
   const addressSignal = signals.find((signal) => signal.kind === "address" && signal.automatic) ?? null;
   return [
-    licenseRead({ reading, hasFile: files.length > 0, latestFileId: files[0]?.id ?? null, currentNumber: detail?.registration?.number ?? null }),
+    licenseRead({
+      reading, hasFile: files.length > 0, latestFileId: files[0]?.id ?? null, currentNumber: detail?.registration?.number ?? null,
+      currentTitle: detail?.title ?? null, country: detail?.registration?.country ?? detail?.countryCode ?? null,
+    }),
     registry(detail ? { ...detail, reopenings: states.reopenings ?? [] } : detail),
     tradingScope({ reading, tradingReason: states.tradingReason ?? detail?.tradingReason ?? null }),
     addressOwner({
