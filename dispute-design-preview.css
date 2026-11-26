@@ -119,3 +119,85 @@
 .dp-disputes-table td:nth-last-child(2) { min-width: 140px; }
 .dp-disputes-table .shared-card-status { max-width: 180px; height: auto; min-height: 24px; white-space: normal; }
 .dp-app .dp-main .admin-verification-tabs { margin-top: 0; }
+
+/* ---- Flow v2: the case page, offers, admin queue columns, balance, emails ---- */
+.dp-main { position: relative; }
+.dp-main.dp-main-full { margin-left: 0 !important; }
+.dp-bell { position: absolute; top: var(--page-top-standard); right: var(--page-padding-inline); z-index: 4; }
+.dp-preview-bar code { font-size: 11px; color: var(--text); background: var(--soft-blue-fill); border-radius: 4px; padding: 2px 6px; }
+.dp-preview-tools { display: flex; gap: 4px; border-left: 1px solid var(--border) !important; padding-left: 6px !important; }
+.dp-preview-tools button { font-weight: 700; color: var(--primary) !important; }
+
+.dp-case-page { max-width: 1048px; }
+.dp-case-heading { align-items: flex-start; margin-bottom: 18px; }
+.dp-case-heading .dp-badge { font-size: 12px; padding: 6px 10px; }
+.dp-case-progress { margin: 0 0 24px; max-width: 640px; }
+.dp-progress .current span { border-color: var(--primary); color: var(--primary); font-weight: 700; box-shadow: 0 0 0 3px var(--soft-blue-fill); }
+.dp-progress .current small { color: var(--primary); font-weight: 700; }
+.dp-case-main { display: grid; gap: 16px; align-content: start; }
+.dp-card-title { font-size: 17px; margin: 0 0 16px; }
+.dp-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.dp-card-head h2 { font-size: 17px; margin: 0; }
+.dp-card-head small { color: var(--text-muted); font-size: 12px; }
+.dp-action-card { display: grid; gap: 14px; border-left: 3px solid var(--border-strong); }
+.dp-action-card.yours { border-left-color: var(--primary); background: #f7f9ff; }
+.dp-due-line { font-size: 16px; color: var(--text); }
+.dp-action-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.dp-link-row { display: flex; gap: 18px; }
+.dp-text-button.danger { color: #c62818; }
+.dp-danger-btn { background: #c62818 !important; border-color: #c62818 !important; }
+.dp-offer-card { display: grid; gap: 6px; }
+.dp-offer-card.resolved { border-color: #abd8c8; background: #f4fbf8; }
+.dp-offer-card p { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.dp-offer-card > small { color: var(--text-muted); font-size: 12px; }
+.dp-offer-line { font-size: 18px; color: var(--text); }
+.dp-offer-summary { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; }
+.dp-offer-summary small { color: var(--text-muted); font-size: 12px; }
+.dp-offer-summary strong { font-size: 16px; }
+.dp-offer-summary p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+.dp-outcome-preview { display: grid; gap: 8px; align-content: start; font-size: 13px; }
+.dp-outcome-preview small { color: #4f6078; font-weight: 600; line-height: 20px; }
+.dp-outcome-preview strong { min-height: 46px; display: flex; align-items: center; }
+.dp-segment { display: flex; border: 1px solid var(--border); border-radius: 8px; padding: 3px; background: #f8fafc; }
+.dp-segment button { flex: 1; border: 0; background: none; border-radius: 6px; padding: 9px 10px; font: inherit; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+.dp-segment button.selected { background: var(--surface); color: var(--primary); font-weight: 700; box-shadow: 0 1px 3px rgba(15,23,42,.1); }
+.dp-side-facts { display: grid; gap: 10px; margin: 0; }
+.dp-side-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.dp-side-facts dt { color: var(--text-muted); }
+.dp-side-facts dd { margin: 0; font-weight: 600; text-align: right; }
+.dp-hold { color: #c62818; font-weight: 600; }
+.dp-review-side .dp-card p.dp-hold { margin: 0 0 8px; font-size: 13px; }
+.dp-review-side .dp-text-button { width: auto; margin: 0; }
+.dp-dot.tsc, .dp-dot.system { background: #101627; }
+.dp-dot.factory { background: #9f5c00; }
+.dp-file.compact { margin-top: 6px; padding: 8px 10px; }
+.dp-order-case.closed { opacity: .85; }
+.dp-native-order .project-status.danger { border-color: #ff9c8f; background: #fff0ee; color: #c62818; }
+.dp-native-order .project-overflow-menu > button.dp-dispute-action:disabled { color: var(--text-muted); background: none; }
+
+.dp-disputes-table td { vertical-align: top; }
+.dp-disputes-table td p { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; }
+.dp-disputes-table td small { color: var(--text-muted); font-size: 11px; }
+.dp-overdue { color: #c62818 !important; font-weight: 700; }
+.dp-case-banner { flex-wrap: wrap; }
+.dp-case-layout > section { display: grid; gap: 16px; align-content: start; }
+.dp-staff-notes { background: #fffdf5; border-color: #efd1a1; }
+.dp-staff-note { border-top: 1px solid #f1e3c4; padding: 10px 0; }
+.dp-staff-note small { color: var(--text-muted); font-size: 11px; }
+.dp-staff-note p { margin: 4px 0 0; font-size: 13px; }
+.dp-note-form { display: grid; gap: 8px; margin-top: 8px; }
+.dp-note-form textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 13px; resize: vertical; }
+.dp-note-form button { justify-self: end; }
+
+.dp-payments { max-width: 1048px; }
+.dp-paused-notice { margin-top: 12px; padding: 12px 14px; border: 1px solid #efd1a1; border-radius: 8px; background: #fff8ed; }
+.dp-paused-notice strong { font-size: 14px; color: #7a4600; }
+.dp-paused-notice p { margin: 4px 0 0; font-size: 13px; color: #7a4600; }
+.dp-payments .billing-history-list { margin-top: 20px; }
+
+.dp-email-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(620px, 1fr)); gap: 20px; max-width: 1300px; }
+.dp-email { margin: 0; display: grid; gap: 8px; }
+.dp-email figcaption { display: grid; gap: 6px; }
+.dp-email figcaption small { color: var(--text-muted); font-size: 12px; }
+.dp-email iframe { width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 8px; background: #f1f4f8; }
+.dp-app .dp-toast { bottom: 84px; }
