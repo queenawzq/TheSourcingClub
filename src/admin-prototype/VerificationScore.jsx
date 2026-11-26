@@ -834,10 +834,14 @@ const ADDRESS_LINE_WORDS = { typed: "Company", licence: "Licence", registry: "Re
 function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
   const [explainingTyped, setExplainingTyped] = useState(null);
   const [mode, setMode] = useState(null);
+  // The shared number from the row's own check when no reading shows the number (T3): each company that
+  // shares it says so in its Official registry row, whichever of them was read.
+  const ownDup = !dupField && !numberShown && check.sharedNumber
+    ? { with: check.sharedNumber.with, explained: check.sharedNumber.explained ?? null } : null;
   // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
   // another company uses until it is explained; Strong and Not checked start closed.
   const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.score).tone)
-    || Boolean(dupField?.duplicate && !dupField.duplicate.explained));
+    || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained));
   const [explainingDup, setExplainingDup] = useState(false);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
@@ -848,7 +852,8 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
   // A check staff record by hand has its own note: no separate reason (Nov 25).
   const canReason = canReasonGiven && !canOverride && !canRecord;
-  const dup = dupField?.duplicate ?? null;
+  const dup = dupField?.duplicate ?? ownDup;
+  const explainDup = onExplainDup ?? (ownDup && actions.explainField ? (text) => actions.explainField(groupKey, { key: "number" }, text) : null);
   // The row's one line: a saved record's summary says it all (Nov 24); a renamed company keeps its verdict.
   const line = registry?.summary && !registry.for ? registry.summary : check.verdict;
   // A row with nothing more to show (a brand's details, its terms) is a plain line: nothing opens.
@@ -923,20 +928,20 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
           {dup && !dup.explained && !explainingDup && (
             <p className="vr-compare is-dup">
               <span>Same number as</span> <strong>{dup.with}</strong>
-              {onExplainDup && <button className="vr-text-action" type="button" onClick={() => setExplainingDup(true)}>Explain</button>}
+              {explainDup && <button className="vr-text-action" type="button" onClick={() => setExplainingDup(true)}>Explain</button>}
             </p>
           )}
           {dup && explainingDup && (
-            <ReasonForm label={`Why ${dup.with} has the same number`} saveLabel="Save" initial={dup.explained?.text} onSave={onExplainDup} onDone={() => setExplainingDup(false)} />
+            <ReasonForm label={`Why ${dup.with} has the same number`} saveLabel="Save" initial={dup.explained?.text} onSave={explainDup} onDone={() => setExplainingDup(false)} />
           )}
           {dup?.explained && !explainingDup && (
             <p className="vr-sub-note">
               <span>Same number as {dup.with}: {dup.explained.text}</span>
-              <small>{dup.explained.by}{onExplainDup && <> · <button className="vr-text-action is-quiet is-inline" type="button" onClick={() => setExplainingDup(true)}>Edit</button></>}</small>
+              <small>{dup.explained.by}{explainDup && <> · <button className="vr-text-action is-quiet is-inline" type="button" onClick={() => setExplainingDup(true)}>Edit</button></>}</small>
             </p>
           )}
           {check.staff?.note && mode !== "override" && <p className="vr-sub-note"><span>{check.staff.note}</span></p>}
-          {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
+          {check.sharedNumber?.explained && !numberShown && !ownDup && mode !== "shared" && (
             <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
           )}
           {check.reason && mode !== "reason" && (
@@ -945,7 +950,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
               <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
             </p>
           )}
-          {!mode && (canRecord || canReason || (check.duplicate && !numberShown && actions.explainField) || canOverride || (canEditAddress && !check.lines?.some((entry) => entry.key === "typed"))) && (
+          {!mode && (canRecord || canReason || (check.duplicate && !numberShown && !ownDup && actions.explainField) || canOverride || (canEditAddress && !check.lines?.some((entry) => entry.key === "typed"))) && (
             <div className="vr-sub-actions">
               {canRecord && (
                 <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
@@ -954,7 +959,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
               )}
               {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
               {canEditAddress && !check.lines?.some((entry) => entry.key === "typed") && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
-              {check.duplicate && !numberShown && actions.explainField && (
+              {check.duplicate && !numberShown && !ownDup && actions.explainField && (
                 <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
               )}
               {canReason && (
