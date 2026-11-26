@@ -16,7 +16,8 @@
  * `npm run check:verification-score` all run this.
  */
 import { computeLevels } from "./verification-levels.mjs";
-import { companyNameKey, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
+import { companyNameKey, companyNamesMatch, registrySources, sameRegistrationNumber, usStateFrom } from "./registration-number.mjs";
+import { liveReading } from "./verification-levels.mjs";
 import { certificateLookup } from "./certificate-lookups.mjs";
 
 // The address check is in Business registration (Nov 25): licence 30 + registry 30 + address 15, and
@@ -330,7 +331,7 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   // A name the reading cut short, against the registry's longer one.
   // Only when the name read is the shorter one: a full legal name against a short trading title is not cut short.
   const plainLength = (name) => String(name ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().length;
-  if (!(d.differences ?? []).length && x.legalName && plainLength(x.legalName) < plainLength(title) && namesPartlyMatch(x.legalName, title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
+  if (!(d.differences ?? []).length && x.legalName && !companyNamesMatch(x.legalName, title) && plainLength(x.legalName) < plainLength(title) && namesPartlyMatch(x.legalName, title)) add(SCORES.licence.partial, "Read; legal name looks cut short");
   if (!found.length) {
     return { ...base, score: SCORES.licence.clean, verdict: country === "CN" ? "Original, every field readable" : "Every field read", short: country === "CN" ? "Original licence" : `${label} read`, canReason: true };
   }
@@ -399,7 +400,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
       out = { score: null, verdict: "Renamed since the check", registry: { ...registry, for: cd.titleAtCheck ?? cd.nameAtCheck ?? null } };
     } else if (current.result === "found" && current.source === "document") {
       out = { score: SCORES.registry.document, verdict: "Checked on the document only", short: "checked on the document only", registry };
-    } else if (outcome === "name_differs" && cd.name && companyNameKey(cd.name) === companyNameKey(title)) {
+    } else if (outcome === "name_differs" && cd.name && companyNamesMatch(cd.name, title)) {
       // Name differs chosen for the licence's difference, with the registry showing this very name.
       out = { score: SCORES.registry.found, verdict: `Found on ${src}, difference explained`, short: `found on ${src}`, registry };
     } else if (outcome === "name_differs") {
@@ -535,7 +536,7 @@ export function siteDifferences(seen, profile) {
   const number = plainNumber(seen?.number);
   const address = String(seen?.address ?? "").trim();
   return {
-    name: Boolean(name && profile?.name && sameScript(name, profile.name) && companyNameKey(name) !== companyNameKey(profile.name) && !namesPartlyMatch(name, profile.name)),
+    name: Boolean(name && profile?.name && sameScript(name, profile.name) && !companyNamesMatch(name, profile.name) && !namesPartlyMatch(name, profile.name)),
     // The same number written another way by the country's rule (a Hong Kong certificate's full number) does not differ.
     number: Boolean(number && plainNumber(profile?.number) && number !== plainNumber(profile.number)
       && !(profile?.country && sameRegistrationNumber(profile.country, seen.number, profile.number))),
@@ -920,9 +921,9 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
     renamed: "Registry: renamed since the check, check it again",
     name_differs: "Registry: name differs, record the check again",
     document_differs: field === "number"
-      ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and save"
+      ? "Registry number: the licence's number differs from what they typed. Explain it in the Official registry row, or correct the number and save"
       // What clears it (Nov 25): an explanation, or a registry check showing the licence's name (or theirs).
-      : "Registry name: the licence's name differs from what they typed. Explain it on the Typed: line, or record a check with the name the registry shows",
+      : "Registry name: the licence's name differs from what they typed. Explain it in the Official registry row, or record a check with the name the registry shows",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
@@ -943,8 +944,8 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
     renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
     name_differs: ["business_registration", "registry", "Approve needs: record the registry check again"],
     document_differs: ["business_registration", "registry", field === "number"
-      ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and save"
-      : "Approve needs: the name differs from the licence. Explain it on the Typed: line, or record a check with the name the registry shows"],
+      ? "Approve needs: the number differs from the licence. Explain it here, or correct the number and save"
+      : "Approve needs: the name differs from the licence. Explain it here, or record a check with the name the registry shows"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
     number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],
@@ -994,11 +995,9 @@ export function scoreVerification(input, { timeZone } = {}) {
   const title = detail.title ?? input?.profile?.legalName ?? input?.profile?.name ?? "";
   const files = extra.registrationFiles ?? [];
   const read = latest(signals, "document_reading");
-  // A number the licence writes another way by the country's rule (a Hong Kong certificate's full number) is no
-  // difference, also on a reading stored before the rule (Nov 25).
-  const reading = read && (read.details?.differences ?? []).some((line) => line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))
-    ? { ...read, details: { ...read.details, differences: read.details.differences.filter((line) => !(line.field === "number" && sameRegistrationNumber(country, line.document, line.typed))) } }
-    : read;
+  // The reading against the company's number and name now (Nov 26), never as they were when it was read: a number
+  // written another way by the country's rule (a Hong Kong certificate's full number) is no difference either.
+  const reading = liveReading(read, { country, number: detail.registration?.number ?? null, title: detail.title ?? title });
   const reasons = reasonsByKey(input ?? {}, timeZone);
   const photoCheck = input?.photoCheck ?? null;
 
@@ -1083,8 +1082,6 @@ export function scoreVerification(input, { timeZone } = {}) {
       const earlier = files.find((f) => f.id === reading.subjectId);
       return `Read from an earlier upload${earlier?.createdAt ? `, ${dayWords(earlier.createdAt, timeZone)}` : ""}`;
     }
-    const at = reading.details?.numberAtReading;
-    if (at !== undefined && (at ?? null) !== (detail.registration?.number ?? null)) return "Read before the number changed";
     return null;
   })();
   const business = {

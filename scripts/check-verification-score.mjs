@@ -148,7 +148,7 @@ console.log("fix round 2");
   check(reasonIsEarlier(reason, "City differs from the licence"), "a reason for an earlier verdict is earlier");
   check(!reasonIsEarlier({ text: "old" }, "anything"), "a reason saved before writtenFor keeps lifting");
   const base = { detail: { title: "杭州钱江服装有限公司", productionAddress: "55 Renmin Road, Haidian, Beijing", registration: { country: "CN", number: "91330109MA2B3K7Q4L" } }, extra: { registrationFiles: [{ id: "f" }], signals: [
-    { kind: "document_reading", subjectId: "f", automatic: true, details: { fileId: "f", extracted: { legalName: "杭州钱江服装有限公司", registrationNumber: "91330109MA2B3K7Q4L", address: "杭州市萧山区江东三路18号" }, differences: [{ field: "name", document: "杭州钱江服装有限公司", typed: "Other" }] } },
+    { kind: "document_reading", subjectId: "f", automatic: true, details: { fileId: "f", extracted: { legalName: "杭州其他服装有限公司", registrationNumber: "91330109MA2B3K7Q4L", address: "杭州市萧山区江东三路18号" } } },
   ] }, rules: {} };
   const stale = scoreVerification({ ...base, reasons: [{ checkKey: "license_read", note: "licence matches QCC", at: "2026-11-12T10:00:00Z", by: "Staff", writtenFor: "Original, every field readable" }] }, { timeZone: "UTC" });
   const lic = stale.groups[0].checks.find((c) => c.key === "licence");
@@ -215,7 +215,7 @@ console.log("fix round 4");
   check(!/match/.test(found.verdict) && /another number/.test(found.verdict), `the row does not say "match" (${found.verdict})`);
   const rowWords = approvalBlockRow("document_differs", {}, numberReading).words;
   const panelWords = approvalBlockWords("document_differs", {}, numberReading);
-  check(/number/.test(rowWords) && /Typed:/.test(rowWords) && !/Name differs/.test(rowWords), `row: ${rowWords}`);
+  check(/number/.test(rowWords) && /Explain it here/.test(rowWords) && !/Name differs/.test(rowWords), `row: ${rowWords}`);
   check(/number/.test(panelWords) && !/name on the licence/.test(panelWords), `side panel: ${panelWords}`);
   // 7. AI suggestions never call photos staff recorded as their own generic or reused.
   const ownLines = ["Photo 1: recorded by staff as their own", "Photo 2: recorded by staff as their own"];

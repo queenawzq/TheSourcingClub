@@ -23,6 +23,7 @@ import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
 import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } from "../shared/verification-score.mjs";
+import { companyNamesMatch, normaliseRegistrationNumber, sameRegistrationNumber } from "../shared/registration-number.mjs";
 import { AddressDialog } from "./CompanyOverride.jsx";
 import "./verification-score.css";
 
@@ -54,15 +55,6 @@ function Score({ value, size = "row" }) {
   const shown = useCountUp(value);
   if (value == null) return <span className={`vr-score vr-score-${size} vr-tier-none`}>—</span>;
   return <span className={`vr-score vr-score-${size} vr-tier-${tierFor(value)}`}>{shown}<small>%</small></span>;
-}
-
-function Meter({ value }) {
-  if (value == null) return null;
-  return (
-    <span className={`vr-meter vr-tier-${tierFor(value)}`} aria-hidden="true">
-      <span style={{ width: `${value ?? 0}%` }} />
-    </span>
-  );
 }
 
 function StandingPill({ score, groups = null }) {
@@ -231,8 +223,11 @@ function mockActions(setGroups, groupsRef, entityType = null) {
     recordCheck: async (groupKey, check, record) => changeCheck(groupKey, recordedCheck(check, record)),
     // Proof files stay in this browser: a link to the file itself.
     uploadProof: async (file) => {
+      // The same rule as the live upload (uploadProofFile): a dropped file skips the picker's filter.
+      if (!PROOF_ACCEPT.split(",").includes(file.type)) throw new Error("Use a screenshot (PNG, JPG, WebP) or a PDF");
+      if (file.size > 20 * 1024 * 1024) throw new Error("Files up to 20 MB");
       const url = URL.createObjectURL(file);
-      return { path: url, name: file.name, type: file.type, url };
+      return { path: url, name: file.name, type: file.type, size: file.size, url };
     },
     removeProof: (path) => { try { URL.revokeObjectURL(path); } catch { /* not a blob link */ } },
     proofUrl: async (file) => file.url ?? null,
@@ -332,7 +327,6 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
   const anyPending = groups.some((group) => groupWeight(group) && (isChecking(group) || group.error));
   const overall = groups.length ? scoreOverall(groups) : null;
   const weakest = weakestCheck(ready);
-  const counted = groups.filter((group) => groupWeight(group));
   const open = groups.find((group) => group.key === openKey) ?? null;
   const closeModal = useCallback(() => setOpenKey(null), []);
   const runningChange = useCallback((on) => openKey && setGroupChecking(openKey, on), [openKey, setGroupChecking]);
@@ -373,19 +367,6 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
           {/* "Factory: …" / "Not a factory: …" names its check already, so it stands alone. */}
           {weakest ? <><span>Weakest:</span> {/^((Not a )?[Ff]actory|Trading company):/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
         </p>
-        {counted.length > 0 && (
-          <div className="vr-weightbar" role="img" aria-label={counted.map((group) => `${group.label} ${scoreGroup(group) ?? 0}%`).join(", ")}>
-            {counted.map((group) => {
-              const score = isChecking(group) || group.error ? null : scoreGroup(group);
-              return (
-                <div className="vr-weightbar-part" style={{ flexGrow: groupWeight(group) }} key={group.key}>
-                  <span className={`vr-weightbar-track vr-tier-${tierFor(score)}`}><span style={{ width: `${score ?? 0}%` }} /></span>
-                  <span className="vr-weightbar-label">{group.label}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {groups.length === 0 ? (
@@ -403,7 +384,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 role="button"
                 tabIndex={0}
                 aria-busy={busy || undefined}
-                aria-label={`${group.label}, ${busy ? "checking" : failed ? group.error : score == null ? "no score" : `${score}%`}: open details`}
+                aria-label={`${group.label}, ${busy ? "checking" : failed ? group.error : standingFor(score).word}: open details`}
                 onClick={() => setOpenKey(group.key)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenKey(group.key); }
@@ -419,8 +400,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                       : <span className={`vr-row-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" />{group.verdict || "Nothing submitted"}</span>}
                 </div>
                 <div className="vr-row-score">
-                  <Score value={score} />
-                  {!busy && <Meter value={score} />}
+                  {busy ? null : <StandingPill score={score} />}
                 </div>
                 <Chevron />
               </article>
@@ -505,8 +485,57 @@ function ProofChip({ file, onOpen, onRemove }) {
   );
 }
 
+const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
+
+const fileKind = (file) => (isPdf({ name: file.name, mimeType: file.type }) ? "PDF"
+  : (String(file.name ?? "").match(/\.([a-z0-9]{2,4})$/i)?.[1] ?? String(file.type ?? "").split("/")[1] ?? "File").toUpperCase());
+
+const sizeWords = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+/** A proof file in the record form, as the product's upload rows draw one: opens on click, removed with ×. */
+function ProofRow({ file, onOpen, onRemove }) {
+  const [failed, setFailed] = useState(false);
+  const open = async (event) => {
+    event.preventDefault();
+    const tab = window.open("about:blank", "_blank");
+    const href = file.url ?? await Promise.resolve(onOpen?.(file)).catch(() => null);
+    if (href && tab) { tab.opener = null; tab.location.href = href; }
+    else { tab?.close(); setFailed(true); }
+  };
+  const image = isImage({ name: file.name, mimeType: file.type }) && file.url;
+  return (
+    <div className="vr-file-row">
+      {image ? <img src={file.url} alt="" /> : <span className="vr-file-kind">{fileKind(file)}</span>}
+      <div>
+        <a href={file.url ?? "#"} onClick={open} title={file.name}>{file.name}</a>
+        {failed ? <span className="is-error">Couldn't open the file</span> : file.size != null && <span>{sizeWords(file.size)}</span>}
+      </div>
+      <button type="button" aria-label={`Remove ${file.name}`} onClick={() => onRemove(file)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      </button>
+    </div>
+  );
+}
+
 // A prefilled value is selected on focus, so what is typed replaces it rather than joining its end.
 const selectAll = (event) => event.target.select();
+
+const SAME_INPUT_WORDS = { name: "Name in the registry", number: "Number in the registry", address: "Address in the registry" };
+
+/** A registration number as it is saved: the country's rule, a typed prefix ("NIF 519211596") dropped. */
+const savedNumber = (country, value) => normaliseRegistrationNumber(country, String(value ?? "").trim());
+
+/** An address as compared: case, spacing and punctuation aside. */
+const plainAddress = (value) => String(value ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** A value typed as the registry shows it that is the company's own after all: saved as Same. */
+function sameAsProfile(key, typed, profileValue, country) {
+  if (!String(profileValue ?? "").trim() || !String(typed ?? "").trim()) return false;
+  if (key === "number") return sameRegistrationNumber(country, savedNumber(country, typed), profileValue);
+  // Names only ever compare through companyNamesMatch, the rule the checks use.
+  if (key === "name") return companyNamesMatch(typed, profileValue);
+  return plainAddress(typed) === plainAddress(profileValue);
+}
 
 const SEEN_FIELDS = {
   registry: [["name", "Company name"], ["number", "Registration number"], ["address", "Address", true]],
@@ -521,6 +550,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const registry = check.registry;
   const isCert = check.kind === "certificate";
   const form = registry.form ?? { sites: [], defaultSite: registry.source ?? "", prefill: {}, profile: {} };
+  const country = form.profile?.country ?? null;
   const ids = { site: useId(), list: useId(), note: useId(), link: useId(), files: useId() };
   const savedByPerson = registry.result && registry.by && registry.by !== "Checked automatically" && !registry.for;
   const earlier = savedByPerson && registry.version === 2 ? registry : null;
@@ -549,8 +579,25 @@ function RecordForm({ check, onSave, onDone, actions }) {
     if (result == null) setProofs((current) => (current[""]?.length && !current[next]?.length ? { ...current, [next]: current[""], "": [] } : current));
     setResult(next);
   };
+  // Found (Nov 26): each of the company's values is the same in the registry, or different and typed as the registry shows it.
+  // Editing an earlier record opens on what it said: the company's own value as Same, another as Different with it typed.
+  const earlierSeen = (key) => String((earlier && earlier[key]) || (savedByPerson && key === "name" ? registry.name : "") || "").trim();
+  const [same, setSame] = useState(() => (isCert ? {} : Object.fromEntries(fieldsFor.map(([key]) => [key, earlierSeen(key)])
+    .filter(([key, value]) => value && String(form.profile?.[key] ?? "").trim())
+    .map(([key, value]) => [key, sameAsProfile(key, value, form.profile[key], country) || value === String(form.profile[key]).trim() ? "same" : "different"]))));
+  const [registryValue, setRegistryValue] = useState(() => (isCert ? {} : Object.fromEntries(fieldsFor.map(([key]) => [key, earlierSeen(key)])
+    .filter(([key, value]) => value && !(String(form.profile?.[key] ?? "").trim() && (sameAsProfile(key, value, form.profile[key], country) || value === String(form.profile[key]).trim()))))));
+  // The company gave no value: the registry's is typed straight in. A "Different" value that is the company's own is saved as Same.
+  const hasProfile = (key) => Boolean(String(form.profile?.[key] ?? "").trim());
+  const answerFor = (key) => {
+    if (!hasProfile(key)) return String(registryValue[key] ?? "").trim() ? "different" : null;
+    if (same[key] === "different" && sameAsProfile(key, registryValue[key], form.profile?.[key], country)) return "same";
+    return same[key] ?? null;
+  };
   const [added] = useState(() => new Set());
   const [upload, setUpload] = useState({ busy: 0, error: "" });
+  const [dragging, setDragging] = useState(false);
+  const pickerRef = useRef(null);
   const [save, run] = useSave();
   const known = form.sites?.find((item) => item.name.toLowerCase() === site.trim().toLowerCase()) ?? null;
   const showsSeen = result === "found";
@@ -568,7 +615,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
       try {
         const saved = await actions.uploadProof(file);
         added.add(saved.path);
-        setProof((current) => [...current, saved]);
+        // The size is the chosen file's: the row says how big it is.
+        setProof((current) => [...current, { size: file.size, ...saved, type: saved.type || file.type }]);
       } catch (error) {
         setUpload((current) => ({ ...current, error: error?.message || "Couldn't upload the file" }));
       } finally {
@@ -595,8 +643,9 @@ function RecordForm({ check, onSave, onDone, actions }) {
       result,
       // An address left as prefilled was never read off the registry: it is not recorded, so it claims no match
       // and flags no difference later (Nov 25 tester). Name and number keep their prefill: staff compare those.
-      seen: showsSeen ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()])
-        .filter(([key, value]) => isCert || key !== "address" || value !== String(form.prefill?.address ?? "").trim())) : {},
+      seen: !showsSeen ? {} : isCert ? Object.fromEntries(Object.entries(seen).map(([key, value]) => [key, value.trim()]))
+        : Object.fromEntries(fieldsFor.filter(([key]) => answerFor(key)).map(([key]) => [key, answerFor(key) === "same"
+          ? String(form.profile?.[key] ?? "") : key === "number" ? savedNumber(country, registryValue[key]) : String(registryValue[key] ?? "").trim()])),
       note: note.trim(),
       link: link.trim(),
       proof,
@@ -624,15 +673,54 @@ function RecordForm({ check, onSave, onDone, actions }) {
         name={`record-${check.key}`}
         label="What it showed"
       />
-      {showsSeen && fieldsFor.map(([key, label, multiline]) => {
+      {showsSeen && isCert && fieldsFor.map(([key, label, multiline]) => {
         const Control = multiline ? "textarea" : "input";
-        const other = isCert ? holderCompareName(seen[key], form.holderNames) : form.profile?.[key] ?? "";
+        const other = holderCompareName(seen[key], form.holderNames);
         return (
           <div className={`vr-field${differs[key] ? " is-differs" : ""}`} key={key}>
             <label htmlFor={`${ids.site}-${key}`}>{label}</label>
             <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={seen[key]} spellCheck={false} onChange={(event) => setSeen((current) => ({ ...current, [key]: event.target.value }))} />
             {differs[key] && <p className="vr-compare is-typed"><span>Profile:</span> {marked(other, seen[key])}</p>}
           </div>
+        );
+      })}
+      {showsSeen && !isCert && fieldsFor.map(([key, label, multiline]) => {
+        const Control = multiline ? "textarea" : "input";
+        const typed = registryValue[key] ?? "";
+        const savedAs = key === "number" ? savedNumber(country, typed) : "";
+        return (
+          !hasProfile(key) ? (
+            <div className="vr-field vr-same-input" key={key}>
+              <label htmlFor={`${ids.site}-${key}`}>{SAME_INPUT_WORDS[key]}</label>
+              <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={typed} spellCheck={false} onChange={(event) => setRegistryValue((current) => ({ ...current, [key]: event.target.value }))} />
+              {savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
+            </div>
+          ) : (
+          <div className="vr-field vr-same-row" key={key}>
+            <span className="vr-field-label">{label}</span>
+            <div className="vr-same-line">
+              <span className="vr-same-value">{form.profile?.[key] || "Not given"}</span>
+              <div className="vr-same">
+                <Segmented
+                  options={[{ key: "same", label: "Same in registry" }, { key: "different", label: "Different" }]}
+                  value={same[key] ?? null}
+                  onChange={(next) => setSame((current) => ({ ...current, [key]: next }))}
+                  name={`same-${ids.site}-${key}`}
+                  label={`${label} in the registry`}
+                />
+              </div>
+            </div>
+            {same[key] === "different" && (
+              <div className="vr-field vr-same-input">
+                <label htmlFor={`${ids.site}-${key}`}>{SAME_INPUT_WORDS[key]}</label>
+                <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={typed} spellCheck={false} autoFocus onChange={(event) => setRegistryValue((current) => ({ ...current, [key]: event.target.value }))} />
+                {sameAsProfile(key, typed, form.profile?.[key], country)
+                  ? <small className="vr-field-by">Same as the profile ({form.profile[key]})</small>
+                  : savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
+              </div>
+            )}
+          </div>
+          )
         );
       })}
       {showsNote && (
@@ -643,13 +731,25 @@ function RecordForm({ check, onSave, onDone, actions }) {
       )}
       <div className="vr-field">
         <span className="vr-field-label" id={ids.files}>Proof</span>
-        <div className="vr-proof" aria-labelledby={ids.files}>
-          {proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} onRemove={removeFile} key={file.path} />)}
-          <label className="vr-text-action vr-proof-add">
-            {upload.busy ? <><Spinner ink />Uploading…</> : "Add screenshots or PDFs"}
-            <input type="file" multiple accept="image/png,image/jpeg,image/webp,application/pdf" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
-          </label>
-        </div>
+        {proof.length > 0 && (
+          <div className="vr-file-list" aria-labelledby={ids.files}>
+            {proof.map((file) => <ProofRow file={file} onOpen={actions.proofUrl} onRemove={removeFile} key={file.path} />)}
+          </div>
+        )}
+        {/* The product's upload box (the factory's update dialog): drop files on it, or click to choose. */}
+        <label
+          className={`vr-dropzone${dragging ? " is-dragging" : ""}${upload.busy ? " is-busy" : ""}`}
+          tabIndex={0}
+          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pickerRef.current?.click(); } }}
+          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false); }}
+          onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}
+        >
+          <strong>{upload.busy ? <><Spinner ink />Uploading…</> : proof.length ? "+ Add more files" : "+ Upload screenshots or PDFs"}</strong>
+          <span>Drag and drop or click to choose · PNG, JPG or PDF</span>
+          <input ref={pickerRef} type="file" multiple hidden accept={PROOF_ACCEPT} onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+        </label>
         {upload.error && <p className="vr-save-error" role="alert">{upload.error}</p>}
       </div>
       <div className="vr-field">
@@ -702,8 +802,17 @@ function OverrideForm({ check, onSave, onDone }) {
   );
 }
 
-function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false }) {
+// The address's versions, in plain words (Nov 26): whose address each line is.
+const ADDRESS_LINE_WORDS = { typed: "Company", licence: "Licence", registry: "Registry" };
+
+function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
+  const [explainingTyped, setExplainingTyped] = useState(null);
   const [mode, setMode] = useState(null);
+  // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
+  // another company uses until it is explained; Strong and Not checked start closed.
+  const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.score).tone)
+    || Boolean(dupField?.duplicate && !dupField.duplicate.explained));
+  const [explainingDup, setExplainingDup] = useState(false);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
   const canRecord = Boolean(registry) && (registry.recordable ?? registry.by !== "Checked automatically");
@@ -713,79 +822,134 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   const canOverride = Boolean(OVERRIDE_RESULTS[check.key] && actions.recordOverride && check.canOverride !== false);
   // A check staff record by hand has its own note: no separate reason (Nov 25).
   const canReason = canReasonGiven && !canOverride && !canRecord;
-  const typedLine = check.lines?.find((line) => line.key === "typed")?.value ?? "";
+  const dup = dupField?.duplicate ?? null;
+  // The row's one line: a saved record's summary says it all (Nov 24); a renamed company keeps its verdict.
+  const line = registry?.summary && !registry.for ? registry.summary : check.verdict;
+  // A row with nothing more to show (a brand's details, its terms) is a plain line: nothing opens.
+  const hasBody = Boolean(check.lookup || registry?.for || (!registry?.summary && registry?.by) || (check.sharedNumber && !numberShown)
+    || typedFields.length > 0 || check.staff || check.blocks || registry?.proof?.length || check.lines?.length || dup || check.reason
+    || canRecord || canOverride || canEditAddress || canReason || (check.duplicate && !numberShown && actions.explainField));
+  const open = hasBody && (expanded || Boolean(mode));
+  const toggle = () => { if (!mode && hasBody) setExpanded(!open); };
   return (
-    <li className={`vr-sub${mode && mode !== "address" ? " is-open" : ""}`}>
-      <div className="vr-sub-line">
+    <li className={`vr-sub vr-sub-row${open ? " is-expanded" : ""}${mode && mode !== "address" ? " is-open" : ""}`}>
+      <div
+        className={`vr-sub-line vr-sub-toggle${hasBody ? "" : " is-static"}`}
+        role={hasBody ? "button" : undefined}
+        tabIndex={hasBody ? 0 : undefined}
+        aria-expanded={hasBody ? open : undefined}
+        onClick={toggle}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); } }}
+      >
         <div className="vr-sub-copy">
           <strong>{check.label}</strong>
-          {/* A saved record's one line says it all (Nov 24); a renamed company keeps its verdict above it. */}
-          {(!registry?.summary || registry.for) && <span>{check.verdict}</span>}
-          {registry?.summary
-            ? (registry.for ? <small className="vr-sub-summary">{registry.summary}, for “{registry.for}”</small> : <span>{registry.summary}</span>)
-            : registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
-          {check.sharedNumber && !numberShown && <small>Same registration number as {check.sharedNumber.with}</small>}
-          {registry?.proof?.length > 0 && !mode && (
-            <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
-          )}
-          {check.staff?.by && <small>Checked by staff · {check.staff.by}</small>}
-          {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
+          <span>{line}</span>
         </div>
         <div className="vr-sub-score">
-          <Score value={check.score} size="sub" />
-          <Meter value={check.score} />
+          <StandingPill score={check.score} />
         </div>
+        {hasBody ? <Chevron /> : <span aria-hidden="true" />}
       </div>
-      {check.lines?.length > 0 && (
-        // The address, each version on its own line (Nov 25); the licence's and the registry's mark what differs.
-        <div className="vr-sub-lines">
-          {check.lines.map((line) => (
-            <p className={`vr-compare${line.key === "typed" ? "" : " is-licence"}`} key={line.key}>
-              <span>{line.label}:</span> {line.parts ? marked(line.value, typedLine, line.parts) : line.differs ? marked(line.value, typedLine, []) : line.value}
-            </p>
+      {open && (
+        <div className="vr-sub-body">
+          {/* The form has its own "Where you checked … Open": the row's link waits while it is open (Nov 26). */}
+          {check.lookup && mode !== "record" && <div className="vr-sub-actions"><LookupAction lookup={check.lookup} /></div>}
+          {(registry?.for || (!registry?.summary && registry?.by) || (check.sharedNumber && !numberShown) || check.staff?.by || check.blocks || (registry?.proof?.length > 0 && !mode)) && (
+            <div className="vr-sub-copy">
+              {registry?.summary && registry.for && <small className="vr-sub-summary">{registry.summary}, for “{registry.for}”</small>}
+              {!registry?.summary && registry?.by && <small>{registry.source} · {registry.by}{registry.for ? `, for “${registry.for}”` : ""}</small>}
+              {check.sharedNumber && !numberShown && <small>Same registration number as {check.sharedNumber.with}</small>}
+              {registry?.proof?.length > 0 && !mode && (
+                <div className="vr-proof">{registry.proof.map((file) => <ProofChip file={file} onOpen={actions.proofUrl} key={file.path} />)}</div>
+              )}
+              {check.staff?.by && <small>Checked by staff · {check.staff.by}</small>}
+              {check.blocks && <small className="vr-sub-blocks">{check.blocks}</small>}
+            </div>
+          )}
+          {check.lines?.length > 0 && (
+            // The address, each version on its own line (Nov 25); Edit address sits with the company's own (Nov 26).
+            <div className="vr-sub-lines">
+              {check.lines.map((entry) => (
+                <p className="vr-compare" key={entry.key}>
+                  <span>{ADDRESS_LINE_WORDS[entry.key] ?? entry.label}:</span> {entry.value}
+                  {entry.key === "typed" && canEditAddress && !mode && (
+                    <button className="vr-text-action is-inline vr-line-action" type="button" onClick={() => setMode("address")}>Edit address</button>
+                  )}
+                </p>
+              ))}
+            </div>
+          )}
+          {/* The licence against what the company typed (was the Typed: line under the reading). */}
+          {typedFields.map((field) => (
+            <div className="vr-sub-lines" key={`typed-${field.key}`}>
+              <p className="vr-compare"><span>Company:</span> {field.typed}</p>
+              <p className="vr-compare"><span>Licence:</span> {field.value}
+                {field.explainTyped && onExplainTyped && explainingTyped !== field.key && !mode && (
+                  <button className="vr-text-action is-inline vr-line-action" type="button" onClick={() => setExplainingTyped(field.key)}>Explain</button>
+                )}
+              </p>
+              {explainingTyped === field.key && (
+                <ReasonForm label={field.explainTyped} saveLabel="Save" onSave={(text) => onExplainTyped(field, text)} onDone={() => setExplainingTyped(null)} />
+              )}
+            </div>
           ))}
+          {/* The shared registration number (Nov 26): said once, in the registry row. */}
+          {dup && !dup.explained && !explainingDup && (
+            <p className="vr-compare is-dup">
+              <span>Same number as</span> <strong>{dup.with}</strong>
+              {onExplainDup && <button className="vr-text-action" type="button" onClick={() => setExplainingDup(true)}>Explain</button>}
+            </p>
+          )}
+          {dup && explainingDup && (
+            <ReasonForm label={`Why ${dup.with} has the same number`} saveLabel="Save" initial={dup.explained?.text} onSave={onExplainDup} onDone={() => setExplainingDup(false)} />
+          )}
+          {dup?.explained && !explainingDup && (
+            <p className="vr-sub-note">
+              <span>Same number as {dup.with}: {dup.explained.text}</span>
+              <small>{dup.explained.by}{onExplainDup && <> · <button className="vr-text-action is-quiet is-inline" type="button" onClick={() => setExplainingDup(true)}>Edit</button></>}</small>
+            </p>
+          )}
+          {check.staff?.note && mode !== "override" && <p className="vr-sub-note"><span>{check.staff.note}</span></p>}
+          {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
+            <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
+          )}
+          {check.reason && mode !== "reason" && (
+            <p className={`vr-sub-note${check.reason.earlier ? " is-earlier" : ""}`}>
+              <span>{check.reason.text}</span>
+              <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
+            </p>
+          )}
+          {!mode && (canRecord || canReason || (check.duplicate && !numberShown && actions.explainField) || canOverride || (canEditAddress && !check.lines?.some((entry) => entry.key === "typed"))) && (
+            <div className="vr-sub-actions">
+              {canRecord && (
+                <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
+                  {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit" : "Record check"}
+                </button>
+              )}
+              {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
+              {canEditAddress && !check.lines?.some((entry) => entry.key === "typed") && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
+              {check.duplicate && !numberShown && actions.explainField && (
+                <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
+              )}
+              {canReason && (
+                <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
+                  {check.reason && !check.reason.earlier ? "Edit reason" : "Add reason"}
+                </button>
+              )}
+            </div>
+          )}
+          {mode === "override" && <OverrideForm check={check} onSave={(record) => actions.recordOverride(groupKey, check, record)} onDone={close} />}
+          {mode === "address" && (
+            <AddressDialog label={check.edit.label} address={check.edit.value} onSave={actions.saveAddress} onClose={close} />
+          )}
+          {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
+          {mode === "shared" && (
+            <ReasonForm label={`Why ${check.duplicate.with} has the same number`} saveLabel="Save" onSave={(text) => actions.explainField(groupKey, { key: "number" }, text)} onDone={close} />
+          )}
+          {mode === "reason" && (
+            <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
+          )}
         </div>
-      )}
-      {check.staff?.note && mode !== "override" && <p className="vr-sub-note"><span>{check.staff.note}</span></p>}
-      {check.sharedNumber?.explained && !numberShown && mode !== "shared" && (
-        <p className="vr-sub-note"><span>{check.sharedNumber.explained.text}</span><small>{check.sharedNumber.explained.by}</small></p>
-      )}
-      {check.reason && mode !== "reason" && (
-        <p className={`vr-sub-note${check.reason.earlier ? " is-earlier" : ""}`}>
-          <span>{check.reason.text}</span>
-          <small>{[check.reason.by, check.reason.earlier && check.reason.for ? `for: ${check.reason.for}` : ""].filter(Boolean).join(" · ")}</small>
-        </p>
-      )}
-      {!mode && (canRecord || check.lookup || canReason || check.duplicate || canEditAddress || canOverride) && (
-        <div className="vr-sub-actions">
-          {canRecord && (
-            <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
-              {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit" : "Record check"}
-            </button>
-          )}
-          {check.lookup && <LookupAction lookup={check.lookup} />}
-          {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
-          {canEditAddress && <button className="vr-text-action" type="button" onClick={() => setMode("address")}>Edit address</button>}
-          {check.duplicate && !numberShown && actions.explainField && (
-            <button className="vr-text-action" type="button" onClick={() => setMode("shared")}>Explain shared number</button>
-          )}
-          {canReason && (
-            <button className="vr-text-action is-quiet" type="button" onClick={() => setMode("reason")}>
-              {check.reason && !check.reason.earlier ? "Edit reason" : "Add reason"}
-            </button>
-          )}
-        </div>
-      )}
-      {mode === "override" && <OverrideForm check={check} onSave={(record) => actions.recordOverride(groupKey, check, record)} onDone={close} />}
-      {mode === "address" && (
-        <AddressDialog label={check.edit.label} address={check.edit.value} onSave={actions.saveAddress} onClose={close} />
-      )}
-      {mode === "record" && <RecordForm check={check} actions={actions} onSave={(record) => actions.recordCheck(groupKey, check, record)} onDone={close} />}
-      {mode === "shared" && (
-        <ReasonForm label={`Why ${check.duplicate.with} has the same number`} saveLabel="Save" onSave={(text) => actions.explainField(groupKey, { key: "number" }, text)} onDone={close} />
-      )}
-      {mode === "reason" && (
-        <ReasonForm initial={check.reason?.earlier ? "" : check.reason?.text} onSave={(text) => actions.saveReason(groupKey, check, text)} onDone={close} />
       )}
     </li>
   );
@@ -793,7 +957,20 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
 
 /* ---------------------------------------------------------------- fields */
 
-function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
+/** Read from this document (Nov 26): the value as read; the checks on the left say whether it matches. */
+function ReadValue({ field, value }) {
+  return (
+    <div className={`vr-field vr-read${field.wide ? " is-wide" : ""}`}>
+      <span className="vr-field-label">{field.label}</span>
+      <div className="vr-read-line">
+        <span className="vr-read-value">{value || "Not read"}</span>
+        {field.copy && value && <CopyButton text={value} label={field.label} />}
+      </div>
+    </div>
+  );
+}
+
+function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = false }) {
   const id = useId();
   const [explaining, setExplaining] = useState(false);
   const [explainingTyped, setExplainingTyped] = useState(false);
@@ -815,7 +992,7 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
         {field.copy && <CopyButton text={value ?? ""} label={field.label} />}
       </div>
       {field.by && !isEdited && <small className="vr-field-by">{field.by}</small>}
-      {field.typed && (value ?? "") !== field.typed && (
+      {!plain && field.typed && (value ?? "") !== field.typed && (
         <p className="vr-compare is-typed">
           <span>Typed:</span> {marked(field.typed, value ?? "")}
           {field.explainTyped && onExplainTyped && !explainingTyped && (
@@ -826,16 +1003,16 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
       {field.explainTyped && onExplainTyped && explainingTyped && (
         <ReasonForm label={field.explainTyped} saveLabel="Save" onSave={onExplainTyped} onDone={() => setExplainingTyped(false)} />
       )}
-      {field.licence && (value ?? "") !== field.licence && (
+      {!plain && field.licence && (value ?? "") !== field.licence && (
         <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "", field.licenceParts ?? [])}</p>
       )}
-      {dup && !dup.explained && !explaining && (
+      {!plain && dup && !dup.explained && !explaining && (
         <p className="vr-compare is-dup">
           <span>Same number as</span> <strong>{dup.with}</strong>
           <button className="vr-text-action" type="button" onClick={() => setExplaining(true)}>Explain</button>
         </p>
       )}
-      {dup && explaining && (
+      {!plain && dup && explaining && (
         <ReasonForm
           label={`Why ${dup.with} has the same number`}
           saveLabel="Save"
@@ -844,7 +1021,7 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped }) {
           onDone={() => setExplaining(false)}
         />
       )}
-      {dup?.explained && !explaining && (
+      {!plain && dup?.explained && !explaining && (
         <p className="vr-sub-note">
           <span>Same number as {dup.with}: {dup.explained.text}</span>
           <small>{dup.explained.by} · <button className="vr-text-action is-quiet is-inline" type="button" onClick={() => setExplaining(true)}>Edit</button></small>
@@ -860,7 +1037,6 @@ const fieldValues = (fields) => Object.fromEntries((fields ?? []).map((field) =>
 
 function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, onClose }) {
   const titleId = useId();
-  const otherBefore = useRef({});
   // Several certificates: one tab each, showing that certificate's check, fields and file (Nov 13).
   const certs = group.evidence?.kind === "certificate" ? (group.evidence.certificates ?? []) : [];
   const tabbed = certs.length > 1;
@@ -870,8 +1046,9 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
   const checks = cert ? (group.checks ?? []).filter((check) => check.subjectId === cert.id) : group.checks;
   const evidence = cert ? { kind: "certificate", name: cert.label, number: cert.number, valid: cert.valid, holder: cert.holder, file: cert.file } : group.evidence;
   const [values, setValues] = useState(() => fieldValues(fields));
-  const [run, setRun] = useState({ state: "idle", from: null });
-  const score = group.checking || group.error ? null : scoreGroup(group);
+  const [run, setRun] = useState({ state: "idle" });
+  // "Fix misread" (Nov 26): the reading is shown as read; a misread is fixed here, and it changes the reading only.
+  const [fixing, setFixing] = useState(false);
   // Save changes (Nov 24, was Run again): only once a field the AI read was changed; it re-checks with the change.
   const edited = fields.filter((field) => (values[field.key] ?? "") !== (field.value ?? "")).map((field) => field.key);
   const canRun = group.rerunnable !== false && fields.length > 0;
@@ -887,13 +1064,9 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // The other counted groups' scores before a run: a licence edit (the business scope) can move Company information.
-  const otherScores = () => Object.fromEntries((groups ?? []).filter((g) => g.key !== group.key && groupWeight(g)).map((g) => [g.key, scoreGroup(g)]));
   const runAgain = async () => {
     if (!edited.length) return;
-    const from = score;
-    otherBefore.current = otherScores();
-    setRun({ state: "running", from });
+    setRun({ state: "running" });
     onRunning(true);
     let outcome;
     try {
@@ -902,45 +1075,47 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
       outcome = { error: error?.message || "Couldn't save. Try again." };
     }
     onRunning(false);
-    setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done", from });
+    setRun(outcome?.error ? { state: "error", message: outcome.error } : { state: "done" });
+    if (!outcome?.error) setFixing(false);
   };
 
-  // The chip compares with the score just before the latest change (Run again or a record), not the run's start.
-  const [change, setChange] = useState(null);
-  const previous = useRef(score);
-  const changedWith = useRef(null);
-  const running = run.state === "running";
-  useEffect(() => {
-    // While a group is checking its score reads as nothing; the last real score is what the next one is compared with.
-    if (score == null) return;
-    const from = previous.current;
-    previous.current = score;
-    if (from == null || from === score) return;
-    setChange({ from, to: score });
-    changedWith.current = group;
-    // A record after a run: the footer's "Score updated" line belonged to the run, so it goes back to the reading's date.
-    if (!running) setRun((current) => (current.state === "done" && current.from !== from ? { state: "idle", from: null } : current));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [score]);
-  // The chip belongs to the action that moved the score: the next action that leaves it unchanged clears it.
-  useEffect(() => {
-    if (changedWith.current !== group) setChange(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group]);
-  const to = score;
-  const delta = change && change.to === score ? change.to - change.from : 0;
-  // "Company information 3% to 25%": another group this run moved.
-  const othersMoved = run.state === "done"
-    ? (groups ?? []).filter((g) => g.key in otherBefore.current && scoreGroup(g) != null && scoreGroup(g) !== otherBefore.current[g.key])
-      .map((g) => `${g.label} ${otherBefore.current[g.key] ?? 0}% to ${scoreGroup(g)}%`)
-    : [];
   const status = run.state === "running" ? { text: "Saving…" }
     : run.state === "error" ? { text: run.message, tone: "error" }
-      : run.state === "done" ? { text: [to == null || to === run.from ? "Saved" : `Saved. Score ${run.from ?? 0}% to ${to}%`, ...othersMoved].join(". "), tone: "done" }
+      : run.state === "done" ? { text: "Saved", tone: "done" }
         : group.checking && group.checkingWords ? { text: group.checkingWords }
         : group.error ? { text: group.error, tone: "error" }
           : group.stale ? { text: group.stale, tone: "stale" }
             : { text: group.readAt ?? "" };
+
+  // A registration number another company also uses: said in the Official registry row (Nov 26).
+  // The licence's number or name against the company's own, worked out now: said, and explained, in the registry row.
+  const typedFields = (checks ?? []).some((check) => check.key === "registry") ? fields.filter((field) => field.typed && field.typed !== field.value) : [];
+  const dupField = (checks ?? []).some((check) => check.key === "registry") ? fields.find((field) => field.key === "number" && field.duplicate) ?? null : null;
+  const readSection = fields.length > 0 && (
+    <section className="vr-section vr-read-section">
+      <div className="vr-section-head">
+        <h3>{group.evidencePane === false ? "What the AI read" : "Read from this document"}</h3>
+        {canRun && (
+          <button className="vr-text-action" type="button" onClick={() => { if (fixing) setValues(fieldValues(fields)); setFixing(!fixing); }}>
+            {fixing ? "Cancel" : "Fix misread"}
+          </button>
+        )}
+      </div>
+      <div className="vr-fields">
+        {fields.map((field) => (!fixing ? <ReadValue field={field} value={values[field.key]} key={field.key} /> : (
+          <ReadField
+            plain
+            field={field}
+            value={values[field.key]}
+            onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
+            onExplain={(text) => actions.explainField(group.key, field, text)}
+            onExplainTyped={actions.explainTyped ? (text) => actions.explainTyped(group.key, field, text, group.checks.find((check) => check.key === "registry")) : null}
+            key={field.key}
+          />
+        )))}
+      </div>
+    </section>
+  );
 
   return (
     // A click beside the pop-up closes it, unless a form is open in it: typed words are never lost that way (Nov 24 tester).
@@ -949,11 +1124,6 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
         <header className="vr-modal-head">
           <div className="vr-modal-title">
             <h2 id={titleId}>{group.label}</h2>
-            <p className={`vr-modal-verdict vr-tier-${tierFor(score)}`}><i aria-hidden="true" /><span><strong>{group.verdict || "Nothing submitted"}.</strong>{group.why ? ` ${group.why}` : ""}</span></p>
-          </div>
-          <div className="vr-modal-score">
-            <Score value={score} size="modal" />
-            {delta !== 0 && <span className={`vr-delta ${delta > 0 ? "is-up" : "is-down"}`}>{delta > 0 ? "+" : ""}{delta}</span>}
           </div>
           <button className="vr-close" type="button" aria-label="Close" onClick={onClose}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
@@ -977,7 +1147,11 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                       groupKey={group.key}
                       legalName={values.legalName}
                       canReason={canReason && check.canReason !== false}
-                      numberShown={fields.some((field) => field.key === "number" && field.duplicate)}
+                      numberShown={Boolean(dupField)}
+                      dupField={check.key === "registry" ? dupField : null}
+                      typedFields={check.key === "registry" ? typedFields : []}
+                      onExplainTyped={check.key === "registry" && actions.explainTyped ? (field, text) => actions.explainTyped(group.key, field, text, check) : null}
+                      onExplainDup={dupField ? (text) => actions.explainField(group.key, dupField, text) : null}
                       actions={actions}
                       key={`${check.key}-${check.registry?.by ?? ""}-${check.reason?.by ?? ""}`}
                     />
@@ -985,35 +1159,21 @@ function VerificationModal({ group, groups = null, actions, fileUrl, onRunning, 
                 </ul>
               ) : <p className="vr-section-empty">Nothing to check yet</p>}
             </section>
-
-            {fields.length > 0 && (
-              <section className="vr-section">
-                <h3>What the AI read</h3>
-                <div className="vr-fields">
-                  {fields.map((field) => (
-                    <ReadField
-                      field={field}
-                      value={values[field.key]}
-                      onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
-                      onExplain={(text) => actions.explainField(group.key, field, text)}
-                      onExplainTyped={actions.explainTyped ? (text) => actions.explainTyped(group.key, field, text, group.checks.find((check) => check.key === "registry")) : null}
-                      key={field.key}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+            {group.evidencePane === false && readSection}
           </div>
 
-          {/* A group with no file behind it at all (a brand's Company information) has no file pane. */}
-          {group.evidencePane !== false && (
-            <EvidencePane
-              evidence={evidence}
-              fileUrl={fileUrl}
-              onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
-              key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
-            />
-          )}
+          {/* The document, and under it what was read from it (Nov 26). A group with no file at all keeps the reading in one column. */}
+          {group.evidencePane !== false ? (
+            <div className="vr-side">
+              <EvidencePane
+                evidence={evidence}
+                fileUrl={fileUrl}
+                onPhoto={(index, record, photo) => actions.recordPhoto(group.key, index, record, photo)}
+                key={`${group.readAt ?? ""}-${cert?.id ?? ""}`}
+              />
+              {readSection}
+            </div>
+          ) : null}
         </div>
 
         <footer className="vr-modal-foot">

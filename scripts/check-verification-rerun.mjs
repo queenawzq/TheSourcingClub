@@ -73,10 +73,10 @@ await check("a reading from an earlier upload is out of date (Portugal)", () => 
   assert.equal(outOfDateWords(state, { timeZone: "UTC" }), "Read from an earlier upload, Nov 9");
 });
 
-await check("a reading for an old number or name is out of date; a current one is not", () => {
+await check("a reading for an old number or name is not out of date: it is compared with the company now", () => {
   const newest = { id: "old" };
-  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "999", title: "Têxteis Douro" }).reason, "number_changed");
-  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "Other Lda" }).reason, "name_changed");
+  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "999", title: "Têxteis Douro" }), null);
+  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "Other Lda" }), null);
   assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "têxteis  douro" }), null);
   assert.equal(readingOutOfDate({ reading: null, newestFile: newest }).reason, "never_read");
   assert.equal(readingOutOfDate({ reading: null, newestFile: null }), null);

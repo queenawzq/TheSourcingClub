@@ -112,8 +112,7 @@ export function readingOutOfDate({ reading, newestFile, number, title } = {}) {
   const since = reading.checkedAt ?? reading.checked_at ?? null;
   if (newestFile?.id && details.fileId && newestFile.id !== details.fileId) return { reason: "earlier_upload", since };
   if (newestFile?.createdAt && since && day(newestFile.createdAt) > day(since) && !details.fileId) return { reason: "earlier_upload", since };
-  if ((details.numberAtReading ?? null) !== (number ?? null) && details.numberAtReading !== undefined) return { reason: "number_changed", since };
-  if (title && details.titleAtReading && !sameText(details.titleAtReading, title)) return { reason: "name_changed", since };
+  // A changed number or name never makes a reading out of date (Nov 26): it is compared with the company now.
   return null;
 }
 
