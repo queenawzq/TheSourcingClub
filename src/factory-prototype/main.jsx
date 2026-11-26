@@ -6499,7 +6499,10 @@ export function FactoryProjectsPage({
   onViewProject,
   // Live mounts pass `{ projects, loading, error, reload, tabStore, cancelStore }`; the prototype
   // passes nothing and maps its own example orders, exactly as drawn.
-  live = null
+  live = null,
+  // Optional order extensions, shared by the local dispute preview.
+  renderOrderMenu = null,
+  renderOrderNotice = null
 }) {
   // The company's saved tabs (src/app/order/useOrderTabs.js), live only.
   const tabStore = live?.tabStore ?? null;
@@ -6781,6 +6784,8 @@ export function FactoryProjectsPage({
             factoryProjects.map((project) => (
               <FactoryProjectListCard
                 project={project}
+                renderOrderMenu={renderOrderMenu}
+                renderOrderNotice={renderOrderNotice}
                 language={language}
                 onViewProject={onViewProject}
                 customTabs={customTabs}
@@ -6807,6 +6812,8 @@ export function FactoryProjectsPage({
             ordersForTab.map((project) => (
               <FactoryProjectListCard
                 project={project}
+                renderOrderMenu={renderOrderMenu}
+                renderOrderNotice={renderOrderNotice}
                 language={language}
                 onViewProject={() => onViewProject(project)}
                 customTabs={customTabs}
@@ -6824,7 +6831,7 @@ export function FactoryProjectsPage({
   );
 }
 
-export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null, archiveAction = null, cancelAction = null }) {
+export function FactoryProjectListCard({ renderOrderMenu = null, renderOrderNotice = null, project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null, archiveAction = null, cancelAction = null }) {
   const isZh = language === "zh";
   const [primaryImage] = project.images || [];
   const productionFacts = [
@@ -6854,7 +6861,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           {/* The design draws no archive or cancel item here; live adds the
               ones the order allows, the same as the brand's card. */}
           <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab}>
-            {archiveAction || cancelAction ? (close) => [archiveAction, cancelAction].filter(Boolean).map((item) => (
+            {archiveAction || cancelAction || renderOrderMenu ? (close) => <>{[archiveAction, cancelAction].filter(Boolean).map((item) => (
               <button
                 type="button"
                 role="menuitem"
@@ -6866,7 +6873,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
               >
                 {item.label}
               </button>
-            )) : null}
+            ))}{renderOrderMenu?.(project, close)}</> : null}
           </OrderCardMenu>
         </ProjectCardActions>
       </header>
@@ -6898,6 +6905,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           )}
         </div>
       </div>
+      {renderOrderNotice?.(project)}
     </article>
   );
 }
@@ -10231,6 +10239,7 @@ export function FactoryProjectProgressDetail({
   // "Cancel order" under Message.
   banner = null,
   onCancelOrder = null,
+  renderOrderMenu = null,
   // Live only: open "Add update" for this step from outside the timeline
   // (the step's pop-up, reached from a "due soon" reminder), then report it.
   updateStepId = null,
@@ -10268,17 +10277,22 @@ export function FactoryProjectProgressDetail({
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
         <h1 data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</h1>
         <p className="factory-project-detail-subtitle" data-no-translate>{isZh ? getTranslatedListMeta(subtitle) : subtitle}</p>
-        {onCancelOrder && (
+        {(onCancelOrder || renderOrderMenu) && (
           <OrderCardMenu customTabs={[]} onToggleTab={() => {}}>
             {(close) => (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onCancelOrder();
-                }}
-              >Cancel order</button>
+              <>
+                {onCancelOrder && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      onCancelOrder();
+                    }}
+                  >Cancel order</button>
+                )}
+                {renderOrderMenu?.(order, close)}
+              </>
             )}
           </OrderCardMenu>
         )}

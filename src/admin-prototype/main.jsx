@@ -243,17 +243,29 @@ function VerificationRow({ profile, onReview }) {
   );
 }
 
-function DataTable({ columns, rows, type, onView }) {
+export function AdminQueueTabs({ label, tabs, active, onChange, className = "" }) {
+  return (
+    <nav className={`rfqs-tabs admin-verification-tabs ${className}`} aria-label={label}>
+      {tabs.map((tab) => (
+        <button className={active === tab.key ? "active" : ""} type="button" aria-current={active === tab.key ? "page" : undefined} onClick={() => onChange(tab.key)} key={tab.key}>
+          {tab.label}{typeof tab.count === "number" && <> <span>{tab.count}</span></>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+export function DataTable({ columns, rows, type, onView, actionLabel = null, className = "" }) {
   return (
     <div className="admin-table-wrap">
-      <table className="admin-table">
+      <table className={`admin-table ${className}`}>
         <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row[0]}>
               {row.slice(0, -2).map((cell, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? <strong>{cell}</strong> : cell}</td>)}
               <td><StatusPill tone={row[row.length - 1]}>{row[row.length - 2]}</StatusPill></td>
-              <td><button className="secondary-btn compact-btn" type="button" onClick={() => onView?.(row)}>{type === "rfq" ? "View RFQ" : "View quote"}</button></td>
+              <td><button className="secondary-btn compact-btn" type="button" onClick={() => onView?.(row)}>{actionLabel ?? (type === "rfq" ? "View RFQ" : "View quote")}</button></td>
             </tr>
           ))}
         </tbody>
@@ -392,13 +404,7 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
         <button className="secondary-btn" type="button">Newest first</button>
       </div>
       {kind === "Verification" && (
-        <nav className="rfqs-tabs admin-verification-tabs" aria-label="Verification status">
-          {verificationTabs.map((tab) => (
-            <button className={verificationTab === tab ? "active" : ""} type="button" aria-current={verificationTab === tab ? "page" : undefined} onClick={() => setVerificationTab(tab)} key={tab}>
-              {tab} <span>{tabCounts[tab]}</span>
-            </button>
-          ))}
-        </nav>
+        <AdminQueueTabs label="Verification status" tabs={verificationTabs.map(tab => ({key:tab,label:tab,count:tabCounts[tab]}))} active={verificationTab} onChange={setVerificationTab} />
       )}
       {kind === "RFQs" && (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs" aria-label="RFQ status">
