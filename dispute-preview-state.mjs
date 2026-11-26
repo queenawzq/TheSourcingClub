@@ -1,51 +1,77 @@
 // In-memory dispute flow for the local mockup. No database, payment or email
 // calls: every function takes the preview's "world" and returns a new one.
 //
-// The rules it pins (notes/dispute-design-preview.md, "Flow v2"):
+// The rules it pins (notes/dispute-design-preview.md, "Flow v3"):
 // - One open case per order.
-// - The other side answers within 2 business days: accept, make an offer, or
-//   reply. Each answer gives the other side 2 business days. A missed
-//   deadline, or either side asking, sends the case to TSC review.
-// - An agreement, or TSC's decision, sets the outcome. Outcomes are only what
-//   the platform can do. Money outcomes wait for staff to carry them out
+// - Negotiation: the other side answers within 2 business days: accept, make
+//   an offer, or reply. Each answer gives the other side 2 business days, but
+//   never past 5 business days from opening. A missed turn, the end of that
+//   window, or either side asking sends the case to review by our team.
+// - An agreement, or our team's decision, sets the outcome. Outcomes are only
+//   what the platform can do. Money outcomes wait for staff to carry them out
 //   ("Awaiting completion"); the rest apply at once.
 // - While a case is open the factory's withdrawals are paused and the
 //   disputed step can't be approved or paid out. The brand is not paused.
+//   Staff may "Release other payments": the pause lifts for everything but
+//   the disputed step.
+// - Dispute emails are always sent, whatever the company's email settings.
 
 export const ORDER = {
   number: 'TSC-000524',
   title: 'Organic cotton poplin shirts',
-  brand: 'Demo Brand',
+  brand: 'Fernwood Studio',
+  brandCity: 'London, UK',
   factory: 'Ningbo Loomworks',
+  factoryCity: 'Ningbo, China',
   totalCents: 573500,
   step: 'Bulk production',
   stepCents: 170000,
   stepDue: '2026-12-04',
 };
-export const PARTY_NAME = { brand: ORDER.brand, factory: ORDER.factory, tsc: 'TSC', system: 'TSC' };
+/** The staff member the case is assigned to. */
+export const STAFF = 'Priya Shah';
+export const PARTY_NAME = { brand: ORDER.brand, factory: ORDER.factory };
 export const other = (side) => (side === 'brand' ? 'factory' : 'brand');
 
-// Thursday Nov 26 2026, 10:00 New York.
+export const TURN_DAYS = 2;
+export const WINDOW_DAYS = 5;
+
+// Thursday Nov 26 2026, 10:00 New York. The mock's dates are all in
+// November and December, so New York is UTC-5 throughout.
 export const START = Date.parse('2026-11-26T15:00:00Z');
-const HOUR = 3600000;
+const NY = 5 * 3600000;
+const MINUTE = 60000;
 
 export const STATUS = {
   response: 'Awaiting response',
-  review: 'TSC review',
+  review: 'In review',
   completion: 'Awaiting completion',
   resolved: 'Resolved',
   withdrawn: 'Withdrawn',
 };
 export const isOpen = (c) => Boolean(c) && c.status !== STATUS.resolved && c.status !== STATUS.withdrawn;
 
+/** The same time of day, n business days later (New York days). */
 export function addBusinessDays(ms, days) {
-  const d = new Date(ms);
+  const d = new Date(ms - NY);
   let left = days;
   while (left > 0) {
     d.setUTCDate(d.getUTCDate() + 1);
     if (![0, 6].includes(d.getUTCDay())) left--;
   }
-  return d.getTime();
+  return d.getTime() + NY;
+}
+/** 23:59 New York on the day of ms: a deadline is a day, and the whole day counts. */
+export function endOfDay(ms) {
+  const d = new Date(ms - NY);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59) + NY;
+}
+/** The deadline n business days from ms. */
+export const dueBy = (ms, days) => endOfDay(addBusinessDays(ms, days));
+/** 09:00 New York on the next business day: the mock clock's "next day". */
+export function nextBusinessMorning(ms) {
+  const d = new Date(addBusinessDays(ms, 1) - NY);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 0) + NY;
 }
 
 export const money = (cents) => `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,7 +83,7 @@ export const moment = (ms) => new Date(ms).toLocaleString('en-US', { month: 'sho
 export const OUTCOMES = [
   { key: 'refund', label: 'Refund', money: true },
   { key: 'payout', label: 'Pay out the step', money: true },
-  { key: 'new_date', label: 'New due date', money: false },
+  { key: 'rework', label: 'Rework by a new date', money: false },
   { key: 'cancel', label: 'Cancel the order', money: true },
   { key: 'no_change', label: 'No change', money: false },
 ];
@@ -65,13 +91,13 @@ export const outcomeLabel = (key) => OUTCOMES.find((o) => o.key === key)?.label 
 /** What the side may ask for when it opens a case: no "No change". */
 export const requestOutcomes = (side) => OUTCOMES.filter((o) => o.key !== 'no_change' && !(side === 'brand' && o.key === 'payout') && !(side === 'factory' && o.key === 'refund'));
 
-/** The outcome as one short line: "Refund $850.00 to Demo Brand". */
+/** The outcome as one short line: "Refund $850.00 to Fernwood Studio". */
 export function outcomeLine(o, world) {
   if (!o) return '';
   const held = world?.step.heldCents ?? ORDER.stepCents;
   if (o.type === 'refund') return `Refund ${money(o.amountCents)} to ${ORDER.brand}`;
   if (o.type === 'payout') return `Pay ${money(o.amountCents ?? held)} to ${ORDER.factory}`;
-  if (o.type === 'new_date') return `New due date: ${dayOf(o.date)}`;
+  if (o.type === 'rework') return `Rework by ${dayOf(o.date)}`;
   if (o.type === 'cancel') return (o.amountCents ?? held) > 0 ? `Cancel the order · Refund ${money(o.amountCents ?? held)} to ${ORDER.brand}` : 'Cancel the order';
   return 'No change';
 }
@@ -90,7 +116,7 @@ export function initialWorld() {
     now: START,
     nextId: 29,
     case: null,
-    closed: [],
+    // state: held | rework | approved | paid_out | refunded | cancelled
     step: { heldCents: ORDER.stepCents, refundedCents: 0, due: ORDER.stepDue, state: 'held' },
     order: 'active',
     balanceCents: 296100,
@@ -100,10 +126,15 @@ export function initialWorld() {
   };
 }
 
-const event = (w, who, title, detail = '', files = []) => ({ at: w.now, who, title, detail, files });
+/** Each action lets a little mock time pass, so a timeline reads like a real one. */
+export const tick = (w) => ({ ...w, now: w.now + 47 * MINUTE });
+
+const event = (w, who, title, detail = '', files = [], staffOnly = false) => ({ at: w.now, who, title, detail, files, ...(staffOnly ? { staffOnly } : {}) });
 function notify(w, to, title, meta, kind = 'Dispute') {
   return { ...w.notifications, [to]: [{ id: `${to}-${w.now}-${w.notifications[to].length}`, type: kind, title, meta, at: w.now, unread: true }, ...w.notifications[to]] };
 }
+// Dispute emails ignore the company's email settings: a party must not miss a
+// deadline because it turned "Payment and approval requests" off.
 function email(w, to, kind, title, body) {
   return [...w.emails, { to, kind, title, body, at: w.now }];
 }
@@ -116,12 +147,15 @@ export function outcomeError(o, world) {
   if (!o?.type) return 'Choose an outcome.';
   if (o.type === 'refund') {
     if (!Number.isInteger(o.amountCents) || o.amountCents <= 0) return 'Enter an amount.';
-    if (o.amountCents > world.step.heldCents) return `Up to ${money(world.step.heldCents)}, the amount TSC holds on this order.`;
+    if (o.amountCents > world.step.heldCents) return `Up to ${money(world.step.heldCents)}, the amount funded on this step.`;
   }
-  if (o.type === 'payout' && world.step.heldCents <= 0) return 'TSC holds nothing on this order to pay out.';
-  if (o.type === 'new_date' && !/^\d{4}-\d{2}-\d{2}$/.test(o.date ?? '')) return 'Choose a date.';
+  if (o.type === 'payout' && world.step.heldCents <= 0) return 'Nothing is funded on this step to pay out.';
+  if (o.type === 'rework' && !/^\d{4}-\d{2}-\d{2}$/.test(o.date ?? '')) return 'Choose a date.';
   return '';
 }
+
+/** The next turn's deadline: 2 business days, never past the window. */
+const turnDue = (w, c) => Math.min(dueBy(w.now, TURN_DAYS), c.windowEndsAt);
 
 export function openCase(w, by, { reason, stage, details, request, files = [] }) {
   if (isOpen(w.case)) throw new Error('A dispute is already open on this order.');
@@ -129,13 +163,14 @@ export function openCase(w, by, { reason, stage, details, request, files = [] })
   if (err) throw new Error(err);
   const id = `DSP-${String(w.nextId).padStart(5, '0')}`;
   const to = other(by);
-  const dueAt = addBusinessDays(w.now, 2);
+  const windowEndsAt = dueBy(w.now, WINDOW_DAYS);
+  const dueAt = Math.min(dueBy(w.now, TURN_DAYS), windowEndsAt);
   const c = {
-    id, openedBy: by, reason, stage, details, files, openedAt: w.now,
+    id, openedBy: by, reason, stage, details, files, openedAt: w.now, windowEndsAt,
     request: { ...request },
     offer: { by, ...request, note: '', at: w.now, isRequest: true },
     status: STATUS.response, turn: to, dueAt, escalated: false,
-    tscRequest: null, tscDueAt: null, resolution: null, completedAt: null,
+    staffRequest: null, staffDueAt: null, resolution: null, completedAt: null, otherReleased: null,
     events: [event(w, by, 'Dispute opened', `${reason} · ${stage} · Requested: ${outcomeLine(request, w)}`, files)],
     staffNotes: [],
   };
@@ -143,28 +178,28 @@ export function openCase(w, by, { reason, stage, details, request, files = [] })
   return withCase(w, c, {
     nextId: w.nextId + 1,
     notifications: notify(w, to, title, `${reason} · Respond by ${day(dueAt)}`),
-    emails: email(w, to, 'opened', title, `${reason} on "${ORDER.title}". Respond by ${day(dueAt)}.`),
+    emails: email(w, to, 'opened', title, `${reason} on "${ORDER.title}". Respond by ${day(dueAt)}. If it is not settled, our team reviews it from ${day(windowEndsAt)}.`),
   });
 }
 
-/** accept | offer | reply, by the side whose turn it is (or either side in TSC review). */
+/** accept | offer | reply, by the side whose turn it is (or either side in review). */
 export function respond(w, by, { action, offer, note = '', files = [] }) {
   const c = w.case;
   if (!isOpen(c) || c.status === STATUS.completion) throw new Error('This case is not waiting on an answer.');
   if (c.status === STATUS.response && c.turn !== by) throw new Error('It is not your turn to answer.');
   const to = other(by);
+  const inReview = c.status === STATUS.review;
   if (action === 'accept') {
     if (!c.offer || c.offer.by === by) throw new Error('There is no offer from the other side to accept.');
     const agreed = { type: c.offer.type, amountCents: c.offer.amountCents, date: c.offer.date };
-    let next = withCase(w, { ...c, events: [...c.events, event(w, by, c.offer.isRequest ? 'Request accepted' : 'Offer accepted', outcomeLine(agreed, w) + (note ? ` · ${note}` : ''), files)], files: [...c.files, ...files] });
+    const next = withCase(w, { ...c, events: [...c.events, event(w, by, c.offer.isRequest ? 'Request accepted' : 'Offer accepted', outcomeLine(agreed, w) + (note ? ` · ${note}` : ''), files)], files: [...c.files, ...files] });
     return settle(next, agreed, 'agreement', note);
   }
   if (action === 'offer') {
     const err = outcomeError(offer, w);
     if (err) throw new Error(err);
     const madeOffer = { by, type: offer.type, amountCents: offer.amountCents, date: offer.date, note, at: w.now, isRequest: false };
-    const dueAt = addBusinessDays(w.now, 2);
-    const inReview = c.status === STATUS.review;
+    const dueAt = turnDue(w, c);
     const title = `${PARTY_NAME[by]} made an offer on ${ORDER.number}`;
     return withCase(w, {
       ...c, offer: madeOffer, files: [...c.files, ...files],
@@ -177,57 +212,64 @@ export function respond(w, by, { action, offer, note = '', files = [] }) {
   }
   if (action === 'reply') {
     if (!note.trim()) throw new Error('Write a reply.');
-    const inReview = c.status === STATUS.review;
-    const dueAt = addBusinessDays(w.now, 2);
+    const dueAt = turnDue(w, c);
     return withCase(w, {
       ...c, files: [...c.files, ...files],
       ...(inReview ? satisfied(c, by) : { turn: to, dueAt }),
       events: [...c.events, event(w, by, 'Reply', note, files)],
-    }, { notifications: notify(w, to, `${PARTY_NAME[by]} replied on ${ORDER.number}`, inReview ? 'TSC review' : `Respond by ${day(dueAt)}`) });
+    }, { notifications: notify(w, to, `${PARTY_NAME[by]} replied on ${ORDER.number}`, inReview ? STATUS.review : `Respond by ${day(dueAt)}`) });
   }
   throw new Error(`Unknown action ${action}`);
 }
 
-// In TSC review a party's answer satisfies TSC's request to that party.
+// In review a party's answer satisfies our team's request to that party.
 function satisfied(c, by) {
-  if (!c.tscRequest) return {};
-  const waiting = c.tscRequest.to.filter((s) => s !== by);
-  return { tscRequest: waiting.length ? { ...c.tscRequest, to: waiting } : null };
+  if (!c.staffRequest) return {};
+  const waiting = c.staffRequest.to.filter((s) => s !== by);
+  return { staffRequest: waiting.length ? { ...c.staffRequest, to: waiting } : null };
 }
 
-export function askTsc(w, by, note = '') {
+/** Either side asks our team to step in before the window ends. */
+export function askForReview(w, by, note = '') {
   const c = w.case;
-  if (!isOpen(c) || c.status !== STATUS.response) throw new Error('This case is already with TSC.');
+  if (!isOpen(c) || c.status !== STATUS.response) throw new Error('Our team is already reviewing this case.');
   return escalate(w, by, note);
 }
 
 function escalate(w, by, note = '') {
   const c = w.case;
-  const title = by === 'system' ? 'Sent to TSC review' : 'Asked TSC to step in';
-  const detail = by === 'system' ? `No agreement by ${day(c.dueAt)}` : note;
-  const n1 = notify(w, 'brand', `${ORDER.number} dispute is in TSC review`, 'TSC review');
-  const w2 = { ...w, notifications: n1 };
-  return withCase(w2, {
+  const windowEnded = c.dueAt >= c.windowEndsAt;
+  const title = by === 'system' ? 'Review started' : 'Asked our team to step in';
+  const detail = by === 'system' ? (windowEnded ? `No agreement by ${day(c.windowEndsAt)}` : `No answer by ${day(c.dueAt)}`) : note;
+  const subject = `${ORDER.number} dispute: our team is reviewing it`;
+  let notifications = notify(w, 'brand', subject, STATUS.review);
+  notifications = notify({ ...w, notifications }, 'factory', subject, STATUS.review);
+  let emails = email(w, 'brand', 'review', subject, `${detail ? `${detail}. ` : ''}Our team will review the case and may ask you for more.`);
+  emails = email({ ...w, emails }, 'factory', 'review', subject, `${detail ? `${detail}. ` : ''}Our team will review the case and may ask you for more.`);
+  return withCase(w, {
     ...c, status: STATUS.review, escalated: true, turn: null, dueAt: null, escalatedAt: w.now,
-    tscDueAt: addBusinessDays(w.now, 2),
+    staffDueAt: dueBy(w.now, TURN_DAYS),
     events: [...c.events, event(w, by, title, detail)],
-  }, { notifications: notify(w2, 'factory', `${ORDER.number} dispute is in TSC review`, 'TSC review') });
+  }, { notifications, emails });
 }
 
 export function withdraw(w, by) {
   const c = w.case;
   if (!isOpen(c) || c.status === STATUS.completion) throw new Error('This case can no longer be withdrawn.');
   if (c.openedBy !== by) throw new Error('Only the side that opened the case can withdraw it.');
-  const closedCase = { ...c, status: STATUS.withdrawn, turn: null, dueAt: null, tscRequest: null, closedAt: w.now, events: [...c.events, event(w, by, 'Withdrawn')] };
+  const closedCase = { ...c, status: STATUS.withdrawn, turn: null, dueAt: null, staffRequest: null, closedAt: w.now, events: [...c.events, event(w, by, 'Withdrawn')] };
   const title = `${PARTY_NAME[by]} withdrew the dispute on ${ORDER.number}`;
-  return { ...w, case: closedCase, notifications: notify(w, other(by), title, 'Withdrawn') };
+  return { ...w, case: closedCase, notifications: notify(w, other(by), title, STATUS.withdrawn), emails: email(w, other(by), 'withdrawn', title, 'The order continues as before.') };
 }
 
-/** Mock clock. A missed party deadline sends the case to TSC review. */
-export function advance(w, businessDays) {
-  let next = { ...w, now: addBusinessDays(w.now, businessDays) };
-  const c = next.case;
-  if (isOpen(c) && c.status === STATUS.response && c.dueAt <= next.now) next = escalate(next, 'system');
+/** Mock clock: 09:00 on the next business day(s). A missed deadline sends the case to review. */
+export function advance(w, businessDays = 1) {
+  let next = w;
+  for (let i = 0; i < businessDays; i++) {
+    next = { ...next, now: nextBusinessMorning(next.now) };
+    const c = next.case;
+    if (isOpen(c) && c.status === STATUS.response && c.dueAt < next.now) next = escalate(next, 'system');
+  }
   return next;
 }
 
@@ -236,15 +278,20 @@ export function requestResponse(w, to, message) {
   const c = w.case;
   if (!isOpen(c) || c.status === STATUS.completion) throw new Error('Nothing to ask on this case.');
   const sides = to === 'both' ? ['brand', 'factory'] : [to];
-  const dueAt = addBusinessDays(w.now, 2);
+  const dueAt = dueBy(w.now, TURN_DAYS);
   let notifications = w.notifications;
-  for (const s of sides) notifications = notify({ ...w, notifications }, s, `TSC asked for your response on ${ORDER.number}`, `Respond by ${day(dueAt)}`);
+  let emails = w.emails;
+  const title = `Our team asked for your response on ${ORDER.number}`;
+  for (const s of sides) {
+    notifications = notify({ ...w, notifications }, s, title, `Respond by ${day(dueAt)}`);
+    emails = email({ ...w, emails }, s, 'request', title, `${message} Respond by ${day(dueAt)}.`);
+  }
   return withCase(w, {
     ...c, status: STATUS.review, escalated: true, turn: null, dueAt: null,
-    tscRequest: { to: sides, dueAt, message },
-    tscDueAt: c.tscDueAt ?? addBusinessDays(w.now, 2),
-    events: [...c.events, event(w, 'tsc', 'TSC requested a response', `${sides.map((s) => PARTY_NAME[s]).join(' and ')} · ${message}`)],
-  }, { notifications });
+    staffRequest: { to: sides, dueAt, message },
+    staffDueAt: c.staffDueAt ?? dueBy(w.now, TURN_DAYS),
+    events: [...c.events, event(w, 'staff', 'Our team asked for a response', `${sides.map((s) => PARTY_NAME[s]).join(' and ')} · ${message}`)],
+  }, { notifications, emails });
 }
 
 export function recordResolution(w, outcome, note) {
@@ -252,25 +299,42 @@ export function recordResolution(w, outcome, note) {
   if (!isOpen(c) || c.status === STATUS.completion) throw new Error('This case already has an outcome.');
   const err = outcomeError(outcome, w);
   if (err) throw new Error(err);
-  const next = withCase(w, { ...c, events: [...c.events, event(w, 'tsc', 'TSC decision', `${outcomeLine(outcome, w)}${note ? ` · ${note}` : ''}`)] });
-  return settle(next, outcome, 'tsc', note);
+  const next = withCase(w, { ...c, events: [...c.events, event(w, 'staff', 'Decision', `${outcomeLine(outcome, w)}${note ? ` · ${note}` : ''}`)] });
+  return settle(next, outcome, 'staff', note);
 }
 
 export function addStaffNote(w, text) {
   return withCase(w, { ...w.case, staffNotes: [...w.case.staffNotes, { at: w.now, text }] });
 }
 
+/**
+ * Lifts the factory's withdrawal pause for everything but the money on the
+ * disputed step, which stays on hold until the case closes. Staff only;
+ * recorded on the timeline as a staff-only entry.
+ */
+export function releaseOtherPayments(w, note = '') {
+  const c = w.case;
+  if (!isOpen(c)) throw new Error('There is no open case.');
+  if (c.otherReleased) throw new Error('Other payments are already released.');
+  const held = w.step.heldCents;
+  const detail = `${ORDER.factory} can withdraw its balance. ${money(held)} on ${ORDER.step} stays on hold.${note ? ` · ${note}` : ''}`;
+  return withCase(w, {
+    ...c, otherReleased: { at: w.now, note },
+    events: [...c.events, event(w, 'staff', 'Other payments released', detail, [], true)],
+  }, { notifications: notify(w, 'factory', 'You can withdraw your balance again', `${money(held)} on ${ORDER.step} stays on hold`, 'Payments') });
+}
+
 /** An agreed or decided outcome: money waits for staff, the rest applies now. */
 function settle(w, outcome, by, note) {
   // A payout or a cancellation moves what is held now; the record keeps the figure.
   const fixed = ['payout', 'cancel'].includes(outcome.type) ? { ...outcome, amountCents: w.step.heldCents } : outcome;
-  outcome = fixed;
-  const c = { ...w.case, resolution: { ...fixed, by, note, at: w.now }, turn: null, dueAt: null, tscRequest: null };
-  if (needsStaff(outcome)) {
-    const n = notify(w, 'brand', `${ORDER.number} dispute: ${outcomeLine(outcome, w)}`, STATUS.completion);
-    return withCase({ ...w, notifications: n }, { ...c, status: STATUS.completion }, { notifications: notify({ ...w, notifications: n }, 'factory', `${ORDER.number} dispute: ${outcomeLine(outcome, w)}`, STATUS.completion) });
+  const c = { ...w.case, resolution: { ...fixed, by, note, at: w.now }, turn: null, dueAt: null, staffRequest: null };
+  if (needsStaff(fixed)) {
+    let n = notify(w, 'brand', `${ORDER.number} dispute: ${outcomeLine(fixed, w)}`, STATUS.completion);
+    n = notify({ ...w, notifications: n }, 'factory', `${ORDER.number} dispute: ${outcomeLine(fixed, w)}`, STATUS.completion);
+    return withCase({ ...w, notifications: n }, { ...c, status: STATUS.completion });
   }
-  return finish(withCase(w, c), outcome);
+  return finish(withCase(w, c), fixed);
 }
 
 export function completeResolution(w) {
@@ -292,52 +356,70 @@ function finish(w, o) {
   } else if (o.type === 'cancel') {
     step = { ...step, refundedCents: step.refundedCents + step.heldCents, heldCents: 0, state: 'cancelled' };
     order = 'cancelled';
-  } else if (o.type === 'new_date') {
-    step = { ...step, due: o.date };
+  } else if (o.type === 'rework') {
+    // The step reopens with the new date and stays unapproved: the brand
+    // approves it as usual when the rework arrives.
+    step = { ...step, due: o.date, state: 'rework' };
   }
   const outcome = outcomeLine(o, w);
-  const c = { ...w.case, status: STATUS.resolved, closedAt: w.now, events: [...w.case.events, event(w, 'tsc', 'Resolved', outcome)] };
+  const c = { ...w.case, status: STATUS.resolved, closedAt: w.now, events: [...w.case.events, event(w, 'staff', 'Resolved', outcome)] };
   const title = `${ORDER.number} dispute resolved`;
   let n = notify(w, 'brand', title, outcome);
   n = notify({ ...w, notifications: n }, 'factory', title, outcome);
   let e = email(w, 'brand', 'resolved', title, `${outcome}.`);
-  e = email({ ...w, emails: e }, 'factory', 'resolved', title, `${outcome}. Withdrawals are available again.`);
+  e = email({ ...w, emails: e }, 'factory', 'resolved', title, `${outcome}. You can withdraw your balance again.`);
   return { ...w, case: c, step, order, balanceCents, notifications: n, emails: e };
 }
 
+/** The brand approves the step the usual way: its money joins the factory's balance. */
+export function approveStep(w) {
+  if (stepOnHold(w)) throw new Error('On hold: dispute open');
+  if (!['held', 'rework'].includes(w.step.state) || w.step.heldCents <= 0) throw new Error('Nothing to approve on this step.');
+  return {
+    ...w,
+    balanceCents: w.balanceCents + w.step.heldCents,
+    step: { ...w.step, heldCents: 0, state: 'approved' },
+    notifications: notify(w, 'factory', `${ORDER.brand} approved ${ORDER.step}`, `${money(w.step.heldCents)} added to your balance`, 'Payments'),
+  };
+}
+
 // ----- What each surface reads -----
-/** The factory's withdrawals: paused for any open case or bank dispute. */
-export const withdrawalsPaused = (w) => isOpen(w.case) || w.bankDispute;
+/** The factory's withdrawals: paused for an open case (unless staff released them) or a bank dispute. */
+export const withdrawalsPaused = (w) => (isOpen(w.case) && !w.case.otherReleased) || w.bankDispute;
 /** The disputed step can't be approved or paid out while the case is open. */
 export const stepOnHold = (w) => isOpen(w.case);
 
-/** Who the case waits on, and by when: 'brand' | 'factory' | 'tsc' | null. */
+/** Who the case waits on, and by when: 'brand' | 'factory' | 'both' | 'staff' | null. */
 export function waitingOn(c) {
   if (!isOpen(c)) return { side: null, dueAt: null };
   if (c.status === STATUS.response) return { side: c.turn, dueAt: c.dueAt };
-  if (c.status === STATUS.review && c.tscRequest) return { side: c.tscRequest.to.length > 1 ? 'both' : c.tscRequest.to[0], dueAt: c.tscRequest.dueAt };
-  if (c.status === STATUS.review) return { side: 'tsc', dueAt: c.tscDueAt };
-  return { side: 'tsc', dueAt: addBusinessDays(c.resolution.at, 1) };
+  if (c.status === STATUS.review && c.staffRequest) return { side: c.staffRequest.to.length > 1 ? 'both' : c.staffRequest.to[0], dueAt: c.staffRequest.dueAt };
+  if (c.status === STATUS.review) return { side: 'staff', dueAt: c.staffDueAt };
+  return { side: 'staff', dueAt: dueBy(c.resolution.at, 1) };
 }
 
 /** The per-side line: "Your response is due Nov 30" / "Waiting for Ningbo Loomworks · due Nov 30". */
 export function waitingLine(c, viewer, now = null) {
   const { side, dueAt } = waitingOn(c);
   if (!side) return '';
-  const late = now != null && dueAt != null && dueAt <= now;
+  const late = now != null && dueAt != null && dueAt < now;
   const due = dueAt ? (late ? ` · overdue since ${day(dueAt)}` : ` · due ${day(dueAt)}`) : '';
-  if (side === viewer || (side === 'both' && viewer !== 'tsc')) return late ? `Your response was due ${day(dueAt)}` : `Your response is due ${day(dueAt)}`;
+  if (side === viewer || (side === 'both' && viewer !== 'staff')) return late ? `Your response was due ${day(dueAt)}` : `Your response is due ${day(dueAt)}`;
+  if (side === 'staff') return c.status === STATUS.completion ? `Our team is carrying this out${due}` : `Our team is reviewing${due}`;
   const who = side === 'both' ? `${ORDER.brand} and ${ORDER.factory}` : PARTY_NAME[side];
   return `Waiting for ${who}${due}`;
 }
 
-/** The progress indicator: Opened → Response → TSC review (only if escalated) → Resolution → Resolved. */
+/** While the sides negotiate: when review starts if they don't settle. */
+export const windowLine = (c) => (isOpen(c) && c.status === STATUS.response ? `Review starts ${day(c.windowEndsAt)} if not settled` : '');
+
+/** The progress indicator: Opened → Response → Review (only if escalated) → Resolution → Resolved. */
 export function progress(c) {
   const steps = c.status === STATUS.withdrawn
-    ? ['Opened', 'Response', ...(c.escalated ? ['TSC review'] : []), 'Withdrawn']
-    : ['Opened', 'Response', ...(c.escalated ? ['TSC review'] : []), 'Resolution', 'Resolved'];
+    ? ['Opened', 'Response', ...(c.escalated ? ['Review'] : []), 'Withdrawn']
+    : ['Opened', 'Response', ...(c.escalated ? ['Review'] : []), 'Resolution', 'Resolved'];
   let at = 1;
-  if (c.status === STATUS.review) at = steps.indexOf('TSC review');
+  if (c.status === STATUS.review) at = steps.indexOf('Review');
   if (c.status === STATUS.completion) at = steps.indexOf('Resolution');
   if (c.status === STATUS.resolved || c.status === STATUS.withdrawn) at = steps.length - 1;
   return { steps, at };
