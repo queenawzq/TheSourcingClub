@@ -38,7 +38,7 @@ export function changeWords(change) {
   if (change.kind === "registry_check") return `Registry check: ${result}${note}${files}`;
   if (change.kind === "certificate_check") return `Certificate check: ${result}${note}${files}`;
   if (change.kind === "vendor_kind") return `Type changed to ${KIND_WORDS[d.to] ?? d.to}`;
-  if (change.kind === "address") return "Address changed";
+  if (change.kind === "address") return d.to ? `Address changed to ${d.to}` : "Address changed";
   const field = change.kind === "company_field" ? d.field : change.kind;
   if (FIELD_WORDS[field]) {
     const to = field === "country" ? countryName(d.to) ?? d.to : d.to;
