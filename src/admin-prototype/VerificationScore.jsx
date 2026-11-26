@@ -949,7 +949,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
             <div className="vr-sub-actions">
               {canRecord && (
                 <button className="vr-text-action" type="button" onClick={() => setMode("record")}>
-                  {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit" : "Record check"}
+                  {registry.result && registry.by && registry.by !== "Checked automatically" ? "Edit check" : "Record check"}
                 </button>
               )}
               {canOverride && <button className="vr-text-action" type="button" onClick={() => setMode("override")}>{check.staff ? "Edit check" : "Record check"}</button>}
