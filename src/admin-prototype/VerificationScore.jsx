@@ -23,7 +23,7 @@ import {
   groupTip, groupWeight, RECORD_RESULTS, photoCaption, recordedCheck, scoreGroup, scoreOverall, standingFor, tierFor, weakestCheck, withPhotoCheck, withReason,
 } from "./verification-scoring.js";
 import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } from "../shared/verification-score.mjs";
-import { companyNamesMatch, normaliseRegistrationNumber, sameRegistrationNumber } from "../shared/registration-number.mjs";
+import { companyNamesMatch, normaliseRegistrationNumber, registrationNumberProblem, registrationProblemText, sameRegistrationNumber } from "../shared/registration-number.mjs";
 import { AddressDialog } from "./CompanyOverride.jsx";
 import "./verification-score.css";
 
@@ -524,6 +524,13 @@ const SAME_INPUT_WORDS = { name: "Name in the registry", number: "Number in the 
 
 /** A registration number as it is saved: the country's rule, a typed prefix ("NIF 519211596") dropped. */
 const savedNumber = (country, value) => normaliseRegistrationNumber(country, String(value ?? "").trim());
+// A registry number in the wrong format for the country (C1, Nov 26): the expected format, said under the field.
+// An old 15-digit Chinese number is still a number (the database takes it); an empty field is not checked here.
+const numberFormatWords = (country, value) => {
+  if (!country || !String(value ?? "").trim()) return "";
+  const problem = registrationNumberProblem(country, value);
+  return problem && !["old_number", "missing"].includes(problem) ? registrationProblemText(country, problem) : "";
+};
 
 /** An address as compared: case, spacing and punctuation aside. */
 const plainAddress = (value) => String(value ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -605,7 +612,11 @@ function RecordForm({ check, onSave, onDone, actions }) {
   // A note is optional on Found and Expired, required on Not found and Couldn't check.
   const showsNote = Boolean(result);
   const differs = isCert ? { holder: holderDiffersFrom(seen.holder, form.holderNames) } : siteDifferences(seen, form.profile);
-  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy;
+  // The number typed as the registry shows it, when it is not the profile's own: its format is checked (C1).
+  const numberTyped = !isCert && result === "found" && (!hasProfile("number") || (same.number === "different" && !sameAsProfile("number", registryValue.number, form.profile?.number, country)))
+    ? String(registryValue.number ?? "") : "";
+  const numberWrong = numberFormatWords(country, numberTyped);
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong;
 
   const addFiles = async (list) => {
     const files = [...(list ?? [])];
@@ -693,7 +704,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
             <div className="vr-field vr-same-input" key={key}>
               <label htmlFor={`${ids.site}-${key}`}>{SAME_INPUT_WORDS[key]}</label>
               <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={typed} spellCheck={false} onChange={(event) => setRegistryValue((current) => ({ ...current, [key]: event.target.value }))} />
-              {savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
+              {key === "number" && numberWrong ? <SaveError text={numberWrong} />
+                : savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
             </div>
           ) : (
           <div className="vr-field vr-same-row" key={key}>
@@ -716,7 +728,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
                 <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={typed} spellCheck={false} autoFocus onChange={(event) => setRegistryValue((current) => ({ ...current, [key]: event.target.value }))} />
                 {sameAsProfile(key, typed, form.profile?.[key], country)
                   ? <small className="vr-field-by">Same as the profile ({form.profile[key]})</small>
-                  : savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
+                  : key === "number" && numberWrong ? <SaveError text={numberWrong} />
+                    : savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
               </div>
             )}
           </div>
