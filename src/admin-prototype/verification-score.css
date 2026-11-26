@@ -1586,7 +1586,7 @@ a.vr-text-action {
 .vr-choice { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .vr-choice legend { margin: 0 0 10px; padding: 0; color: var(--vr-ink); font-size: 13px; font-weight: 700; line-height: 18px; }
 .vr-choice-option { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--vr-ink); font-size: 13px; font-weight: 500; line-height: 18px; cursor: pointer; }
-.vr-choice-option > input[type="radio"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; box-shadow: none; accent-color: var(--vr-blue); }
+.vr-choice-option > input[type="radio"] { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--vr-blue); }
 .vr-choice-option > span { min-width: 0; overflow-wrap: anywhere; }
 .vr-choice-option strong { color: var(--vr-muted); font-weight: 700; }
 .vr-choice-option.is-on strong { color: var(--vr-ink); }
@@ -1607,5 +1607,3 @@ a.vr-text-action {
 .vr-read-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .vr-read-head .vr-text-action { flex: none; }
 .vr-read .vr-compare { margin-top: 2px; }
-/* In the reading column, which is already the page colour, the form sits on white. */
-.vr-read .vr-record { background: #fff; box-shadow: inset 0 0 0 1px var(--vr-line); }
