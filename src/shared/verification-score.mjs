@@ -921,9 +921,9 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
     renamed: "Registry: renamed since the check, check it again",
     name_differs: "Registry: name differs, record the check again",
     document_differs: field === "number"
-      ? "Registry number: the licence's number differs from what they typed. Explain it on the Typed: line, or correct the number and save"
+      ? "Registry number: the licence's number differs from what they typed. Explain it in the Official registry row, or correct the number and save"
       // What clears it (Nov 25): an explanation, or a registry check showing the licence's name (or theirs).
-      : "Registry name: the licence's name differs from what they typed. Explain it on the Typed: line, or record a check with the name the registry shows",
+      : "Registry name: the licence's name differs from what they typed. Explain it in the Official registry row, or record a check with the name the registry shows",
     duplicate: "Shared number: explain it first",
     number_check_digit_fails: "Number fails its check digit: correct it from the licence",
     number_needs_staff: "Number: type it from the licence",
@@ -944,8 +944,8 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
     renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
     name_differs: ["business_registration", "registry", "Approve needs: record the registry check again"],
     document_differs: ["business_registration", "registry", field === "number"
-      ? "Approve needs: the number differs from the licence. Explain it on the Typed: line, or correct the number and save"
-      : "Approve needs: the name differs from the licence. Explain it on the Typed: line, or record a check with the name the registry shows"],
+      ? "Approve needs: the number differs from the licence. Explain it here, or correct the number and save"
+      : "Approve needs: the name differs from the licence. Explain it here, or record a check with the name the registry shows"],
     duplicate: ["business_registration", "registry", "Approve needs: explain the shared number, under the number"],
     number_check_digit_fails: ["business_registration", "licence", "Approve needs: correct the number from the licence"],
     number_needs_staff: ["business_registration", "licence", "Approve needs: type the number from the licence"],

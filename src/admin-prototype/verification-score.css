@@ -8,7 +8,8 @@
 .vr-card,
 .vr-layer,
 .vr-facts,
-.vr-override {
+.vr-override,
+.vr-company-field {
   --vr-strong-fill: #eaf4ff;
   --vr-strong-stroke: #8db7ff;
   --vr-strong-text: #1a4df2;
@@ -1467,3 +1468,114 @@ a.vr-text-action {
 .vr-dialog-over { z-index: 150; }
 /* The Address block's versions, one per line, under the check (Nov 25). */
 .vr-sub-lines { display: grid; gap: 2px; margin-top: 6px; }
+
+/* ---- Nov 26 mock: status words, plain readings, Same / Different, the product's dropzone ---- */
+.vr-segmented.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vr-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vr-read-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 28px; }
+.vr-read-value { color: var(--vr-ink); font-size: 14px; font-weight: 500; line-height: 20px; overflow-wrap: anywhere; }
+.vr-read-line .vr-copy { position: static; width: 26px; height: 26px; transform: none; }
+.vr-same-row { gap: 8px; }
+.vr-same-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vr-same-value { min-width: 0; color: var(--vr-ink); font-size: 14px; font-weight: 500; line-height: 20px; overflow-wrap: anywhere; }
+.vr-same { flex: 0 0 248px; }
+.vr-same-input { padding-left: 0; }
+
+/* Copied from the factory's update dialog (factory-update-upload / factory-update-file), not imported. */
+.vr-dropzone,
+.vr-field > label.vr-dropzone {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-height: 72px;
+  padding: 16px 10px;
+  border: 1px solid #cad5e2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #58709a;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+.vr-dropzone:hover,
+.vr-dropzone.is-dragging { border-color: #1a4df2; background: #f1f6ff; box-shadow: 0 0 0 2px rgba(26, 77, 242, 0.12); }
+.vr-dropzone strong { font-size: 14px; font-weight: 700; }
+.vr-dropzone span { font-size: 13px; font-weight: 500; }
+.vr-file-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.vr-file-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 24px;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+.vr-file-row > img { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; }
+.vr-file-row > .vr-file-kind { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 6px; background: #eef3f8; color: #58709a; font-size: 11px; font-weight: 700; }
+.vr-file-row > div { display: grid; gap: 2px; min-width: 0; }
+.vr-file-row strong { overflow: hidden; color: #0f172a; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.vr-file-row span { color: #7183a2; font-size: 11px; }
+.vr-file-row > button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #7183a2; font-size: 18px; line-height: 1; cursor: pointer; }
+.vr-file-row > button:hover { background: #eef3f8; color: #0f172a; }
+
+/* Review details: a company value with its Edit link, in the style of Change type. */
+.vr-company-field { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.vr-company-field .factory-detail-pair { min-width: 0; }
+
+.vr-field > label.vr-dropzone { color: #58709a; font-size: 13px; }
+.vr-company-field { align-items: center; }
+.vr-company-field .vr-text-action { flex: none; }
+
+/* ------------------------------------ one row per check (Nov 26 mock) */
+
+.vr-sub-row { gap: 0; padding: 0; }
+.vr-sub-toggle {
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  padding: 14px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 140ms ease;
+}
+.vr-sub-toggle:hover { background: var(--vr-page); }
+.vr-sub-toggle:hover .vr-chevron { color: var(--vr-blue); }
+.vr-sub-toggle:focus-visible { outline: 2px solid var(--vr-blue); outline-offset: -2px; }
+.vr-sub-toggle .vr-chevron { transform: rotate(90deg); }
+.vr-sub-row.is-expanded .vr-sub-toggle .vr-chevron { transform: rotate(-90deg); }
+.vr-sub-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+.vr-line-action { display: inline; margin-left: 10px; }
+
+/* The document, and under it what was read from it. */
+.vr-side {
+  display: grid;
+  align-content: start;
+  border-left: 1px solid var(--vr-line);
+  background: var(--vr-page);
+}
+.vr-side > .vr-evidence { border-left: 0; }
+.vr-side > .vr-evidence { border-top: 0; }
+.vr-side > .vr-read-section { padding: 4px 24px 24px; }
+.vr-side .vr-fields { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (max-width: 900px) {
+  .vr-side { border-top: 1px solid var(--vr-line); border-left: 0; }
+  .vr-side > .vr-evidence { border-top: 0; }
+}
+
+/* Nov 26: the window's header is its title and Close; a check row with nothing to open is a plain line. */
+.vr-modal-head { grid-template-columns: minmax(0, 1fr) 32px; align-items: center; }
+.vr-sub-toggle.is-static { cursor: default; }
+.vr-sub-toggle.is-static:hover { background: transparent; }
+.vr-dropzone:focus-visible { outline: 2px solid var(--vr-blue); outline-offset: 2px; }
+.vr-dropzone strong { display: inline-flex; align-items: center; gap: 6px; }
+.vr-file-row a { overflow: hidden; color: #0f172a; font-size: 12px; font-weight: 700; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.vr-file-row a:hover { color: var(--vr-blue); text-decoration: underline; }
+.vr-file-row span.is-error { color: var(--vr-low-text); }
+.vr-file-row > button { display: grid; place-items: center; }
+.vr-file-row > button svg { width: 14px; height: 14px; }
+@media (max-width: 640px) { .vr-file-list { grid-template-columns: minmax(0, 1fr); } .vr-same-line { flex-wrap: wrap; } .vr-same { flex: 1 1 100%; } }

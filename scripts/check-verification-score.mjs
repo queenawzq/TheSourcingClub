@@ -215,7 +215,7 @@ console.log("fix round 4");
   check(!/match/.test(found.verdict) && /another number/.test(found.verdict), `the row does not say "match" (${found.verdict})`);
   const rowWords = approvalBlockRow("document_differs", {}, numberReading).words;
   const panelWords = approvalBlockWords("document_differs", {}, numberReading);
-  check(/number/.test(rowWords) && /Typed:/.test(rowWords) && !/Name differs/.test(rowWords), `row: ${rowWords}`);
+  check(/number/.test(rowWords) && /Explain it here/.test(rowWords) && !/Name differs/.test(rowWords), `row: ${rowWords}`);
   check(/number/.test(panelWords) && !/name on the licence/.test(panelWords), `side panel: ${panelWords}`);
   // 7. AI suggestions never call photos staff recorded as their own generic or reused.
   const ownLines = ["Photo 1: recorded by staff as their own", "Photo 2: recorded by staff as their own"];
