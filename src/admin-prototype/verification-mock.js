@@ -302,19 +302,9 @@ const turkeyTrader = {
   },
 };
 
-/* ---------- (d) Portugal, EU VIES ---------- */
+/* ---------- (d) Portugal, EU VIES: the company's number, name and address differ from the certificate's ---------- */
 const PT_FULL_NAME = "Têxteis Douro – Confecções, Lda";
-const PT_ADDRESS = addressCheck({ score: 55, verdict: "Looks like a home, not a factory site", typed: "Rua da Igreja 214, Arcozelo, Barcelos", licence: ["Registration certificate", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos"] });
-const PT_IMPROVED = {
-  verdict: "Registered: name and VAT number match EU VIES",
-  why: "The current certificate and EU VIES agree on the full legal name.",
-  checks: [
-    { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read, matches the registry", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
-    { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 95, verdict: "EU VIES: VAT number valid, name matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
-    PT_ADDRESS,
-  ],
-};
-
+const PT_ADDRESS = addressCheck({ score: 40, verdict: "Street number differs from the licence", typed: "Rua da Igreja 241, Arcozelo, Barcelos", licence: ["Registration certificate", "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", ["214,"]] });
 const portugalFactory = {
   id: "verify-pt-vies",
   initials: "TD",
@@ -328,6 +318,7 @@ const portugalFactory = {
   risk: "Low",
   evidence: "6 of 6 received",
   summary: "Cut-and-sew jackets and overshirts in small batches, family run since 2012.",
+  legalName: "Têxteis Douro, Lda",
   details: [["Year founded", "2012"], ["Team size", "38"], ["Website", "texteisdouro.pt"], ["Primary market", "EU"], ["Typical MOQ", "100 units / style"], ["Lead time", "28-35 days"]],
   capabilities: ["Outerwear", "Cut & sew", "Small batch"],
   checks: [],
@@ -343,32 +334,26 @@ const portugalFactory = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Registered, but the name only partly matches",
-        why: "EU VIES has “Têxteis Douro – Confecções, Lda”; the name read from the certificate is shorter.",
+        verdict: "Registered, but the certificate shows another number",
+        why: "The NIPC and legal name on the certificate differ from what the company gave.",
         evidence: { kind: "licence", files: [
           { variant: "pt", file: "certidao-permanente.pdf", when: "Nov 11" },
-          { variant: "pt-old", file: "certidao-2023.pdf", when: "Nov 9" },
         ] },
-        readAt: "Read Nov 9, 18:05",
-        stale: "Read from an earlier upload, Nov 9",
+        readAt: "Read Nov 11, 18:05",
         fields: [
-          { key: "number", label: "NIPC (company number)", value: "513284976", copy: true },
+          { key: "number", label: "NIPC (company number)", value: "519211596", copy: true, typed: "519211569" },
           { key: "accessCode", label: "Access code", value: "4821-7730-9145", copy: true },
-          { key: "legalName", label: "Legal name", value: "Têxteis Douro, Lda" },
+          { key: "legalName", label: "Legal name", value: PT_FULL_NAME, typed: "Têxteis Douro, Lda" },
           { key: "established", label: "Registered", value: "2012-03-08" },
           { key: "activity", label: "Activity code (CAE)", value: "14130 · Other outerwear", wide: true },
           { key: "address", label: "Registered address", value: "Rua da Igreja 214, 4750-142 Arcozelo, Barcelos", wide: true },
           { key: "scope", label: "Activity on the certificate", value: "CAE 14130 · Manufacture of other outerwear", wide: true, multiline: true },
         ],
         checks: [
-          { key: "licence", label: "Registration certificate", weight: 30, score: 70, verdict: "Read; legal name looks cut short", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 80, verdict: "EU VIES: VAT number valid, name partly matches", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT513284976" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "513284976" } },
+          { key: "licence", label: "Registration certificate", weight: 30, score: 94, verdict: "Every field read", lookup: { label: "Open online certificate", href: "https://www2.gov.pt/en/servicos/consultar-uma-certidao-permanente", copy: "4821-7730-9145" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 60, verdict: "Found on EU VIES; the licence shows another number", registry: { source: "EU VIES", by: "Checked automatically", result: "found", reference: "PT519211596" }, lookup: { label: "Open EU VIES", href: "https://ec.europa.eu/taxation_customs/vies/", copy: "519211596" } },
           PT_ADDRESS,
         ],
-        // Run again reads the current upload (or takes the corrected name) and asks EU VIES again.
-        rerun: (values, group) => (group.stale || /confec/i.test(values.legalName ?? "")
-          ? { ...PT_IMPROVED, values: { legalName: /confec/i.test(values.legalName ?? "") ? values.legalName : PT_FULL_NAME } }
-          : null),
       },
       {
         key: "company_information",
