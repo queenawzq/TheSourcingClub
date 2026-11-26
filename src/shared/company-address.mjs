@@ -103,6 +103,19 @@ export function countryName(code) {
   return known ? SHORT_NAMES[upper] ?? known.en : null;
 }
 
+/**
+ * Every country a company can name at signup, by its English name: a vendor's
+ * address and a brand's HQ location are typed freely and read against this
+ * same list (countryIn), so it is the same for every kind. Staff's Country
+ * edit offers exactly these, and admin_update_company_profile accepts exactly
+ * these (signup_countries(), 20261126100800; the smoke test compares them).
+ */
+export function signupCountries() {
+  return allCodes()
+    .map((row) => ({ code: row.code, name: countryName(row.code) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Hong Kong's areas and districts as written in Chinese: an address can name
 // one and never write 香港 (弥敦道 is a street; 九龙 says where it is).
 const HK_PLACES_ZH = [

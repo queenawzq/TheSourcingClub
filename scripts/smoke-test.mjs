@@ -3389,6 +3389,17 @@ console.log("\nreview decision emails (20261104200000)");
   }
 }
 
+// M8: staff's Country edit offers signupCountries(); the database accepts signup_countries().
+{
+  const { signupCountries } = await import("../src/shared/company-address.mjs");
+  const { data, error } = await admin.rpc("signup_countries");
+  const inDb = (data ?? []).map((row) => `${row.code}=${row.name}`).sort().join("|");
+  const inBrowser = signupCountries().map((row) => `${row.code}=${row.name}`).sort().join("|");
+  !error && inDb === inBrowser
+    ? ok(`the Country edit and the database offer the same ${data.length} countries`)
+    : fail("signup_countries() differs from signupCountries(): regenerate migration 20261126100800", error);
+}
+
 console.log(
   failures ? `\n${failures} check(s) failed\n` : "\nAll smoke checks passed\n",
 );

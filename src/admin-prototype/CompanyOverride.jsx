@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { countryName } from "../shared/company-address.mjs";
+import { countryName, signupCountries } from "../shared/company-address.mjs";
 import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
@@ -196,17 +196,6 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
   );
 }
 
-/** Every country the platform names, by its English name. */
-function countryOptions() {
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const rows = [];
-  for (const a of letters) for (const b of letters) {
-    const name = countryName(a + b);
-    if (name) rows.push({ code: a + b, name });
-  }
-  return rows.sort((x, y) => x.name.localeCompare(y.name));
-}
-
 /**
  * Company name, Legal name, Country and Website in Review details, each with
  * its Edit link (Nov 26): edited where it is shown, in Change type's dialog,
@@ -222,7 +211,7 @@ export function CompanyFields({ values, onSave }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const countries = useMemo(() => (open === "country" ? countryOptions() : []), [open]);
+  const countries = useMemo(() => (open === "country" ? signupCountries() : []), [open]);
   const fields = [
     { key: "companyName", label: "Company name", shown: values.companyName },
     { key: "legalName", label: "Legal name", shown: values.legalName },

@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(32);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -106,6 +106,24 @@ select is((public.admin_save_registry_check('d2611261-0000-0000-0000-0000000000f
 select throws_ok($$select public.admin_save_certificate_check('d2611261-0000-0000-0000-0000000000f1', 'e2611261-0000-0000-0000-000000000001', 'GOTS', 'found',
   '{}'::jsonb, null, 'not a link')$$, '22023', 'Enter a web address, e.g. example.com', 'M3: a certificate check refuses one too');
 reset role;
+
+-- M8: the Country edit takes exactly the countries signup offers, for every kind --
+select is((select count(*)::int from public.signup_countries()), 255, 'M8: signup offers 255 countries');
+select ok(not exists (select 1 from public.signup_countries() c where c.code in ('EU', 'UN', 'XK', 'ZZ')),
+  'M8: groupings and reserved codes are not countries');
+set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', country => 'IE')$$,
+  'M8: a brand moves to Ireland, which signup offers and the country terms never had');
+select throws_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000f2', country => 'EU')$$,
+  '22023', 'Choose a country from the list', 'M8: a factory is refused a code signup does not offer');
+select lives_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000f2', country => 'Côte d’Ivoire')$$,
+  'M8: a factory may be moved to any country signup offers, by name');
+reset role;
+select is((select hq_location from public.brand_profiles where org_id = 'd2611261-0000-0000-0000-0000000000b1'),
+  'London, Ireland', 'M8: the brand''s location now names Ireland');
+select is((select country_code || ' ' || location from public.factory_profiles where org_id = 'd2611261-0000-0000-0000-0000000000f2'),
+  'CI Braga, Côte d’Ivoire', 'M8: the factory''s code and location are both written');
 
 select * from finish();
 rollback;
