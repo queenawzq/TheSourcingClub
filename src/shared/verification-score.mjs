@@ -800,7 +800,8 @@ export function photosCheck(tiles) {
     if (open) parts.push(`${open} not checked yet`);
     verdict = parts.join(", ");
   }
-  return { ...base, score, verdict, canReason: true };
+  // No photo looked at yet: the row's word is "Not checked" (T13), while the score still counts them as unchecked.
+  return { ...base, score, verdict, canReason: true, ...(open === n ? { unchecked: true } : {}) };
 }
 
 /* ------------------------------------------------------------ certification */

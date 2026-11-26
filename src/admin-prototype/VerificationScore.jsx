@@ -840,7 +840,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
     ? { with: check.sharedNumber.with, explained: check.sharedNumber.explained ?? null } : null;
   // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
   // another company uses until it is explained; Strong and Not checked start closed.
-  const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.score).tone)
+  const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.unchecked ? null : check.score).tone)
     || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained));
   const [explainingDup, setExplainingDup] = useState(false);
   const registry = check.registry;
@@ -877,7 +877,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
           <span>{line}</span>
         </div>
         <div className="vr-sub-score">
-          <StandingPill score={check.score} />
+          <StandingPill score={check.unchecked ? null : check.score} />
         </div>
         {hasBody ? <Chevron /> : <span aria-hidden="true" />}
       </div>
