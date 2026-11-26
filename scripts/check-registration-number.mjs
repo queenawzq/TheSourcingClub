@@ -100,9 +100,14 @@ check("labelled numbers pass their country's rule; a short one says the expected
   assert.equal(registrationNumberProblem("CN", "统一社会信用代码：91330100MA2B7C4D3F"), null);
   assert.equal(registrationNumberProblem("TR", "VKN 4837261591"), null);
   assert.equal(registrationNumberProblem("PT", "51921159"), "format");
-  assert.equal(registrationProblemText("PT", "format"), "A Portuguese company number has 9 digits, e.g. 519211596");
-  assert.equal(registrationProblemText("TR", "format"), "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591");
-  assert.equal(registrationProblemText("CN", "format"), "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F");
+  // R13: the expected format, then where the company finds its number (not said to staff); China names the letters it never uses.
+  assert.equal(registrationProblemText("PT", "format"), "A Portuguese company number has 9 digits, e.g. 519211596. Find it on your permanent certificate");
+  assert.equal(registrationProblemText("TR", "format"), "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591. Find it on your tax plate (vergi levhası) or tax registration letter");
+  assert.equal(registrationProblemText("CN", "format"), "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F, without the letters I, O, S, V or Z");
+  assert.equal(registrationProblemText("PT", "format", "zh"), "葡萄牙公司编号为 9 位数字，例如 519211596。见商业登记永久证明");
+  assert.equal(registrationProblemText("CN", "format", "zh"), "统一社会信用代码为 18 位，例如 91330100MA2B7C4D3F，不含字母 I、O、S、V、Z");
+  assert.equal(registrationProblemText("PT", "format", "en", { staff: true }), "A Portuguese company number has 9 digits, e.g. 519211596");
+  assert.equal(registrationProblemText("TR", "format", "en", { staff: true }), "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591");
   assert.equal(registrationProblemText("GB", "format"), "Letters and digits only");
 });
 check("company names: the same name once legal form and every space are ignored", () => {

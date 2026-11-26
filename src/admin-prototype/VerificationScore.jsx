@@ -532,7 +532,7 @@ const savedNumber = (country, value) => normaliseRegistrationNumber(country, Str
 const numberFormatWords = (country, value) => {
   if (!country || !String(value ?? "").trim()) return "";
   const problem = registrationNumberProblem(country, value);
-  return problem && !["old_number", "missing"].includes(problem) ? registrationProblemText(country, problem) : "";
+  return problem && !["old_number", "missing"].includes(problem) ? registrationProblemText(country, problem, "en", { staff: true }) : "";
 };
 
 /** An address as compared: case, spacing and punctuation aside. */

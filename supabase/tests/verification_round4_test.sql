@@ -1,8 +1,9 @@
 -- Verification, fourth round (20261126101000…): a registration number's
--- label is dropped only in its own country.
+-- label is dropped only in its own country (R16); a Chinese number's format
+-- names the letters it never uses (R13).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(16);
 
 -- R16: each country's own label; the same cases as check-registration-number.mjs
 select is(public.normalise_registration_number('PT', 'NIF 519211596'), '519211596', 'R16: NIF dropped in Portugal');
@@ -19,6 +20,10 @@ select is(public.normalise_registration_number('GB', '统一社会信用代码 1
 select is(public.normalise_registration_number(null, 'NO 12345'), 'NO12345', 'R16: "No" without a colon is kept');
 select is(public.normalise_registration_number(null, 'No: 12345'), '12345', 'R16: "No:" is dropped anywhere');
 select is(public.normalise_registration_number('GB', 'Nr: 12345'), '12345', 'R16: "Nr:" is dropped anywhere');
+
+-- R13: the format sentence names China's unused letters; the others are unchanged
+select is(public.registration_number_format_text('CN'), 'A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F, without the letters I, O, S, V or Z', 'R13: China names the letters it never uses');
+select is(public.registration_number_format_text('PT'), 'A Portuguese company number has 9 digits, e.g. 519211596', 'R13: Portugal unchanged (staff see it too)');
 
 select * from finish();
 rollback;
