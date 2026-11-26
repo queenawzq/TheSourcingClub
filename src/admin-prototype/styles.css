@@ -1827,3 +1827,8 @@
     margin-bottom: 0;
   }
 }
+
+/* Company name, Country and Website in Review details, each with its Edit link (Nov 26). */
+.admin-review-meta .vr-company-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-review-meta .vr-company-field .factory-detail-pair { min-width: 0; flex: 1 1 auto; }
+.admin-review-meta .vr-company-field .vr-text-action { flex: none; }

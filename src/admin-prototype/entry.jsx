@@ -12,6 +12,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App, { initialProfiles, initialUsers, quotes, rfqs } from "./main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
+import { countryIn } from "../shared/company-address.mjs";
 
 /**
  * Synchronous on purpose. The provider treats a non-promise as already
@@ -71,6 +72,25 @@ const mockSubmission = {
   },
 };
 
+/** Staff's edits on the review page, kept in this tab: the history starts empty, as a new company's does. */
+let reviewHistory = [];
+const FIELD_KIND = { companyName: "company_name", country: "country", website: "website" };
+
+/** The shared submission, with the country and website of the company being reviewed. */
+function submissionFor(orgId) {
+  const profile = profiles.find((row) => row.id === orgId);
+  if (!profile) return mockSubmission;
+  const website = profile.details?.find(([label]) => label === "Website")?.[1];
+  return {
+    ...mockSubmission,
+    profile: {
+      ...mockSubmission.profile,
+      country_code: profile.countryCode ?? countryIn(profile.location ?? "") ?? mockSubmission.profile.country_code,
+      website_url: profile.website ?? (website && website !== "—" ? website : null),
+    },
+  };
+}
+
 const mockAdapter = {
   viewer: {
     isAdmin: true,
@@ -80,7 +100,8 @@ const mockAdapter = {
       user_metadata: { full_name: "TSC Operations" },
     },
   },
-  verificationQueue: () => profiles,
+  // A company that has not finished signing up is not in the queue (Nov 26); Users still lists its people.
+  verificationQueue: () => profiles.filter((profile) => profile.signupFinished !== false),
   adminRfqs: () => rfqs,
   adminQuotes: () => quotes,
   adminMetrics: () => ({
@@ -93,7 +114,27 @@ const mockAdapter = {
   adminUsers: () => users,
   actions: {
     orgDocuments: () => mockDocuments,
-    orgSubmission: () => mockSubmission,
+    orgSubmission: (orgId) => submissionFor(orgId),
+    // A promise, as the live one is: the history reads it with .then.
+    reviewChanges: async (orgId) => reviewHistory.filter((change) => change.orgId === orgId),
+    updateCompanyProfile: (orgId, change) => {
+      const at = new Date().toISOString();
+      const rows = Object.entries(change).filter(([, value]) => value != null).map(([key, to]) => (key === "vendorKind"
+        ? { kind: "vendor_kind", details: { to } }
+        : key === "address" ? { kind: "address", details: { to } }
+        : { kind: FIELD_KIND[key], details: { to } })).map((row, index) => ({ ...row, id: `change-${Date.now()}-${index}`, orgId, at, by: "TSC Operations" }));
+      reviewHistory = [...rows, ...reviewHistory];
+      profiles = profiles.map((profile) => {
+        if (profile.id !== orgId) return profile;
+        const next = { ...profile };
+        if (change.companyName) Object.assign(next, { name: change.companyName });
+        if (change.country) next.countryCode = change.country;
+        if (change.website) next.website = change.website;
+        if (change.vendorKind) next.entityType = change.vendorKind === "trading_company" ? "Trading company" : "Factory";
+        return next;
+      });
+      return {};
+    },
     signOut: () => {},
     // No mail server behind the prototype; the panel shows where it would go.
     sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
@@ -108,7 +149,7 @@ const mockAdapter = {
     },
     toggleUserAccess: (userId, disabled) => {
       users = users.map((user) => user.id === userId
-        ? { ...user, status: disabled ? "Disabled" : "Active" }
+        ? { ...user, status: disabled ? "Disabled" : user.signupFinished === false ? "Signup not finished" : "Active" }
         : user);
     },
   },

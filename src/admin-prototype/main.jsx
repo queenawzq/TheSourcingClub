@@ -7,7 +7,8 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 import { VerificationFacts, VerificationScoreCard } from "./VerificationScore.jsx";
-import { CompanyOverride } from "./CompanyOverride.jsx";
+import { CompanyFields, CompanyOverride } from "./CompanyOverride.jsx";
+import { countryIn } from "../shared/company-address.mjs";
 import { verificationMockProfiles } from "./verification-mock.js";
 import { brandRequestGaps, brandVerification } from "../shared/brand-verification.mjs";
 import { suggestedApprovalMessage } from "../shared/approval-message.mjs";
@@ -132,6 +133,7 @@ const initialUsers = [
   { id: "user-lin", initials: "LW", name: "Lin Wei", email: "lin@pacificsourcepartners.com", type: "Trading company", company: "Pacific Source Partners", joined: "Aug 6, 2026", lastActive: "8 min ago", status: "Active" },
   { id: "user-grace", initials: "GW", name: "Grace Wong", email: "grace@pacificsourcepartners.com", type: "Trading company", company: "Pacific Source Partners", joined: "Aug 6, 2026", lastActive: "2 hours ago", status: "Active" },
   { id: "user-leo", initials: "LP", name: "Leo Park", email: "leo@seoulknitworks.kr", type: "Factory", company: "Seoul Knit Works", joined: "Aug 8, 2026", lastActive: "Yesterday", status: "Active" },
+  { id: "user-marta", initials: "MS", name: "Marta Sousa", email: "marta@fiacaocavado.pt", type: "Factory", company: "Fiação do Cávado", joined: "Nov 24, 2026", lastActive: "2 days ago", status: "Signup not finished", signupFinished: false },
   { id: "user-tsc", initials: "TS", name: "TSC Operations", email: "operations@thesourcingclub.com", type: "Admin", company: "The Sourcing Club", joined: "Jun 3, 2026", lastActive: "Now", status: "Active", protected: true }
 ];
 
@@ -1207,6 +1209,9 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // Live only: why a vendor cannot be approved yet (no registry check that
   // found it), re-read whenever the registry panel records a check.
   const [registryChanged, setRegistryChanged] = useState(0);
+  // Company name, country and website staff edited on this page (Nov 26): shown at once, until the queue is read again.
+  const [companyEdits, setCompanyEdits] = useState({});
+  useEffect(() => { setCompanyEdits({}); }, [profile?.id]);
   const [approveBlock, setApproveBlock] = useState(null);
   // Live only: Approve waits for the company's signed terms, brand or vendor.
   const [termsBlock, setTermsBlock] = useState(null);
@@ -1238,6 +1243,20 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // One reason for the registry block, the pop-up's (fix round, Nov 24): the score's words, once it is read.
   const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
   // The address the company typed, from the Address block (Nov 25: no longer a line in Review details).
+  const saveCompanyField = async (change) => {
+    await actions.updateCompanyProfile(profile.id, change);
+    setCompanyEdits((current) => ({ ...current, ...change }));
+    live?.reload();
+    setRegistryChanged((n) => n + 1);
+    onRegistryChange?.();
+  };
+  const shownWebsite = profile?.details?.find(([label]) => label === "Website")?.[1];
+  const companyValues = {
+    companyName: companyEdits.companyName ?? profile?.name ?? "",
+    country: companyEdits.country ?? submission?.profile?.country_code
+      ?? countryIn(submission?.profile?.hq_location ?? submission?.profile?.location ?? profile?.location ?? "") ?? "",
+    website: companyEdits.website ?? submission?.profile?.website_url ?? (shownWebsite && shownWebsite !== "—" ? shownWebsite : ""),
+  };
   const savedAddress = verification?.groups?.flatMap((group) => group.checks ?? []).find((check) => check.edit)?.edit.value ?? "";
   const deleteLabel = profile?.entityType === "Trading company" ? "trading company" : isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
@@ -1298,7 +1317,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
       <div className="admin-review-shell">
         <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to verification queue</button>
         <header className="admin-review-header">
-          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{profile.name}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · Submitted {profile.submitted}</p></div></div>
+          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{companyValues.companyName}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · Submitted {profile.submitted}</p></div></div>
           <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
         </header>
 
@@ -1391,12 +1410,14 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               </>)}
+              {actions.updateCompanyProfile && <CompanyFields values={companyValues} onSave={saveCompanyField} />}
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
-              {/* Live only: Change type, and who changed what. Edit address is in the Address block (Nov 25). */}
-              {isVendor && actions.updateCompanyProfile && (
+              {/* Change type (vendors), and who changed what. Edit address is in the Address block (Nov 25). */}
+              {actions.updateCompanyProfile && (
                 <CompanyOverride
                   orgId={profile.id}
                   entityType={profile.entityType}
+                  canChangeType={isVendor}
                   actions={actions}
                   refreshKey={`${registryChanged}-${live?.data ? 1 : 0}`}
                   onChanged={() => { live?.reload(); setRegistryChanged((n) => n + 1); onRegistryChange?.(); }}
@@ -1711,7 +1732,7 @@ function UsersPage({ users, onToggleStatus }) {
       <div className="admin-user-metrics" aria-label="User account summary">
         <div><span>Total users</span><strong>{users.length}</strong></div>
         <div><span>Active</span><strong>{activeCount}</strong></div>
-        <div><span>Disabled</span><strong>{users.length - activeCount}</strong></div>
+        <div><span>Disabled</span><strong>{users.filter((user) => user.status === "Disabled").length}</strong></div>
       </div>
 
       <div className="admin-filter-bar admin-users-filter-bar">
@@ -1729,7 +1750,7 @@ function UsersPage({ users, onToggleStatus }) {
         <label className="rfqs-sort admin-profile-type-filter admin-user-status-filter">
           <span>Account status</span>
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option>All statuses</option><option>Active</option><option>Disabled</option>
+            <option>All statuses</option><option>Active</option><option>Signup not finished</option><option>Disabled</option>
           </select>
         </label>
       </div>
@@ -1746,11 +1767,11 @@ function UsersPage({ users, onToggleStatus }) {
                     <td><div className="admin-user-identity"><span>{user.initials}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div></td>
                     <td><StatusPill tone={user.type === "Admin" ? "violet" : "info"}>{user.type}</StatusPill></td>
                     <td>{user.company}</td><td>{user.lastActive}</td>
-                    <td><StatusPill tone={user.status === "Active" ? "success" : "neutral"}>{user.status}</StatusPill></td>
+                    <td><StatusPill tone={user.status === "Active" ? "success" : user.status === "Signup not finished" ? "warning" : "neutral"}>{user.status}</StatusPill></td>
                     <td>
                       {user.protected ? <span className="admin-current-account">Current account</span> : (
-                        <button className={`secondary-btn admin-user-access-button ${user.status === "Active" ? "disable" : "enable"}`} type="button" aria-label={`${user.status === "Active" ? "Disable" : "Enable"} ${user.name}`} onClick={() => onToggleStatus(user.id)}>
-                          {user.status === "Active" ? "Disable" : "Enable"}
+                        <button className={`secondary-btn admin-user-access-button ${user.status !== "Disabled" ? "disable" : "enable"}`} type="button" aria-label={`${user.status !== "Disabled" ? "Disable" : "Enable"} ${user.name}`} onClick={() => onToggleStatus(user.id)}>
+                          {user.status !== "Disabled" ? "Disable" : "Enable"}
                         </button>
                       )}
                     </td>
@@ -2385,7 +2406,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const toggleUserStatus = async (id) => {
     const user = users.find((item) => item.id === id);
     if (!user || user.protected) return;
-    const nextStatus = user.status === "Active" ? "Disabled" : "Active";
+    const nextStatus = user.status !== "Disabled" ? "Disabled" : "Active";
     try {
       await actions.toggleUserAccess?.(id, nextStatus === "Disabled");
       reloadUsers();
@@ -2425,7 +2446,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {loadError
         ? <main className="admin-page"><div className="admin-empty-state admin-load-error"><strong>The workspace could not load</strong><p>{loadError.message}</p></div></main>
         : loading
-          ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
+          ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading…</strong></div></main>
           : <>
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}

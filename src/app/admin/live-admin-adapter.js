@@ -391,7 +391,9 @@ export function toAdminUser(user) {
     company: user.company,
     joined: shortDate(user.createdAt),
     lastActive: user.lastActiveAt ? ago(user.lastActiveAt) : "Never",
-    status: user.disabled ? "Disabled" : "Active",
+    // A person whose company has not finished signing up (Nov 26). Absent means finished, so an older
+    // directory reads as before; a disabled account is Disabled whatever its signup.
+    status: user.disabled ? "Disabled" : (user.signupFinished ?? user.signup_finished) === false ? "Signup not finished" : "Active",
     protected: user.protected,
   };
 }
@@ -494,7 +496,10 @@ export function createAdminAdapter({ user, signOut }) {
       verificationActions,
       verificationFileUrl,
 
-      /** Staff correct a vendor's type and address, and read who changed what (Nov 24). Live only. */
+      /**
+       * Staff correct a vendor's type and address (Nov 24), and any company's name, country and
+       * website (Nov 26), and read who changed what.
+       */
       updateCompanyProfile: updateVendorProfile,
       reviewChanges,
 
