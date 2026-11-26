@@ -31,7 +31,8 @@ set local role authenticated;
 select public.admin_save_registry_check('d2437000-0000-0000-0000-0000000000a1', 'Companies Registry', 'hk_cr', 'found',
   '{"name":"P2437 Harbour Line Limited"}'::jsonb);
 reset role;
-select ok(public.registry_reading_differs('d2437000-0000-0000-0000-0000000000a1') is not null, 'the stored reading still lists the number');
+-- Nov 26: the reading is compared live, so the certificate's full number is no difference at all.
+select ok(public.registry_reading_differs('d2437000-0000-0000-0000-0000000000a1') is null, 'the reading is compared live: the same number, no difference');
 select is(public.registry_approval_problem('d2437000-0000-0000-0000-0000000000a1'), null, 'and Approve does not wait for an explanation');
 
 select * from finish();

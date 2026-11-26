@@ -379,14 +379,24 @@ export function groundedReasons(reasons, tags) {
   return (reasons ?? []).filter((reason) => tags.some((t) => String(reason).includes(t.tag))).slice(0, 3);
 }
 
+// Without the shared helpers (this file loads them lazily), names are compared without case, spaces or punctuation.
+const plainName = (text) => String(text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** The licence names a company and none of its names is the company's (live, like compareDocument). */
+function licenceNamesAnotherCompany(extracted, title, companyNamesMatch = (a, b) => plainName(a) !== "" && plainName(a) === plainName(b)) {
+  const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
+  return Boolean(names.length && String(title ?? "").trim() && !names.some((name) => companyNamesMatch(name, title)));
+}
+
 /** The address to check: a registered address a source gave, else the typed location. */
-export function bestAddress(detail, signals) {
+export function bestAddress(detail, signals, { companyNamesMatch } = {}) {
   const checks = detail?.checks ?? [];
   // Never the address of another company a registry named for this number.
   const fromCheck = checks.find((check) => check.details?.address && check.numberChecked === detail?.registration?.number && check.nameMatches !== false);
   if (fromCheck) return { address: String(fromCheck.details.address).replace(/\s*\n\s*/g, ", "), from: fromCheck.automatic ? "VIES" : "the registry check" };
+  // The licence's address unless the licence names another company, compared with the
+  // company as it is now (Nov 26): neither the number nor the name when it was read.
   const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address
-    && signal.details?.numberAtReading === (detail?.registration?.number ?? null) && !(signal.details?.differences ?? []).some((line) => line.field === "name"));
+    && !licenceNamesAnotherCompany(signal.details.extracted, detail?.title, companyNamesMatch));
   if (reading) return { address: reading.details.extracted.address, from: "the registration document" };
   if (detail?.location) return { address: detail.location, from: "the factory's location" };
   return { address: "", from: "" };

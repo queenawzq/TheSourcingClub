@@ -12,6 +12,7 @@ import { getColourSplits, getRfq } from "./rfq.js";
 import { listQuotesForRfq } from "./quote.js";
 import { listLinks, listTermsByKind } from "./taxonomy.js";
 import { permissionLabel } from "./org.js";
+export { updateCompanyProfile } from "./verification-score.js";
 
 /** True when the signed-in user is on the platform_admins table. */
 export async function isPlatformAdmin() {
@@ -509,6 +510,20 @@ async function adminUserRequest(options = {}) {
   return result;
 }
 
+/** The companies that finished signup (onboarding_completed_at set), from their profile rows. */
+export function finishedSignups(factories = [], brands = []) {
+  return new Set([...(factories ?? []), ...(brands ?? [])].filter((row) => row.onboarding_completed_at).map((row) => row.org_id));
+}
+
+/**
+ * Whether a person's company finished signup: staff always have; a person
+ * with no company has not. Both spellings, for the Users screen.
+ */
+export function signupFinished(isAdmin, orgId, finished) {
+  const done = Boolean(isAdmin || (orgId && finished.has(orgId)));
+  return { signupFinished: done, signup_finished: done };
+}
+
 async function directUserDirectory() {
   // Each a page at a time: one read stops at 1,000 rows without saying so,
   // and the users past it showed no name and "No company".
@@ -517,9 +532,10 @@ async function directUserDirectory() {
     readEveryPage(() => supabase.from("user_profiles").select("id, email, full_name, created_at").order("id"), "load users"),
     readEveryPage(() => supabase.from("org_members").select("user_id, org_id, created_at, orgs (name, type)").order("created_at").order("user_id").order("org_id"), "load users", (row) => `${row.user_id}:${row.org_id}`),
     readEveryPage(() => supabase.from("platform_admins").select("user_id").order("user_id"), "load users", "user_id"),
-    readEveryPage(() => supabase.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), "load users", "org_id"),
+    readEveryPage(() => supabase.from("factory_profiles").select("org_id, vendor_kind, onboarding_completed_at").order("org_id"), "load users", "org_id"),
+    readEveryPage(() => supabase.from("brand_profiles").select("org_id, onboarding_completed_at").order("org_id"), "load users", "org_id"),
   ]);
-  const [profiles, members, admins, factories] = lists.map((data) => ({ data }));
+  const [profiles, members, admins, factories, brands] = lists.map((data) => ({ data }));
 
   const memberships = new Map();
   for (const membership of members.data ?? []) {
@@ -527,6 +543,7 @@ async function directUserDirectory() {
   }
   const adminIds = new Set((admins.data ?? []).map((admin) => admin.user_id));
   const vendorKinds = new Map((factories.data ?? []).map((profile) => [profile.org_id, profile.vendor_kind]));
+  const finished = finishedSignups(factories.data, brands.data);
 
   return (profiles.data ?? []).map((profile) => {
     const membership = memberships.get(profile.id);
@@ -539,6 +556,7 @@ async function directUserDirectory() {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      ...signupFinished(isAdmin, membership?.org_id, finished),
       createdAt: profile.created_at,
       lastActiveAt: null,
       disabled: false,
