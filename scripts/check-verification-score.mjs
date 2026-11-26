@@ -96,11 +96,13 @@ console.log("staff's own result (Nov 25)");
   check(find(trader, "scope").score === SCORES.scope.trading, "a trading company judged a factory scores as a mismatch");
 }
 {
-  // Staff confirmed the current address: a registry check's address difference no longer counts (Nov 25 tester).
-  const current = { id: "x", source: "gib", result: "found", details: { form: 2, outcome: "found", site: "GİB", name: "A Tekstil", number: "6230418795", address: "Izmir, Türkiye" } };
-  const reg = (addressConfirmed) => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current, checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, Izmir", addressConfirmed });
-  check(reg(false).score === 60 && /address differs/.test(reg(false).registry.summary), `an address the registry shows differently flags (${reg(false).registry.summary})`);
-  check(reg(true).score === 90 && !/address/.test(reg(true).registry.summary), `once staff confirm the address, it is settled (${reg(true).score}, ${reg(true).registry.summary})`);
+  // A registry address that differs stays a difference, even once staff confirm the typed address (T1, Nov 26):
+  // the summary names it and the check needs a look. Accents alone are no difference.
+  const current = (address) => ({ id: "x", source: "gib", result: "found", details: { form: 2, outcome: "found", site: "GİB", name: "A Tekstil", number: "6230418795", address } });
+  const reg = (address) => registryCheck({ detail: { registration: { country: "TR", number: "6230418795" }, current: current(address), checks: [{ id: "x" }] }, country: "TR", title: "A Tekstil", typedAddress: "Kemalpaşa Cd. 12, Bornova, İzmir" });
+  check(reg("Izmir, Türkiye").score === 60 && /address differs/.test(reg("Izmir, Türkiye").registry.summary), `an address the registry shows differently flags (${reg("Izmir, Türkiye").registry.summary})`);
+  check(reg("KEMALPASA CD 12, BORNOVA, IZMIR").score === 90 && /address match/.test(reg("KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary),
+    `the same address without its accents matches (${reg("KEMALPASA CD 12, BORNOVA, IZMIR").registry.summary})`);
 }
 console.log("Hong Kong (Nov 25)");
 {

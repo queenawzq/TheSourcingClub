@@ -340,7 +340,7 @@ function licenceCheckOnly({ reading, files, registration, country, title, licens
   return { ...base, ...worst, short: worst.verdict, canReason: true };
 }
 
-export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "", addressConfirmed = false }) {
+export function registryCheck({ detail, country, title, readName = null, timeZone, documentDiffers = null, prefill = null, typedAddress = "" }) {
   const reg = detail?.registration ?? null;
   const sourceKey = detail?.current && !detail.current.automatic && detail.current.source !== "document"
     ? detail.current.source : defaultSource(country);
@@ -373,10 +373,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     // Names are compared live (C2, Nov 26): a registry name that is not the company's current name differs.
     const asSaved = detail.renamedSinceCheck && recorded.result === "found"
       ? { ...recorded, differs: { ...recorded.differs, name: true }, compared: { ...recorded.compared, name: true } } : recorded;
-    // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
-    const saved = addressConfirmed
-      ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
-      : asSaved;
+    // A registry address that differs stays a difference, whatever the Address row says (T1): the summary
+    // names it, the Address row shows the Registry: line, and the check needs a look.
+    const saved = asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
     out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
   } else if (current) {
@@ -491,7 +490,9 @@ export function siteKeyFor(site, sites) {
 }
 
 const plainNumber = (value) => String(value ?? "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-const plainAddress = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[\s,.;:()（）、，。'"’\-–/#]+/g, "");
+// Accents aside too (T1): registries often drop them, "Fabrica" is "Fábrica".
+const plainAddress = (value) => String(value ?? "").normalize("NFKC").normalize("NFD").replace(/\p{M}/gu, "").normalize("NFC")
+  .toLowerCase().replace(/[\s,.;:()（）、，。'"’\-–/#]+/g, "");
 
 function bigrams(text) {
   const out = new Map();
@@ -1035,7 +1036,7 @@ export function scoreVerification(input, { timeZone } = {}) {
   const addressRecord = typedAddress ? (signals ?? []).filter((s) => s.kind === "address" && !s.automatic && String(s.details?.address ?? "").trim() === typedAddress)
     .sort((a, b) => String(b.checkedAt ?? "").localeCompare(String(a.checkedAt ?? "")))[0] ?? null : null;
   const registry = withReason(registryCheck({
-    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress, addressConfirmed: addressRecord?.result === "confirmed",
+    detail, country, title, readName: readValues.legalName ?? null, timeZone, documentDiffers, typedAddress,
     prefill: { name: readValues.legalName, number: readValues.registrationNumber, address: readValues.address },
   }));
   // Company information's inputs, read here: the address check is in this group (Nov 25).
