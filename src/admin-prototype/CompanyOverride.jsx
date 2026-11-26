@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { countryName } from "../shared/company-address.mjs";
+import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -236,10 +237,16 @@ export function CompanyFields({ values, onSave }) {
     setOpen(key);
   };
   const save = async () => {
+    // A website is a domain or a URL, saved with https:// when it has none (M1).
+    const value = open === "website" ? webAddress(text) : text.trim();
+    if (value == null) {
+      setError(WEB_ADDRESS_WORDS);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      await onSave({ [open]: text.trim() });
+      await onSave({ [open]: value });
       setOpen(null);
     } catch (failure) {
       setError(failure?.message || "Couldn't save. Try again.");
@@ -277,7 +284,7 @@ export function CompanyFields({ values, onSave }) {
                 value={text}
                 autoFocus
                 placeholder={open === "website" ? "https://" : undefined}
-                onChange={(event) => setText(event.target.value)}
+                onChange={(event) => { setText(event.target.value); setError(""); }}
               />
             )}
           </label>

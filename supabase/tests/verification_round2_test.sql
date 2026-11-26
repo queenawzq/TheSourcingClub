@@ -171,7 +171,7 @@ select is((select name from public.orgs where id = 'd2611260-0000-0000-0000-0000
 select is((select country_code || ' ' || location from public.factory_profiles where org_id = 'd2611260-0000-0000-0000-0000000000f2'),
   'ES Barcelos, Spain', 'a factory''s country code and the location''s country follow');
 select is((select hq_location || ' ' || website_url from public.brand_profiles where org_id = 'd2611260-0000-0000-0000-0000000000b1'),
-  'London, Portugal brand.example', 'a brand''s location and website');
+  'London, Portugal https://brand.example', 'a brand''s location and website (given https://, M1)');
 select is((select array_agg(kind order by kind) from public.org_review_changes where org_id = 'd2611260-0000-0000-0000-0000000000f2'),
   array['company_name', 'country', 'website'], 'one history line per changed field');
 select is((select details from public.org_review_changes where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'company_name'),

@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(21);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -67,6 +67,28 @@ select ok(exists (select 1 from public.admin_verification_queue() q where q.org_
 reset role;
 select ok(not exists (select 1 from pg_proc p where p.proname = 'admin_overview_metrics'
   and pg_get_functiondef(p.oid) like '%needs_information%'), 'M7: a company asked for more information is not awaiting review');
+
+-- M1: a website looks like one, and is saved with https:// -----------------------------
+select is(public.normalise_web_address('example.com'), 'https://example.com', 'M1: a domain is given https://');
+select is(public.normalise_web_address(' http://a.pt/x?y=1 '), 'http://a.pt/x?y=1', 'M1: a URL is kept');
+select is(public.normalise_web_address('  '), null, 'M1: blank is nothing');
+select throws_ok($$select public.normalise_web_address('Rua Nova 1, Porto')$$, '22023', 'Enter a web address, e.g. example.com', 'M1: words are refused');
+set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', website => 'not a url')$$,
+  '22023', 'Enter a web address, e.g. example.com', 'M1: staff cannot save "not a url" as a website');
+select lives_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', website => 'r2f-brand.example')$$,
+  'M1: a domain is saved');
+select lives_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', website => '')$$,
+  'M1: an empty website still clears it');
+reset role;
+select is((select details ->> 'to' from public.org_review_changes where org_id = 'd2611261-0000-0000-0000-0000000000b1' and kind = 'website'
+            and details ? 'to'), 'https://r2f-brand.example', 'M1: saved, and written to the history, with https://');
+set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', website => 'not a url')$$,
+  '42501', null, 'M1: a company is refused as staff only, before the address is looked at');
+reset role;
 
 select * from finish();
 rollback;
