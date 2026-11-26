@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { countryName, signupCountries } from "../shared/company-address.mjs";
 import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
+import { SiteCombobox } from "./SiteCombobox.jsx";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -319,6 +320,15 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const countries = useMemo(() => (editing ? signupCountries() : []), [editing]);
+  // Country (U7): the product's searchable list, the same as "Where you checked". The name typed or picked
+  // is the country only when it is one on the list.
+  const countryOptions = useMemo(() => countries.map((entry) => ({ key: entry.code, name: entry.name })), [countries]);
+  const [countryText, setCountryText] = useState("");
+  const typeCountry = (text) => {
+    setCountryText(text);
+    const match = countries.find((entry) => entry.name.toLowerCase() === text.trim().toLowerCase());
+    set("country", match ? match.code : "");
+  };
   const rows = [
     { key: "companyName", label: "Company name", shown: values.companyName },
     { key: "legalName", label: "Legal name", shown: values.legalName },
@@ -330,7 +340,7 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
   const before = initial();
   const changed = rows.map((row) => row.key).filter((key) => (draft[key] ?? "").trim() !== (before[key] ?? "").trim());
   const set = (key, value) => { setDraft((current) => ({ ...current, [key]: value })); setError(""); };
-  const start = () => { setDraft(initial()); setError(""); setEditing(true); };
+  const start = () => { setDraft(initial()); setCountryText(countryName(values.country) ?? values.country ?? ""); setError(""); setEditing(true); };
   const cancel = () => { setDraft(initial()); setError(""); setEditing(false); };
 
   const save = async () => {
@@ -342,6 +352,9 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
         change.website = web;
       } else if (key === "companyName" && !draft.companyName.trim()) {
         setError("Enter the company name");
+        return;
+      } else if (key === "country" && !draft.country) {
+        setError("Choose a country from the list");
         return;
       } else {
         change[key] = draft[key].trim();
@@ -378,10 +391,15 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
             <label htmlFor={`company-${row.key}`}>{row.label}{changed.includes(row.key) && <em>Edited</em>}</label>
             <div className="vr-input">
               {row.key === "country" ? (
-                <select id={`company-${row.key}`} value={draft.country ?? ""} onChange={(event) => set("country", event.target.value)}>
-                  {!draft.country && <option value="">Choose a country</option>}
-                  {countries.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}
-                </select>
+                <SiteCombobox
+                  id={`company-${row.key}`}
+                  value={countryText}
+                  sites={countryOptions}
+                  placeholder="Choose a country"
+                  toggleLabel="Show countries"
+                  onFocus={(event) => event.target.select()}
+                  onChange={typeCountry}
+                />
               ) : row.key === "vendorKind" ? (
                 <select id={`company-${row.key}`} value={draft.vendorKind} onChange={(event) => set("vendorKind", event.target.value)}>
                   {Object.entries(KIND_WORDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
