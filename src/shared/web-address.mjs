@@ -2,7 +2,7 @@
  * A web address staff type (a company's website, a registry check's link):
  * a domain or a URL, given https:// when it has no scheme (M1, M3, Nov 26).
  * The same rule as public.normalise_web_address() in SQL
- * (20261126100600_web_addresses.sql).
+ * (20261126300600_web_addresses.sql).
  *
  *   webAddress("example.com")          → "https://example.com"
  *   webAddress("http://a.pt/x?y=1")    → "http://a.pt/x?y=1"

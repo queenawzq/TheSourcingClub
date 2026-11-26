@@ -3418,7 +3418,7 @@ console.log("\nreview decision emails (20261104200000)");
   const inBrowser = signupCountries().map((row) => `${row.code}=${row.name}`).sort().join("|");
   !error && inDb === inBrowser
     ? ok(`the Country edit and the database offer the same ${data.length} countries`)
-    : fail("signup_countries() differs from signupCountries(): regenerate migration 20261126100800", error);
+    : fail("signup_countries() differs from signupCountries(): regenerate migration 20261126300800", error);
 }
 
 console.log(

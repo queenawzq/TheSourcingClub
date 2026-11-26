@@ -1,4 +1,4 @@
--- Verification, second round (20261126100000, 20261126100100, 20261126100200):
+-- Verification, second round (20261126300000, 20261126300100, 20261126300200):
 -- labelled registration numbers, the licence reading compared live, the queue
 -- and the finished-signup guard, and staff editing a company's name, legal
 -- name, country and website. Fixtures prefixed pgtap-r2-; every count filters on fixture ids.
@@ -185,7 +185,7 @@ select is((select count(*)::int from public.notifications where org_id = 'd26112
 select is((select title from public.notifications where org_id = 'd2611260-0000-0000-0000-0000000000b1' and kind = 'profile_updated'),
   'Your company profile was updated', 'the brand too, in the existing words, once');
 
--- The legal name (20261126100200): staff only, edited like the others; the checks read it ----
+-- The legal name (20261126300200): staff only, edited like the others; the checks read it ----
 set local request.jwt.claims = '{"sub":"c2611260-0000-0000-0000-000000000002","role":"authenticated"}';
 set local role authenticated;
 select throws_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000f2', legal_name => 'X Lda')$$,

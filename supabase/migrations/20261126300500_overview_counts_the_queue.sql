@@ -1,6 +1,6 @@
 -- M7 (Nov 26): one figure, one source. "Profiles awaiting review" on the
 -- overview is the verification queue's Active count: companies that finished
--- signup (the queue's rule, 20261126100000) and are waiting on staff. A
+-- signup (the queue's rule, 20261126300000) and are waiting on staff. A
 -- company asked for more information is waiting on itself, and the queue
 -- lists it under "Needs information", not Active. Same signature; grants
 -- restated.

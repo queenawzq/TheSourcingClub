@@ -1,5 +1,5 @@
 -- C2 (Nov 26): the registry check's name is compared with the company's
--- name now, the way the licence reading is (20261126100000): no "renamed
+-- name now, the way the licence reading is (20261126300000): no "renamed
 -- since the check" state. A check holds while the name it recorded matches
 -- the current name (legal name, else company name) by company_names_match
 -- (with no registry name recorded, the names it was checked under, compared

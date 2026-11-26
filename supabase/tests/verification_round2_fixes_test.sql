@@ -1,4 +1,4 @@
--- Verification, second round, the tester's findings (20261126100300 on):
+-- Verification, second round, the tester's findings (20261126300300 on):
 -- one block per finding. Fixtures prefixed pgtap-r2f-; every count filters
 -- on fixture ids.
 begin;

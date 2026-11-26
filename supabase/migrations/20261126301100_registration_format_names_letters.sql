@@ -1,5 +1,5 @@
 -- A Chinese number in the wrong format names the letters a Unified Social
--- Credit Code never uses, as before 20261126100000. The same sentence as
+-- Credit Code never uses, as before 20261126300000. The same sentence as
 -- EXPECTED_FORMAT in src/shared/registration-number.mjs; where a company finds
 -- its number is said only by the company's own screens, not here, because
 -- staff see this sentence too. Same signature; grants unchanged.
