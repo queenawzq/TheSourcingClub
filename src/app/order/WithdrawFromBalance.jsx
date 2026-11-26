@@ -28,6 +28,7 @@ const REFUSALS = {
   withdrawal_open: "You already have a withdrawal waiting. Cancel it first to ask for a different amount.",
   withdrawal_amount: "Enter an amount to withdraw.",
   withdrawal_over_balance: "That is more than your balance.",
+  payment_under_review: "Withdrawals are paused while a payment is reviewed.",
   withdrawal_method: "Choose one of your saved withdrawal methods, with its details complete.",
   withdrawal_not_waiting: "TSC has already started sending this, so it can no longer be cancelled.",
   withdrawal_none_chosen: "Choose at least one withdrawal to cancel.",
@@ -122,11 +123,11 @@ export function WithdrawalStatus({ open, opens, last, isOwner, onCancel, busy, w
           {refundedOf(row) > 0 ? <span className="payout-pending-destination" data-testid="withdrawal-refunded">{reversed instanceof Set && reversed.has(row.id)
             ? reversedByBankLine(formatMoney(refundedOf(row), row.currency)) : `${formatMoney(refundedOf(row), row.currency)} refunded`}</span> : null}
           <span className="payout-pending-destination">{destination(row)}</span>
-          {isOwner && onHold(row) ? <span className="billing-status" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
+          {isOwner && onHold(row) ? <span className="billing-status payout-status-on-hold" style={{ justifySelf: "start" }} data-testid="withdrawal-on-hold">On hold</span> : null}
         </div>
         {isOwner && row.status === "requested" ? <button className="secondary-btn compact-btn" type="button" disabled={busy} aria-label={busy ? undefined : `Cancel withdrawal of ${formatMoney(row.amount_cents, row.currency)}`} onClick={() => onCancel(row)}>{busy ? "Cancelling…" : "Cancel withdrawal"}</button>
           // Someone who can't cancel sees the row's word: Processing (waiting for TSC or being sent).
-          : <span className="billing-status">{onHold(row) ? "On hold" : "Processing"}</span>}
+          : <span className={onHold(row) ? "billing-status payout-status-on-hold" : "billing-status"}>{onHold(row) ? "On hold" : "Processing"}</span>}
       </div>
     ));
   }

@@ -5,14 +5,16 @@
 // With a fake Stripe and a fake database. Run: node scripts/check-stripe-withdrawals.mjs
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { CANNOT_PROCESS, IN_PROGRESS, returnFeeOnFailedPayout, refreshPayouts, withdrawWithFee } from "../api/_stripe-withdrawals.js";
+import { CANNOT_PROCESS, IN_PROGRESS, UNDER_REVIEW, returnFeeOnFailedPayout, refreshPayouts, withdrawWithFee } from "../api/_stripe-withdrawals.js";
 import { STRIPE_MINIMUM_PAYOUT, stripeWithdrawalFee, withdrawalFee } from "../src/shared/withdrawal-fees.mjs";
+/** A dispute also opens a payment review (20261124100000); the money calls are checked apart from it. */
+const withoutReview = (calls) => calls.filter(([name]) => name !== "record_payment_review_dispute");
 
 const REQUEST = "b1f9fd8c-76bd-43a7-ad48-502ebed382b3";
 const OTHER = "c2f9fd8c-76bd-43a7-ad48-502ebed382b4";
 
 /** The stripe_withdrawals table and its two claim functions, in memory. */
-function fakeDb({ reach = { any_cents: 0, stripe_cents: 0, debt_cents: 0 } } = {}) {
+function fakeDb({ reach = { any_cents: 0, stripe_cents: 0, debt_cents: 0 }, paused = false } = {}) {
   const rows = [];
   const leased = (row) => row.lease_until && Date.parse(row.lease_until) > Date.now();
   const lease = () => new Date(Date.now() + 120_000).toISOString();
@@ -58,6 +60,8 @@ function fakeDb({ reach = { any_cents: 0, stripe_cents: 0, debt_cents: 0 } } = {
         row.lease_until = lease();
         return { data: structuredClone(row), error: null };
       }
+      // A payment under review pauses every withdrawal (20261124100000); null: not read.
+      if (name === "factory_paused") return paused === null ? { data: null, error: { message: "down" } } : { data: paused, error: null };
       if (name === "owed_reachable") return reach === null ? { data: null, error: { message: "down" } } : { data: reach, error: null };
       throw new Error(`unexpected rpc ${name}`);
     },
@@ -162,6 +166,15 @@ assert.equal(usFee, 523);
   assert.equal(again.id, payout.id);
   assert.equal(s.reversals.length, 2);
   assert.equal(s.payouts.length, 1);
+}
+
+// 1b. A payment under review (20261124100000): refused before anything is
+//     claimed, reversed or paid out; not read: refused too, never skipped.
+for (const [paused, words] of [[true, UNDER_REVIEW], [null, CANNOT_PROCESS]]) {
+  const s = fakeStripe({ transfers: [transfer("tr_new", 100_300)], available: 100_300 });
+  const db = fakeDb({ paused });
+  await assert.rejects(withdrawWithFee(args(s, db)), (error) => error.message === words);
+  assert.deepEqual([db.rows.length, s.reversals.length, s.payouts.length], [0, 0, 0], "nothing claimed, reversed or paid out");
 }
 
 // 2. A crash between the reversal and the payout: the retry finds the reversals and pays out once.
@@ -521,20 +534,20 @@ for (const status of ["failed", "canceled"]) {
     const calls = [];
     const db = { rpc: async (name, args) => { calls.push([name, args]); return { data: null, error: null }; } };
     assert.equal(await applyDispute({ db, paymentId: "pay-d", dispute: lost }), false, "a lost dispute is no longer on hold");
-    assert.deepEqual(calls, [["record_payment_dispute_lost", { target_payment: "pay-d", dispute_id: "du_l", lost_cents: 99208, fee_cents: 1500 }]]);
+    assert.deepEqual(withoutReview(calls), [["record_payment_dispute_lost", { target_payment: "pay-d", dispute_id: "du_l", lost_cents: 99208, fee_cents: 1500 }]]);
     calls.length = 0;
     // Fix round 34: the charge carries no `dispute` (Stripe's typings at the
     // SDK's API version): found by charge.
     const stripe = { disputes: { retrieve: async () => { throw new Error("no id to retrieve by"); },
       list: async ({ charge, limit }) => ({ data: charge === "ch_d" && limit === 1 ? [lost] : [] }) } };
     await recordChargeDispute({ stripe, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } });
-    assert.equal(calls[0][0], "record_payment_dispute_lost", "a charge read later (no webhook) records the loss too");
-    assert.equal(calls[0][1].lost_cents, 99208, "R34: at the amount lost");
+    assert.equal(withoutReview(calls)[0][0], "record_payment_dispute_lost", "a charge read later (no webhook) records the loss too");
+    assert.equal(withoutReview(calls)[0][1].lost_cents, 99208, "R34: at the amount lost");
     // Won, found by charge: the hold is lifted, never set again.
     calls.length = 0;
     const won = { disputes: { list: async () => ({ data: [{ id: "du_w", status: "won" }] }) } };
     assert.equal(await recordChargeDispute({ stripe: won, db, paymentId: "pay-d", charge: { id: "ch_d", disputed: true } }), null, "R34: a won dispute is not a hold");
-    assert.deepEqual(calls, [["record_payment_disputed", { target_payment: "pay-d", disputed: false }]]);
+    assert.deepEqual(withoutReview(calls), [["record_payment_disputed", { target_payment: "pay-d", disputed: false }]]);
     // The id, when Stripe does send it (it does today, outside the typings), is used as it is.
     const { disputeForCharge } = await import("../api/_stripe.js");
     const byId = { disputes: { retrieve: async (id) => ({ id, status: "won" }), list: async () => { throw new Error("not needed"); } } };
@@ -576,27 +589,32 @@ for (const status of ["failed", "canceled"]) {
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, chargeback],
         events: [inquiryOpen, chargeback, inquiryClosed] });
-      assert.deepEqual(held, [true, true, true], "R34-1: the late warning_closed leaves the chargeback's hold");
+      // An inquiry holds nothing (20261125100000, T1); the chargeback does.
+      assert.deepEqual(held, [false, true, true], "R34-1: the late warning_closed leaves the chargeback's hold");
       assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: true }], "R34-1: recorded as still disputed");
     }
     // The charge carries no `dispute`: found by charge, newest first.
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true }, disputes: [inquiryClosed, chargeback],
         events: [inquiryOpen, chargeback, inquiryClosed] });
-      assert.deepEqual(held, [true, true, true], "R34-1: by charge too");
+      assert.deepEqual(held, [false, true, true], "R34-1: by charge too");
       assert.equal(calls.at(-1)[1].disputed, true);
     }
     // The chargeback lost meanwhile: the late warning_closed records the loss, never a lifted hold.
     {
       const lostCb = { ...chargeback, status: "lost", amount: 5000, balance_transactions: [{ fee: 1500 }] };
       const { calls } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_cb" }, disputes: [inquiryClosed, lostCb], events: [inquiryClosed] });
-      assert.equal(calls[0][0], "record_payment_dispute_lost", "R34-1: the chargeback's loss decides");
-      assert.equal(calls[0][1].dispute_id, "du_cb");
+      assert.equal(withoutReview(calls)[0][0], "record_payment_dispute_lost", "R34-1: the chargeback's loss decides");
+      // One review per dispute (20261125100000): the late inquiry's own review
+      // is recorded first, then the chargeback's, whose loss decides.
+      assert.deepEqual(calls.filter(([name]) => name === "record_payment_review_dispute").map(([, args]) => args.dispute_id), ["du_inq", "du_cb"],
+        "v2: each dispute on its own review");
+      assert.equal(withoutReview(calls)[0][1].dispute_id, "du_cb");
     }
     // An inquiry closed with no chargeback after it still lifts the hold.
     {
       const { calls, held } = await run({ charge: { id: "ch_i", disputed: true, dispute: "du_inq" }, disputes: [inquiryClosed], events: [inquiryOpen, inquiryClosed] });
-      assert.deepEqual(held, [true, false], "R34-1: a closed inquiry alone lifts the hold");
+      assert.deepEqual(held, [false, false], "an inquiry never holds the step (20261125100000, T1)");
       assert.deepEqual(calls.at(-1), ["record_payment_disputed", { target_payment: "pay-i", disputed: false }]);
     }
     // The chargeback won: the hold is lifted.
@@ -643,7 +661,7 @@ for (const status of ["failed", "canceled"]) {
   {
     const db = dbFor("confirmed");
     await applyRefundUpdate({ stripe: stripeFor({ amountRefunded: [0, 2000] }), db, refund: { id: "re_1", status: "failed", charge: "ch_h", metadata: {} } });
-    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 0 }],
+    assert.deepEqual(db.calls, [["record_payment_refund_failed", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 0, failed_refund: "re_1" }],
       ["record_payment_refund_amount", { target_payment: "pay-h", payment_intent: "pi_h", refunded_cents: 2000 }]]);
   }
   // Fix round 20: a full refund before approval that failed, the payment no

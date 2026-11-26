@@ -4,6 +4,9 @@
 --     switched-off Wise removes both: the route goes back to Stripe.
 -- e4: old pool $300, two $150 payouts being sent, $107 refunded: the newer
 --     is $100 short; it fails: $50 came back, kept, and read as kept.
+--     Paused payments (20261124100000): the refund after approval now takes
+--     nothing and opens a payment review, so all $150 comes back (kept and
+--     read as kept); staff decide Pay factory before the cancelled one.
 --
 -- Fixtures: slugs pgtap-r26-*, ids b26?xxxx-...; every count is scoped to them.
 begin;
@@ -193,6 +196,18 @@ begin
   return j;
 end;
 $f$;
+-- Staff decide the factory's open payment review: Decline (nothing taken, TSC bears it).
+create function pg_temp.decline(n int) returns text language plpgsql as $f$
+declare v uuid; d text;
+begin
+  select id into v from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  d := (public.decide_payment_review(v, 'no_fault', null, 'pgTAP: TSC bears it')).decision;
+  reset role;
+  return d;
+end;
+$f$;
 create function pg_temp.told(org uuid, subject uuid) returns text language sql as $f$
   select string_agg(title || ' | ' || body, ' || ' order by created_at, title) from public.notifications where org_id = org and subject_id = subject;
 $f$;
@@ -220,14 +235,15 @@ set local session_replication_role = origin;
 select set_config('tsc.r26_p2', pg_temp.req(4, 15000)::text, true);
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r26_p1')::uuid)$$, 'the older $150 is sent');
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r26_p2')::uuid)$$, 'the newer $150 is sent');
-select lives_ok($$select pg_temp.refund(41, 10700)$$, '$107 of the pool deposit is refunded: the newer is $100 short');
+select lives_ok($$select pg_temp.refund(41, 10700)$$, '$107 of the pool deposit is refunded after approval: a payment review opens, nothing is taken');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''failed'', sentence => ''unclaimed'')', current_setting('tsc.r26_p2')))$$,
   'the newer fails');
-select is((select back_cents from public.factory_withdrawals where id = current_setting('tsc.r26_p2')::uuid), 5000::bigint, '$50 came back: kept on it');
-select is((select x ->> 'back_cents' from jsonb_array_elements(pg_temp.bal(4) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r26_p2')), '5000',
+select is((select back_cents from public.factory_withdrawals where id = current_setting('tsc.r26_p2')::uuid), 15000::bigint, 'all $150 came back: kept on it');
+select is((select x ->> 'back_cents' from jsonb_array_elements(pg_temp.bal(4) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r26_p2')), '15000',
   'the card reads what was kept, not a figure worked out again');
 select is((select body from public.notifications where subject_id = current_setting('tsc.r26_p2')::uuid and title like '% did not go through'),
-  '$50.00 is back in your balance. Check your withdrawal method, then withdraw again.', 'the notice says the same');
+  'The amount is back in your balance. Check your withdrawal method, then withdraw again.', 'the notice says the same');
+select is(pg_temp.decline(4), 'no_fault', 'staff decide the review: TSC pays');
 select set_config('tsc.r26_c', pg_temp.req(4, 1000)::text, true);
 select pg_temp.act_as('06'); set local role authenticated;
 select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r26_c')::uuid)$$, 'a cancelled one');

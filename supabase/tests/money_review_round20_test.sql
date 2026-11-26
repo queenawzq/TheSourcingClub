@@ -7,6 +7,9 @@
 --     a refund lowered because it failed tells the brand and the factory.
 -- N4 (e2): a withdrawal on hold for a debt names the debt's cause, not the
 --     event's.
+-- Paused payments (20261124100000): after approval a refund no longer lowers
+--     the factory's earning or makes a debt; it opens a payment review. N2,
+--     N3 and N4 now assert that.
 -- Pre-existing (e3, p31 p32): a full refund before approval that fails later:
 --     funded again if the brand has not paid again; else staff refund the old
 --     charge (Needs checking).
@@ -197,14 +200,20 @@ $f$;
 -- N3 / N2. What the brand got back; a refund that failed is said.
 -- ===========================================================================
 select lives_ok($$select pg_temp.refund(11, 5000)$$, '$50 of the $535 deposit charge is refunded after it was funded');
-select is((select body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11) and title = 'Payment for "R20 deposit" refunded'),
-  'The brand was refunded $50.00. Your earnings from R20 request 1 (R20-1) went down by $46.73.', 'the factory reads what the brand got, then its own part');
+-- Paused payments: after approval the factory's earning is unchanged; it is
+-- told its withdrawals are paused for a review instead.
+select is(row((select body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11) and title = 'Payment for "R20 deposit" refunded'),
+              (select title from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11) and title = 'Withdrawals paused'),
+              (pg_temp.p(11)).factory_refund_cents),
+          row(null::text, 'Withdrawals paused'::text, 0::bigint),
+  'the factory''s earning does not go down: it is told its withdrawals are paused for a review');
 select lives_ok($$select pg_temp.refund_failed(11, 2000)$$, 'Stripe says $30 of it failed: $20 in all');
 select is((select title || ' | ' || body from public.notifications where org_id = 'b20b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(11)
             and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | Your $30.00 refund didn''t go through. That amount stays on this order.', 'the brand is told');
-select is((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11)
-            and title like 'Refund for%'), 'Refund for "R20 deposit" didn''t go through | The refund to the brand didn''t go through. Your earnings from R20 request 1 (R20-1) went back up by $28.04.',
-  'and the factory, whose earnings went back up');
+select is(row((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(1) and subject_id = pg_temp.pay(11)
+                 and title like 'Refund for%'), (pg_temp.p(11)).factory_refund_cents, (pg_temp.p(11)).review_kept_cents),
+          row(null::text, 0::bigint, 2000::bigint),
+  'the factory, whose earnings never went down, is not told they went back up; what it keeps follows the refund');
 
 -- ===========================================================================
 -- N1. Part lost, the rest refunded, before approval: all of it went back.
@@ -212,7 +221,7 @@ select is((select title || ' | ' || body from public.notifications where org_id 
 select lives_ok($$select pg_temp.lost(12, 5000)$$, '$50 of the $107 fit sample charge is lost in a dispute before approval');
 select is((pg_temp.p(12)).state::text, 'confirmed', 'the step stays funded with the rest');
 select lives_ok($$select pg_temp.refund(12, 5700)$$, 'staff refund the other $57');
-select is((pg_temp.p(12)).state::text, 'failed', 'everything went back: the brand pays again');
+select is((pg_temp.p(12)).state::text, 'due', 'everything went back: the brand pays again (Due, never Failed)');
 select is(row((pg_temp.p(12)).dispute_lost_cents, (pg_temp.p(12)).dispute_lost_at, (pg_temp.p(12)).dispute_fee_cents, (pg_temp.p(12)).refunded_cents, (pg_temp.p(12)).factory_refund_cents),
   row(0::bigint, null::timestamptz, null::bigint, 0::bigint, 0::bigint), 'and the old charge''s loss is cleared with its refund');
 select ok(exists (select 1 from public.notifications where org_id = 'b20b0000-0000-0000-0000-00000000000b' and subject_id = pg_temp.pay(12)
@@ -223,18 +232,22 @@ select ok(exists (select 1 from public.notifications where org_id = 'b20b0000-00
 -- ===========================================================================
 select lives_ok($$select pg_temp.pay_out(pg_temp.req(2, 50000))$$, 'F2 withdrew its $500 deposit, paid');
 select set_config('tsc.r20_w2', pg_temp.req(2, 10000)::text, true);
-select lives_ok($$select pg_temp.refund(21, 42800)$$, '$428 of the deposit is refunded after it was withdrawn: F2 owes $400, covered by its other earnings');
+select lives_ok($$select pg_temp.refund(21, 42800)$$, '$428 of the deposit is refunded after it was withdrawn: a payment review opens');
 select is((select count(*)::int from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'), 0, 'not on hold yet');
 select lives_ok($$select pg_temp.lost(23, 32100)$$, 'then the lab dip (never withdrawn) is lost in a dispute after approval');
 -- Round 37: the amount is what its earnings do not cover, as the card says it.
-select is((select body from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'),
-  'You owe TSC $200.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.', 'the waiting withdrawal is told the debt''s cause: a refund, not the dispute');
+-- Paused payments: no debt, so no "you owe TSC" notice; the review pauses it.
+select is(row((select body from public.notifications where subject_id = current_setting('tsc.r20_w2')::uuid and title like '% on hold'),
+              (select public.withdrawal_blocker(w) from public.factory_withdrawals w where w.id = current_setting('tsc.r20_w2')::uuid),
+              (pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint),
+          row(null::text, 'payment_under_review'::text, 0::bigint),
+  'the waiting withdrawal is paused by the refund''s review, with no debt and no "you owe TSC" notice');
 
 -- ===========================================================================
 -- Pre-existing: a full refund before approval that fails later.
 -- ===========================================================================
 select lives_ok($$select pg_temp.refund(31, 10700)$$, 'the trims charge is refunded in full before approval');
-select is((pg_temp.p(31)).state::text, 'failed', 'the brand is sent back to pay');
+select is((pg_temp.p(31)).state::text, 'due', 'the brand is sent back to pay (Due, never Failed)');
 select lives_ok($$select pg_temp.as_server('select public.record_full_refund_failed(''b20f0031-0000-0000-0000-000000000000'', ''pi_pgtap_r20_31'', ''ch_pgtap_r20_31'', 10700, 0, 10700, 0, null)')$$,
   'Stripe says that refund failed, before the brand paid again');
 select is(row((pg_temp.p(31)).state::text, (pg_temp.p(31)).stripe_payment_intent_id, (pg_temp.p(31)).charged_cents),

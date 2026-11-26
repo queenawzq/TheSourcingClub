@@ -294,7 +294,7 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, metricsError = null, onRetryMetrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
@@ -304,15 +304,22 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
           {showNotifications && <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>}
         </header>
 
+        {/* A failed read is said, never shown as zeros (live only: the mock never fails). */}
+        {metricsError ? (
+          <div className="admin-overview-error" role="alert" data-testid="overview-error">
+            <p className="admin-error">{metricsError.message}</p>
+            {onRetryMetrics ? <button className="secondary-btn" type="button" onClick={() => onRetryMetrics()}>Try again</button> : null}
+          </div>
+        ) : null}
         <div className="factory-dashboard-metrics admin-metrics">
-          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
-          <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
-          <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
+          <MetricCard label="Profiles awaiting review" value={metricsError ? "—" : metrics.profilesAwaitingReview ?? pending.length} note={metricsError ? "" : `${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
+          <MetricCard label="RFQs submitted today" value={metricsError ? "—" : metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
+          <MetricCard label="Quotes submitted today" value={metricsError ? "—" : metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
           {/* Where the design puts "low-confidence checks". There is no
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments owed" value={metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
+          <MetricCard label="Payments owed" value={metricsError ? "—" : metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel={metrics.paymentsLinkLabel ?? "Open payments"} />
         </div>
 
         <section className="admin-overview-grid">
@@ -1694,10 +1701,25 @@ function UsersPage({ users, onToggleStatus }) {
   const [userType, setUserType] = useState("All user types");
   const [status, setStatus] = useState("All statuses");
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  // Live only: brands paused by a payment review (the prototype has none, and draws none).
+  const actions = useActions();
+  const [paused, setPaused] = useState(null);
+  const [unpausing, setUnpausing] = useState(null);
+  const loadPaused = useCallback(() => actions.pausedBrands?.().then(setPaused, () => setPaused([])), [actions]);
+  useEffect(() => { loadPaused(); }, [loadPaused]);
+  const showPaused = paused !== null && status === "Paused";
+  const pausedRows = (paused ?? []).filter((brand) => {
+    const email = brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? "";
+    return (!normalizedSearch || `${brand.name} ${email}`.toLowerCase().includes(normalizedSearch))
+      && (userType === "All user types" || userType === "Brand");
+  });
+  // One status everywhere: a paused brand's people read Paused; no access (Disabled) wins.
+  const shownStatus = (user) => (user.status === "Disabled" ? "Disabled" : user.paymentPaused ? "Paused" : user.status);
+  const pausedBrandOf = (user) => (paused ?? []).find((brand) => brand.orgId === user.orgId) ?? null;
   const filteredUsers = users.filter((user) => {
     const matchesSearch = !normalizedSearch || `${user.name} ${user.email} ${user.company}`.toLowerCase().includes(normalizedSearch);
     const matchesType = userType === "All user types" || user.type === userType;
-    const matchesStatus = status === "All statuses" || user.status === status;
+    const matchesStatus = status === "All statuses" || shownStatus(user) === status;
     return matchesSearch && matchesType && matchesStatus;
   });
   const activeCount = users.filter((user) => user.status === "Active").length;
@@ -1708,10 +1730,18 @@ function UsersPage({ users, onToggleStatus }) {
         <div><p className="admin-eyebrow">Admin</p><h1>User management</h1><p>Find marketplace users, review their account type, and control access.</p></div>
       </header>
 
-      <div className="admin-user-metrics" aria-label="User account summary">
+      <div className={`admin-user-metrics${paused !== null ? " has-paused" : ""}`} aria-label="User account summary">
         <div><span>Total users</span><strong>{users.length}</strong></div>
         <div><span>Active</span><strong>{activeCount}</strong></div>
         <div><span>Disabled</span><strong>{users.length - activeCount}</strong></div>
+        {paused !== null && (
+          <div className={`admin-user-metric-toggle${showPaused ? " selected" : ""}`} role="button" tabIndex={0} aria-pressed={showPaused}
+               data-testid="paused-brands-count"
+               onClick={() => setStatus(showPaused ? "All statuses" : "Paused")}
+               onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setStatus(showPaused ? "All statuses" : "Paused"); } }}>
+            <span>Paused brands</span><strong>{paused.length}</strong>
+          </div>
+        )}
       </div>
 
       <div className="admin-filter-bar admin-users-filter-bar">
@@ -1729,11 +1759,14 @@ function UsersPage({ users, onToggleStatus }) {
         <label className="rfqs-sort admin-profile-type-filter admin-user-status-filter">
           <span>Account status</span>
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option>All statuses</option><option>Active</option><option>Disabled</option>
+            <option>All statuses</option><option>Active</option><option>Disabled</option>{paused !== null && <option>Paused</option>}
           </select>
         </label>
       </div>
 
+      {showPaused ? (
+        <PausedBrandsPanel rows={pausedRows} users={users} onUnpause={setUnpausing} />
+      ) : (
       <section className="factory-dashboard-panel admin-panel admin-users-panel">
         <header><div><h2>{filteredUsers.length} user{filteredUsers.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
         {filteredUsers.length > 0 ? (
@@ -1746,13 +1779,18 @@ function UsersPage({ users, onToggleStatus }) {
                     <td><div className="admin-user-identity"><span>{user.initials}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div></td>
                     <td><StatusPill tone={user.type === "Admin" ? "violet" : "info"}>{user.type}</StatusPill></td>
                     <td>{user.company}</td><td>{user.lastActive}</td>
-                    <td><StatusPill tone={user.status === "Active" ? "success" : "neutral"}>{user.status}</StatusPill></td>
+                    <td><StatusPill tone={{ Active: "success", Paused: "warning" }[shownStatus(user)] ?? "neutral"}>{shownStatus(user)}</StatusPill></td>
                     <td>
                       {user.protected ? <span className="admin-current-account">Current account</span> : (
                         <button className={`secondary-btn admin-user-access-button ${user.status === "Active" ? "disable" : "enable"}`} type="button" aria-label={`${user.status === "Active" ? "Disable" : "Enable"} ${user.name}`} onClick={() => onToggleStatus(user.id)}>
                           {user.status === "Active" ? "Disable" : "Enable"}
                         </button>
                       )}
+                      {/* Live only: a paused brand's people can be unpaused from their own row, with the same confirm. */}
+                      {shownStatus(user) === "Paused" && pausedBrandOf(user) ? (
+                        <button className="secondary-btn admin-user-access-button enable admin-user-unpause" type="button" aria-label={`Unpause ${pausedBrandOf(user).name}`}
+                                onClick={() => setUnpausing(pausedBrandOf(user))}>Unpause</button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1761,7 +1799,78 @@ function UsersPage({ users, onToggleStatus }) {
           </div>
         ) : <div className="admin-empty-state"><strong>No users found</strong><p>Try a different search term or filter.</p></div>}
       </section>
+      )}
+      {unpausing && <UnpauseBrandDialog brand={unpausing} onClose={() => setUnpausing(null)}
+                                        onDone={() => { setUnpausing(null); loadPaused(); }} />}
     </main>
+  );
+}
+
+/** Live only: Users → Paused brands, one row per brand, with its owner's email. */
+function PausedBrandsPanel({ rows, users, onUnpause }) {
+  return (
+    <section className="factory-dashboard-panel admin-panel admin-users-panel">
+      <header><div><h2>{rows.length} paused brand{rows.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
+      {rows.length > 0 ? (
+        <div className="admin-table-wrap">
+          <table className="admin-table admin-users-table admin-paused-brands-table">
+            <thead><tr><th>Brand</th><th>User type</th><th>Reason</th><th>Paused</th><th>Status</th><th>Access</th></tr></thead>
+            <tbody>
+              {rows.map((brand) => (
+                <tr key={brand.orgId} data-testid="paused-brand">
+                  <td><div className="admin-user-identity"><span>{initialsOf(brand.name)}</span><div><strong>{brand.name}</strong><small>{brand.email ?? users.find((user) => user.orgId === brand.orgId)?.email ?? ""}</small></div></div></td>
+                  <td><StatusPill tone="info">Brand</StatusPill></td>
+                  <td className="admin-user-reason">{String(brand.reason ?? "").split(" · ").map((part, index) => (
+                    <React.Fragment key={index}>{index ? " · " : ""}<span className="admin-user-reason-part">{
+                      // An order number opens that order's payments (T2 A9).
+                      /^TSC-\d+$/.test(part) ? <a href={`/app.html/admin/payments?order=${encodeURIComponent(part)}`}>{part}</a> : part
+                    }</span></React.Fragment>
+                  ))}</td>
+                  <td><span className="admin-cell-label">Paused since </span>{brand.since}</td>
+                  <td><StatusPill tone="warning">Paused</StatusPill></td>
+                  <td><button className="secondary-btn admin-user-access-button enable" type="button" aria-label={`Unpause ${brand.name}`} onClick={() => onUnpause(brand)}>Unpause</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <div className="admin-empty-state"><strong>No paused brands</strong><p>Try a different search term or filter.</p></div>}
+    </section>
+  );
+}
+
+const initialsOf = (name) => String(name ?? "").split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+
+function UnpauseBrandDialog({ brand, onClose, onDone }) {
+  const actions = useActions();
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const unpause = async () => {
+    setWorking(true);
+    setProblem(null);
+    try {
+      await actions.unpauseBrandOrg(brand.orgId);
+      onDone();
+    } catch (error) {
+      setProblem(error.message);
+      setWorking(false);
+    }
+  };
+  return createPortal(
+    <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !working && onClose()}>
+      <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="unpause-brand-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close" disabled={working} onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+        <header><div><h2 id="unpause-brand-title">{`Unpause ${brand.name}?`}</h2></div></header>
+        <p className="admin-modal-line">They can fund steps, approve steps and accept quotes again.</p>
+        {brand.bankOrder ? <p className="admin-modal-line" data-testid="unpause-bank-open">{`A dispute is still with the bank (${brand.bankOrder}).`}</p> : null}
+        {problem && <p className="admin-error" role="alert">{problem}</p>}
+        <footer>
+          <button className="secondary-btn" type="button" disabled={working} onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" disabled={working} data-testid="unpause-brand-confirm" onClick={unpause}>Unpause</button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -2161,7 +2270,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   const { data: queue, loading: queueLoading, error: queueError, reload: reloadQueue } = useVerificationQueue();
   const { data: rfqRows, loading: rfqsLoading, error: rfqsError } = useAdminRfqs();
   const { data: quoteRows, loading: quotesLoading, error: quotesError } = useAdminQuotes();
-  const { data: metricRow, reload: reloadMetrics } = useAdminMetrics();
+  const { data: metricRow, error: metricsError, reload: reloadMetrics } = useAdminMetrics();
   const { data: userRows, loading: usersLoading, error: usersError, reload: reloadUsers } = useAdminUsers();
   const actions = useActions();
   const viewer = useViewer();
@@ -2427,7 +2536,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         : loading
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
-      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} metricsError={metricsError} onRetryMetrics={reloadMetrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} registryPanel={registryPanel} onRegistryChange={registryPanel || actions.verificationScore ? reloadQueue : null} />}

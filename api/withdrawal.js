@@ -1,4 +1,5 @@
 import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
+import { pausedPayoutRefusal } from "./_paused.js";
 import { adapterFor, approveWithdrawal, factoryQuote, previewWithdrawal, syncWithdrawals } from "./_withdrawals.js";
 import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import { checkStripeWithdrawal } from "./_stripe-withdrawals.js";
@@ -57,6 +58,11 @@ export default async function handler(request, response) {
       adapter = adapterFor(row.provider);
     }
     if (!adapter) return reply(response, 400, { error: "This withdrawal has no way to be paid yet. Decline it with a reason." });
+    // A paused factory: said first, before whether the provider is set up here.
+    if (row && (action === "approve" || action === "preview")) {
+      const paused = await pausedPayoutRefusal(db, { withdrawalId: row.id });
+      if (paused) return reply(response, 409, { error: paused, kind: "payment_under_review" });
+    }
     let client;
     try {
       client = adapter.build();

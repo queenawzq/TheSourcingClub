@@ -9,6 +9,11 @@
 -- with that reversal, and only from the call holding the withdrawal. Every
 -- PayPal / Wise / bank method added, changed or removed is told to the company.
 --
+-- Since paused payments (20261124100000): no per-step "on hold" / "Hold
+-- lifted" notice is sent, and a refund after approval takes nothing from the
+-- factory: the waiting withdrawal keeps its part, a payment review opens and
+-- withdrawals pause (payment_under_review) until staff decide.
+--
 -- Fixtures: slugs pgtap-r6-*, ids cd6?xxxx-...; every count is scoped to them.
 begin;
 
@@ -131,14 +136,13 @@ reset role;
 select is((select body from public.notifications where org_id = pg_temp.org(1) and kind = 'milestone_approved' and subject_id = pg_temp.step(1, 1)),
   'The brand approved this step.', 'the approval notice says only that it was approved');
 select ok(coalesce(pg_temp.told(1, 'milestone_approved'), '') not like '%added to your balance%', 'never "added to your balance"');
-select is(pg_temp.told(1, 'payment_disputed'),
-  'Payment for "R6 step 1" on hold | The brand disputed the charge. $100.00 is held until the dispute is settled.',
-  'and it is told the money is on hold');
+select is(pg_temp.told(1, 'payment_disputed'), null,
+  'no per-step "on hold" notice (paused payments: a payment review tells the factory)');
 select is((select string_agg(distinct r ->> 'figure', ',') from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
             where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 1)), 'pending', 'it is held in Pending, not Available');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(1, 1))),
   'the dispute is won');
-select ok(pg_temp.told(1, 'payment_disputed') like '%Hold lifted on "R6 step 1"%', 'the hold it was told about is lifted');
+select ok(coalesce(pg_temp.told(1, 'payment_disputed'), '') not like '%Hold lifted%', 'and no "Hold lifted" notice either');
 
 -- ===========================================================================
 -- 2. A step refunded while a waiting PayPal withdrawal holds part of it.
@@ -151,21 +155,22 @@ select is((select sum(amount_cents)::bigint from public.payment_takes where fact
 select lives_ok(format($$select pg_temp.as_server(%L)$$,
   format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(1, 2), 'pi_pgtap_r6_1_2', 'The payment was refunded.')),
   'the brand''s payment for that step is refunded');
-select is((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal'
-            and subject_id = current_setting('tsc.r6_w')::uuid and title like '%on hold'),
-  'Withdrawal of $45.00 on hold | The brand''s payment for "R6 step 2" was refunded. Cancel this withdrawal and withdraw again.',
-  'the factory is told its withdrawal is on hold, and what to do');
-select is((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal' and title like '%on hold'), 1, 'once');
+select is((select title || ' | ' || body from public.notifications where org_id = pg_temp.org(1) and kind = 'payment_disputed'
+            and subject_id = pg_temp.pay(1, 2)),
+  'Withdrawals paused | A brand requested a refund for "R6 step 2" on R6 request 1 (R6-1), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'the factory is told its withdrawals are paused for a payment review');
+select is((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal' and title like '%on hold'), 0,
+  'no "withdrawal on hold" notice: nothing was taken from it');
 select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
-                   where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'refunded' and (r ->> 'refunded')::boolean
+                   where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'processing' and not coalesce((r ->> 'refunded')::boolean, false)
                      and (r ->> 'amount_cents')::bigint = 4500),
-  'the held part went back to the brand: in no figure (round 16), marked refunded, while its withdrawal waits');
+  'the held part stays the factory''s: in Processing with its withdrawal, not refunded');
 select is((pg_temp.bal_as('01', 1) ->> 'total_cents')::bigint, pg_temp.sum4(pg_temp.bal_as('01', 1)), 'Total is the sum of the four');
-select ok(not exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
-                       where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'available'),
-  'the rest of the refunded step is not Available');
+select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r
+                   where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2) and r ->> 'figure' = 'available' and (r ->> 'amount_cents')::bigint = 2000),
+  'the rest of the refunded step stays Available (withdrawals are paused, not the earning)');
 select is(((select public.my_withdrawal_balance(pg_temp.org(1)) from (select pg_temp.act_as('01')) a) -> 'returnable' ->> current_setting('tsc.r6_w'))::bigint,
-  0::bigint, 'cancelling would give back nothing: its money was refunded');
+  4500::bigint, 'cancelling would give back the whole $45: nothing was taken');
 reset role;
 select pg_temp.act_as('06'); set local role authenticated;
 select is((select (w ->> 'covered')::boolean from jsonb_array_elements(public.admin_withdrawals() -> 'withdrawals') w
@@ -177,11 +182,11 @@ select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r6_w')::u
 reset role;
 select is((select body from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal'
             and subject_id = current_setting('tsc.r6_w')::uuid and title like '%cancelled'),
-  'This amount was returned to the brand.', 'and is told truthfully that nothing comes back');
+  'The amount is back in your balance.', 'and is told truthfully that it comes back');
 select is((pg_temp.bal_as('01', 1) ->> 'total_cents')::bigint, pg_temp.sum4(pg_temp.bal_as('01', 1)), 'Total is still the sum of the four');
-select ok(not exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2)
-                       and (r ->> 'amount_cents')::bigint > 0),
-  'once the withdrawal ended, the refunded step is in no figure (only its Refunded line, below zero: 20261121200000)');
+select ok(exists (select 1 from jsonb_array_elements(pg_temp.bal_as('01', 1) -> 'rows') r where (r ->> 'payment_id')::uuid = pg_temp.pay(1, 2)
+                   and r ->> 'figure' = 'available' and (r ->> 'amount_cents')::bigint = 6500),
+  'once the withdrawal ended, the whole $65 step is Available again (still paused until staff decide)');
 
 -- ===========================================================================
 -- 3. A Stripe part taken back by reversal returns to the balance, and its

@@ -28,6 +28,7 @@ const DB_WORDS = {
   withdrawal_not_waiting: "This withdrawal isn't waiting any more. Reload the board.",
   withdrawal_over_balance: "The factory's balance no longer covers this. Decline it with a reason.",
   payout_changed: "This factory changed where it is paid since it asked. Decline it, so it can ask again.",
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).",
   payout_own_company: "You belong to this company, so someone else on the staff must pay it.",
   reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must pay it.",
   // Money refunded after the factory withdrew it, more than its other earnings

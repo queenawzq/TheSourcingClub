@@ -125,14 +125,26 @@ async function recordRegistryFound(page, reference) {
   await waitFor(page, ".vr-modal .vr-sub", 15000);
   const opened = await page.evaluate(() => {
     const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
+    // The verification form on main (#149): "Record check", or "Edit" once a person recorded one.
+    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record check|Edit)$/.test(b.textContent.trim()));
     button?.click();
     return Boolean(button);
   });
   if (!opened) return null;
   await waitFor(page, ".vr-modal .vr-record", 10000);
-  // "Found" is the form's first answer and already chosen.
-  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  // Where it was checked (kept when already filled), what it showed (nothing is
+  // chosen at first: Found), and the link to the registry page.
+  const site = page.locator(".vr-modal .vr-record .vr-field input").first();
+  if (!(await site.inputValue()).trim()) await site.fill("Official registry");
+  await page.evaluate(() => document.querySelector(".vr-modal .vr-record input[type='radio'][value='found']")?.click());
+  await page.evaluate((text) => {
+    const label = [...document.querySelectorAll(".vr-modal .vr-record label")].find((item) => item.textContent.trim() === "Link (optional)");
+    const input = label && document.getElementById(label.htmlFor);
+    if (!input) return;
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    set.call(input, text);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, reference);
   await clickButton(page, "save check");
   const text = await within(page, () => page.evaluate(() => {
     if (document.querySelector(".vr-modal .vr-record")) return null;
@@ -142,6 +154,16 @@ async function recordRegistryFound(page, reference) {
   await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-modal-foot button")].find((b) => b.textContent.trim() === "Close")?.click());
   await page.waitForTimeout(800);
   return text;
+}
+
+/**
+ * Approve opens a message pop-up on main (a9091a31): its own Approve button
+ * sends the decision. Click the review's button, then the pop-up's.
+ */
+async function approveWithMessage(page, label) {
+  await clickButton(page, label);
+  await waitFor(page, "[aria-labelledby='approve-message-title'] footer .primary-btn", 10000);
+  await page.evaluate(() => document.querySelector("[aria-labelledby='approve-message-title'] footer .primary-btn")?.click());
 }
 
 async function within(page, test, timeout = 15000) {
@@ -1056,7 +1078,7 @@ async function main() {
     const { data: staffCheck } = await db.from("registry_checks").select("result, automatic")
       .eq("org_id", factoryOrg.id).eq("automatic", false).order("checked_at", { ascending: false }).limit(1).maybeSingle();
     check(staffCheck?.result === "found", `the registry check is recorded from the review page's form (a person's "${staffCheck?.result ?? "nothing"}")`);
-    await clickButton(page, "approve as basic");
+    await approveWithMessage(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
     // Profile completeness used to vanish once a decision was made.
@@ -1098,7 +1120,7 @@ async function main() {
     }
     check(brandOpened, "the queue row for this brand was found and opened");
     await page.waitForTimeout(2500);
-    await clickButton(page, "approve profile");
+    await approveWithMessage(page, "approve profile");
     await page.waitForTimeout(4000);
     const { data: brandVerified } = await db
       .from("brand_profiles").select("verification_status").eq("org_id", brandOrg.id).single();
@@ -3959,6 +3981,12 @@ async function main() {
     const confirmTitle = await page.locator("#test-data-title").innerText();
     check(/^Delete \d+ compan/.test(confirmTitle), `deleting asks first ("${confirmTitle}")`);
     await record(page, "Confirm", "nothing is deleted until staff confirm");
+    // On a stack testers share, nothing is deleted (E2E_KEEP_TEST_DATA=1):
+    // other runs' companies are what they are looking at.
+    if (process.env.E2E_KEEP_TEST_DATA) {
+      await page.locator(".admin-testdata-modal .secondary-btn, [aria-labelledby='test-data-title'] .secondary-btn").first().click().catch(() => {});
+      console.log("  (E2E_KEEP_TEST_DATA: the delete itself is skipped on a shared stack)");
+    } else {
     await clickButton(page, "delete test data");
     await waitFor(page, ".admin-testdata [role=status]", 60000);
     const purgeResult = await page.locator(".admin-testdata [role=status]").innerText();
@@ -3971,6 +3999,7 @@ async function main() {
     const demoNames = ["Demo Brand", "Demo Factory", "Ningbo Loomworks", "Atlas Knit Studio", "Fresh Thread Studio", "Kowloon Sourcing Partners"];
     const { count: demoLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("name", demoNames);
     check(demoLeft === demoNames.length, `the demo companies are untouched (${demoLeft} of ${demoNames.length})`);
+    }
 
     // ================= CREDITS =================
     // The factory's credits come from the database: 500 when verified, minus
@@ -4086,7 +4115,7 @@ async function main() {
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it (v3: in the Registry row's details).
       await recordRegistryFound(page, "E2E: the registration document shows this number and name");
-      await clickButton(page, "approve as");
+      await approveWithMessage(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
       check(Number(invitedBalance) === 500, `the invited factory got its 500 on verification (${invitedBalance})`);

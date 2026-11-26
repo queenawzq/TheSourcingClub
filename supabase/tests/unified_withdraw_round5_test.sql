@@ -3,8 +3,9 @@
 -- One answer for owner and member: factory_balance() takes Stripe's payout fee
 -- out of Paid out and Total, as it does PayPal's and Wise's; members read
 -- their company's Stripe withdrawals and still cannot withdraw. A disputed
--- step is held: never Available, never given a clearing date, and the factory
--- is told when it is put on hold and when the hold is lifted. PayPal / Wise
+-- step is held: never Available, never given a clearing date. Since paused
+-- payments (20261124100000) the per-step "on hold" / "Hold lifted" notices
+-- are no longer sent (a payment review tells the factory). PayPal / Wise
 -- "paid out to you" says what arrived.
 --
 -- Fixtures: slugs pgtap-r5-*, ids cc5?xxxx-...; every count is scoped to them.
@@ -106,7 +107,7 @@ begin
 end;
 $f$;
 create function pg_temp.sum4(j jsonb) returns bigint language sql as $f$
-  select (j ->> 'awaiting_cents')::bigint + (j ->> 'available_cents')::bigint + (j ->> 'pending_cents')::bigint + (j ->> 'processing_cents')::bigint + (j ->> 'paid_out_cents')::bigint;
+  select (j ->> 'awaiting_cents')::bigint + coalesce((j ->> 'disputed_cents')::bigint, 0) + (j ->> 'available_cents')::bigint + (j ->> 'pending_cents')::bigint + (j ->> 'processing_cents')::bigint + (j ->> 'paid_out_cents')::bigint;
 $f$;
 create function pg_temp.notes(k text, subject uuid) returns text language sql as $f$
   select string_agg(title || ' | ' || body, ' || ' order by created_at, title like 'Hold lifted%') from public.notifications
@@ -181,7 +182,7 @@ reset role;
 
 -- ===========================================================================
 -- 3. A disputed step is held: never Available, never given a clearing date.
---    The factory is told, once, and told again when the hold is lifted.
+--    No per-step hold notice is sent (paused payments, 20261124100000).
 -- ===========================================================================
 select ok((pg_temp.bal_as('01') ->> 'next_cleared_at') is not null, 'before the dispute, the clearing step gives a clearing date');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, true)', pg_temp.pay(2))),
@@ -194,17 +195,15 @@ select ok((select bool_and((r ->> 'held')::boolean) and bool_and(r ->> 'held_rea
 select is(pg_temp.bal_as('01') ->> 'next_cleared_at', null, 'and no clearing date for the balance: it is not becoming available');
 select is((pg_temp.bal_as('01') -> 'parts' ->> 'disputed_cents')::bigint, 5000::bigint, 'counted as disputed');
 select is((pg_temp.bal_as('01') ->> 'total_cents')::bigint, pg_temp.sum4(pg_temp.bal_as('01')), 'Total is still the sum of the four');
-select is(pg_temp.notes('payment_disputed', pg_temp.pay(2)),
-  'Payment for "R5 step 2" on hold | The brand disputed the charge. $50.00 is held until the dispute is settled.',
-  'the factory is told, in the approved words');
+select is(pg_temp.notes('payment_disputed', pg_temp.pay(2)), null,
+  'no per-step "on hold" notice: a payment review tells the factory instead');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, true)', pg_temp.pay(2))),
   'the same dispute recorded again');
-select is((select count(*)::int from public.notifications where kind = 'payment_disputed' and subject_id = pg_temp.pay(2)), 1, 'is not told twice');
+select is((select count(*)::int from public.notifications where kind = 'payment_disputed' and subject_id = pg_temp.pay(2)), 0, 'recorded again: still no per-step notice');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, false)', pg_temp.pay(2))),
   'TSC wins the dispute');
-select is(pg_temp.notes('payment_disputed', pg_temp.pay(2)),
-  'Payment for "R5 step 2" on hold | The brand disputed the charge. $50.00 is held until the dispute is settled. || Hold lifted on "R5 step 2" | The dispute is settled. $50.00 is no longer on hold.',
-  'and told the hold is lifted');
+select is(pg_temp.notes('payment_disputed', pg_temp.pay(2)), null,
+  'and no "Hold lifted" notice either: staff decide the review, not the dispute''s outcome');
 select ok((pg_temp.bal_as('01') ->> 'next_cleared_at') is not null, 'the step clears again on its date');
 select lives_ok(format($$select pg_temp.as_server(%L)$$, format('select public.record_payment_disputed(%L, true)', pg_temp.pay(3))),
   'a step not yet approved is disputed');

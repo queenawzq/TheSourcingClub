@@ -71,18 +71,22 @@ $f$;
 update public.order_payments set disputed_at = now() - interval '1 hour' where id = 'c39f0011-0000-0000-0000-000000000000';
 select public.tell_payment_hold(pg_temp.p(), true);
 select public.tell_payment_hold(pg_temp.p(), true);
-select is(pg_temp.told('payment_disputed'), 1::bigint, 'the hold is told once (webhook and withdraw call both)');
-select ok((select dedupe_key from public.notifications where org_id = 'c39b0000-0000-0000-0000-0000000000f1' and kind = 'payment_disputed')
-          like 'payment_hold:c39f0011-0000-0000-0000-000000000000:%:100000', 'its key: the payment, the dispute, the amount held');
+-- Paused payments (20261124100000): the per-step hold is no longer told; a payment review is.
+select is(pg_temp.told('payment_disputed'), 0::bigint, 'the per-step hold is no longer told (webhook and withdraw call both)');
+select is((select count(*) from public.notifications where org_id = 'c39b0000-0000-0000-0000-0000000000f1' and dedupe_key like 'payment_hold:%'),
+          0::bigint, 'and no hold key is written');
 
--- A $107 refund (the factory's part $100): one event, one notice each side, in the same words as before.
+-- A $107 refund after approval: one event, one review notice, the factory's earning untouched (20261124100000).
 select public.record_payment_refund_amount('c39f0011-0000-0000-0000-000000000000', 'pi_pgtap_s2_11', 10700);
 select public.record_payment_refund_amount('c39f0011-0000-0000-0000-000000000000', 'pi_pgtap_s2_11', 10700);
 select is((select count(*) from public.payment_events where payment_id = 'c39f0011-0000-0000-0000-000000000000' and stripe_ref = 'pi_pgtap_s2_11'), 1::bigint,
           'recorded once, with its Stripe id');
-select is((select body from public.notifications where org_id = 'c39b0000-0000-0000-0000-0000000000f1' and kind = 'payment_refunded'),
-          'The brand was refunded $107.00. Your earnings from S2 request 11 (S2-11) went down by $100.00.', 'the factory''s notice keeps its words (tell_earnings_down)');
-select is(pg_temp.told('payment_refunded'), 1::bigint, 'and is told once');
+select is((select body from public.notifications where org_id = 'c39b0000-0000-0000-0000-0000000000f1' and kind = 'payment_disputed'),
+          'A brand requested a refund for "S2 step 11" on S2 request 11 (S2-11), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+          'the factory is told its withdrawals are paused (no "earnings went down")');
+select ok(pg_temp.told('payment_disputed') = 1 and pg_temp.told('payment_refunded') = 0 and (pg_temp.p()).factory_refund_cents = 0
+          and public.factory_paused('c39b0000-0000-0000-0000-0000000000f1'),
+          'and is told once; the earning is not lowered; the factory is paused');
 
 -- Less is held now ($900): not told again (a larger amount already was).
 select public.tell_payment_hold(pg_temp.p(), true);

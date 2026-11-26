@@ -19,6 +19,7 @@ import { syncUiLanguage, useUiLanguage } from "../lib/ui-language.js";
 import FactoryLanguageLayer from "./FactoryLanguageLayer.jsx";
 import BrandEnglishLayer from "./BrandEnglishLayer.jsx";
 import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
+import { PaymentPauseNotice } from "./payment-pause.jsx";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -1116,6 +1117,7 @@ function Shell() {
       onSignOut={signOut}
     >
       <TeamNotices />
+      <PaymentPauseNotice org={activeOrg} isFactory={isFactory} />
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
     </DesignFrame>
   );
@@ -1126,6 +1128,13 @@ function Shell() {
  * another company's workspace: they were removed from one (said once), or a
  * company invited them (Join / Not now). Not in the design, which has no
  * signed-in invitation at all; drawn as a small card in the app's style.
+ */
+/**
+ * A brand paused by a payment review (a disputed payment): what it can still
+ * do, on every page, until staff unpause it (20261124100000). The database
+ * refuses the rest. Read on load, when the page is shown again, and every
+ * minute, since staff unpause it from elsewhere. No design draws it; it uses
+ * the team notices' frame.
  */
 function TeamNotices() {
   const { user, lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();

@@ -253,7 +253,7 @@ select is((pg_temp.p(41)).state::text, 'released', 'released');
 -- ===========================================================================
 select lives_ok($$select pg_temp.as_server(format('select public.record_payment_refunded(%L, %L, %L)', pg_temp.pay(61), 'pi_pgtap_r32_61', 'The payment was refunded.'))$$,
   'a disputed, unapproved step is refunded in full');
-select is(row((pg_temp.p(61)).state::text, (pg_temp.p(61)).disputed_at), row('failed'::text, null::timestamptz),
+select is(row((pg_temp.p(61)).state::text, (pg_temp.p(61)).disputed_at), row('due'::text, null::timestamptz),
   'back to pay, and the old charge''s dispute is not carried to the next');
 
 -- ===========================================================================
@@ -263,12 +263,12 @@ select lives_ok($$select pg_temp.as_server(format('select public.record_payment_
   'TSC''s own refund, whose note reads like a Stripe one');
 select lives_ok($$select pg_temp.as_server(format('select public.record_full_refund_failed(%L, %L, %L, 107000, 0, 107000, 0, null)', pg_temp.pay(62), 'pi_pgtap_r32_62', 'ch_pgtap_r32_62'))$$,
   'and that refund fails');
-select is((pg_temp.p(62)).state::text, 'failed', 'it is not funded again');
+select is((pg_temp.p(62)).state::text, 'due', 'it is not funded again');
 select is((select cause from public.payment_refund_failures where payment_id = pg_temp.pay(62)), 'stray', 'staff refund it again');
 
 select lives_ok($$select pg_temp.as_server(format('select public.record_payment_refunded(%L, %L, %L, %L)', pg_temp.pay(63), 'pi_pgtap_r32_63', 'Refunded in Stripe, any words.', 'stripe_refund'))$$,
   'a refund made in Stripe, in other words');
-select is((select cause from public.payment_events where payment_id = pg_temp.pay(63) and to_state = 'failed'), 'stripe_refund', 'its event keeps the code');
+select is((select cause from public.payment_events where payment_id = pg_temp.pay(63) and to_state = 'due'), 'stripe_refund', 'its event keeps the code');
 select lives_ok($$select pg_temp.as_server(format('select public.record_full_refund_failed(%L, %L, %L, 107000, 0, 107000, 0, null)', pg_temp.pay(63), 'pi_pgtap_r32_63', 'ch_pgtap_r32_63'))$$,
   'and it fails');
 select is(row((pg_temp.p(63)).state::text, (pg_temp.p(63)).stripe_payment_intent_id), row('confirmed'::text, 'pi_pgtap_r32_63'::text),

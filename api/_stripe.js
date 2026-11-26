@@ -247,6 +247,20 @@ async function paymentForCharge(db, charge) {
 }
 
 export async function applyChargeRefund({ stripe, db, charge }) {
+  // Refunds staff made from the admin board are recorded first, by their own
+  // row (record_staff_refund, once): they never open a payment review, and
+  // the charge's total read below then holds only refunds made elsewhere
+  // (20261125100000).
+  let refunds = null;
+  if (Number(charge.amount_refunded) > 0) {
+    refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
+    const staffMade = [];
+    for (const refund of refunds.data) if (await isStaffRefund(db, refund)) staffMade.push(refund);
+    for (const refund of staffMade) await recordStaffRefundFromStripe(db, refund);
+    if (staffMade.length && staffMade.length === refunds.data.length) {
+      return (await paymentForCharge(db, charge)).payment;
+    }
+  }
   const { payment, intentId } = await paymentForCharge(db, charge);
   // Nothing refunded, and nothing recorded as refunded: nothing to say.
   if (!(Number(charge.amount_refunded) > 0) && !(Number(payment?.refunded_cents) > 0)) return null;
@@ -261,8 +275,8 @@ export async function applyChargeRefund({ stripe, db, charge }) {
   // Our own refund of a stray intent (refundIntent) can get here before it
   // was recorded, or after recording it failed: record it with the reason
   // it was made for. Recording twice writes nothing the second time.
-  const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
-  const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem);
+  refunds ??= await stripe.refunds.list({ charge: charge.id, limit: 100 });
+  const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem && refund.metadata.tsc_problem !== "staff_refund");
   if (ours && charge.refunded) {
     // Never 'stripe_refund': that cause means a refund made in Stripe, which
     // record_full_refund_failed may fund again if it fails (20261121340000).
@@ -278,9 +292,19 @@ export async function applyChargeRefund({ stripe, db, charge }) {
     return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason: REFUNDED, cause: "stripe_refund" });
   }
   // Only ever raises the total: an older copy of the charge never lowers it.
-  return rpc(db, "record_payment_refund_amount", {
+  const recorded = await rpc(db, "record_payment_refund_amount", {
     target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
   });
+  // Which review each dashboard refund belongs to, so one that fails gives
+  // back only its own review's takes (20261125100000).
+  const dashboard = [];
+  for (const refund of refunds.data) {
+    if (["succeeded", "pending"].includes(refund.status) && !refund.metadata?.tsc_problem) {
+      dashboard.push({ id: refund.id, amount: Number(refund.amount) || 0, created: Number(refund.created) || null });
+    }
+  }
+  if (dashboard.length) await rpc(db, "note_review_refunds", { target_payment: payment.id, refunds: dashboard });
+  return recorded;
 }
 
 /** What the brand reads when a cancelled order's held money goes back. */
@@ -363,6 +387,13 @@ export async function refundCancelledPayment({ stripe, db, paymentId }) {
  * row, or null.
  */
 export async function applyRefundUpdate({ stripe = null, db, refund }) {
+  // A refund staff made from the admin board: its own row says what happens
+  // (20261125100000). A full refund of a held payment that failed goes on to
+  // record_full_refund_failed below, as a refund made in Stripe does.
+  if (refund?.metadata?.staff_refund_id && await isStaffRefund(db, refund)) {
+    const row = await recordStaffRefundFromStripe(db, refund);
+    if (!row?.reset_payment || !["failed", "canceled"].includes(refund.status)) return row;
+  }
   if (!["failed", "canceled"].includes(refund?.status)) return null;
   const paymentId = refund.metadata?.tsc_problem === "cancelled_order" ? refund.metadata.payment_id : null;
   if (!paymentId) {
@@ -404,6 +435,7 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
     if (!payment) return null;
     await rpc(db, "record_payment_refund_failed", {
       target_payment: payment.id, payment_intent: intentId, refunded_cents: Number(charge.amount_refunded) || 0,
+      failed_refund: refund.id,
     });
     // A refund made since that read is never lost: the charge as it is now,
     // recorded by the function that only raises (20261121240000).
@@ -412,6 +444,150 @@ export async function applyRefundUpdate({ stripe = null, db, refund }) {
   const failure = new Error(`refund ${refund.status}`);
   failure.refundStatus = refund.status;
   return rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
+}
+
+/**
+ * What staff read when Stripe refuses or fails a refund they made from the
+ * admin board, by Stripe's code: never Stripe's message, which can quote a key.
+ */
+export function staffRefundFailure(failure) {
+  const code = failure?.code ?? failure?.raw?.code;
+  if (code === "charge_disputed") return "The bank is deciding this payment.";
+  if (code === "insufficient_funds" || code === "balance_insufficient") {
+    return "TSC's Stripe balance is too low. Add funds in Stripe, then try again.";
+  }
+  if (code === "charge_expired_for_refund") return "This charge is too old to refund to the card. Refund the brand by bank.";
+  // T2 A7: Stripe's reason in words, and what to do next.
+  if (code === "resource_missing") return "Stripe has no record of this payment, so nothing was refunded. Refund the brand another way.";
+  if (code === "charge_already_refunded") return "Stripe has already refunded this payment in full. Nothing more was refunded.";
+  if (code === "amount_too_large") return "That is more than Stripe still holds of this payment. Nothing was refunded. Refund a smaller amount.";
+  if (code === "charge_disputed_refund" || code === "refund_disputed_payment") return "The bank is deciding this payment.";
+  if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
+    return "Stripe refused TSC's key. Nothing was refunded.";
+  }
+  const why = REFUND_FAILURE_WORDS[failure?.refundFailureReason];
+  if (failure?.refundStatus || why) return `Stripe refused the refund${why ? `: ${why}` : ""}. Nothing was refunded, and the factory's balance is unchanged.`;
+  return "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged. Open the payment in Stripe to see why.";
+}
+
+/** A refund's failure_reason, in words staff read (never Stripe's message). */
+const REFUND_FAILURE_WORDS = {
+  expired_or_canceled_card: "the card was closed",
+  lost_or_stolen_card: "the card was reported lost or stolen",
+  declined: "the card's bank declined it",
+  merchant_request: "it was cancelled",
+}
+
+/**
+ * Whether a Stripe refund is one staff made from the admin board: it names a
+ * claim, and that claim's PaymentIntent and amount are the refund's
+ * (20261125100000). Anything else, an unknown id included, is a refund made
+ * in Stripe's dashboard and opens a review.
+ */
+async function isStaffRefund(db, refund) {
+  const id = refund?.metadata?.staff_refund_id;
+  if (!id) return false;
+  const intent = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+  return Boolean(await rpc(db, "staff_refund_matches", { target_refund: id, payment_intent: intent ?? null, amount_cents: Number(refund.amount) || 0 }));
+}
+
+/** A staff refund as Stripe reports it (its webhook, or a read), recorded once by its own row. */
+async function recordStaffRefundFromStripe(db, refund) {
+  const id = refund.metadata.staff_refund_id;
+  if (["failed", "canceled"].includes(refund.status)) {
+    const failure = new Error(`refund ${refund.status}`);
+    failure.refundStatus = refund.status;
+    failure.refundFailureReason = refund.failure_reason ?? null;
+    return rpc(db, "record_staff_refund_failed", { target_refund: id, reason: staffRefundFailure(failure) });
+  }
+  return rpc(db, "record_staff_refund", { target_refund: id, stripe_refund: refund.id, refund_status: refund.status });
+}
+
+const dollars = (cents) => `$${(Number(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Make a refund staff claimed (claim_staff_refund), once. The claim's key
+ * carries its time, and a retry first looks for a refund already made for
+ * this claim (metadata.staff_refund_id), so a lost reply or an outage never
+ * refunds twice. Recording happens outside the Stripe try: a database
+ * failure after Stripe refunded leaves the claim for Check again, never
+ * marks it failed.
+ *
+ * Returns { status: "refunded" | "pending", ... } | { refused, detail } |
+ * { failed: sentence } | { retry: true }.
+ */
+export async function makeStaffRefund({ stripe, db, claim, renew = false }) {
+  const figures = { amountCents: claim.amount_cents, factoryCents: claim.factory_cents, tscCents: claim.tsc_cents };
+  if (claim.status === "made") return { status: "refunded", ...figures };
+  if (claim.status === "failed") return { failed: claim.failure ?? "Stripe refused the refund. Nothing was refunded." };
+  let refund;
+  try {
+    const listed = await stripe.refunds.list({ payment_intent: claim.intent, limit: 100 });
+    refund = listed.data.find((one) => one.metadata?.staff_refund_id === claim.staff_refund_id);
+    if (!refund) {
+      // Only what Stripe still holds of the charge can go back.
+      const intent = await stripe.paymentIntents.retrieve(claim.intent);
+      const made = listed.data.filter((one) => ["succeeded", "pending"].includes(one.status))
+        .reduce((sum, one) => sum + Number(one.amount || 0), 0);
+      const left = Math.max(0, Number(intent.amount_received || 0) - made);
+      if (claim.amount_cents > left) {
+        await rpc(db, "record_staff_refund_failed", { target_refund: claim.staff_refund_id, reason: `You can refund up to ${dollars(left)}.` });
+        return { refused: "staff_refund_over", detail: dollars(left) };
+      }
+      // The try holds a lease: none while another may still be running at
+      // Stripe; a retry after one ran out gets a new key, so Stripe can't
+      // replay a stored error (staff_refund_attempt).
+      const attempt = await rpc(db, "staff_refund_attempt", { target_refund: claim.staff_refund_id, renew });
+      if (attempt?.busy) return { retry: true };
+      if (attempt?.status && attempt.status !== "claimed") return attempt.status === "made" ? { status: "refunded", ...figures } : { failed: attempt.failure ?? "Stripe refused the refund. Nothing was refunded, and the factory's balance is unchanged." };
+      claim = { ...claim, ...attempt };
+      refund = await stripe.refunds.create(
+        {
+          payment_intent: claim.intent,
+          amount: claim.amount_cents,
+          reason: "requested_by_customer",
+          metadata: { payment_id: claim.payment_id, order_id: claim.order_id, staff_refund_id: claim.staff_refund_id, tsc_problem: "staff_refund" },
+        },
+        { idempotencyKey: claim.key },
+      );
+    }
+    if (!["succeeded", "pending"].includes(refund.status)) {
+      const failure = new Error(`refund ${refund.status}`);
+      failure.refundStatus = refund.status;
+      failure.refundFailureReason = refund.failure_reason ?? null;
+      throw failure;
+    }
+  } catch (failure) {
+    logStripeFailure("staff-refund", failure, { staffRefundId: claim.staff_refund_id });
+    // Unknown outcome: Stripe down, or another try with the same key still
+    // running. The claim stays; Check again finds it by its id.
+    if (OUTAGE_TYPES.has(failure?.type) || failure?.type === "StripeIdempotencyError") return { retry: true };
+    const sentence = staffRefundFailure(failure);
+    await rpc(db, "record_staff_refund_failed", { target_refund: claim.staff_refund_id, reason: sentence });
+    return { failed: sentence };
+  }
+  await rpc(db, "record_staff_refund", { target_refund: claim.staff_refund_id, stripe_refund: refund.id, refund_status: refund.status });
+  return { status: refund.status === "pending" ? "pending" : "refunded", ...figures };
+}
+
+/** The daily job: claims Stripe couldn't be asked about, finished. Returns counts. */
+export async function settleStaffRefunds({ stripe, db }) {
+  const counts = { refunded: 0, failed: 0, retry: 0 };
+  const ids = await rpc(db, "staff_refunds_unsettled", {});
+  for (const id of ids ?? []) {
+    try {
+      const claim = await rpc(db, "staff_refund_for_server", { target_refund: id });
+      if (!claim) continue;
+      const outcome = await makeStaffRefund({ stripe, db, claim, renew: true });
+      if (outcome.status) counts.refunded += 1;
+      else if (outcome.retry) counts.retry += 1;
+      else counts.failed += 1;
+    } catch (failure) {
+      logStripeFailure("staff-refund-sweep", failure, { staffRefundId: id });
+      counts.retry += 1;
+    }
+  }
+  return counts;
 }
 
 /**
@@ -576,7 +752,27 @@ export function disputeFeeCents(dispute) {
  * back to the brand, as a refund: record_payment_dispute_lost, which also
  * ends the hold). Returns true while it is on hold.
  */
+/**
+ * A dispute's payment review, one per dispute id (20261125100000): Stripe's
+ * status drives it. An inquiry pauses nobody; a chargeback pauses the brand
+ * (and the factory, on money in its balance); won resumes the factory by
+ * itself; lost waits for staff's Approve or Decline.
+ */
+async function recordDisputeReview(db, paymentId, dispute) {
+  const dueBy = Number(dispute.evidence_details?.due_by);
+  const review = await rpc(db, "record_payment_review_dispute", {
+    target_payment: paymentId, dispute_id: dispute.id, status: dispute.status ?? null,
+    amount_cents: Number.isFinite(Number(dispute.amount)) ? Number(dispute.amount) : null,
+    due_by: dueBy > 0 ? new Date(dueBy * 1000).toISOString() : null,
+    fee_cents: disputeFeeCents(dispute),
+  });
+  // Stripe's reason, for staff deciding fault (T2 A6).
+  if (dispute.reason) await rpc(db, "record_payment_review_dispute_reason", { dispute_id: dispute.id, reason: dispute.reason });
+  return review;
+}
+
 export async function applyDispute({ db, paymentId, dispute }) {
+  if (dispute?.id) await recordDisputeReview(db, paymentId, dispute);
   const state = disputeState({ disputed: true }, dispute);
   if (state === "lost") {
     await rpc(db, "record_payment_dispute_lost", {
@@ -600,7 +796,10 @@ export async function applyDispute({ db, paymentId, dispute }) {
 export function disputeState(charge, dispute) {
   if (!charge?.disputed) return null;
   if (dispute?.status === "lost") return "lost";
-  return dispute && ["won", "warning_closed"].includes(dispute.status) ? null : "open";
+  // An inquiry holds nothing a brand or factory reads (20261125100000, T1):
+  // only a chargeback puts the step on hold. Staff see the inquiry on the board.
+  if (String(dispute?.status ?? "").startsWith("warning_")) return null;
+  return dispute && ["won", "prevented"].includes(dispute.status) ? null : "open";
 }
 
 /**
@@ -634,11 +833,51 @@ export async function applyDisputeEvent({ stripe, db, dispute }) {
   const payment = await paymentForDispute({ stripe, db, dispute });
   if (!payment) return null;
   let current = dispute;
-  if (["won", "warning_closed"].includes(dispute?.status)) {
+  if (["won", "warning_closed", "prevented"].includes(dispute?.status)) {
     const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
     if (chargeId) current = (await disputeForCharge(stripe, await stripe.charges.retrieve(chargeId))) ?? dispute;
   }
-  return applyDispute({ db, paymentId: payment.id, dispute: current });
+  // One review per dispute (20261125100000): this event's own dispute is
+  // recorded on its own review, even when a newer one on the charge decides
+  // the step's hold.
+  if (current?.id && dispute?.id && current.id !== dispute.id) await recordDisputeReview(db, payment.id, dispute);
+  const held = await applyDispute({ db, paymentId: payment.id, dispute: current });
+  await cancelPausedBrandIntents({ stripe, db, paymentId: payment.id });
+  return held;
+}
+
+/**
+ * A brand paused by a chargeback can't finish paying on a page it opened
+ * before (20261125100000): its open PaymentIntents are cancelled, best effort,
+ * and each payment lets go of its intent, so a new one is made once the brand
+ * is unpaused. A failure here never stops the webhook.
+ */
+export async function cancelPausedBrandIntents({ stripe, db, paymentId }) {
+  try {
+    const { data: row } = await db.from("order_payments").select("production_orders (brand_org_id)").eq("id", paymentId).maybeSingle();
+    const brand = Array.isArray(row?.production_orders) ? row.production_orders[0]?.brand_org_id : row?.production_orders?.brand_org_id;
+    if (!brand) return 0;
+    const open = await rpc(db, "paused_brand_open_intents", { target_brand: brand });
+    let cancelled = 0;
+    for (const { payment_id: id, payment_intent: intentId } of open ?? []) {
+      try {
+        const intent = await stripe.paymentIntents.retrieve(intentId);
+        if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status)) {
+          await stripe.paymentIntents.cancel(intentId);
+          await rpc(db, "forget_cancelled_intent", { target_payment: id, payment_intent: intentId });
+          cancelled += 1;
+        } else if (intent.status === "canceled") {
+          await rpc(db, "forget_cancelled_intent", { target_payment: id, payment_intent: intentId });
+        }
+      } catch (failure) {
+        logStripeFailure("cancel-paused-intent", failure, { paymentId: id });
+      }
+    }
+    return cancelled;
+  } catch (failure) {
+    logStripeFailure("cancel-paused-intents", failure, { paymentId });
+    return 0;
+  }
 }
 
 /**
@@ -951,4 +1190,53 @@ export async function saveConnectAccount(db, orgId, account) {
 /** Answer with a status and a JSON body, the same shape on Vercel and in dev. */
 export function reply(response, status, body) {
   response.status(status).json(body);
+}
+
+/**
+ * The cards a brand disputed a charge with (20261125100000, T1 #9, Round 2
+ * #9b): any chargeback, open or lost, paused or not. The Fund page never
+ * offers them again; the brand can add another card. Read from Stripe by each
+ * dispute's charge. Best effort: a card whose read fails is still offered.
+ */
+export const DISPUTED_CARD = "This card can't be used. Use another card.";
+
+/**
+ * Whether a card the brand is about to pay with had a chargeback from this
+ * brand (T2 R1): by its own id or its fingerprint, so a disputed card typed
+ * in again is refused too. Reads the card from Stripe. Returns true to refuse.
+ */
+export async function cardDisputedByBrand({ stripe, db, orgId, paymentMethodId }) {
+  const disputed = await disputedCardsFor({ stripe, db, orgId });
+  if (!disputed.ids.size && !disputed.fingerprints.size) return false;
+  if (disputed.ids.has(paymentMethodId)) return true;
+  const method = await stripe.paymentMethods.retrieve(paymentMethodId);
+  return disputed.fingerprints.has(method.card?.fingerprint);
+}
+
+export async function disputedCardsFor({ stripe, db, orgId }) {
+  const found = { ids: new Set(), fingerprints: new Set() };
+  try {
+    // Any chargeback, open or lost, whether or not the brand is paused
+    // (Round 2 #9b); not an inquiry, not one the bank ruled for TSC.
+    const { data: reviews } = await db.from("payment_reviews").select("stripe_ref")
+      .eq("brand_org_id", orgId).eq("cause", "dispute")
+      .not("state", "in", "(inquiry,inquiry_closed,resumed)");
+    for (const { stripe_ref: disputeId } of reviews ?? []) {
+      if (!disputeId) continue;
+      try {
+        const dispute = await stripe.disputes.retrieve(disputeId);
+        const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+        if (!chargeId) continue;
+        const charge = await stripe.charges.retrieve(chargeId);
+        if (typeof charge.payment_method === "string") found.ids.add(charge.payment_method);
+        const fingerprint = charge.payment_method_details?.card?.fingerprint;
+        if (fingerprint) found.fingerprints.add(fingerprint);
+      } catch (failure) {
+        logStripeFailure("disputed-cards", failure, { orgId });
+      }
+    }
+  } catch (failure) {
+    logStripeFailure("disputed-cards", failure, { orgId });
+  }
+  return found;
 }

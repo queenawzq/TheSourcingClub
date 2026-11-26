@@ -61,6 +61,7 @@ import {
 import { urlFor } from "../../lib/domain/documents.js";
 import { profileCompletion } from "./profile-completion.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
+import { pausedBrands, unpauseBrandOrg } from "../../lib/domain/payment-reviews.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
 import { monthLine, quantityLine } from "../rfq/resume-fields.js";
@@ -393,7 +394,30 @@ export function toAdminUser(user) {
     lastActive: user.lastActiveAt ? ago(user.lastActiveAt) : "Never",
     status: user.disabled ? "Disabled" : "Active",
     protected: user.protected,
+    // Users → Paused brands: the company, and whether it is a paused brand.
+    orgId: user.orgId ?? null,
+    paymentPaused: Boolean(user.paymentPaused),
   };
+}
+
+/**
+ * Paused brands for Users: the most pressing review first, as the database
+ * orders them ("Bank ruling pending · TSC-000052 · +2 more"), and the owner's
+ * email under the name.
+ */
+async function pausedBrandRows() {
+  return (await pausedBrands()).map((brand) => {
+    const more = Number(brand.more ?? (Number(brand.reviews) || 1) - 1) || 0;
+    return {
+      orgId: brand.org_id,
+      name: brand.name,
+      email: brand.owner_email ?? "",
+      since: shortDate(brand.since),
+      reason: [brand.reason, brand.order_number, more > 0 ? `+${more} more` : null].filter(Boolean).join(" · "),
+      // A dispute still with the bank, for the Unpause dialog's warning (bank deciding is the most pressing reason).
+      bankOrder: brand.reason === "Bank ruling pending" ? brand.order_number : null,
+    };
+  });
 }
 
 export function createAdminAdapter({ user, signOut }) {
@@ -437,6 +461,9 @@ export function createAdminAdapter({ user, signOut }) {
       // tuple; its named `rfqId` (a quote) or `id` (a request) says which.
       rfqDetail: (row) => rfqDetail(row.rfqId ?? row.id).then(toRfqDetail),
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
+      // Users → Paused brands (live only; the prototype has neither).
+      pausedBrands: pausedBrandRows,
+      unpauseBrandOrg,
 
       /**
        * What the company submitted, and a way to open the files.

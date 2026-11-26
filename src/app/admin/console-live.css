@@ -263,3 +263,37 @@
 @media (max-width: 600px) {
   .admin-payout-provider-row { flex-direction: column; align-items: flex-start; }
 }
+
+/* Live only: Users → Paused brands (paused payments). A fourth count, the
+   reason column, and the Unpause confirm's line. */
+.admin-user-metrics.has-paused { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 900px; }
+@media (max-width: 760px) { .admin-user-metrics.has-paused { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.admin-user-metrics > div.selected { border-color: #174df2; box-shadow: 0 0 0 1px #174df2; }
+.admin-user-metrics > div.admin-user-metric-toggle { cursor: pointer; }
+.admin-user-metrics > div.admin-user-metric-toggle:hover { border-color: #174df2; }
+.admin-user-metrics > div.admin-user-metric-toggle:focus-visible { outline: 2px solid #174df2; outline-offset: 2px; }
+.admin-users-table td.admin-user-reason { white-space: normal; }
+/* "TSC-000363" and "+2 more" never break inside themselves. */
+.admin-user-reason-part { white-space: nowrap; }
+/* Paused brands fit their box at every width, so Unpause is never off-screen (T2 A11); under 760px each row stacks. */
+.admin-paused-brands-table { min-width: 0; }
+.admin-paused-brands-table td.admin-user-reason { min-width: 160px; }
+.admin-paused-brands-table td:first-child { white-space: normal; }
+.admin-paused-brands-table .admin-user-identity strong, .admin-paused-brands-table .admin-user-identity small { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .admin-paused-brands-table thead { display: none; }
+  .admin-paused-brands-table tr, .admin-paused-brands-table td { display: block; }
+  .admin-paused-brands-table td { border-bottom: 0; padding-top: 6px; padding-bottom: 6px; }
+  .admin-paused-brands-table tr { border-bottom: 1px solid #d9dfe9; padding: 8px 0; }
+  .admin-paused-brands-table td.admin-user-reason { min-width: 0; }
+  .admin-paused-brands-table td .admin-cell-label { display: inline; color: #71809a; }
+}
+.admin-paused-brands-table .admin-cell-label { display: none; }
+.admin-review-modal .admin-modal-line { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; }
+.admin-review-modal .admin-error { margin: 0; }
+.admin-overview-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
+.admin-overview-error .admin-error { margin: 0; }
+
+/* Unpause beside Disable on a paused brand's user row. */
+.admin-user-unpause { margin-left: 8px; }
+@media (max-width: 760px) { .admin-user-unpause { margin: 8px 0 0; } }

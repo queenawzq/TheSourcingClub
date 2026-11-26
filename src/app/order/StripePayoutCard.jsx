@@ -1,5 +1,5 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
-import { clearingAfterDebt, owedToTscCause, owedToTscLine, uncoveredDebtCents, parseWithdrawAmount, pendingParts, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
+import { clearingAfterDebt, uncoveredDebtCents, parseWithdrawAmount, pendingParts, reviewLines, withdrawFeeLine, withdrawReach } from "./payment-summary.mjs";
 import { minimumWithdrawalSentence, stripeMinimumWithdrawal, withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1048,7 +1048,10 @@ export default function StripePayoutCard({
   // does not change once they do.
   // A method saved just now counts at once, before the figures are read again.
   const showWithdraw = Boolean(account?.transfers_active) || Boolean(figures?.has_method) || balanceChoices.length > 0 || balanceOff.length > 0;
-  const withdrawTitle = stripeCan || balanceCan ? undefined
+  // A payment under review pauses every withdrawal (payment reviews, 20261124100000).
+  const review = reviewLines(figures);
+  const withdrawTitle = review ? review[0]
+    : stripeCan || balanceCan ? undefined
     : paused ? "Withdrawals paused"
     : account?.transfers_active && !account.payouts_enabled && !figures?.has_method ? "Finish setup to withdraw"
     : arrivesOn && clearingAfterDebt(pendingLines.clearing, uncoveredDebtCents(figures)) > 0 ? availableOnWords(arrivesOn)
@@ -1058,7 +1061,10 @@ export default function StripePayoutCard({
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          <span className="payment-metric-label">{estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp></span>
+          <span className="payment-metric-label">{estimatedLabel ? "Available balance (estimated USD)" : "Available balance (USD)"} <PaymentHelp label="Available balance">{review
+            // While a payment is reviewed nothing can be withdrawn "now" (20261124100100).
+            ? "Money you can withdraw to your bank once withdrawals resume. This is your overall balance across all clients."
+            : "Money you can withdraw to your bank now. This is your overall balance across all clients."}</PaymentHelp></span>
           <strong data-testid="payout-balance">{figures ? formatMoney(Number(figures.available_cents) || 0, "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the figures answer.
@@ -1067,19 +1073,24 @@ export default function StripePayoutCard({
           {!figures && onPage && !figuresFailed ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : figures ? (
+            <>
+            {/* While a payment is reviewed this line takes the place of "Earnings stay…":
+                plain text in the danger colour. The Pending figure below keeps its own "?". */}
+            {review ? <p className="payout-review-line" role="status" data-testid="payout-under-review">{review.join(" ")}</p> : null}
+            {review && !heldCurrency && !paused && !(account?.transfers_active && (!account.payouts_enabled || needsMore)) ? null : (
             <p className="payout-balance-line" data-testid="payout-balance-line">{[
               // The Pending balance "?" sits right after it, not on a line of its own.
-              <>Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</>,
+              review ? null : <>Earnings stay in your balance until you withdraw them.{cardPending > 0 ? <> <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></> : null}</>,
               // Orders are in USD; an account is credited in its own currency.
               heldCurrency ? `Part of your balance is held in ${heldCurrency}, so USD amounts are estimates.` : null,
               paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).map((part, index) => <React.Fragment key={index}>{index ? " · " : ""}{part}</React.Fragment>)}</p>
+            )}
+            </>
           ) : null}
           {figures && onItsWayLine > 0 ? <p data-testid="payout-on-its-way">{`${formatMoney(onItsWayLine, "USD")} processing`}</p> : null}
-          {figures && onHoldCents > 0 ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold`}</p> : null}
-          {/* Refunded after it was withdrawn: Available above already counts it, and can read below zero. */}
-          {/* Only what its earnings do not cover: covered, Available is already net of it and there is no line. */}
-          {figures && uncoveredDebtCents(figures) > 0 ? <p data-testid="payout-owed-to-tsc">{owedToTscLine(uncoveredDebtCents(figures), formatMoney, owedToTscCause(figures))}</p> : null}
+          {/* Not while paused: the review line says it, and the rows say On hold. */}
+          {figures && onHoldCents > 0 && !review ? <p data-testid="payout-on-hold">{`${formatMoney(onHoldCents, "USD")} on hold until the bank decides on a card dispute`}</p> : null}
           {payoutSetupLine ? <p data-testid="payout-how-paid">{payoutSetupLine}</p> : null}
           {withdrawalError || fromBalance.error ? <p className="live-stripe-error" role="alert">{withdrawalError ?? fromBalance.error}</p> : null}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -1101,7 +1112,7 @@ export default function StripePayoutCard({
           {isOwner ? showWithdraw ? (
             <>
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance"
-              disabled={busy || !(stripeCan || balanceCan)}
+              disabled={busy || Boolean(review) || !(stripeCan || balanceCan)}
               title={figures ? withdrawTitle : undefined}
               onClick={openWithdraw}>Withdraw</button>
             <button className="secondary-btn compact-btn" type="button" data-testid={account?.transfers_active ? undefined : "add-payout-method"} disabled={busy} onClick={openManage}>{cardWords.methods}</button>

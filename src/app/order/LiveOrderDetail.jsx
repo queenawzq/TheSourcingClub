@@ -42,11 +42,14 @@ import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { supabase } from "../../lib/supabase.js";
+import { brandPaymentRefunds, orderPause } from "../../lib/domain/payment-reviews.js";
+import { refundLineWords, refundedInFull } from "../payments/brand-payments-view.js";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
 import {
   activityLines,
+  withDisputes,
   day,
   describeOrderContract,
   initials,
@@ -78,6 +81,8 @@ function missingFor(milestone, kind, { canFund, canApprove }) {
 }
 
 const permissionWords = (missing) => missing.join(" and ");
+/** A brand paused by a payment review: the hover title on what it can't press. */
+const PAUSED_TITLE = "Your account is under review.";
 
 /**
  * What this step is waiting for, and from whom.
@@ -131,6 +136,7 @@ function actionFor(milestone, viewer) {
   return none;
 }
 
+
 /**
  * Where the step's money is, in words. TSC holds a funded payment until the
  * brand approves the step, then pays the factory; a payment-only step (a
@@ -138,6 +144,17 @@ function actionFor(milestone, viewer) {
  */
 function paymentLine(payment, isFactory, kind, needsMethod = null, order = null) {
   const line = paymentStateLine(payment, isFactory, kind, needsMethod, order);
+  // The brand reads each refund it got back on its own: "Refunded $50.00 · Nov 25".
+  if (!isFactory && payment?.refunds?.length) {
+    const money = (cents, currency) => formatMoney(Number(cents) || 0, currency ?? payment.currency ?? "USD");
+    const refunded = payment.refunds.map(refundLineWords);
+    const held = ["confirmed", "released"].includes(payment.state);
+    const refund = paymentRefund(payment);
+    // All of it went back: the refunds say it, with nothing held.
+    const head = held && refund.full ? null : line;
+    const lost = held && refund.lost > 0 ? `${money(refund.lost)} reversed by your bank` : null;
+    return [head, ...refunded, lost].filter(Boolean).join(" · ");
+  }
   if (!["confirmed", "released"].includes(payment?.state) || !line) return line;
   // Refunded to the brand (by staff in Stripe), or a dispute lost, since it
   // was funded: the brand reads what went back to it, the factory its part.
@@ -173,7 +190,9 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
     case "failed":
       // The card is the brand's business: to the factory the step is simply
       // not funded yet.
-      return isFactory ? "Awaiting funding from the brand" : `Payment failed: ${plainCardReason(payment.failure_reason)}`;
+      if (isFactory) return "Awaiting funding from the brand";
+      // Refunded in full and set back to be funded again: not a failure.
+      return refundedInFull(payment) ? "Awaiting funding" : `Payment failed: ${plainCardReason(payment.failure_reason)}`;
     case "sent":
       // A bank-wire claim from before payments moved to Stripe.
       return isFactory
@@ -182,6 +201,9 @@ function paymentStateLine(payment, isFactory, kind, needsMethod = null, order = 
     case "confirmed":
       // Held on a cancelled order it is on its way back to the brand: both sides read that.
       if (refundPendingWord(payment, order)) return refundPendingWord(payment, order);
+      // Under a chargeback not resolved yet (order_pause's disputed_payment_ids):
+      // the money isn't held for the step any more.
+      if (payment.disputed) return "Disputed";
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${factoryWord(payment)} · ${needsMethod}` : factoryWord(payment);
@@ -209,7 +231,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
   if (milestone.state === "complete") {
     // Approved, then refunded (one balance: nothing was paid out yet): the
     // payment's own words, as on the payment page, not a bare "Done".
-    return payment?.state === "confirmed" || payment?.state === "released" || (payment?.state === "failed" && payment.refunded_at) ? `Done · ${money}` : "Done";
+    return payment?.state === "confirmed" || payment?.state === "released" || (payment?.state === "failed" && payment.refunded_at) || payment?.refunds?.length ? `Done · ${money}` : "Done";
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
@@ -324,6 +346,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [charges, setCharges] = useState(null);
+  // The order's brand is paused by a payment review (order_pause): the
+  // factory reads that the order is on hold, the brand can't fund, approve or
+  // propose cancelling. A failed read is "not on hold": the database refuses anyway.
+  const [onHold, setOnHold] = useState(false);
   // A factory with no withdrawal method (factory_balance().no_saved_method:
   // the server's one rule, as the notices and the card). A failed read says
   // nothing rather than something wrong.
@@ -346,7 +372,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     try {
-      const [row, steps, posted, events, charged, earning] = await Promise.all([
+      const [row, steps, posted, events, charged, earning, hold, refunds] = await Promise.all([
         getOrder(orderId),
         listMilestones(orderId),
         listOrderUpdates(orderId),
@@ -357,6 +383,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           supabase.from("order_payments").select(EARNING_COLUMNS).eq("order_id", orderId),
           supabase.rpc("factory_balance", { target_org: org.id }),
         ]).catch(() => null) : null,
+        orderPause(orderId).catch(() => null),
+        // Each refund the brand got back, drawn on its step (a failed read: none).
+        isFactory ? [] : brandPaymentRefunds(org.id).catch(() => []),
       ]);
       if (version !== loadVersion.current) return;
       if (!row) throw new Error("This order isn't available to you.");
@@ -366,9 +395,19 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         ? earningWordsFor(earningRows.data, balance.data, row) : new Map();
       if (balance && !balance.error && balance.data) setNoMethod(balance.data.no_saved_method === true);
       setCharges(charged);
+      setOnHold(Boolean(hold?.on_hold));
       setOrder(row);
-      setMilestones((steps ?? []).map((milestone) => (milestone.payment && words.has(milestone.payment.id)
-        ? { ...milestone, payment: { ...milestone.payment, word: words.get(milestone.payment.id) } } : milestone)));
+      const disputedIds = new Set(hold?.disputed_payment_ids ?? []);
+      const refundsFor = (paymentId) => (refunds ?? []).filter((refund) => refund.order_id === orderId && refund.payment_id === paymentId)
+        .sort((a, b) => String(a.refunded_at).localeCompare(String(b.refunded_at)));
+      setMilestones((steps ?? []).map((milestone) => {
+        if (!milestone.payment) return milestone;
+        const word = words.has(milestone.payment.id) ? { word: words.get(milestone.payment.id) } : {};
+        const listed = refundsFor(milestone.payment.id);
+        const disputed = disputedIds.has(milestone.payment.id) ? { disputed: true } : {};
+        return word.word || listed.length || disputed.disputed
+          ? { ...milestone, payment: { ...milestone.payment, ...word, ...disputed, ...(listed.length ? { refunds: listed } : {}) } } : milestone;
+      }));
       setUpdates(posted ?? []);
       setActivity(events ?? []);
     } catch (failure) {
@@ -554,6 +593,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // The activity lines name the vendor as the rest of the page does.
   const namedOrder = isFactory || !order.factory ? order : { ...order, factory: { ...order.factory, name: factoryName } };
   const running = order.status === "active";
+  const brandPaused = !isFactory && onHold;
   // What this person may do here (has_org_permission); the database refuses
   // the rest, so the rows offer only these.
   const viewer = {
@@ -578,7 +618,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     const reminder = isFactory
       ? { canRemind: running && waitingOnOther(milestone, true, posted), reminderReason: "" }
       : brandReminderState(milestone, { running, posted, current: milestone.id === order.current_milestone_id });
-    const next = actionFor(milestone, { ...viewer, posted });
+    const found = actionFor(milestone, { ...viewer, posted });
+    // Paused by a payment review: Fund, Approve and Mark done are off, the
+    // reason only in the hover title (the timeline's line says it once).
+    const next = brandPaused && found.action && !found.actionDisabled
+      ? { ...found, actionDisabled: true, actionDisabledReason: PAUSED_TITLE } : found;
     const noUpdatePermission = isFactory && !viewer.canUpdate && running
       && milestone.kind !== "payment_only" && !["complete", "cancelled"].includes(milestone.state);
     const fileCount = stepUpdates.reduce((sum, update) => sum + (update.documents?.length ?? 0), 0);
@@ -661,16 +705,21 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     if (!["confirmed", "released"].includes(payment?.state)) return sum;
     // Held on a cancelled order: already taken off whole (refundPendingCents).
     if (isFactory && refundPendingWord(payment, order)) return sum;
-    return sum + (charged && !isFactory ? Number(payment.refunded_cents ?? 0) + Number(payment.dispute_lost_cents ?? 0) : Number(payment.factory_refund_cents ?? 0));
+    return sum + (charged && !isFactory ? paymentRefund(payment).brand : Number(payment.factory_refund_cents ?? 0));
   }, 0);
+  // The brand's charged figures that went back to it, from the server when it says.
+  const brandBack = charged && charged.order.refunded_charged_cents != null
+    ? Number(charged.order.refunded_charged_cents) + Number(charged.order.reversed_charged_cents ?? 0) : wentBack;
   const header = {
     title: order.rfqs?.title || order.order_number,
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
-    total: money(charged ? charged.order.total_charged_cents : order.total_cents),
+    // What went back to the brand (refunded, reversed by its bank) is in neither
+    // figure, so total = funded + remaining (production_order_charges' own sums).
+    total: money(charged ? charged.order.total_charged_cents - brandBack : order.total_cents),
     // Money going back to the brand was never the factory's (as on its Payments page).
-    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents : order.paid_cents - (isFactory ? refundPendingCents : 0)) - wentBack)),
+    paid: money(Math.max(0, (charged ? charged.order.paid_charged_cents - brandBack : order.paid_cents - (isFactory ? refundPendingCents : 0) - wentBack))),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
     remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),
@@ -706,6 +755,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const cancelBanner = (
     <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
   );
+
 
   const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;
   const stepPopup = openMilestone && (
@@ -745,7 +795,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, paymentOnlySteps })}
+        activity={activityLines(withDisputes(activity, milestones), { order: namedOrder, viewerOrgId: org.id, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
@@ -762,6 +812,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           : undefined}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
+        // The brand is paused by a payment review: one line under the timeline's title, like the brand's.
+        timelineNotice={onHold && order.status !== "cancelled" ? "This order is on hold while our team reviews a payment." : ""}
       />
       {stepPopup}
       {cancel.dialog}
@@ -776,7 +828,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         milestones={milestones}
         reload={load}
         onBack={() => navigate("/orders")}
-        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
+        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel, cancelLocked: brandPaused && proposeCancel ? PAUSED_TITLE : "" }}
         // Release funds pays (begin_payment_checkout); anyone else stays on the order.
         onFund={viewer.canFund ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
         locked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
@@ -806,7 +858,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order: namedOrder, viewerOrgId: org.id, chargedByStep, paymentOnlySteps })}
+        activity={activityLines(withDisputes(activity, milestones), { order: namedOrder, viewerOrgId: org.id, chargedByStep, paymentOnlySteps })}
         files={orderFiles(requestFiles, namedUpdates, milestones)}
         onOpenFile={openFile}
         contract={contract}
@@ -826,6 +878,13 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}
         onCancelOrder={proposeCancel}
+        cancelLocked={brandPaused && proposeCancel ? PAUSED_TITLE : ""}
+        // The factory's cancellation can still be accepted while paused, so the
+        // line names only what is refused then.
+        timelineNotice={!(brandPaused && running) ? ""
+          : order.cancel_proposed_by_org && order.cancel_proposed_by_org !== org.id
+            ? "Your account is under review. You can't fund or approve until it's done."
+            : "Your account is under review. You can't fund, approve or cancel until it's done."}
       />
       {stepPopup}
       {cancel.dialog}

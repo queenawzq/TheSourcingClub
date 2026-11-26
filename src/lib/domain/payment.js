@@ -22,7 +22,7 @@ const PAYMENT_COLUMNS = `
   released_at, released_note, created_at,
   charged_cents, payment_method_type, payment_method_label, failure_reason,
   processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at,
-  service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, dispute_lost_cents, factory_refund_cents
+  service_fee_cents, processing_fee_cents, charge_cents, refunded_cents, manual_refunded_cents, dispute_lost_cents, factory_refund_cents
 `;
 
 export async function listPayments(orderId) {
@@ -190,7 +190,7 @@ const RELEASE_REFUSALS = {
   reveal_not_owed: "TSC doesn't owe this company a payout by hand, so its number stays hidden.",
   no_number: "No full account number is on file. Ask the factory to add it on its Payments page.",
   // The rules every withdrawal follows (20261121340000).
-  payout_owes_tsc: (cause) => `The factory owes TSC ${cause?.details || "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).",
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
   payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",
@@ -225,10 +225,12 @@ export async function releasePayment(paymentId, note, paidToChangedAt = null) {
  * One account's full number, for a person about to pay it. The database records
  * who asked before answering. The caller shows it and forgets it.
  */
-export async function revealPayoutNumber(accountId) {
+export async function revealPayoutNumber(accountId, { paymentId = null, withdrawalId = null } = {}) {
   try {
+    // What it is for (the step or the withdrawal being paid by hand): only
+    // that payout counts as being sent while the factory is paused (20261125100000).
     const rows = unwrap(
-      await supabase.rpc("reveal_payout_account_number", { target_account: accountId }),
+      await supabase.rpc("reveal_payout_account_number", { target_account: accountId, for_payment: paymentId, for_withdrawal: withdrawalId }),
       "show this account number",
     );
     return rows[0];

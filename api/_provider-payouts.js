@@ -1,4 +1,5 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
+import { pausedPayoutRefusal } from "./_paused.js";
 import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { CANT_PAY_FROM_BALANCE } from "./_wise.js";
 import { callerClient, checkCharge, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
@@ -75,7 +76,7 @@ const DB_WORDS = {
   cny_statement: "Confirm the contract and invoice statement first.",
   payout_not_processing: "Nothing is under way for this payment. Reload the board.",
   // The rules every withdrawal follows (20261121340000).
-  payout_owes_tsc: (error) => `The factory owes TSC ${error.details ?? error.detail ?? "money"} (To recover, in Needs checking). Nothing is paid until that is covered.`,
+  payment_under_review: "This factory's withdrawals are paused while a payment is reviewed (Payment reviews, in Review needed).",
   payout_disputed: "The brand disputed this payment. It waits until the dispute is settled.",
   payout_refunded: "Part of this payment was returned to the brand. The factory withdraws the rest from its balance.",
   payout_refunded_no_method: "Part of this payment was returned to the brand. The factory withdraws the rest once it adds a withdrawal method.",
@@ -526,6 +527,21 @@ const money = (minor, currency) => new Intl.NumberFormat("en-US", { style: "curr
 export function payoutRoute({ provider, build, label, settings }) {
   return async function handler(request, response) {
     if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
+
+    // A paused factory: said first, before whether the provider is set up
+    // here (20261125100000). Staff only, so the answer says nothing to others.
+    {
+      const { action: asked, paymentId: askedPayment } = jsonBody(request);
+      const early = serviceClient();
+      const caller0 = callerClient(request);
+      if (early && caller0 && (asked === "pay" || asked === "preview") && askedPayment) {
+        const staff0 = await caller0.rpc("is_platform_admin");
+        if (!staff0.error && staff0.data === true) {
+          const paused = await pausedPayoutRefusal(early, { paymentId: askedPayment });
+          if (paused) return reply(response, 409, { error: paused, kind: "payment_under_review" });
+        }
+      }
+    }
 
     let client;
     try {

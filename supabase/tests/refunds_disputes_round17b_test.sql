@@ -1,14 +1,20 @@
--- One balance, fix round 17b (20261121210000): a debt to TSC and a shrunken
--- old pool reach the withdrawals already waiting.
+-- One balance, fix round 17b (20261121210000): a refund after approval
+-- reaches the withdrawals already waiting.
 --
+-- Since paused payments (20261124100000) a refund after approval never makes
+-- the factory owe TSC and never lowers a waiting withdrawal: it opens a
+-- payment review, and every withdrawal of that factory waits (on hold) until
+-- staff decide.
 -- F1 (owner 01): $500 withdrawn by PayPal and paid, then refunded in full;
 --   a $100 PayPal withdrawal of another step was already waiting. Staff cannot
---   pay it (the factory owes TSC $500 that nothing else covers): the board
---   says so first, the factory's withdrawal reads on hold, told once.
--- F2 (owner 04): the same with a small debt its other earnings cover: paid.
+--   pay it while the review is open: the board says it is not covered, the
+--   factory's withdrawal reads on hold, and it is told once that withdrawals
+--   are paused. Nothing is owed to TSC.
+-- F2 (owner 04): the same with a smaller refund: once staff decide the
+--   review (Pay factory), the waiting withdrawal is paid.
 -- F3 (owner 05): old-pool money $300; requests of $100 then $150 wait; $100
---   of the pool payment is refunded. The newest request is $50 short: that
---   part reads Refunded and leaves Processing and Total.
+--   of the pool payment is refunded. Nothing is taken from either request;
+--   both wait on hold until staff decide.
 --
 -- Fixtures: slugs pgtap-r17b-*, ids b17?xxxx-...; every count is scoped to them.
 begin;
@@ -181,12 +187,34 @@ begin
   return j;
 end;
 $f$;
+-- Staff decide a factory's open payment review: Decline (nothing taken, TSC bears it).
+create function pg_temp.decide(n int) returns void language plpgsql as $f$
+declare r uuid;
+begin
+  select id into r from public.payment_reviews where factory_org_id = pg_temp.org(n) and state in ('open', 'decide');
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  perform public.decide_payment_review(r, 'no_fault', null, 'pgTAP: TSC bears it');
+  reset role;
+end;
+$f$;
+create function pg_temp.reviewed(n int) returns boolean language plpgsql as $f$
+declare b boolean;
+begin
+  perform pg_temp.act_as('02');
+  set local role authenticated;
+  select exists (select 1 from jsonb_array_elements(public.payment_review_board()) x
+                  where (x ->> 'factory_org_id')::uuid = pg_temp.org(n) and (x ->> 'factory_paused')::boolean) into b;
+  reset role;
+  return b;
+end;
+$f$;
 create function pg_temp.wd(n int, w uuid) returns jsonb language sql as $f$
   select x from jsonb_array_elements(pg_temp.bal(n) -> 'withdrawals') x where x ->> 'id' = w::text;
 $f$;
 
 -- ===========================================================================
--- 1. A debt nothing else covers stops a withdrawal already waiting.
+-- 1. A refund after approval stops a withdrawal already waiting: paused, no debt.
 -- ===========================================================================
 select lives_ok($$select pg_temp.pay_out(pg_temp.req(1, 50000))$$, 'F1 withdrew its $500 deposit by PayPal, paid');
 select set_config('tsc.r17b_w1', pg_temp.req(1, 10000)::text, true);
@@ -194,29 +222,34 @@ select is((select payment_id from public.payment_takes where factory_withdrawal_
   'a $100 withdrawal of the fit sample waits');
 select is(pg_temp.staff_row(current_setting('tsc.r17b_w1')::uuid) ->> 'covered', 'true', 'staff could pay it');
 select lives_ok($$select pg_temp.refund(1, 53500)$$, 'the deposit''s charge is refunded in full after it was withdrawn');
-select is((pg_temp.bal(1) ->> 'owed_to_tsc_cents')::bigint, 50000::bigint, 'F1 owes TSC $500');
+select ok((pg_temp.bal(1) ->> 'owed_to_tsc_cents')::bigint = 0 and public.factory_paused(pg_temp.org(1)),
+  'F1 owes TSC nothing: a payment review pauses it instead');
 select ok((pg_temp.staff_row(current_setting('tsc.r17b_w1')::uuid) ->> 'covered')::boolean = false
-      and (pg_temp.staff_row(current_setting('tsc.r17b_w1')::uuid) ->> 'owes_tsc_cents')::bigint = 50000,
-  'the board says it is not covered, and by how much the factory owes TSC (its To recover row)');
-select ok(exists (select 1 from jsonb_array_elements(pg_temp.recover(1)) x where (x ->> 'amount_cents')::bigint = 50000), 'which is on Needs checking');
+      and (pg_temp.staff_row(current_setting('tsc.r17b_w1')::uuid) ->> 'owes_tsc_cents')::bigint = 0,
+  'the board says it is not covered, and that nothing is owed to TSC');
+select ok(pg_temp.recover(1) = '[]'::jsonb and pg_temp.reviewed(1), 'Needs checking has nothing to recover; the payment review board has it');
 select pg_temp.act_as('02'); set local role authenticated;
-select throws_ok($$select public.claim_withdrawal(current_setting('tsc.r17b_w1')::uuid)$$, '22023', 'the factory owes TSC $500.00',
-  'staff Pay is refused, naming the debt');
+select throws_ok($$select public.claim_withdrawal(current_setting('tsc.r17b_w1')::uuid)$$, '22023', 'Withdrawals are paused while a payment is reviewed.',
+  'staff Pay is refused while the payment is reviewed');
 reset role;
 select is((select status from public.factory_withdrawals where id = current_setting('tsc.r17b_w1')::uuid), 'requested', 'nothing was sent');
 select is(pg_temp.wd(1, current_setting('tsc.r17b_w1')::uuid) ->> 'word', 'on_hold', 'the factory''s withdrawal reads on hold');
-select is((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal'
-            and subject_id = current_setting('tsc.r17b_w1')::uuid and title = 'Withdrawal of $100.00 on hold'
-            and body = 'You owe TSC $500.00 for a payment refunded after you withdrew it. This withdrawal is on hold until your earnings cover that amount.'), 1,
-  'and the factory is told, once, what it owes (20261121230000: not the refunded step, not to withdraw again)');
+select ok((select count(*)::int from public.notifications where org_id = pg_temp.org(1) and kind = 'withdrawal'
+             and subject_id = current_setting('tsc.r17b_w1')::uuid and title = 'Withdrawal of $100.00 on hold') = 0
+      and pg_temp.told(pg_temp.org(1), pg_temp.pay(1))
+          = 'Withdrawals paused | A brand requested a refund for "R17b bulk deposit" on R17b request 1 (R17b-1), so our team is reviewing the payment. Withdrawals are paused until the review is done.',
+  'and the factory is told, once, that withdrawals are paused (no "you owe TSC")');
 select ok(pg_temp.adds_up(pg_temp.bal(1)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 
--- A small debt the factory's other earnings cover: paid as before.
+-- A smaller refund: paused too, and paid as before once staff decide the review.
 select lives_ok($$select pg_temp.pay_out(pg_temp.req(2, 50000))$$, 'F2 withdrew its $500 deposit by PayPal, paid');
 select set_config('tsc.r17b_w2', pg_temp.req(2, 10000)::text, true);
 select lives_ok($$select pg_temp.refund(4, 10700)$$, '$107 of the deposit''s charge is refunded after it was withdrawn');
-select is((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, 10000::bigint, 'F2 owes TSC $100, and has $200 more earned');
-select is(pg_temp.staff_row(current_setting('tsc.r17b_w2')::uuid) ->> 'covered', 'true', 'its waiting withdrawal is still covered');
+select ok((pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint = 0 and public.factory_paused(pg_temp.org(2)),
+  'F2 owes TSC nothing; a payment review pauses it');
+select is(pg_temp.staff_row(current_setting('tsc.r17b_w2')::uuid) ->> 'covered', 'false', 'its waiting withdrawal waits on the review');
+select lives_ok($$select pg_temp.decide(2)$$, 'staff decide the review: Pay factory');
+select is(pg_temp.staff_row(current_setting('tsc.r17b_w2')::uuid) ->> 'covered', 'true', 'its waiting withdrawal is covered again');
 select pg_temp.act_as('02'); set local role authenticated;
 select lives_ok($$select public.claim_withdrawal(current_setting('tsc.r17b_w2')::uuid)$$, 'and staff can pay it');
 reset role;
@@ -238,23 +271,26 @@ select is((select array_agg((select sum(t.amount_cents) from public.payment_take
   array[10000, 15000]::bigint[], 'F3 asked for $100 then $150 of its $300 old-pool money');
 select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 5000, pending 0, processing 25000, paid out 0, total 30000', 'F3 before');
 select lives_ok($$select pg_temp.refund(3, 10700)$$, '$107 of the pool deposit''s charge is refunded');
-select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 0, pending 0, processing 20000, paid out 0, total 20000',
-  'the $50 the pool no longer holds leaves Processing and Total');
+select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 5000, pending 0, processing 25000, paid out 0, total 30000',
+  'nothing is taken from the pool requests or the balance: a payment review pauses F3');
 select ok(pg_temp.adds_up(pg_temp.bal(3)), 'Total = Awaiting + Available + Pending + Processing + Paid out');
 select is(pg_temp.wd(3, current_setting('tsc.r17b_p2')::uuid) -> 'parts',
-  '[{"word": "waiting", "amount_cents": 10000}, {"word": "refunded", "amount_cents": 5000}]'::jsonb,
-  'the newest request: $100 it still holds, $50 refunded');
+  '[{"word": "on_hold", "amount_cents": 15000}]'::jsonb,
+  'the newest request: all $150 still held by it, on hold, nothing refunded out of it');
 select is(pg_temp.wd(3, current_setting('tsc.r17b_p1')::uuid) -> 'parts' -> 0 ->> 'amount_cents', '10000', 'the older one keeps its $100');
 select is((select count(*)::int from public.notifications where org_id = pg_temp.org(3) and kind = 'withdrawal'
-            and subject_id = current_setting('tsc.r17b_p2')::uuid and title = 'Withdrawal of $150.00 on hold'), 1, 'the factory is told, once');
+            and subject_id = current_setting('tsc.r17b_p2')::uuid and title = 'Withdrawal of $150.00 on hold'), 0,
+  'no per-withdrawal "on hold" notice: the factory is told withdrawals are paused instead');
 select pg_temp.act_as('05'); set local role authenticated;
-select is((public.my_withdrawal_balance(pg_temp.org(3)) -> 'returnable' ->> current_setting('tsc.r17b_p2'))::bigint, 10000::bigint,
-  'cancelling it gives back $100');
+select is((public.my_withdrawal_balance(pg_temp.org(3)) -> 'returnable' ->> current_setting('tsc.r17b_p2'))::bigint, 15000::bigint,
+  'cancelling it gives back all $150');
 select lives_ok($$select public.cancel_withdrawal(current_setting('tsc.r17b_p2')::uuid)$$, 'the owner cancels it');
 reset role;
 select is((select body from public.notifications where org_id = pg_temp.org(3) and kind = 'withdrawal'
-            and subject_id = current_setting('tsc.r17b_p2')::uuid and title like '%cancelled'), '$100.00 is back in your balance.', 'told truthfully');
-select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 10000, pending 0, processing 10000, paid out 0, total 20000', 'F3 after');
+            and subject_id = current_setting('tsc.r17b_p2')::uuid and title like '%cancelled'), 'The amount is back in your balance.', 'told truthfully: all of it');
+select is(pg_temp.line(pg_temp.bal(3)), 'awaiting 0, available 20000, pending 0, processing 10000, paid out 0, total 30000', 'F3 after: nothing taken');
+select is(pg_temp.wd(3, current_setting('tsc.r17b_p1')::uuid) ->> 'word', 'on_hold', 'the older request stays on hold while the review is open');
+select lives_ok($$select pg_temp.decide(3)$$, 'staff decide the review: Pay factory');
 select is(pg_temp.wd(3, current_setting('tsc.r17b_p1')::uuid) ->> 'word', 'waiting', 'the older request is covered again');
 
 -- ===========================================================================

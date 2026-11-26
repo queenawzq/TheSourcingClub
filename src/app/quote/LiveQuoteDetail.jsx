@@ -9,11 +9,16 @@ import React, { useState } from "react";
 import { FlowShell, QuoteDetailScreen } from "../../prototype/main.jsx";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
+import { useAuth } from "../../lib/auth.jsx";
+import { PAUSED_TITLE, usePaymentPause } from "../payment-pause.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
 
 export default function LiveQuoteDetail({ rfqId, quoteId }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
+  // Under review (a card dispute): Choose quote is greyed, as the contract step refuses.
+  const { activeOrg } = useAuth();
+  const paused = usePaymentPause(activeOrg?.id).brand;
   const [error, setError] = useState(null);
 
   if (loadError) return <FlowShell screen="quoteDetail" canBack={false} primaryLabel=""><p className="composer-error" role="alert">{loadError.message}</p></FlowShell>;
@@ -47,6 +52,8 @@ export default function LiveQuoteDetail({ rfqId, quoteId }) {
       onBack={() => navigate(`/rfqs/${rfqId}/quotes`)}
       onNext={toContract}
       primaryLabel="Choose quote"
+      primaryDisabled={paused}
+      primaryTitle={paused ? PAUSED_TITLE : ""}
     >
       <QuoteDetailScreen
         quote={{
@@ -61,6 +68,7 @@ export default function LiveQuoteDetail({ rfqId, quoteId }) {
         onBack={() => navigate(`/rfqs/${rfqId}/quotes`)}
         onMessage={message}
         onChoose={toContract}
+        chooseLocked={paused ? PAUSED_TITLE : ""}
       />
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>

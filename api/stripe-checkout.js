@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused, disputedCardsFor, cardDisputedByBrand, DISPUTED_CARD } from "./_stripe.js";
 import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
@@ -10,6 +10,11 @@ import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
  * due or failed). One PaymentIntent per payment: a payment that failed is
  * paid again on the same intent with a new method, and a due step whose
  * amount the brand changed has its intent's amount brought into line.
+ *
+ * { paymentId, paymentMethodId }: before the Fund page confirms, the card it
+ * is about to charge is checked (T2 R1): one the brand charged back, saved or
+ * typed in again (same fingerprint), is refused with DISPUTED_CARD, 422
+ * `card_disputed`. 200 { ok: true } otherwise.
  */
 const OPEN = new Set(["requires_payment_method", "requires_confirmation", "requires_action"]);
 
@@ -28,7 +33,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { paymentId } = jsonBody(request);
+  const { paymentId, paymentMethodId } = jsonBody(request);
   const started = await caller.rpc("begin_payment_checkout", { target_payment: paymentId });
   if (tokenRefused(started)) return reply(response, 401, { error: "sign in is required" });
   const { data: checkout, error } = started;
@@ -38,10 +43,28 @@ export default async function handler(request, response) {
     return reply(response, error.code === "42501" ? 403 : error.code === "P0002" ? 404 : error.code === "22003" ? 422 : 409, { error: error.message });
   }
 
+  if (paymentMethodId !== undefined) {
+    if (typeof paymentMethodId !== "string" || !paymentMethodId.startsWith("pm_")) return reply(response, 400, { error: "which card?" });
+    try {
+      if (await cardDisputedByBrand({ stripe, db, orgId: checkout.brand_org_id, paymentMethodId })) {
+        return reply(response, 422, { error: DISPUTED_CARD, hint: "card_disputed" });
+      }
+      return reply(response, 200, { ok: true });
+    } catch (failure) {
+      logStripeFailure("stripe-checkout-card", failure);
+      return reply(response, 502, { error: sentenceFor(failure, "This card couldn't be checked, and nothing was charged. Try again in a few minutes.") });
+    }
+  }
+
   try {
     const customer = await customerFor({ stripe, db, orgId: checkout.brand_org_id });
     const savedMethods = await stripe.paymentMethods.list({ customer, type: "card", limit: 20 });
-    const savedCards = savedMethods.data.map((method) => ({
+    // A card the brand disputed a charge with is not offered while that
+    // dispute pauses it (20261125100000, T1 #9).
+    const disputed = await disputedCardsFor({ stripe, db, orgId: checkout.brand_org_id });
+    const savedCards = savedMethods.data
+      .filter((method) => !disputed.ids.has(method.id) && !disputed.fingerprints.has(method.card?.fingerprint))
+      .map((method) => ({
       id: method.id,
       brand: (method.card?.display_brand ?? method.card?.brand ?? "Card")
         .replace(/_/g, " ")

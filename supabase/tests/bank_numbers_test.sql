@@ -157,14 +157,17 @@ select is(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_reveals'),
-  array['admin_payment_board', 'payout_number_reveal_log', 'payout_wise_recipient', 'reveal_payout_account_number'],
+  -- guard_paused_bank_withdrawal and hand_payout_revealed read only when a
+  -- number was revealed, never who or which (20261125100000).
+  array['admin_payment_board', 'guard_paused_bank_withdrawal', 'hand_payout_revealed', 'payout_number_reveal_log',
+        'payout_wise_recipient', 'reveal_payout_account_number'],
   'only these read or write the record of who looked'
 );
 select ok(not has_function_privilege('authenticated', 'public.payout_number_plain(uuid)', 'execute'), 'nobody signed in may call the decrypting function');
 select ok(not has_function_privilege('service_role', 'public.payout_number_plain(uuid)', 'execute'), 'nor the server key');
 select ok(not has_function_privilege('authenticated', 'public.payout_text_holds_number(uuid, text)', 'execute'), 'nor ask whether a text holds a number, which would tell it digit by digit');
 select ok(not has_function_privilege('anon', 'public.save_bank_payout_account(uuid, uuid, text, text, text, text, text, text, text, text, text)', 'execute'), 'a signed-out visitor cannot save one');
-select ok(not has_function_privilege('anon', 'public.reveal_payout_account_number(uuid)', 'execute'), 'nor reveal one');
+select ok(not has_function_privilege('anon', 'public.reveal_payout_account_number(uuid, uuid, uuid)', 'execute'), 'nor reveal one');
 
 -- ---------------------- who may save one -----------------------------------
 reset role; select pg_temp.act_as(2); set local role authenticated;

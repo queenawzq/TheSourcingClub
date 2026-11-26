@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { formatMoney } from "../../lib/money.js";
-import { approveWithdrawal, declineWithdrawal, owesTscSentence, previewWithdrawal } from "../../lib/domain/withdrawals.js";
+import { approveWithdrawal, declineWithdrawal, previewWithdrawal } from "../../lib/domain/withdrawals.js";
 import { withdrawalFee } from "../../shared/withdrawal-fees.mjs";
 
 /**
@@ -123,7 +123,7 @@ function WithdrawalActions({ row, onChanged }) {
   );
 }
 
-export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null }) {
+export default function WithdrawalsSection({ withdrawals, onChanged, providerLine = null, pausedOrgs = null }) {
   const open = withdrawals.filter((row) => ["requested", "paying"].includes(row.status));
   const recent = withdrawals.filter((row) => !["requested", "paying"].includes(row.status)).slice(0, 20);
   const rows = [...open, ...recent];
@@ -148,9 +148,9 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                   <tr key={row.id} data-withdrawal={row.id}>
                     <td><strong>{row.factory_name}</strong>{/* The company's balance today, which already excludes every requested and paying withdrawal: true "after" only while this one is still open. */}{["requested", "paying"].includes(row.status) ? <span className="admin-sub">Balance after: {moneyIn(row.balance_after_cents, "USD")}</span> : null}
                       {/* Said before Pay is pressed: the same refusal claim_withdrawal would give. */}
-                      {row.status === "requested" && row.covered === false ? <span className="admin-error" data-testid="withdrawal-not-covered">{Number(row.owes_tsc_cents) > 0
-                        // Linked to its "To recover" row: the debt is why Pay is refused.
-                        ? owesTscSentence(moneyIn(row.owes_tsc_cents, "USD"))
+                      {row.status === "requested" && row.covered === false ? <span className="admin-error" data-testid="withdrawal-not-covered">{pausedOrgs?.has(row.org_id)
+                        // A payment review pauses it (Needs checking): decided there, not declined here.
+                        ? "Withdrawals are paused while a payment is reviewed (Payment reviews, in Needs checking)."
                         : "The factory's balance no longer covers this. Decline it with a reason."}</span> : null}</td>
                     <td><strong className="payout-method-heading">{NAME[row.provider] ?? row.provider}</strong><span className="admin-sub">{row.paid_to}</span></td>
                     <td>
@@ -164,8 +164,8 @@ export default function WithdrawalsSection({ withdrawals, onChanged, providerLin
                     </td>
                     <td>{STATUS[row.status] ?? row.status}{row.reason && row.status !== "paid" ? <span className="admin-sub">{row.reason}</span> : null}
                       {refunded > 0 && row.status === "requested" ? <span className="admin-sub" data-testid="withdrawal-refunded-part">{`${moneyIn(refunded, row.currency)} went back to the brand.`}</span> : null}
-                      {/* Already sent: if the payout completes, that part is owed to TSC (To recover). */}
-                      {refunded > 0 && row.status === "paying" ? <span className="admin-sub admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. If the payout completes, the factory owes TSC ${moneyIn(refunded, row.currency)}.`}</span> : null}</td>
+                      {/* Already sent: nothing is taken from the factory by itself; a payment review decides. */}
+                      {refunded > 0 && row.status === "paying" ? <span className="admin-sub admin-error" data-testid="withdrawal-at-risk">{`${moneyIn(refunded, row.currency)} of this payout went back to the brand after it was sent. It's in Payment reviews.`}</span> : null}</td>
                     <td><WithdrawalActions row={row} onChanged={onChanged} /></td>
                   </tr>
                 );

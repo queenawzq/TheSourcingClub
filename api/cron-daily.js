@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_notification-sender.js";
 import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-decision-sender.js";
-import { refundCancelledOrders, stripeFrom } from "./_stripe.js";
+import { refundCancelledOrders, settleStaffRefunds, stripeFrom } from "./_stripe.js";
 import { sweepProviderPayouts } from "./payout-sync.js";
 import { sweepCheckingMessages } from "./_message-sweep.js";
 
@@ -70,6 +70,8 @@ export default async function handler(request, response) {
   try {
     const stripe = stripeFrom();
     if (stripe) refunds = await refundCancelledOrders({ stripe, db: service });
+    // Staff refunds Stripe couldn't be asked about, finished once (20261125100000).
+    if (stripe) refunds.staff = await settleStaffRefunds({ stripe, db: service });
   } catch (error) {
     console.error("cron-daily: cancelled-order refunds", error?.message);
     refunds = { error: "the cancelled-order refunds could not be checked" };

@@ -1150,6 +1150,7 @@ export const factoryMainZhText = {
   "This IBAN isn't valid. Check each character.": "此 IBAN 无效，请逐个核对字符。",
   "Refunded": "已退款",
   "Reversed by the brand's bank": "已被品牌的银行撤回",
+  "Returned to the brand": "已退回品牌",
   "This amount was returned to the brand.": "这笔金额已退回品牌。",
   "Order payment": "订单付款",
   "Only a company owner can withdraw": "只有公司所有者可以提现",
@@ -1300,6 +1301,7 @@ export const factoryMainZhText = {
   "Available balance (USD)": "可提现余额 (USD)",
   "Available balance (estimated USD)": "可提现余额（估算美元）",
   "Money you can withdraw to your bank now. This is your overall balance across all clients.": "你现在可以提现到银行账户的金额。这是你在所有客户中的总余额。",
+  "Money you can withdraw to your bank once withdrawals resume. This is your overall balance across all clients.": "提现恢复后你可以提现到银行账户的金额。这是你在所有客户中的总余额。",
   "Amount (estimated USD)": "金额（估算美元）",
   "Earnings stay in your balance until you withdraw them.": "收入会留在你的余额中，直到你提现。",
   "On hold": "暂扣中",
@@ -10231,6 +10233,9 @@ export function FactoryProjectProgressDetail({
   // "Cancel order" under Message.
   banner = null,
   onCancelOrder = null,
+  // Live only: one line under the timeline's title (the order is on hold
+  // while a payment is reviewed).
+  timelineNotice = "",
   // Live only: open "Add update" for this step from outside the timeline
   // (the step's pop-up, reached from a "due soon" reminder), then report it.
   updateStepId = null,
@@ -10312,6 +10317,7 @@ export function FactoryProjectProgressDetail({
           {activeDetailTab === "overview" && (
             <section className="factory-milestone-card">
               <h2>Production timeline</h2>
+              {timelineNotice && <p className="order-paused-line" role="status" data-testid="order-on-hold">{timelineNotice}</p>}
               {notice && <p className="muted production-schedule-helper" data-testid="schedule-notice">{notice}</p>}
               <div className="factory-milestone-list">
                 {(liveMilestones ?? factoryProjectMilestones).map((milestone, index) => (

@@ -7,6 +7,10 @@
 --   payout completes: the factory owes TSC $500, on To recover.
 -- F2 (e2): the same, and the payout fails: nothing comes back to the
 --   balance (it went to the brand), no debt.
+-- Paused payments (20261124100000): a refund after approval no longer takes
+--   the money back from the withdrawal or makes a debt. F1 and F2 now assert
+--   that the withdrawal is unchanged, the factory is paused for a review,
+--   and (F2) the failed payout's $500 is back in its balance.
 -- Also: approving a partly refunded step says the amount added (e6); the
 -- default-method notices (e4, e5); Make default refused for a method whose
 -- provider is off (e4).
@@ -205,19 +209,24 @@ $f$;
 select set_config('tsc.r24_w1', pg_temp.req(1, 50000)::text, true);
 select lives_ok($$select pg_temp.claim(current_setting('tsc.r24_w1')::uuid)$$, 'staff send it (Sending)');
 select lives_ok($$select pg_temp.refund(11, 53500)$$, 'the brand''s whole charge is refunded while it is being sent');
-select is((select title || ' | ' || body from public.notifications where subject_id = current_setting('tsc.r24_w1')::uuid and kind = 'withdrawal'
-            and title like 'Withdrawal of $500.00 %' and title not like '%requested'),
-  'Withdrawal of $500.00 being checked | $500.00 of it was returned to the brand after it was sent. TSC is checking this withdrawal.',
-  'the factory is told the truth: no cancel offered for a withdrawal being sent');
+-- Paused payments: the refund takes nothing from the withdrawal being sent;
+-- the factory is told its withdrawals are paused for a review instead.
+select is(row((select title || ' | ' || body from public.notifications where subject_id = current_setting('tsc.r24_w1')::uuid and kind = 'withdrawal'
+                 and title like 'Withdrawal of $500.00 %' and title not like '%requested'),
+              (select title from public.notifications where org_id = pg_temp.org(1) and title = 'Withdrawals paused')),
+          row(null::text, 'Withdrawals paused'::text),
+  'no "being checked" notice on the withdrawal: the factory is told its withdrawals are paused');
 select is((select x -> 'parts' from jsonb_array_elements(pg_temp.bal(1) -> 'withdrawals') x where x ->> 'id' = current_setting('tsc.r24_w1')),
-  '[{"word": "refunded", "amount_cents": 50000}]'::jsonb, 'its block: nothing still held, $500 gone back');
-select is((pg_temp.staff_row(current_setting('tsc.r24_w1')::uuid) ->> 'refunded_cents')::bigint, 50000::bigint, 'staff see the $500 at risk on the Sending row');
+  '[{"word": "on_its_way", "amount_cents": 50000}]'::jsonb, 'its block: still $500 on its way, nothing gone back');
+select is(row((pg_temp.staff_row(current_setting('tsc.r24_w1')::uuid) ->> 'refunded_cents')::bigint, public.factory_paused(pg_temp.org(1))),
+          row(0::bigint, true), 'staff see nothing refunded on the Sending row; the factory is under review');
 select is((pg_temp.bal(1) ->> 'total_cents')::bigint, (pg_temp.bal(1) ->> 'awaiting_cents')::bigint + (pg_temp.bal(1) ->> 'available_cents')::bigint
   + (pg_temp.bal(1) ->> 'pending_cents')::bigint + (pg_temp.bal(1) ->> 'processing_cents')::bigint + (pg_temp.bal(1) ->> 'paid_out_cents')::bigint, 'Total adds up');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''paid'', ''PP-R24'', 0, 50000, ''USD'', null)', current_setting('tsc.r24_w1')))$$,
   'then PayPal says it was paid');
-select is((pg_temp.bal(1) ->> 'owed_to_tsc_cents')::bigint, 50000::bigint, 'the factory owes TSC $500');
-select ok(exists (select 1 from jsonb_array_elements(pg_temp.recover(1)) x where (x ->> 'amount_cents')::bigint = 50000), 'on To recover');
+select is(row((pg_temp.bal(1) ->> 'owed_to_tsc_cents')::bigint, (pg_temp.bal(1) ->> 'paid_out_cents')::bigint), row(0::bigint, 50000::bigint),
+  'the factory owes TSC nothing: $500 paid out');
+select is(pg_temp.recover(1), '[]'::jsonb, 'nothing on To recover');
 
 -- ===========================================================================
 -- F2. The same; the payout fails.
@@ -227,8 +236,11 @@ select lives_ok($$select pg_temp.claim(current_setting('tsc.r24_w2')::uuid)$$, '
 select lives_ok($$select pg_temp.refund(21, 53500)$$, 'refunded while being sent');
 select lives_ok($$select pg_temp.as_server(format('select public.record_withdrawal(%L, ''failed'', sentence => ''unclaimed'')', current_setting('tsc.r24_w2')))$$,
   'the payout fails (unclaimed)');
-select is(row((pg_temp.bal(2) ->> 'available_cents')::bigint, (pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, (pg_temp.bal(2) ->> 'total_cents')::bigint),
-  row(0::bigint, 0::bigint, 0::bigint), 'nothing comes back (it went to the brand), and no debt');
+-- Paused payments: the refund took nothing, so the $500 is back in its
+-- balance; withdrawing it waits for the review.
+select is(row((pg_temp.bal(2) ->> 'available_cents')::bigint, (pg_temp.bal(2) ->> 'owed_to_tsc_cents')::bigint, (pg_temp.bal(2) ->> 'total_cents')::bigint,
+              public.factory_paused(pg_temp.org(2))),
+  row(50000::bigint, 0::bigint, 50000::bigint, true), 'the $500 comes back to the balance, no debt, and the factory is under review');
 
 -- ===========================================================================
 -- Approve after a partial refund: the amount actually added.

@@ -701,6 +701,18 @@ body {
   line-height: 20px;
 }
 .tsc-team-notice p { margin: 0; }
+/* A company under review (payment reviews): in the page's flow, above the content, so it never covers an input or a button; closed with OK. */
+.tsc-team-notices.tsc-review-notice { position: static; width: auto; margin: 16px 40px 0 316px; }
+.tsc-team-notices.tsc-review-notice .tsc-team-notice { box-shadow: none; }
+.nav-collapsed .tsc-team-notices.tsc-review-notice { margin-left: 118px; }
+@media (max-width: 1180px) {
+  /* Beside the 78px icon rail (761–1180px), lined up with the page. */
+  .tsc-team-notices.tsc-review-notice, .nav-collapsed .tsc-team-notices.tsc-review-notice { margin: 16px 28px 0 106px; }
+}
+@media (max-width: 760px) {
+  /* The rail is a menu here: clear its fixed 40px button at the top left. */
+  .tsc-team-notices.tsc-review-notice, .nav-collapsed .tsc-team-notices.tsc-review-notice { margin: 64px 16px 0; }
+}
 .tsc-team-notice .tsc-team-notice-error { margin-top: 8px; color: var(--danger); }
 .tsc-team-notice-actions {
   display: flex;
@@ -848,3 +860,18 @@ body {
   font-weight: 400;
   line-height: 18px;
 }
+
+/* Paused payments (payment reviews): the approved mock-ups' only new rules. */
+/* "On hold" in the warning tier, on earnings and withdrawal rows alike (was blue). */
+.billing-status.payout-status-on-hold,
+.billing-status.payout-status-disputed { background: #fff7e8; color: #a76500 !important; }
+/* The factory's review line: plain text in the danger colour, the card's balance-line size. No fill, no border. */
+.live-payout-method-card p.payout-review-line { color: var(--danger); }
+/* One line at the top of the production timeline: the brand paused, or the factory's order on hold. */
+.milestone-timeline-card .order-paused-line, .factory-milestone-card .order-paused-line { margin: 4px 0 16px; color: var(--danger); font-size: 13px; line-height: 18px; font-weight: 500; }
+.billing-history-page .order-paused-line { margin: 0 0 16px; color: var(--danger); font-size: 13px; line-height: 18px; font-weight: 500; }
+.order-cancel-link:disabled { cursor: not-allowed; opacity: .55; text-decoration: none; }
+.order-cancel-link:disabled:hover { color: var(--text-muted); }
+
+/* A designed text action that can't be used now (Choose quote while a brand is under review): greyed, its reason on hover. */
+.button-like-action[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }

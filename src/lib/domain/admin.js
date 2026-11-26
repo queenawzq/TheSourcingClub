@@ -449,8 +449,13 @@ export async function overviewMetrics() {
     await supabase.rpc("admin_overview_metrics"),
     "load the marketplace overview",
   );
-  const row = rows?.[0] ?? {};
+  // An empty answer is a failed read, never a zero (T1 P4): the overview says so.
+  if (!rows?.length) throw new Error("The marketplace overview couldn't be loaded.");
+  const row = rows[0];
   const paymentsHref = await paymentsQueueHref();
+  // The link names the tab it opens (T2 A8), in the board's own words.
+  const tab = new URL(paymentsHref, "http://x").searchParams.get("tab");
+  const paymentsTab = { needs_checking: "Review needed", failed: "Failed", processing: "Processing", withdrawals: "Withdrawals" }[tab] ?? "Payout owed";
 
   return {
     profilesAwaitingReview: row.profiles_awaiting_review ?? 0,
@@ -460,25 +465,30 @@ export async function overviewMetrics() {
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
     // The payments board is the app's, not the console's.
     paymentsHref,
+    paymentsLinkLabel: `Open ${paymentsTab}`,
   };
 }
 
 /**
  * paymentsQueueHref(): where "Payments owed" opens, the board's tab that holds
  * what it counts, by the board's own rule (countedQueue,
- * src/shared/payments-board-sections.mjs): Payout owed, else Failed, else
- * Processing, else Withdrawals (waiting or being paid), else Needs checking.
+ * src/shared/payments-board-sections.mjs): a payment review first (Needs
+ * checking), then Payout owed, else Failed, else Processing, else Withdrawals
+ * (waiting or being paid), else Needs checking.
  * Never throws: the plain board is the fallback.
  */
 export async function paymentsQueueHref() {
   const board = "/app.html/admin/payments";
   try {
-    const [rows, tried, asked, attention] = await Promise.all([
+    const [rows, tried, asked, attention, reviews] = await Promise.all([
       supabase.rpc("admin_payment_board"),
       supabase.rpc("admin_provider_attempts"),
       supabase.rpc("admin_withdrawals"),
       supabase.rpc("admin_balance_attention"),
+      supabase.rpc("payment_review_board"),
     ]);
+    // A payment review first: a factory and maybe a brand are paused until staff decide (20261124100000).
+    if (!reviews.error && (reviews.data ?? []).some((row) => row.open)) return `${board}?tab=needs_checking`;
     if (rows.error || tried.error || asked.error || attention.error) return board;
     const attempts = new Map((tried.data ?? []).map((attempt) => [attempt.payment_id, attempt]));
     const pool = new Set(asked.data?.pool_payment_ids ?? []);
@@ -487,7 +497,7 @@ export async function paymentsQueueHref() {
     if (queue === "failed") return `${board}?tab=failed`;
     if (queue === "clearing") return `${board}?tab=processing`;
     if ((asked.data?.withdrawals ?? []).some((w) => ["requested", "paying"].includes(w.status))) return `${board}?tab=withdrawals`;
-    if ((attention.data?.disputed?.length ?? 0) + (attention.data?.stuck?.length ?? 0) > 0) return `${board}?tab=needs_checking`;
+    if ((attention.data?.stuck?.length ?? 0) + (attention.data?.returned?.length ?? 0) + (attention.data?.refund_failed?.length ?? 0) > 0) return `${board}?tab=needs_checking`;
     return board;
   } catch {
     return board;
@@ -520,6 +530,9 @@ async function directUserDirectory() {
     readEveryPage(() => supabase.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), "load users", "org_id"),
   ]);
   const [profiles, members, admins, factories] = lists.map((data) => ({ data }));
+  // Brands paused by a card dispute (20261125100000): Users' "Paused" filter.
+  const { data: paused } = await supabase.rpc("admin_paused_brands");
+  const pausedBrands = new Set((paused ?? []).map((row) => row.org_id));
 
   const memberships = new Map();
   for (const membership of members.data ?? []) {
@@ -539,6 +552,8 @@ async function directUserDirectory() {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      orgId: isAdmin ? null : membership?.org_id ?? null,
+      paymentPaused: !isAdmin && pausedBrands.has(membership?.org_id),
       createdAt: profile.created_at,
       lastActiveAt: null,
       disabled: false,
