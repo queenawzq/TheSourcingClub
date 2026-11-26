@@ -26,7 +26,7 @@ const STAFF_RESULT_WORDS = {
   factory: "Factory", trading_company: "Trading company", could_not_tell: "Couldn't tell", original: "Original",
 };
 // A company value staff edited (Nov 26): its kind, or `company_field` with the field in its details.
-const FIELD_WORDS = { company_name: "Company name", name: "Company name", legal_name: "Legal name", country: "Country", website: "Website", registration_number: "Registration number" };
+const FIELD_WORDS = { company_name: "Company name", name: "Company name", legal_name: "Legal name", country: "Country", website: "Website" };
 const DECISION_WORDS = { approved: "Approved", declined: "Declined", needs_information: "Asked for more information" };
 
 /** One line of the history, in plain words. */
