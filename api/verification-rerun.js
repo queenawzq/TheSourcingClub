@@ -16,9 +16,9 @@
  *
  * What each group runs, recording the results the way the automatic run does
  * (verification-run.js), so the score reads them like any other run:
- *   business_registration: the reading (from the file when the reading of
- *     record is out of date or nothing was edited, else the reading of record
- *     with the edits laid over it; no model call), an edited number saved as
+ *   business_registration: the reading (with staff's edits: the reading of
+ *     record with the edits laid over it, never a model call or a new reading
+ *     of the file; with nothing edited: from the file), an edited number saved as
  *     the staff number (`admin_set_registration_number`), and for Portugal
  *     EU VIES asked again. China's QCC and Turkey's GİB are recorded by staff:
  *     nothing here can ask them.
@@ -124,7 +124,10 @@ async function readingStep({ orgId, asServer, requestedBy, edits, mustRead, step
   const previous = await latestReading(asServer, orgId);
   const newest = context.files[0] ?? null;
   const outOfDate = rules.readingOutOfDate({ reading: previous, newestFile: newest, number: context.detail.registration.number, title: context.detail.title });
-  const fromFile = mustRead || !previous || (outOfDate && ["earlier_upload", "never_read"].includes(outOfDate.reason));
+  // Staff's corrections (Edit details, U1) are laid over the reading of record exactly as typed, whatever file
+  // it was read from: no model call and no new reading of the file, so a correction never waits on the AI.
+  // Only a run with nothing edited reads the file again (an out-of-date reading, or none).
+  const fromFile = !previous || (!edits.length && (mustRead || (outOfDate && ["earlier_upload", "never_read"].includes(outOfDate.reason))));
   const fileId = fromFile ? newest?.id ?? null : previous?.details?.fileId ?? null;
   const staffEdits = standingEdits({ previous, fileId, edits, READING_KEYS: rules.READING_KEYS });
   const overlay = staffEdits.map((edit) => ({ key: rules.READING_KEYS[edit.field], value: edit.to }));
