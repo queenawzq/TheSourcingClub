@@ -15,9 +15,10 @@ import {
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
 import {
-  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, compareDocument, documentDifferences, nearlySameCjk, documentWarnings, groundedReasons,
+  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, documentWarnings, groundedReasons,
   isoDateFrom, judgeFromTags, tradingScope,
 } from "../api/registry-assist.js";
+import { compareDocument, documentDifferences, nearlySameCjk } from "../src/shared/compare-document.mjs";
 
 let failures = 0;
 function check(name, fn) {

@@ -18,53 +18,23 @@
  */
 
 import { companyNameKey, companyNamesMatch, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber } from "./registration-number.mjs";
+import { compareDocument } from "./compare-document.mjs";
 
 export const LEVELS = ["low", "medium", "high", "unknown"];
 
 // --- the reading against the company, now -------------------------------------
 
-const CJK = /[\u3400-\u9fff\uf900-\ufaff]/u;
-function oneEditApart(a, b) {
-  if (a === b) return true;
-  if (Math.abs(a.length - b.length) > 1) return false;
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
-  let j = 0;
-  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j += 1;
-  return a.length - i - j <= 1 && b.length - i - j <= 1;
-}
-const nearlySameCjk = (a, b) => {
-  const key = (text) => companyNameKey(text).replace(/\s+/g, "");
-  const x = key(a);
-  const y = key(b);
-  return Boolean(x && y && x !== y && CJK.test(x) && CJK.test(y) && Math.min(x.length, y.length) >= 4 && oneEditApart(x, y));
-};
-
 /**
  * What the document says against the company's number and name NOW (Nov 26): the reading keeps only what the
  * document says (`extracted`); its stored `differences` / `unsure` were the company's values when it was read,
- * so they are worked out again here and never go out of date. Same rules as compareDocument in
- * api/registry-assist.js; names compare only through companyNamesMatch.
+ * so they are worked out again here and never go out of date, with compareDocument
+ * (src/shared/compare-document.mjs), the server's own rules; names compare only through companyNamesMatch.
  */
 export function compareReading(extracted, { country, number, title } = {}) {
-  const differences = [];
-  const unsure = [];
-  if (!extracted || extracted.readable === false) return { differences, unsure };
-  const docNumber = normaliseRegistrationNumber(country, extracted.registrationNumber ?? "");
-  const typed = normaliseRegistrationNumber(country, number ?? "");
-  const problem = (value) => (country ? registrationNumberProblem(country, value) : null);
-  if (docNumber && typed && docNumber !== typed && !sameRegistrationNumber(country, docNumber, typed)) {
-    const docProblem = problem(docNumber);
-    if (docProblem && !problem(typed)) unsure.push({ field: "number", document: extracted.registrationNumber, typed: number, reason: docProblem === "check_digit" ? "The number read fails its check digit" : "The number read has the wrong length or characters" });
-    else differences.push({ field: "number", document: extracted.registrationNumber, typed: number });
-  }
-  if (!docNumber && typed) unsure.push({ field: "number", document: "", typed: number, reason: "No number could be read off the document" });
-  const names = [extracted.legalName, extracted.legalNameEnglish].filter((name) => String(name ?? "").trim());
-  if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
-    if (names.some((name) => nearlySameCjk(name, title))) unsure.push({ field: "name", document: names.join(" / "), typed: title, reason: "One character differs: check the document" });
-    else differences.push({ field: "name", document: names.join(" / "), typed: title });
-  }
-  return { differences, unsure };
+  if (!extracted || extracted.readable === false) return { differences: [], unsure: [] };
+  return compareDocument(extracted, { country, number, title }, {
+    companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber,
+  });
 }
 
 /** A document reading with its comparisons worked out against the company now; a reading with nothing extracted is as stored. */
