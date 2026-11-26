@@ -60,6 +60,8 @@ const ZH_SAMPLES = [
   { kind: "verification_approved", title: "Your profile is verified", body: "" },
   { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company type to trading company. We updated your company address." },
   { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company type to factory." },
+  // R12: a value with ". " in it, and the country sentence.
+  { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company name to Têxteis Douro, Lda. We updated your company address to Av. da Liberdade 12, Lisboa. We updated your country to Portugal. We updated your website to https://douro.pt." },
   { kind: "verification_declined", title: "We could not verify your profile", body: "The licence was unreadable.", typed: true },
   { kind: "verification_needs_information", title: "We need a little more information", body: "Please upload your licence.", typed: true },
   { kind: "verification_reopened", title: "Your legal name changed: TSC will verify it again", body: "" },
@@ -493,6 +495,12 @@ async function formatters() {
       { kind: "rfq_invited", body: "Quotes close Nov 20.", data: { quote_deadline: "2026-11-20T15:59:00Z" } },
       { ...zh, timeZone: "America/New_York", withZone: true },
     ), "报价截止：11月20日（周五）10:59 GMT-5。");
+
+    // R12: an address with ". " in it does not send the whole body back to English.
+    expect("zh profile body with an address", notificationBody(
+      { kind: "profile_updated", title: "Your company profile was updated", body: "We updated your company address to Av. da Liberdade 12, Lisboa. We updated your country to Portugal." },
+      { ...zh, timeZone: "Asia/Shanghai" },
+    ), "我们已将你的公司地址更新为 Av. da Liberdade 12, Lisboa。我们已将你的国家或地区更新为 Portugal。");
 
     // Every kind, in Chinese, the same in the bell and the email; English unchanged.
     const cjk = /[\u4e00-\u9fff]/;
