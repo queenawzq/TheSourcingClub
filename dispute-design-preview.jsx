@@ -255,7 +255,7 @@ function emailFor(e){
   return {...out,html};
 }
 const sampleEmails={
-  opened:{to:'factory',kind:'opened',title:`${ORDER.brand} opened a dispute on ${ORDER.number}`,body:`Quality or workmanship on "${ORDER.title}". Our team is handling this case (${STAFF}). Respond by Nov 30. If it is not settled by Dec 3, our team decides.`},
+  opened:{to:'factory',kind:'opened',title:`${ORDER.brand} opened a dispute on ${ORDER.number}`,body:`Quality or workmanship on "${ORDER.title}". Our team is handling this case. Respond by Nov 30. If it is not settled by Dec 3, our team decides.`},
   offer:{to:'brand',kind:'offer',title:`${ORDER.factory} made an offer on ${ORDER.number}`,body:`Refund $850.00 to ${ORDER.brand}. Respond by Dec 1.`},
   deciding:{to:'factory',kind:'deciding',title:`${ORDER.number} dispute: our team is deciding`,body:`No agreement by Dec 3. Our team will decide the outcome and may ask you for more. You can still settle with ${ORDER.brand} until then.`},
   request:{to:'factory',kind:'request',title:`Our team asked for your response on ${ORDER.number}`,body:'Please send the revised production plan and the earliest date you can ship all 300 shirts. Respond by Dec 8.'},

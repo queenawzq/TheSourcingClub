@@ -20,7 +20,7 @@ let w = opened();
 assert.equal(w.case.status, STATUS.open);
 assert.deepEqual(Object.values(STATUS), ['Open', 'Awaiting completion', 'Resolved', 'Withdrawn'], 'one set of status words');
 assert.equal(w.case.assignee, STAFF);
-assert.equal(handlingLine(w.case), 'Our team is handling this case · Priya Shah');
+assert.equal(handlingLine(w.case), 'Our team is handling this case');
 const row = queueRow(w.case);
 assert.equal(row.status, STATUS.open, 'in the staff queue from opening');
 assert.equal(row.assignee, 'Priya Shah');
@@ -34,7 +34,7 @@ assert.equal(waitingLine(w.case, 'brand'), 'Waiting for Ningbo Loomworks · due 
 assert.equal(windowLine(w.case), 'Our team decides if not settled by Dec 3');
 assert.equal(w.notifications.factory.length, 1);
 assert.equal(w.emails.at(-1).to, 'factory');
-assert.match(w.emails.at(-1).body, /Our team is handling this case \(Priya Shah\)\. Respond by Nov 30\. If it is not settled by Dec 3, our team decides\./);
+assert.match(w.emails.at(-1).body, /Our team is handling this case\. Respond by Nov 30\. If it is not settled by Dec 3, our team decides\./);
 assert.throws(() => opened(w), /already open/);
 assert.throws(() => respond(w, 'brand', { action: 'reply', note: 'x' }), /not your turn/);
 assert.throws(() => openCase(initialWorld(), 'brand', { reason: 'r', stage: 's', details: 'd', request: { type: 'refund', amountCents: 999999 } }), /Up to \$1,700.00/);
@@ -184,6 +184,34 @@ assert.ok(worldAt(at('so our team is deciding')).case.deciding);
 assert.equal(worldAt(at('in the queue at once')).case.status, STATUS.open);
 assert.equal(worldAt(at('no money moves')).step.state, 'rework');
 assert.ok(!withdrawalsPaused(worldAt(at('can withdraw again'))) && stepOnHold(worldAt(at('can withdraw again'))));
+
+// Brands and factories never see a staff member's name: not on the case page,
+// the order card or banner, the timeline, the bell or an email, in any step.
+const partyText = (pw) => {
+  const c = pw.case;
+  const parts = [...pw.notifications.brand, ...pw.notifications.factory].flatMap((n) => [n.title, n.meta]);
+  parts.push(...pw.emails.flatMap((e) => [e.title, e.body]));
+  if (c) {
+    parts.push(handlingLine(c), windowLine(c), waitingLine(c, 'brand', pw.now), waitingLine(c, 'factory', pw.now));
+    parts.push(...c.events.filter((e) => !e.staffOnly).flatMap((e) => [e.title, e.detail]));
+    if (c.resolution) parts.push(c.resolution.note);
+  }
+  return parts.join('\n');
+};
+for (let i = 0; i < STEPS.length; i++) {
+  const pw = worldAt(i);
+  assert.ok(!partyText(pw).includes(STAFF), `step ${i + 1}: a brand or factory surface names ${STAFF}`);
+  if (pw.case) assert.ok(pw.case.events.some((e) => e.staffOnly && e.title === `Assigned to ${STAFF}`), `step ${i + 1}: staff see the assignee`);
+}
+// The party-side components and the sample emails never read the name either.
+{
+  const jsx = fs.readFileSync(new URL('../dispute-design-preview.jsx', import.meta.url), 'utf8');
+  const fn = (name) => jsx.slice(jsx.indexOf(`function ${name}(`), jsx.indexOf('\n}\n', jsx.indexOf(`function ${name}(`)));
+  for (const name of ['CasePage', 'SubmittedDialog', 'OpenDisputeDialog', 'RespondDialog', 'FactoryPayments', 'EmailsPage', 'emailFor']) assert.ok(!/STAFF|assignee|Priya/.test(fn(name)), `${name} reads the staff name`);
+  const samples = jsx.slice(jsx.indexOf('const sampleEmails'), jsx.indexOf('function EmailsPage'));
+  assert.ok(!/STAFF|Priya/.test(samples), 'sample emails name staff');
+  assert.ok(!/STAFF|assignee|Priya/.test(fs.readFileSync(new URL('../dispute-native-orders.jsx', import.meta.url), 'utf8')), 'order card or banner names staff');
+}
 
 // The escalation step is gone everywhere.
 for (const f of ['dispute-design-preview.jsx', 'dispute-native-orders.jsx', 'dispute-preview-state.mjs', 'dispute-preview-steps.mjs']) {

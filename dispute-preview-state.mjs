@@ -178,7 +178,9 @@ export function openCase(w, by, { reason, stage, details, request, files = [] })
     staffRequest: null, staffDueAt: null, resolution: null, completedAt: null, otherReleased: null,
     events: [
       event(w, by, 'Dispute opened', `${reason} · ${stage} · Requested: ${outcomeLine(request, w)}`, files),
-      event(w, 'staff', 'Our team is handling this case', `Assigned to ${STAFF}`),
+      event(w, 'staff', 'Our team is handling this case'),
+      // The assignee's name stays inside the admin workspace: staff-only.
+      event(w, 'staff', `Assigned to ${STAFF}`, '', [], true),
     ],
     staffNotes: [],
   };
@@ -186,7 +188,7 @@ export function openCase(w, by, { reason, stage, details, request, files = [] })
   return withCase(w, c, {
     nextId: w.nextId + 1,
     notifications: notify(w, to, title, `${reason} · Respond by ${day(dueAt)}`),
-    emails: email(w, to, 'opened', title, `${reason} on "${ORDER.title}". Our team is handling this case (${STAFF}). Respond by ${day(dueAt)}. If it is not settled by ${day(windowEndsAt)}, our team decides.`),
+    emails: email(w, to, 'opened', title, `${reason} on "${ORDER.title}". Our team is handling this case. Respond by ${day(dueAt)}. If it is not settled by ${day(windowEndsAt)}, our team decides.`),
   });
 }
 
@@ -303,7 +305,7 @@ export function recordResolution(w, outcome, note) {
   if (!isOpen(c) || c.status === STATUS.completion) throw new Error('This case already has an outcome.');
   const err = outcomeError(outcome, w);
   if (err) throw new Error(err);
-  const next = withCase(w, { ...c, events: [...c.events, event(w, 'staff', 'Decision', `${outcomeLine(outcome, w)}${note ? ` · ${note}` : ''}`)] });
+  const next = withCase(w, { ...c, events: [...c.events, event(w, 'staff', 'Our team recorded a decision', `${outcomeLine(outcome, w)}${note ? ` · ${note}` : ''}`)] });
   return settle(next, outcome, 'staff', note);
 }
 
@@ -417,8 +419,8 @@ export function waitingLine(c, viewer, now = null) {
 /** While the sides can still settle before the deadline: when our team decides. */
 export const windowLine = (c) => (c?.status === STATUS.open && !c.deciding ? `Our team decides if not settled by ${day(c.windowEndsAt)}` : '');
 
-/** The header line on both sides' case pages, from the moment the case is opened. */
-export const handlingLine = (c) => (isOpen(c) ? `Our team is handling this case · ${c.assignee}` : `Handled by our team · ${c.assignee}`);
+/** The header line on both sides' case pages, from the moment the case is opened. Never the staff member's name. */
+export const handlingLine = (c) => (isOpen(c) ? 'Our team is handling this case' : 'Handled by our team');
 
 /** Did our team decide (or is it deciding)? Only then is there a Decision step. */
 const decided = (c) => c.deciding || c.resolution?.by === 'staff';
