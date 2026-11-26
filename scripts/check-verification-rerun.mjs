@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   RERUN_WORDS, checkFields, editsFrom, failureCode, outOfDateWords, readingOutOfDate, rerunFailureWords, scoreChangeWords,
 } from "../src/shared/verification-rerun.mjs";
-import { addressOutcome, handle, runGroup, standingEdits, viesNeedsAsking } from "../api/verification-rerun.js";
+import { addressOutcome, handle, runGroup, savedEdits, standingEdits, viesNeedsAsking } from "../api/verification-rerun.js";
 import { overlayEdits } from "../api/registry-assist.js";
 import { modelFailure } from "../api/admin-review-assist.js";
 import { createRerun, groupScore } from "../src/lib/domain/verification-rerun.js";
@@ -73,10 +73,10 @@ await check("a reading from an earlier upload is out of date (Portugal)", () => 
   assert.equal(outOfDateWords(state, { timeZone: "UTC" }), "Read from an earlier upload, Nov 9");
 });
 
-await check("a reading for an old number or name is out of date; a current one is not", () => {
+await check("a reading for an old number or name is not out of date: it is compared with the company now", () => {
   const newest = { id: "old" };
-  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "999", title: "Têxteis Douro" }).reason, "number_changed");
-  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "Other Lda" }).reason, "name_changed");
+  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "999", title: "Têxteis Douro" }), null);
+  assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "Other Lda" }), null);
   assert.equal(readingOutOfDate({ reading: reading(), newestFile: newest, number: "513284976", title: "têxteis  douro" }), null);
   assert.equal(readingOutOfDate({ reading: null, newestFile: newest }).reason, "never_read");
   assert.equal(readingOutOfDate({ reading: null, newestFile: null }), null);
@@ -194,11 +194,24 @@ await check("an edit on a current reading is laid over it, with no model call", 
   assert.deepEqual(log[0], ["reuse", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
 });
 
-await check("an edit on an out-of-date reading still reads the current upload, with the edit over it", async () => {
+await check("U1: an edit on a reading from an earlier upload is laid over it as typed, with no model call", async () => {
   const log = [];
   const edits = [{ field: "legalName", from: "a", to: "Têxteis Douro – Confecções, Lda" }];
-  await runGroup({ orgId: ORG, group: "business_registration", fields: { legalName: edits[0].to }, edits, asServer: fakeDb(ptTables("old")), requestedBy: "staff", steps: stubSteps(log), rules });
-  assert.deepEqual(log[0], ["read", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
+  // The AI is not set up: the correction is saved all the same.
+  const result = await runGroup({ orgId: ORG, group: "business_registration", fields: { legalName: edits[0].to }, edits, asServer: fakeDb(ptTables("old")), requestedBy: "staff", steps: stubSteps(log, { readAnswer: { available: true, saved: true } }), rules });
+  assert.deepEqual(log[0], ["reuse", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
+  assert.ok(!log.some(([step]) => step === "read"), "the file is not read again");
+  assert.equal(result.ran.reading.from, "reading");
+});
+
+await check("U6: only saved edits are recorded", async () => {
+  const legal = { field: "legalName", from: "a", to: "b" };
+  const number = { field: "number", from: "1", to: "2" };
+  assert.deepEqual(savedEdits("business_registration", [legal, number], { reading: { ran: false, code: "save_failed" } }), [number]);
+  assert.deepEqual(savedEdits("business_registration", [legal], { reading: { ran: true } }), [legal]);
+  assert.deepEqual(savedEdits("company_information", [{ field: "scope", to: "x" }], { reading: { ran: false } }), []);
+  assert.deepEqual(savedEdits("company_information", [{ field: "siteAddress", to: "x" }], { address: { ran: false } }).length, 1);
+  assert.deepEqual(savedEdits("certification", [{ field: "holder", to: "x" }], { certificate: { ran: false } }), []);
 });
 
 await check("VIES down: the reading is kept and the footer says EU VIES didn't answer", async () => {
@@ -396,12 +409,52 @@ await check("staff: edits recorded as the staff member, then the group runs", as
   assert.ok(log.length >= 2);
 });
 
+await check("U6: a save that failed records no edit", async () => {
+  const calls = [];
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls }), steps: stubSteps([], { readAnswer: { available: true, saved: false } }) });
+  assert.equal(response.out.body.ok, false);
+  assert.ok(!calls.includes("rpc:record_verification_field_edits"));
+});
+
+await check("N1: an edit saved while EU VIES doesn't answer is a save, with a note", async () => {
+  const calls = [];
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls }), steps: stubSteps([], { vies: { result: "could_not_check", details: { reason: "timed out" } } }) });
+  assert.equal(response.out.body.ok, true, JSON.stringify(response.out.body));
+  assert.equal(response.out.body.notice, "Saved. EU VIES didn't answer; check again later.");
+  assert.equal(response.out.body.error, undefined);
+  assert.ok(calls.includes("rpc:record_verification_field_edits"));
+  assert.equal(rules.savedNoticeWords("registry_unreachable", {}), "Saved. The registry didn't answer; check again later.");
+  assert.equal(rules.savedNoticeWords("save_failed", {}), null);
+});
+
+await check("N1: a save that failed while EU VIES doesn't answer is still a failure", async () => {
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls: [] }), steps: stubSteps([], { readAnswer: { available: true, saved: false }, vies: { result: "could_not_check", details: {} } }) });
+  assert.equal(response.out.body.ok, false);
+  assert.equal(response.out.body.notice, undefined);
+});
+
 await check("an edited number is saved as the staff number first", async () => {
   const calls = [];
   const response = fakeResponse();
   await handle(request({ orgId: ORG, group: "business_registration", fields: { number: "513284977" } }), response, { env: ENV, makeClient: clients({ staff: true, calls }), steps: stubSteps([]) });
   const set = calls.indexOf("rpc:admin_set_registration_number");
   assert.ok(set > -1 && set < calls.indexOf("rpc:record_verification_field_edits"));
+});
+
+await check("N4: a refused number says the country's expected format, in staff's words", async () => {
+  const response = fakeResponse();
+  const base = clients({ staff: true, calls: [] });
+  const makeClient = (url, key, options) => {
+    const db = base(url, key, options);
+    return { ...db, rpc: async (name, args) => (name === "admin_set_registration_number" ? { data: null, error: { code: "22023", message: "bad" } } : db.rpc(name, args)) };
+  };
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { number: "12345" } }), response, { env: ENV, makeClient, steps: stubSteps([]) });
+  assert.equal(response.out.body.ok, false);
+  assert.equal(response.out.body.code, "bad_number");
+  assert.equal(response.out.body.error, "A Portuguese company number has 9 digits, e.g. 519211596");
 });
 
 // ---------------------------------------------------------- the caller
@@ -434,6 +487,18 @@ await check("the caller: a failure part-way carries the words and the new score"
   assert.equal(result.ok, false);
   assert.equal(result.error, "EU VIES didn't answer. Try again later.");
   assert.equal(result.after, 95);
+});
+
+await check("N1, the caller: a saved edit's note is passed on, with no error", async () => {
+  const run = createRerun({
+    getToken: async () => "t",
+    fetchImpl: async () => ({ status: 200, json: async () => ({ ok: true, code: "registry_unreachable", notice: "Saved. EU VIES didn't answer; check again later.", ran: { reading: { ran: true } } }) }),
+    readScore: async () => verificationAt(95),
+  });
+  const result = await run({ orgId: ORG, group: "business_registration", before: verificationAt(55) });
+  assert.equal(result.ok, true);
+  assert.equal(result.notice, "Saved. EU VIES didn't answer; check again later.");
+  assert.equal(result.error, undefined);
 });
 
 await check("the caller: refused or unreachable is words only, never thrown", async () => {

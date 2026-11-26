@@ -74,6 +74,15 @@ export function rerunFailureWords(code, { source } = {}) {
 }
 
 /**
+ * The note after a save that worked when only the registry lookup that follows
+ * did not answer: the edit is kept, so it is not shown as a failure.
+ */
+export function savedNoticeWords(code, { source } = {}) {
+  if (code === "registry_unreachable") return `Saved. ${source || "The registry"} didn't answer; check again later.`;
+  return null;
+}
+
+/**
  * A model or reading failure sentence (api/admin-review-assist.js
  * modelFailure, registry-assist's reasons) as one of our codes.
  */
@@ -112,8 +121,7 @@ export function readingOutOfDate({ reading, newestFile, number, title } = {}) {
   const since = reading.checkedAt ?? reading.checked_at ?? null;
   if (newestFile?.id && details.fileId && newestFile.id !== details.fileId) return { reason: "earlier_upload", since };
   if (newestFile?.createdAt && since && day(newestFile.createdAt) > day(since) && !details.fileId) return { reason: "earlier_upload", since };
-  if ((details.numberAtReading ?? null) !== (number ?? null) && details.numberAtReading !== undefined) return { reason: "number_changed", since };
-  if (title && details.titleAtReading && !sameText(details.titleAtReading, title)) return { reason: "name_changed", since };
+  // A changed number or name never makes a reading out of date (Nov 26): it is compared with the company now.
   return null;
 }
 

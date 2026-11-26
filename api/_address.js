@@ -329,8 +329,9 @@ const SOURCE_WORDS = { typed: "the address the factory typed", license: "the lic
 export function addressSources(detail, signals) {
   const number = detail?.registration?.number ?? null;
   const fromCheck = (detail?.checks ?? []).find((check) => check.details?.address && check.numberChecked === number && check.nameMatches !== false);
-  const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address
-    && (signal.details?.numberAtReading ?? null) === number);
+  // The latest reading's address, whatever number the company had when it was read (Nov 26):
+  // the licence says what it says; a number changed since makes nothing stale.
+  const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address);
   const production = String(detail?.productionAddress ?? detail?.production_address ?? "").trim();
   return {
     typed: production || String(detail?.location ?? "").trim(),

@@ -100,10 +100,30 @@ export function numberFromDocument(country) {
   return Boolean(REGISTRATION_COUNTRIES[country]?.fromDocument);
 }
 
-/** Spaces, dots and dashes removed; letters upper-case; "PT" prefix dropped. */
+/**
+ * The label people type before the number, dropped only in the country it
+ * belongs to (R16, Nov 26): Portugal "NIF", "NIPC", "N.º"; Turkey "VKN",
+ * "Vergi No"; China "USCC" and "统一社会信用代码". A Latin label needs a space,
+ * colon, "#" or dot after it, so a number that merely starts with those
+ * letters keeps them; the Chinese labels need nothing. Anywhere, "No:",
+ * "Nr:" or "Nº:" is dropped only when a colon follows it, so a number such as
+ * Norway's "NO 123456789 MVA" is kept as written. The database's
+ * normalise_registration_number() drops the same labels.
+ */
+const COUNTRY_LABELS = {
+  PT: /^(?:NIF\/NIPC|NIPC|NIF|Nº|N\.º)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  TR: /^(?:VKN|VERGI NO|VERGI NUMARASI)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  CN: /^(?:(?:UNIFIED SOCIAL CREDIT CODE|USCC)(?:\s*[:#.]+\s*|\s+)|(?:统一社会信用代码|社会信用代码|信用代码)\s*:?\s*)(?=\S)/u,
+};
+const ANY_LABEL = /^(?:NO|NR|Nº|N\.º)\s*:\s*(?=\S)/u;
+
+/** Spaces, dots and dashes removed; letters upper-case; the country's own typed label ("NIF", "VKN"…) or "No:" dropped; Portugal's "PT" prefix dropped. */
 export function normaliseRegistrationNumber(country, value) {
   // \p{Cf}: a copied number can carry invisible characters (U+200B seen from the AI read).
-  let text = halfWidth(value).trim().toUpperCase().replace(/[\s.\-/\p{Cf}]/gu, "");
+  let text = halfWidth(value).replace(/\p{Cf}/gu, "").trim().toUpperCase().replace(/İ/g, "I");
+  if (COUNTRY_LABELS[country]) text = text.replace(COUNTRY_LABELS[country], "");
+  text = text.replace(ANY_LABEL, "");
+  text = text.replace(/[\s.\-/]/gu, "");
   if (country === "PT" && /^PT\d{9}$/.test(text)) text = text.slice(2);
   return text;
 }
@@ -209,15 +229,35 @@ export function registrationFlags(country, raw, { confirmed = false } = {}) {
   return flags;
 }
 
-export function registrationProblemText(country, problem, language = "en") {
+/**
+ * What a number of each country looks like, said when one is in the wrong
+ * format. The database raises the same English sentence
+ * (registration_number_format_text()).
+ */
+export const EXPECTED_FORMAT = {
+  CN: { en: "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F, without the letters I, O, S, V or Z", zh: "统一社会信用代码为 18 位，例如 91330100MA2B7C4D3F，不含字母 I、O、S、V、Z" },
+  TR: { en: "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591", zh: "土耳其公司税号（VKN）为 10 位数字，例如 4837261591" },
+  PT: { en: "A Portuguese company number has 9 digits, e.g. 519211596", zh: "葡萄牙公司编号为 9 位数字，例如 519211596" },
+};
+
+/** Where a company finds its number, said after the expected format to the company itself (not to staff). */
+const WHERE_TO_FIND = {
+  TR: { en: "Find it on your tax plate (vergi levhası) or tax registration letter", zh: "见税牌或纳税登记证明" },
+  PT: { en: "Find it on your permanent certificate", zh: "见商业登记永久证明" },
+};
+
+/** The refusal for a number; `staff` leaves out where the company finds it. */
+export function registrationProblemText(country, problem, language = "en", { staff = false } = {}) {
   if (!problem) return "";
   const zh = language === "zh";
   if (problem === "missing") return zh ? "请填写注册号" : "Enter the registration number";
   if (problem === "old_number") return zh ? "这是旧的 15 位注册号，请填写新营业执照上的 18 位代码" : "That's the old 15-digit number. Enter the 18 characters on your current licence";
   if (problem === "check_digit") return zh ? "最后一位不符，请核对号码" : "The last digit doesn't match. Check the number";
-  if (country === "CN") return zh ? "格式不符：18 位，不含字母 I、O、S、V、Z" : "Wrong format: 18 characters, without the letters I, O, S, V or Z";
-  const copy = REGISTRATION_COUNTRIES[country];
-  if (copy) return zh ? `格式不符：${copy.hint.zh}` : `Wrong format: ${copy.hint.en}`;
+  if (EXPECTED_FORMAT[country]) {
+    const format = EXPECTED_FORMAT[country][zh ? "zh" : "en"];
+    const where = !staff && WHERE_TO_FIND[country]?.[zh ? "zh" : "en"];
+    return where ? `${format}${zh ? "。" : ". "}${where}` : format;
+  }
   return zh ? "只能包含字母和数字" : "Letters and digits only";
 }
 
@@ -234,8 +274,10 @@ export function normaliseRegistrationLetter(value) {
 // Legal forms and joining words dropped from a name (Portuguese, Turkish,
 // English, Vietnamese, Chinese); the database's company_name_key() drops the
 // same, and strips accents the same way (NFD).
-const NAME_FORMS = new Set(["sa", "sl", "lda", "limitada", "unipessoal", "sociedade", "anonima", "ltd", "ltda", "limited", "co", "company", "corp", "corporation", "inc", "llc", "gmbh", "plc", "jsc", "srl", "spa", "sti", "sirketi", "ticaret", "sanayi", "san", "tic", "ve", "as", "ith", "ihr", "imalat", "pazarlama", "and", "e", "cia", "comercio", "industria", "tnhh", "mtv"]);
-const NAME_PHRASES = / (cong ty|trach nhiem huu han|mot thanh vien|co phan|s a|a s)(?= )/g;
+const NAME_FORMS = new Set(["sa", "sl", "lda", "limitada", "unipessoal", "sociedade", "anonima", "ltd", "ltda", "limited", "co", "company", "corp", "corporation", "inc", "llc", "gmbh", "plc", "jsc", "srl", "spa", "sti", "sirketi", "ticaret", "sanayi", "san", "tic", "ve", "as", "ith", "ihr", "imalat", "pazarlama", "and", "e", "cia", "comercio", "industria", "tnhh", "mtv",
+  // Nov 26: more legal forms (Dutch, French, Nordic, Indian, Singaporean).
+  "bv", "nv", "sas", "sarl", "ab", "oy", "pvt", "private", "pte", "kg", "ag", "ug", "bhd", "sdn"]);
+const NAME_PHRASES = / (cong ty|trach nhiem huu han|mot thanh vien|co phan|s a|a s|b v|n v)(?= )/g;
 const WHOLE_FROM = "đıøłßæœ";
 const WHOLE_TO = "diolsao";
 
@@ -248,9 +290,14 @@ export function companyNameKey(raw) {
   return text.split(" ").filter((word) => word && !NAME_FORMS.has(word)).join(" ");
 }
 
+/**
+ * The same company name once the legal form, case, accents, punctuation and
+ * every space are ignored: "Hellstitch Lda" and "HELL STITCH - UNIPESSOAL
+ * LDA" match (Nov 26). The database's company_names_match() is the same rule.
+ */
 export function companyNamesMatch(a, b) {
-  const key = companyNameKey(a);
-  return key !== "" && key === companyNameKey(b);
+  const key = companyNameKey(a).replace(/ /g, "");
+  return key !== "" && key === companyNameKey(b).replace(/ /g, "");
 }
 
 /** Portugal's permanent-certificate access code: 12 digits, kept as 0000-0000-0000. */

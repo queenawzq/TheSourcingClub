@@ -195,10 +195,17 @@ export async function saveCertificateCheck(orgId, certificationId, { site, resul
   }), "record the check");
 }
 
-/** Staff change a vendor's type (manufacturer | trading_company) and/or its address. The company is told. */
-export async function updateCompanyProfile(orgId, { vendorKind = null, address = null }) {
+/**
+ * Staff change a company's profile where the review page shows it: a vendor's
+ * type (manufacturer | trading_company) and address, and any company's name,
+ * country (a code or a name from the country list) and website ("" clears it).
+ * Only the fields given change; each is a history line, and the company gets
+ * one notice.
+ */
+export async function updateCompanyProfile(orgId, { vendorKind = null, address = null, companyName = null, country = null, website = null, legalName = null } = {}) {
   return plain(await supabase.rpc("admin_update_company_profile", {
     target_org: orgId, vendor_kind: vendorKind, address,
+    company_name: companyName, country, website, legal_name: legalName,
   }), "update the company");
 }
 

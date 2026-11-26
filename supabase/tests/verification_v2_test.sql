@@ -89,7 +89,7 @@ reset role;
 update public.factory_profiles set legal_name = 'Renamed Lda' where org_id = 'd8700000-0000-0000-0000-0000000000f1';
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
-select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f1') ->> 'approvalProblem', 'renamed', 'a rename afterwards opens the question again');
+select is(public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f1') ->> 'approvalProblem', 'name_differs', 'a rename afterwards opens the question again (the name differs)');
 select throws_ok($$select public.admin_review_decision('d8700000-0000-0000-0000-0000000000f1', 'approved')$$,
   '22023', null, 'and the database refuses approval');
 
@@ -146,7 +146,7 @@ reset role;
 insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, mime_type) values
   ('a8700000-0000-0000-0000-000000000002', 'd8700000-0000-0000-0000-0000000000f2', 'business_registration', 'org-private', 'd8700000-0000-0000-0000-0000000000f2/letter.png', 'letter.png', 'image/png');
 select lives_ok($$select public.record_verification_signal('d8700000-0000-0000-0000-0000000000f2', 'document_reading', 'a8700000-0000-0000-0000-000000000002', 'differs',
-  '{"numberAtReading":"4827361596","differences":[{"field":"number","document":"1111111111","typed":"4827361596"}]}'::jsonb, null)$$, 'the server records an AI reading that differs');
+  '{"numberAtReading":"4827361596","extracted":{"registrationNumber":"4837261591"},"differences":[{"field":"number","document":"4837261591","typed":"4827361596"}]}'::jsonb, null)$$, 'the server records an AI reading that differs');
 set local request.jwt.claims = '{"sub":"c8700000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 select ok((public.admin_registry_detail('d8700000-0000-0000-0000-0000000000f2') -> 'readingDiffers') is not null, 'staff see what the document shows');

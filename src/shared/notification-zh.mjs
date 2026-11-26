@@ -227,6 +227,14 @@ const SENTENCES = [
   [/^We updated your company type to trading company\.$/, () => "我们已将你的公司类型更新为贸易公司。"],
   [/^We updated your company type to factory\.$/, () => "我们已将你的公司类型更新为工厂。"],
   [/^We updated your company address\.$/, () => "我们已更新你的公司地址。"],
+  // …saying what it is now (T8, Nov 26)
+  [/^We updated your company name to (.+)\.$/, (value) => `我们已将你的公司名称更新为 ${value}。`],
+  [/^We updated your legal name to (.+)\.$/, (value) => `我们已将你的法定名称更新为 ${value}。`],
+  [/^We updated your legal name\.$/, () => "我们已更新你的法定名称。"],
+  [/^We updated your company address to (.+)\.$/, (value) => `我们已将你的公司地址更新为 ${value}。`],
+  [/^We updated your country to (.+)\.$/, (value) => `我们已将你的国家或地区更新为 ${value}。`],
+  [/^We updated your website to (.+)\.$/, (value) => `我们已将你的网站更新为 ${value}。`],
+  [/^We updated your website\.$/, () => "我们已更新你的网站。"],
   // People
   [/^They accepted the invitation and can now work with the permissions it gave them\.$/, () => "对方已接受邀请，现在可以按邀请中的权限开展工作。"],
   [/^Everything they worked on stays with the company\.$/, () => "其经手的所有内容都保留在公司中。"],
@@ -575,6 +583,12 @@ export function zhNotificationBody(notification, ctx = {}) {
     if (at < 0) continue;
     const head = translateSentences(body.slice(0, at), context);
     return head == null ? null : `${head}${label}${body.slice(at + marker.length)}`;
+  }
+  // A profile change says each new value, and a value may have ". " in it ("Av. da Liberdade 12"):
+  // its sentences are split where the next "We updated your" starts, not at every full stop.
+  if (/^We updated your /.test(body)) {
+    const parts = body.split(/(?<=\.)\s+(?=We updated your )/).map((part) => translateSentence(part, context));
+    if (parts.every((part) => part != null)) return parts.join("");
   }
   const whole = translateSentences(body, context);
   if (whole != null) return whole;

@@ -132,10 +132,13 @@ function withReading(orgId, verification) {
     ?? (fileId && triedRecently(fileId) ? { state: "failed" } : startReading(orgId, fileId));
   const failed = run.state === "failed" || run.state === "done";
   // Done with no reading is a reading that failed: staff record what the registry shows instead.
+  // The card's line says so only while the licence is unchecked; once staff check it, the line is the
+  // checks' own, the same result the pill shows (T5).
+  const licenceOpen = (group.checks ?? []).some((check) => check.key === "licence" && check.score == null);
   const patch = failed
     ? {
       stale: "Couldn't read the document",
-      verdict: "Couldn't read the document",
+      verdict: licenceOpen ? "Couldn't read the document" : group.verdict,
       checks: (group.checks ?? []).map((check) => (check.key === "licence" && check.score == null ? { ...check, verdict: "Couldn't read the document" } : check)),
     }
     : { checking: true, checkingWords: "Reading the document…" };
@@ -228,6 +231,10 @@ export function verificationActions(orgId, { reload, changed }) {
       changed?.();
       saved?.checked?.then(async () => { await reload(); changed?.(); }, () => null);
     },
+    /** Company details saved a new address with the other values, in one save (U5): its check is read again once done. */
+    addressSaved: (address, saved) => {
+      saved?.checked?.then(async () => { await reload(); changed?.(); }, () => null);
+    },
     /** A typed number that differs from the licence's, explained: the registry record whose reason the approval rule reads. */
     explainTyped: (groupKey, field, text, registryRow) => after(() => recordRegistryResult(orgId, {
       source: registryRow?.registry?.sourceKey, result: "name_differs", name: registryRow?.registry?.name ?? "", reason: text,
@@ -244,7 +251,8 @@ export function verificationActions(orgId, { reload, changed }) {
         await reload();
         changed?.();
       }
-      return outcome.ok ? {} : { error: outcome.error || "Couldn't save. Try again." };
+      if (outcome.ok) return outcome.notice ? { notice: outcome.notice } : {};
+      return { error: outcome.error || "Couldn't save. Try again." };
     },
   };
 }

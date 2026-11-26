@@ -147,6 +147,7 @@ const copy = {
       payments: () => "Payment and approval requests",
       messages: () => "Messages and call invites",
       account: () => "Account security",
+      profile: () => "Company profile",
     },
     greeting: (name) => (name ? `Hi ${name},` : "Hi,"),
     lead: (company) => `There is an update for ${company} on The Sourcing Club.`,
@@ -164,6 +165,7 @@ const copy = {
       payments: () => "付款和审批请求",
       messages: () => "消息和通话邀请",
       account: () => "账户安全",
+      profile: () => "公司资料",
     },
     greeting: (name) => (name ? `${name} 你好，` : "你好，"),
     lead: (company) => `${company} 在 The Sourcing Club 有一条新动态。`,
@@ -288,7 +290,7 @@ export function notificationEmail(row, env) {
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
   const title = notificationTitle(row, { timeZone: row.time_zone || "UTC", locale }).trim() || t.lead(company);
   const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true, locale }).trim();
-  const why = row.category === "account" ? t.whyAlways(company) : t.why(company, setting);
+  const why = row.category === "account" || row.category === "profile" ? t.whyAlways(company) : t.why(company, setting);
 
   const text = [
     t.greeting(row.recipient_name),

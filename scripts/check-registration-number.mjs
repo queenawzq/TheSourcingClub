@@ -10,14 +10,15 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
-  REGISTRATION_COUNTRIES, registrationNumberProblem, sameRegistrationNumber, usccCheckChar, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
+  REGISTRATION_COUNTRIES, registrationNumberProblem, registrationProblemText, sameRegistrationNumber, usccCheckChar, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
 } from "../src/shared/registration-number.mjs";
 import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
 import {
-  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, compareDocument, documentDifferences, nearlySameCjk, documentWarnings, groundedReasons,
+  activityDivisions, aiReadsDocuments, authorisationCheck, bestAddress, chinaNumberFromDocument, documentWarnings, groundedReasons,
   isoDateFrom, judgeFromTags, tradingScope,
 } from "../api/registry-assist.js";
+import { compareDocument, documentDifferences, nearlySameCjk } from "../src/shared/compare-document.mjs";
 
 let failures = 0;
 function check(name, fn) {
@@ -61,6 +62,62 @@ for (const [country, number, expected] of cases) {
   });
 }
 
+// Nov 26: the label typed before a number is dropped, only in the country it belongs to
+// ("No:" with a colon anywhere). The same cases are
+// pinned for the database's normalise_registration_number() in verification_round2_test.sql.
+const labelled = [
+  ["PT", "NIF 519211596", "519211596"],
+  ["PT", "NIPC: 519211596", "519211596"],
+  ["PT", "PT 519 211 596", "519211596"],
+  ["PT", "pt519211596", "519211596"],
+  ["PT", "nif:519211596", "519211596"],
+  ["PT", "N.º 519 211 596", "519211596"],
+  ["CN", "统一社会信用代码：91330100MA2B7C4D3F", "91330100MA2B7C4D3F"],
+  ["CN", "统一社会信用代码 91330100MA2B7C4D3F", "91330100MA2B7C4D3F"],
+  ["TR", "VKN 4837261591", "4837261591"],
+  ["TR", "Vergi No: 4837261591", "4837261591"],
+  [null, "No: 12345", "12345"],
+  // A number that merely starts with a label's letters keeps them.
+  ["GB", "NO12345", "NO12345"],
+  ["PT", "51921159", "51921159"],
+  // Another country's label is part of the number there (R16).
+  ["NO", "NO 123456789 MVA", "NO123456789MVA"],
+  ["GB", "VAT 123456789", "VAT123456789"],
+  ["GB", "NIF 519211596", "NIF519211596"],
+  ["PT", "VKN 4837261591", "VKN4837261591"],
+  ["TR", "USCC 91330100MA2B7C4D3F", "USCC91330100MA2B7C4D3F"],
+  ["GB", "统一社会信用代码 12345", "统一社会信用代码12345"],
+  // "No" without a colon is kept; with one it is dropped anywhere.
+  [null, "NO 12345", "NO12345"],
+  ["GB", "Nr: 12345", "12345"],
+  ["CN", "USCC: 91330100MA2B7C4D3F", "91330100MA2B7C4D3F"],
+];
+for (const [country, typed, stored] of labelled) {
+  check(`label dropped: ${country ?? "other"} ${JSON.stringify(typed)} → ${stored}`, () => assert.equal(normaliseRegistrationNumber(country, typed), stored));
+}
+check("labelled numbers pass their country's rule; a short one says the expected format", () => {
+  assert.equal(registrationNumberProblem("PT", "NIF 519211596"), null);
+  assert.equal(registrationNumberProblem("CN", "统一社会信用代码：91330100MA2B7C4D3F"), null);
+  assert.equal(registrationNumberProblem("TR", "VKN 4837261591"), null);
+  assert.equal(registrationNumberProblem("PT", "51921159"), "format");
+  // R13: the expected format, then where the company finds its number (not said to staff); China names the letters it never uses.
+  assert.equal(registrationProblemText("PT", "format"), "A Portuguese company number has 9 digits, e.g. 519211596. Find it on your permanent certificate");
+  assert.equal(registrationProblemText("TR", "format"), "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591. Find it on your tax plate (vergi levhası) or tax registration letter");
+  assert.equal(registrationProblemText("CN", "format"), "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F, without the letters I, O, S, V or Z");
+  assert.equal(registrationProblemText("PT", "format", "zh"), "葡萄牙公司编号为 9 位数字，例如 519211596。见商业登记永久证明");
+  assert.equal(registrationProblemText("CN", "format", "zh"), "统一社会信用代码为 18 位，例如 91330100MA2B7C4D3F，不含字母 I、O、S、V、Z");
+  assert.equal(registrationProblemText("PT", "format", "en", { staff: true }), "A Portuguese company number has 9 digits, e.g. 519211596");
+  assert.equal(registrationProblemText("TR", "format", "en", { staff: true }), "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591");
+  assert.equal(registrationProblemText("GB", "format"), "Letters and digits only");
+});
+check("company names: the same name once legal form and every space are ignored", () => {
+  assert.ok(companyNamesMatch("Hellstitch Lda", "HELL STITCH - UNIPESSOAL LDA"));
+  assert.ok(companyNamesMatch("Acme Textiles B.V.", "ACME TEXTILES"));
+  assert.ok(companyNamesMatch("Foo Pvt. Ltd.", "FOO PRIVATE LIMITED"));
+  assert.ok(companyNamesMatch("Anadolu Tekstil Ltd. Şti.", "ANADOLU TEKSTİL LİMİTED ŞİRKETİ"));
+  assert.ok(!companyNamesMatch("Hellstitch Lda", "Riverbend Knit Ltd"));
+  assert.ok(!companyNamesMatch("Lda", "Ltd"));
+});
 check("PT prefix and spaces are dropped", () => assert.equal(normaliseRegistrationNumber("PT", "PT 501.964.843"), "501964843"));
 check("access code: 12 digits, dashed", () => assert.equal(normaliseAccessCode("123456789012"), "1234-5678-9012"));
 check("access code: blank is blank", () => assert.equal(normaliseAccessCode(""), ""));

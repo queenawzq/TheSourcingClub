@@ -46,6 +46,7 @@ import {
 import * as addressRules from "./_address.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM helpers lazily.
 const loadRegistrationNumber = () => import("../src/shared/registration-number.mjs");
+const loadCompareDocument = () => import("../src/shared/compare-document.mjs");
 
 const MODEL = process.env.OPENROUTER_REVIEW_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -201,66 +202,8 @@ export function documentWarnings(extracted) {
   return { warnings, specimen, edited, watermark, overruled: { specimen: extracted?.markedAsSample === true && !specimen, edited: extracted?.looksEdited === true && !edited } };
 }
 
-/**
- * Where the document's text differs from what the factory typed. Each line
- * quotes the document. Never "fake": a person decides what a difference means.
- */
-export function documentDifferences(extracted, typedValues = {}, helpers = {}) {
-  return compareDocument(extracted, typedValues, helpers).differences;
-}
-
-const CJK = /[\u3400-\u9fff\uf900-\ufaff]/u;
-/** At most one character inserted, removed or changed between a and b. */
-function oneEditApart(a, b) {
-  if (a === b) return true;
-  if (Math.abs(a.length - b.length) > 1) return false;
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
-  let j = 0;
-  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j += 1;
-  return a.length - i - j <= 1 && b.length - i - j <= 1;
-}
-
-/**
- * One character apart on a Chinese (or other CJK) text of four or more
- * characters: a blurred photo's misread (森仲华 / 森神华), which staff look at,
- * never "differs". Exported for the address rules to share.
- */
-export function nearlySameCjk(a, b, key = (text) => String(text ?? "").normalize("NFKC").replace(/[\s\p{P}\p{Cf}]/gu, "")) {
-  const x = key(a);
-  const y = key(b);
-  if (!x || !y || x === y || !CJK.test(x) || !CJK.test(y)) return false;
-  return Math.min(x.length, y.length) >= 4 && oneEditApart(x, y);
-}
-
-/**
- * The document against what the factory typed: `differences` (each quoting
- * the document; a person decides what one means), and `unsure`: a number
- * read with the wrong length or a failing check digit while the typed one is
- * valid, no number read at all, or a name one character off on a CJK name.
- * Unsure is "look at it", never "differs".
- */
-export function compareDocument(extracted, { country, number, title } = {}, { companyNamesMatch, companyNameKey, normaliseRegistrationNumber, registrationNumberProblem, sameRegistrationNumber }) {
-  const differences = [];
-  const unsure = [];
-  const docNumber = normaliseRegistrationNumber(country, extracted?.registrationNumber ?? "");
-  const typed = normaliseRegistrationNumber(country, number ?? "");
-  const problem = (value) => (registrationNumberProblem && country ? registrationNumberProblem(country, value) : null);
-  // The same number written another way by the country's rule (a Hong Kong certificate's full number) is no difference.
-  if (docNumber && typed && docNumber !== typed && !(sameRegistrationNumber && sameRegistrationNumber(country, docNumber, typed))) {
-    const docProblem = problem(docNumber);
-    if (docProblem && !problem(typed)) unsure.push({ field: "number", document: extracted.registrationNumber, typed: number, reason: docProblem === "check_digit" ? "The number read fails its check digit" : "The number read has the wrong length or characters" });
-    else differences.push({ field: "number", document: extracted.registrationNumber, typed: number });
-  }
-  if (!docNumber && typed) unsure.push({ field: "number", document: "", typed: number, reason: "No number could be read off the document" });
-  const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
-  if (names.length && title && !names.some((name) => companyNamesMatch(name, title))) {
-    const key = companyNameKey ? (text) => companyNameKey(text).replace(/\s+/g, "") : undefined;
-    if (names.some((name) => nearlySameCjk(name, title, key))) unsure.push({ field: "name", document: names.join(" / "), typed: title, reason: "One character differs: check the document" });
-    else differences.push({ field: "name", document: names.join(" / "), typed: title });
-  }
-  return { differences, unsure };
-}
+// documentDifferences, nearlySameCjk and compareDocument live in src/shared/compare-document.mjs, shared with
+// the review window; this file loads them lazily, like the registration-number helpers.
 
 /** True when a and b differ by one substituted, added or dropped character. */
 export function oneCharApart(a, b) {
@@ -379,14 +322,24 @@ export function groundedReasons(reasons, tags) {
   return (reasons ?? []).filter((reason) => tags.some((t) => String(reason).includes(t.tag))).slice(0, 3);
 }
 
+// Without the shared helpers (this file loads them lazily), names are compared without case, spaces or punctuation.
+const plainName = (text) => String(text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** The licence names a company and none of its names is the company's (live, like compareDocument). */
+function licenceNamesAnotherCompany(extracted, title, companyNamesMatch = (a, b) => plainName(a) !== "" && plainName(a) === plainName(b)) {
+  const names = [extracted?.legalName, extracted?.legalNameEnglish].filter((name) => String(name ?? "").trim());
+  return Boolean(names.length && String(title ?? "").trim() && !names.some((name) => companyNamesMatch(name, title)));
+}
+
 /** The address to check: a registered address a source gave, else the typed location. */
-export function bestAddress(detail, signals) {
+export function bestAddress(detail, signals, { companyNamesMatch } = {}) {
   const checks = detail?.checks ?? [];
   // Never the address of another company a registry named for this number.
   const fromCheck = checks.find((check) => check.details?.address && check.numberChecked === detail?.registration?.number && check.nameMatches !== false);
   if (fromCheck) return { address: String(fromCheck.details.address).replace(/\s*\n\s*/g, ", "), from: fromCheck.automatic ? "VIES" : "the registry check" };
+  // The licence's address unless the licence names another company, compared with the
+  // company as it is now (Nov 26): neither the number nor the name when it was read.
   const reading = (signals ?? []).find((signal) => signal.kind === "document_reading" && signal.details?.extracted?.address
-    && signal.details?.numberAtReading === (detail?.registration?.number ?? null) && !(signal.details?.differences ?? []).some((line) => line.field === "name"));
+    && !licenceNamesAnotherCompany(signal.details.extracted, detail?.title, companyNamesMatch));
   if (reading) return { address: reading.details.extracted.address, from: "the registration document" };
   if (detail?.location) return { address: detail.location, from: "the factory's location" };
   return { address: "", from: "" };
@@ -779,6 +732,7 @@ async function finishReading({ orgId, detail, signals, file, fields, model, auth
   extracted.activityCodes = extracted.activityCodes.map((code) => String(code ?? "").slice(0, 200)).filter(Boolean).slice(0, 12);
   const registration = detail?.registration ?? {};
   const helpers = await loadRegistrationNumber();
+  const { compareDocument } = await loadCompareDocument();
   // China's code: I O S Z read as 1 0 5 2 before anything checks it (A3).
   const china = registration.country === "CN" || /营业执照|统一社会信用代码/.test(String(extracted.documentType ?? ""));
   let numberCheck = null;

@@ -6,10 +6,18 @@
  * in `AddressDialog`, the same dialog.
  *
  *   actions.updateCompanyProfile(orgId, { vendorKind })
+ *   actions.updateCompanyProfile(orgId, { companyName | legalName | country | website })
  *   actions.reviewChanges(orgId) → [{ kind, details, at, by }]
+ *
+ * Company name, legal name, country and website are edited where Review
+ * details shows them (`CompanyFields`), for brands and vendors, in the same
+ * dialog and written to the same history. Change type is a vendor's only.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { countryName, signupCountries } from "../shared/company-address.mjs";
+import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
+import { SiteCombobox } from "./SiteCombobox.jsx";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -18,6 +26,8 @@ const STAFF_RESULT_WORDS = {
   confirmed: "Confirmed", problem: "Problem found", could_not_check: "Couldn't check",
   factory: "Factory", trading_company: "Trading company", could_not_tell: "Couldn't tell", original: "Original",
 };
+// A company value staff edited (Nov 26): its kind, or `company_field` with the field in its details.
+const FIELD_WORDS = { company_name: "Company name", name: "Company name", legal_name: "Legal name", country: "Country", website: "Website" };
 const DECISION_WORDS = { approved: "Approved", declined: "Declined", needs_information: "Asked for more information" };
 
 /** One line of the history, in plain words. */
@@ -29,7 +39,12 @@ export function changeWords(change) {
   if (change.kind === "registry_check") return `Registry check: ${result}${note}${files}`;
   if (change.kind === "certificate_check") return `Certificate check: ${result}${note}${files}`;
   if (change.kind === "vendor_kind") return `Type changed to ${KIND_WORDS[d.to] ?? d.to}`;
-  if (change.kind === "address") return "Address changed";
+  if (change.kind === "address") return d.to ? `Address changed to ${d.to}` : "Address changed";
+  const field = change.kind === "company_field" ? d.field : change.kind;
+  if (FIELD_WORDS[field]) {
+    const to = field === "country" ? countryName(d.to) ?? d.to : d.to;
+    return to ? `${FIELD_WORDS[field]} changed to ${to}` : `${FIELD_WORDS[field]} changed`;
+  }
   // Staff's own result on a check, and each decision (Nov 25).
   const staffCheck = { address_check: "Address check", scope_check: "Factory or trader", licence_check: "Licence check" }[change.kind];
   if (staffCheck) return `${staffCheck}: ${STAFF_RESULT_WORDS[d.result] ?? d.result}${note}`;
@@ -107,7 +122,7 @@ export function AddressDialog({ label, address, onSave, onClose }) {
   );
 }
 
-export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged }) {
+export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, onChanged, canChangeType = true, showHistory = true }) {
   const [open, setOpen] = useState(null);
   const [kind, setKind] = useState("manufacturer");
   const [busy, setBusy] = useState(false);
@@ -147,10 +162,18 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
 
   return (
     <div className="vr-override">
-      <div className="vr-override-actions">
-        <button className="vr-text-action" type="button" onClick={start}>Change type</button>
-      </div>
-      {history.length > 0 && (
+      {canChangeType && !showHistory && (
+        <div className="vr-company-field">
+          <div className="factory-detail-pair"><span>Type</span><strong>{KIND_WORDS[currentKind]}</strong></div>
+          <button className="vr-text-action" type="button" aria-label="Edit type" onClick={start}>Edit</button>
+        </div>
+      )}
+      {canChangeType && showHistory && (
+        <div className="vr-override-actions">
+          <button className="vr-text-action" type="button" onClick={start}>Change type</button>
+        </div>
+      )}
+      {showHistory && history.length > 0 && (
         <div className="vr-history">
           <span>History</span>
           <ul>
@@ -177,5 +200,228 @@ export function CompanyOverride({ orgId, entityType, actions, refreshKey = 0, on
         </OverrideDialog>
       )}
     </div>
+  );
+}
+
+/**
+ * Company name, Legal name, Country and Website in Review details, each with
+ * its Edit link (Nov 26): edited where it is shown, in Change type's dialog,
+ * written to the same history, and the company is told. Brands and vendors.
+ * The legal name is what the registry and licence checks compare; saving it
+ * empty clears it, and the checks then use the company name.
+ *
+ *   values: { companyName, legalName, country (two-letter code), website }
+ *   onSave({ companyName } | { legalName } | { country } | { website }) saves one value.
+ */
+export function CompanyFields({ values, onSave, address = null, onSaveAddress = null }) {
+  const [addressOpen, setAddressOpen] = useState(false);
+  const [open, setOpen] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const countries = useMemo(() => (open === "country" ? signupCountries() : []), [open]);
+  const fields = [
+    { key: "companyName", label: "Company name", shown: values.companyName },
+    { key: "legalName", label: "Legal name", shown: values.legalName },
+    { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
+    { key: "website", label: "Website", shown: values.website },
+  ];
+  const current = fields.find((field) => field.key === open);
+  const before = (values[open] ?? "").trim();
+  const start = (key) => {
+    setError("");
+    setText(values[key] ?? "");
+    setOpen(key);
+  };
+  const save = async () => {
+    // A website is a domain or a URL, saved with https:// when it has none (M1).
+    const value = open === "website" ? webAddress(text) : text.trim();
+    if (value == null) {
+      setError(WEB_ADDRESS_WORDS);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ [open]: value });
+      setOpen(null);
+    } catch (failure) {
+      setError(failure?.message || "Couldn't save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="vr-override vr-company-fields">
+      {fields.map((field) => (
+        <div className="vr-company-field" key={field.key}>
+          <div className="factory-detail-pair"><span>{field.label}</span><strong>{field.shown || "Not given"}</strong></div>
+          <button className="vr-text-action" type="button" aria-label={`Edit ${field.label.toLowerCase()}`} onClick={() => start(field.key)}>Edit</button>
+        </div>
+      ))}
+      {/* The address (Nov 26): edited here with the company's other details, not in the Address check. */}
+      {address && onSaveAddress && (
+        <div className="vr-company-field">
+          <div className="factory-detail-pair"><span>{address.label}</span><strong>{address.value || "Not given"}</strong></div>
+          <button className="vr-text-action" type="button" aria-label={`Edit ${address.label.toLowerCase()}`} onClick={() => setAddressOpen(true)}>Edit</button>
+        </div>
+      )}
+      {addressOpen && <AddressDialog label={address.label} address={address.value} onSave={onSaveAddress} onClose={() => setAddressOpen(false)} />}
+      {current && (
+        <OverrideDialog
+          title={`Edit ${current.label.toLowerCase()}`}
+          busy={busy}
+          error={error}
+          saveDisabled={(!text.trim() && !(open === "legalName" && before)) || text.trim() === before}
+          onSave={save}
+          onClose={() => setOpen(null)}
+        >
+          <label className="factory-onboarding-field">
+            <span>{current.label}</span>
+            {open === "country" ? (
+              <select value={text} onChange={(event) => setText(event.target.value)}>
+                {!text && <option value="">Choose a country</option>}
+                {countries.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
+              </select>
+            ) : (
+              <input
+                type={open === "website" ? "url" : "text"}
+                value={text}
+                autoFocus
+                placeholder={open === "website" ? "https://" : undefined}
+                onChange={(event) => { setText(event.target.value); setError(""); }}
+              />
+            )}
+          </label>
+        </OverrideDialog>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Company details in Company information's window (Nov 26): the company's own
+ * values, shown like "Read from this document": plain values, one "Edit
+ * details", the values become fields in place, and Cancel / Save changes sit
+ * under them. One save writes every changed value, the address included
+ * (history per value, one notice to the company: U5); the address check then
+ * runs again.
+ *
+ *   values: { companyName, legalName, country, website }
+ *   kind: "manufacturer" | "trading_company" | null (brands have no type)
+ *   address: { label, value } | null      (vendors)
+ *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind?, address? }
+ *   onAddressSaved(text, outcome) | null  after a save that changed the address: the window shows it, and its check
+ */
+export function CompanyDetails({ values, kind = null, address = null, onSave, onAddressSaved = null }) {
+  const initial = () => ({ ...values, vendorKind: kind ?? "", address: address?.value ?? "" });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const countries = useMemo(() => (editing ? signupCountries() : []), [editing]);
+  // Country (U7): the product's searchable list, the same as "Where you checked". The name typed or picked
+  // is the country only when it is one on the list.
+  const countryOptions = useMemo(() => countries.map((entry) => ({ key: entry.code, name: entry.name })), [countries]);
+  const [countryText, setCountryText] = useState("");
+  const typeCountry = (text) => {
+    setCountryText(text);
+    const match = countries.find((entry) => entry.name.toLowerCase() === text.trim().toLowerCase());
+    set("country", match ? match.code : "");
+  };
+  const rows = [
+    { key: "companyName", label: "Company name", shown: values.companyName },
+    { key: "legalName", label: "Legal name", shown: values.legalName },
+    { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
+    { key: "website", label: "Website", shown: values.website },
+    ...(address ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
+    ...(kind ? [{ key: "vendorKind", label: "Type", shown: KIND_WORDS[kind] }] : []),
+  ];
+  const before = initial();
+  const changed = rows.map((row) => row.key).filter((key) => (draft[key] ?? "").trim() !== (before[key] ?? "").trim());
+  const set = (key, value) => { setDraft((current) => ({ ...current, [key]: value })); setError(""); };
+  const start = () => { setDraft(initial()); setCountryText(countryName(values.country) ?? values.country ?? ""); setError(""); setEditing(true); };
+  const cancel = () => { setDraft(initial()); setError(""); setEditing(false); };
+
+  const save = async () => {
+    const change = {};
+    for (const key of changed) {
+      if (key === "website") {
+        const web = draft.website.trim() ? webAddress(draft.website) : "";
+        if (web == null) { setError(WEB_ADDRESS_WORDS); return; }
+        change.website = web;
+      } else if (key === "companyName" && !draft.companyName.trim()) {
+        setError("Enter the company name");
+        return;
+      } else if (key === "country" && !draft.country) {
+        setError("Choose a country from the list");
+        return;
+      } else {
+        change[key] = draft[key].trim();
+      }
+    }
+    if (changed.includes("address") && !draft.address.trim()) { setError("Enter the address"); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const outcome = await onSave(change);
+      if (change.address != null) await onAddressSaved?.(change.address, outcome);
+      setEditing(false);
+    } catch (failure) {
+      setError(failure?.message || "Couldn't save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="vr-section-head">
+        <h3>Company details</h3>
+        {!editing && <button className="vr-text-action" type="button" onClick={start}>Edit details</button>}
+      </div>
+      <div className="vr-fields">
+        {rows.map((row) => (!editing ? (
+          <div className={`vr-field vr-read${row.multiline ? " is-wide" : ""}`} key={row.key}>
+            <span className="vr-field-label">{row.label}</span>
+            <div className="vr-read-line"><span className="vr-read-value">{row.shown || "Not given"}</span></div>
+          </div>
+        ) : (
+          <div className={`vr-field${row.multiline ? " is-wide" : ""}${changed.includes(row.key) ? " is-edited" : ""}`} key={row.key}>
+            <label htmlFor={`company-${row.key}`}>{row.label}{changed.includes(row.key) && <em>Edited</em>}</label>
+            <div className="vr-input">
+              {row.key === "country" ? (
+                <SiteCombobox
+                  id={`company-${row.key}`}
+                  value={countryText}
+                  sites={countryOptions}
+                  placeholder="Choose a country"
+                  toggleLabel="Show countries"
+                  onFocus={(event) => event.target.select()}
+                  onChange={typeCountry}
+                />
+              ) : row.key === "vendorKind" ? (
+                <select id={`company-${row.key}`} value={draft.vendorKind} onChange={(event) => set("vendorKind", event.target.value)}>
+                  {Object.entries(KIND_WORDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+              ) : row.multiline ? (
+                <textarea id={`company-${row.key}`} rows={2} value={draft[row.key] ?? ""} onChange={(event) => set(row.key, event.target.value)} />
+              ) : (
+                <input id={`company-${row.key}`} type={row.key === "website" ? "url" : "text"} value={draft[row.key] ?? ""} spellCheck={false} onChange={(event) => set(row.key, event.target.value)} />
+              )}
+            </div>
+          </div>
+        )))}
+      </div>
+      {editing && (
+        <div className="vr-read-actions">
+          {error && <p className="vr-run-status is-error" role="status"><i aria-hidden="true" />{error}</p>}
+          <button className="secondary-btn" type="button" disabled={busy} onClick={cancel}>Cancel</button>
+          <button className="primary-btn vr-run" type="button" disabled={busy || changed.length === 0} onClick={save}>
+            {busy ? "Saving" : "Save changes"}
+          </button>
+        </div>
+      )}
+    </>
   );
 }

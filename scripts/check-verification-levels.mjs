@@ -15,7 +15,7 @@ t("no file → can't tell", () => assert.equal(licenseRead({ hasFile: false }).l
 t("file not read → can't tell", () => assert.equal(licenseRead({ hasFile: true }).level, "unknown"));
 t("clean read → high", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: okExtracted }) }).level, "high"));
 t("number differs → low", () => {
-  const r = licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: okExtracted, differences: [{ field: "number", document: "X", typed: "Y" }] }) });
+  const r = licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: { ...okExtracted, registrationNumber: "91330200MA2YYYYY2B" } }) });
   assert.equal(r.level, "low");
   assert.match(r.reasons[0], /Number differs/);
 });
@@ -29,7 +29,13 @@ t("verification watermark is normal → high", () => assert.equal(licenseRead({ 
 t("unreadable → low", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f1", reading: reading({ extracted: { readable: false } }) }).level, "low"));
 t("name not read → medium", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: { registrationNumber: "91330200MA2XXXXX1A" } }) }).level, "medium"));
 t("earlier upload → can't tell", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f2", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: okExtracted }) }).level, "unknown"));
-t("number changed since → can't tell", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "OTHER", reading: reading({ extracted: okExtracted }) }).level, "unknown"));
+// Nov 26: a reading is compared with the company now, never "read before the number changed".
+t("number changed since → compared with the new number", () => {
+  const r = licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2YYYYY2B", reading: reading({ extracted: okExtracted }) });
+  assert.equal(r.level, "low");
+  assert.ok(!r.reasons.some((line) => /before the number changed/.test(line)));
+});
+t("stored differences for an old number no longer count", () => assert.equal(licenseRead({ hasFile: true, latestFileId: "f1", currentNumber: "91330200MA2XXXXX1A", reading: reading({ extracted: okExtracted, differences: [{ field: "number", document: "X", typed: "Y" }] }) }).level, "high"));
 
 // registry
 const reg = { number: "N1" };

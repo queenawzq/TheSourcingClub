@@ -131,7 +131,7 @@ select is((select (details ->> 'outcome') || ' ' || (details ->> 'nameDiffersCon
 -- The licence read differs from what they typed (document_differs): cleared the same way.
 insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic, checked_at)
 values ('d1200000-0000-0000-0000-0000000000f1', 'document_reading', 'a1200000-0000-0000-0000-000000000001', 'differs',
-        '{"numberAtReading":"9123456712","differences":[{"field":"name","document":"P12 Dokuma","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
+        '{"numberAtReading":"9123456712","extracted":{"legalName":"P12 Dokuma"},"differences":[{"field":"name","document":"P12 Dokuma","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
         true, now() + interval '2 seconds');
 set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -145,13 +145,13 @@ select lives_ok($$select public.admin_record_registry_result('d1200000-0000-0000
   'Name differs with a reason, the registry showing their own name');
 select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f1') ->> 'approvalProblem'), null, 'clears the reading''s difference');
 
--- Renamed since the check: Update check clears it.
+-- Checked under another name: the name differs (C2), and Update check clears it.
 select lives_ok($$select public.admin_record_registry_result('d1200000-0000-0000-0000-0000000000f3', 'gib', 'found', null, 'P12 Renamed Knit Ltd. Şti.')$$, 'checked under the old name');
 reset role;
 update public.factory_profiles set legal_name = 'P12 Renamed Knit Toptan Ltd. Şti.' where org_id = 'd1200000-0000-0000-0000-0000000000f3';
 set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
-select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f3') ->> 'approvalProblem'), 'renamed', 'renamed since the check');
+select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f3') ->> 'approvalProblem'), 'name_differs', 'checked under another name: the name differs (C2: compared live)');
 select is((public.admin_verification_score_input('d1200000-0000-0000-0000-0000000000f3') #>> '{detail,renamedSinceCheck}'), 'true', 'and the score input says so');
 reset role;
 -- A transaction has one now(): earlier checks are moved back so the next one is the current one.
@@ -189,7 +189,7 @@ reset role;
 -- Fix round 4: a plain Run again re-reads the licence with the same difference; the record still clears it.
 insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic, checked_at)
 values ('d1200000-0000-0000-0000-0000000000f1', 'document_reading', 'a1200000-0000-0000-0000-000000000001', 'differs',
-        '{"numberAtReading":"9123456712","differences":[{"field":"name","document":"P12 Dokuma","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
+        '{"numberAtReading":"9123456712","extracted":{"legalName":"P12 Dokuma"},"differences":[{"field":"name","document":"P12 Dokuma","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
         true, now() + interval '3 seconds');
 set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -198,7 +198,7 @@ select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f1
 reset role;
 insert into public.verification_signals (org_id, kind, subject_id, result, details, automatic, checked_at)
 values ('d1200000-0000-0000-0000-0000000000f1', 'document_reading', 'a1200000-0000-0000-0000-000000000001', 'differs',
-        '{"numberAtReading":"9123456712","differences":[{"field":"name","document":"P12 Başka","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
+        '{"numberAtReading":"9123456712","extracted":{"legalName":"P12 Başka"},"differences":[{"field":"name","document":"P12 Başka","typed":"P12 Tekstil Ltd. Şti."}],"tradingScope":{"trading":false}}',
         true, now() + interval '4 seconds');
 set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;

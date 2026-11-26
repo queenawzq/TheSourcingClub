@@ -2899,8 +2899,8 @@ console.log("\nRun again — staff edit what the AI read (20261112300000)");
     ? ok("an edited number is saved as the staff number, and the reading is for it") : fail("the staff number", registration);
 
   const badNumber = await staffRouteAs("verification-rerun", staff.client, { body: { orgId: mill.id, group: "business_registration", fields: { number: "91440300MA5F00001B" } } });
-  badNumber.ok === false && badNumber.error === "That number isn't valid. Check it."
-    ? ok("a number failing its check digit is refused in words") : fail("a bad number", badNumber);
+  badNumber.ok === false && badNumber.error === "The last digit doesn't match. Check the number"
+    ? ok("a number failing its check digit is refused in staff's words") : fail("a bad number", badNumber);
 
   const { error: brandRecord } = await brand.client.rpc("record_verification_field_edits", { target_org: mill.id, group_key: "business_registration", edits: [{ field: "legalName", to: "x" }] });
   const { error: brandRead } = await brand.client.rpc("admin_verification_field_edits", { target_org: mill.id });
@@ -3408,6 +3408,17 @@ console.log("\nreview decision emails (20261104200000)");
       ? ok("after a refusal the retry takes a new key, so the provider's replayed refusal cannot block it")
       : fail(`keys after a refusal: ${refused.keys} then ${afterRefusal.keys}`);
   }
+}
+
+// M8: staff's Country edit offers signupCountries(); the database accepts signup_countries().
+{
+  const { signupCountries } = await import("../src/shared/company-address.mjs");
+  const { data, error } = await admin.rpc("signup_countries");
+  const inDb = (data ?? []).map((row) => `${row.code}=${row.name}`).sort().join("|");
+  const inBrowser = signupCountries().map((row) => `${row.code}=${row.name}`).sort().join("|");
+  !error && inDb === inBrowser
+    ? ok(`the Country edit and the database offer the same ${data.length} countries`)
+    : fail("signup_countries() differs from signupCountries(): regenerate migration 20261126100800", error);
 }
 
 console.log(

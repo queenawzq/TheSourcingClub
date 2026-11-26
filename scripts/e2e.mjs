@@ -141,36 +141,85 @@ async function inviteThrough(person, body) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-/** Polls the page until `test` holds; returns how long it took, or null. */
 /**
- * Nov 12 review page: record "Found" on the Official registry sub-check, in the
- * Business registration row's modal (the record form replaced the old Registry
- * row's details window). Returns the sub-check's text after saving.
+ * Records "Found" on the Official registry check, in the Business registration
+ * window, the way a person does (Nov 26): open the row (it may start closed),
+ * Record check, Found, each of the company's values "Same in registry", the
+ * site if none is filled, a note, Save check. Returns the row's text after saving.
  */
-async function recordRegistryFound(page, reference) {
-  await page.locator("article.vr-row").first().click();
-  await waitFor(page, ".vr-modal .vr-sub", 15000);
-  const opened = await page.evaluate(() => {
-    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
-    button?.click();
-    return Boolean(button);
+async function recordRegistryFound(page, reference, registry = {}) {
+  const rowOpened = await page.evaluate(() => {
+    const row = [...document.querySelectorAll("article.vr-row")].find((item) => item.querySelector(".vr-row-title")?.textContent.trim().startsWith("Business registration"));
+    row?.click();
+    return Boolean(row);
   });
+  if (!rowOpened) await page.locator("article.vr-row").first().click();
+  await waitFor(page, ".vr-modal .vr-sub", 15000);
+  // In the page: the Official registry row; "open" opens it if closed, "record" clicks Record check (or Edit), "text" reads it.
+  const onRegistryRow = (action) => page.evaluate((what) => {
+    const row = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector(".vr-sub-line strong")?.textContent.trim() === "Official registry");
+    if (what === "open") {
+      const toggle = row?.querySelector(".vr-sub-toggle");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return Boolean(row);
+    }
+    if (what === "record") {
+      const button = [...(row?.querySelectorAll(".vr-sub-actions button") ?? [])].find((b) => /^(Record check|Edit check|Edit)$/.test(b.textContent.trim()));
+      button?.click();
+      return Boolean(button);
+    }
+    if (document.querySelector(".vr-modal .vr-record")) return null;
+    return row?.innerText ?? null;
+  }, action);
+  // The row starts closed when the check is Strong or Not checked.
+  await onRegistryRow("open");
+  await page.waitForTimeout(300);
+  const opened = await onRegistryRow("record");
   if (!opened) return null;
   await waitFor(page, ".vr-modal .vr-record", 10000);
-  // "Found" is the form's first answer and already chosen.
-  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  const form = ".vr-modal .vr-record";
+  // What it showed: Found. Nothing is chosen on a first record.
+  const foundChosen = await page.evaluate(() => {
+    const label = [...document.querySelectorAll(".vr-modal .vr-record .vr-segmented label")].find((item) => item.textContent.trim() === "Found");
+    label?.click();
+    return Boolean(label);
+  });
+  if (!foundChosen) return null;
+  await page.waitForTimeout(200);
+  // Where you checked: the official register is prefilled; type one if it is not.
+  // Nov 26: a combobox (input role=combobox + "Show known sites"), not an <input list>.
+  const site = page.locator(`${form} input[role="combobox"]`).first();
+  if (!(await site.inputValue()).trim()) {
+    await site.fill("Official business register");
+    // Close the known-sites list the way a person would; Escape with no list open would close the window.
+    const listOpen = await page.evaluate((selector) => document.querySelector(selector)?.getAttribute("aria-expanded") === "true", `${form} input[role="combobox"]`);
+    if (listOpen) await page.keyPress("Escape");
+  }
+  // Each value the company gave is the same in the registry.
+  await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record .vr-same-row .vr-segmented label")]
+    .filter((item) => item.textContent.trim() === "Same in registry").forEach((item) => item.click()));
+  await page.waitForTimeout(200);
+  // A value the company never gave has no Same / Different: it is a plain field, typed as the
+  // registry shows it (Nov 26: Save waits until each is filled). The caller says what the registry shows.
+  const plain = await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record > .vr-same-input")]
+    .map((field) => ({ label: field.querySelector("label")?.textContent.trim() ?? "", id: field.querySelector("input, textarea")?.id ?? "", empty: !field.querySelector("input, textarea")?.value.trim() })));
+  for (const field of plain.filter((item) => item.empty && item.id)) {
+    const key = /^Name/.test(field.label) ? "name" : /^Number/.test(field.label) ? "number" : /^Address/.test(field.label) ? "address" : null;
+    if (!key || !registry[key]) throw new Error(`recordRegistryFound: the form asks for "${field.label}" and the caller gave no registry ${key ?? "value"}`);
+    await page.locator(`[id="${field.id}"]`).fill(registry[key]);
+  }
+  await page.waitForTimeout(200);
+  const notes = page.locator(`${form} textarea`);
+  await notes.nth((await notes.count()) - 1).fill(reference);
   await clickButton(page, "save check");
-  const text = await within(page, () => page.evaluate(() => {
-    if (document.querySelector(".vr-modal .vr-record")) return null;
-    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    return sub?.innerText ?? null;
-  }), 20000);
+  let text = null;
+  await within(page, async () => (text = await onRegistryRow("text")) !== null, 20000);
   await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-modal-foot button")].find((b) => b.textContent.trim() === "Close")?.click());
   await page.waitForTimeout(800);
   return text;
 }
 
+/** Polls the page until `test` holds; returns how long it took, or null. */
 async function within(page, test, timeout = 15000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -316,6 +365,16 @@ async function pressRemove(page, text) {
   await page.waitForTimeout(300);
   await page.evaluate(() => document.querySelector(".payout-method-popover button.danger")?.click());
   await page.waitForTimeout(600);
+}
+
+/**
+ * Approve on the review page: the button opens the message pop-up (Nov 24),
+ * whose own button sends the decision.
+ */
+async function approveOnReview(page, text) {
+  await clickButton(page, text);
+  await waitFor(page, "#approve-message-title", 10000);
+  await page.evaluate(() => document.querySelector("[aria-labelledby='approve-message-title'] footer .primary-btn")?.click());
 }
 
 async function clickButton(page, text) {
@@ -1083,7 +1142,7 @@ async function main() {
     const { data: staffCheck } = await db.from("registry_checks").select("result, automatic")
       .eq("org_id", factoryOrg.id).eq("automatic", false).order("checked_at", { ascending: false }).limit(1).maybeSingle();
     check(staffCheck?.result === "found", `the registry check is recorded from the review page's form (a person's "${staffCheck?.result ?? "nothing"}")`);
-    await clickButton(page, "approve as basic");
+    await approveOnReview(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
     // Profile completeness used to vanish once a decision was made.
@@ -1125,7 +1184,7 @@ async function main() {
     }
     check(brandOpened, "the queue row for this brand was found and opened");
     await page.waitForTimeout(2500);
-    await clickButton(page, "approve profile");
+    await approveOnReview(page, "approve profile");
     await page.waitForTimeout(4000);
     const { data: brandVerified } = await db
       .from("brand_profiles").select("verification_status").eq("org_id", brandOrg.id).single();
@@ -4086,6 +4145,17 @@ async function main() {
       check(!finishedError, `the invited factory is marked as having finished onboarding${finishedError ? ` (${finishedError.message})` : ""}`);
       // And gave its registration number on the step (20261108600000).
       await db.from("company_registrations").upsert({ org_id: invitedOrg?.id, number: `E2E${Date.now()}` }, { onConflict: "org_id" });
+      // And signed the factory terms, as the terms card does: Approve waits for them (20261124310000).
+      {
+        const { data: owner } = await db.from("org_members").select("user_id").eq("org_id", invitedOrg?.id ?? stamp).eq("role", "owner").limit(1).maybeSingle();
+        const { data: terms } = await db.from("legal_documents").select("id, kind, version")
+          .eq("kind", "terms_factory").order("version", { ascending: false }).limit(1).single();
+        const { error: signedError } = await db.from("terms_acceptances").upsert({
+          org_id: invitedOrg?.id, terms_version: `${terms.kind} v${terms.version}`, legal_document_id: terms.id,
+          signature: "Invited Mill owner", accepted_by: owner?.user_id,
+        }, { onConflict: "org_id,terms_version", ignoreDuplicates: true });
+        check(!signedError, `the invited factory signed the terms${signedError ? ` (${signedError.message})` : ""}`);
+      }
 
       await signOutFully(page);
       await signIn(page, factoryEmail, "Factory, invite joined", "factory");
@@ -4112,8 +4182,10 @@ async function main() {
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it (v3: in the Registry row's details).
-      await recordRegistryFound(page, "E2E: the registration document shows this number and name");
-      await clickButton(page, "approve as");
+      // The invited factory gave no name, number or address: staff type what the registry shows.
+      await recordRegistryFound(page, "E2E: the registration document shows this number and name",
+        { name: invitedName, number: "509442013", address: "Rua das Fontainhas 12, 4000-262 Porto" });
+      await approveOnReview(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
       check(Number(invitedBalance) === 500, `the invited factory got its 500 on verification (${invitedBalance})`);

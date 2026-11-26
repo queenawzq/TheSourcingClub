@@ -95,6 +95,7 @@ export function createRerun({ getToken = sessionToken, fetchImpl = (...args) => 
         words: scoreChangeWords(beforeScore, afterScore),
         outOfDate: answer.outOfDate ?? null,
         edited: answer.edits ?? [],
+        notice: answer.ok ? answer.notice ?? null : null,
       };
       if (!answer.ok) Object.assign(result, { code: answer.code, error });
       if (!verification && answer.ok) Object.assign(result, { ok: false, code: "failed", error: "Ran, but the score couldn't be read. Reload the page." });

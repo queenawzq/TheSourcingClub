@@ -55,12 +55,15 @@ async function readAllRows(query, key) {
 }
 
 async function listUsers(service, currentUserId) {
-  const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult] = await Promise.all([
+  // Vercel compiles api/*.js as CommonJS; the shared ESM rule is imported lazily.
+  const { signupFinished } = await import("../src/shared/signup-finished.mjs");
+  const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult, brandsResult] = await Promise.all([
     listAllAuthUsers(service),
     readAllRows(() => service.from("user_profiles").select("id, email, full_name, created_at").order("id"), (row) => row.id),
     readAllRows(() => service.from("org_members").select("user_id, role, org_id, created_at, orgs (name, type)").order("created_at").order("user_id").order("org_id"), (row) => `${row.user_id}:${row.org_id}`),
     readAllRows(() => service.from("platform_admins").select("user_id").order("user_id"), (row) => row.user_id),
-    readAllRows(() => service.from("factory_profiles").select("org_id, vendor_kind").order("org_id"), (row) => row.org_id),
+    readAllRows(() => service.from("factory_profiles").select("org_id, vendor_kind, onboarding_completed_at").order("org_id"), (row) => row.org_id),
+    readAllRows(() => service.from("brand_profiles").select("org_id, onboarding_completed_at").order("org_id"), (row) => row.org_id),
   ]);
 
   const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
@@ -70,6 +73,9 @@ async function listUsers(service, currentUserId) {
   }
   const adminIds = new Set((adminsResult.data ?? []).map((admin) => admin.user_id));
   const vendorKinds = new Map((factoriesResult.data ?? []).map((profile) => [profile.org_id, profile.vendor_kind]));
+  // A company that finished signup (Nov 26): the Users screen marks the rest "Signup not finished".
+  const finished = new Set([...(factoriesResult.data ?? []), ...(brandsResult.data ?? [])]
+    .filter((row) => row.onboarding_completed_at).map((row) => row.org_id));
   const now = Date.now();
 
   return authUsers.map((authUser) => {
@@ -85,6 +91,8 @@ async function listUsers(service, currentUserId) {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      // Only a person whose company hasn't finished is marked: the direct read's rule (R11).
+      ...signupFinished(isAdmin, membership?.org_id, finished),
       createdAt: profile?.created_at || authUser.created_at,
       lastActiveAt: authUser.last_sign_in_at || null,
       disabled: bannedUntil > now,

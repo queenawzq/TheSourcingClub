@@ -6,7 +6,8 @@
  *     group: business_registration | company_information | certification
  *     fields: only the fields staff edited, in the contract's keys
  *             (src/shared/verification-rerun.mjs GROUP_FIELDS)
- *   → 200 { ok: true, group, ran, outOfDate }
+ *   → 200 { ok: true, group, ran, outOfDate, notice? }  notice = the edit was saved
+ *         but the registry lookup after it did not answer ("Saved. EU VIES didn't answer; …")
  *   → 200 { ok: false, code, error, ran }  error = the footer's words
  *   → 401 / 403 { ok: false, code, error } signed out / not staff
  *
@@ -16,9 +17,9 @@
  *
  * What each group runs, recording the results the way the automatic run does
  * (verification-run.js), so the score reads them like any other run:
- *   business_registration: the reading (from the file when the reading of
- *     record is out of date or nothing was edited, else the reading of record
- *     with the edits laid over it; no model call), an edited number saved as
+ *   business_registration: the reading (with staff's edits: the reading of
+ *     record with the edits laid over it, never a model call or a new reading
+ *     of the file; with nothing edited: from the file), an edited number saved as
  *     the staff number (`admin_set_registration_number`), and for Portugal
  *     EU VIES asked again. China's QCC and Turkey's GİB are recorded by staff:
  *     nothing here can ask them.
@@ -28,7 +29,7 @@
  *     them, checked against today's date and the company's name.
  * Who edited which field, and the value before, is kept in
  * `verification_field_edits` (`record_verification_field_edits`, as the staff
- * member), before anything runs.
+ * member), once the edit is saved (savedEdits).
  */
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
@@ -124,7 +125,10 @@ async function readingStep({ orgId, asServer, requestedBy, edits, mustRead, step
   const previous = await latestReading(asServer, orgId);
   const newest = context.files[0] ?? null;
   const outOfDate = rules.readingOutOfDate({ reading: previous, newestFile: newest, number: context.detail.registration.number, title: context.detail.title });
-  const fromFile = mustRead || !previous || (outOfDate && ["earlier_upload", "never_read"].includes(outOfDate.reason));
+  // Staff's corrections (Edit details, U1) are laid over the reading of record exactly as typed, whatever file
+  // it was read from: no model call and no new reading of the file, so a correction never waits on the AI.
+  // Only a run with nothing edited reads the file again (an out-of-date reading, or none).
+  const fromFile = !previous || (!edits.length && (mustRead || (outOfDate && ["earlier_upload", "never_read"].includes(outOfDate.reason))));
   const fileId = fromFile ? newest?.id ?? null : previous?.details?.fileId ?? null;
   const staffEdits = standingEdits({ previous, fileId, edits, READING_KEYS: rules.READING_KEYS });
   const overlay = staffEdits.map((edit) => ({ key: rules.READING_KEYS[edit.field], value: edit.to }));
@@ -304,11 +308,34 @@ async function currentValues({ group, orgId, asServer, rules, subjectId }) {
   return { scope: values.scope, siteAddress: (await LATEST_SITE_ADDRESS(asServer, orgId).catch(() => "")) || null };
 }
 
+/**
+ * The edits that were saved, so only those are recorded as staff edits: a
+ * number is saved as the staff number before the run; the reading's fields
+ * when the reading was saved; the certificate's when its signal was; a site
+ * address is itself the saved value (the next run reads it back).
+ */
+export function savedEdits(group, edits, ran = {}) {
+  return edits.filter((edit) => {
+    if (group === "business_registration") return edit.field === "number" || ran.reading?.ran === true;
+    if (group === "company_information") return edit.field === "siteAddress" || ran.reading?.ran === true;
+    if (group === "certification") return ran.certificate?.ran === true;
+    return false;
+  });
+}
+
 // Groups running on this instance, so a double press runs once.
 const running = new Set();
 
 function fail(response, status, code, rules, extra = {}) {
   response.status(status).json({ ok: false, code, error: rules.rerunFailureWords(code, extra), ...extra });
+}
+
+/** A refused number's expected format for its country, in staff's words; null when there is none to say. */
+async function badNumberWords(country, number) {
+  if (!country) return null;
+  const { registrationNumberProblem, registrationProblemText } = await import("../src/shared/registration-number.mjs");
+  const problem = registrationNumberProblem(String(country).toUpperCase(), number);
+  return problem ? registrationProblemText(String(country).toUpperCase(), problem, "en", { staff: true }) : null;
 }
 
 export default function handler(request, response) {
@@ -364,14 +391,20 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       const { error } = await asCaller.rpc("admin_set_registration_number", {
         target_org: orgId, number: numberEdit.to, note: "Edited under What the AI read, then Run again", country,
       });
-      if (error) return fail(response, 200, error.code === "22023" ? "bad_number" : error.code === "42501" ? "not_staff" : "save_failed", rules);
-    }
-    if (edits.length) {
-      const { error } = await asCaller.rpc("record_verification_field_edits", { target_org: orgId, group_key: group, edits });
+      if (error?.code === "22023") {
+        // The expected format for the country, as staff read it (N4): never "where the company finds it".
+        const words = await badNumberWords(country ?? registration?.country_code, numberEdit.to);
+        return fail(response, 200, "bad_number", rules, words ? { error: words } : {});
+      }
       if (error) return fail(response, 200, error.code === "42501" ? "not_staff" : "save_failed", rules);
     }
-
     const result = await runGroup({ orgId, group, fields: checked.fields, edits, asServer, requestedBy, subjectId, rules, steps, addressOnly: addressOnly === true && group === "company_information" });
+    // Who edited what is recorded once the edit is saved (U6): a save that failed leaves no edit behind.
+    const saved = savedEdits(group, edits, result.ran);
+    if (saved.length) {
+      const { error } = await asCaller.rpc("record_verification_field_edits", { target_org: orgId, group_key: group, edits: saved });
+      if (error) console.error("verification-rerun", "record_verification_field_edits", error.message);
+    }
     let outOfDate = null;
     if (group !== "certification") {
       const assist = await steps.registryAssist();
@@ -382,7 +415,11 @@ export async function handle(request, response, { env = supabaseServerEnv(), mak
       }
     }
     const body = { ok: result.ok, group, ran: result.ran, edits: edits.map(({ field }) => field), outOfDate };
-    if (!result.ok) Object.assign(body, { code: result.code, error: rules.rerunFailureWords(result.code, { source: result.source }) });
+    // Every edit saved and only the registry lookup after it not answering: a save, with a note (N1).
+    const notice = !result.ok && edits.length > 0 && saved.length === edits.length && rules.savedNoticeWords
+      ? rules.savedNoticeWords(result.code, { source: result.source }) : null;
+    if (notice) Object.assign(body, { ok: true, code: result.code, notice });
+    else if (!result.ok) Object.assign(body, { code: result.code, error: rules.rerunFailureWords(result.code, { source: result.source }) });
     response.status(200).json(body);
   } catch (error) {
     console.error("verification-rerun", error?.message);
