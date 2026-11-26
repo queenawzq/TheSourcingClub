@@ -369,16 +369,16 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
   if (current && current.details?.form === 2) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const by = byWords(person.checkedBy, current.checked_at, timeZone);
-    const asSaved = siteRecord(current.details ?? {}, form.profile);
+    const recorded = siteRecord(current.details ?? {}, form.profile);
+    // Names are compared live (C2, Nov 26): a registry name that is not the company's current name differs.
+    const asSaved = detail.renamedSinceCheck && recorded.result === "found"
+      ? { ...recorded, differs: { ...recorded.differs, name: true }, compared: { ...recorded.compared, name: true } } : recorded;
     // Staff confirmed the current address on the Address row (Nov 25): a registry address that differs is settled.
     const saved = addressConfirmed
       ? { ...asSaved, differs: { ...asSaved.differs, address: false }, compared: { ...asSaved.compared, address: false } }
       : asSaved;
     const registry = record({ ...saved, by, result: saved.result, reference: saved.reference, name: saved.name, source: saved.site, sourceKey: current.source });
     out = { ...siteVerdict(saved, SCORES.registry), registry: { ...registry, summary: siteSummary(saved, by) } };
-    if (detail.renamedSinceCheck && saved.result === "found") {
-      out = { score: null, verdict: "Renamed since the check", registry: { ...out.registry, for: current.details?.titleAtCheck ?? current.details?.nameAtCheck ?? null } };
-    }
   } else if (current) {
     const person = checks.find((c) => c.id === current.id) ?? {};
     const cd = current.details ?? {};
@@ -387,7 +387,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     const outcome = cd.outcome ?? (current.result === "found" && cd.nameDiffersConfirmed ? "name_differs" : current.result);
     const registry = record({
       source: src.replace(/^the /, ""), sourceKey: current.source, by, result: outcome === "mismatch" ? "not_found" : outcome,
-      reference: cd.reference ?? "", name: (detail.renamedSinceCheck ? title : cd.name ?? title) ?? "",
+      reference: cd.reference ?? "", name: cd.name ?? title ?? "",
       ...(cd.reason ? { reason: String(cd.reason) } : {}),
       // An explanation is saved as a check of its own, with no files: the proof of the check it explains stays
       // on the row (Nov 25), from the latest person's check on this number that has some.
@@ -396,9 +396,7 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
         return earlier ? { proof: earlier.details.proof } : {};
       })() : {}),
     });
-    if (detail.renamedSinceCheck) {
-      out = { score: null, verdict: "Renamed since the check", registry: { ...registry, for: cd.titleAtCheck ?? cd.nameAtCheck ?? null } };
-    } else if (current.result === "found" && current.source === "document") {
+    if (current.result === "found" && current.source === "document") {
       out = { score: SCORES.registry.document, verdict: "Checked on the document only", short: "checked on the document only", registry };
     } else if (outcome === "name_differs" && cd.name && companyNamesMatch(cd.name, title)) {
       // Name differs chosen for the licence's difference, with the registry showing this very name.
@@ -411,7 +409,9 @@ export function registryCheck({ detail, country, title, readName = null, timeZon
     } else if (current.result === "found") {
       out = detail.nameDiffers
         ? { score: SCORES.registry.nameDiffers, verdict: `Found on ${src}; another source names ${detail.nameDiffers}`, registry }
-        : { score: SCORES.registry.found, verdict: `Found on ${src}, name and number match`, short: `found on ${src}`, registry };
+        // The name it was found under is not the company's name now (C2): compared live, never "since the check".
+        : detail.renamedSinceCheck ? { score: SCORES.registry.nameDiffers, verdict: `Found on ${src}, name differs`, short: `found on ${src}, name differs`, registry }
+          : { score: SCORES.registry.found, verdict: `Found on ${src}, name and number match`, short: `found on ${src}`, registry };
     } else if (current.result === "mismatch") {
       out = { score: SCORES.registry.notFound, verdict: `${capital(src)} shows another company`, registry };
     } else if (current.result === "not_found") {
@@ -918,7 +918,7 @@ export function approvalBlockWords(problem, detail, reading = null, { licence = 
       : "Registry: record a check first")
       : detail.current.result === "could_not_check" ? `Registry: couldn't check ${src}, add a note or record a check that finds them`
         : detail.current.result !== "found" ? `Registry: the last check on ${src} found no match` : "Registry: record a check first",
-    renamed: "Registry: renamed since the check, check it again",
+    renamed: "Registry: name differs, record the check again",
     name_differs: "Registry: name differs, record the check again",
     document_differs: field === "number"
       ? "Registry number: the licence's number differs from what they typed. Explain it in the Official registry row, or correct the number and save"
@@ -941,7 +941,7 @@ export function approvalBlockRow(problem, detail, reading = null, { licence = tr
   const field = differingField(detail, reading);
   const row = {
     no_check: ["business_registration", "registry", detail?.current && detail.current.result !== "found" ? "Approve needs: a registry record that finds them" : "Approve needs: record a registry check"],
-    renamed: ["business_registration", "registry", "Approve needs: check the registry again for the new name"],
+    renamed: ["business_registration", "registry", "Approve needs: record the registry check again"],
     name_differs: ["business_registration", "registry", "Approve needs: record the registry check again"],
     document_differs: ["business_registration", "registry", field === "number"
       ? "Approve needs: the number differs from the licence. Explain it here, or correct the number and save"
@@ -974,8 +974,6 @@ export function renamedWhy(registry, title) {
 
 function groupVerdict(checks, good, { title } = {}) {
   const counted = checks.filter((c) => c.weight);
-  const renamed = counted.find((c) => c.verdict === "Renamed since the check");
-  if (renamed) return { verdict: "Renamed since the registry check", lead: renamed, explain: renamedWhy(renamed.registry, title) };
   const weak = counted.filter((c) => c.score != null && c.score < 75).sort((a, b) => a.score - b.score)[0];
   if (weak) return { verdict: weak.verdict, lead: weak };
   const open = counted.find((c) => c.score == null);

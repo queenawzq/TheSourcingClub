@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(3);
+select plan(9);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -40,5 +40,21 @@ select lives_ok($$select public.admin_save_registry_check('d2611261-0000-0000-00
   'C1: a labelled number in the right format is saved');
 
 reset role;
+-- C2: the registry check's name is compared with the company's name now ----------
+select ok(public.registry_approval_problem('d2611261-0000-0000-0000-0000000000f1') is distinct from 'name_differs',
+  'C2: found under the company''s legal name: no name difference');
+update public.factory_profiles set legal_name = 'Riverbend Knit Ltd' where org_id = 'd2611261-0000-0000-0000-0000000000f1';
+select is(public.registry_approval_problem('d2611261-0000-0000-0000-0000000000f1'), 'name_differs',
+  'C2: another legal name now: the registry''s name differs, at once');
+select ok(not public.registry_check_holds('d2611261-0000-0000-0000-0000000000f1',
+  (select c.details from public.current_registry_check('d2611261-0000-0000-0000-0000000000f1') c)), 'C2: and the check does not hold');
+update public.factory_profiles set legal_name = 'R2F MILL, LDA.' where org_id = 'd2611261-0000-0000-0000-0000000000f1';
+select ok(public.registry_approval_problem('d2611261-0000-0000-0000-0000000000f1') is distinct from 'name_differs',
+  'C2: the same name written another way matches again, with no new check');
+select ok(public.registry_check_holds('d2611261-0000-0000-0000-0000000000f1', '{"titleAtCheck":"R2F Mill Lda","nameAtCheck":"R2F Mill"}'::jsonb),
+  'C2: with no registry name, the names it was checked under are compared the same way, not to the letter');
+select ok(not exists (select 1 from pg_proc p where p.proname = 'registry_approval_problem'
+  and pg_get_functiondef(p.oid) like '%''renamed''%'), 'C2: the approval rule has no renamed state');
+
 select * from finish();
 rollback;

@@ -251,8 +251,8 @@ const turkeyTrader = {
       {
         key: "business_registration",
         label: "Business registration",
-        verdict: "Renamed since the registry check",
-        why: "GİB was checked for “Merter Tekstil Ltd. Şti.”; the name is now longer, and Merter Denim uses the same tax number.",
+        verdict: "Found on GİB, name differs",
+        why: "GİB shows “Merter Tekstil Ltd. Şti.”, and Merter Denim uses the same tax number.",
         evidence: { kind: "licence", variant: "tr", file: "vergi-levhasi.pdf" },
         readAt: "Read Nov 11, 16:02",
         fields: [
@@ -266,7 +266,7 @@ const turkeyTrader = {
         ],
         checks: [
           { key: "licence", label: "Tax plate", weight: 30, score: 70, verdict: "Read, tax number valid" },
-          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: null, verdict: "Renamed since the check", registry: { source: "GİB", by: "Leo Park, Nov 4", for: "Merter Tekstil Ltd. Şti.", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti.", form: siteForm("TR", { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" }, TR_PROFILE, "GİB") }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
+          { key: "registry", label: "Official registry", kind: "registry", weight: 30, score: 60, verdict: "Found on GİB, name differs", registry: { source: "GİB", by: "Leo Park, Nov 4", result: "found", reference: "", name: "Merter Tekstil Ltd. Şti.", form: siteForm("TR", { name: "Merter Tekstil Toptan Ticaret Ltd. Şti.", number: "6230418795", address: "Merter Mah., Güngören, İstanbul" }, TR_PROFILE, "GİB") }, lookup: { label: "Open GİB", href: "https://ivd.gib.gov.tr/", copy: "6230418795" } },
           addressCheck({ score: 30, verdict: "District only, no street or building", typed: "Merter, Güngören, Istanbul", licence: ["Tax plate", "Merter Mah., Güngören, İstanbul"] }),
         ],
       },

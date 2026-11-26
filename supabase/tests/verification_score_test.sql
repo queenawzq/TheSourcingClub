@@ -145,13 +145,13 @@ select lives_ok($$select public.admin_record_registry_result('d1200000-0000-0000
   'Name differs with a reason, the registry showing their own name');
 select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f1') ->> 'approvalProblem'), null, 'clears the reading''s difference');
 
--- Renamed since the check: Update check clears it.
+-- Checked under another name: the name differs (C2), and Update check clears it.
 select lives_ok($$select public.admin_record_registry_result('d1200000-0000-0000-0000-0000000000f3', 'gib', 'found', null, 'P12 Renamed Knit Ltd. Şti.')$$, 'checked under the old name');
 reset role;
 update public.factory_profiles set legal_name = 'P12 Renamed Knit Toptan Ltd. Şti.' where org_id = 'd1200000-0000-0000-0000-0000000000f3';
 set local request.jwt.claims = '{"sub":"c1200000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
-select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f3') ->> 'approvalProblem'), 'renamed', 'renamed since the check');
+select is((public.admin_verification_rules('d1200000-0000-0000-0000-0000000000f3') ->> 'approvalProblem'), 'name_differs', 'checked under another name: the name differs (C2: compared live)');
 select is((public.admin_verification_score_input('d1200000-0000-0000-0000-0000000000f3') #>> '{detail,renamedSinceCheck}'), 'true', 'and the score input says so');
 reset role;
 -- A transaction has one now(): earlier checks are moved back so the next one is the current one.
