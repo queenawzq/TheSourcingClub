@@ -734,6 +734,7 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   Settings access, the company's name an owner, and the sign-in email is not
   edited there. The phone lives in `company_contact_details`, never `orgs`: the
   other side of an order can read `orgs`.
+- **The profile's email is the sign-up email** (`20261126200000`). Every email TSC sends, and the staff check that members use the website's domain, read `user_profiles.email`, so signed-in users may update only `locale` there (the one column the app writes); a new column needs adding to that grant. The email is set at sign-up and only the server key changes it; a later change of `auth.users.email` is not copied, since the app has no email change and Auth's confirmation settings live outside this repo. Profiles that differed were recorded in staff-only `profile_email_realignments` and realigned.
 - **Someone with no company is not always someone who just signed up**
   (`20261104100100`). `ChooseOrgType` creates a company from the signup answers
   only for an account with no `org_member_departures` row. A trigger on
