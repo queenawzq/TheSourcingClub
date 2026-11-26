@@ -516,11 +516,12 @@ export function finishedSignups(factories = [], brands = []) {
 }
 
 /**
- * Whether a person's company finished signup: staff always have; a person
- * with no company has not. Both spellings, for the Users screen.
+ * Whether a person's company finished signup: staff always have. Only a
+ * person whose company has not finished is marked; a person with no company
+ * is shown as before (M5). Both spellings, for the Users screen.
  */
 export function signupFinished(isAdmin, orgId, finished) {
-  const done = Boolean(isAdmin || (orgId && finished.has(orgId)));
+  const done = Boolean(isAdmin || !orgId || finished.has(orgId));
   return { signupFinished: done, signup_finished: done };
 }
 
