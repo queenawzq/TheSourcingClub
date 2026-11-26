@@ -1521,13 +1521,12 @@ a.vr-text-action {
 .vr-file-row > button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #7183a2; font-size: 18px; line-height: 1; cursor: pointer; }
 .vr-file-row > button:hover { background: #eef3f8; color: #0f172a; }
 
-/* Review details: a company value with its Edit link, in the style of Change type. */
-.vr-company-field { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.vr-company-field .factory-detail-pair { min-width: 0; }
+/* Review details: a company value with its Edit link, in the style of Change type (Nov 26). */
+.vr-company-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vr-company-field .factory-detail-pair { min-width: 0; flex: 1 1 auto; }
+.vr-company-field .vr-text-action { flex: none; }
 
 .vr-field > label.vr-dropzone { color: #58709a; font-size: 13px; }
-.vr-company-field { align-items: center; }
-.vr-company-field .vr-text-action { flex: none; }
 
 /* ------------------------------------ one row per check (Nov 26 mock) */
 
