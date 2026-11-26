@@ -889,8 +889,9 @@ function OverrideForm({ check, onSave, onDone }) {
   );
 }
 
-// The address's versions, in plain words (Nov 26): whose address each line is.
-const ADDRESS_LINE_WORDS = { typed: "Company", licence: "Licence", registry: "Registry" };
+// The address's versions, in plain words (Nov 26): whose address each line is. The licence's line keeps
+// its document's own name ("Tax plate", "Registration certificate") from its label (R8).
+const ADDRESS_LINE_WORDS = { typed: "Company", registry: "Registry" };
 
 function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
   const [explainingTyped, setExplainingTyped] = useState(null);
