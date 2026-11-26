@@ -1204,8 +1204,11 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
 
+  // Escape or a click beside the window never closes it while a form is open in it: a check's form, Company
+  // details or Edit details being edited (their Cancel / Save changes, R6). Typed words are never lost that way.
+  const EDITING = ".vr-record, .vr-read-actions";
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-dialog-over")) onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-layer .vr-read-actions, .vr-dialog-over")) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -1275,7 +1278,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
 
   return (
     // A click beside the pop-up closes it, unless a form is open in it: typed words are never lost that way (Nov 24 tester).
-    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(".vr-record") && onClose()}>
+    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(EDITING) && onClose()}>
       <section className="vr-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className="vr-modal-head">
           <div className="vr-modal-title">
