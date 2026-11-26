@@ -24,6 +24,7 @@ import {
 } from "./verification-scoring.js";
 import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } from "../shared/verification-score.mjs";
 import { companyNamesMatch, normaliseRegistrationNumber, registrationNumberProblem, registrationProblemText, sameRegistrationNumber } from "../shared/registration-number.mjs";
+import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
 import { AddressDialog } from "./CompanyOverride.jsx";
 import "./verification-score.css";
 
@@ -616,7 +617,9 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const numberTyped = !isCert && result === "found" && (!hasProfile("number") || (same.number === "different" && !sameAsProfile("number", registryValue.number, form.profile?.number, country)))
     ? String(registryValue.number ?? "") : "";
   const numberWrong = numberFormatWords(country, numberTyped);
-  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong;
+  // The link, when given, is a web address (M3): said under the field, and saved with https://.
+  const linkSaved = webAddress(link);
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null;
 
   const addFiles = async (list) => {
     const files = [...(list ?? [])];
@@ -658,7 +661,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
         : Object.fromEntries(fieldsFor.filter(([key]) => answerFor(key)).map(([key]) => [key, answerFor(key) === "same"
           ? String(form.profile?.[key] ?? "") : key === "number" ? savedNumber(country, registryValue[key]) : String(registryValue[key] ?? "").trim()])),
       note: note.trim(),
-      link: link.trim(),
+      link: linkSaved ?? "",
       proof,
     }));
     if (!ok) return;
@@ -768,6 +771,7 @@ function RecordForm({ check, onSave, onDone, actions }) {
       <div className="vr-field">
         <label htmlFor={ids.link}>Link (optional)</label>
         <input id={ids.link} value={link} spellCheck={false} onFocus={selectAll} onChange={(event) => setLink(event.target.value)} />
+        {linkSaved == null && <SaveError text={WEB_ADDRESS_WORDS} />}
       </div>
       <SaveError text={save.error} />
       <div className="vr-record-actions">

@@ -3,7 +3,7 @@
 -- on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(25);
 
 insert into auth.users (id, email) values
   ('c2611261-0000-0000-0000-000000000001', 'pgtap-r2f-admin@example.com'),
@@ -22,6 +22,9 @@ insert into public.brand_profiles (org_id, hq_location) values
   ('d2611261-0000-0000-0000-0000000000b1', 'London, United Kingdom');
 insert into public.company_registrations (org_id, country_code, number) values
   ('d2611261-0000-0000-0000-0000000000f1', 'PT', '519211596');
+insert into public.factory_certifications (id, org_id, term_id)
+select 'e2611261-0000-0000-0000-000000000001', 'd2611261-0000-0000-0000-0000000000f1', t.id
+  from public.taxonomy_terms t where t.kind = 'certification' order by t.slug limit 1;
 
 set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -88,6 +91,20 @@ set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000002","r
 set local role authenticated;
 select throws_ok($$select public.admin_update_company_profile('d2611261-0000-0000-0000-0000000000b1', website => 'not a url')$$,
   '42501', null, 'M1: a company is refused as staff only, before the address is looked at');
+reset role;
+
+-- M3: a check's link is a web address when given ------------------------------------
+set local request.jwt.claims = '{"sub":"c2611261-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_save_registry_check('d2611261-0000-0000-0000-0000000000f2', 'Published acts', 'site', 'not_found',
+  '{}'::jsonb, 'Not listed', 'Rua Nova 1, Porto')$$, '22023', 'Enter a web address, e.g. example.com', 'M3: an address typed as the link is refused');
+select is((public.admin_save_registry_check('d2611261-0000-0000-0000-0000000000f2', 'Published acts', 'site', 'not_found',
+  '{}'::jsonb, 'Not listed', 'publicacoes.mj.pt/pesquisa')).details ->> 'reference', 'https://publicacoes.mj.pt/pesquisa',
+  'M3: a link without a scheme is saved with https://');
+select is((public.admin_save_registry_check('d2611261-0000-0000-0000-0000000000f2', 'Published acts', 'site', 'not_found',
+  '{}'::jsonb, 'Not listed', '')).details ->> 'reference', null, 'M3: no link is fine');
+select throws_ok($$select public.admin_save_certificate_check('d2611261-0000-0000-0000-0000000000f1', 'e2611261-0000-0000-0000-000000000001', 'GOTS', 'found',
+  '{}'::jsonb, null, 'not a link')$$, '22023', 'Enter a web address, e.g. example.com', 'M3: a certificate check refuses one too');
 reset role;
 
 select * from finish();
