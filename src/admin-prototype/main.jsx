@@ -1733,6 +1733,7 @@ function UsersPage({ users, onToggleStatus }) {
       <div className="admin-user-metrics" aria-label="User account summary">
         <div><span>Total users</span><strong>{users.length}</strong></div>
         <div><span>Active</span><strong>{activeCount}</strong></div>
+        <div><span>Signup not finished</span><strong>{users.filter((user) => user.status === "Signup not finished").length}</strong></div>
         <div><span>Disabled</span><strong>{users.filter((user) => user.status === "Disabled").length}</strong></div>
       </div>
 

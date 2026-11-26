@@ -496,9 +496,9 @@
 
 .admin-user-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  max-width: 680px;
+  max-width: 900px;
   margin: -8px 0 24px;
 }
 
