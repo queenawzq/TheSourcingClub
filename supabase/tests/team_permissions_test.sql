@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(115);
+select plan(117);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('a2400000-0000-0000-0000-000000000001', 'p24-owner@example.com',     '{"name":"P24 Owner"}'),
@@ -564,10 +564,31 @@ select throws_ok(
   'P0002', null,
   'an expired invitation cannot be accepted');
 
+-- Signed up or signed in with a password: the address is only typed, so the
+-- invited mailbox has not been shown. Confirm email is off.
+select throws_ok(
+  $$select public.accept_invitation((select id from public.org_invitations
+     where email = 'p24-invitee@example.com' and org_id = 'a2400000-0000-0000-0000-0000000000aa'))$$,
+  '42501', 'enter the code emailed to p24-invitee@example.com to join',
+  'a session with no sign-in method CANNOT join: the mailbox is not proven');
+
+reset role;
+set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000011","email":"p24-invitee@example.com","role":"authenticated","amr":[{"method":"password","timestamp":1}]}';
+set local role authenticated;
+select throws_ok(
+  $$select public.accept_invitation((select id from public.org_invitations
+     where email = 'p24-invitee@example.com' and org_id = 'a2400000-0000-0000-0000-0000000000aa'))$$,
+  '42501', 'enter the code emailed to p24-invitee@example.com to join',
+  'a password session CANNOT join: whoever registered the address first is not the mailbox');
+
+-- Signed in with the code emailed to the address.
+reset role;
+set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000011","email":"p24-invitee@example.com","role":"authenticated","amr":[{"method":"otp","timestamp":1}]}';
+set local role authenticated;
 select lives_ok(
   $$select public.accept_invitation((select id from public.org_invitations
      where email = 'p24-invitee@example.com' and org_id = 'a2400000-0000-0000-0000-0000000000aa'))$$,
-  'the invitee accepts');
+  'the invitee accepts once signed in with the emailed code');
 
 reset role;
 select is(

@@ -722,6 +722,13 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   select also returned an owner's own outgoing invitations, and the invited
   company's name was unreadable to someone not in it yet. Signing up with an
   invited address no longer creates a company of its own.
+- **Joining needs the invited mailbox, not only the address**
+  (`20261124600000`). "Confirm email" is off, so whoever signed up with an
+  invited address first could join. `accept_invitation` refuses a session
+  opened with a password (hint `mailbox_unproven`); Join then emails a sign-in
+  code (`useInvitationJoin`, `src/app/main.jsx`) and the session it opens
+  joins. Sign-up stays one step. A script or test joining as someone signs in
+  with the emailed code first (`signInWithEmailedCode` in the smoke and e2e).
 - **Settings → Account is `save_account_settings()`**: phone and location need
   Settings access, the company's name an owner, and the sign-in email is not
   edited there. The phone lives in `company_contact_details`, never `orgs`: the
