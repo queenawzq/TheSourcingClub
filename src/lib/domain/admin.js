@@ -6,6 +6,7 @@
  * module only finds the queue and calls it.
  */
 import { countedQueue } from "../../shared/payments-board-sections.mjs";
+import { signupFinished } from "../../shared/signup-finished.mjs";
 import { supabase, unwrap } from "../supabase.js";
 import { readByIds, readEveryPage } from "../read-pages.js";
 import { getColourSplits, getRfq } from "./rfq.js";
@@ -515,15 +516,8 @@ export function finishedSignups(factories = [], brands = []) {
   return new Set([...(factories ?? []), ...(brands ?? [])].filter((row) => row.onboarding_completed_at).map((row) => row.org_id));
 }
 
-/**
- * Whether a person's company finished signup: staff always have. Only a
- * person whose company has not finished is marked; a person with no company
- * is shown as before (M5). Both spellings, for the Users screen.
- */
-export function signupFinished(isAdmin, orgId, finished) {
-  const done = Boolean(isAdmin || !orgId || finished.has(orgId));
-  return { signupFinished: done, signup_finished: done };
-}
+// Whether a person's company finished signup: the same rule as api/admin-users.js (R11).
+export { signupFinished };
 
 async function directUserDirectory() {
   // Each a page at a time: one read stops at 1,000 rows without saying so,
