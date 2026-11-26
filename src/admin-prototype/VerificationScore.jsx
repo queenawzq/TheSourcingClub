@@ -619,6 +619,10 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const numberWrong = numberFormatWords(country, numberTyped);
   // The link, when given, is a web address (M3): said under the field, and saved with https://.
   const linkSaved = webAddress(link);
+  // "Different" needs what the registry shows (M2): said under the empty field once Save is pressed.
+  const [tried, setTried] = useState(false);
+  const emptyDifferent = !isCert && result === "found"
+    ? fieldsFor.map(([key]) => key).filter((key) => hasProfile(key) && same[key] === "different" && !String(registryValue[key] ?? "").trim()) : [];
   const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null;
 
   const addFiles = async (list) => {
@@ -651,6 +655,10 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const submit = async (event) => {
     event.preventDefault();
     if (!ready || save.busy) return;
+    if (emptyDifferent.length) {
+      setTried(true);
+      return;
+    }
     const { ok } = await run(() => onSave({
       site: site.trim(),
       siteKey: known?.key ?? "site",
@@ -729,7 +737,8 @@ function RecordForm({ check, onSave, onDone, actions }) {
               <div className="vr-field vr-same-input">
                 <label htmlFor={`${ids.site}-${key}`}>{SAME_INPUT_WORDS[key]}</label>
                 <Control id={`${ids.site}-${key}`} rows={multiline ? 2 : undefined} value={typed} spellCheck={false} autoFocus onChange={(event) => setRegistryValue((current) => ({ ...current, [key]: event.target.value }))} />
-                {sameAsProfile(key, typed, form.profile?.[key], country)
+                {tried && emptyDifferent.includes(key) ? <SaveError text="Enter what the registry shows" />
+                  : sameAsProfile(key, typed, form.profile?.[key], country)
                   ? <small className="vr-field-by">Same as the profile ({form.profile[key]})</small>
                   : key === "number" && numberWrong ? <SaveError text={numberWrong} />
                     : savedAs && savedAs !== typed.trim() && <small className="vr-field-by">Saved as {savedAs}</small>}
