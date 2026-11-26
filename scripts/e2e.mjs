@@ -120,7 +120,7 @@ async function inviteThrough(person, body) {
  * Record check, Found, each of the company's values "Same in registry", the
  * site if none is filled, a note, Save check. Returns the row's text after saving.
  */
-async function recordRegistryFound(page, reference) {
+async function recordRegistryFound(page, reference, registry = {}) {
   const rowOpened = await page.evaluate(() => {
     const row = [...document.querySelectorAll("article.vr-row")].find((item) => item.querySelector(".vr-row-title")?.textContent.trim().startsWith("Business registration"));
     row?.click();
@@ -171,6 +171,16 @@ async function recordRegistryFound(page, reference) {
   // Each value the company gave is the same in the registry.
   await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record .vr-same-row .vr-segmented label")]
     .filter((item) => item.textContent.trim() === "Same in registry").forEach((item) => item.click()));
+  await page.waitForTimeout(200);
+  // A value the company never gave has no Same / Different: it is a plain field, typed as the
+  // registry shows it (Nov 26: Save waits until each is filled). The caller says what the registry shows.
+  const plain = await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record > .vr-same-input")]
+    .map((field) => ({ label: field.querySelector("label")?.textContent.trim() ?? "", id: field.querySelector("input, textarea")?.id ?? "", empty: !field.querySelector("input, textarea")?.value.trim() })));
+  for (const field of plain.filter((item) => item.empty && item.id)) {
+    const key = /^Name/.test(field.label) ? "name" : /^Number/.test(field.label) ? "number" : /^Address/.test(field.label) ? "address" : null;
+    if (!key || !registry[key]) throw new Error(`recordRegistryFound: the form asks for "${field.label}" and the caller gave no registry ${key ?? "value"}`);
+    await page.locator(`[id="${field.id}"]`).fill(registry[key]);
+  }
   await page.waitForTimeout(200);
   const notes = page.locator(`${form} textarea`);
   await notes.nth((await notes.count()) - 1).fill(reference);
@@ -4145,7 +4155,9 @@ async function main() {
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
       // Approving needs a registry check that found it (v3: in the Registry row's details).
-      await recordRegistryFound(page, "E2E: the registration document shows this number and name");
+      // The invited factory gave no name, number or address: staff type what the registry shows.
+      await recordRegistryFound(page, "E2E: the registration document shows this number and name",
+        { name: invitedName, number: "509442013", address: "Rua das Fontainhas 12, 4000-262 Porto" });
       await approveOnReview(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
