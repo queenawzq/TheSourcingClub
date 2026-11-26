@@ -302,17 +302,17 @@ export function CompanyFields({ values, onSave, address = null, onSaveAddress = 
  * Company details in Company information's window (Nov 26): the company's own
  * values, shown like "Read from this document": plain values, one "Edit
  * details", the values become fields in place, and Cancel / Save changes sit
- * under them. One save writes every changed value (history per value, one
- * notice to the company); the address goes through the address check's own
- * save, so the check runs again.
+ * under them. One save writes every changed value, the address included
+ * (history per value, one notice to the company: U5); the address check then
+ * runs again.
  *
  *   values: { companyName, legalName, country, website }
  *   kind: "manufacturer" | "trading_company" | null (brands have no type)
  *   address: { label, value } | null      (vendors)
- *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind? }
- *   onSaveAddress(text) | null
+ *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind?, address? }
+ *   onAddressSaved(text, outcome) | null  after a save that changed the address: the window shows it, and its check
  */
-export function CompanyDetails({ values, kind = null, address = null, onSave, onSaveAddress = null }) {
+export function CompanyDetails({ values, kind = null, address = null, onSave, onAddressSaved = null }) {
   const initial = () => ({ ...values, vendorKind: kind ?? "", address: address?.value ?? "" });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initial);
@@ -324,7 +324,7 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
     { key: "legalName", label: "Legal name", shown: values.legalName },
     { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
     { key: "website", label: "Website", shown: values.website },
-    ...(address && onSaveAddress ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
+    ...(address ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
     ...(kind ? [{ key: "vendorKind", label: "Type", shown: KIND_WORDS[kind] }] : []),
   ];
   const before = initial();
@@ -336,7 +336,6 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
   const save = async () => {
     const change = {};
     for (const key of changed) {
-      if (key === "address") continue;
       if (key === "website") {
         const web = draft.website.trim() ? webAddress(draft.website) : "";
         if (web == null) { setError(WEB_ADDRESS_WORDS); return; }
@@ -352,8 +351,8 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
     setBusy(true);
     setError("");
     try {
-      if (Object.keys(change).length) await onSave(change);
-      if (changed.includes("address")) await onSaveAddress(draft.address.trim());
+      const outcome = await onSave(change);
+      if (change.address != null) await onAddressSaved?.(change.address, outcome);
       setEditing(false);
     } catch (failure) {
       setError(failure?.message || "Couldn't save. Try again.");

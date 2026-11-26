@@ -1244,11 +1244,12 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const approveBlocks = [live?.data ? live.data.approvalBlock : approveBlock, termsBlock].filter(Boolean);
   // The address the company typed, from the Address block (Nov 25: no longer a line in Review details).
   const saveCompanyField = async (change) => {
-    await actions.updateCompanyProfile(profile.id, change);
+    const outcome = await actions.updateCompanyProfile(profile.id, change);
     setCompanyEdits((current) => ({ ...current, ...change }));
     live?.reload();
     setRegistryChanged((n) => n + 1);
     onRegistryChange?.();
+    return outcome;
   };
   const shownWebsite = profile?.details?.find(([label]) => label === "Website")?.[1];
   const companyValues = {
@@ -1270,7 +1271,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
         values={companyValues}
         address={isVendor && addressCheck ? addressCheck.edit : null}
         onSave={saveCompanyField}
-        onSaveAddress={windowActions?.saveAddress ?? null}
+        onAddressSaved={windowActions?.addressSaved ?? null}
       />
     );
   } : null;

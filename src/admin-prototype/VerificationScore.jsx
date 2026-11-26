@@ -244,6 +244,15 @@ function mockActions(setGroups, groupsRef, entityType = null) {
     // A check decided by staff: scored as the live page scores it (overrideCheck).
     recordOverride: async (groupKey, check, { result, note }) => changeCheck(groupKey, overrideCheck(check, { result, note, by: byMe }, { vendorKind: entityType === "Trading company" ? "trading_company" : null })),
     // Edit address: the typed line changes; the address check is not run again in the prototype.
+    // The address saved with Company details (U5) is shown the same way.
+    addressSaved: async (address) => setGroups((current) => current.map((group) => ({
+      ...group,
+      checks: group.checks.map((check) => (!check.edit ? check : {
+        ...check,
+        edit: { ...check.edit, value: address },
+        lines: [{ key: "typed", label: "Typed", value: address }, ...(check.lines ?? []).filter((line) => line.key !== "typed")],
+      })),
+    }))),
     saveAddress: async (address) => setGroups((current) => current.map((group) => ({
       ...group,
       checks: group.checks.map((check) => (!check.edit ? check : {
