@@ -101,20 +101,28 @@ export function numberFromDocument(country) {
 }
 
 /**
- * The label people type before the number ("NIF 519211596", "NIPC: …",
- * "VKN …", "统一社会信用代码：…", "No: …"), dropped in every country. A Latin
- * label needs a space, colon, "#" or dot after it, so a number that merely
- * starts with those letters keeps them; the Chinese labels need nothing. The
- * database's normalise_registration_number() drops the same labels.
+ * The label people type before the number, dropped only in the country it
+ * belongs to (R16, Nov 26): Portugal "NIF", "NIPC", "N.º"; Turkey "VKN",
+ * "Vergi No"; China "USCC" and "统一社会信用代码". A Latin label needs a space,
+ * colon, "#" or dot after it, so a number that merely starts with those
+ * letters keeps them; the Chinese labels need nothing. Anywhere, "No:",
+ * "Nr:" or "Nº:" is dropped only when a colon follows it, so a number such as
+ * Norway's "NO 123456789 MVA" is kept as written. The database's
+ * normalise_registration_number() drops the same labels.
  */
-const LATIN_LABEL = /^(?:UNIFIED SOCIAL CREDIT CODE|USCC|NIF\/NIPC|NIPC|NIF|VKN|VERGI NO|VERGI NUMARASI|TAX ID|TAX NO|VAT NO|VAT|NO|NR|Nº|N\.º)(?:\s*[:#.]+\s*|\s+)(?=\S)/u;
-const CHINESE_LABEL = /^(?:统一社会信用代码|社会信用代码|信用代码)\s*:?\s*(?=\S)/u;
+const COUNTRY_LABELS = {
+  PT: /^(?:NIF\/NIPC|NIPC|NIF|Nº|N\.º)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  TR: /^(?:VKN|VERGI NO|VERGI NUMARASI)(?:\s*[:#.]+\s*|\s+)(?=\S)/u,
+  CN: /^(?:(?:UNIFIED SOCIAL CREDIT CODE|USCC)(?:\s*[:#.]+\s*|\s+)|(?:统一社会信用代码|社会信用代码|信用代码)\s*:?\s*)(?=\S)/u,
+};
+const ANY_LABEL = /^(?:NO|NR|Nº|N\.º)\s*:\s*(?=\S)/u;
 
-/** Spaces, dots and dashes removed; letters upper-case; a typed label ("NIF", "VKN", "No:"…) and Portugal's "PT" prefix dropped. */
+/** Spaces, dots and dashes removed; letters upper-case; the country's own typed label ("NIF", "VKN"…) or "No:" dropped; Portugal's "PT" prefix dropped. */
 export function normaliseRegistrationNumber(country, value) {
   // \p{Cf}: a copied number can carry invisible characters (U+200B seen from the AI read).
   let text = halfWidth(value).replace(/\p{Cf}/gu, "").trim().toUpperCase().replace(/İ/g, "I");
-  text = text.replace(CHINESE_LABEL, "").replace(LATIN_LABEL, "");
+  if (COUNTRY_LABELS[country]) text = text.replace(COUNTRY_LABELS[country], "");
+  text = text.replace(ANY_LABEL, "");
   text = text.replace(/[\s.\-/]/gu, "");
   if (country === "PT" && /^PT\d{9}$/.test(text)) text = text.slice(2);
   return text;
@@ -227,18 +235,29 @@ export function registrationFlags(country, raw, { confirmed = false } = {}) {
  * (registration_number_format_text()).
  */
 export const EXPECTED_FORMAT = {
-  CN: { en: "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F", zh: "统一社会信用代码为 18 位，例如 91330100MA2B7C4D3F" },
+  CN: { en: "A Unified Social Credit Code has 18 characters, e.g. 91330100MA2B7C4D3F, without the letters I, O, S, V or Z", zh: "统一社会信用代码为 18 位，例如 91330100MA2B7C4D3F，不含字母 I、O、S、V、Z" },
   TR: { en: "A Turkish company tax number (VKN) has 10 digits, e.g. 4837261591", zh: "土耳其公司税号（VKN）为 10 位数字，例如 4837261591" },
   PT: { en: "A Portuguese company number has 9 digits, e.g. 519211596", zh: "葡萄牙公司编号为 9 位数字，例如 519211596" },
 };
 
-export function registrationProblemText(country, problem, language = "en") {
+/** Where a company finds its number, said after the expected format to the company itself (not to staff). */
+const WHERE_TO_FIND = {
+  TR: { en: "Find it on your tax plate (vergi levhası) or tax registration letter", zh: "见税牌或纳税登记证明" },
+  PT: { en: "Find it on your permanent certificate", zh: "见商业登记永久证明" },
+};
+
+/** The refusal for a number; `staff` leaves out where the company finds it. */
+export function registrationProblemText(country, problem, language = "en", { staff = false } = {}) {
   if (!problem) return "";
   const zh = language === "zh";
   if (problem === "missing") return zh ? "请填写注册号" : "Enter the registration number";
   if (problem === "old_number") return zh ? "这是旧的 15 位注册号，请填写新营业执照上的 18 位代码" : "That's the old 15-digit number. Enter the 18 characters on your current licence";
   if (problem === "check_digit") return zh ? "最后一位不符，请核对号码" : "The last digit doesn't match. Check the number";
-  if (EXPECTED_FORMAT[country]) return EXPECTED_FORMAT[country][zh ? "zh" : "en"];
+  if (EXPECTED_FORMAT[country]) {
+    const format = EXPECTED_FORMAT[country][zh ? "zh" : "en"];
+    const where = !staff && WHERE_TO_FIND[country]?.[zh ? "zh" : "en"];
+    return where ? `${format}${zh ? "。" : ". "}${where}` : format;
+  }
   return zh ? "只能包含字母和数字" : "Letters and digits only";
 }
 

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   RERUN_WORDS, checkFields, editsFrom, failureCode, outOfDateWords, readingOutOfDate, rerunFailureWords, scoreChangeWords,
 } from "../src/shared/verification-rerun.mjs";
-import { addressOutcome, handle, runGroup, standingEdits, viesNeedsAsking } from "../api/verification-rerun.js";
+import { addressOutcome, handle, runGroup, savedEdits, standingEdits, viesNeedsAsking } from "../api/verification-rerun.js";
 import { overlayEdits } from "../api/registry-assist.js";
 import { modelFailure } from "../api/admin-review-assist.js";
 import { createRerun, groupScore } from "../src/lib/domain/verification-rerun.js";
@@ -194,11 +194,24 @@ await check("an edit on a current reading is laid over it, with no model call", 
   assert.deepEqual(log[0], ["reuse", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
 });
 
-await check("an edit on an out-of-date reading still reads the current upload, with the edit over it", async () => {
+await check("U1: an edit on a reading from an earlier upload is laid over it as typed, with no model call", async () => {
   const log = [];
   const edits = [{ field: "legalName", from: "a", to: "Têxteis Douro – Confecções, Lda" }];
-  await runGroup({ orgId: ORG, group: "business_registration", fields: { legalName: edits[0].to }, edits, asServer: fakeDb(ptTables("old")), requestedBy: "staff", steps: stubSteps(log), rules });
-  assert.deepEqual(log[0], ["read", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
+  // The AI is not set up: the correction is saved all the same.
+  const result = await runGroup({ orgId: ORG, group: "business_registration", fields: { legalName: edits[0].to }, edits, asServer: fakeDb(ptTables("old")), requestedBy: "staff", steps: stubSteps(log, { readAnswer: { available: true, saved: true } }), rules });
+  assert.deepEqual(log[0], ["reuse", [{ key: "legalName", value: "Têxteis Douro – Confecções, Lda" }]]);
+  assert.ok(!log.some(([step]) => step === "read"), "the file is not read again");
+  assert.equal(result.ran.reading.from, "reading");
+});
+
+await check("U6: only saved edits are recorded", async () => {
+  const legal = { field: "legalName", from: "a", to: "b" };
+  const number = { field: "number", from: "1", to: "2" };
+  assert.deepEqual(savedEdits("business_registration", [legal, number], { reading: { ran: false, code: "save_failed" } }), [number]);
+  assert.deepEqual(savedEdits("business_registration", [legal], { reading: { ran: true } }), [legal]);
+  assert.deepEqual(savedEdits("company_information", [{ field: "scope", to: "x" }], { reading: { ran: false } }), []);
+  assert.deepEqual(savedEdits("company_information", [{ field: "siteAddress", to: "x" }], { address: { ran: false } }).length, 1);
+  assert.deepEqual(savedEdits("certification", [{ field: "holder", to: "x" }], { certificate: { ran: false } }), []);
 });
 
 await check("VIES down: the reading is kept and the footer says EU VIES didn't answer", async () => {
@@ -394,6 +407,14 @@ await check("staff: edits recorded as the staff member, then the group runs", as
   assert.ok(calls.indexOf("rpc:record_verification_field_edits") > -1);
   assert.ok(!calls.includes("rpc:admin_set_registration_number"), "an unchanged number is not saved");
   assert.ok(log.length >= 2);
+});
+
+await check("U6: a save that failed records no edit", async () => {
+  const calls = [];
+  const response = fakeResponse();
+  await handle(request({ orgId: ORG, group: "business_registration", fields: { legalName: "Têxteis Douro – Confecções, Lda" } }), response, { env: ENV, makeClient: clients({ staff: true, calls }), steps: stubSteps([], { readAnswer: { available: true, saved: false } }) });
+  assert.equal(response.out.body.ok, false);
+  assert.ok(!calls.includes("rpc:record_verification_field_edits"));
 });
 
 await check("an edited number is saved as the staff number first", async () => {

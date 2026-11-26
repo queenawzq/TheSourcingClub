@@ -232,6 +232,7 @@ const SENTENCES = [
   [/^We updated your legal name to (.+)\.$/, (value) => `我们已将你的法定名称更新为 ${value}。`],
   [/^We updated your legal name\.$/, () => "我们已更新你的法定名称。"],
   [/^We updated your company address to (.+)\.$/, (value) => `我们已将你的公司地址更新为 ${value}。`],
+  [/^We updated your country to (.+)\.$/, (value) => `我们已将你的国家或地区更新为 ${value}。`],
   [/^We updated your website to (.+)\.$/, (value) => `我们已将你的网站更新为 ${value}。`],
   [/^We updated your website\.$/, () => "我们已更新你的网站。"],
   // People
@@ -582,6 +583,12 @@ export function zhNotificationBody(notification, ctx = {}) {
     if (at < 0) continue;
     const head = translateSentences(body.slice(0, at), context);
     return head == null ? null : `${head}${label}${body.slice(at + marker.length)}`;
+  }
+  // A profile change says each new value, and a value may have ". " in it ("Av. da Liberdade 12"):
+  // its sentences are split where the next "We updated your" starts, not at every full stop.
+  if (/^We updated your /.test(body)) {
+    const parts = body.split(/(?<=\.)\s+(?=We updated your )/).map((part) => translateSentence(part, context));
+    if (parts.every((part) => part != null)) return parts.join("");
   }
   const whole = translateSentences(body, context);
   if (whole != null) return whole;

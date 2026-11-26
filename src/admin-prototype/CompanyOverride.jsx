@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { countryName, signupCountries } from "../shared/company-address.mjs";
 import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
+import { SiteCombobox } from "./SiteCombobox.jsx";
 
 const KIND_WORDS = { manufacturer: "Factory", trading_company: "Trading company" };
 const RESULT_WORDS = { found: "Found on", expired: "Expired on", not_found: "Not found on", could_not_check: "Couldn't check" };
@@ -302,47 +303,58 @@ export function CompanyFields({ values, onSave, address = null, onSaveAddress = 
  * Company details in Company information's window (Nov 26): the company's own
  * values, shown like "Read from this document": plain values, one "Edit
  * details", the values become fields in place, and Cancel / Save changes sit
- * under them. One save writes every changed value (history per value, one
- * notice to the company); the address goes through the address check's own
- * save, so the check runs again.
+ * under them. One save writes every changed value, the address included
+ * (history per value, one notice to the company: U5); the address check then
+ * runs again.
  *
  *   values: { companyName, legalName, country, website }
  *   kind: "manufacturer" | "trading_company" | null (brands have no type)
  *   address: { label, value } | null      (vendors)
- *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind? }
- *   onSaveAddress(text) | null
+ *   onSave(change)                        change: { companyName?, legalName?, country?, website?, vendorKind?, address? }
+ *   onAddressSaved(text, outcome) | null  after a save that changed the address: the window shows it, and its check
  */
-export function CompanyDetails({ values, kind = null, address = null, onSave, onSaveAddress = null }) {
+export function CompanyDetails({ values, kind = null, address = null, onSave, onAddressSaved = null }) {
   const initial = () => ({ ...values, vendorKind: kind ?? "", address: address?.value ?? "" });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const countries = useMemo(() => (editing ? signupCountries() : []), [editing]);
+  // Country (U7): the product's searchable list, the same as "Where you checked". The name typed or picked
+  // is the country only when it is one on the list.
+  const countryOptions = useMemo(() => countries.map((entry) => ({ key: entry.code, name: entry.name })), [countries]);
+  const [countryText, setCountryText] = useState("");
+  const typeCountry = (text) => {
+    setCountryText(text);
+    const match = countries.find((entry) => entry.name.toLowerCase() === text.trim().toLowerCase());
+    set("country", match ? match.code : "");
+  };
   const rows = [
     { key: "companyName", label: "Company name", shown: values.companyName },
     { key: "legalName", label: "Legal name", shown: values.legalName },
     { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
     { key: "website", label: "Website", shown: values.website },
-    ...(address && onSaveAddress ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
+    ...(address ? [{ key: "address", label: address.label, shown: address.value, multiline: true }] : []),
     ...(kind ? [{ key: "vendorKind", label: "Type", shown: KIND_WORDS[kind] }] : []),
   ];
   const before = initial();
   const changed = rows.map((row) => row.key).filter((key) => (draft[key] ?? "").trim() !== (before[key] ?? "").trim());
   const set = (key, value) => { setDraft((current) => ({ ...current, [key]: value })); setError(""); };
-  const start = () => { setDraft(initial()); setError(""); setEditing(true); };
+  const start = () => { setDraft(initial()); setCountryText(countryName(values.country) ?? values.country ?? ""); setError(""); setEditing(true); };
   const cancel = () => { setDraft(initial()); setError(""); setEditing(false); };
 
   const save = async () => {
     const change = {};
     for (const key of changed) {
-      if (key === "address") continue;
       if (key === "website") {
         const web = draft.website.trim() ? webAddress(draft.website) : "";
         if (web == null) { setError(WEB_ADDRESS_WORDS); return; }
         change.website = web;
       } else if (key === "companyName" && !draft.companyName.trim()) {
         setError("Enter the company name");
+        return;
+      } else if (key === "country" && !draft.country) {
+        setError("Choose a country from the list");
         return;
       } else {
         change[key] = draft[key].trim();
@@ -352,8 +364,8 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
     setBusy(true);
     setError("");
     try {
-      if (Object.keys(change).length) await onSave(change);
-      if (changed.includes("address")) await onSaveAddress(draft.address.trim());
+      const outcome = await onSave(change);
+      if (change.address != null) await onAddressSaved?.(change.address, outcome);
       setEditing(false);
     } catch (failure) {
       setError(failure?.message || "Couldn't save. Try again.");
@@ -379,10 +391,15 @@ export function CompanyDetails({ values, kind = null, address = null, onSave, on
             <label htmlFor={`company-${row.key}`}>{row.label}{changed.includes(row.key) && <em>Edited</em>}</label>
             <div className="vr-input">
               {row.key === "country" ? (
-                <select id={`company-${row.key}`} value={draft.country ?? ""} onChange={(event) => set("country", event.target.value)}>
-                  {!draft.country && <option value="">Choose a country</option>}
-                  {countries.map((entry) => <option key={entry.code} value={entry.code}>{entry.name}</option>)}
-                </select>
+                <SiteCombobox
+                  id={`company-${row.key}`}
+                  value={countryText}
+                  sites={countryOptions}
+                  placeholder="Choose a country"
+                  toggleLabel="Show countries"
+                  onFocus={(event) => event.target.select()}
+                  onChange={typeCountry}
+                />
               ) : row.key === "vendorKind" ? (
                 <select id={`company-${row.key}`} value={draft.vendorKind} onChange={(event) => set("vendorKind", event.target.value)}>
                   {Object.entries(KIND_WORDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}

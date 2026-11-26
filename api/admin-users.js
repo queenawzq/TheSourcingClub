@@ -55,6 +55,8 @@ async function readAllRows(query, key) {
 }
 
 async function listUsers(service, currentUserId) {
+  // Vercel compiles api/*.js as CommonJS; the shared ESM rule is imported lazily.
+  const { signupFinished } = await import("../src/shared/signup-finished.mjs");
   const [authUsers, profilesResult, membersResult, adminsResult, factoriesResult, brandsResult] = await Promise.all([
     listAllAuthUsers(service),
     readAllRows(() => service.from("user_profiles").select("id, email, full_name, created_at").order("id"), (row) => row.id),
@@ -89,9 +91,8 @@ async function listUsers(service, currentUserId) {
       company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
       orgType: isAdmin ? "admin" : org?.type || null,
       vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
-      // Staff always; a person with no company never. Both spellings, as the direct read gives them.
-      signupFinished: Boolean(isAdmin || (membership?.org_id && finished.has(membership.org_id))),
-      signup_finished: Boolean(isAdmin || (membership?.org_id && finished.has(membership.org_id))),
+      // Only a person whose company hasn't finished is marked: the direct read's rule (R11).
+      ...signupFinished(isAdmin, membership?.org_id, finished),
       createdAt: profile?.created_at || authUser.created_at,
       lastActiveAt: authUser.last_sign_in_at || null,
       disabled: bannedUntil > now,

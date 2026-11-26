@@ -231,6 +231,10 @@ export function verificationActions(orgId, { reload, changed }) {
       changed?.();
       saved?.checked?.then(async () => { await reload(); changed?.(); }, () => null);
     },
+    /** Company details saved a new address with the other values, in one save (U5): its check is read again once done. */
+    addressSaved: (address, saved) => {
+      saved?.checked?.then(async () => { await reload(); changed?.(); }, () => null);
+    },
     /** A typed number that differs from the licence's, explained: the registry record whose reason the approval rule reads. */
     explainTyped: (groupKey, field, text, registryRow) => after(() => recordRegistryResult(orgId, {
       source: registryRow?.registry?.sourceKey, result: "name_differs", name: registryRow?.registry?.name ?? "", reason: text,

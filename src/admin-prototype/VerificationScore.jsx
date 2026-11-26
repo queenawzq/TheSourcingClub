@@ -26,6 +26,7 @@ import { holderCompareName, holderDiffersFrom, overrideCheck, siteDifferences } 
 import { companyNamesMatch, normaliseRegistrationNumber, registrationNumberProblem, registrationProblemText, sameRegistrationNumber } from "../shared/registration-number.mjs";
 import { WEB_ADDRESS_WORDS, webAddress } from "../shared/web-address.mjs";
 import { AddressDialog } from "./CompanyOverride.jsx";
+import { SiteCombobox } from "./SiteCombobox.jsx";
 import "./verification-score.css";
 
 function useCountUp(value, duration = 700) {
@@ -244,6 +245,15 @@ function mockActions(setGroups, groupsRef, entityType = null) {
     // A check decided by staff: scored as the live page scores it (overrideCheck).
     recordOverride: async (groupKey, check, { result, note }) => changeCheck(groupKey, overrideCheck(check, { result, note, by: byMe }, { vendorKind: entityType === "Trading company" ? "trading_company" : null })),
     // Edit address: the typed line changes; the address check is not run again in the prototype.
+    // The address saved with Company details (U5) is shown the same way.
+    addressSaved: async (address) => setGroups((current) => current.map((group) => ({
+      ...group,
+      checks: group.checks.map((check) => (!check.edit ? check : {
+        ...check,
+        edit: { ...check.edit, value: address },
+        lines: [{ key: "typed", label: "Typed", value: address }, ...(check.lines ?? []).filter((line) => line.key !== "typed")],
+      })),
+    }))),
     saveAddress: async (address) => setGroups((current) => current.map((group) => ({
       ...group,
       checks: group.checks.map((check) => (!check.edit ? check : {
@@ -532,7 +542,7 @@ const savedNumber = (country, value) => normaliseRegistrationNumber(country, Str
 const numberFormatWords = (country, value) => {
   if (!country || !String(value ?? "").trim()) return "";
   const problem = registrationNumberProblem(country, value);
-  return problem && !["old_number", "missing"].includes(problem) ? registrationProblemText(country, problem) : "";
+  return problem && !["old_number", "missing"].includes(problem) ? registrationProblemText(country, problem, "en", { staff: true }) : "";
 };
 
 /** An address as compared: case, spacing and punctuation aside. */
@@ -556,62 +566,6 @@ const SEEN_FIELDS = {
  * The one record form (Nov 24): where staff checked, what it showed, the values as the site shows them
  * (prefilled from the document), proof files and a link or note. The page compares the values itself.
  */
-/**
- * "Where you checked" (Nov 26): the product's combobox (factory onboarding's
- * certification picker), not the browser's autocomplete. Typing filters the
- * known sites; any other site can still be typed.
- */
-function SiteCombobox({ id, value, sites, placeholder, onFocus, onChange }) {
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
-  const listId = `${id}-sites`;
-  const query = (value ?? "").trim().toLowerCase();
-  // A site already chosen shows every known site; typing something new filters them.
-  const chosen = sites.some((item) => item.name.toLowerCase() === query);
-  const shown = chosen ? sites : sites.filter((item) => !query || `${item.name} ${item.label ?? ""}`.toLowerCase().includes(query));
-  const options = shown.length ? shown : sites;
-  useEffect(() => {
-    if (!open) return undefined;
-    const away = (event) => { if (!boxRef.current?.contains(event.target)) setOpen(false); };
-    const key = (event) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } };
-    document.addEventListener("mousedown", away);
-    document.addEventListener("keydown", key, true);
-    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key, true); };
-  }, [open]);
-  return (
-    <div className="vr-combobox" ref={boxRef}>
-      <input
-        id={id}
-        value={value}
-        spellCheck={false}
-        autoComplete="off"
-        placeholder={placeholder}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        onFocus={(event) => { onFocus?.(event); if (sites.length) setOpen(true); }}
-        onChange={(event) => { onChange(event.target.value); if (sites.length) setOpen(true); }}
-      />
-      {sites.length > 0 && (
-        <button className="vr-combobox-toggle" type="button" aria-label="Show known sites" onClick={() => setOpen((current) => !current)}>
-          <img src="/assets/prototype-icons/dropdown.svg" alt="" />
-        </button>
-      )}
-      {open && sites.length > 0 && (
-        <div className="vr-combobox-menu" id={listId} role="listbox">
-          {options.map((item) => (
-            <button type="button" role="option" aria-selected={value === item.name} key={item.key} onClick={() => { onChange(item.name); setOpen(false); }}>
-              <strong>{item.name}</strong>
-              {item.label && item.label !== item.name && <small>{item.label}</small>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function RecordForm({ check, onSave, onDone, actions }) {
   const registry = check.registry;
   const isCert = check.kind === "certificate";
@@ -681,7 +635,11 @@ function RecordForm({ check, onSave, onDone, actions }) {
   const [tried, setTried] = useState(false);
   const emptyDifferent = !isCert && result === "found"
     ? fieldsFor.map(([key]) => key).filter((key) => hasProfile(key) && same[key] === "different" && !String(registryValue[key] ?? "").trim()) : [];
-  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null;
+  // Found (R3): every value shown is answered, Same in registry or Different, and a plain input is filled,
+  // so a registry name and number are always on the record.
+  const unanswered = !isCert && result === "found"
+    ? fieldsFor.map(([key]) => key).filter((key) => (hasProfile(key) ? !same[key] : !String(registryValue[key] ?? "").trim())) : [];
+  const ready = site.trim() && result && (!needsNote || note.trim()) && !upload.busy && !numberWrong && linkSaved != null && !unanswered.length;
 
   const addFiles = async (list) => {
     const files = [...(list ?? [])];
@@ -885,8 +843,9 @@ function OverrideForm({ check, onSave, onDone }) {
   );
 }
 
-// The address's versions, in plain words (Nov 26): whose address each line is.
-const ADDRESS_LINE_WORDS = { typed: "Company", licence: "Licence", registry: "Registry" };
+// The address's versions, in plain words (Nov 26): whose address each line is. The licence's line keeps
+// its document's own name ("Tax plate", "Registration certificate") from its label (R8).
+const ADDRESS_LINE_WORDS = { typed: "Company", registry: "Registry" };
 
 function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
   const [explainingTyped, setExplainingTyped] = useState(null);
@@ -896,9 +855,9 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
   const ownDup = !dupField && !numberShown && check.sharedNumber
     ? { with: check.sharedNumber.with, explained: check.sharedNumber.explained ?? null } : null;
   // One row per check (Nov 26): a check that needs a look starts open, and so does a registration number
-  // another company uses until it is explained; Strong and Not checked start closed.
+  // another company uses until it is explained, and one that blocks Approve (R7); Strong and Not checked start closed.
   const [expanded, setExpanded] = useState(() => ["low", "potential"].includes(standingFor(check.unchecked ? null : check.score).tone)
-    || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained));
+    || Boolean(dupField?.duplicate && !dupField.duplicate.explained) || Boolean(ownDup && !ownDup.explained) || Boolean(check.blocks));
   const [explainingDup, setExplainingDup] = useState(false);
   const registry = check.registry;
   // An automatic check has no form unless the data says a person's record is still needed (live: approval).
@@ -1158,8 +1117,11 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
   const readSignature = fields.map((field) => `${field.key}=${field.value ?? ""}`).join("\u0001");
   useEffect(() => { setValues(fieldValues(fields)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [readSignature]);
 
+  // Escape or a click beside the window never closes it while a form is open in it: a check's form, Company
+  // details or Edit details being edited (their Cancel / Save changes, R6). Typed words are never lost that way.
+  const EDITING = ".vr-record, .vr-read-actions";
   useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-dialog-over")) onClose(); };
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".vr-layer .vr-record, .vr-layer .vr-read-actions, .vr-dialog-over")) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -1229,7 +1191,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
 
   return (
     // A click beside the pop-up closes it, unless a form is open in it: typed words are never lost that way (Nov 24 tester).
-    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(".vr-record") && onClose()}>
+    <div className="vr-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !event.currentTarget.querySelector(EDITING) && onClose()}>
       <section className="vr-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <header className="vr-modal-head">
           <div className="vr-modal-title">
