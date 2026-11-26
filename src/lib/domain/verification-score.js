@@ -202,10 +202,10 @@ export async function saveCertificateCheck(orgId, certificationId, { site, resul
  * Only the fields given change; each is a history line, and the company gets
  * one notice.
  */
-export async function updateCompanyProfile(orgId, { vendorKind = null, address = null, companyName = null, country = null, website = null } = {}) {
+export async function updateCompanyProfile(orgId, { vendorKind = null, address = null, companyName = null, country = null, website = null, legalName = null } = {}) {
   return plain(await supabase.rpc("admin_update_company_profile", {
     target_org: orgId, vendor_kind: vendorKind, address,
-    company_name: companyName, country, website,
+    company_name: companyName, country, website, legal_name: legalName,
   }), "update the company");
 }
 

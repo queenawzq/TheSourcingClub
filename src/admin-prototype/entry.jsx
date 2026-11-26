@@ -74,9 +74,15 @@ const mockSubmission = {
 
 /** Staff's edits on the review page, kept in this tab: the history starts empty, as a new company's does. */
 let reviewHistory = [];
-const FIELD_KIND = { companyName: "company_name", country: "country", website: "website" };
+const FIELD_KIND = { companyName: "company_name", legalName: "legal_name", country: "country", website: "website" };
 
-/** The shared submission, with the country and website of the company being reviewed. */
+/** The legal name its licence reads, in the mock scores; else the shared submission's. */
+function mockLegalName(profile) {
+  const read = (profile.verification?.groups ?? []).flatMap((group) => group.fields ?? []).find((field) => field.key === "legalName");
+  return read?.value ?? mockSubmission.profile.legal_name;
+}
+
+/** The shared submission, with the legal name, country and website of the company being reviewed. */
 function submissionFor(orgId) {
   const profile = profiles.find((row) => row.id === orgId);
   if (!profile) return mockSubmission;
@@ -85,6 +91,7 @@ function submissionFor(orgId) {
     ...mockSubmission,
     profile: {
       ...mockSubmission.profile,
+      legal_name: profile.legalName !== undefined ? profile.legalName || null : mockLegalName(profile),
       country_code: profile.countryCode ?? countryIn(profile.location ?? "") ?? mockSubmission.profile.country_code,
       website_url: profile.website ?? (website && website !== "—" ? website : null),
     },
@@ -128,6 +135,7 @@ const mockAdapter = {
         if (profile.id !== orgId) return profile;
         const next = { ...profile };
         if (change.companyName) Object.assign(next, { name: change.companyName });
+        if (change.legalName != null) next.legalName = change.legalName;
         if (change.country) next.countryCode = change.country;
         if (change.website) next.website = change.website;
         if (change.vendorKind) next.entityType = change.vendorKind === "trading_company" ? "Trading company" : "Factory";

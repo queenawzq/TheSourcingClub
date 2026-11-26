@@ -1,10 +1,10 @@
--- Verification, second round (20261126100000, 20261126100100): labelled
--- registration numbers, the licence reading compared live, the queue and the
--- finished-signup guard, and staff editing a company's name, country and
--- website. Fixtures prefixed pgtap-r2-; every count filters on fixture ids.
+-- Verification, second round (20261126100000, 20261126100100, 20261126100200):
+-- labelled registration numbers, the licence reading compared live, the queue
+-- and the finished-signup guard, and staff editing a company's name, legal
+-- name, country and website. Fixtures prefixed pgtap-r2-; every count filters on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(56);
+select plan(70);
 
 -- Registration numbers: the same results as check-registration-number.mjs --------
 select is(public.normalise_registration_number('PT', 'NIF 519211596'), '519211596', 'NIF label dropped');
@@ -184,6 +184,41 @@ select is((select count(*)::int from public.notifications where org_id = 'd26112
   'the factory gets one notice');
 select is((select title from public.notifications where org_id = 'd2611260-0000-0000-0000-0000000000b1' and kind = 'profile_updated'),
   'Your company profile was updated', 'the brand too, in the existing words, once');
+
+-- The legal name (20261126100200): staff only, edited like the others; the checks read it ----
+set local request.jwt.claims = '{"sub":"c2611260-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select throws_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000f2', legal_name => 'X Lda')$$,
+  '42501', null, 'a company cannot change another''s legal name');
+select throws_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000f1', legal_name => 'X Lda')$$,
+  '42501', null, 'nor its own');
+reset role;
+select is(public.company_title('d2611260-0000-0000-0000-0000000000f2'), 'Hellstitch Lda', 'the checks compare the legal name');
+
+set local request.jwt.claims = '{"sub":"c2611260-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000f2', legal_name => '  Hell Stitch Unipessoal Lda ')$$,
+  'staff change a factory''s legal name');
+reset role;
+select is((select legal_name from public.factory_profiles where org_id = 'd2611260-0000-0000-0000-0000000000f2'),
+  'Hell Stitch Unipessoal Lda', 'the legal name is saved, trimmed');
+select is((select details from public.org_review_changes where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'legal_name'),
+  '{"from":"Hellstitch Lda","to":"Hell Stitch Unipessoal Lda"}'::jsonb, 'one history line, from and to');
+select is((select count(*)::int from public.notifications where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'profile_updated'
+            and title = 'Your company profile was updated' and body = 'We updated your legal name.'), 1, 'the company is told, once');
+select is(public.company_title('d2611260-0000-0000-0000-0000000000f2'), 'Hell Stitch Unipessoal Lda', 'and the checks use the new legal name');
+
+set local role authenticated;
+select lives_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000f2', legal_name => '')$$,
+  'an empty legal name clears it');
+select lives_ok($$select public.admin_update_company_profile('d2611260-0000-0000-0000-0000000000b1', legal_name => 'R2 Brand Studio Limited')$$,
+  'staff set a brand''s legal name');
+reset role;
+select is((select legal_name from public.factory_profiles where org_id = 'd2611260-0000-0000-0000-0000000000f2'), null, 'the legal name is cleared');
+select is(public.company_title('d2611260-0000-0000-0000-0000000000f2'), 'R2 Hell Stitch', 'and the checks fall back to the company name');
+select is((select count(*)::int from public.org_review_changes where org_id = 'd2611260-0000-0000-0000-0000000000f2' and kind = 'legal_name'), 2,
+  'clearing it is a history line too');
+select is(public.company_title('d2611260-0000-0000-0000-0000000000b1'), 'R2 Brand Studio Limited', 'a brand''s checks compare its legal name');
 
 select * from finish();
 rollback;

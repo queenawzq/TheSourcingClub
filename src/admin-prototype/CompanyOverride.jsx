@@ -6,12 +6,12 @@
  * in `AddressDialog`, the same dialog.
  *
  *   actions.updateCompanyProfile(orgId, { vendorKind })
- *   actions.updateCompanyProfile(orgId, { companyName | country | website })
+ *   actions.updateCompanyProfile(orgId, { companyName | legalName | country | website })
  *   actions.reviewChanges(orgId) → [{ kind, details, at, by }]
  *
- * Company name, country and website are edited where Review details shows
- * them (`CompanyFields`), for brands and vendors, in the same dialog and
- * written to the same history. Change type is a vendor's only.
+ * Company name, legal name, country and website are edited where Review
+ * details shows them (`CompanyFields`), for brands and vendors, in the same
+ * dialog and written to the same history. Change type is a vendor's only.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -25,7 +25,7 @@ const STAFF_RESULT_WORDS = {
   factory: "Factory", trading_company: "Trading company", could_not_tell: "Couldn't tell", original: "Original",
 };
 // A company value staff edited (Nov 26): its kind, or `company_field` with the field in its details.
-const FIELD_WORDS = { company_name: "Company name", name: "Company name", country: "Country", website: "Website" };
+const FIELD_WORDS = { company_name: "Company name", name: "Company name", legal_name: "Legal name", country: "Country", website: "Website" };
 const DECISION_WORDS = { approved: "Approved", declined: "Declined", needs_information: "Asked for more information" };
 
 /** One line of the history, in plain words. */
@@ -207,12 +207,14 @@ function countryOptions() {
 }
 
 /**
- * Company name, Country and Website in Review details, each with its Edit
- * link (Nov 26): edited where it is shown, in Change type's dialog, written
- * to the same history, and the company is told. Brands and vendors.
+ * Company name, Legal name, Country and Website in Review details, each with
+ * its Edit link (Nov 26): edited where it is shown, in Change type's dialog,
+ * written to the same history, and the company is told. Brands and vendors.
+ * The legal name is what the registry and licence checks compare; saving it
+ * empty clears it, and the checks then use the company name.
  *
- *   values: { companyName, country (two-letter code), website }
- *   onSave({ companyName } | { country } | { website }) saves one value.
+ *   values: { companyName, legalName, country (two-letter code), website }
+ *   onSave({ companyName } | { legalName } | { country } | { website }) saves one value.
  */
 export function CompanyFields({ values, onSave }) {
   const [open, setOpen] = useState(null);
@@ -222,6 +224,7 @@ export function CompanyFields({ values, onSave }) {
   const countries = useMemo(() => (open === "country" ? countryOptions() : []), [open]);
   const fields = [
     { key: "companyName", label: "Company name", shown: values.companyName },
+    { key: "legalName", label: "Legal name", shown: values.legalName },
     { key: "country", label: "Country", shown: countryName(values.country) ?? values.country },
     { key: "website", label: "Website", shown: values.website },
   ];
@@ -257,7 +260,7 @@ export function CompanyFields({ values, onSave }) {
           title={`Edit ${current.label.toLowerCase()}`}
           busy={busy}
           error={error}
-          saveDisabled={!text.trim() || text.trim() === before}
+          saveDisabled={(!text.trim() && !(open === "legalName" && before)) || text.trim() === before}
           onSave={save}
           onClose={() => setOpen(null)}
         >

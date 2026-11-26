@@ -1253,6 +1253,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const shownWebsite = profile?.details?.find(([label]) => label === "Website")?.[1];
   const companyValues = {
     companyName: companyEdits.companyName ?? profile?.name ?? "",
+    legalName: companyEdits.legalName ?? submission?.profile?.legal_name ?? "",
     country: companyEdits.country ?? submission?.profile?.country_code
       ?? countryIn(submission?.profile?.hq_location ?? submission?.profile?.location ?? profile?.location ?? "") ?? "",
     website: companyEdits.website ?? submission?.profile?.website_url ?? (shownWebsite && shownWebsite !== "—" ? shownWebsite : ""),
