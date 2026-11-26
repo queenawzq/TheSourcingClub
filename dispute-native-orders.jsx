@@ -35,7 +35,7 @@ function milestonesFor(world, factory) {
     done('PP sample',1,'Approved · Nov 13 · Paid out','$165.00'),
     done('Bulk deposit',2,'Paid out · Nov 14','$1,701.00'),
     disputedStep(world,factory),
-    later('QC photos',4,cancelled?'Cancelled':'Upcoming · Dec 5',null),
+    later('QC photos',4,cancelled?'Cancelled':'Upcoming',null),
     later('Final balance',5,cancelled?'Cancelled':'Not due · After QC approval','$2,074.00'),
   ];
 }

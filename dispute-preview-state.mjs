@@ -333,7 +333,9 @@ export function waitingLine(c, viewer, now = null) {
 
 /** The progress indicator: Opened → Response → TSC review (only if escalated) → Resolution → Resolved. */
 export function progress(c) {
-  const steps = ['Opened', 'Response', ...(c.escalated ? ['TSC review'] : []), 'Resolution', c.status === STATUS.withdrawn ? 'Withdrawn' : 'Resolved'];
+  const steps = c.status === STATUS.withdrawn
+    ? ['Opened', 'Response', ...(c.escalated ? ['TSC review'] : []), 'Withdrawn']
+    : ['Opened', 'Response', ...(c.escalated ? ['TSC review'] : []), 'Resolution', 'Resolved'];
   let at = 1;
   if (c.status === STATUS.review) at = steps.indexOf('TSC review');
   if (c.status === STATUS.completion) at = steps.indexOf('Resolution');
