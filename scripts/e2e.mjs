@@ -114,36 +114,69 @@ async function inviteThrough(person, body) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-/** Polls the page until `test` holds; returns how long it took, or null. */
 /**
- * Nov 12 review page: record "Found" on the Official registry sub-check, in the
- * Business registration row's modal (the record form replaced the old Registry
- * row's details window). Returns the sub-check's text after saving.
+ * Records "Found" on the Official registry check, in the Business registration
+ * window, the way a person does (Nov 26): open the row (it may start closed),
+ * Record check, Found, each of the company's values "Same in registry", the
+ * site if none is filled, a note, Save check. Returns the row's text after saving.
  */
 async function recordRegistryFound(page, reference) {
-  await page.locator("article.vr-row").first().click();
-  await waitFor(page, ".vr-modal .vr-sub", 15000);
-  const opened = await page.evaluate(() => {
-    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    const button = [...(sub?.querySelectorAll("button") ?? [])].find((b) => /^(Record .* check|Update check)$/.test(b.textContent.trim()));
-    button?.click();
-    return Boolean(button);
+  const rowOpened = await page.evaluate(() => {
+    const row = [...document.querySelectorAll("article.vr-row")].find((item) => item.querySelector(".vr-row-title")?.textContent.trim().startsWith("Business registration"));
+    row?.click();
+    return Boolean(row);
   });
+  if (!rowOpened) await page.locator("article.vr-row").first().click();
+  await waitFor(page, ".vr-modal .vr-sub", 15000);
+  // In the page: the Official registry row; "open" opens it if closed, "record" clicks Record check (or Edit), "text" reads it.
+  const onRegistryRow = (action) => page.evaluate((what) => {
+    const row = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector(".vr-sub-line strong")?.textContent.trim() === "Official registry");
+    if (what === "open") {
+      const toggle = row?.querySelector(".vr-sub-toggle");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return Boolean(row);
+    }
+    if (what === "record") {
+      const button = [...(row?.querySelectorAll(".vr-sub-actions button") ?? [])].find((b) => /^(Record check|Edit)$/.test(b.textContent.trim()));
+      button?.click();
+      return Boolean(button);
+    }
+    if (document.querySelector(".vr-modal .vr-record")) return null;
+    return row?.innerText ?? null;
+  }, action);
+  // The row starts closed when the check is Strong or Not checked.
+  await onRegistryRow("open");
+  await page.waitForTimeout(300);
+  const opened = await onRegistryRow("record");
   if (!opened) return null;
   await waitFor(page, ".vr-modal .vr-record", 10000);
-  // "Found" is the form's first answer and already chosen.
-  await page.locator(".vr-modal .vr-record input[placeholder$='page link']").first().fill(reference);
+  const form = ".vr-modal .vr-record";
+  // What it showed: Found. Nothing is chosen on a first record.
+  const foundChosen = await page.evaluate(() => {
+    const label = [...document.querySelectorAll(".vr-modal .vr-record .vr-segmented label")].find((item) => item.textContent.trim() === "Found");
+    label?.click();
+    return Boolean(label);
+  });
+  if (!foundChosen) return null;
+  await page.waitForTimeout(200);
+  // Where you checked: the official register is prefilled; type one if it is not.
+  const site = page.locator(`${form} input[list]`).first();
+  if (!(await site.inputValue()).trim()) await site.fill("Official business register");
+  // Each value the company gave is the same in the registry.
+  await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-record .vr-same-row .vr-segmented label")]
+    .filter((item) => item.textContent.trim() === "Same in registry").forEach((item) => item.click()));
+  await page.waitForTimeout(200);
+  const notes = page.locator(`${form} textarea`);
+  await notes.nth((await notes.count()) - 1).fill(reference);
   await clickButton(page, "save check");
-  const text = await within(page, () => page.evaluate(() => {
-    if (document.querySelector(".vr-modal .vr-record")) return null;
-    const sub = [...document.querySelectorAll(".vr-modal .vr-sub")].find((li) => li.querySelector("strong")?.textContent.trim() === "Official registry");
-    return sub?.innerText ?? null;
-  }), 20000);
+  let text = null;
+  await within(page, async () => (text = await onRegistryRow("text")) !== null, 20000);
   await page.evaluate(() => [...document.querySelectorAll(".vr-modal .vr-modal-foot button")].find((b) => b.textContent.trim() === "Close")?.click());
   await page.waitForTimeout(800);
   return text;
 }
 
+/** Polls the page until `test` holds; returns how long it took, or null. */
 async function within(page, test, timeout = 15000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
