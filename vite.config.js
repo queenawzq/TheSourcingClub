@@ -168,6 +168,8 @@ export default defineConfig(({ command, mode }) => ({
         adminPrototype: "admin-prototype.html",
         // Queena's sample-row view of the staff payments board (#79): no database.
         paymentsDesignPreview: "payments-design-preview.html",
+        // The order-dispute flow preview: sample data, no database.
+        disputeDesignPreview: "dispute-design-preview.html",
         factorySurvey: "factory-survey.html",
         factorySurveyThankYou: "factory-survey-thank-you.html"
       }
