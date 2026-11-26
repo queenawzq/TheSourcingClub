@@ -108,7 +108,7 @@ export function countryName(code) {
  * address and a brand's HQ location are typed freely and read against this
  * same list (countryIn), so it is the same for every kind. Staff's Country
  * edit offers exactly these, and admin_update_company_profile accepts exactly
- * these (signup_countries(), 20261126100800; the smoke test compares them).
+ * these (signup_countries(), 20261126300800; the smoke test compares them).
  */
 export function signupCountries() {
   return allCodes()

@@ -1,4 +1,4 @@
--- Verification, fourth round (20261126101000…): a registration number's
+-- Verification, fourth round (20261126301000…): a registration number's
 -- label is dropped only in its own country (R16); a Chinese number's format
 -- names the letters it never uses (R13).
 begin;

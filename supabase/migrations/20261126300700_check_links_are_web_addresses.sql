@@ -1,6 +1,6 @@
 -- M3 (Nov 26): the Link on a registry or certificate check is a web address
 -- when given: refused otherwise, and saved with https:// when it has no
--- scheme (normalise_web_address, 20261126100600). Checked after the staff
+-- scheme (normalise_web_address, 20261126300600). Checked after the staff
 -- test, like every other value. Same signatures; grants restated.
 
 create or replace function public.admin_save_registry_check(target_org uuid, site text, site_key text, result text, seen jsonb DEFAULT '{}'::jsonb, note text DEFAULT NULL::text, link text DEFAULT NULL::text, proof jsonb DEFAULT '[]'::jsonb)

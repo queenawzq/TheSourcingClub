@@ -1,7 +1,7 @@
 -- A registration number's typed label is dropped only in the country it
 -- belongs to: Portugal "NIF", "NIPC", "N.º"; Turkey "VKN", "Vergi No"; China
 -- "USCC" and "统一社会信用代码". Anywhere, "No:", "Nr:" or "Nº:" is dropped
--- only when a colon follows it. From 20261126100000, which dropped every
+-- only when a colon follows it. From 20261126300000, which dropped every
 -- label in every country, so a number such as Norway's "NO 123456789 MVA"
 -- lost its first letters. normaliseRegistrationNumber() in
 -- src/shared/registration-number.mjs is the same rule.

@@ -4,7 +4,7 @@
 -- which is the payout-method alert's. Like the account alerts it goes to
 -- everyone at the company whatever their email settings. One notice per save,
 -- as before. admin_update_company_profile keeps its signature (grants restated);
--- only its notice text changes from 20261126100800.
+-- only its notice text changes from 20261126300800.
 
 alter table public.notification_email_outbox drop constraint if exists notification_email_outbox_category_check;
 alter table public.notification_email_outbox add constraint notification_email_outbox_category_check
