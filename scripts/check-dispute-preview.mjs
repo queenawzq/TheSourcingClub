@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  initialWorld, openCase, respond, askForReview, withdraw, advance, requestResponse, recordResolution, completeResolution,
-  releaseOtherPayments, approveStep, STATUS, isOpen, withdrawalsPaused, stepOnHold, waitingOn, waitingLine, windowLine, progress,
-  addBusinessDays, day, START,
+  initialWorld, openCase, respond, withdraw, advance, requestResponse, recordResolution, completeResolution,
+  releaseOtherPayments, approveStep, STATUS, STAFF, isOpen, canAnswer, withdrawalsPaused, stepOnHold, waitingOn, waitingLine, windowLine,
+  handlingLine, progress, queueRow, addBusinessDays, day, START,
 } from '../dispute-preview-state.mjs';
 import { STEPS, worldAt } from '../dispute-preview-steps.mjs';
 
@@ -14,16 +14,27 @@ const opened = (w = initialWorld()) => openCase(w, 'brand', { reason: 'Quality o
 // Deadlines skip weekends: Thursday + 2 business days is Monday.
 assert.equal(new Date(addBusinessDays(START, 2)).getUTCDay(), 1);
 
-// Opening: the factory answers by Nov 30; review starts Dec 3 (5 business days) if not settled.
+// Opening: our team has the case at once (staff queue, assigned); the factory
+// answers by Nov 30; our team decides if it is not settled by Dec 3 (5 business days).
 let w = opened();
-assert.equal(w.case.status, STATUS.response);
+assert.equal(w.case.status, STATUS.open);
+assert.deepEqual(Object.values(STATUS), ['Open', 'Awaiting completion', 'Resolved', 'Withdrawn'], 'one set of status words');
+assert.equal(w.case.assignee, STAFF);
+assert.equal(handlingLine(w.case), 'Our team is handling this case · Priya Shah');
+const row = queueRow(w.case);
+assert.equal(row.status, STATUS.open, 'in the staff queue from opening');
+assert.equal(row.assignee, 'Priya Shah');
+assert.equal(row.waiting, 'factory');
+assert.equal(day(row.dueAt), 'Nov 30');
+assert.ok(w.case.events.some((e) => e.who === 'staff' && e.title === 'Our team is handling this case'));
 assert.equal(w.case.turn, 'factory');
 assert.ok(withdrawalsPaused(w) && stepOnHold(w));
 assert.equal(waitingLine(w.case, 'factory'), 'Your response is due Nov 30');
 assert.equal(waitingLine(w.case, 'brand'), 'Waiting for Ningbo Loomworks · due Nov 30');
-assert.equal(windowLine(w.case), 'Review starts Dec 3 if not settled');
+assert.equal(windowLine(w.case), 'Our team decides if not settled by Dec 3');
 assert.equal(w.notifications.factory.length, 1);
 assert.equal(w.emails.at(-1).to, 'factory');
+assert.match(w.emails.at(-1).body, /Our team is handling this case \(Priya Shah\)\. Respond by Nov 30\. If it is not settled by Dec 3, our team decides\./);
 assert.throws(() => opened(w), /already open/);
 assert.throws(() => respond(w, 'brand', { action: 'reply', note: 'x' }), /not your turn/);
 assert.throws(() => openCase(initialWorld(), 'brand', { reason: 'r', stage: 's', details: 'd', request: { type: 'refund', amountCents: 999999 } }), /Up to \$1,700.00/);
@@ -43,7 +54,7 @@ assert.equal(w.step.heldCents, 85000);
 assert.equal(w.step.refundedCents, 85000);
 assert.ok(!withdrawalsPaused(w) && !stepOnHold(w));
 assert.equal(w.emails.filter((e) => e.kind === 'resolved').length, 2);
-assert.deepEqual(progress(w.case).steps, ['Opened', 'Response', 'Resolution', 'Resolved']);
+assert.deepEqual(progress(w.case).steps, ['Opened', 'Answer or settle', 'Resolved'], 'agreed: no Decision step');
 // The remaining funded money is approved as usual.
 const beforeApprove = w.balanceCents;
 w = approveStep(w);
@@ -63,20 +74,37 @@ w = respond(advance(w, 2), 'factory', { action: 'reply', note: 'c' });          
 assert.equal(day(w.case.dueAt), 'Dec 3', 'capped at the window, not Dec 4');
 assert.equal(w.case.dueAt, w.case.windowEndsAt);
 w = advance(w, 1);                                                               // Thu Dec 3: still open all day
-assert.equal(w.case.status, STATUS.response);
+assert.ok(!w.case.deciding);
 w = advance(w, 1);                                                               // Fri Dec 4
-assert.equal(w.case.status, STATUS.review, 'the window ended without agreement');
+assert.equal(w.case.status, STATUS.open, 'no stage change: still Open');
+assert.ok(w.case.deciding, 'the window ended without agreement: our team decides');
+assert.equal(waitingOn(w.case).side, 'staff');
+assert.equal(waitingLine(w.case, 'brand'), `Our team is deciding · due ${day(w.case.staffDueAt)}`);
+assert.equal(windowLine(w.case), '');
+assert.equal(w.case.events.at(-1).title, 'Our team is deciding');
 assert.equal(w.case.events.at(-1).detail, 'No agreement by Dec 3');
-assert.equal(w.emails.filter((e) => e.kind === 'review').length, 2);
+assert.equal(w.emails.filter((e) => e.kind === 'deciding').length, 2);
+assert.deepEqual(progress(w.case), { steps: ['Opened', 'Answer or settle', 'Decision', 'Resolved'], at: 2 });
+// The sides can still settle while our team decides: either may answer, offers still accept.
+assert.ok(canAnswer(w.case, 'brand') && canAnswer(w.case, 'factory'));
+const settled = respond(respond(w, 'brand', { action: 'offer', offer: { type: 'rework', date: '2026-12-16' } }), 'factory', { action: 'accept' });
+assert.equal(settled.case.status, STATUS.resolved);
+assert.equal(settled.case.resolution.by, 'agreement');
 
-// Path 2: no answer, the deadline sends it to review; staff ask, then decide rework by a new date.
+// A missed answer changes nothing by itself: it is overdue, and our team still decides only after the window.
 w = advance(opened(), 1);
-assert.equal(w.case.status, STATUS.response, 'Nov 30 is still answerable on Nov 27');
-w = advance(w, 2);
-assert.equal(w.case.status, STATUS.review);
-assert.equal(w.case.events.at(-1).detail, 'No answer by Nov 30');
-assert.ok(w.case.escalated);
-assert.deepEqual(progress(w.case).steps, ['Opened', 'Response', 'Review', 'Resolution', 'Resolved']);
+assert.equal(waitingOn(w.case).side, 'factory', 'Nov 30 is still answerable on Nov 27');
+w = advance(w, 2);                                                               // Tue Dec 1
+assert.equal(w.case.status, STATUS.open);
+assert.ok(!w.case.deciding, 'a missed turn does not hand the case over');
+assert.equal(waitingLine(w.case, 'factory', w.now), 'Your response was due Nov 30');
+assert.equal(waitingLine(w.case, 'brand', w.now), 'Waiting for Ningbo Loomworks · overdue since Nov 30');
+assert.ok(canAnswer(w.case, 'factory') && !canAnswer(w.case, 'brand'));
+w = advance(w, 3);                                                               // Fri Dec 4
+assert.ok(w.case.deciding);
+
+// Path 2: our team decides; it asks for a response, then decides rework by a new date.
+assert.deepEqual(progress(w.case).steps, ['Opened', 'Answer or settle', 'Decision', 'Resolved']);
 w = requestResponse(w, 'factory', 'Send collar photos');
 assert.equal(waitingOn(w.case).side, 'factory');
 assert.equal(waitingLine(w.case, 'factory').startsWith('Your response is due'), true);
@@ -91,17 +119,25 @@ assert.ok(!withdrawalsPaused(w) && !stepOnHold(w));
 w = approveStep(w);
 assert.equal(w.step.state, 'approved');
 
-// Either side may ask for review; a payout adds the held money to the balance.
-w = askForReview(opened(), 'brand');
-assert.equal(w.case.status, STATUS.review);
+// Staff may decide early, before the window ends; a payout adds the held money to the balance.
+w = opened();
+assert.ok(!w.case.deciding);
 const before = w.balanceCents;
-w = completeResolution(recordResolution(w, { type: 'payout' }, ''));
+w = recordResolution(w, { type: 'payout' }, 'Approved photos match the spec');
+assert.equal(w.case.status, STATUS.completion);
+assert.deepEqual(progress(w.case), { steps: ['Opened', 'Answer or settle', 'Decision', 'Resolved'], at: 3 });
+w = completeResolution(w);
 assert.equal(w.balanceCents - before, 170000);
 assert.equal(w.step.state, 'paid_out');
 
 // Release other payments: the pause lifts, the disputed step stays on hold, staff-only on the timeline.
 w = opened();
 assert.ok(withdrawalsPaused(w), 'the whole balance is paused by default');
+// Staff may also request a response early: the requested side may answer out of turn.
+const asked = requestResponse(w, 'brand', 'Which collars are affected?');
+assert.equal(waitingOn(asked.case).side, 'brand');
+assert.equal(asked.case.status, STATUS.open);
+assert.equal(respond(asked, 'brand', { action: 'reply', note: '120 of 300' }).case.turn, 'factory', 'answering our team keeps the turn');
 w = releaseOtherPayments(w, 'Factory needs to pay its mill');
 assert.ok(!withdrawalsPaused(w));
 assert.ok(stepOnHold(w));
@@ -117,6 +153,7 @@ assert.throws(() => withdraw(w, 'factory'), /Only the side/);
 w = withdraw(w, 'brand');
 assert.equal(w.case.status, STATUS.withdrawn);
 assert.ok(!isOpen(w.case) && !withdrawalsPaused(w));
+assert.deepEqual(progress(w.case).steps, ['Opened', 'Answer or settle', 'Withdrawn']);
 
 // Cancel refunds what is held and cancels the order.
 w = completeResolution(recordResolution(opened(), { type: 'cancel' }, ''));
@@ -143,9 +180,16 @@ for (const [i, s] of STEPS.entries()) {
 // The steps the brief names land where they say.
 const at = (text) => STEPS.findIndex((s) => s.caption.includes(text));
 assert.equal(day(worldAt(at('due Dec 3, not Dec 4')).case.dueAt), 'Dec 3');
-assert.equal(worldAt(at('review started automatically')).case.status, STATUS.review);
+assert.ok(worldAt(at('so our team is deciding')).case.deciding);
+assert.equal(worldAt(at('in the queue at once')).case.status, STATUS.open);
 assert.equal(worldAt(at('no money moves')).step.state, 'rework');
 assert.ok(!withdrawalsPaused(worldAt(at('can withdraw again'))) && stepOnHold(worldAt(at('can withdraw again'))));
+
+// The escalation step is gone everywhere.
+for (const f of ['dispute-design-preview.jsx', 'dispute-native-orders.jsx', 'dispute-preview-state.mjs', 'dispute-preview-steps.mjs']) {
+  const text = fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+  assert.ok(!/Ask our team|step in\b(?! order)|askForReview|escalat|In review|Review starts/i.test(text), `${f} still mentions the old escalation`);
+}
 
 // No "TSC" in the mock's own words (order numbers like TSC-000524 are the product's format).
 for (const f of ['dispute-design-preview.jsx', 'dispute-native-orders.jsx', 'dispute-preview-state.mjs', 'dispute-preview-steps.mjs']) {

@@ -7,9 +7,10 @@ import PaymentHelp from './src/app/order/PaymentHelp.jsx';
 import NativeOrders from './dispute-native-orders.jsx';
 import {notificationEmail} from './scripts/generate-notification-email.mjs';
 import {
-  ORDER, STAFF, PARTY_NAME, STATUS, OUTCOMES, other, initialWorld, tick, openCase, respond, askForReview, withdraw, advance,
-  requestResponse, recordResolution, completeResolution, addStaffNote, releaseOtherPayments, approveStep, isOpen, withdrawalsPaused,
-  stepOnHold, waitingOn, waitingLine, windowLine, progress, outcomeLine, completionAction, requestOutcomes, outcomeError, money, day, dayOf, moment,
+  ORDER, STAFF, PARTY_NAME, STATUS, OUTCOMES, WINDOW_DAYS, other, initialWorld, tick, openCase, respond, withdraw, advance,
+  requestResponse, recordResolution, completeResolution, addStaffNote, releaseOtherPayments, approveStep, isOpen, canAnswer, withdrawalsPaused,
+  stepOnHold, waitingOn, waitingLine, windowLine, handlingLine, progress, queueRow, outcomeLine, completionAction, requestOutcomes, outcomeError,
+  money, day, dayOf, moment, dueBy,
 } from './dispute-preview-state.mjs';
 import {STEPS, worldAt, toOutcome, toCaseForm} from './dispute-preview-steps.mjs';
 import {adminWorkspaceNav} from './src/app/admin/AdminWorkspaceShell.jsx';
@@ -27,7 +28,7 @@ const brandNav=[{label:'Dashboard',icon:'home'},{label:'RFQs',icon:'rfq'},{label
 const disputeAdminNav=[...adminWorkspaceNav.slice(0,-1),{label:'Disputes',icon:'disputes'},...adminWorkspaceNav.slice(-1)];
 const Icon=({name='rfq'})=><img className="dp-icon" src={`/assets/prototype-icons/${name}.svg`} alt=""/>;
 const fileSize=n=>n>1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.ceil(n/1024)} KB`;
-const tone=s=>s===STATUS.resolved?'green':s===STATUS.review?'blue':s===STATUS.withdrawn?'':'amber';
+const tone=s=>s===STATUS.resolved?'green':s===STATUS.completion?'blue':s===STATUS.withdrawn?'':'amber';
 const StatusBadge=({status})=><span className={`dp-badge ${tone(status)}`} data-testid="case-status">{status}</span>;
 /** Who an event is from, as the reader sees it: staff by name only inside the admin workspace. */
 const whoName=(who,viewer)=>who==='staff'?(viewer==='admin'?STAFF:'Our team'):who==='system'?'Automatic':PARTY_NAME[who];
@@ -35,8 +36,8 @@ const sideName=side=>side==='both'?'Both sides':side==='staff'?'Staff':side?PART
 
 // Other cases in the staff queue, so the filters and the overdue tone have rows.
 const sampleRows=[
-  {id:'DSP-00028',order:'TSC-000498',title:'Linen blend trousers',parties:'Harbor & Pine / Guangzhou Textile Co.',reason:'Delivery delay',stage:'Bulk production',status:STATUS.review,waiting:'Staff',dueAt:Date.parse('2026-11-25T04:59:00Z'),openedAt:Date.parse('2026-11-16T15:00:00Z')},
-  {id:'DSP-00027',order:'TSC-000471',title:'Merino crew knits',parties:'Northfold / Hangzhou Knitworks',reason:'Items missing or incorrect',stage:'Final balance',status:STATUS.resolved,waiting:'—',dueAt:null,openedAt:Date.parse('2026-11-09T15:00:00Z')},
+  {id:'DSP-00028',order:'TSC-000498',title:'Linen blend trousers',parties:'Harbor & Pine / Guangzhou Textile Co.',reason:'Delivery delay',stage:'Bulk production',status:STATUS.open,waiting:'Staff',assignee:'Daniel Okafor',dueAt:Date.parse('2026-11-25T04:59:00Z'),openedAt:Date.parse('2026-11-16T15:00:00Z')},
+  {id:'DSP-00027',order:'TSC-000471',title:'Merino crew knits',parties:'Northfold / Hangzhou Knitworks',reason:'Items missing or incorrect',stage:'Final balance',status:STATUS.resolved,waiting:'—',assignee:STAFF,dueAt:null,openedAt:Date.parse('2026-11-09T15:00:00Z')},
 ];
 
 function Modal({title,eyebrow=ORDER.number,onClose,children}){const ref=useRef();useEffect(()=>{const prev=document.activeElement;const old=document.body.style.overflow;document.body.style.overflow='hidden';ref.current.focus();function key(e){if(e.key==='Escape')onClose();if(e.key==='Tab'){const els=[...ref.current.querySelectorAll('button,input,select,textarea,a[href]')].filter(x=>!x.disabled);const first=els[0],last=els.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}document.addEventListener('keydown',key);return()=>{document.body.style.overflow=old;document.removeEventListener('keydown',key);prev?.focus?.();};},[]);return <div className="approve-fund-modal-layer dp-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="approve-fund-modal milestone-comment-modal dp-modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}><header><div><span className="dp-eyebrow">{eyebrow}</span><h2>{title}</h2></div><button type="button" className="settings-drawer-close dp-dialog-close" aria-label="Close dialog" onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt=""/></button></header>{children}</section></div>}
@@ -68,12 +69,12 @@ function OpenDisputeDialog({side,world,initial=blankCase,onClose,onSubmit}){
     <Field label="What happened?" required error={errors.details} help={`${details.length}/4,000`}><textarea name="details" maxLength={4000} rows={4} value={details} onChange={e=>setDetails(e.target.value)} placeholder="Dates, quantities and the requirement that was not met."/></Field>
     <OutcomeFields label="Requested outcome" value={outcome} onChange={setOutcome} options={requestOutcomes(side)} world={world} error={errors.outcome}/>
     <FilePicker files={files} setFiles={setFiles}/>
-    <div className="dp-note dp-mini"><Icon name="verification"/><p>{PARTY_NAME[other(side)]} has 2 business days to respond. If it is not settled within 5 business days, our team reviews the case.</p></div>
+    <div className="dp-note dp-mini"><Icon name="verification"/><p>Our team handles the case from the moment you submit. {PARTY_NAME[other(side)]} has 2 business days to respond. If it is not settled by {day(dueBy(world.now,WINDOW_DAYS))}, our team decides.</p></div>
   </div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button type="submit" className="primary-btn">Submit dispute</button></footer></form></Modal>;
 }
 
 function SubmittedDialog({record,onClose,onView}){
-  return <Modal title="Dispute submitted" onClose={onClose}><div className="dp-modal-body dp-success"><img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt=""/><h3>{record.id}</h3><p>{waitingLine(record,record.openedBy)}<br/>{windowLine(record)}</p></div><footer><button className="secondary-btn" onClick={onClose}>Close</button><button className="primary-btn" onClick={onView}>View case</button></footer></Modal>;
+  return <Modal title="Dispute submitted" onClose={onClose}><div className="dp-modal-body dp-success"><img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt=""/><h3>{record.id}</h3><p>{handlingLine(record)}<br/>{waitingLine(record,record.openedBy)}<br/>{windowLine(record)}</p></div><footer><button className="secondary-btn" onClick={onClose}>Close</button><button className="primary-btn" onClick={onView}>View case</button></footer></Modal>;
 }
 
 function RespondDialog({side,world,mode:initialMode,initial={},onClose,onSubmit}){
@@ -90,19 +91,18 @@ function RespondDialog({side,world,mode:initialMode,initial={},onClose,onSubmit}
     {mode==='offer'&&<OutcomeFields value={outcome} onChange={v=>{setOutcome(v);setError('');}} options={options} world={world} error={error}/>}
     <Field label={mode==='reply'?'Reply':'Message'} required={mode==='reply'} error={mode==='reply'?error:''}><textarea rows={4} value={note} onChange={e=>{setNote(e.target.value);setError('');}} placeholder={mode==='reply'?'Your account, with dates and quantities.':'Optional'}/></Field>
     {mode!=='accept'&&<FilePicker files={files} setFiles={setFiles}/>}
-    {mode==='accept'?<div className="dp-note dp-mini"><Icon name="verification"/><p>{needsStaffWords(c.offer,world)}</p></div>:c.status===STATUS.response&&<p className="dp-field-help">{PARTY_NAME[other(side)]} then has 2 business days to answer. Review starts {day(c.windowEndsAt)} if not settled.</p>}
+    {mode==='accept'?<div className="dp-note dp-mini"><Icon name="verification"/><p>{needsStaffWords(c.offer,world)}</p></div>:c.turn===side&&!c.deciding&&<p className="dp-field-help">{PARTY_NAME[other(side)]} then has 2 business days to answer. {windowLine(c)}.</p>}
     {error&&mode==='accept'&&<p className="dp-error" role="alert">{error}</p>}
   </div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button type="submit" className="primary-btn">{mode==='accept'?acceptLabel:mode==='offer'?'Send offer':'Send reply'}</button></footer></form></Modal>;
 }
 const needsStaffWords=(o,world)=>['refund','payout','cancel'].includes(o.type)?`Accepting ends the case. Our team then carries out: ${outcomeLine(o,world)}.`:o.type==='rework'?`Accepting ends the case. ${ORDER.step} reopens, due ${dayOf(o.date)}, and is approved as usual when the rework arrives.`:'Accepting ends the case.';
 
-function AskReviewDialog({onClose,onSubmit}){const [note,setNote]=useState('');return <Modal title="Ask our team to step in" onClose={onClose}><form onSubmit={e=>{e.preventDefault();onSubmit(note.trim());}}><div className="dp-modal-body"><p>Our team reviews the case, may ask both sides for more, and decides the outcome.</p><Field label="Message for our team"><textarea rows={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional"/></Field></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn">Ask our team</button></footer></form></Modal>;}
 function WithdrawDialog({record,onClose,onSubmit}){return <Modal title="Withdraw the dispute" onClose={onClose}><div className="dp-modal-body"><p>{record.id} closes as Withdrawn. The order continues as before.</p></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Keep the case</button><button className="primary-btn dp-danger-btn" onClick={onSubmit}>Withdraw</button></footer></Modal>;}
 
 // ---------- Admin dialogs ----------
 function RequestDialog({initial={},onClose,onSubmit}){const [to,setTo]=useState(initial.to??'both'),[text,setText]=useState(initial.text??'');return <Modal title="Request a response" eyebrow="Dispute" onClose={onClose}><form onSubmit={e=>{e.preventDefault();onSubmit(to,text.trim());}}><div className="dp-modal-body"><Field label="Who should respond?" required><select value={to} onChange={e=>setTo(e.target.value)}><option value="both">Both sides</option><option value="factory">{ORDER.factory}</option><option value="brand">{ORDER.brand}</option></select></Field><Field label="What do you need?" required><textarea required minLength={10} rows={4} value={text} onChange={e=>setText(e.target.value)} placeholder="Close-up collar photos and the number of units affected."/></Field><p className="dp-field-help">Due in 2 business days. Shared on the case timeline.</p></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn">Send request</button></footer></form></Modal>;}
 function ResolveDialog({world,initial={},onClose,onSubmit}){const [outcome,setOutcome]=useState(initial.outcome??{type:''}),[note,setNote]=useState(initial.note??''),[error,setError]=useState('');return <Modal title="Record resolution" eyebrow="Dispute" onClose={onClose}><form noValidate onSubmit={e=>{e.preventDefault();const o=toOutcome(outcome);const err=outcomeError(o,world)||(!note.trim()?'Give the reason both sides will read.':'');if(err){setError(err);return;}onSubmit(o,note.trim());}}><div className="dp-modal-body"><OutcomeFields value={outcome} onChange={v=>{setOutcome(v);setError('');}} options={OUTCOMES} world={world} error={error&&!note.trim()&&outcome.type?'':error}/><Field label="Reason (shared with both sides)" required error={error&&!note.trim()&&!outcomeError(toOutcome(outcome),world)?error:''}><textarea rows={4} value={note} onChange={e=>{setNote(e.target.value);setError('');}} placeholder="What the evidence shows and why this outcome."/></Field></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn">Record resolution</button></footer></form></Modal>;}
-function CompleteDialog({world,onClose,onSubmit}){const r=world.case.resolution;const label=completionAction(r,world);return <Modal title={label} eyebrow="Dispute" onClose={onClose}><div className="dp-modal-body"><div className="dp-offer-summary"><small>{r.by==='agreement'?'Agreed by both sides':'Staff decision'}</small><strong>{outcomeLine(r,world)}</strong></div><dl className="dp-case-summary"><div><dt>Funded on {ORDER.step}</dt><dd>{money(world.step.heldCents)}</dd></div><div><dt>After this</dt><dd>{r.type==='refund'?`${money(world.step.heldCents-r.amountCents)} funded`:r.type==='payout'?`${money(0)} funded`:'Order cancelled'}</dd></div></dl></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn" onClick={onSubmit}>{label}</button></footer></Modal>;}
+function CompleteDialog({world,onClose,onSubmit}){const r=world.case.resolution;const label=completionAction(r,world);return <Modal title={label} eyebrow="Dispute" onClose={onClose}><div className="dp-modal-body"><div className="dp-offer-summary"><small>{r.by==='agreement'?'Agreed by both sides':'Staff decision'}</small><strong>{outcomeLine(r,world)}</strong></div><dl className="dp-case-summary"><div><dt>Funded: held until approval</dt><dd>{money(world.step.heldCents)}</dd></div><div><dt>After this</dt><dd>{r.type==='refund'?`${money(world.step.heldCents-r.amountCents)} held until approval`:r.type==='payout'?`${money(0)} held until approval`:'Order cancelled'}</dd></div></dl></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn" onClick={onSubmit}>{label}</button></footer></Modal>;}
 function ReleaseDialog({world,initial={},onClose,onSubmit}){const [note,setNote]=useState(initial.note??'');return <Modal title="Release other payments" eyebrow="Dispute" onClose={onClose}><form onSubmit={e=>{e.preventDefault();onSubmit(note.trim());}}><div className="dp-modal-body"><p>{ORDER.factory} can withdraw its balance again. {money(world.step.heldCents)} funded on {ORDER.step} stays on hold until the case closes.</p><dl className="dp-case-summary"><div><dt>{ORDER.factory} balance</dt><dd>{money(world.balanceCents)}</dd></div><div><dt>Stays on hold</dt><dd>{money(world.step.heldCents)}</dd></div></dl><Field label="Note for staff"><textarea rows={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional. Only staff see this."/></Field></div><footer><button type="button" className="secondary-btn" onClick={onClose}>Cancel</button><button className="primary-btn">Release other payments</button></footer></form></Modal>;}
 
 // ---------- Shared case parts ----------
@@ -120,34 +120,34 @@ const stepWord=(world)=>stepOnHold(world)?<span className="dp-hold">On hold: dis
 
 // ---------- The case page, brand and factory ----------
 function CasePage({side,world,onBack,onAction}){
-  const c=world.case;const open=isOpen(c);const mine=c.status===STATUS.response?c.turn===side:c.status===STATUS.review&&c.staffRequest?.to.includes(side);
+  const c=world.case;const open=isOpen(c);const mine=waitingOn(c).side===side||waitingOn(c).side==='both';
   const opener=c.openedBy===side;const canAccept=c.offer&&c.offer.by!==side;
   const acceptLabel=c.offer?.isRequest?'Accept the request':'Accept the offer';
   const offerLabel=c.offer&&c.offer.by!==side&&!c.offer.isRequest?'Make a counter-offer':'Make an offer';
-  const answering=open&&c.status!==STATUS.completion&&(mine||c.status===STATUS.review);
+  const answering=canAnswer(c,side);
   const line=open?waitingLine(c,side,world.now):c.status===STATUS.withdrawn?`Withdrawn ${moment(c.closedAt)}`:`Resolved ${moment(c.closedAt)}`;
   return <div className="dp-case-page" data-testid="case-page">
     <button className="project-back-link" type="button" onClick={onBack}>‹ Back to order</button>
-    <header className="dp-page-heading dp-case-heading"><div><span className="dp-eyebrow">Dispute · {ORDER.number}</span><h1>{c.id}</h1><p>{ORDER.title} · {PARTY_NAME[other(side)]} · Opened {day(c.openedAt)} by {PARTY_NAME[c.openedBy]}</p></div><StatusBadge status={c.status}/></header>
+    <header className="dp-page-heading dp-case-heading"><div><span className="dp-eyebrow">Dispute · {ORDER.number}</span><h1>{c.id}</h1><p>{ORDER.title} · {PARTY_NAME[other(side)]} · Opened {day(c.openedAt)} by {PARTY_NAME[c.openedBy]}</p><p className="dp-handling" data-testid="handling-line"><Icon name="verification"/>{handlingLine(c)}</p></div><StatusBadge status={c.status}/></header>
     <Progress record={c}/>
     <div className="dp-case-layout"><section className="dp-case-main">
       {c.status!==STATUS.resolved&&<article className={`dp-card dp-action-card ${mine?'yours':''}`} data-testid="action-card">
         <strong className="dp-due-line">{line}</strong>
         {windowLine(c)&&<p className="dp-window-line" data-testid="window-line">{windowLine(c)}</p>}
-        {c.status===STATUS.review&&c.staffRequest?.to.includes(side)&&<p className="dp-window-line">{c.staffRequest.message}</p>}
+        {c.staffRequest?.to.includes(side)&&<p className="dp-window-line">{c.staffRequest.message}</p>}
         {answering&&<div className="dp-action-row">
           {canAccept&&<button className="primary-btn" type="button" onClick={()=>onAction('respond','accept')}>{acceptLabel}</button>}
           <button className={canAccept?'secondary-btn':'primary-btn'} type="button" onClick={()=>onAction('respond','offer')}>{offerLabel}</button>
           <button className="secondary-btn" type="button" onClick={()=>onAction('respond','reply')}>Reply</button>
         </div>}
-        {open&&c.status!==STATUS.completion&&<div className="dp-link-row">{c.status===STATUS.response&&<button className="dp-text-button" type="button" onClick={()=>onAction('askReview')}>Ask our team to step in</button>}{opener&&<button className="dp-text-button danger" type="button" onClick={()=>onAction('withdraw')}>Withdraw</button>}</div>}
+        {open&&c.status!==STATUS.completion&&opener&&<div className="dp-link-row"><button className="dp-text-button danger" type="button" onClick={()=>onAction('withdraw')}>Withdraw</button></div>}
       </article>}
       <OfferCard record={c} world={world} viewer={side}/>
       <article className="dp-card"><h2 className="dp-card-title">Request</h2><RequestSummary record={c}/></article>
       <article className="dp-card"><h2 className="dp-card-title">Timeline</h2><Timeline record={c} viewer={side}/></article>
     </section>
     <aside className="dp-review-side">
-      <article className="dp-card"><h3>{ORDER.step}</h3><dl className="dp-side-facts"><div><dt>Funded</dt><dd>{money(world.step.heldCents)}</dd></div>{world.step.refundedCents>0&&<div><dt>Refunded</dt><dd>{money(world.step.refundedCents)}</dd></div>}<div><dt>Step</dt><dd>{stepWord(world)}</dd></div><div><dt>Due</dt><dd>{dayOf(world.step.due)}</dd></div></dl></article>
+      <article className="dp-card"><h3>{ORDER.step}</h3><dl className="dp-side-facts"><div><dt>Funded: held until approval</dt><dd>{money(world.step.heldCents)}</dd></div>{world.step.refundedCents>0&&<div><dt>Refunded</dt><dd>{money(world.step.refundedCents)}</dd></div>}<div><dt>Step</dt><dd>{stepWord(world)}</dd></div><div><dt>Due</dt><dd>{dayOf(world.step.due)}</dd></div></dl></article>
       {side==='factory'&&<article className="dp-card"><h3>Withdrawals</h3><p className={withdrawalsPaused(world)?'dp-hold':''}>{withdrawalsPaused(world)?'Paused':'Available'}</p><button className="dp-text-button" type="button" onClick={()=>onAction('payments')}>View balance</button></article>}
       <article className="dp-card"><h3>Order</h3><dl className="dp-side-facts"><div><dt>Order</dt><dd>{ORDER.number}</dd></div><div><dt>Total</dt><dd>{money(ORDER.totalCents)}</dd></div><div><dt>Status</dt><dd>{world.order==='cancelled'?'Cancelled':'In production'}</dd></div></dl></article>
     </aside></div>
@@ -214,12 +214,12 @@ function FactoryPayments({world,notify}){
 // ---------- Admin ----------
 function AdminQueue({world,tab,setTab,onOpen,notify}){
   const c=world.case;
-  const rows=[...(c?[{id:c.id,order:ORDER.number,title:ORDER.title,parties:`${ORDER.brand} / ${ORDER.factory}`,reason:c.reason,stage:c.stage,status:c.status,...(()=>{const w=waitingOn(c);return{waiting:sideName(w.side),dueAt:w.dueAt};})(),openedAt:c.openedAt,live:true}]:[]),...sampleRows];
+  const rows=[...(c?[(r=>({...r,waiting:sideName(r.waiting),live:true}))(queueRow(c))]:[]),...sampleRows];
   const isClosed=r=>r.status===STATUS.resolved||r.status===STATUS.withdrawn;
   const shown=rows.filter(r=>tab==='resolved'?isClosed(r):!isClosed(r));
   const age=r=>{const d=Math.floor((world.now-r.openedAt)/86400000);return d<1?'Today':`${d} ${d===1?'day':'days'}`;};
   return <><AdminQueueTabs label="Dispute queues" tabs={[{key:'open',label:'Open',count:rows.filter(r=>!isClosed(r)).length},{key:'resolved',label:'Resolved',count:rows.filter(isClosed).length}]} active={tab} onChange={setTab}/>
-    {shown.length?<div className="admin-table-wrap"><table className="admin-table dp-disputes-table" data-testid="admin-queue"><thead><tr>{['Case','Order / parties','Reason','Status','Waiting on','Due','Age',''].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{shown.map(r=>{const overdue=r.dueAt&&r.dueAt<world.now&&!isClosed(r);return <tr key={r.id} className={r.live?'dp-live-row':''}><td><strong>{r.id}</strong></td><td><strong>{r.order}</strong><p>{r.title}</p><small>{r.parties}</small></td><td>{r.reason}<p>{r.stage}</p></td><td><StatusBadge status={r.status}/></td><td>{isClosed(r)?'—':r.waiting}</td><td className={overdue?'dp-overdue':''}>{isClosed(r)||!r.dueAt?'—':overdue?`Overdue · ${day(r.dueAt)}`:day(r.dueAt)}</td><td>{age(r)}</td><td><button className="secondary-btn compact-btn" type="button" onClick={()=>r.live?onOpen():notify('Sample row. Open the order’s own case to walk the flow.')}>Review case</button></td></tr>;})}</tbody></table></div>:<p className="projects-empty">No {tab==='resolved'?'resolved':'open'} cases.</p>}</>;
+    {shown.length?<div className="admin-table-wrap"><table className="admin-table dp-disputes-table" data-testid="admin-queue"><thead><tr>{['Case','Order / parties','Reason','Status','Waiting on','Due','Assigned to','Age',''].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{shown.map(r=>{const overdue=r.dueAt&&r.dueAt<world.now&&!isClosed(r);return <tr key={r.id} className={r.live?'dp-live-row':''}><td><strong>{r.id}</strong></td><td><strong>{r.order}</strong><p>{r.title}</p><small>{r.parties}</small></td><td>{r.reason}<p>{r.stage}</p></td><td><StatusBadge status={r.status}/></td><td>{isClosed(r)?'—':r.waiting}</td><td className={overdue?'dp-overdue':''}>{isClosed(r)||!r.dueAt?'—':overdue?`Overdue · ${day(r.dueAt)}`:day(r.dueAt)}</td><td>{r.assignee}</td><td>{age(r)}</td><td><button className="secondary-btn compact-btn" type="button" onClick={()=>r.live?onOpen():notify('Sample row. Open the order’s own case to walk the flow.')}>Review case</button></td></tr>;})}</tbody></table></div>:<p className="projects-empty">No {tab==='resolved'?'resolved':'open'} cases.</p>}</>;
 }
 
 function AdminCase({world,tab,setTab,onAction,onNote}){
@@ -235,14 +235,14 @@ function AdminCase({world,tab,setTab,onAction,onNote}){
     </section>
     <aside className="dp-review-side">
       {open&&<article className="dp-card" data-testid="admin-actions"><h2>Actions</h2>{c.status===STATUS.completion?<button className="primary-btn" data-testid="complete-btn" onClick={()=>onAction('complete')}>{completionAction(c.resolution,world)}</button>:<><button className="secondary-btn" onClick={()=>onAction('request')}>Request a response</button><button className="primary-btn" onClick={()=>onAction('resolve')}>Record resolution</button></>}{!c.otherReleased&&withdrawalsPaused(world)&&<button className="secondary-btn" data-testid="release-btn" onClick={()=>onAction('release')}>Release other payments</button>}</article>}
-      <article className="dp-card"><h3>Money</h3><dl className="dp-side-facts"><div><dt>Funded on {ORDER.step}</dt><dd>{money(world.step.heldCents)}</dd></div><div><dt>{ORDER.step}</dt><dd>{stepOnHold(world)?<span className="dp-hold">On hold</span>:stepWord(world)}</dd></div><div><dt>{ORDER.factory} balance</dt><dd>{money(world.balanceCents)}</dd></div><div><dt>Withdrawals</dt><dd data-testid="admin-withdrawals">{withdrawalsPaused(world)?<span className="dp-hold">Paused</span>:c.otherReleased&&open?'Released · step on hold':'Available'}</dd></div></dl></article>
+      <article className="dp-card"><h3>Money</h3><dl className="dp-side-facts"><div><dt>Funded: held until approval</dt><dd>{money(world.step.heldCents)}</dd></div><div><dt>{ORDER.step}</dt><dd>{stepOnHold(world)?<span className="dp-hold">On hold</span>:stepWord(world)}</dd></div><div><dt>{ORDER.factory} balance</dt><dd>{money(world.balanceCents)}</dd></div><div><dt>Withdrawals</dt><dd data-testid="admin-withdrawals">{withdrawalsPaused(world)?<span className="dp-hold">Paused</span>:c.otherReleased&&open?'Released · step on hold':'Available'}</dd></div></dl></article>
       <article className="dp-card"><h3>Order</h3><dl className="dp-side-facts"><div><dt>{ORDER.number}</dt><dd>{money(ORDER.totalCents)}</dd></div><div><dt>Brand</dt><dd>{ORDER.brand}</dd></div><div><dt>Factory</dt><dd>{ORDER.factory}</dd></div></dl></article>
     </aside></div></>;
 }
 
 // ---------- Emails ----------
 const emailEnv={appUrl:'https://sourcing-club.com',logoUrl:'/assets/logo.png',supportEmail:'operations@contact.sourcing-club.com',companyAddress:'New York, USA'};
-const EMAIL_KINDS=[['opened','Case opened'],['offer','Offer made'],['review','Review started'],['request','Response requested'],['resolved','Resolved']];
+const EMAIL_KINDS=[['opened','Case opened'],['offer','Offer made'],['deciding','Our team is deciding'],['request','Response requested'],['withdrawn','Withdrawn'],['resolved','Resolved']];
 function emailFor(e){
   const isFactory=e.to==='factory';const company=PARTY_NAME[e.to];
   const row={kind:`dispute_${e.kind}`,title:e.title,body:e.body,category:'payments',org_type:isFactory?'factory':'brand',org_name:company,recipient_name:isFactory?'Wei':'Maya',subject_type:'order',subject_id:ORDER.number,locale:'en',time_zone:'America/New_York'};
@@ -255,10 +255,11 @@ function emailFor(e){
   return {...out,html};
 }
 const sampleEmails={
-  opened:{to:'factory',kind:'opened',title:`${ORDER.brand} opened a dispute on ${ORDER.number}`,body:`Quality or workmanship on "${ORDER.title}". Respond by Nov 30. If it is not settled, our team reviews it from Dec 3.`},
+  opened:{to:'factory',kind:'opened',title:`${ORDER.brand} opened a dispute on ${ORDER.number}`,body:`Quality or workmanship on "${ORDER.title}". Our team is handling this case (${STAFF}). Respond by Nov 30. If it is not settled by Dec 3, our team decides.`},
   offer:{to:'brand',kind:'offer',title:`${ORDER.factory} made an offer on ${ORDER.number}`,body:`Refund $850.00 to ${ORDER.brand}. Respond by Dec 1.`},
-  review:{to:'factory',kind:'review',title:`${ORDER.number} dispute: our team is reviewing it`,body:'No agreement by Dec 3. Our team will review the case and may ask you for more.'},
+  deciding:{to:'factory',kind:'deciding',title:`${ORDER.number} dispute: our team is deciding`,body:`No agreement by Dec 3. Our team will decide the outcome and may ask you for more. You can still settle with ${ORDER.brand} until then.`},
   request:{to:'factory',kind:'request',title:`Our team asked for your response on ${ORDER.number}`,body:'Please send the revised production plan and the earliest date you can ship all 300 shirts. Respond by Dec 8.'},
+  withdrawn:{to:'brand',kind:'withdrawn',title:`${ORDER.factory} withdrew the dispute on ${ORDER.number}`,body:'The order continues as before.'},
   resolved:{to:'factory',kind:'resolved',title:`${ORDER.number} dispute resolved`,body:`Refund $850.00 to ${ORDER.brand}. You can withdraw your balance again.`},
 };
 function EmailsPage({world}){
@@ -344,7 +345,6 @@ function Preview(){
     {modal?.kind==='open'&&<OpenDisputeDialog key={`open-${stepIndex}`} side={view} world={world} initial={modal.initial} onClose={()=>setModal(null)} onSubmit={form=>{const next=run(w=>openCase(w,view,form));if(next)setModal({kind:'submitted'});}}/>}
     {modal?.kind==='submitted'&&world.case&&<SubmittedDialog record={world.case} onClose={()=>setModal(null)} onView={()=>go('case')}/>}
     {modal?.kind==='respond'&&<RespondDialog key={`respond-${stepIndex}`} side={view} world={world} mode={modal.arg} initial={modal.initial} onClose={()=>setModal(null)} onSubmit={r=>{if(run(w=>respond(w,view,r)))notify(r.action==='accept'?'Accepted.':r.action==='offer'?'Offer sent.':'Reply sent.');}}/>}
-    {modal?.kind==='askReview'&&<AskReviewDialog onClose={()=>setModal(null)} onSubmit={note=>run(w=>askForReview(w,view,note))}/>}
     {modal?.kind==='withdraw'&&<WithdrawDialog record={world.case} onClose={()=>setModal(null)} onSubmit={()=>run(w=>withdraw(w,view))}/>}
     {modal?.kind==='request'&&<RequestDialog initial={modal.initial} onClose={()=>setModal(null)} onSubmit={(to,text)=>{if(run(w=>requestResponse(w,to,text)))notify('Request sent.');}}/>}
     {modal?.kind==='resolve'&&<ResolveDialog world={world} initial={modal.initial} onClose={()=>setModal(null)} onSubmit={(o,n)=>{if(run(w=>recordResolution(w,o,n)))notify('Resolution recorded.');}}/>}

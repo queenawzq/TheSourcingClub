@@ -58,7 +58,7 @@ const DECISION = 'The delay came from a late fabric delivery, and the factory ha
 const RELEASE_NOTE = 'Other orders are not affected. Releasing so the factory can pay its mill.';
 
 const P1 = 'Path 1 · Offer accepted, then refunded';
-const P2 = 'Path 2 · No agreement, review, rework by a new date';
+const P2 = 'Path 2 · No agreement, our team decides, rework by a new date';
 const P3 = 'Path 3 · Withdrawn';
 const P4 = 'Release other payments';
 const P5 = 'Dispute from a step';
@@ -70,17 +70,18 @@ const P5 = 'Dispute from a step';
  */
 export const STEPS = [
   { path: P1, fresh: true, view: 'brand', page: 'orders', modal: { kind: 'open', initial: FORMS.quality }, caption: `Brand: opens a dispute from the order's menu and asks for a ${money(170000)} refund` },
-  { path: P1, run: [open('brand', FORMS.quality)], view: 'brand', page: 'orders', modal: { kind: 'submitted' }, caption: 'Brand: submitted. The factory has 2 business days to answer; review starts Dec 3 if not settled' },
-  { path: P1, view: 'brand', page: 'case', caption: 'Brand: the case page says whose turn it is and when review starts' },
+  { path: P1, run: [open('brand', FORMS.quality)], view: 'brand', page: 'orders', modal: { kind: 'submitted' }, caption: 'Brand: submitted. Our team has the case at once; the factory has 2 business days to answer' },
+  { path: P1, view: 'brand', page: 'case', caption: 'Brand: the case page says our team is handling it, whose turn it is, and the Dec 3 deadline' },
+  { path: P1, view: 'admin', page: 'queue', caption: 'Admin: the case is in the queue at once, assigned to Priya Shah, waiting on the factory' },
   { path: P1, view: 'factory', page: 'orders', bell: true, caption: 'Factory: the bell and an email say a dispute was opened' },
   { path: P1, view: 'factory', page: 'order', caption: 'Factory: the order banner, and Bulk production on hold' },
   { path: P1, view: 'factory', page: 'payments', caption: 'Factory: withdrawals paused; the disputed step is on hold' },
   { path: P1, view: 'factory', page: 'case', caption: 'Factory: answer within 2 business days: accept, offer, or reply' },
   { path: P1, run: [nextDay()], view: 'factory', page: 'case', modal: { kind: 'respond', arg: 'offer', initial: RESPONSES.halfRefund }, caption: 'Factory (Nov 27): offers to refund $850.00 and re-sew the collars' },
-  { path: P1, run: [answer('factory', RESPONSES.halfRefund)], view: 'brand', page: 'case', caption: 'Brand: 2 business days to answer the offer (Dec 1); review still starts Dec 3' },
+  { path: P1, run: [answer('factory', RESPONSES.halfRefund)], view: 'brand', page: 'case', caption: 'Brand: 2 business days to answer the offer (Dec 1); our team decides if not settled by Dec 3' },
   { path: P1, view: 'brand', page: 'case', modal: { kind: 'respond', arg: 'accept', initial: RESPONSES.accept }, caption: 'Brand: accepts the offer' },
   { path: P1, run: [answer('brand', RESPONSES.accept)], view: 'brand', page: 'case', caption: 'Brand: agreed. Our team carries out the refund' },
-  { path: P1, view: 'admin', page: 'queue', caption: 'Admin: the case waits on staff in the disputes queue' },
+  { path: P1, view: 'admin', page: 'queue', caption: 'Admin: agreed, so the case now waits on staff to carry it out' },
   { path: P1, view: 'admin', page: 'adminCase', caption: 'Admin: one button carries out what both sides agreed' },
   { path: P1, view: 'admin', page: 'adminCase', modal: { kind: 'complete' }, caption: 'Admin: one confirm, with the funded amount before and after' },
   { path: P1, run: [act(completeResolution)], view: 'admin', page: 'adminCase', caption: 'Admin: resolved. The pause on withdrawals lifts' },
@@ -93,9 +94,10 @@ export const STEPS = [
   { path: P2, run: [answer('factory', RESPONSES.reworkDec18), nextDay()], view: 'brand', page: 'case', modal: { kind: 'respond', arg: 'offer', initial: RESPONSES.reworkDec11 }, caption: 'Brand (Nov 30): counter-offers Dec 11' },
   { path: P2, run: [answer('brand', RESPONSES.reworkDec11), nextDay()], view: 'factory', page: 'case', modal: { kind: 'respond', arg: 'reply', initial: RESPONSES.factoryReply }, caption: 'Factory (Dec 1): replies; the brand then has until Dec 3' },
   { path: P2, run: [answer('factory', RESPONSES.factoryReply), nextDay()], view: 'brand', page: 'case', modal: { kind: 'respond', arg: 'reply', initial: RESPONSES.brandReply }, caption: 'Brand (Dec 2): replies; 2 business days would run to Dec 4' },
-  { path: P2, run: [answer('brand', RESPONSES.brandReply)], view: 'factory', page: 'case', caption: 'Factory: due Dec 3, not Dec 4. The 5-business-day window ends Dec 3' },
-  { path: P2, run: [nextDay(2)], view: 'admin', page: 'queue', caption: 'Admin (Dec 4): no agreement by Dec 3, so review started automatically' },
-  { path: P2, view: 'admin', page: 'adminCase', adminTab: 'Timeline', caption: 'Admin: the timeline says why review started' },
+  { path: P2, run: [answer('brand', RESPONSES.brandReply)], view: 'factory', page: 'case', caption: 'Factory: due Dec 3, not Dec 4: our team decides if not settled by Dec 3' },
+  { path: P2, run: [nextDay(2)], view: 'admin', page: 'queue', caption: 'Admin (Dec 4): no agreement by Dec 3, so our team is deciding. Waiting on: Staff' },
+  { path: P2, view: 'admin', page: 'adminCase', adminTab: 'Timeline', caption: 'Admin: the timeline says why our team is deciding' },
+  { path: P2, view: 'brand', page: 'case', caption: 'Brand: our team is deciding; either side can still settle until then' },
   { path: P2, view: 'admin', page: 'adminCase', modal: { kind: 'request', initial: { to: 'factory', text: REQUEST } }, caption: 'Admin: asks the factory for a revised plan, due in 2 business days' },
   { path: P2, run: [act((w) => requestResponse(w, 'factory', REQUEST))], view: 'factory', page: 'case', caption: 'Factory: our team needs its answer by Dec 8' },
   { path: P2, view: 'factory', page: 'case', modal: { kind: 'respond', arg: 'reply', initial: RESPONSES.plan }, caption: 'Factory: replies with the revised plan attached' },

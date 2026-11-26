@@ -26,7 +26,7 @@ function disputedStep(world, factory) {
     const word=hold?'On hold: dispute open':'Awaiting approval';
     return {...base,...onHold,meta:(s.state==='rework'?[due,word,refunded]:[word,refunded,due]).filter(Boolean).join(' · ')};
   }
-  const lead=s.state==='rework'?[due,'Funded']:['Ready for your approval','Funded'];
+  const lead=s.state==='rework'?[due,'Funded: held until approval']:['Ready for your approval','Funded: held until approval'];
   const meta=[...lead,refunded,hold?'On hold: dispute open':s.state==='rework'?null:due].filter(Boolean).join(' · ');
   // The step's own "Initiate dispute": while no case is open on the order (LiveOrderDetail canDispute).
   const canDispute=!caseOpen&&world.order==='active';

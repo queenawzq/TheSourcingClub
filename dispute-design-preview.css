@@ -116,7 +116,7 @@
 .dp-disputes-table td:nth-child(3) { min-width: 140px; max-width: 180px; white-space: normal; }
 .dp-disputes-table td p { margin: 4px 0; }
 .dp-disputes-table td small { color: var(--text-muted); font-size: 11px; }
-.dp-disputes-table td:nth-last-child(2) { min-width: 140px; }
+.dp-disputes-table td:nth-last-child(2) { min-width: 64px; }
 .dp-disputes-table .shared-card-status { max-width: 180px; height: auto; min-height: 24px; white-space: normal; }
 .dp-app .dp-main .admin-verification-tabs { margin-top: 0; }
 
@@ -230,3 +230,6 @@
 .dp-app.with-drawer .dp-player { right: 410px; }
 @media (max-width: 900px) { .dp-player { width: auto; left: 16px; top: auto; height: 46vh; } .dp-app.with-player .dp-main { margin-right: 0; padding-bottom: 50vh; } .dp-app.with-player .dp-preview-bar { right: 20px; bottom: calc(46vh + 88px); } }
 .dp-case-heading { padding-right: 64px; }
+/* Our team has the case from the moment it is opened: one line under the case heading. */
+.dp-case-heading p.dp-handling { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text); font-size: 13px; font-weight: 600; }
+.dp-disputes-table td:nth-child(7) { white-space: nowrap; }
