@@ -847,7 +847,7 @@ function OverrideForm({ check, onSave, onDone }) {
 // its document's own name ("Tax plate", "Registration certificate") from its label (R8).
 const ADDRESS_LINE_WORDS = { typed: "Company", registry: "Registry" };
 
-function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null }) {
+function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actions, numberShown = false, dupField = null, onExplainDup = null, typedFields = [], onExplainTyped = null, documentLabel = "Licence" }) {
   const [explainingTyped, setExplainingTyped] = useState(null);
   const [mode, setMode] = useState(null);
   // The shared number from the row's own check when no reading shows the number (T3): each company that
@@ -931,7 +931,7 @@ function SubCheck({ check, groupKey, legalName, canReason: canReasonGiven, actio
           {typedFields.map((field) => (
             <div className="vr-sub-lines" key={`typed-${field.key}`}>
               <p className="vr-compare"><span>Company:</span> {field.typed}</p>
-              <p className="vr-compare"><span>Licence:</span> {field.value}
+              <p className="vr-compare"><span>{documentLabel}:</span> {field.value}
                 {field.explainTyped && onExplainTyped && explainingTyped !== field.key && !mode && (
                   <button className="vr-text-action is-inline vr-line-action" type="button" onClick={() => setExplainingTyped(field.key)}>Explain</button>
                 )}
@@ -1018,7 +1018,7 @@ function ReadValue({ field, value }) {
   );
 }
 
-function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = false }) {
+function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = false, documentLabel = "Licence" }) {
   const id = useId();
   const [explaining, setExplaining] = useState(false);
   const [explainingTyped, setExplainingTyped] = useState(false);
@@ -1052,7 +1052,7 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = 
         <ReasonForm label={field.explainTyped} saveLabel="Save" onSave={onExplainTyped} onDone={() => setExplainingTyped(false)} />
       )}
       {!plain && field.licence && (value ?? "") !== field.licence && (
-        <p className="vr-compare is-licence"><span>Licence:</span> {marked(field.licence, value ?? "", field.licenceParts ?? [])}</p>
+        <p className="vr-compare is-licence"><span>{documentLabel}:</span> {marked(field.licence, value ?? "", field.licenceParts ?? [])}</p>
       )}
       {!plain && dup && !dup.explained && !explaining && (
         <p className="vr-compare is-dup">
@@ -1151,6 +1151,8 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
 
   // A registration number another company also uses: said in the Official registry row (Nov 26).
   // The licence's number or name against the company's own, worked out now: said, and explained, in the registry row.
+  // The document's own name on its comparison lines, as the address lines say it ("Registration certificate", "Tax plate"; N3).
+  const documentLabel = (group.checks ?? []).find((check) => check.key === "licence")?.label ?? "Licence";
   const typedFields = (checks ?? []).some((check) => check.key === "registry") ? fields.filter((field) => field.typed && field.typed !== field.value) : [];
   const dupField = (checks ?? []).some((check) => check.key === "registry") ? fields.find((field) => field.key === "number" && field.duplicate) ?? null : null;
   const readSection = fields.length > 0 && (
@@ -1167,6 +1169,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
         {fields.map((field) => (!fixing ? <ReadValue field={field} value={values[field.key]} key={field.key} /> : (
           <ReadField
             plain
+            documentLabel={documentLabel}
             field={field}
             value={values[field.key]}
             onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))}
@@ -1229,6 +1232,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
                       numberShown={Boolean(dupField)}
                       dupField={check.key === "registry" ? dupField : null}
                       typedFields={check.key === "registry" ? typedFields : []}
+                      documentLabel={documentLabel}
                       onExplainTyped={check.key === "registry" && actions.explainTyped ? (field, text) => actions.explainTyped(group.key, field, text, check) : null}
                       onExplainDup={dupField ? (text) => actions.explainField(group.key, dupField, text) : null}
                       actions={actions}
