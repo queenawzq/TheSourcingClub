@@ -648,6 +648,11 @@ hand-written line.
 - **Only staff change `verification_status`** (`guard_verification_status`).
   Members could update it on their own row before; with credits attached
   that would have minted them.
+- **A company's type is fixed** (`20261127100000`). Signed-in users hold no
+  UPDATE on `orgs` (renames go through `rename_factory` and
+  `save_account_settings`): an owner who set its factory to brand was approved
+  with no registry check, then set it back. The registry guard also checks any
+  company with a factory profile, whatever its type.
 - **Invites are `referrals`**, sent through `/api/send-invite` (the caller's
   token inserts the row, so RLS and the guard decide; then one email through
   the notification transport). Clients may insert only `referrer_org_id`,
