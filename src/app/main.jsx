@@ -1162,7 +1162,7 @@ function Shell() {
     const load = isFactory ? getFactoryProfile : getBrandProfile;
     load(activeOrg.id)
       .then(async (loaded) => {
-        const waiting = loaded?.onboarding_completed_at && loaded.verification_status !== "verified";
+        const waiting = loaded && loaded.verification_status !== "verified";
         // A failed read leaves the designed card, never a blank page.
         setReview(waiting ? await getMyReview(activeOrg.id).catch(() => null) : null);
         setProfile(loaded);
@@ -1205,7 +1205,7 @@ function Shell() {
 
   if (!profile?.onboarding_completed_at) {
     const Onboarding = isFactory ? FactoryOnboarding : BrandOnboarding;
-    return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} onSignOut={signOut} />;
+    return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} onSignOut={signOut} review={review} signupUnfinished />;
   }
 
   if (profile.verification_status !== "verified") {

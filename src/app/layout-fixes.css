@@ -238,3 +238,15 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* U-01: staff's request on the brand's first signup card (a company asked for
+   more before it finished signup). The card's header is drawn 34px up, which
+   put it on top of the notice: the notice keeps its usual 20px gap below, and
+   the fixed-height card grows to fit it. Left-aligned, as on the factory's. */
+#root .brand-onboarding-card.welcome > .tsc-review-request {
+  margin-bottom: 54px;
+  text-align: left;
+}
+#root .brand-onboarding-card.welcome:has(> .tsc-review-request) {
+  height: auto;
+}

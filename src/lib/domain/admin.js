@@ -109,7 +109,8 @@ function queueOrder(a, b) {
 }
 
 /**
- * Every company waiting on, or already carrying, a decision.
+ * Every company waiting on, or already carrying, a decision, and every company
+ * that sent its registration without finishing signup (`signupFinished` false).
  *
  * `verificationChecks` and `verificationScore` arrive on the row rather than
  * from a second call. The designed screen loads this queue once and hands the
@@ -125,7 +126,7 @@ export async function verificationQueue() {
   // A page at a time by org_id, then back in the queue's own order: see
   // queueOrder below.
   const rows = (await readEveryPage(
-    () => supabase.rpc("admin_verification_queue").order("org_id"),
+    () => supabase.rpc("admin_verification_queue_all").order("org_id"),
     "load the verification queue",
     "org_id",
   )).sort(queueOrder);
@@ -183,6 +184,9 @@ export async function verificationQueue() {
     makes: [...(makesByOrg.get(row.org_id) ?? categoriesByOrg.get(row.org_id) ?? [])].sort(),
     capabilityGroups: Object.entries(capabilitiesByOrg.get(row.org_id) ?? {}).map(([kind, labels]) => ({ kind, items: [...labels].sort() })),
     decidedAt: row.decided_at,
+    // False for a company that sent its registration but has not finished
+    // signup (signed the terms): its own queue tab, never Active.
+    signupFinished: row.signup_finished !== false,
   }));
 }
 
@@ -672,31 +676,6 @@ export async function purgeTestData(orgIds, userIds) {
     body: { orgIds, userIds },
     failure: "the test data could not be deleted",
   });
-}
-
-/** A factory's credit balance and its latest ledger lines, for the review page. */
-export async function companyCredits(orgId, limit = 5) {
-  const [balance, lines] = await Promise.all([
-    unwrap(await supabase.rpc("credit_balance", { org: orgId }), "load the credit balance"),
-    unwrap(
-      await supabase
-        .from("credit_ledger")
-        .select("id, delta, reason, note, created_at")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false })
-        .limit(limit),
-      "load the credit history",
-    ),
-  ]);
-  return { balance: Number(balance) || 0, lines: lines ?? [] };
-}
-
-/** Add (positive) or remove (negative) credits, with a reason the company sees. */
-export async function adjustCredits(orgId, amount, reason) {
-  return unwrap(
-    await supabase.rpc("admin_adjust_credits", { target_org: orgId, amount, reason }),
-    "adjust the credits",
-  );
 }
 
 /**

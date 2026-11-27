@@ -38,7 +38,6 @@ const ALLOWED_ABSENT = {
   "admin:latestReviewAssists:mock": "live only; only called from the AI panel, which needs reviewAssist",
   "admin:reviewAssistInput:mock": "live only; only called from the AI panel, which needs reviewAssist",
   // Credits are not in the admin design (rule B: built live only, flagged).
-  "admin:companyCredits:mock": "live only; the review page draws no credits card without it",
   // The registry guard is live only: the prototype approves with no registry.
   "admin:termsBlock:mock": "live only; the database refuses Approve without signed terms",
   "admin:approvalBlock:mock": "live only; without it Approve is never greyed for a missing registry check",
@@ -50,7 +49,6 @@ const ALLOWED_ABSENT = {
   // Staff correcting a vendor's type and address (Nov 24): no design draws it.
   "admin:updateCompanyProfile:mock": "live only; Review details draws no Change type / Edit address without it",
   "admin:reviewChanges:mock": "live only; only called from Change type / Edit address, which needs updateCompanyProfile",
-  "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
   // Payment providers are switched on the live database; the prototype has none.

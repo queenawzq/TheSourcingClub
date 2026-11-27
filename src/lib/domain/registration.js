@@ -108,7 +108,7 @@ export function approvalBlockText(detail) {
 export async function termsApprovalBlock(orgId) {
   const { data, error } = await supabase.rpc("admin_terms_signed", { target_org: orgId });
   if (error) throw error;
-  return data ? null : "Approve needs: the company to sign the terms. Ask them with Request more information; they sign just before sending their profile back";
+  return data ? null : "The company must accept the Terms & Conditions before you can approve this profile.";
 }
 
 export async function registryApprovalBlock(orgId) {

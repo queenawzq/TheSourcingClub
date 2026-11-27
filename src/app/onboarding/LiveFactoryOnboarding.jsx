@@ -160,7 +160,7 @@ function startVerification(orgId) {
 
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
-export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
+export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null, signupUnfinished = false }) {
   const initial = onboardingSteps(initialCompanyType);
   // Asked for more information, the factory lands on its profile summary
   // (Queena, Nov 9): no card in between.
@@ -714,7 +714,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       // Staff asked for more information: finishing answers them, whether the
       // factory came in from the email or went back through the steps.
       const answering = resubmitting || review?.state === "needs_information";
-      if (step === REVIEW_STEP && answering && termsAcceptance) {
+      if (step === REVIEW_STEP && answering && termsAcceptance && !signupUnfinished) {
         // Terms already signed: confirming the summary sends it back to staff
         // and opens the finish card, as a reload would.
         await resubmitForReview(org.id);
@@ -727,8 +727,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         return;
       }
       if (step === LAST_STEP - 1 && answering) {
-        // Answering staff's request: the profile is already complete and
-        // published, so this only sends it back to their queue.
+        // Answering staff's request. A company that had not finished signup
+        // finishes it here (signing the terms), then it goes back to staff.
+        if (signupUnfinished) {
+          await saveFactoryProfile(org.id, { published_at: new Date().toISOString() });
+          await completeOnboarding(org.id, "factory");
+        }
         await resubmitForReview(org.id);
         setAnswered(review);
         startVerification(org.id);
@@ -840,7 +844,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       // What staff asked for, on the summary the factory lands on. The email
       // is not the only copy: an address that cannot receive it (Nov 13)
       // otherwise left the factory with no sign of the request.
-      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
+      notice={(resubmitting || (signupUnfinished && askedForMore)) && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       // The request just answered is not shown again while the review re-reads.
       completion={reviewCompletion(review === answered ? null : review, {
         language: language,

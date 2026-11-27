@@ -20,6 +20,31 @@ export const initialProfiles = [
   // Nov 12 review design (mock): one score card, details in each row's modal.
   ...verificationMockProfiles,
   {
+    // Sent its registration, never finished signup: the "Signup not finished" tab.
+    id: "vendor-cavado",
+    initials: "FC",
+    name: "Fiação do Cávado",
+    entityType: "Factory",
+    location: "Barcelos, Portugal",
+    submitted: "2 days ago",
+    status: "Signup not finished",
+    tone: "warning",
+    signupFinished: false,
+    confidence: 58,
+    confidenceLabel: "Score",
+    completion: 70,
+    evidence: "1 of 1 received",
+    owner: "Unassigned",
+    risk: "Low",
+    summary: "Yarn spinning and knit fabric mill supplying cotton and linen blends.",
+    details: [["Year founded", "1998"], ["Team size", "85"], ["Website", "fiacaocavado.pt"], ["Typical MOQ", "500 kg / colour"]],
+    capabilities: ["Knits", "Yarn", "Cotton"],
+    checks: [
+      ["Registration document", "Review", 80, "Registration document uploaded."],
+      ["Business identity", "Review", 60, "Registered name to confirm against the document."]
+    ]
+  },
+  {
     id: "vendor-atelier",
     initials: "AM",
     name: "Atelier Minho",
@@ -217,7 +242,7 @@ function VerificationRow({ profile, onReview }) {
         <div>
           <strong>{profile.name}</strong>
           <small>{profile.entityType} · {profile.location}</small>
-          <small className="admin-entity-submitted">Submitted {profile.submitted}</small>
+          <small className="admin-entity-submitted">{profile.signupFinished === false ? "Updated" : "Submitted"} {profile.submitted}</small>
         </div>
         <div className="admin-factory-tags">
           {(profile.entityType === "Factory" || profile.entityType === "Trading company") && (
@@ -297,7 +322,7 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
 }
 
 function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
-  const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
+  const pending = profiles.filter((profile) => profile.signupFinished !== false && !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
       <div className="factory-dashboard-shell admin-shell">
@@ -339,10 +364,14 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
   const [searchTerm, setSearchTerm] = useState("");
   const isProfiles = kind === "Verification";
   const baseProfiles = profiles;
-  const verificationTabs = ["Active", "Approved", "Needs information", "Declined"];
+  const verificationTabs = ["Active", "Approved", "Needs information", "Declined", "Signup not finished"];
   const rfqTabs = ["All", "Open", "With quotes", "Needs attention", "Closed"];
   const quoteTabs = ["All", "Submitted", "Brand reviewing", "Needs attention", "Accepted", "Closed"];
-  const matchesVerificationTab = (profile, tab) => tab === "Active"
+  // A company that has not finished signup is under its own tab only, until
+  // staff decline it: then it is under Declined like any other.
+  const matchesVerificationTab = (profile, tab) => profile.signupFinished === false && profile.status !== "Declined"
+    ? tab === "Signup not finished"
+    : tab === "Active"
     ? !["Approved", "Needs information", "Declined"].includes(profile.status)
     : profile.status === tab;
   const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -920,107 +949,6 @@ function AiSuggestionsPanel({ orgId }) {
   );
 }
 
-const CREDIT_LINE = {
-  onboarding_grant: "Verified onboarding bonus",
-  referral_grant: "Referral bonus",
-  purchase: "Credit purchase",
-  admin_adjustment: "Adjusted by TSC",
-  quote_submission: "Quote sent",
-  refund: "Credit refund",
-};
-
-// Not in the admin design: a factory's credits and the staff adjustment,
-// drawn with the review page's own side card and modal classes. Live only.
-function CreditsCard({ orgId, refreshKey }) {
-  const actions = useActions();
-  const [credits, setCredits] = useState(null);
-  const [error, setError] = useState("");
-  const [open, setOpen] = useState(false);
-  const [direction, setDirection] = useState("add");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  // A refusal belongs to the attempt it answers. Kept with the values that
-  // were sent, it shows only while the form still holds them: switching to
-  // "Add credits" or changing the amount is a different attempt, and a
-  // "you cannot remove 500" left under it would be about nothing on screen.
-  const [refusal, setRefusal] = useState(null);
-  const formError = refusal && refusal.direction === direction && refusal.amount === amount && refusal.reason === reason
-    ? refusal.message
-    : "";
-
-  const load = () => actions.companyCredits(orgId).then(setCredits).catch((failure) => setError(failure.message));
-  useEffect(() => { setCredits(null); setError(""); load(); }, [orgId, refreshKey]);
-
-  const close = () => { setOpen(false); setAmount(""); setReason(""); setRefusal(null); setDirection("add"); };
-  const units = Number.parseInt(amount, 10);
-  const valid = Number.isInteger(units) && units > 0 && reason.trim().length >= 5;
-  // Said under the form while Save is off, so staff are not left guessing why.
-  const missing = !(Number.isInteger(units) && units > 0)
-    ? "Enter a whole number of credits."
-    : reason.trim().length < 5
-      ? "Write a reason of at least 5 characters; the company sees it."
-      : "";
-  const save = async () => {
-    setBusy(true);
-    setRefusal(null);
-    const attempt = { direction, amount, reason };
-    try {
-      await actions.adjustCredits(orgId, direction === "add" ? units : -units, reason.trim());
-      close();
-      await load();
-    } catch (failure) {
-      const why = failure.message.replace(/^adjust the credits: /, "");
-      setRefusal({ ...attempt, message: `${why.charAt(0).toUpperCase()}${why.slice(1)}.` });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="factory-profile-card admin-review-meta admin-credits-card">
-      <h2>Credits</h2>
-      {error && <p className="admin-error" role="alert">{error}</p>}
-      {!credits && !error && <p className="admin-assist-meta">Loading credits…</p>}
-      {credits && (
-        <>
-          <ProfileDetailPair label="Balance" value={`${credits.balance.toLocaleString()} credits`} />
-          {credits.lines.length ? (
-            <ul className="admin-credits-lines">
-              {credits.lines.map((line) => (
-                <li key={line.id}>
-                  <span>{CREDIT_LINE[line.reason] || line.reason}{line.note ? ` · ${line.note}` : ""}</span>
-                  <strong>{line.delta > 0 ? "+" : "−"}{Math.abs(line.delta).toLocaleString()}</strong>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="admin-assist-meta">No credit activity yet.</p>}
-          <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>Adjust credits</button>
-        </>
-      )}
-      {open && (
-        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="adjust-credits-title">
-            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={close}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
-            <header><div><span>Credits</span><h2 id="adjust-credits-title">Adjust credits</h2><p>{credits?.balance.toLocaleString()} credits now</p></div></header>
-            <p className="admin-assist-meta">The company sees the reason in its credit history and in its notifications.</p>
-            <div className="admin-request-options admin-credits-direction" role="radiogroup" aria-label="Add or remove">
-              {[["add", "Add credits"], ["remove", "Remove credits"]].map(([key, label]) => (
-                <label key={key}><input type="radio" name="credit-direction" aria-label={label} checked={direction === key} onChange={() => setDirection(key)} /> <span>{label}</span></label>
-              ))}
-            </div>
-            <label className="factory-onboarding-field"><span>Credits</span><input type="number" min="1" max="10000" step="1" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="50" /></label>
-            <label className="factory-onboarding-field"><span>Reason</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example: Goodwill for a slow review" /></label>
-            {!formError && missing && (amount || reason) ? <p className="admin-assist-meta">{missing}</p> : null}
-            {formError && <p className="admin-error" role="alert">{formError}</p>}
-            <footer><button className="secondary-btn" type="button" onClick={close}>Cancel</button><button className="primary-btn" type="button" disabled={!valid || busy} onClick={save}>{busy ? "Saving…" : direction === "add" ? "Add credits" : "Remove credits"}</button></footer>
-          </section>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // Live only (the prototype has no outbox): who the company's current review
 // email went to, and "Resend email" for one that failed or never went.
 const REVIEW_EMAIL_DECISION = {
@@ -1334,7 +1262,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
       <div className="admin-review-shell">
         <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to verification queue</button>
         <header className="admin-review-header">
-          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{companyValues.companyName}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · Submitted {profile.submitted}</p></div></div>
+          <div className="admin-entity-identity large"><span>{profile.initials}</span><div><small>{profile.entityType} profile</small><h1>{companyValues.companyName}</h1><p>{profile.location === "Location not given" && savedAddress ? savedAddress : profile.location} · {profile.signupFinished === false ? "Updated" : "Submitted"} {profile.submitted}</p></div></div>
           <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
         </header>
 
@@ -1445,6 +1373,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>{profile.status === "Approved" ? "Review complete" : "Complete this review"}</h2>
+              {termsBlock && <aside className="tsc-review-request" role="note">{termsBlock}</aside>}
               {isVendor && (
                 <fieldset className="admin-tier-picker">
                   <legend>Assign marketplace badge</legend>
@@ -1501,12 +1430,11 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                 {approveLabel}
               </button>
               )}
-              {approveBlocks.map((block) => <p key={block} className="admin-approve-block" role="note">{block}</p>)}
+              {approveBlocks.filter((block) => block !== termsBlock).map((block) => <p key={block} className="admin-approve-block" role="note">{block}</p>)}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
-            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>
