@@ -307,7 +307,7 @@ function CardSkeleton() {
  * `actions`, `loading`, `error`, `onRetry` and `fileUrl` (a signed link for a
  * stored file).
  */
-export function VerificationScoreCard({ profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl, companyPanel = null, onVendorKind = null }) {
+export function VerificationScoreCard({ aiReview = null, aiSummary = null, profile, verification: given, actions: liveActions = null, loading = false, error = null, onRetry, fileUrl, companyPanel = null, onVendorKind = null }) {
   const verification = given ?? profile?.verification ?? null;
   const [localGroups, setLocalGroups] = useState(() => verification?.groups ?? []);
   const localRef = useRef(localGroups);
@@ -338,6 +338,10 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
   const anyPending = groups.some((group) => groupWeight(group) && (isChecking(group) || group.error));
   const overall = groups.length ? scoreOverall(groups) : null;
   const weakest = weakestCheck(ready);
+  const countedChecks = ready.filter(group => groupWeight(group)).flatMap(group => group.checks ?? []).filter(check => check.weight);
+  const supportingChecks = countedChecks.filter(check => check.score >= 85);
+  const outstandingChecks = countedChecks.filter(check => check.score == null || check.score < 75);
+
   const open = groups.find((group) => group.key === openKey) ?? null;
   const closeModal = useCallback(() => setOpenKey(null), []);
   const runningChange = useCallback((on) => openKey && setGroupChecking(openKey, on), [openKey, setGroupChecking]);
@@ -367,18 +371,36 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
 
   return (
     <section className="factory-dashboard-panel admin-panel vr-card" aria-labelledby="vr-card-title" aria-busy={loading || undefined}>
-      {head}
-
+      {aiSummary === false ? <header className="factory-profile-completion-hero ai-verification-hero">
+        <div className="ai-verification-explanation">
+          <h2 id="vr-card-title">Profile verification</h2>
+          <div className="ai-verification-summary">
+            <p>{supportingChecks.length ? `${supportingChecks.map(check => check.key === 'scope' ? 'factory classification' : check.label.toLowerCase()).join(', ').replace(/^./, char => char.toUpperCase())} checks passed.` : 'No checks have passed yet.'}</p>
+            <h3 className="ai-outstanding-heading">Still needs verification</h3>
+            <p>{outstandingChecks.length ? outstandingChecks.map(check => check.key === 'photos' && /not checked yet/.test(check.verdict || '') ? `${check.verdict.match(/(\d+) not checked yet/)?.[1] || 'Factory'} photos await verification.` : `${check.label}: ${(check.verdict || 'not checked yet').replace(/^./, char => char.toLowerCase())}.`).join(' ') : 'No outstanding checks in the scored evidence.'}</p>
+          </div>
+        </div>
+        <div className="factory-profile-completion-score">
+          <strong>{anyPending || overall == null ? '—' : `${overall}%`}</strong>
+          <div className="factory-profile-status-track" role="progressbar" aria-label="Verification score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={overall ?? 0}><span style={{width:`${overall ?? 0}%`}}/></div>
+          <p className="ai-score-interpretation">{anyPending ? 'Checks in progress' : outstandingChecks.length ? 'Further review required' : overall == null ? 'Evidence not checked' : 'Evidence checks complete'}</p>
+        </div>
+      </header> : <>{head}
       <div className="vr-overall">
         <div className="vr-overall-figure">
           <Score value={anyPending && overall != null ? null : overall} size="hero" />
           {anyPending ? <span className="vr-standing vr-tier-none">{groups.some((group) => groupWeight(group) && isChecking(group)) ? "Checking…" : "Not scored"}</span> : <StandingPill score={overall} groups={groups} />}
         </div>
+        {aiSummary === false ? <div className="ai-score-explanation">
+          <p>The licence and registry checks support the score. The address could not be located, and two factory photos still await verification, so further review is needed.</p>
+        </div> : aiSummary ? aiSummary({ weakest }) : (
         <p className="vr-overall-line">
           {/* "Factory: …" / "Not a factory: …" names its check already, so it stands alone. */}
           {weakest ? <><span>Weakest:</span> {/^((Not a )?[Ff]actory|Trading company):/.test(weakest.verdict) ? weakest.verdict : <>{weakest.label}, {weakest.verdict.charAt(0).toLowerCase()}{weakest.verdict.slice(1)}</>}</> : null}
         </p>
+        )}
       </div>
+</>}
 
       {groups.length === 0 ? (
         <div className="vr-card-state"><p>Nothing to score yet</p></div>
@@ -403,7 +425,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
                 key={group.key}
               >
                 <div className="vr-row-copy">
-                  <span className="vr-row-title">{group.label}{groupTip(group) && <InfoTip text={groupTip(group)} label={group.label} />}</span>
+                  <span className="vr-row-title">{group.label}</span>
                   {busy
                     ? <span className="vr-row-verdict vr-row-checking"><Spinner ink />{group.checkingWords ?? "Checking…"}</span>
                     : failed
@@ -422,6 +444,7 @@ export function VerificationScoreCard({ profile, verification: given, actions: l
 
       {open && (
         <VerificationModal
+          aiReview={aiReview}
           group={open}
           groups={groups}
           actions={actions}
@@ -1084,7 +1107,7 @@ function ReadField({ field, value, onChange, onExplain, onExplainTyped, plain = 
 
 const fieldValues = (fields) => Object.fromEntries((fields ?? []).map((field) => [field.key, field.value ?? ""]));
 
-function VerificationModal({ group, groups = null, actions: scoreActions, fileUrl, companyPanel = null, onVendorKind = null, onRunning, onClose }) {
+function VerificationModal({ aiReview = null, group, groups = null, actions: scoreActions, fileUrl, companyPanel = null, onVendorKind = null, onRunning, onClose }) {
   // Factory or trader (Nov 26): staff's answer is also the company's type, so the type is set in one place.
   const actions = useMemo(() => (onVendorKind && scoreActions?.recordOverride ? {
     ...scoreActions,
@@ -1213,6 +1236,7 @@ function VerificationModal({ group, groups = null, actions: scoreActions, fileUr
 
         <div className={`vr-modal-body${group.evidencePane === false ? " is-single" : ""}`}>
           <div className="vr-modal-main">
+            {aiReview?.render(group.key)}
             {tabbed && (
               <div className="vr-cert-tabs">
                 <Segmented options={certs.map((c) => ({ key: c.id, label: c.label }))} value={cert.id} onChange={setCertId} name={`cert-${titleId}`} label="Certificates" />

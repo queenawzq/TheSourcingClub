@@ -30,7 +30,7 @@ check(lifted(10, { text: "x" }) === 60, "a reason lifts 10 to 60");
 check(lifted(90, { text: "x" }) === 90, "a reason leaves 90 alone");
 check(lifted(null, { text: "x" }) === null, "a reason does not score an unscored check");
 check(tierFor(90) === "strong" && tierFor(75) === "good" && tierFor(60) === "potential" && tierFor(59) === "low", "tiers 90 / 75 / 60");
-check(standingFor(85).word === "Strong" && standingFor(84).word === "Needs a look" && standingFor(59).word === "Flagged", "standing 85 / 60");
+check(standingFor(85).word === "Checks passed" && standingFor(84).word === "Needs review" && standingFor(59).word === "Issue identified", "standing 85 / 60");
 const tiles = [{ result: "own" }, { result: "unchecked" }, { result: "elsewhere" }, { result: "own", flag: "office" }, { result: "unchecked", flag: "stock" }, { result: "unchecked", flag: "tsc", others: 2 }];
 check(photosCheck(tiles).score === Math.round((100 + 50 + 0 + 40 + 10 + 0) / 6), "photo points: own 100, unchecked 50, elsewhere 0, office 40, stock 10, TSC 0");
 check(photosCheck([]).score === null, "no photos: no score");
@@ -214,11 +214,11 @@ console.log("fix round 4");
   check(p(hz(reg("could_not_check"))) === 50 && p(hz(reg("not_found"))) === 50, `Hangzhou on the card: Couldn't check ${p(hz(reg("could_not_check")))} = Not found ${p(hz(reg("not_found")))} (was 48 / 50)`);
   const recorded = prototypeScoring.recordedCheck({ key: "registry", weight: 30, registry: { source: "QCC" } }, { result: "could_not_check" });
   check(p(hz(recorded)) === 50, `a Couldn't check recorded on the card counts as Not found (${p(hz(recorded))})`);
-  // 4. Strong needs no counted check in the red; the number stays.
+  // 4. Checks passed needs no counted check in the red; the number stays.
   const red = [{ key: "business_registration", checks: [{ weight: 30, score: 95 }] }, { key: "company_information", checks: [{ weight: 15, score: 55 }] }];
-  check(standingFor(89, red).word === "Needs a look" && prototypeScoring.standingFor(89, red).word === "Needs a look", "89 with a red address (55) is at most Needs a look, page and prototype");
-  check(standingFor(89, [{ key: "business_registration", checks: [{ weight: 30, score: 60 }] }]).word === "Strong", "60 is not red: Strong");
-  check(standingFor(89, [{ key: "certification", checks: [{ score: 15 }] }]).word === "Strong", "an uncounted certificate does not cap");
+  check(standingFor(89, red).word === "Needs review" && prototypeScoring.standingFor(89, red).word === "Needs review", "89 with a red address (55) is at most Needs review, page and prototype");
+  check(standingFor(89, [{ key: "business_registration", checks: [{ weight: 30, score: 60 }] }]).word === "Checks passed", "60 is not red: Checks passed");
+  check(standingFor(89, [{ key: "certification", checks: [{ score: 15 }] }]).word === "Checks passed", "an uncounted certificate does not cap");
   // 3. The watermark is translated once.
   check(watermarkWords("仅供认证使用 | for verification use only") === "仅供认证使用 | for verification use only", "a stamp already in English is not translated again");
   // 5. Romanised address against the Chinese licence.
@@ -293,7 +293,7 @@ console.log("brands (Nov 13)");
   const b = of("registered");
   check(P.groupWeight(b.groups[0]) === 20 && P.scoreGroup(b.groups[0]) === 80 && b.groups[2].verdict === "Only 2 files uploaded", `a registered brand: registration counts 20 (${P.scoreOverall(b.groups)})`);
   const c = of("nothing");
-  check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Flagged" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Flagged (${c.groups[1].verdict})`);
+  check(P.standingFor(P.scoreOverall(c.groups), c.groups).word === "Issue identified" && c.groups[1].verdict === "Terms not signed" && c.facts.find((f) => f.key === "details").value === "Not filled in: Legal name, Website", `a brand with nothing is Issue identified (${c.groups[1].verdict})`);
   check(a.groups.every((g) => g.reasons === false && g.rerunnable === false), "brand rows have no reasons and no Run again");
   check(a.groups.find((g) => g.key === "company_information").evidencePane === false, "a brand's Company information has no file pane");
   const twice = [{ id: "1", kind: "product_image", file_name: "shirt.jpg", size_bytes: 2048, created_at: "2026-11-13T10:00:00Z" }, { id: "2", kind: "product_image", file_name: "shirt.jpg", size_bytes: 2048, created_at: "2026-11-13T10:01:00Z" }];
@@ -313,10 +313,10 @@ if (process.argv.includes("--seeded")) {
   const { error } = await client.auth.signInWithPassword({ email: DEMO_LOGINS.admin.email, password: DEMO_PASSWORD });
   if (error) throw new Error(`sign in as the demo admin: ${error.message}`);
   const expected = [
-    ["verifyCn", 88, 100, "Strong", null],
-    ["verifyCnCopy", 66, 80, "Needs a look", "document_differs"],
-    ["verifyTr", 20, 36, "Flagged", "renamed"],
-    ["verifyPt", 66, 80, "Needs a look", "no_check"],
+    ["verifyCn", 88, 100, "Checks passed", null],
+    ["verifyCnCopy", 66, 80, "Needs review", "document_differs"],
+    ["verifyTr", 20, 36, "Issue identified", "renamed"],
+    ["verifyPt", 66, 80, "Needs review", "no_check"],
   ];
   for (const [key, low, high, word, problem] of expected) {
     const { data: org } = await client.from("orgs").select("id").eq("name", DEMO_LOGINS[key].name).order("created_at", { ascending: false }).limit(1).single();
@@ -327,7 +327,7 @@ if (process.argv.includes("--seeded")) {
     console.log(`        ${DEMO_LOGINS[key].name}: ${v.overall}% ${v.standing.word}; weakest ${v.weakest?.label ?? "none"}; block ${v.approvalProblem ?? "none"}\n          ${rows}`);
     check(v.overall >= low && v.overall <= high && v.standing.word === word, `${key} ${v.overall}% within ${low}–${high}, ${word}`);
     check((v.approvalProblem ?? null) === problem, `${key} approval: ${problem ?? "open"}`);
-    if (v.standing.word === "Strong") check(!v.groups.some((g) => ["business_registration", "company_information"].includes(g.key) && g.checks.some((c) => c.weight && c.score != null && c.score < 60)), `${key}: Strong with no red check`);
+    if (v.standing.word === "Checks passed") check(!v.groups.some((g) => ["business_registration", "company_information"].includes(g.key) && g.checks.some((c) => c.weight && c.score != null && c.score < 60)), `${key}: Checks passed with no red check`);
     if (key === "verifyCn" || key === "verifyPt") {
       const cert = v.groups.find((g) => g.key === "certification");
       const want = key === "verifyCn" ? "杭州钱江服装有限公司 · Hangzhou Qianjiang Garment Co., Ltd." : "Têxteis Douro – Confecções, Lda";

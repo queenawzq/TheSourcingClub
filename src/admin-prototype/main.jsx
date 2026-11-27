@@ -1180,7 +1180,7 @@ function useLiveVerification(orgId, enabled, changed) {
   return enabled ? { ...state, reload, actions: writes, fileUrl: actions.verificationFileUrl } : null;
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0, registryPanel = null, onRegistryChange = null }) {
+export function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0, registryPanel = null, onRegistryChange = null, aiReview = null, aiSummary = null, aiRequestDraft = "" }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1195,6 +1195,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // database refuses "Needs information" with no note, because a factory told
   // only "Needs information" has nothing to act on.
   const [requestNote, setRequestNote] = useState("");
+  useEffect(() => { if (aiRequestDraft) setRequestNote(aiRequestDraft); }, [aiRequestDraft]);
   const [requestSuggestionLoading, setRequestSuggestionLoading] = useState(false);
   const [requestSuggestionError, setRequestSuggestionError] = useState("");
   // Live only: why the note came from the checks rather than the model.
@@ -1340,7 +1341,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
 
         <div className="admin-review-layout">
           <div className="admin-review-main">
-            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} companyPanel={companyPanel} onVendorKind={onVendorKind} />}
+            {profile.verification && <VerificationScoreCard key={profile.id} profile={profile} aiReview={aiReview} aiSummary={aiSummary ? false : null} companyPanel={companyPanel} onVendorKind={onVendorKind} />}
             {live && (
               <VerificationScoreCard
                 key={profile.id}
@@ -1423,7 +1424,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             {profile.confidence != null && !showsScore && <ConfidenceCard score={profile.confidence} />}
             <section className="factory-profile-card admin-review-meta">
               <h2>Review details</h2>
-              {verification?.facts ? <VerificationFacts facts={verification.facts} /> : (<>
+              {verification?.facts ? <VerificationFacts facts={aiSummary ? aiSummary() : verification.facts} /> : (<>
               {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
               {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
               {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}

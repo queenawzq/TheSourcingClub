@@ -1,0 +1,92 @@
+/* All page, score and modal styles come from the current admin UI. */
+.ai-compact-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:13px;line-height:1.5;color:var(--muted,#5d7090);margin-top:12px}.ai-compact-summary strong{color:var(--ink,#101522);font-weight:600}.ai-row-count{font-size:11px;font-weight:500;color:var(--muted,#5d7090);margin-left:8px;white-space:nowrap}.ai-inline-disclosure{margin:0 0 20px;font-size:13px;border-bottom:1px solid var(--line,#d7e1ee);padding-bottom:12px}.ai-inline-disclosure>summary,.ai-small-finding summary{cursor:pointer;color:var(--muted,#5d7090);font-size:13px}.ai-small-finding{padding:16px 0;border-bottom:1px solid var(--line,#d7e1ee)}.ai-small-finding:last-child{border-bottom:0}.ai-small-finding>strong{font-size:14px;font-weight:600}.ai-small-finding p{font-size:13px;line-height:1.6;margin:6px 0 10px;color:var(--muted,#5d7090)}.ai-small-finding dl{font-size:13px;margin:12px 0}.ai-small-finding dt{color:var(--muted,#5d7090);margin-top:8px}.ai-small-finding dd{margin:2px 0 0}.ai-preview-switch{position:fixed;bottom:12px;right:16px;z-index:12;display:flex;gap:12px;align-items:center;padding:8px 12px;background:white;border:1px solid var(--line,#d7e1ee);border-radius:8px;font-size:12px;box-shadow:0 2px 12px #10152210}
+
+/* Reuse the existing onboarding notification; only position its detail action. */
+.ai-notification-section{margin-bottom:16px}.ai-notification-action{margin-left:auto;flex-shrink:0}
+
+.ai-combined-summary{align-items:flex-start}.ai-combined-summary::before{margin-top:2px}.ai-combined-summary p{margin:4px 0 6px;font:inherit;color:inherit}.ai-combined-summary strong{font:inherit}
+
+.ai-suggestion-notification{align-items:flex-start}.ai-suggestion-notification::before{margin-top:2px}.ai-notification-copy{min-width:0}.ai-notification-copy strong{font:inherit}.ai-notification-copy p{margin:4px 0 6px;font:inherit;color:inherit}
+.ai-question-label{display:block;margin-bottom:3px;font-size:12px;font-weight:600}.ai-notification-section .ai-small-finding{padding:12px 0}.ai-notification-section .ai-small-finding dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 16px;margin:8px 0}.ai-notification-section .ai-small-finding dt{grid-row:1;margin:0}.ai-notification-section .ai-small-finding dd{grid-row:2;margin:0;overflow-wrap:anywhere}@media(max-width:600px){.ai-notification-section .ai-small-finding dl{display:block}.ai-notification-section .ai-small-finding dt:not(:first-child){margin-top:8px}}
+/* TSC warning tier: potential / needs a look. */
+.factory-onboarding-validation-message.ai-suggestion-notification{background:#FFF7E8;border-color:#F2B253;color:#A76500 !important}
+.factory-onboarding-validation-message.ai-suggestion-notification::before{background:#A76500;color:#FFFFFF}
+/* Compact spacing around the AI notice; preserve spacing between existing review sections. */
+.vr-modal-main:has(> .ai-notification-section){padding-top:12px}
+.vr-modal-main > .ai-notification-section{margin-bottom:-12px}
+.ai-notification-copy p:last-child{margin-bottom:0}
+/* Keep the score and standing together, with the review summary underneath. */
+.vr-overall:has(> .ai-combined-summary){grid-template-columns:minmax(0,1fr);gap:12px}
+.vr-overall:has(> .ai-combined-summary) > .vr-overall-figure{grid-row:auto}
+/* Align the 16px warning icon to the title's 17px line box. */
+.factory-onboarding-validation-message.ai-suggestion-notification::before{margin-top:.5px;align-self:flex-start}
+.ai-suggestion-notification .ai-notification-copy > strong{display:block;line-height:17px}
+/* Notification hierarchy: bold title, medium body text. */
+.ai-notification-copy > strong,.ai-combined-summary > div > strong{font-weight:700}
+.ai-notification-copy > p,.ai-combined-summary > div > p{font-weight:500}
+.factory-onboarding-validation-message.ai-combined-summary::before{margin-top:.5px;align-self:flex-start}
+.ai-combined-summary > div > strong{display:block;line-height:17px}
+
+.ai-combined-summary > div > p:last-child{margin-bottom:0}
+/* Match the RFQ flow’s factory-submit-reminder tip colors. */
+.factory-onboarding-validation-message:is(.ai-suggestion-notification,.ai-combined-summary){background:#f2f7fd;border-color:#d3e0f0;color:#576f96 !important}
+.factory-onboarding-validation-message:is(.ai-suggestion-notification,.ai-combined-summary)::before{content:"i";background:#576f96;color:#fff;font-style:normal}
+.ai-notification-copy > strong,.ai-combined-summary > div > strong{color:var(--vr-ink,#0b1020)}
+
+.factory-onboarding-validation-message:is(.ai-suggestion-notification,.ai-combined-summary)::before{display:none}
+.ai-review-info-icon{width:16px;height:16px;flex:0 0 16px;color:var(--vr-muted,#5a6b87);margin-top:.5px}
+/* Neutral TSC light-gray background, retaining the approved text and icon. */
+.factory-onboarding-validation-message:is(.ai-suggestion-notification,.ai-combined-summary){background:var(--vr-none-fill,#f3f4f8);border-color:var(--vr-none-stroke,#d7e0ea)}
+
+/* Compact score-to-findings spacing with scannable review points. */
+.vr-overall:has(> .ai-combined-summary){row-gap:8px}
+.ai-review-findings{margin:4px 0 0;padding-left:16px;color:inherit;font:inherit;font-weight:500}
+.ai-review-findings li{margin:0;line-height:17px}
+.ai-review-findings li + li{margin-top:2px}
+
+.admin-review-meta > .ai-combined-summary{margin:12px 0 16px !important}
+
+.ai-review-document-name{display:block;font-size:12px;font-weight:500;overflow-wrap:anywhere;margin-bottom:4px}
+
+.ai-score-explanation{min-width:0;color:var(--vr-muted);font-size:13px;line-height:18px}
+.ai-score-explanation p{margin:0 0 6px;font-weight:500}
+.ai-score-explanation small{display:block;font-size:11px;line-height:16px;font-weight:500}
+.vr-overall:has(> .ai-score-explanation){grid-template-columns:minmax(0,1fr);row-gap:10px}
+.vr-overall:has(> .ai-score-explanation) > .vr-overall-figure{grid-row:auto}
+
+.ai-score-explanation p{margin:0;color:var(--vr-muted);font-size:13px;line-height:18px;font-weight:500}
+/* Score and standing on the left; explanation on the right when space allows. */
+.vr-overall:has(> .ai-score-explanation){grid-template-columns:auto minmax(0,1fr);column-gap:24px;align-items:center}
+@media(max-width:760px){.vr-overall:has(> .ai-score-explanation){grid-template-columns:minmax(0,1fr);row-gap:10px}}
+
+/* Reuse the profile-completion hero layout within the existing verification card. */
+.ai-verification-hero.factory-profile-completion-hero{grid-template-columns:minmax(0,1fr) 180px;padding:24px;border:0;border-bottom:1px solid var(--vr-line);border-radius:0}
+.ai-verification-hero h2{margin:0;color:var(--vr-ink);font-size:22px;font-weight:700;line-height:28px}
+.ai-verification-hero .factory-profile-completion-score{padding:16px;min-height:0;gap:8px}
+.ai-verification-hero .vr-standing{justify-self:start;text-transform:none;font-size:11px;line-height:16px}
+.ai-verification-hero .factory-profile-status-track > span{background:var(--vr-potential-text)}
+@media(max-width:760px){.ai-verification-hero.factory-profile-completion-hero{grid-template-columns:minmax(0,1fr);padding:16px}.ai-verification-hero .factory-profile-completion-score{max-width:240px}}
+.vr-card > header.ai-verification-hero{display:grid;align-items:center}
+.ai-verification-hero .factory-profile-completion-score{width:100%;box-sizing:border-box}
+
+/* Wider score panel with the same neutral fill used elsewhere in the review. */
+.ai-verification-hero.factory-profile-completion-hero{grid-template-columns:minmax(0,1fr) 230px}
+.ai-verification-hero .factory-profile-completion-score{background:var(--vr-none-fill);border-color:var(--vr-none-stroke);padding:18px 20px;gap:12px}
+.ai-verification-hero .vr-standing{color:var(--vr-potential-text)}
+@media(max-width:760px){.ai-verification-hero.factory-profile-completion-hero{grid-template-columns:minmax(0,1fr)}}
+.ai-verification-hero .factory-profile-completion-score{background:var(--surface,#fff)}
+
+/* Connect the overall score with its supporting evidence and outstanding checks. */
+.ai-verification-hero .ai-verification-intro{font-size:13px;line-height:18px;margin:0 0 4px;color:var(--vr-muted)}
+.ai-score-reasons{margin:0;display:grid;gap:12px}
+.ai-score-reasons dt{font-size:12px;line-height:16px;font-weight:700;color:var(--vr-ink);margin:0 0 3px}
+.ai-score-reasons dd{font-size:13px;line-height:18px;font-weight:500;color:var(--vr-muted);margin:0}
+.ai-verification-hero .factory-profile-completion-score .ai-overall-score-label{font-size:11px;line-height:16px;text-transform:none;font-weight:600}
+.ai-verification-hero .factory-profile-completion-score .ai-score-interpretation{font-size:12px;line-height:18px;font-weight:600;color:var(--vr-potential-text);margin:0}
+
+.ai-verification-summary{display:grid;gap:6px}.ai-verification-hero .ai-verification-summary p{font-size:13px;line-height:18px;margin:0;font-weight:500;color:var(--vr-muted)}
+
+.ai-verification-summary .ai-outstanding-heading{margin:6px 0 0;color:var(--vr-ink);font-size:13px;font-weight:700;line-height:18px}
+.ai-verification-hero .factory-profile-completion-score{padding-block:16px;gap:10px}
+/* Match the hero background to the verification card's rounded outline. */
+.vr-card > header.ai-verification-hero{border-top-left-radius:inherit;border-top-right-radius:inherit}

@@ -77,9 +77,9 @@ export function redCheck(groups) {
 
 export function standingFor(score, groups = null) {
   if (score == null) return { word: "Not checked", tone: "none" };
-  if (score >= 85 && !redCheck(groups)) return { word: "Strong", tone: "strong" };
-  if (score >= 60) return { word: "Needs a look", tone: "potential" };
-  return { word: "Flagged", tone: "low" };
+  if (score >= 85 && !redCheck(groups)) return { word: "Checks passed", tone: "strong" };
+  if (score >= 60) return { word: "Needs review", tone: "potential" };
+  return { word: "Issue identified", tone: "low" };
 }
 
 /* ------------------------------------------------------------ photos */
