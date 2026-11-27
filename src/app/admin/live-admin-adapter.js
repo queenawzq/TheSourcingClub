@@ -30,11 +30,9 @@ import { scoreOverall } from "../../admin-prototype/verification-scoring.js";
 import { brandVerification } from "../../shared/brand-verification.mjs";
 import { registrySourceLabel } from "../../shared/registration-number.mjs";
 import {
-  adjustCredits,
   listPayoutProviders,
   setPayoutProvider,
   claimReview,
-  companyCredits,
   decideReview,
   resendReviewEmails,
   reviewEmailStatus,
@@ -227,7 +225,10 @@ export async function withLevel(profile) {
 }
 
 export function toReviewProfile(row) {
-  const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
+  // Not finished signup: one status, the Users page's, whatever staff asked.
+  const [status, tone] = row.signupFinished === false
+    ? ["Signup not finished", "warning"]
+    : REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
   const description = [row.name, row.intro].filter(Boolean).join(" ");
   const inferredProductionTypes = row.type === "factory" && !savedProductionTypes.length
@@ -250,6 +251,7 @@ export function toReviewProfile(row) {
       : row.vendorKind === "trading_company" ? "Trading company" : "Factory",
     location: row.location ?? "Location not given",
     submitted: ago(row.submittedAt),
+    signupFinished: row.signupFinished !== false,
     status,
     tone,
     evidence: `${row.evidenceReceived} of ${row.evidenceExpected} received`,
@@ -503,12 +505,6 @@ export function createAdminAdapter({ user, signOut }) {
       updateCompanyProfile: updateVendorProfile,
       reviewChanges,
 
-      /**
-       * A factory's credits on the review page, and the staff adjustment.
-       * Live only: the admin design draws no credits.
-       */
-      companyCredits,
-      adjustCredits,
 
       /**
        * PayPal and Wise per region, switched by staff in Settings. Live

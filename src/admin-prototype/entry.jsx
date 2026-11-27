@@ -107,8 +107,9 @@ const mockAdapter = {
       user_metadata: { full_name: "TSC Operations" },
     },
   },
-  // A company that has not finished signing up is not in the queue (Nov 26); Users still lists its people.
-  verificationQueue: () => profiles.filter((profile) => profile.signupFinished !== false),
+  // A company that sent its registration without finishing signup is under the queue's
+  // "Signup not finished" tab (Nov 27); it is never in Active or the overview's figures.
+  verificationQueue: () => profiles,
   adminRfqs: () => rfqs,
   adminQuotes: () => quotes,
   adminMetrics: () => ({
@@ -122,6 +123,10 @@ const mockAdapter = {
   adminUsers: () => users,
   actions: {
     orgDocuments: () => mockDocuments,
+    // The unfinished company has not accepted the terms, so Approve waits for them.
+    termsBlock: async (orgId) => (profiles.find((profile) => profile.id === orgId)?.signupFinished === false
+      ? "The company must accept the Terms & Conditions before you can approve this profile."
+      : null),
     orgSubmission: (orgId) => submissionFor(orgId),
     // A promise, as the live one is: the history reads it with .then.
     reviewChanges: async (orgId) => reviewHistory.filter((change) => change.orgId === orgId),

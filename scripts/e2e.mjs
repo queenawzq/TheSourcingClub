@@ -4198,57 +4198,16 @@ async function main() {
       const { data: rewarded } = await db.from("referrals").select("rewarded_at").eq("id", inviteRow?.id ?? stamp).maybeSingle();
       check(Boolean(rewarded?.rewarded_at), "and the invite is marked as paid out");
 
-      // Staff adjust credits from the same review page, with a reason.
-      const creditsCard = ".admin-credits-card";
-      await waitFor(page, creditsCard, 15000);
-      const cardText = await page.locator(creditsCard).innerText();
-      check(/500 credits/.test(cardText), `the review page's Credits card shows 500 (${cardText.replace(/\s+/g, " ").slice(0, 80)})`);
-      const adjust = async (direction, amount, reason) => {
-        await page.locator(`${creditsCard} .secondary-btn`).first().click();
-        await waitFor(page, "#adjust-credits-title", 10000);
-        await page.locator(`input[name="credit-direction"][aria-label="${direction}"]`).first().click();
-        await page.locator('.admin-review-modal input[type="number"]').first().fill(String(amount));
-        await page.locator(".admin-review-modal textarea").first().fill(reason);
-        await page.locator(".admin-review-modal footer .primary-btn").first().click();
-        await page.waitForTimeout(2500);
-      };
-      await adjust("Remove credits", 600, "Removing more than there is");
-      const tooMuch = await page.locator(".admin-review-modal .admin-error").innerText().catch(() => "");
-      check(/you cannot remove 600/i.test(tooMuch), `removing more than the balance is refused ("${tooMuch}")`);
-      // Red, in this dialog: it sits inside the design's .factory-profile-card,
-      // whose paragraph rule outranked .admin-error and drew it grey.
-      const refusalColour = await page.evaluate(() => {
-        const note = document.querySelector(".admin-review-modal .admin-error");
-        const probe = document.createElement("span");
-        probe.style.color = "var(--danger)";
-        note?.parentElement?.append(probe);
-        const danger = probe.isConnected ? getComputedStyle(probe).color : null;
-        probe.remove();
-        return note ? { shown: getComputedStyle(note).color, danger, body: getComputedStyle(document.body).color } : null;
-      });
-      check(Boolean(refusalColour) && refusalColour.shown === refusalColour.danger && refusalColour.danger !== refusalColour.body,
-        `the Adjust credits refusal is red (${refusalColour?.shown} vs ${refusalColour?.danger})`);
-      await record(page, "Adjust refused", "a balance never goes below zero");
-      // The refusal is about that attempt only: switching to Add, or changing
-      // the amount, must not leave it under a form it no longer describes.
-      await page.locator('input[name="credit-direction"][aria-label="Add credits"]').first().click();
-      await page.waitForTimeout(300);
-      check((await page.locator(".admin-review-modal .admin-error").count()) === 0,
-        "switching to Add credits clears the refusal");
-      await page.locator('input[name="credit-direction"][aria-label="Remove credits"]').first().click();
-      await page.locator('.admin-review-modal input[type="number"]').first().fill("60");
-      await page.waitForTimeout(300);
-      check((await page.locator(".admin-review-modal .admin-error").count()) === 0,
-        "and so does changing the amount");
-      await page.locator(".admin-review-modal footer .secondary-btn").first().click();
-      await page.waitForTimeout(500);
+      // The review page has no Credits card (Nov 27). A correction is the
+      // staff function, run by hand; here its ledger line is written directly,
+      // so the factory's side below still shows a staff adjustment's reason.
+      check((await page.locator(".admin-credits-card").count()) === 0, "the review page has no Credits card");
       const adjustReason = `Welcome credit for joining by invite ${stamp}`;
-      await adjust("Add credits", 50, adjustReason);
-      check((await page.locator("#adjust-credits-title").count()) === 0, "adding 50 with a reason closes the dialog");
+      const { error: adjustError } = await db.from("credit_ledger")
+        .insert({ org_id: invitedOrg?.id, delta: 50, reason: "admin_adjustment", note: adjustReason });
+      check(!adjustError, `a staff adjustment of 50 is recorded${adjustError ? ` (${adjustError.message})` : ""}`);
       const { data: adjustedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
       check(Number(adjustedBalance) === 550, `the balance is 550 (${adjustedBalance})`);
-      check(/550 credits/.test(await page.locator(creditsCard).innerText()), "and the card shows it");
-      await record(page, "Credits adjusted", "staff add 50 with a reason the company sees");
 
       await signOutFully(page);
       await signIn(page, invitedEmail, "Invited factory, credits", "factory");

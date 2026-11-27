@@ -467,6 +467,14 @@ a company-level verdict and a file-level one cannot contradict each other.
   Queena, Nov 7); reveals of an account number are still recorded. A Wise or
   PayPal payout underway sits under Processing, which names each row's
   provider.
+- **A company that has not finished signup is reviewable** (`20261127200000`)
+  once it has sent a registration document: the queue's last tab, "Signup not
+  finished" (the Users page's status), never Active. Staff may ask for more or
+  decline; Approve waits for the terms (`guard_approval_needs_terms`), said in
+  the amber notice on the decision card. `admin_verification_queue()` still
+  returns finished companies only, so the overview's figures leave these out;
+  the screen reads `admin_verification_queue_all()`. Signing the terms at the
+  end of signup also sends the profile back when staff had asked for more.
 - **Signing up never makes anyone staff** (`20261124700000`). "Confirm email"
   is off, so a new account's address proves nothing: the old allowlist
   (`admin_emails`) made whoever registered a listed address first an admin.
@@ -659,8 +667,13 @@ hand-written line.
   earns 500 (`referral_grant`). **Brand invites earn nothing yet**: the $50
   brand discount is not decided.
 - **Staff adjust credits** with `admin_adjust_credits` (factories only, a
-  reason the company sees, never below zero), from a live-only card on the
-  admin review page.
+  reason the company sees, never below zero). No screen calls it: the review
+  page's Credits card was removed (Nov 27), since every grant and charge is
+  automatic. The rare fix (an invite that did not link because the factory
+  signed up with another address, a goodwill refund) is a developer running
+  `select admin_adjust_credits('<org id>', <+/-credits>, '<reason>');` as
+  staff, which keeps the reason, the ledger line and the company's notice.
+  Never insert into `credit_ledger` by hand.
 - The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
   ledger through `creditHistory()`, with invites still waiting shown as
   Pending.

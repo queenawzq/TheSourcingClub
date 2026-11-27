@@ -75,7 +75,7 @@ const MAKE_STEP = 3;
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
 
-export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, review = null }) {
+export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, review = null, signupUnfinished = false }) {
   // A brand still onboarding resumes at its saved step after a refresh, and
   // its dots reach every step it has been to (onboarding-step.js).
   const [step, setStep, furthestStep] = useOnboardingStep(org.id, initialStep, { lastStep: LAST_STEP, resume: initialStep === 0 });
@@ -319,7 +319,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
 
       // The last designed card is "You're all set"; leaving it is what ends
       // onboarding, so the profile is marked complete on the way in.
-      if (step === LAST_STEP - 1 && resubmitting) {
+      if (step === LAST_STEP - 1 && signupUnfinished && review?.state === "needs_information") {
+        // Asked for more before finishing signup: finishing answers staff.
+        await completeOnboarding(org.id, "brand");
+        await resubmitForReview(org.id);
+        onComplete();
+      } else if (step === LAST_STEP - 1 && resubmitting) {
         // Answering staff's request: the profile is already complete, so this
         // only sends it back to their queue.
         await resubmitForReview(org.id);
@@ -402,7 +407,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
-      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language="en" /> : null}
+      notice={(resubmitting || (signupUnfinished && review?.state === "needs_information")) && review?.message ? <ReviewRequestPanel note={review.message} language="en" /> : null}
       completion={reviewCompletion(review, {
         language: "en",
         onUpdate: () => {
