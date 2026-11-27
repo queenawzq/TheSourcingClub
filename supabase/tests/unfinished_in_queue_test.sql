@@ -3,7 +3,7 @@
 -- prefixed pgtap-u27-; every count filters on fixture ids.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(22);
 
 insert into auth.users (id, email) values
   ('c2711270-0000-0000-0000-000000000001', 'pgtap-u27-admin@example.com'),
@@ -83,6 +83,11 @@ select is((select q.state::text from public.admin_verification_queue_all() q whe
   'needs_information', 'and the row says so');
 select lives_ok($$select public.admin_review_decision('d2711270-0000-0000-0000-0000000000f5', 'declined',
   'We could not confirm this company.', null)$$, 'staff can decline an unfinished company');
+select is((select q.state::text || '/' || q.signup_finished::text from public.admin_verification_queue_all() q
+            where q.org_id = 'd2711270-0000-0000-0000-0000000000f5'),
+  'declined/false', 'a declined unfinished company reads declined (the screen files it under Declined)');
+select ok(not exists (select 1 from public.admin_verification_queue() q where q.org_id = 'd2711270-0000-0000-0000-0000000000f5'),
+  'and is still not in the overview''s queue');
 select throws_like($$select public.admin_review_decision('d2711270-0000-0000-0000-0000000000b1', 'approved', null, null)$$,
   '%has not signed the current terms%', 'approving a company that has not signed is refused');
 reset role;

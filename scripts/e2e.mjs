@@ -4198,9 +4198,9 @@ async function main() {
       const { data: rewarded } = await db.from("referrals").select("rewarded_at").eq("id", inviteRow?.id ?? stamp).maybeSingle();
       check(Boolean(rewarded?.rewarded_at), "and the invite is marked as paid out");
 
-      // The review page has no Credits card (Nov 27). A correction is the
-      // staff function, run by hand; here its ledger line is written directly,
-      // so the factory's side below still shows a staff adjustment's reason.
+      // The review page has no Credits card (Nov 27). Test setup only: the
+      // ledger line a staff adjustment writes is inserted with the service key,
+      // so the factory's side below still shows an adjustment's reason.
       check((await page.locator(".admin-credits-card").count()) === 0, "the review page has no Credits card");
       const adjustReason = `Welcome credit for joining by invite ${stamp}`;
       const { error: adjustError } = await db.from("credit_ledger")

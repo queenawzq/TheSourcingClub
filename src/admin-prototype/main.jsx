@@ -367,8 +367,9 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
   const verificationTabs = ["Active", "Approved", "Needs information", "Declined", "Signup not finished"];
   const rfqTabs = ["All", "Open", "With quotes", "Needs attention", "Closed"];
   const quoteTabs = ["All", "Submitted", "Brand reviewing", "Needs attention", "Accepted", "Closed"];
-  // A company that has not finished signup is under its own tab only.
-  const matchesVerificationTab = (profile, tab) => profile.signupFinished === false
+  // A company that has not finished signup is under its own tab only, until
+  // staff decline it: then it is under Declined like any other.
+  const matchesVerificationTab = (profile, tab) => profile.signupFinished === false && profile.status !== "Declined"
     ? tab === "Signup not finished"
     : tab === "Active"
     ? !["Approved", "Needs information", "Declined"].includes(profile.status)

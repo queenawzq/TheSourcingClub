@@ -673,7 +673,8 @@ hand-written line.
   signed up with another address, a goodwill refund) is a developer running
   `select admin_adjust_credits('<org id>', <+/-credits>, '<reason>');` as
   staff, which keeps the reason, the ledger line and the company's notice.
-  Never insert into `credit_ledger` by hand.
+  On a real database never insert into `credit_ledger` by hand (only test
+  setup does, as e2e's invite run).
 - The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
   ledger through `creditHistory()`, with invites still waiting shown as
   Pending.

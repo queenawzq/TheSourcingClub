@@ -225,8 +225,9 @@ export async function withLevel(profile) {
 }
 
 export function toReviewProfile(row) {
-  // Not finished signup: one status, the Users page's, whatever staff asked.
-  const [status, tone] = row.signupFinished === false
+  // Not finished signup: one status, the Users page's, until staff decline it
+  // (decided: it is under Declined like any other declined company).
+  const [status, tone] = row.signupFinished === false && row.state !== "declined"
     ? ["Signup not finished", "warning"]
     : REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
