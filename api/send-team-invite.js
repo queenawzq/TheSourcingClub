@@ -13,8 +13,11 @@ const loadEmails = () => import("../scripts/generate-notification-email.mjs");
  * everything (org_invitations guard): Settings access, permissions no wider
  * than the inviter's own, not already on the team, not a staff address, 20 a
  * day per person. Resend goes through resend_invitation(), which extends the
- * expiry and refuses a second email within ten minutes. Only then is the email
- * sent; the service key reads names and stamps `emailed_at`, nothing else.
+ * expiry and claims the email (`email_claimed_at`) under the invitation's lock:
+ * ten minutes between emails, 3 resends per invitation, 20 a day per person,
+ * 10 invitation emails a day per address. Only then is the email sent; the
+ * service key reads names, stamps `emailed_at`, and gives a claim back when
+ * nothing was sent, nothing else.
  *
  * An invitation that is saved but not emailed still works: the person sees it
  * when they sign in with that address.
@@ -44,7 +47,7 @@ export default async function handler(request, response) {
     global: { headers: { Authorization: authorization } },
   });
 
-  const columns = "id, org_id, email, permissions, title, invited_name, invited_by, expires_at";
+  const columns = "id, org_id, email, permissions, title, invited_name, invited_by, expires_at, email_claimed_at";
   let result;
   if (resendId) {
     result = await caller.rpc("resend_invitation", { target_invitation: resendId }).select(columns).single();
@@ -106,9 +109,9 @@ export default async function handler(request, response) {
       companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
     };
     delivery = await sendOneEmail({
-      // The expiry moves on every resend, so a resend is a new send to Resend
-      // and never its replay of the first answer.
-      key: `team-invite-${invite.id}-${new Date(invite.expires_at).getTime()}`,
+      // One key per claim: each resend the database allowed is a new send to
+      // Resend, and a retry of the same claim is Resend's replay of it.
+      key: `team-invite-${invite.id}-${new Date(invite.email_claimed_at ?? invite.expires_at).getTime()}`,
       to: invite.email,
       message: teamInviteEmail({
         id: invite.id,
@@ -132,6 +135,11 @@ export default async function handler(request, response) {
     // invite leaves no trace to match against Resend's log. Domain only.
     console.log(`send-team-invite: emailed ${delivery.providerId ?? "(no id)"} to @${invite.email.split("@")[1]}`);
     await service.from("org_invitations").update({ emailed_at: new Date().toISOString() }).eq("id", invite.id);
+  } else if (invite.email_claimed_at && delivery.reason !== "email_failed") {
+    // Nothing was sent (no email on this server, a test address): give the
+    // claim back, so Resend works again at once and is not counted. A failed
+    // send keeps it: the email service may have taken it after all.
+    await service.rpc("release_invitation_email", { target_invitation: invite.id, claimed: invite.email_claimed_at });
   }
   response.status(200).json({ id: invite.id, emailed: delivery.sent, reason: delivery.sent ? null : delivery.reason, error: null });
 }

@@ -714,8 +714,15 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   `invited_by`, takes no permission the inviter lacks (no inviting your own
   second address with more), refuses team members, staff addresses and more
   than 20 a day per PERSON. `api/send-team-invite.js` inserts with the
-  caller's token, then emails (`teamInviteEmail`); Resend extends the
-  expiry, and the idempotency key carries it, so Resend never replays.
+  caller's token, then emails (`teamInviteEmail`).
+- **Resend claims the email before it is sent** (`20261127300000`, audit
+  TSC-11). `resend_invitation` sets `email_claimed_at` and writes a
+  server-only `org_invitation_sends` row under the invitation's row lock, so
+  resends pressed at once send one email. Ten minutes between emails, 3
+  resends per invitation, 20 resends a day per person, 10 invitation emails a
+  day per address (new invitations too, from every company). The email's key
+  is the claim; the server gives a claim back only when nothing could have
+  been sent (`release_invitation_email`).
 - **`org_members` is in the Realtime publication.** `AuthProvider` listens
   to the person's own rows: a permission change reaches open screens, and a
   removal shows "You no longer have access to …".
