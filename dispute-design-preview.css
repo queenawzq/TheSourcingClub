@@ -119,3 +119,36 @@
 .dp-disputes-table td:nth-last-child(2) { min-width: 140px; }
 .dp-disputes-table .shared-card-status { max-width: 180px; height: auto; min-height: 24px; white-space: normal; }
 .dp-app .dp-main .admin-verification-tabs { margin-top: 0; }
+
+/* Party-to-party solutions use the existing TSC card, field, button and status styles. */
+.dp-solutions{border-top:1px solid var(--border);padding-top:16px;margin:16px 0}
+.dp-solutions > header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+.dp-solutions h3{margin:0;font-size:17px;line-height:22px}
+.dp-solution{border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:12px;background:var(--surface,#fff)}
+.dp-solution-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;color:var(--text-muted);font-size:12px;margin-bottom:10px}
+.dp-solution h4,.dp-solution-form h4{margin:0 0 6px;color:var(--text);font-size:14px;line-height:20px;font-weight:700}
+.dp-solution-description{margin:0!important;color:var(--text)!important;white-space:pre-wrap;font-size:13px!important;line-height:20px!important;font-weight:500}
+.dp-solution-terms{display:flex;flex-wrap:wrap;gap:12px 28px;margin:12px 0 0;font-size:12px}
+.dp-solution-terms dt{color:var(--text-muted);margin-bottom:3px}.dp-solution-terms dd{margin:0;font-weight:600}
+.dp-solution-info,.dp-solution-empty,.dp-solution-reply{font-size:12px!important;line-height:18px!important;color:var(--text-muted)!important;margin:10px 0 0!important}
+.dp-solution-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px}
+.dp-solution-form .dp-note{display:block}.dp-solution-form .dp-completion-check{display:flex;flex-direction:row;align-items:flex-start}
+.dp-solution-form .dp-completion-check input{min-height:0;width:16px;height:16px;padding:0;flex:0 0 16px;box-shadow:none;margin-top:2px}
+.dp-solution-form label > .onboarding-required-mark{display:contents}
+@media(max-width:600px){.dp-solution-actions > .primary-btn,.dp-solution-actions > .secondary-btn{flex:1 1 auto}.dp-solutions > header{align-items:flex-start}}
+
+.dp-case-body > .dp-solutions{border-top:0;padding-top:0;margin:12px 0 20px}
+
+.dp-modal-title-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px}.dp-modal-title-row > .dp-badge{font-size:11px;text-transform:none;letter-spacing:0;white-space:nowrap}
+.dp-case-body > .admin-verification-tabs{margin:0 0 16px}
+.dp-case-body [aria-label="Dispute timeline"] > h3{margin-top:0}
+/* Keep the timeline heading close to its tab, with a clear gap before events. */
+.dp-case-body:has(> [aria-label="Dispute timeline"]) > .admin-verification-tabs{margin-bottom:0}
+.dp-case-body [aria-label="Dispute timeline"] > h3{margin:0 0 12px}
+/* Stable case-dialog height across overview and timeline; scroll content only. */
+.dp-modal:has(> .dp-case-body){height:min(560px,calc(100dvh - 48px));display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.dp-modal > .dp-case-body{min-height:0;overflow-y:auto;align-content:start;scrollbar-gutter:stable}
+@media(max-width:760px){.dp-modal:has(> .dp-case-body){height:min(560px,calc(100dvh - 20px))}}
+/* The proposal now sits inside the overview tab, so it needs no extra section divider. */
+.dp-case-body > .admin-verification-tabs{margin-bottom:0}
+.dp-case-body [aria-label="Dispute overview"] > .dp-solutions:first-child{border-top:0;padding-top:0;margin:0 0 16px}

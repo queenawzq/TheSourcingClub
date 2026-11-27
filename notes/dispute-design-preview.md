@@ -28,3 +28,9 @@ The preview now mounts the existing brand ProjectsScreen / ProjectDetailScreen a
 
 ## Automatic case status
 Start review is removed. Submission waits for the other party; an admin response request records pending recipients and a business-day deadline. The case becomes Ready for TSC review only when all requested parties have responded. Extra notes from the opener do not satisfy a pending request to the other party. Recording a resolution leaves the case Awaiting completion. An admin must add a verification note and confirm the agreed actions are complete before marking it Resolved. Viewing a case never changes status. All state and deadline handling remains local to this mockup; there is no email, payment, or database action. Run `node scripts/check-dispute-preview.mjs` for transition checks.
+
+## Party solution proposals
+
+Either the brand or factory can propose a solution after a case is opened. The proposal includes an outcome, practical actions, optional amount and completion date. Only the addressed party can accept, decline with a reason, or counter. A counterproposal replaces the pending offer while retaining it in the case history. Declining leaves the case open for another offer or TSC review. Acceptance records the agreement and moves to Awaiting completion; TSC still verifies completion before resolving. Money movement and order cancellation remain separate operations.
+
+The same proposal history is visible to staff in Case details and Timeline. Use Load example case / Reset case in the local preview toolbar to try both perspectives. Data is in memory only and resets on reload; no messages, uploads, refunds or database writes are sent.
